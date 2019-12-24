@@ -3,6 +3,12 @@ uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 authors = ["mohamed82008 <mohamed82008@gmail.com>"]
 version = "0.1.0"
 
+[deps]
+AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
+Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+
 [compat]
 julia = "1"
 
