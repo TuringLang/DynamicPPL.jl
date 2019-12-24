@@ -62,6 +62,11 @@ export  VarName,
 # Model
         Model,
         getmissing,
+        runmodel!,
+# Samplers
+        Sampler,
+        SampleFromPrior,
+        SampleFromUniform,
 # Contexts
         DefaultContext,
         LikelihoodContext,
