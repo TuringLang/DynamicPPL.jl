@@ -271,7 +271,9 @@ function build_model_info(input_expr)
             if in(T, modeldef[:whereparams])
                 S = :Any
             else
-                ind = findfirst(x -> MacroTools.@capture(x, T1_ <: S_) && T1 == T, modeldef[:whereparams])
+                ind = findfirst(modeldef[:whereparams]) do x
+                    MacroTools.@capture(x, T1_ <: S_) && T1 == T
+                end
                 ind != nothing || throw(ArgumentError("Please make sure type parameters are properly used. Every `Type{T}` argument need to have `T` in the a `where` clause"))
             end
             Expr(:kw, :($T::Type{<:$S}), Tval)
@@ -342,7 +344,13 @@ Replaces `@varinfo()` expressions with a handle to the `VarInfo` struct.
 function replace_vi!(model_info)
     ex = model_info[:main_body]
     vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(x -> @capture(x, @varinfo()) ? vi : x, ex)
+    ex = MacroTools.postwalk(ex) do x
+        if @capture(x, @varinfo())
+            vi
+        else
+            x
+        end
+    end
     model_info[:main_body] = ex
     return model_info
 end
@@ -355,7 +363,13 @@ Replaces `@logpdf()` expressions with the value of the accumulated `logpdf` in t
 function replace_logpdf!(model_info)
     ex = model_info[:main_body]
     vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(x -> @capture(x, @logpdf()) ? :($vi.logp) : x, ex)
+    ex = MacroTools.postwalk(ex) do x
+        if @capture(x, @logpdf())
+            :($vi.logp)
+        else
+            x
+        end
+    end
     model_info[:main_body] = ex
     return model_info
 end
@@ -368,7 +382,13 @@ Replaces `@sampler()` expressions with a handle to the sampler struct.
 function replace_sampler!(model_info)
     ex = model_info[:main_body]
     spl = model_info[:main_body_names][:sampler]
-    ex = MacroTools.postwalk(x -> @capture(x, @sampler()) ? spl : x, ex)
+    ex = MacroTools.postwalk(ex) do x
+        if @capture(x, @sampler())
+            spl
+        else
+            x
+        end
+    end
     model_info[:main_body] = ex
     return model_info
 end
@@ -382,9 +402,27 @@ Replaces `~` expressions with observation or assumption expressions, updating `m
 \"""
 function replace_tilde!(model_info)
     ex = model_info[:main_body]
-    ex = MacroTools.postwalk(x -> @capture(x, @. L_ ~ R_) ? dot_tilde(L, R, model_info) : x, ex)
-    $(VERSION >= v"1.1" ? "ex = MacroTools.postwalk(x -> @capture(x, L_ .~ R_) ? dot_tilde(L, R, model_info) : x, ex)" : "")
-    ex = MacroTools.postwalk(x -> @capture(x, L_ ~ R_) ? tilde(L, R, model_info) : x, ex)
+    ex = MacroTools.postwalk(ex) do x 
+        if @capture(x, @M_ L_ ~ R_) && M == Symbol("@__dot__")
+            dot_tilde(L, R, model_info)
+        else
+            x
+        end
+    end
+    $(VERSION >= v"1.1" ? "ex = MacroTools.postwalk(ex) do x
+        if @capture(x, L_ .~ R_)
+            dot_tilde(L, R, model_info)
+        else
+            x
+        end
+    end" : "")
+    ex = MacroTools.postwalk(ex) do x
+        if @capture(x, L_ ~ R_)
+            tilde(L, R, model_info)
+        else
+            x
+        end
+    end
     model_info[:main_body] = ex
     return model_info
 end
