@@ -12,7 +12,7 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 [compat]
 julia = "1"
 ForwardDiff = "0.10.3"
-Turing = "0.7.3"
+Turing = "0.7"
 
 [extras]
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
