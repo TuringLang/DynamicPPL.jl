@@ -15,7 +15,7 @@ dir = splitdir(splitdir(pathof(Turing))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
 
 @testset "varinfo" begin
-    @turing_testset "TypedVarInfo" begin
+    @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2,3)
             m ~ truncated(Normal(0.0, sqrt(s)), 0.0, 2.0)
@@ -47,7 +47,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
             end
         end
     end
-    @turing_testset "Base" begin
+    @testset "Base" begin
         # Test Base functions:
         #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!, empty!,
         #   getindex, setindex!, getproperty, setproperty!
@@ -115,7 +115,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         test_base!(vi)
         test_base!(empty!(TypedVarInfo(vi)))
     end
-    @turing_testset "runmodel!" begin
+    @testset "runmodel!" begin
         # Test that eval_num is incremented when calling runmodel!
         @model testmodel() = begin
             x ~ Normal()
@@ -130,7 +130,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         runmodel!(m, vi, spl)
         @test spl.state.eval_num == 2
     end
-    @turing_testset "flags" begin
+    @testset "flags" begin
         # Test flag setting:
         #    is_flagged, set_flag!, unset_flag!
         function test_varinfo!(vi)
@@ -154,7 +154,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         test_varinfo!(vi)
         test_varinfo!(empty!(TypedVarInfo(vi)))
     end
-    @turing_testset "link!" begin
+    @testset "link!" begin
         # Test linking spl and vi:
         #    link!, invlink!, istrans
         @model gdemo(x, y) = begin
@@ -196,7 +196,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test meta.s.vals == v_s
         @test meta.m.vals == v_m
     end
-    @turing_testset "setgid!" begin
+    @testset "setgid!" begin
         vi = VarInfo()
         meta = vi.metadata
         vn = @varname x
@@ -321,7 +321,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test vi.metadata.b.orders == [2]
         @test vi.num_produce == 3
     end
-    @turing_testset "replay" begin
+    @testset "replay" begin
         # Generate synthesised data
         xs = rand(Normal(0.5, 1), 100)
 
@@ -339,7 +339,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         # Sampling
         chain = sample(priorsinarray(xs), HMC(0.01, 10), 10)
     end
-    @turing_testset "varname" begin
+    @testset "varname" begin
         vn1 = @varname x[1]
         @test vn1 == VarName{:x}("[1]")
 
@@ -388,7 +388,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         chain = sample(marr_name_test(), HMC(0.2, 4), 1000)
         check_numerical(chain, ["p[1][1]"], [0], atol = 0.25)
     end
-    @turing_testset "varinfo" begin
+    @testset "varinfo" begin
         dists = [Normal(0, 1), MvNormal([0; 0], [1.0 0; 0 1.0]), Wishart(7, [1 0.5; 0.5 1])]
         function test_varinfo!(vi)
             @test getlogp(vi) == 0

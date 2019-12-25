@@ -8,7 +8,7 @@ Random.seed!(129)
 
 priors = 0 # See "new grammar" test.
 
-@turing_testset "compiler.jl" begin
+@testset "compiler.jl" begin
     @testset "assume" begin
         @model test_assume() = begin
             x ~ Bernoulli(1)

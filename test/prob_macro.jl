@@ -6,7 +6,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
 Random.seed!(129)
 
-@turing_testset "prob_macro" begin
+@testset "prob_macro" begin
     @testset "scalar" begin
         @model demo(x) = begin
             m ~ Normal()
