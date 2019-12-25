@@ -2,5 +2,7 @@ using DynamicPPL
 using Test
 
 @testset "DynamicPPL.jl" begin
-    # Write your own tests here.
+    include("compiler.jl")
+    include("varinfo.jl")
+    include("prob_macro.jl")
 end
