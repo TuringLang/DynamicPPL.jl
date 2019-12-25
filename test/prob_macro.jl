@@ -1,5 +1,5 @@
 using Turing, Distributions, Test, Random
-using DynamicPPL
+using DynamicPPL: VarInfo
 
 dir = splitdir(splitdir(pathof(Turing))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
