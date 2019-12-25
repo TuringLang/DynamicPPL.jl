@@ -1,4 +1,3 @@
-using DynamicPPL
 using Test
 
 @testset "DynamicPPL.jl" begin

@@ -4,7 +4,6 @@ using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!
-using DynamicPPL
 using Distributions
 using ForwardDiff: Dual
 using Test
