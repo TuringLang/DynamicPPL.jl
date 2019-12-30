@@ -9,7 +9,7 @@ end
 
 function get_exprs(str::String)
 	ind = findfirst(isequal('|'), str)
-	ind == nothing && throw("Invalid expression.")
+	ind === nothing && throw("Invalid expression.")
 
 	str1 = str[1:(ind - 1)]
 	str2 = str[(ind + 1):end]
@@ -56,7 +56,7 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         end
         defaults = modelgen.defaults
         valid_arg(arg) = isdefined(ntl, arg) || isdefined(ntr, arg) || 
-            isdefined(defaults, arg) && !(getfield(defaults, arg) isa Missing)
+            isdefined(defaults, arg) && getfield(defaults, arg) !== missing
         @assert all(valid_arg.(modelgen.args))
         return Val(:likelihood), modelgen, vi
     else
@@ -79,7 +79,7 @@ function probtype(
 	defaults::NamedTuple{defs},
 ) where {namesl, namesr, args, defs}
     prior_rhs = all(n -> n in (:model, :varinfo) || 
-        n in args && !(getfield(ntr, n) isa Missing), namesr)
+        n in args && getfield(ntr, n) !== missing, namesr)
     function get_arg(arg)
         if arg in namesl
             return getfield(ntl, arg)
@@ -93,7 +93,7 @@ function probtype(
     end
     function valid_arg(arg)
         a = get_arg(arg)
-        return !(a isa Nothing || a isa Missing)
+        return a !== nothing && a !== missing
     end
     valid_args = all(valid_arg.(args))
 
