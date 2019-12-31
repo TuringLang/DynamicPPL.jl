@@ -1,4 +1,4 @@
-using Turing, Random
+using .Turing, Random
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
@@ -11,8 +11,7 @@ using Test
 
 i, j, k = 1, 2, 3
 
-dir = splitdir(splitdir(pathof(Turing))[1])[1]
-include(dir*"/test/test_utils/AllUtils.jl")
+include("./test_utils/AllUtils.jl")
 
 @testset "varinfo" begin
     @testset "TypedVarInfo" begin
