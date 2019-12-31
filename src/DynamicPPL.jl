@@ -7,7 +7,7 @@ using Distributions: UnivariateDistribution,
                      Distribution
 using Bijectors: link, invlink
 using MacroTools
-                     
+
 import Base: string,
              Symbol,
              ==,

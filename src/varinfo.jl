@@ -455,11 +455,10 @@ end
 end
 
 # Get all vns of variables belonging to spl
-_getvns(vi::UntypedVarInfo, spl::AbstractSampler) = view(vi.metadata.vns, _getidcs(vi, spl))
-function _getvns(vi::TypedVarInfo, spl::AbstractSampler)
-    # Get a NamedTuple of the indices of variables belonging to `spl`, one entry for each symbol
-    idcs = _getidcs(vi, spl)
-    return _getvns(vi.metadata, idcs)
+_getvns(vi::AbstractVarInfo, spl::Sampler) = _getvns(vi, spl.selector, Val(getspace(spl)))
+_getvns(vi::UntypedVarInfo, s::Selector, space) = view(vi.metadata.vns, _getidcs(vi, s, space))
+function _getvns(vi::TypedVarInfo, s::Selector, space)
+    return _getvns(vi.metadata, _getidcs(vi, s, space))
 end
 # Get a NamedTuple for all the `vns` of indices `idcs`, one entry for each symbol
 @generated function _getvns(metadata, idcs::NamedTuple{names}) where {names}
@@ -485,7 +484,7 @@ end
     #end
 end
 # Get the index (in vals) ranges of all the vns of variables belonging to selector `s` in `space`
-@inline function _getranges(vi::AbstractVarInfo, s::Selector, space = Val(()))
+@inline function _getranges(vi::AbstractVarInfo, s::Selector, space)
     return _getranges(vi, _getidcs(vi, s, space))
 end
 @inline function _getranges(vi::UntypedVarInfo, idcs::Vector{Int})
@@ -768,13 +767,13 @@ end
 
 # X -> R for all variables associated with given sampler
 """
-    link!(vi::VarInfo, spl::AbstractSampler)
+    link!(vi::VarInfo, spl::Sampler)
 
 Transform the values of the random variables sampled by `spl` in `vi` from the support
 of their distributions to the Euclidean space and set their corresponding `"trans"`
 flag values to `true`.
 """
-function link!(vi::UntypedVarInfo, spl::AbstractSampler)
+function link!(vi::UntypedVarInfo, spl::Sampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
@@ -862,7 +861,7 @@ end
 
 
 """
-    islinked(vi::VarInfo, spl::AbstractSampler)
+    islinked(vi::VarInfo, spl::Sampler)
 
 Check whether `vi` is in the transformed space for a particular sampler `spl`.
 
@@ -871,11 +870,11 @@ Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 (for example, one bounded to the space `[0, 1]`) from its constrained space to the set of 
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
-function islinked(vi::UntypedVarInfo, spl::AbstractSampler)
+function islinked(vi::UntypedVarInfo, spl::Sampler)
     vns = _getvns(vi, spl)
     return istrans(vi, vns[1])
 end
-function islinked(vi::TypedVarInfo, spl::AbstractSampler)
+function islinked(vi::TypedVarInfo, spl::Sampler)
     vns = _getvns(vi, spl)
     return _islinked(vi, vns)
 end
@@ -915,16 +914,15 @@ function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
 end
 
 """
-    getindex(vi::VarInfo, spl::AbstractSampler)
+    getindex(vi::VarInfo, spl::Union{SampleFromPrior, Sampler})
 
 Return the current value(s) of the random variables sampled by `spl` in `vi`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-getindex(vi::UntypedVarInfo, spl::SampleFromPrior) = copy(getall(vi))
-getindex(vi::TypedVarInfo, spl::SampleFromPrior) = copy(getall(vi))
-getindex(vi::UntypedVarInfo, spl::AbstractSampler) = copy(getval(vi, _getranges(vi, spl)))
-function getindex(vi::TypedVarInfo, spl::AbstractSampler)
+getindex(vi::AbstractVarInfo, spl::SampleFromPrior) = copy(getall(vi))
+getindex(vi::UntypedVarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
+function getindex(vi::TypedVarInfo, spl::Sampler)
     # Gets the ranges as a NamedTuple
     ranges = _getranges(vi, spl)
     # Calling getfield(ranges, f) gives all the indices in `vals` of the `vn`s with symbol `f` sampled by `spl` in `vi`
@@ -949,18 +947,15 @@ The value(s) may or may not be transformed to Euclidean space.
 setindex!(vi::AbstractVarInfo, val, vn::VarName) = setval!(vi, val, vn)
 
 """
-    setindex!(vi::VarInfo, val, spl::AbstractSampler)
+    setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
 
 Set the current value(s) of the random variables sampled by `spl` in `vi` to `val`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::UntypedVarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
-setindex!(vi::TypedVarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
-function setindex!(vi::UntypedVarInfo, val, spl::AbstractSampler)
-    return setval!(vi, val, _getranges(vi, spl))
-end
-function setindex!(vi::TypedVarInfo, val, spl::AbstractSampler)
+setindex!(vi::AbstractVarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
+setindex!(vi::UntypedVarInfo, val, spl::Sampler) = setval!(vi, val, _getranges(vi, spl))
+function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
     ranges = _getranges(vi, spl)
     _setindex!(vi.metadata, val, ranges)
@@ -1014,7 +1009,7 @@ end
     return map(vn -> vi[vn], f_vns)
 end
 
-function Base.eltype(vi::AbstractVarInfo, spl::AbstractSampler)
+function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler, SampleFromPrior})
     return eltype(Core.Compiler.return_type(getindex, Tuple{typeof(vi), typeof(spl)}))
 end
 
@@ -1152,11 +1147,11 @@ function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
 end
 
 """
-    set_retained_vns_del_by_spl!(vi::VarInfo, spl::AbstractSampler)
+    set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)
 
 Set the `"del"` flag of variables in `vi` with `order > vi.num_produce` to `true`.
 """
-function set_retained_vns_del_by_spl!(vi::UntypedVarInfo, spl::AbstractSampler)
+function set_retained_vns_del_by_spl!(vi::UntypedVarInfo, spl::Sampler)
     # Get the indices of `vns` that belong to `spl` as a vector
     gidcs = _getidcs(vi, spl)
     if vi.num_produce == 0
@@ -1172,7 +1167,7 @@ function set_retained_vns_del_by_spl!(vi::UntypedVarInfo, spl::AbstractSampler)
     end
     return nothing
 end
-function set_retained_vns_del_by_spl!(vi::TypedVarInfo, spl::AbstractSampler)
+function set_retained_vns_del_by_spl!(vi::TypedVarInfo, spl::Sampler)
     # Get the indices of `vns` that belong to `spl` as a NamedTuple, one entry for each symbol
     gidcs = _getidcs(vi, spl)
     return _set_retained_vns_del_by_spl!(vi.metadata, gidcs, vi.num_produce)
