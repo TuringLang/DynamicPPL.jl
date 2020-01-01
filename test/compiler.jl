@@ -1,7 +1,8 @@
 using .Turing, Random, MacroTools, Distributions, Test
-using DynamicPPL: split_var_str, VarInfo, VarName
+using DynamicPPL: DynamicPPL, split_var_str, @varname, VarInfo, VarName
 
-include("./test_utils/AllUtils.jl")
+dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
+include(dir*"/test/test_utils/AllUtils.jl")
 
 Random.seed!(129)
 
@@ -207,7 +208,7 @@ priors = 0 # See "new grammar" test.
             return x
         end
         model = testmodel([1.0])
-        varinfo = VarInfo(model)
+        varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test varinfo.logp == lp
         @test varinfo === _varinfo

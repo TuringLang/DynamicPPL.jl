@@ -1,7 +1,10 @@
 using .Turing, Distributions, Test, Random
 using DynamicPPL: VarInfo
 
-include("./test_utils/AllUtils.jl")
+Random.seed!(129)
+
+dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
+include(dir*"/test/test_utils/AllUtils.jl")
 
 Random.seed!(129)
 

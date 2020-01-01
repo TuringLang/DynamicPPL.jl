@@ -3,7 +3,8 @@ using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
-    getlogp, setlogp!, resetlogp!, acclogp!
+    getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
+    setorder!, updategid!
 using DynamicPPL
 using Distributions
 using ForwardDiff: Dual
@@ -11,9 +12,10 @@ using Test
 
 i, j, k = 1, 2, 3
 
-include("./test_utils/AllUtils.jl")
+dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
+include(dir*"/test/test_utils/AllUtils.jl")
 
-@testset "varinfo" begin
+@testset "RandomVariables.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2,3)
