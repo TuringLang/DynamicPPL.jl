@@ -1,23 +1,29 @@
 module Core
 
-using Libtask, ForwardDiff, Random
+using MacroTools, Libtask, ForwardDiff, Random
 using Distributions, LinearAlgebra
 using ..Utilities, Reexport
 using Tracker: Tracker
-using ..Turing: Turing, Model, runmodel!,
+using ..Turing: Turing
+using DynamicPPL: Model, runmodel!,
     AbstractSampler, Sampler, SampleFromPrior
 using LinearAlgebra: copytri!
+using Bijectors: PDMatDistribution
+import Bijectors: link, invlink
 using DistributionsAD
 using StatsFuns: logsumexp, softmax
-using Bijectors: PDMatDistribution
-
-using DynamicPPL
+@reexport using DynamicPPL
 
 include("container.jl")
 include("ad.jl")
 
 export  @model,
         @varname,
+        generate_observe,
+        translate_tilde!,
+        get_vars,
+        get_data,
+        get_default_values,
         ParticleContainer,
         Particle,
         Trace,
@@ -45,6 +51,8 @@ export  @model,
         gradient_logp_reverse,
         @varinfo,
         @logpdf,
-        @sampler
+        @sampler,
+        @logprob_str,
+        @prob_str
 
 end # module

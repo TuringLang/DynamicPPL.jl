@@ -615,4 +615,4 @@ end
 Get the specialized version of type `T` for sampler `spl`. For example,
 if `T === Float64` and `spl::Hamiltonian`, the matching type is `eltype(vi[spl])`.
 """
-get_matching_type(spl, vi, ::Type{T}) where {T} = T
+function get_matching_type end

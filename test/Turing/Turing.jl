@@ -8,16 +8,17 @@ module Turing
 #       to indicate that's not implemented inside Turing.jl            #
 ########################################################################
 
-using Requires, Reexport, ForwardDiff, DynamicPPL
+using Requires, Reexport, ForwardDiff
 using Bijectors, StatsFuns, SpecialFunctions
 using Statistics, LinearAlgebra, ProgressMeter
-using Markdown, Libtask
+using Markdown, Libtask, MacroTools
 using AbstractMCMC
 @reexport using Distributions, MCMCChains, Libtask
 using Tracker: Tracker
 
 import Base: ~, ==, convert, hash, promote_rule, rand, getindex, setindex!
 import MCMCChains: AbstractChains, Chains
+import DynamicPPL: getspace, runmodel!
 
 const PROGRESS = Ref(true)
 function turnprogress(switch::Bool)
@@ -30,7 +31,6 @@ const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_TURING", "0")))
 # Random probability measures.
 include("stdlib/distributions.jl")
 include("stdlib/RandomMeasures.jl")
-
 include("utilities/Utilities.jl")
 using .Utilities
 include("core/Core.jl")

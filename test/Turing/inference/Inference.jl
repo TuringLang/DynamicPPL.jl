@@ -1,27 +1,26 @@
 module Inference
 
 using ..Core, ..Utilities
-using ..Utilities: init
-using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, istrans,
-    islinked, link!, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
-    settrans!, split_var_str, Model, runmodel!, Sampler, SampleFromPrior,
-    SampleFromUniform, Selector, DefaultContext, PriorContext, LikelihoodContext,
-    MiniBatchContext, AbstractSampler, AbstractSamplerState, set_retained_vns_del_by_spl!
-using DynamicPPL
+using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, 
+    islinked, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
+    settrans!, _getvns, getdist, split_var_str, CACHERESET, AbstractSampler,
+    Model, runmodel!, Sampler, SampleFromPrior, SampleFromUniform,
+    Selector, AbstractSamplerState, DefaultContext, PriorContext,
+    LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!
 using Distributions, Libtask, Bijectors
 using ProgressMeter, LinearAlgebra
-using ..Turing: Turing, NamedDist, NoDist, PROGRESS
+using ..Turing: PROGRESS, NamedDist, NoDist, Turing
 using StatsFuns: logsumexp
 using Random: GLOBAL_RNG, AbstractRNG, randexp
-using AbstractMCMC
+using AbstractMCMC, DynamicPPL
 
 import MCMCChains: Chains
 import AdvancedHMC; const AHMC = AdvancedHMC
-import DynamicPPL: getspace, get_matching_type, tilde, dot_tilde
 import ..Core: getchunksize, getADtype
 import AbstractMCMC: AbstractTransition, sample, step!, sample_init!,
     transitions_init, sample_end!, AbstractSampler, transition_type,
     callback, init_callback, AbstractCallback, psample
+import DynamicPPL: tilde, dot_tilde, getspace, get_matching_type
 
 export  InferenceAlgorithm,
         Hamiltonian,
