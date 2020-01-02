@@ -12,7 +12,6 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 [compat]
 julia = "1"
 ForwardDiff = "0.10.3"
-Turing = "0.7"
 
 [extras]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
