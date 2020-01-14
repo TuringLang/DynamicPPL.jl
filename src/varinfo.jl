@@ -147,7 +147,7 @@ function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
 end
 function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
-    VarInfo(md, Base.RefValue{eltype(x)}(old_vi.logp), Ref(old_vi.num_produce))
+    VarInfo(md, Base.RefValue{eltype(x)}(old_vi.logp[]), Ref(old_vi.num_produce[]))
 end
 @generated function newmetadata(metadata::NamedTuple{names}, ::Val{space}, x) where {names, space}
     exprs = []
@@ -654,36 +654,25 @@ function TypedVarInfo(vi::UntypedVarInfo)
                                     sym_dists, sym_gids, sym_orders, sym_flags)
             )
     end
-    logp = vi.logp
-    num_produce = vi.num_produce
+    logp = vi.logp[]
+    num_produce = vi.num_produce[]
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
 TypedVarInfo(vi::TypedVarInfo) = vi
 
-function getproperty(vi::VarInfo, f::Symbol)
-    f === :logp && return getfield(vi, :logp)[]
-    f === :num_produce && return getfield(vi, :num_produce)[]
-    return getfield(vi, f)
-end
-function setproperty!(vi::VarInfo, f::Symbol, x)
-    f === :logp && return getfield(vi, :logp)[] = x
-    f === :num_produce && return getfield(vi, :num_produce)[] = x
-    return setfield!(vi, f, x)
-end
-
 """
     empty!(vi::VarInfo)
 
-Empty the fields of `vi.metadata` and reset `vi.logp` and `vi.num_produce` to
+Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
 zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
 function empty!(vi::VarInfo)
     _empty!(vi.metadata)
-    vi.logp = 0
-    vi.num_produce = 0
+    vi.logp[] = 0
+    vi.num_produce[] = 0
     return vi
 end
 @inline _empty!(metadata::Metadata) = empty!(metadata)
@@ -724,7 +713,7 @@ istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
 Return the log of the joint probability of the observed data and parameters sampled in
 `vi`.
 """
-getlogp(vi::AbstractVarInfo) = vi.logp
+getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
     setlogp!(vi::VarInfo, logp::Real)
@@ -732,7 +721,7 @@ getlogp(vi::AbstractVarInfo) = vi.logp
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`.
 """
-setlogp!(vi::AbstractVarInfo, logp::Real) = vi.logp = logp
+setlogp!(vi::AbstractVarInfo, logp::Real) = vi.logp[] = logp
 
 """
     acclogp!(vi::VarInfo, logp::Real)
@@ -740,7 +729,7 @@ setlogp!(vi::AbstractVarInfo, logp::Real) = vi.logp = logp
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`.
 """
-acclogp!(vi::AbstractVarInfo, logp::Real) = vi.logp += logp
+acclogp!(vi::AbstractVarInfo, logp::Real) = vi.logp[] += logp
 
 """
     resetlogp!(vi::VarInfo)
@@ -1035,8 +1024,8 @@ function show(io::IO, vi::UntypedVarInfo)
     | Vals      :   $(vi.metadata.vals)
     | GIDs      :   $(vi.metadata.gids)
     | Orders    :   $(vi.metadata.orders)
-    | Logp      :   $(vi.logp)
-    | #produce  :   $(vi.num_produce)
+    | Logp      :   $(vi.logp[])
+    | #produce  :   $(vi.num_produce[])
     | flags     :   $(vi.metadata.flags)
     \\=======================================================================
     """
@@ -1103,7 +1092,7 @@ function push!(
     append!(meta.vals, val)
     push!(meta.dists, dist)
     push!(meta.gids, gidset)
-    push!(meta.orders, vi.num_produce)
+    push!(meta.orders, vi.num_produce[])
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
 
@@ -1149,18 +1138,18 @@ end
 """
     set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)
 
-Set the `"del"` flag of variables in `vi` with `order > vi.num_produce` to `true`.
+Set the `"del"` flag of variables in `vi` with `order > vi.num_produce[]` to `true`.
 """
 function set_retained_vns_del_by_spl!(vi::UntypedVarInfo, spl::Sampler)
     # Get the indices of `vns` that belong to `spl` as a vector
     gidcs = _getidcs(vi, spl)
-    if vi.num_produce == 0
+    if vi.num_produce[] == 0
         for i = length(gidcs):-1:1
           vi.metadata.flags["del"][gidcs[i]] = true
         end
     else
         for i in 1:length(vi.orders)
-            if i in gidcs && vi.orders[i] > vi.num_produce
+            if i in gidcs && vi.orders[i] > vi.num_produce[]
                 vi.metadata.flags["del"][i] = true
             end
         end
@@ -1170,7 +1159,7 @@ end
 function set_retained_vns_del_by_spl!(vi::TypedVarInfo, spl::Sampler)
     # Get the indices of `vns` that belong to `spl` as a NamedTuple, one entry for each symbol
     gidcs = _getidcs(vi, spl)
-    return _set_retained_vns_del_by_spl!(vi.metadata, gidcs, vi.num_produce)
+    return _set_retained_vns_del_by_spl!(vi.metadata, gidcs, vi.num_produce[])
 end
 @generated function _set_retained_vns_del_by_spl!(metadata, gidcs::NamedTuple{names}, num_produce) where {names}
     expr = Expr(:block)

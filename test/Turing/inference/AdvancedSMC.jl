@@ -88,7 +88,7 @@ function sample_init!(
 
     # reset the VarInfo
     vi = spl.state.vi
-    vi.num_produce = 0
+    vi.num_produce[] = 0
     set_retained_vns_del_by_spl!(vi, spl)
     resetlogp!(vi)
     empty!(vi)
@@ -194,7 +194,7 @@ function step!(
     ref_particle = isempty(vi) ? nothing : forkr(Trace(model, spl, vi))
 
     # reset the VarInfo before new sweep
-    vi.num_produce = 0
+    vi.num_produce[] = 0
     set_retained_vns_del_by_spl!(vi, spl)
     resetlogp!(vi)
 
@@ -272,7 +272,7 @@ function assume(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, vn::VarName, 
             r = rand(dist)
             vi[vn] = vectorize(dist, r)
             setgid!(vi, spl.selector, vn)
-            setorder!(vi, vn, vi.num_produce)
+            setorder!(vi, vn, vi.num_produce[])
         else
             updategid!(vi, vn, spl)
             r = vi[vn]
