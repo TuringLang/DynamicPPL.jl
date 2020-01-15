@@ -210,7 +210,7 @@ priors = 0 # See "new grammar" test.
         model = testmodel([1.0])
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
-        @test varinfo.logp == lp
+        @test getlogp(varinfo) == lp
         @test varinfo === _varinfo
     end
     @testset "new grammar" begin

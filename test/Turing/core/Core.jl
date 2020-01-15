@@ -1,5 +1,6 @@
 module Core
 
+using Bijectors
 using MacroTools, Libtask, ForwardDiff, Random
 using Distributions, LinearAlgebra
 using ..Utilities, Reexport
@@ -13,9 +14,14 @@ import Bijectors: link, invlink
 using DistributionsAD
 using StatsFuns: logsumexp, softmax
 @reexport using DynamicPPL
+using Requires
 
 include("container.jl")
 include("ad.jl")
+@init @require Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f" begin
+    include("compat/zygote.jl")
+    export ZygoteAD
+end
 
 export  @model,
         @varname,
