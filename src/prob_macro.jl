@@ -142,7 +142,7 @@ function logprior(
         @assert n in keys(left) "Variable $n is not defined."
     end
     model(vi, SampleFromPrior(), PriorContext(left))
-    return vi.logp[]
+    return getlogp(vi)
 end
 @generated function get_prior_model_args(
     left::NamedTuple{namesl},
@@ -205,14 +205,14 @@ function loglikelihood(
             c = chain[i]
             _setval!(vi, c)
             model(vi, SampleFromPrior(), ctx)
-            vi.logp[]
+            return getlogp(vi)
         end
     else
         # Likelihood without chain
         # Rhs values are used in the context
         ctx = LikelihoodContext(right)
         model(vi, SampleFromPrior(), ctx)
-        return vi.logp[]
+        return getlogp(vi)
     end
 end
 @generated function get_like_model_args(

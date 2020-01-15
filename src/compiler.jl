@@ -456,16 +456,22 @@ function tilde(left, right, model_info)
                 $vn, $inds = $preprocessed
                 $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
                 $left = $out[1]
-                $vi.logp[] += $out[2]
+                DynamicPPL.acclogp!($vi, $out[2])
             else
-                $vi.logp[] += DynamicPPL.tilde($ctx, $sampler, $temp_right, $preprocessed, $vi)
+                DynamicPPL.acclogp!(
+                    $vi,
+                    DynamicPPL.tilde($ctx, $sampler, $temp_right, $preprocessed, $vi),
+                )
             end
         end
     else
         ex = quote
             $temp_right = $right
             $assert_ex
-            $vi.logp[] += DynamicPPL.tilde($ctx, $sampler, $temp_right, $left, $vi)
+            DynamicPPL.acclogp!(
+                $vi,
+                DynamicPPL.tilde($ctx, $sampler, $temp_right, $left, $vi),
+            )
         end
     end
     return ex
@@ -500,10 +506,13 @@ function dot_tilde(left, right, model_info)
                 $temp_left = $left
                 $out = DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vn, $inds, $vi)
                 $left .= $out[1]
-                $vi.logp[] += $out[2]
+                DynamicPPL.acclogp!($vi, $out[2])
             else
                 $temp_left = $preprocessed
-                $vi.logp[] += DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi)
+                DynamicPPL.acclogp!(
+                    $vi,
+                    DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
+                )
             end
         end
     else
@@ -511,7 +520,10 @@ function dot_tilde(left, right, model_info)
             $temp_left = $left
             $temp_right = $right
             $assert_ex
-            $vi.logp[] += DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi)
+            DynamicPPL.acclogp!(
+                $vi,
+                DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
+            )
         end
     end
     return ex
@@ -587,7 +599,7 @@ function build_output(model_info)
                 $model
             )
                 $unwrap_data_expr
-                $vi.logp[] = 0
+                DynamicPPL.resetlogp!($vi)
                 $main_body
             end
             return DynamicPPL.Model($inner_function, $args_nt, $model_gen_constructor)
