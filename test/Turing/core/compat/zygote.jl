@@ -4,18 +4,6 @@ function setadbackend(::Val{:zygote})
     ADBACKEND[] = :zygote
 end
 
-"""
-gradient_logp_reverse(
-    θ::AbstractVector{<:Real},
-    vi::VarInfo,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    backend::ADBackend,
-)
-
-Computes the value of the log joint of `θ` and its gradient for the model
-specified by `(vi, sampler, model)` using reverse-mode AD from the specified `backend`, e.g. `TrackerAD()` which uses `Tracker.jl` or `ZygoteAD()` which uses `Zygote.jl`.
-"""
 function gradient_logp_reverse(
     backend::ZygoteAD,
     θ::AbstractVector{<:Real},
