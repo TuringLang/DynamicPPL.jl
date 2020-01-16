@@ -351,7 +351,7 @@ function step!(
     end
 
     # Get position and log density before transition
-    θ_old, log_density_old = spl.state.vi[spl], spl.state.vi.logp
+    θ_old, log_density_old = spl.state.vi[spl], getlogp(spl.state.vi)
 
     # Transition
     t = AHMC.step(rng, spl.state.h, spl.state.traj, spl.state.z)
@@ -410,10 +410,10 @@ Generate a function that takes `θ` and returns logpdf at `θ` for the model spe
 """
 function gen_logπ(vi::VarInfo, spl::Sampler, model)
     function logπ(x)::Float64
-        x_old, lj_old = vi[spl], vi.logp
+        x_old, lj_old = vi[spl], getlogp(vi)
         vi[spl] = x
         runmodel!(model, vi, spl)
-        lj = vi.logp
+        lj = getlogp(vi)
         vi[spl] = x_old
         setlogp!(vi, lj_old)
         return lj
@@ -438,14 +438,14 @@ function assume(
     vn::VarName,
     vi::VarInfo
 )
-    Turing.DEBUG && @debug "assuming..."
+    Turing.DEBUG && _debug("assuming...")
     updategid!(vi, vn, spl)
     r = vi[vn]
     # acclogp!(vi, logpdf_with_trans(dist, r, istrans(vi, vn)))
     # r
-    Turing.DEBUG && @debug "dist = $dist"
-    Turing.DEBUG && @debug "vn = $vn"
-    Turing.DEBUG && @debug "r = $r" "typeof(r)=$(typeof(r))"
+    Turing.DEBUG && _debug("dist = $dist")
+    Turing.DEBUG && _debug("vn = $vn")
+    Turing.DEBUG && _debug("r = $r, typeof(r)=$(typeof(r))")
     return r, logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
@@ -500,10 +500,15 @@ end
 function AHMCAdaptor(alg::AdaptiveHamiltonian, metric::AHMC.AbstractMetric; ϵ=alg.ϵ)
     pc = AHMC.Preconditioner(metric)
     da = AHMC.NesterovDualAveraging(alg.δ, ϵ)
-    if metric == AHMC.UnitEuclideanMetric
-        adaptor = AHMC.NaiveHMCAdaptor(pc, da)
+    if iszero(alg.n_adapts)
+        adaptor = AHMC.Adaptation.NoAdaptation()
     else
-        adaptor = AHMC.StanHMCAdaptor(alg.n_adapts, pc, da)
+        if metric == AHMC.UnitEuclideanMetric
+            adaptor = AHMC.NaiveHMCAdaptor(pc, da)  # there is actually no adaptation for mass matrix
+        else
+            adaptor = AHMC.StanHMCAdaptor(pc, da)
+            AHMC.initialize!(adaptor, alg.n_adapts)
+        end
     end
     return adaptor
 end
@@ -520,6 +525,7 @@ function HMCState(
     rng::AbstractRNG;
     kwargs...
 )
+
     # Reuse the VarInfo.
     vi = spl.state.vi
 
@@ -579,7 +585,7 @@ function callback(
     cb::HMCCallback;
     kwargs...
 )
-    AHMC.pm_next!(cb.p, t.stat, iteration, spl.state.h.metric)
+    AHMC.pm_next!(cb.p, (iteration=iteration, t.stat..., mass_matrix=spl.state.h.metric))
 end
 
 function init_callback(

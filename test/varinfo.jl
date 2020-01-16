@@ -64,8 +64,8 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         function test_base!(vi)
             empty!(vi)
-            @test vi.logp == 0
-            @test vi.num_produce == 0
+            @test getlogp(vi) == 0
+            @test get_num_produce(vi) == 0
 
             vn = @varname x
             dist = Normal(0, 1)
@@ -228,7 +228,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
                 unset_flag!(vi, vn, "del")
                 r = rand(dist)
                 vi[vn] = vectorize(dist, r)
-                setorder!(vi, vn, vi.num_produce)
+                setorder!(vi, vn, get_num_produce(vi))
                 r
             else
                 updategid!(vi, vn, spl)
@@ -253,19 +253,19 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z1, dists[1], spl1)
         randr(vi, vn_a1, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_b, dists[2], spl2)
         randr(vi, vn_z2, dists[1], spl1)
         randr(vi, vn_a2, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z3, dists[1], spl1)
         @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
-        @test vi.num_produce == 3
+        @test get_num_produce(vi) == 3
 
-        vi.num_produce = 0
+        reset_num_produce!(vi)
         set_retained_vns_del_by_spl!(vi, spl1)
         @test is_flagged(vi, vn_z1, "del")
         @test is_flagged(vi, vn_a1, "del")
@@ -273,35 +273,35 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test is_flagged(vi, vn_a2, "del")
         @test is_flagged(vi, vn_z3, "del")
 
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z1, dists[1], spl1)
         randr(vi, vn_a1, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z2, dists[1], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z3, dists[1], spl1)
         randr(vi, vn_a2, dists[2], spl1)
         @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
-        @test vi.num_produce == 3
+        @test get_num_produce(vi) == 3
 
         vi = empty!(TypedVarInfo(vi))
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z1, dists[1], spl1)
         randr(vi, vn_a1, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_b, dists[2], spl2)
         randr(vi, vn_z2, dists[1], spl1)
         randr(vi, vn_a2, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z3, dists[1], spl1)
         @test vi.metadata.z.orders == [1, 2, 3]
         @test vi.metadata.a.orders == [1, 2]
         @test vi.metadata.b.orders == [2]
-        @test vi.num_produce == 3
+        @test get_num_produce(vi) == 3
 
-        vi.num_produce = 0
+        reset_num_produce!(vi)
         set_retained_vns_del_by_spl!(vi, spl1)
         @test is_flagged(vi, vn_z1, "del")
         @test is_flagged(vi, vn_a1, "del")
@@ -309,18 +309,18 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test is_flagged(vi, vn_a2, "del")
         @test is_flagged(vi, vn_z3, "del")
 
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z1, dists[1], spl1)
         randr(vi, vn_a1, dists[2], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z2, dists[1], spl1)
-        vi.num_produce += 1
+        increment_num_produce!(vi)
         randr(vi, vn_z3, dists[1], spl1)
         randr(vi, vn_a2, dists[2], spl1)
         @test vi.metadata.z.orders == [1, 2, 3]
         @test vi.metadata.a.orders == [1, 3]
         @test vi.metadata.b.orders == [2]
-        @test vi.num_produce == 3
+        @test get_num_produce(vi) == 3
     end
     @testset "replay" begin
         # Generate synthesised data
