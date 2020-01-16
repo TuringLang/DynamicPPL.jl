@@ -11,7 +11,6 @@ function gradient_logp_reverse(
     model::Model,
     sampler::AbstractSampler = SampleFromPrior(),
 )
-    T = typeof(getlogp(vi))
 
     # Specify objective function.
     function f(θ)

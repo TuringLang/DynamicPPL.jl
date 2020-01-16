@@ -11,7 +11,7 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
 AbstractMCMC = "~0.1"
-AdvancedHMC = "0.2.15"
+AdvancedHMC = "0.2.20"
 Bijectors = "0.5.2"
 Distributions = "0.22"
 DistributionsAD = "0.2"
