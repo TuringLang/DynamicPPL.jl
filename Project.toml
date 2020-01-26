@@ -10,7 +10,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
-AbstractMCMC = "~0.1"
+AbstractMCMC = "0.1. 0.2, 0.3"
 AdvancedHMC = "0.2.20"
 Bijectors = "0.5.2"
 Distributions = "0.22"
