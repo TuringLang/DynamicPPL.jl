@@ -144,9 +144,10 @@ function AbstractMCMC.sample(
     model::AbstractModel,
     alg::InferenceAlgorithm,
     N::Integer;
+    chain_type=Chains,
     kwargs...
 )
-    return sample(rng, model, Sampler(alg, model), N; progress=PROGRESS[], kwargs...)
+    return sample(rng, model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.sample(
@@ -154,10 +155,11 @@ function AbstractMCMC.sample(
     alg::InferenceAlgorithm,
     N::Integer;
     resume_from=nothing,
+    chain_type=Chains,
     kwargs...
 )
     if resume_from === nothing
-        return sample(model, Sampler(alg, model), N; progress=PROGRESS[], kwargs...)
+        return sample(model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
     else
         return resume(resume_from, N)
     end
@@ -169,9 +171,10 @@ function AbstractMCMC.psample(
     alg::InferenceAlgorithm,
     N::Integer,
     n_chains::Integer;
+    chain_type=Chains,
     kwargs...
 )
-    return psample(GLOBAL_RNG, model, alg, N, n_chains; progress=false, kwargs...)
+    return psample(GLOBAL_RNG, model, alg, N, n_chains; progress=false, chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.psample(
@@ -180,9 +183,10 @@ function AbstractMCMC.psample(
     alg::InferenceAlgorithm,
     N::Integer,
     n_chains::Integer;
+    chain_type=Chains,
     kwargs...
 )
-    return psample(rng, model, Sampler(alg, model), N, n_chains; progress=false, kwargs...)
+    return psample(rng, model, Sampler(alg, model), N, n_chains; progress=false, chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.sample_init!(
@@ -318,7 +322,8 @@ function AbstractMCMC.bundle_samples(
     model::AbstractModel,
     spl::Sampler,
     N::Integer,
-    ts::Vector{<:AbstractTransition};
+    ts::Vector{<:AbstractTransition},
+    ct::Type{Chains};
     discard_adapt::Bool=true,
     save_state=true,
     kwargs...
@@ -375,7 +380,7 @@ function save(c::Chains, spl::AbstractSampler, model, vi, samples)
     return setinfo(c, merge(nt, c.info))
 end
 
-function resume(c::Chains, n_iter::Int; kwargs...)
+function resume(c::Chains, n_iter::Int; chain_type=Chains, kwargs...)
     @assert !isempty(c.info) "[Turing] cannot resume from a chain without state info"
 
     # Sample a new chain.
@@ -386,6 +391,7 @@ function resume(c::Chains, n_iter::Int; kwargs...)
         n_iter;
         resume_from=c,
         reuse_spl_n=n_iter,
+        chain_type=chain_type,
         kwargs...
     )
 
