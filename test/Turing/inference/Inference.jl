@@ -12,20 +12,18 @@ using ProgressMeter, LinearAlgebra
 using ..Turing: PROGRESS, NamedDist, NoDist, Turing
 using StatsFuns: logsumexp
 using Random: GLOBAL_RNG, AbstractRNG, randexp
-using AbstractMCMC, DynamicPPL
+using DynamicPPL
 using Bijectors: _debug
 
 import MCMCChains: Chains
 import AdvancedHMC; const AHMC = AdvancedHMC
 import ..Core: getchunksize, getADtype
-import AbstractMCMC: AbstractTransition, sample, step!, sample_init!,
-    transitions_init, sample_end!, AbstractSampler, transition_type,
-    callback, init_callback, AbstractCallback, psample
+import AbstractMCMC
+using AbstractMCMC: AbstractModel, AbstractCallback, AbstractSampler
 import DynamicPPL: tilde, dot_tilde, getspace, get_matching_type
 
 export  InferenceAlgorithm,
         Hamiltonian,
-        AbstractGibbs,
         GibbsComponent,
         StaticHamiltonian,
         AdaptiveHamiltonian,
@@ -44,20 +42,8 @@ export  InferenceAlgorithm,
         SMC,
         CSMC,
         PG,
-        PIMH,
-        PMMH,
-        IPMCMC,  # particle-based sampling
         assume,
         observe,
-        step,
-        WelfordVar,
-        WelfordCovar,
-        NaiveCovar,
-        get_var,
-        get_covar,
-        add_sample!,
-        reset!,
-        step!,
         resume
 
 #######################
@@ -95,7 +81,7 @@ end
 # Default Transition #
 ######################
 
-struct Transition{T, F<:AbstractFloat} <: AbstractTransition
+struct Transition{T, F<:AbstractFloat}
     θ  :: T
     lp :: F
 end
@@ -147,11 +133,11 @@ function AbstractMCMC.sample(
     chain_type=Chains,
     kwargs...
 )
-    return sample(rng, model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
+    return AbstractMCMC.sample(rng, model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.sample(
-    model::AbstractModel,
+    model::Model,
     alg::InferenceAlgorithm,
     N::Integer;
     resume_from=nothing,
@@ -159,7 +145,7 @@ function AbstractMCMC.sample(
     kwargs...
 )
     if resume_from === nothing
-        return sample(model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
+        return AbstractMCMC.sample(model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
     else
         return resume(resume_from, N)
     end
@@ -174,7 +160,7 @@ function AbstractMCMC.psample(
     chain_type=Chains,
     kwargs...
 )
-    return psample(GLOBAL_RNG, model, alg, N, n_chains; progress=false, chain_type=chain_type, kwargs...)
+    return AbstractMCMC.psample(GLOBAL_RNG, model, alg, N, n_chains; progress=false, chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.psample(
@@ -186,7 +172,7 @@ function AbstractMCMC.psample(
     chain_type=Chains,
     kwargs...
 )
-    return psample(rng, model, Sampler(alg, model), N, n_chains; progress=false, chain_type=chain_type, kwargs...)
+    return AbstractMCMC.psample(rng, model, Sampler(alg, model), N, n_chains; progress=false, chain_type=chain_type, kwargs...)
 end
 
 function AbstractMCMC.sample_init!(
@@ -206,9 +192,9 @@ end
 function AbstractMCMC.sample_end!(
     ::AbstractRNG,
     ::Model,
-    ::AbstractSampler,
+    ::Sampler,
     ::Integer,
-    ::Vector{<:AbstractTransition};
+    ::Vector;
     kwargs...
 )
     # Silence the default API function.
@@ -244,7 +230,7 @@ end
 # Chain making utilities #
 ##########################
 
-function _params_to_array(ts::Vector{<:AbstractTransition}, spl::Sampler)
+function _params_to_array(ts::Vector, spl::Sampler)
     names_set = Set{String}()
     # Extract the parameter names and values from each transition.
     dicts = map(ts) do t
@@ -276,7 +262,7 @@ function flatten_namedtuple(nt::NamedTuple)
     return [vn[1] for vn in names_vals], [vn[2] for vn in names_vals]
 end
 
-function get_transition_extras(ts::Vector{<:AbstractTransition})
+function get_transition_extras(ts::Vector)
     # Get the extra field names from the sampler state type.
     # This handles things like :lp or :weight.
     extra_params = additional_parameters(eltype(ts))
@@ -322,8 +308,8 @@ function AbstractMCMC.bundle_samples(
     model::AbstractModel,
     spl::Sampler,
     N::Integer,
-    ts::Vector{<:AbstractTransition},
-    ct::Type{Chains};
+    ts::Vector,
+    ::Type{Chains};
     discard_adapt::Bool=true,
     save_state=true,
     kwargs...
@@ -384,7 +370,7 @@ function resume(c::Chains, n_iter::Int; chain_type=Chains, kwargs...)
     @assert !isempty(c.info) "[Turing] cannot resume from a chain without state info"
 
     # Sample a new chain.
-    newchain = sample(
+    newchain = AbstractMCMC.sample(
         c.info[:range],
         c.info[:model],
         c.info[:spl],
@@ -432,13 +418,12 @@ include("is.jl")
 include("AdvancedSMC.jl")
 include("gibbs.jl")
 include("../contrib/inference/sghmc.jl")
-include("../contrib/inference/AdvancedSMCExtensions.jl")
 
 ################
 # Typing tools #
 ################
 
-for alg in (:SMC, :PG, :PMMH, :IPMCMC, :MH, :IS, :ESS, :Gibbs)
+for alg in (:SMC, :PG, :MH, :IS, :ESS, :Gibbs)
     @eval getspace(::$alg{space}) where {space} = space
 end
 for alg in (:HMC, :HMCDA, :NUTS, :SGLD, :SGHMC)
@@ -494,7 +479,6 @@ end
 ## Fallback functions
 
 alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
-transition_type(spl::Sampler) = typeof(Transition(spl))
 
 # utility funcs for querying sampler information
 require_gradient(spl::Sampler) = false

@@ -75,23 +75,24 @@ function propose(model, spl::Sampler{<:MH}, vi::VarInfo)
 end
 
 # First step always returns a value.
-function step!(
+function AbstractMCMC.step!(
     ::AbstractRNG,
     model::Model,
     spl::Sampler{<:MH},
-    ::Integer;
+    ::Integer,
+    ::Nothing;
     kwargs...
 )
     return Transition(spl)
 end
 
 # Every step after the first.
-function step!(
+function AbstractMCMC.step!(
     ::AbstractRNG,
     model::Model,
     spl::Sampler{<:MH},
     ::Integer,
-    ::Transition;
+    transition;
     kwargs...
 )
     if spl.selector.rerun # Recompute joint in logp

@@ -21,7 +21,7 @@ end
 # Hamiltonian Transition #
 ##########################
 
-struct HamiltonianTransition{T, NT<:NamedTuple, F<:AbstractFloat} <: AbstractTransition
+struct HamiltonianTransition{T, NT<:NamedTuple, F<:AbstractFloat}
     θ    :: T
     lp   :: F
     stat :: NT
@@ -32,9 +32,6 @@ function HamiltonianTransition(spl::Sampler{<:Hamiltonian}, t::AHMC.Transition)
     lp = getlogp(spl.state.vi)
     return HamiltonianTransition(theta, lp, t.stat)
 end
-
-transition_type(spl::Sampler{<:Union{StaticHamiltonian, AdaptiveHamiltonian}}) = 
-    HamiltonianTransition
 
 function additional_parameters(::Type{<:HamiltonianTransition})
     return [:lp,:stat]
@@ -102,7 +99,7 @@ function HMC{AD}(
     return HMC{AD}(ϵ, n_leapfrog, metricT, space)
 end
 
-function sample_init!(
+function AbstractMCMC.sample_init!(
     rng::AbstractRNG,
     model::Model,
     spl::Sampler{<:Hamiltonian},
@@ -320,11 +317,12 @@ end
 ####
 
 # Single step of a Hamiltonian.
-function step!(
+function AbstractMCMC.step!(
     rng::AbstractRNG,
     model::Model,
     spl::Sampler{<:Hamiltonian},
-    N::Integer;
+    N::Integer,
+    transition;
     kwargs...
 )
     # Get step size
@@ -575,7 +573,7 @@ mutable struct HMCCallback{
 end
 
 
-function callback(
+function AbstractMCMC.callback(
     rng::AbstractRNG,
     model::Model,
     spl::Sampler{<:Union{StaticHamiltonian, AdaptiveHamiltonian}},
@@ -588,7 +586,7 @@ function callback(
     AHMC.pm_next!(cb.p, (iteration=iteration, t.stat..., mass_matrix=spl.state.h.metric))
 end
 
-function init_callback(
+function AbstractMCMC.init_callback(
     rng::AbstractRNG,
     model::Model,
     s::Sampler{<:Union{StaticHamiltonian, AdaptiveHamiltonian}},
