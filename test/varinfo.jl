@@ -1,4 +1,5 @@
 using .Turing, Random
+using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
@@ -466,7 +467,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         pg, hmc = g.state.samplers
         vi = VarInfo()
         g_demo_f(vi, SampleFromPrior())
-        Turing.Inference.step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
+        step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
         vi1 = pg.state.vi
         @test mapreduce(x -> x.gids, vcat, vi1.metadata) ==
             [Set([pg.selector]), Set([pg.selector]), Set([pg.selector]), Set{Selector}(), Set{Selector}()]
@@ -480,7 +481,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         vi = empty!(TypedVarInfo(vi))
         @inferred g_demo_f(vi, SampleFromPrior())
         pg.state.vi = vi
-        Turing.Inference.step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
+        step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
         vi = pg.state.vi
         @inferred g_demo_f(vi, hmc)
         @test vi.metadata.x.gids[1] == Set([pg.selector])
