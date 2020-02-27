@@ -10,9 +10,8 @@ module Turing
 
 using Requires, Reexport, ForwardDiff
 using Bijectors, StatsFuns, SpecialFunctions
-using Statistics, LinearAlgebra, ProgressMeter
+using Statistics, LinearAlgebra
 using Markdown, Libtask, MacroTools
-using AbstractMCMC: sample, psample
 @reexport using Distributions, MCMCChains, Libtask
 using Tracker: Tracker
 
@@ -21,7 +20,7 @@ import DynamicPPL: getspace, runmodel!
 
 const PROGRESS = Ref(true)
 function turnprogress(switch::Bool)
-    @info("[Turing]: global PROGRESS is set as $switch")
+    @info "[Turing]: progress logging is $(switch ? "enabled" : "disabled") globally"
     PROGRESS[] = switch
 end
 
@@ -50,10 +49,14 @@ using .Variational
 # end
 
 @init @require DynamicHMC="bbc10e6e-7c05-544b-b16e-64fede858acb" @eval Inference begin
-    using Pkg; 
-    Pkg.installed()["DynamicHMC"] < v"2.0" && error("Please upgdate your DynamicHMC, v1.x is no longer supported")
-    using ..Turing.DynamicHMC: DynamicHMC, mcmc_with_warmup
-    include("contrib/inference/dynamichmc.jl")
+    import ..DynamicHMC
+
+    if isdefined(DynamicHMC, :mcmc_with_warmup)
+        using ..DynamicHMC: mcmc_with_warmup
+        include("contrib/inference/dynamichmc.jl")
+    else
+        error("Please update DynamicHMC, v1.x is no longer supported")
+    end
 end
 
 ###########
@@ -69,6 +72,7 @@ export  @model,                 # modelling
         DynamicPPL,
 
         MH,                     # classic sampling
+        RWMH,
         ESS,
         Gibbs,
 
@@ -108,5 +112,9 @@ export  @model,                 # modelling
         OrderedLogistic,
         LogPoisson,
         NamedDist
+
+# Reexports
+using AbstractMCMC: sample, psample
+export sample, psample
 
 end

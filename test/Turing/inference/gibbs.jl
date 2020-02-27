@@ -126,8 +126,7 @@ function AbstractMCMC.sample_end!(
     end
 end
 
-
-# Steps
+# Steps 2
 function AbstractMCMC.step!(
     rng::AbstractRNG,
     model::Model,
