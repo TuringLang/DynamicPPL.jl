@@ -36,7 +36,7 @@ Random.seed!(129)
         @test logprob"x = xval, m = mval | model = demo, varinfo = varinfo" == logjoint
 
         chain = sample(demo(xval), IS(), iters; save_state = true)
-        chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())        
+        chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = logpdf.(Normal.(vec(chain["m"].value), 1), xval)
         @test logprob"x = xval | chain = chain" == lps
         @test logprob"x = xval | chain = chain2, model = demo" == lps
