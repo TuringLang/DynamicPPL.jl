@@ -8,19 +8,21 @@ using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo,
     Selector, AbstractSamplerState, DefaultContext, PriorContext,
     LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!
 using Distributions, Libtask, Bijectors
-using ProgressMeter, LinearAlgebra
+using LinearAlgebra
 using ..Turing: PROGRESS, NamedDist, NoDist, Turing
 using StatsFuns: logsumexp
-using Random: GLOBAL_RNG, AbstractRNG, randexp
+using Random: AbstractRNG, randexp
 using DynamicPPL
-using Bijectors: _debug
+using AbstractMCMC: AbstractModel, AbstractSampler
+using MCMCChains: Chains
 
-import MCMCChains: Chains
-import AdvancedHMC; const AHMC = AdvancedHMC
-import ..Core: getchunksize, getADtype
 import AbstractMCMC
-using AbstractMCMC: AbstractModel, AbstractCallback, AbstractSampler
-import DynamicPPL: tilde, dot_tilde, getspace, get_matching_type
+import AdvancedHMC; const AHMC = AdvancedHMC
+import AdvancedMH; const AMH = AdvancedMH
+import ..Core: getchunksize, getADtype
+import DynamicPPL: tilde, dot_tilde, getspace, get_matching_type,
+    VarName, _getranges, _getindex, getval, _getvns
+import Random
 
 export  InferenceAlgorithm,
         Hamiltonian,
@@ -126,41 +128,40 @@ const TURING_INTERNAL_VARS = (internals = [
 #########################################
 
 function AbstractMCMC.sample(
-    rng::AbstractRNG,
     model::AbstractModel,
     alg::InferenceAlgorithm,
     N::Integer;
-    chain_type=Chains,
     kwargs...
 )
-    return AbstractMCMC.sample(rng, model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
+    return AbstractMCMC.sample(Random.GLOBAL_RNG, model, alg, N; kwargs...)
 end
 
 function AbstractMCMC.sample(
-    model::Model,
+    rng::AbstractRNG,
+    model::AbstractModel,
     alg::InferenceAlgorithm,
     N::Integer;
-    resume_from=nothing,
     chain_type=Chains,
+    resume_from=nothing,
+    progress=PROGRESS[],
     kwargs...
 )
     if resume_from === nothing
-        return AbstractMCMC.sample(model, Sampler(alg, model), N; progress=PROGRESS[], chain_type=chain_type, kwargs...)
+        return AbstractMCMC.sample(rng, model, Sampler(alg, model), N;
+                                   chain_type=chain_type, progress=progress, kwargs...)
     else
-        return resume(resume_from, N)
+        return resume(resume_from, N; chain_type=chain_type, progress=progress, kwargs...)
     end
 end
-
 
 function AbstractMCMC.psample(
     model::AbstractModel,
     alg::InferenceAlgorithm,
     N::Integer,
     n_chains::Integer;
-    chain_type=Chains,
     kwargs...
 )
-    return AbstractMCMC.psample(GLOBAL_RNG, model, alg, N, n_chains; progress=false, chain_type=chain_type, kwargs...)
+    return AbstractMCMC.psample(Random.GLOBAL_RNG, model, alg, N, n_chains; kwargs...)
 end
 
 function AbstractMCMC.psample(
@@ -170,9 +171,11 @@ function AbstractMCMC.psample(
     N::Integer,
     n_chains::Integer;
     chain_type=Chains,
+    progress=PROGRESS[],
     kwargs...
 )
-    return AbstractMCMC.psample(rng, model, Sampler(alg, model), N, n_chains; progress=false, chain_type=chain_type, kwargs...)
+    return AbstractMCMC.psample(rng, model, Sampler(alg, model), N, n_chains;
+                                chain_type=chain_type, progress=progress, kwargs...)
 end
 
 function AbstractMCMC.sample_init!(
@@ -201,7 +204,7 @@ function AbstractMCMC.sample_end!(
 end
 
 function initialize_parameters!(
-    spl::AbstractSampler;
+    spl::Sampler;
     init_theta::Union{Nothing,Vector}=nothing,
     verbose::Bool=false,
     kwargs...
@@ -305,13 +308,13 @@ end
 # Default Chains constructor.
 function AbstractMCMC.bundle_samples(
     rng::AbstractRNG,
-    model::AbstractModel,
+    model::Model,
     spl::Sampler,
     N::Integer,
     ts::Vector,
-    ::Type{Chains};
+    chain_type::Type{Chains};
     discard_adapt::Bool=true,
-    save_state=true,
+    save_state=false,
     kwargs...
 )
     # Check if we have adaptation samples.
@@ -361,7 +364,36 @@ function AbstractMCMC.bundle_samples(
     )
 end
 
-function save(c::Chains, spl::AbstractSampler, model, vi, samples)
+function AbstractMCMC.bundle_samples(
+    rng::AbstractRNG,
+    model::Model,
+    spl::Sampler,
+    N::Integer,
+    ts::Vector,
+    chain_type::Type{Vector{NamedTuple}};
+    discard_adapt::Bool=true,
+    save_state=false,
+    kwargs...
+)
+    nts = Vector{NamedTuple}(undef, N)
+
+    for (i,t) in enumerate(ts)
+        k = collect(keys(t.θ))
+        vs = []
+        for v in values(t.θ)
+            push!(vs, v[1])
+        end
+
+        push!(k, :lp)
+        
+        
+        nts[i] = NamedTuple{tuple(k...)}(tuple(vs..., t.lp))
+    end
+
+    return map(identity, nts)
+end
+
+function save(c::Chains, spl::Sampler, model, vi, samples)
     nt = NamedTuple{(:spl, :model, :vi, :samples)}((spl, model, deepcopy(vi), samples))
     return setinfo(c, merge(nt, c.info))
 end
@@ -377,7 +409,7 @@ function resume(c::Chains, n_iter::Int; chain_type=Chains, kwargs...)
         n_iter;
         resume_from=c,
         reuse_spl_n=n_iter,
-        chain_type=chain_type,
+        chain_type=Chains,
         kwargs...
     )
 
@@ -565,7 +597,7 @@ function assume(
             vi[vn] = vectorize(dist, r)
             setorder!(vi, vn, get_num_produce(vi))
         else
-            r = vi[vn]
+        r = vi[vn]
         end
     else
         r = isa(spl, SampleFromUniform) ? init(dist) : rand(dist)
@@ -687,7 +719,7 @@ function dot_assume(
     var::AbstractMatrix,
     vi::VarInfo,
 )
-    @assert dim(dist) == size(var, 1)
+    @assert length(dist) == size(var, 1)
     r = get_and_set_val!(vi, vns, dist, spl)
     lp = sum(logpdf_with_trans(dist, r, istrans(vi, vns[1])))
     var .= r
@@ -831,8 +863,8 @@ function dot_observe(
     vi::VarInfo,
 )
     increment_num_produce!(vi)
-    Turing.DEBUG && _debug("dist = $dist")
-    Turing.DEBUG && _debug("value = $value")
+    Turing.DEBUG && @debug "dist = $dist"
+    Turing.DEBUG && @debug "value = $value"
     return sum(logpdf(dist, value))
 end
 function dot_observe(
@@ -842,8 +874,8 @@ function dot_observe(
     vi::VarInfo,
 )
     increment_num_produce!(vi)
-    Turing.DEBUG && _debug("dists = $dists")
-    Turing.DEBUG && _debug("value = $value")
+    Turing.DEBUG && @debug "dists = $dists"
+    Turing.DEBUG && @debug "value = $value"
     return sum(logpdf.(dists, value))
 end
 function dot_observe(

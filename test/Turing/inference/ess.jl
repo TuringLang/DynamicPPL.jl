@@ -56,7 +56,7 @@ isgaussian(::AbstractMvNormal) = true
 # always accept in the first step
 function AbstractMCMC.step!(
     ::AbstractRNG,
-    ::Model,
+    model::Model,
     spl::Sampler{<:ESS},
     ::Integer,
     ::Nothing;

@@ -119,7 +119,10 @@ function AbstractMCMC.sample_init!(
     if spl.alg isa AdaptiveHamiltonian
         # If there's no chain passed in, verify the n_adapts.
         if resume_from === nothing
-            if spl.alg.n_adapts == 0
+            # if n_adapts is -1, then the user called a convenience
+            # constructor like NUTS() or NUTS(0.65), and we should
+            # set a default for them.
+            if spl.alg.n_adapts == -1
                 spl.alg.n_adapts = min(1000, N ÷ 2)
             elseif spl.alg.n_adapts > N
                 # Verify that n_adapts is not greater than the number of samples to draw.
@@ -179,7 +182,7 @@ function HMCDA{AD}(
     init_ϵ::Float64=0.0,
     metricT=AHMC.UnitEuclideanMetric
 ) where AD
-    return HMCDA{AD}(0, δ, λ, init_ϵ, metricT, ())
+    return HMCDA{AD}(-1, δ, λ, init_ϵ, metricT, ())
 end
 
 function HMCDA{AD}(
@@ -275,11 +278,11 @@ function NUTS{AD}(
     init_ϵ::Float64=0.0,
     metricT=AHMC.DiagEuclideanMetric
 ) where AD
-    NUTS{AD}(0, δ, max_depth, Δ_max, init_ϵ, metricT, ())
+    NUTS{AD}(-1, δ, max_depth, Δ_max, init_ϵ, metricT, ())
 end
 
 function NUTS{AD}(kwargs...) where AD
-    NUTS{AD}(0, 0.65; kwargs...)
+    NUTS{AD}(-1, 0.65; kwargs...)
 end
 
 for alg in (:HMC, :HMCDA, :NUTS)
@@ -304,7 +307,7 @@ function Sampler(
     initial_spl = Sampler(alg, info, s, initial_state)
 
     # Create the actual state based on the alg type.
-    state = HMCState(model, initial_spl, GLOBAL_RNG)
+    state = HMCState(model, initial_spl, Random.GLOBAL_RNG)
 
     # Create a real sampler after getting all the types/running the init phase.
     return Sampler(alg, initial_spl.info, initial_spl.selector, state)
@@ -436,14 +439,14 @@ function assume(
     vn::VarName,
     vi::VarInfo
 )
-    Turing.DEBUG && _debug("assuming...")
+    Turing.DEBUG && @debug "assuming..."
     updategid!(vi, vn, spl)
     r = vi[vn]
     # acclogp!(vi, logpdf_with_trans(dist, r, istrans(vi, vn)))
     # r
-    Turing.DEBUG && _debug("dist = $dist")
-    Turing.DEBUG && _debug("vn = $vn")
-    Turing.DEBUG && _debug("r = $r, typeof(r)=$(typeof(r))")
+    Turing.DEBUG && @debug "dist = $dist"
+    Turing.DEBUG && @debug "vn = $vn"
+    Turing.DEBUG && @debug "r = $r" "typeof(r)=$(typeof(r))"
     return r, logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
@@ -454,7 +457,7 @@ function dot_assume(
     var::AbstractMatrix,
     vi::VarInfo,
 )
-    @assert dim(dist) == size(var, 1)
+    @assert length(dist) == size(var, 1)
     updategid!.(Ref(vi), vns, Ref(spl))
     r = vi[vns]
     var .= r
@@ -498,6 +501,7 @@ end
 function AHMCAdaptor(alg::AdaptiveHamiltonian, metric::AHMC.AbstractMetric; ϵ=alg.ϵ)
     pc = AHMC.Preconditioner(metric)
     da = AHMC.NesterovDualAveraging(alg.δ, ϵ)
+
     if iszero(alg.n_adapts)
         adaptor = AHMC.Adaptation.NoAdaptation()
     else
@@ -508,6 +512,7 @@ function AHMCAdaptor(alg::AdaptiveHamiltonian, metric::AHMC.AbstractMetric; ϵ=a
             AHMC.initialize!(adaptor, alg.n_adapts)
         end
     end
+
     return adaptor
 end
 
@@ -560,39 +565,4 @@ function HMCState(
     invlink!(vi, spl)
 
     return HMCState(vi, 0, 0, traj, h, AHMCAdaptor(spl.alg, metric; ϵ=ϵ), t.z)
-end
-
-#######################################################
-# Special callback functionality for the HMC samplers #
-#######################################################
-
-mutable struct HMCCallback{
-    ProgType<:ProgressMeter.AbstractProgress
-} <: AbstractCallback
-    p :: ProgType
-end
-
-
-function AbstractMCMC.callback(
-    rng::AbstractRNG,
-    model::Model,
-    spl::Sampler{<:Union{StaticHamiltonian, AdaptiveHamiltonian}},
-    N::Integer,
-    iteration::Integer,
-    t::HamiltonianTransition,
-    cb::HMCCallback;
-    kwargs...
-)
-    AHMC.pm_next!(cb.p, (iteration=iteration, t.stat..., mass_matrix=spl.state.h.metric))
-end
-
-function AbstractMCMC.init_callback(
-    rng::AbstractRNG,
-    model::Model,
-    s::Sampler{<:Union{StaticHamiltonian, AdaptiveHamiltonian}},
-    N::Integer;
-    dt::Real=0.25,
-    kwargs...
-)
-    return HMCCallback(ProgressMeter.Progress(N, dt=dt, desc="Sampling ", barlen=31))
 end

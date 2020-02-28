@@ -35,7 +35,7 @@ Random.seed!(129)
         varinfo = VarInfo(demo(missing))
         @test logprob"x = xval, m = mval | model = demo, varinfo = varinfo" == logjoint
 
-        chain = sample(demo(xval), IS(), iters)
+        chain = sample(demo(xval), IS(), iters; save_state = true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = logpdf.(Normal.(vec(chain["m"].value), 1), xval)
         @test logprob"x = xval | chain = chain" == lps
@@ -70,7 +70,7 @@ Random.seed!(129)
         @test logprob"x = xval | m = mval, model = demo, varinfo = varinfo" == loglike
         # Currently, we cannot easily pre-allocate `VarInfo` for vector data
 
-        chain = sample(demo(xval), HMC(0.5, 1), iters)
+        chain = sample(demo(xval), HMC(0.5, 1), iters; save_state = true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = like.([[chain["m[$i]"].value[j] for i in 1:n] for j in 1:iters], Ref(xval))
         @test logprob"x = xval | chain = chain" == lps
