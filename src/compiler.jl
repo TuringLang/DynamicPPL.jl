@@ -588,9 +588,8 @@ function build_output(model_info)
             end
         end)
     end
-    return esc(quote
-        # Allows passing arguments as kwargs
-        $outer_function(;$(args...)) = $outer_function($(arg_syms...))
+
+    ex = quote
         function $outer_function($(args...))
             function $inner_function(
                 $vi::DynamicPPL.VarInfo,
@@ -605,7 +604,17 @@ function build_output(model_info)
             return DynamicPPL.Model($inner_function, $args_nt, $model_gen_constructor)
         end
         $model_gen = $model_gen_constructor
-    end)
+    end
+
+    if !isempty(args)
+        ex = quote
+            $ex
+            # Allows passing arguments as kwargs
+            $outer_function(;$(args...)) = $outer_function($(arg_syms...))
+        end
+    end
+
+    return esc(ex)
 end
 
 # A hack for NamedTuple type specialization
