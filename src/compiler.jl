@@ -404,21 +404,21 @@ function replace_tilde!(model_info)
     ex = model_info[:main_body]
     ex = MacroTools.postwalk(ex) do x 
         if @capture(x, @M_ L_ ~ R_) && M == Symbol("@__dot__")
-            dot_tilde(L, R, model_info)
+            generate_dot_tilde(L, R, model_info)
         else
             x
         end
     end
     $(VERSION >= v"1.1" ? "ex = MacroTools.postwalk(ex) do x
         if @capture(x, L_ .~ R_)
-            dot_tilde(L, R, model_info)
+            generate_dot_tilde(L, R, model_info)
         else
             x
         end
     end" : "")
     ex = MacroTools.postwalk(ex) do x
         if @capture(x, L_ ~ R_)
-            tilde(L, R, model_info)
+            generate_tilde(L, R, model_info)
         else
             x
         end
@@ -429,12 +429,12 @@ end
 """ |> Meta.parse |> eval
 
 """
-    tilde(left, right, model_info)
+    generate_tilde(left, right, model_info)
 
 The `tilde` function generates `observe` expression for data variables and `assume` 
 expressions for parameter variables, updating `model_info` in the process.
 """
-function tilde(left, right, model_info)
+function generate_tilde(left, right, model_info)
     arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
@@ -478,11 +478,11 @@ function tilde(left, right, model_info)
 end
 
 """
-    dot_tilde(left, right, model_info)
+    generate_dot_tilde(left, right, model_info)
 
 This function returns the expression that replaces `left .~ right` in the model body. If `preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block will be run.
 """
-function dot_tilde(left, right, model_info)
+function generate_dot_tilde(left, right, model_info)
     arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
