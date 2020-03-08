@@ -7,4 +7,5 @@ using .Turing
     include("compiler.jl")
     include("varinfo.jl")
     include("prob_macro.jl")
+    include("independence.jl")
 end
