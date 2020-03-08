@@ -1,4 +1,9 @@
-import Distributions: 
+import Distributions
+import Bijectors
+using Distributions: Univariate,
+                     Multivariate,
+                     Matrixvariate
+
 
 """
 A named distribution that carries the name of the random variable with it.
@@ -30,6 +35,7 @@ function Distributions.logpdf(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Rea
     return zeros(Int, size(x, 2))
 end
 Distributions.logpdf(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
+
 Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real) = 0
 Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
 function Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})

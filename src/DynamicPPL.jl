@@ -82,8 +82,6 @@ export  VarName,
 
 # Used here and overloaded in Turing
 function getspace end
-function tilde end
-function dot_tilde end
 
 include("utils.jl")
 include("selector.jl")
@@ -93,6 +91,7 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
+include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
 
