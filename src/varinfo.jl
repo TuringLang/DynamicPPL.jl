@@ -8,33 +8,6 @@ const CACHERANGES = 0b01
 ####
 
 
-###########
-# VarName #
-###########
-"""
-```
-struct VarName{sym}
-    indexing  ::    String
-end
-```
-
-A variable identifier. Every variable has a symbol `sym` and `indices `indexing`. 
-The Julia variable in the model corresponding to `sym` can refer to a single value or 
-to a hierarchical array structure of univariate, multivariate or matrix variables. `indexing` stores the indices that can access the random variable from the Julia 
-variable.
-
-Examples:
-
-- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "[1]"`.
-- `x[:,1] ~ MvNormal(zeros(2))` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1]"`.
-- `x[:,1][2] ~ Normal()` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1][2]"`.
-"""
-struct VarName{sym}
-    indexing::String
-end
-
 abstract type AbstractVarInfo end
 
 ####################
