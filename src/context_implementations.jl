@@ -30,7 +30,7 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
 end
 
 function _tilde(sampler, right, vn::VarName, vi)
-    return Turing.assume(sampler, right, vn, vi)
+    return assume(sampler, right, vn, vi)
 end
 function _tilde(sampler, right::NamedDist, vn::VarName, vi)
     name = right.name
@@ -62,14 +62,14 @@ function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
 end
 
-_tilde(sampler, right, left, vi) = Turing.observe(sampler, right, left, vi)
+_tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
 function assume(spl::Sampler, dist)
-    error("Turing.assume: unmanaged inference algorithm: $(typeof(spl))")
+    error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 function observe(spl::Sampler, weight)
-    error("Turing.observe: unmanaged inference algorithm: $(typeof(spl))")
+    error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 function assume(
@@ -233,7 +233,7 @@ function dot_assume(
     ::Any,
     ::VarInfo
 )
-    error("[Turing] $(alg_str(spl)) doesn't support vectorizing assume statement")
+    error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing assume statement")
 end
 
 function get_and_set_val!(
@@ -351,8 +351,8 @@ function dot_observe(
     vi::VarInfo,
 )
     increment_num_produce!(vi)
-    Turing.DEBUG && @debug "dist = $dist"
-    Turing.DEBUG && @debug "value = $value"
+    DynamicPPL.DEBUG && @debug "dist = $dist"
+    DynamicPPL.DEBUG && @debug "value = $value"
     return sum(logpdf(dist, value))
 end
 function dot_observe(
@@ -362,8 +362,8 @@ function dot_observe(
     vi::VarInfo,
 )
     increment_num_produce!(vi)
-    Turing.DEBUG && @debug "dists = $dists"
-    Turing.DEBUG && @debug "value = $value"
+    DynamicPPL.DEBUG && @debug "dists = $dists"
+    DynamicPPL.DEBUG && @debug "value = $value"
     return sum(logpdf.(dists, value))
 end
 function dot_observe(
@@ -372,5 +372,5 @@ function dot_observe(
     ::Any,
     ::VarInfo,
 )
-    error("[Turing] $(alg_str(spl)) doesn't support vectorizing observe statement")
+    error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing observe statement")
 end

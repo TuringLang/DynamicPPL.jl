@@ -76,9 +76,14 @@ export  VarName,
         LikelihoodContext,
         PriorContext,
         MiniBatchContext,
+# Pseudo distributions
+        NamedDist,
+        NoDist,
 # Prob macros
         @prob_str,
         @logprob_str
+
+const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_TURING", "0")))
 
 # Used here and overloaded in Turing
 function getspace end
