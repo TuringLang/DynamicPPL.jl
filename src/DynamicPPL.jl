@@ -83,7 +83,7 @@ export  VarName,
         @prob_str,
         @logprob_str
 
-const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_TURING", "0")))
+const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
 
 # Used here and overloaded in Turing
 function getspace end
