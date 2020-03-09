@@ -772,7 +772,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
         for vn in vns
             dist = getdist(vi, vn)
             # TODO: Use inplace versions to avoid allocations
-            setval!(vi, vectorize(dist, link(dist, reconstruct(dist, getval(vi, vn)))), vn)
+            setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
             settrans!(vi, true, vn)
         end
     else
@@ -793,7 +793,7 @@ end
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
                         dist = getdist(vi, vn)
-                        setval!(vi, vectorize(dist, link(dist, reconstruct(dist, getval(vi, vn)))), vn)
+                        setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, true, vn)
                     end
                 else
@@ -818,7 +818,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     if istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            setval!(vi, vectorize(dist, invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
+            setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
             settrans!(vi, false, vn)
         end
     else
@@ -839,7 +839,7 @@ end
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
                         dist = getdist(vi, vn)
-                        setval!(vi, vectorize(dist, invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
+                        setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, false, vn)
                     end
                 else
@@ -894,14 +894,14 @@ function getindex(vi::AbstractVarInfo, vn::VarName)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     dist = getdist(vi, vn)
     return istrans(vi, vn) ?
-        invlink(dist, reconstruct(dist, getval(vi, vn))) :
+        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn))) :
         reconstruct(dist, getval(vi, vn))
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     dist = getdist(vi, vns[1])
     return istrans(vi, vns[1]) ?
-        invlink(dist, reconstruct(dist, getval(vi, vns), length(vns))) :
+        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vns), length(vns))) :
         reconstruct(dist, getval(vi, vns), length(vns))
 end
 

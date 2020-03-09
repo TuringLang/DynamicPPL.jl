@@ -1,3 +1,9 @@
+using Distributions: UnivariateDistribution,
+                     MultivariateDistribution,
+                     MatrixDistribution,
+                     Distribution
+
+
 alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 
 # utility funcs for querying sampler information
@@ -93,9 +99,9 @@ function assume(
     end
     # NOTE: The importance weight is not correctly computed here because
     #       r is genereated from some uniform distribution which is different from the prior
-    # acclogp!(vi, logpdf_with_trans(dist, r, istrans(vi, vn)))
+    # acclogp!(vi, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)))
 
-    return r, logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
 function observe(
@@ -105,7 +111,7 @@ function observe(
     vi::VarInfo,
 )
     increment_num_produce!(vi)
-    return logpdf(dist, value)
+    return Distributions.logpdf(dist, value)
 end
 
 # .~ functions
@@ -209,7 +215,7 @@ function dot_assume(
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(vi, vns, dist, spl)
-    lp = sum(logpdf_with_trans(dist, r, istrans(vi, vns[1])))
+    lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
     var .= r
     return var, lp
 end
@@ -222,7 +228,7 @@ function dot_assume(
 )
     r = get_and_set_val!(vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     var .= r
     return var, lp
 end
@@ -353,7 +359,7 @@ function dot_observe(
     increment_num_produce!(vi)
     DynamicPPL.DEBUG && @debug "dist = $dist"
     DynamicPPL.DEBUG && @debug "value = $value"
-    return sum(logpdf(dist, value))
+    return sum(Distributions.logpdf(dist, value))
 end
 function dot_observe(
     spl::Union{SampleFromPrior, SampleFromUniform},
@@ -364,7 +370,7 @@ function dot_observe(
     increment_num_produce!(vi)
     DynamicPPL.DEBUG && @debug "dists = $dists"
     DynamicPPL.DEBUG && @debug "value = $value"
-    return sum(logpdf.(dists, value))
+    return sum(Distributions.logpdf.(dists, value))
 end
 function dot_observe(
     spl::Sampler,

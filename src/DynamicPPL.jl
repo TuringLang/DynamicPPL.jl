@@ -1,11 +1,8 @@
 module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
-using Distributions: UnivariateDistribution,
-                     MultivariateDistribution,
-                     MatrixDistribution,
-                     Distribution
-using Bijectors: link, invlink
+using Distributions
+using Bijectors
 using MacroTools
 
 import Base: string,
