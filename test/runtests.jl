@@ -3,6 +3,8 @@ dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/Turing/Turing.jl")
 using .Turing
 
+turnprogress(false)
+
 @testset "DynamicPPL.jl" begin
     include("compiler.jl")
     include("varinfo.jl")
