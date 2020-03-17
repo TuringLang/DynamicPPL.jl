@@ -260,7 +260,7 @@ function AbstractMCMC.sample_end!(
     spl.state.average_logevidence = loge
 end
 
-function assume(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, vn::VarName, ::VarInfo)
+function DynamicPPL.assume(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, vn::VarName, ::VarInfo)
     vi = current_trace().vi
     if vn in getspace(spl)
         if ~haskey(vi, vn)
@@ -283,12 +283,13 @@ function assume(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, vn::VarName, 
             r = rand(dist)
             push!(vi, vn, r, dist, Selector(:invalid))
         end
-        acclogp!(vi, logpdf_with_trans(dist, r, istrans(vi, vn)))
+        lp = logpdf_with_trans(dist, r, istrans(vi, vn))
+        acclogp!(vi, lp)
     end
     return r, 0
 end
 
-function observe(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, value, vi)
+function DynamicPPL.observe(spl::Sampler{<:Union{PG,SMC}}, dist::Distribution, value, vi)
     produce(logpdf(dist, value))
     return 0
 end

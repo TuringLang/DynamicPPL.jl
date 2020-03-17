@@ -21,6 +21,8 @@ AdvancedHMC = "0bf59076-c3b1-5ca4-86bd-e02cd72cde3d"
 AdvancedMH = "5b7e9947-ddc0-4b3f-9b55-0d8042f74170"
 BinaryProvider = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
 DistributionsAD = "ced4e74d-a319-5a8a-b0ac-84af2272839c"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+EllipticalSliceSampling = "cad2338a-1db2-11e9-3401-43bc07c9ede2"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Libtask = "6f1fad26-d15e-5dc8-ae53-837a1d7b8c9f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -42,4 +44,4 @@ Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [targets]
-test = ["AdvancedHMC", "AdvancedMH", "DistributionsAD", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "Logging", "MCMCChains", "Markdown", "PDMats", "ProgressLogging", "Random", "Reexport", "Requires", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test", "Tracker", "UUIDs"]
+test = ["AdvancedHMC", "AdvancedMH", "DistributionsAD", "DocStringExtensions", "EllipticalSliceSampling", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "Logging", "MCMCChains", "Markdown", "PDMats", "ProgressLogging", "Random", "Reexport", "Requires", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test", "Tracker", "UUIDs"]
