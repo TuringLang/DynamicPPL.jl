@@ -1,11 +1,8 @@
 module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
-using Distributions: UnivariateDistribution,
-                     MultivariateDistribution,
-                     MatrixDistribution,
-                     Distribution
-using Bijectors: link, invlink
+using Distributions
+using Bijectors
 using MacroTools
 
 import Base: string,
@@ -76,21 +73,33 @@ export  VarName,
         LikelihoodContext,
         PriorContext,
         MiniBatchContext,
+        assume,
+        dot_assume,
+        observer,
+        dot_observe,
+        tilde,
+        dot_tilde,
+# Pseudo distributions
+        NamedDist,
+        NoDist,
 # Prob macros
         @prob_str,
         @logprob_str
 
+const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
+
 # Used here and overloaded in Turing
 function getspace end
-function tilde end
-function dot_tilde end
 
 include("utils.jl")
 include("selector.jl")
 include("model.jl")
 include("sampler.jl")
+include("varname.jl")
+include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
+include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
 

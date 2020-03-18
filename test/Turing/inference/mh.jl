@@ -68,13 +68,17 @@ function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
         n_vns = length(vns)
         n_vals = length(vals)
         v_isarr = vals isa AbstractArray
-
+        
         if v_isarr && n_vals == 1 && n_vns > 1
             for (vn, val) in zip(vns, vals[1])
                 vi[vn] = val isa AbstractArray ? val : [val]
             end
         elseif v_isarr && n_vals > 1 && n_vns == 1
             vi[vns[1]] = vals
+        elseif v_isarr && n_vals == n_vns > 1
+            for (vn, val) in zip(vns, vals)
+                vi[vn] = [val]
+            end
         elseif v_isarr && n_vals == 1 && n_vns == 1
             if vals[1] isa AbstractArray
                 vi[vns[1]] = vals[1]
@@ -110,6 +114,17 @@ function gen_logπ_mh(spl::Sampler, model)
     return logπ
 end
 
+function scalar_map(vi::VarInfo, vns::Vector{V}) where V<:VarName
+    vals = getindex(vi, vns)
+    if length(vals) == length(vns) == 1
+        # It's a scalar!
+        return vals[1]
+    else 
+        # Go home, vector, you're drunk.
+        return vals
+    end
+end
+
 """
     dist_val_tuple(spl::Sampler{<:MH})
 
@@ -127,9 +142,7 @@ end
     length(names) === 0 && return :(NamedTuple())
     expr = Expr(:tuple)
     map(names) do f
-        push!(expr.args, Expr(:(=), f, :(
-            length(metadata.$f.vns) == 1 ? getindex(vi, metadata.$f.vns)[1] : getindex.(Ref(vi), metadata.$f.vns)
-        )))
+        push!(expr.args, Expr(:(=), f, :(scalar_map(vi, metadata.$f.vns))))
     end
     return expr
 end
@@ -241,7 +254,7 @@ end
 ####
 #### Compiler interface, i.e. tilde operators.
 ####
-function assume(
+function DynamicPPL.assume(
     spl::Sampler{<:MH},
     dist::Distribution,
     vn::VarName,
@@ -252,7 +265,7 @@ function assume(
     return r, logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
-function dot_assume(
+function DynamicPPL.dot_assume(
     spl::Sampler{<:MH},
     dist::MultivariateDistribution,
     vn::VarName,
@@ -267,7 +280,7 @@ function dot_assume(
     var .= r
     return var, sum(logpdf_with_trans(dist, r, istrans(vi, vns[1])))
 end
-function dot_assume(
+function DynamicPPL.dot_assume(
     spl::Sampler{<:MH},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     vn::VarName,
@@ -282,20 +295,20 @@ function dot_assume(
     return var, sum(logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
 end
 
-function observe(
+function DynamicPPL.observe(
     spl::Sampler{<:MH},
     d::Distribution,
     value,
     vi::VarInfo,
 )
-    return observe(SampleFromPrior(), d, value, vi)
+    return DynamicPPL.observe(SampleFromPrior(), d, value, vi)
 end
 
-function dot_observe(
+function DynamicPPL.dot_observe(
     spl::Sampler{<:MH},
     ds::Union{Distribution, AbstractArray{<:Distribution}},
     value::AbstractArray,
     vi::VarInfo,
 )
-    return dot_observe(SampleFromPrior(), ds, value, vi)
+    return DynamicPPL.dot_observe(SampleFromPrior(), ds, value, vi)
 end
