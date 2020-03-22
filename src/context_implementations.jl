@@ -184,7 +184,7 @@ function get_vns_and_dist(
     var::AbstractArray, 
     vn::VarName
 )
-    getvn = ind -> VarName(vn, (vn.indexing..., ind))
+    getvn = ind -> VarName(vn, (vn.indexing..., Tuple(ind)))
     return getvn.(CartesianIndices(var)), dist
 end
 
