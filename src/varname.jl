@@ -38,12 +38,14 @@ function VarName(vn::VarName, indexing)
     return VarName{getsym(vn)}(indexing)
 end
 
+
 """
     getsym(vn::VarName)
 
 Return the symbol of the Julia variable used to generate `vn`.
 """
 getsym(vn::VarName{sym}) where sym = sym
+
 
 """
     getindexing(vn::VarName)
@@ -53,14 +55,8 @@ Return the indexing tuple of the Julia variable used to generate `vn`.
 getindexing(vn::VarName) = vn.indexing
 
 
-"""
-    uid(vn::VarName)
-
-Return a unique tuple identifier for `vn`.
-"""
-uid(vn::VarName) = (getsym(vn), vn.indexing)
-hash(vn::VarName) = hash(uid(vn))
-==(x::VarName, y::VarName) = hash(uid(x)) == hash(uid(y))
+hash(vn::VarName, h::UInt) = hash((getsym(vn), getindexing(vn)), h)
+==(x::VarName{S}, y::VarName{T}) where {S, T} = S == T && getindexing(x) == getindexing(y)
 
 function show(io::IO, vn::VarName)
     print(io, getsym(vn))
@@ -73,13 +69,14 @@ end
 
 parse(::Type{VarName}, name::AbstractString) = varname(Meta.parse(name))
 
-    
+
 """
     Symbol(vn::VarName)
 
 Return a `Symbol` represenation of the variable identifier `VarName`.
 """
 Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
+
 
 """
     in(vn::VarName, space::Set)
