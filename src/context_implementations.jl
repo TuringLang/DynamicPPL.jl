@@ -40,15 +40,6 @@ function _tilde(sampler, right, vn::VarName, vi)
 end
 function _tilde(sampler, right::NamedDist, vn::VarName, vi)
     name = right.name
-    if name isa String
-        vn = parse(VarName, name)
-    elseif name isa Symbol
-        vn = VarName{name}(())
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
     return _tilde(sampler, right.dist, vn, vi)
 end
 
@@ -163,15 +154,6 @@ end
 
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
     name = dist.name
-    if name isa String
-        vn = parse(VarName, name)
-    elseif name isa Symbol
-        vn = VarName{name}(())
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
     return get_vns_and_dist(dist.dist, var, vn)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)

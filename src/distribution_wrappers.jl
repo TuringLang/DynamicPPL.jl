@@ -11,12 +11,17 @@ A named distribution that carries the name of the random variable with it.
 struct NamedDist{
     variate, 
     support, 
-    Td <: Distribution{variate, support}, 
-    Tn
+    Td <: Distribution{variate, support},
+    name
 } <: Distribution{variate, support}
     dist::Td
-    name::Tn
+    name::VarName{name}
+
+    NamedDist(dist::Distribution{variate, support}, vn::VarName{name}) where {variate, support, name} =
+        new{variate, support, typeof(dist), name}(dist, vn)
 end
+
+NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
 
 
 struct NoDist{

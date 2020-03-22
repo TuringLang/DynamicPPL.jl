@@ -27,6 +27,7 @@ struct VarName{sym, T<:Tuple}
 end
 
 VarName{sym}(indexing::T) where {sym, T<:Tuple} = VarName{sym, T}(indexing)
+VarName{sym}() where {sym} = VarName{sym}(())
 VarName(sym, indexing) = VarName{sym}(indexing)
 
 """
@@ -67,8 +68,6 @@ function show(io::IO, vn::VarName)
     end
 end
 
-parse(::Type{VarName}, name::AbstractString) = varname(Meta.parse(name))
-
 
 """
     Symbol(vn::VarName)
@@ -97,7 +96,6 @@ function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
     valid = occursin(expr_str, vn_str)
     return valid || _in(vn_str, Base.tail(space))
 end
-
 
 
 """
