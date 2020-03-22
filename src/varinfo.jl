@@ -333,13 +333,6 @@ setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 end
 
 """
-    getsym(vn::VarName)
-
-Return the symbol of the Julia variable used to generate `vn`.
-"""
-getsym(vn::VarName{sym}) where sym = sym
-
-"""
     getgid(vi::VarInfo, vn::VarName)
 
 Return the set of sampler selectors associated with `vn` in `vi`.
@@ -490,69 +483,6 @@ end
 #### APIs for typed and untyped VarInfo
 ####
 
-# VarName
-
-"""
-    VarName(sym, indexing)
-    VarName{sym}(indexing::String)
-
-Construct a new instance of `VarName{sym}`
-"""
-VarName(sym, indexing) = VarName{sym}(indexing)
-
-"""
-    VarName(vn::VarName, indexing::String)
-
-Return a copy of `vn` with a new index `indexing`.
-"""
-function VarName(vn::VarName, indexing::String)
-    return VarName{getsym(vn)}(indexing)
-end
-
-"""
-    uid(vn::VarName)
-
-Return a unique tuple identifier for `vn`.
-"""
-uid(vn::VarName) = (getsym(vn), vn.indexing)
-
-hash(vn::VarName) = hash(uid(vn))
-
-==(x::VarName, y::VarName) = hash(uid(x)) == hash(uid(y))
-
-function string(vn::VarName)
-    return "$(getsym(vn))$(vn.indexing)"
-end
-function string(vns::Vector{<:VarName})
-    return replace(string(map(string, vns)), "String" => "")
-end
-
-"""
-    Symbol(vn::VarName)
-
-Return a `Symbol` represenation of the variable identifier `VarName`.
-"""
-Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
-
-"""
-    in(vn::VarName, space::Set)
-
-Check whether `vn`'s symbol is in `space`.
-"""
-in(::VarName, ::Tuple{}) = true
-in(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
-
-_in(::String, ::Tuple{}) = false
-_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
-function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
-    # Collect expressions from space
-    expr = first(space)
-    # Filter `(` and `)` out and get a string representation of `exprs`
-    expr_str = replace(string(expr), r"\(|\)" => "")
-    # Check if `vn_str` is in `expr_strs`
-    valid = occursin(expr_str, vn_str)
-    return valid || _in(vn_str, Base.tail(space))
-end
 
 # VarInfo
 

@@ -1,136 +1,166 @@
+import Base: hash, parse, show, Symbol
+import Base: ==
+
 """
 ```
-struct VarName{sym}
-    indexing  ::    String
+struct VarName{sym, T<:Tuple}
+    indexing::T
 end
 ```
 
-A variable identifier. Every variable has a symbol `sym` and `indices `indexing`. 
-The Julia variable in the model corresponding to `sym` can refer to a single value or 
-to a hierarchical array structure of univariate, multivariate or matrix variables. `indexing` stores the indices that can access the random variable from the Julia 
+A variable identifier. Every variable has a symbol `sym` and indices `indexing` in the format
+returned by [`@vinds`](@ref).  The Julia variable in the model corresponding to `sym` can refer to a
+single value or to a hierarchical array structure of univariate, multivariate or matrix
+variables. `indexing` stores the indices that can access the random variable from the Julia
 variable.
 
 Examples:
 
-- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "[1]"`.
+- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "((1,))"`.
 - `x[:,1] ~ MvNormal(zeros(2))` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1]"`.
+ `indexing == ((Colon(), 1))"`.
 - `x[:,1][2] ~ Normal()` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1][2]"`.
+ `indexing == ((Colon(), 1), (2,))`.
 """
-struct VarName{sym}
-    indexing::String
+struct VarName{sym, T<:Tuple}
+    indexing::T
+end
+
+VarName{sym}(indexing::T) where {sym, T<:Tuple} = VarName{sym, T}(indexing)
+VarName(sym, indexing) = VarName{sym}(indexing)
+
+"""
+    VarName(vn::VarName, indexing)
+
+Return a copy of `vn` with a new index `indexing`.
+"""
+function VarName(vn::VarName, indexing)
+    return VarName{getsym(vn)}(indexing)
+end
+
+"""
+    getsym(vn::VarName)
+
+Return the symbol of the Julia variable used to generate `vn`.
+"""
+getsym(vn::VarName{sym}) where sym = sym
+
+"""
+    getindexing(vn::VarName)
+
+Return the indexing tuple of the Julia variable used to generate `vn`.
+"""
+getindexing(vn::VarName) = vn.indexing
+
+
+"""
+    uid(vn::VarName)
+
+Return a unique tuple identifier for `vn`.
+"""
+uid(vn::VarName) = (getsym(vn), vn.indexing)
+hash(vn::VarName) = hash(uid(vn))
+==(x::VarName, y::VarName) = hash(uid(x)) == hash(uid(y))
+
+function show(io::IO, vn::VarName)
+    print(io, getsym(vn))
+    for indices in getindexing(vn)
+        print(io, "[")
+        join(io, indices, ", ")
+        print(io, "]")
+    end
+end
+
+parse(::Type{VarName}, name::AbstractString) = varname(Meta.parse(name))
+
+    
+"""
+    Symbol(vn::VarName)
+
+Return a `Symbol` represenation of the variable identifier `VarName`.
+"""
+Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
+
+"""
+    in(vn::VarName, space::Set)
+
+Check whether `vn`'s symbol is in `space`.
+"""
+in(::VarName, ::Tuple{}) = true
+in(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
+
+_in(::String, ::Tuple{}) = false
+_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
+function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
+    # Collect expressions from space
+    expr = first(space)
+    # Filter `(` and `)` out and get a string representation of `exprs`
+    expr_str = replace(string(expr), r"\(|\)" => "")
+    # Check if `vn_str` is in `expr_strs`
+    valid = occursin(expr_str, vn_str)
+    return valid || _in(vn_str, Base.tail(space))
 end
 
 
 
 """
-    @varname(var)
+    @varname(expr)
 
-A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}("[1,2][6][45][3]")`.
+A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, 
+e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}(((1, 2), (6,), (45,), (3,)))`.
 """
 macro varname(expr::Union{Expr, Symbol})
     expr |> varname |> esc
 end
-function varname(expr)
-    ex = deepcopy(expr)
-    (ex isa Symbol) && return quote
-        DynamicPPL.VarName{$(QuoteNode(ex))}("")
+
+varname(expr::Symbol) = DynamicPPL.VarName{expr}(())
+function varname(expr::Expr)
+    if Meta.isexpr(expr, :ref)
+        sym, inds = vsym(expr), vinds(expr)
+        return :(DynamicPPL.VarName{$sym}($inds))
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
     end
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    inds = :(())
-    while ex.head == :ref
-        if length(ex.args) >= 2
-            strs = map(x -> :($x === (:) ? "Colon()" : string($x)), ex.args[2:end])
-            pushfirst!(inds.args, :("[" * join($(Expr(:vect, strs...)), ",") * "]"))
-        end
-        ex = ex.args[1]
-        isa(ex, Symbol) && return quote
-            DynamicPPL.VarName{$(QuoteNode(ex))}(foldl(*, $inds, init = ""))
-        end
-    end
-    throw("VarName: Mis-formed variable name $(expr)!")
 end
 
+
+"""
+    @vsym(expr)
+
+A macro that returns the variable symbol given the input variable expression `expr`. 
+For example, `@vsym x[1]` returns `:x`.
+"""
 macro vsym(expr::Union{Expr, Symbol})
     expr |> vsym
 end
 
-"""
-    vsym(expr::Union{Expr, Symbol})
-
-Returns the variable symbol given the input variable expression `expr`. For example, if the input `expr = :(x[1])`, the output is `:x`.
-"""
-function vsym(expr::Union{Expr, Symbol})
-    ex = deepcopy(expr)
-    (ex isa Symbol) && return QuoteNode(ex)
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    while ex.head == :ref
-        ex = ex.args[1]
-        isa(ex, Symbol) && return QuoteNode(ex)
+vsym(expr::Symbol) = QuoteNode(expr)
+function vsym(expr::Expr)
+    if Meta.isexpr(expr, :ref)
+        return vsym(expr.args[1])
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
     end
-    throw("VarName: Mis-formed variable name $(expr)!")
 end
+
 
 """
     @vinds(expr)
 
-Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1,:][2]` returns 
+Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1, :][2]` returns 
 `((1, Colon()), (2,))`.
 """
 macro vinds(expr::Union{Expr, Symbol})
     expr |> vinds |> esc
 end
-function vinds(expr::Union{Expr, Symbol})
-    ex = deepcopy(expr)
-    inds = Expr(:tuple)
-    (ex isa Symbol) && return inds
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    while ex.head == :ref
-        pushfirst!(inds.args, Expr(:tuple, ex.args[2:end]...))
-        ex = ex.args[1]
-        isa(ex, Symbol) && return inds
-    end
-    throw("VarName: Mis-formed variable name $(expr)!")
-end
 
-"""
-    split_var_str(var_str, inds_as = Vector)
-
-This function splits a variable string, e.g. `"x[1:3,1:2][3,2]"` to the variable's symbol `"x"` and the indexing `"[1:3,1:2][3,2]"`. If `inds_as = String`, the indices are returned as a string, e.g. `"[1:3,1:2][3,2]"`. If `inds_as = Vector`, the indices are returned as a vector of vectors of strings, e.g. `[["1:3", "1:2"], ["3", "2"]]`.
-"""
-function split_var_str(var_str, inds_as = Vector)
-    ind = findfirst(c -> c == '[', var_str)
-    if inds_as === String
-        if ind === nothing
-            return var_str, ""
-        else
-            return var_str[1:ind-1], var_str[ind:end]
-        end
+vinds(expr::Symbol) = Expr(:tuple)
+function vinds(expr::Expr)
+    if Meta.isexpr(expr, :ref)
+        last = Expr(:tuple, expr.args[2:end]...)
+        init = vinds(expr.args[1]).args
+        return Expr(:tuple, init..., last)
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
     end
-    @assert inds_as === Vector
-    inds = Vector{String}[]
-    if ind === nothing
-        return var_str, inds
-    end
-    sym = var_str[1:ind-1]
-    ind = length(sym)
-    while ind < length(var_str)
-        ind += 1
-        @assert var_str[ind] == '['
-        push!(inds, String[])
-        while var_str[ind] != ']'
-            ind += 1
-            if var_str[ind] == '['
-                ind2 = findnext(c -> c == ']', var_str, ind)
-                push!(inds[end], strip(var_str[ind:ind2]))
-                ind = ind2+1
-            else
-                ind2 = findnext(c -> c == ',' || c == ']', var_str, ind)
-                push!(inds[end], strip(var_str[ind:ind2-1]))
-                ind = ind2
-            end
-        end
-    end
-    return sym, inds
 end
