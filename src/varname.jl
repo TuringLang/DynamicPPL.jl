@@ -26,17 +26,15 @@ struct VarName{sym, T<:Tuple}
     indexing::T
 end
 
-VarName{sym}(indexing::T) where {sym, T<:Tuple} = VarName{sym, T}(indexing)
-VarName{sym}() where {sym} = VarName{sym}(())
-VarName(sym, indexing) = VarName{sym}(indexing)
+VarName(sym::Symbol, indexing::T = ()) where {T} = VarName{sym, T}(indexing)
 
 """
     VarName(vn::VarName, indexing)
 
 Return a copy of `vn` with a new index `indexing`.
 """
-function VarName(vn::VarName, indexing)
-    return VarName{getsym(vn)}(indexing)
+function VarName(vn::VarName{sym}, indexing::T = ()) where {sym, T}
+    return VarName{sym, T}(indexing)
 end
 
 
@@ -108,11 +106,11 @@ macro varname(expr::Union{Expr, Symbol})
     expr |> varname |> esc
 end
 
-varname(expr::Symbol) = DynamicPPL.VarName{expr}(())
+varname(expr::Symbol) = VarName(expr)
 function varname(expr::Expr)
     if Meta.isexpr(expr, :ref)
         sym, inds = vsym(expr), vinds(expr)
-        return :(DynamicPPL.VarName{$sym}($inds))
+        return :(DynamicPPL.VarName($sym, $inds))
     else
         throw("VarName: Mis-formed variable name $(expr)!")
     end

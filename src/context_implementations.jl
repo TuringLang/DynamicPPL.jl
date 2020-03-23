@@ -39,8 +39,7 @@ function _tilde(sampler, right, vn::VarName, vi)
     return assume(sampler, right, vn, vi)
 end
 function _tilde(sampler, right::NamedDist, vn::VarName, vi)
-    name = right.name
-    return _tilde(sampler, right.dist, vn, vi)
+    return _tilde(sampler, right.dist, right.name, vi)
 end
 
 # observe
@@ -153,8 +152,7 @@ function dot_tilde(
 end
 
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
-    name = dist.name
-    return get_vns_and_dist(dist.dist, var, vn)
+    return get_vns_and_dist(dist.dist, var, dist.name)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
     getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))

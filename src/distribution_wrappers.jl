@@ -21,7 +21,7 @@ struct NamedDist{
         new{variate, support, typeof(dist), name}(dist, vn)
 end
 
-NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
+NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
 
 
 struct NoDist{
