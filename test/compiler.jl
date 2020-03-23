@@ -524,10 +524,10 @@ priors = 0 # See "new grammar" test.
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == VarName{:y}()
+        @test vi1.metadata.y.vns[1] == VarName(:y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == VarName{:y}(((2,), (Colon(), 1)))
+        @test vi2.metadata.y.vns[1] == VarName(:y, ((2,), (Colon(), 1)))
         @test haskey(vi3.metadata, :y)
-        @test vi2.metadata.y.vns[1] == VarName{:y}(((1,),))
+        @test vi3.metadata.y.vns[1] == VarName(:y, ((1,),))
     end
 end
