@@ -1,5 +1,4 @@
-import Base: hash, parse, show, Symbol
-import Base: ==
+import Base: ==, hash, show, Symbol
 
 """
 ```
@@ -54,10 +53,10 @@ Return the indexing tuple of the Julia variable used to generate `vn`.
 getindexing(vn::VarName) = vn.indexing
 
 
-hash(vn::VarName, h::UInt) = hash((getsym(vn), getindexing(vn)), h)
-==(x::VarName{S}, y::VarName{T}) where {S, T} = S == T && getindexing(x) == getindexing(y)
+Base.hash(vn::VarName, h::UInt) = hash((getsym(vn), getindexing(vn)), h)
+Base.:(==)(x::VarName{S}, y::VarName{T}) where {S, T} = S == T && getindexing(x) == getindexing(y)
 
-function show(io::IO, vn::VarName)
+function Base.show(io::IO, vn::VarName)
     print(io, getsym(vn))
     for indices in getindexing(vn)
         print(io, "[")
@@ -72,7 +71,7 @@ end
 
 Return a `Symbol` represenation of the variable identifier `VarName`.
 """
-Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
+Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
 
 
 """
