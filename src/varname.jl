@@ -73,29 +73,45 @@ Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
 
 
 """
-    inspace(vn::Union{VarName,Symbol}, space::Tuple)
+    inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple)
 
-Check whether `vn`'s symbol is in `space`.
+Check whether `vn`'s variable symbol is in `space`.
 """
-inspace(::VarName, ::Tuple{}) = true
-inspace(vn::VarName, space::Tuple) = _inspace(vn, space)
-inspace(vn::Union{Symbol, Expr}, space::Tuple) = vn in space
+inspace(::Union{VarName, Symbol, Expr}, ::Tuple{}) = true
+inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple) = any(_ismatch(vn, s) for s in space)
 
-_inspace(vn::VarName, ::Tuple{}) = false
-_inspace(vn::VarName{s}, space::Tuple{Symbol, Vararg}) where {s} =
-    s == first(space) || _inspace(vn, Base.tail(space))
-function _inspace(vn::VarName{s}, space::Tuple{Expr, Vararg}) where {s}
-    expr = first(space)
-    Meta.isexpr(expr, :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    ip = expr.args[1] == s && isprefix(tuple(expr.args[2:end]), vn.indexing)
-    return ip || _inspace(vn, Base.tail(space))
+_ismatch(vn, s) = (_name(vn) == _name(s)) && _isprefix(_indexing(s), _indexing(vn))
+
+_isprefix(::Tuple{}, ::Tuple{}) = true
+_isprefix(::Tuple{}, ::Tuple) = true
+_isprefix(::Tuple, ::Tuple{}) = false
+_isprefix(t::Tuple, u::Tuple) = _subsumes(first(t), first(u)) && _isprefix(Base.tail(t), Base.tail(u))
+
+_subsumes(i::Union{Int, UnitRange{Int}}, j::Union{Int, UnitRange{Int}}) = issubset(i, j)
+_subsumes(i::Union{Int, UnitRange{Int}, Colon}, j::Colon) = true
+_subsumes(i::Colon, ::Union{Int, UnitRange{Int}}) = false
+
+_name(vn::Symbol) = vn
+_name(vn::VarName) = getsym(vn)
+function _name(vn::Expr)
+    if Meta.isexpr(vn, :ref)
+        _name(vn.args[1])
+    else
+        throw("VarName: Mis-formed variable name $(vn)!")
+    end
 end
 
-isprefix(::Tuple{}, ::Tuple{}) = true
-isprefix(t::Tuple{}, u::Tuple) = true
-isprefix(::Tuple, u::Tuple{}) = false
-isprefix(t::Tuple{<:Any, Vararg}, u::Tuple{<:Any, Vararg}) =
-    (first(t) == first(u)) && isprefix(Base.tail(t), Base.tail(u))
+_indexing(vn::Symbol) = ()
+_indexing(vn::VarName) = getindexing(vn)
+function _indexing(vn::Expr)
+    if Meta.isexpr(vn, :ref)
+        init = _indexing(vn.args[1])
+        last = Tuple(vn.args[2:end])
+        return (init..., last)
+    else
+        throw("VarName: Mis-formed variable name $(vn)!")
+    end
+end
 
 
 """
