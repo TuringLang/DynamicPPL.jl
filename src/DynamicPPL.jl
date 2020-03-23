@@ -5,11 +5,9 @@ using Distributions
 using Bijectors
 using MacroTools
 
-import Base: string,
-             Symbol,
+import Base: Symbol,
              ==,
              hash,
-             in,
              getindex,
              setindex!,
              push!,
@@ -22,8 +20,7 @@ import Base: string,
              haskey
 
 # VarInfo
-export  VarName,
-        AbstractVarInfo,
+export  AbstractVarInfo,
         VarInfo,
         UntypedVarInfo,
         getlogp,
@@ -44,6 +41,9 @@ export  VarName,
         link!,
         invlink!,
         tonamedtuple,
+#VarName
+        VarName,
+        inspace,
 # Compiler
         ModelGen,
         @model,

@@ -1,5 +1,3 @@
-import Base: ==, hash, show, Symbol
-
 """
 ```
 struct VarName{sym, T<:Tuple}
@@ -75,24 +73,28 @@ Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
 
 
 """
-    in(vn::VarName, space::Set)
+    inspace(vn::Union{VarName,Symbol}, space::Tuple)
 
 Check whether `vn`'s symbol is in `space`.
 """
-in(::VarName, ::Tuple{}) = true
-in(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
+inspace(::VarName, ::Tuple{}) = true
+inspace(vn::VarName, space::Tuple) = _inspace(vn, space)
+inspace(vn::Union{Symbol, Expr}, space::Tuple) = vn in space
 
-_in(::String, ::Tuple{}) = false
-_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
-function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
-    # Collect expressions from space
+_inspace(vn::VarName, ::Tuple{}) = false
+_inspace(vn::VarName{s}, space::Tuple{Symbol, Vararg}) where {s} =
+    s == first(space) || _inspace(vn, Base.tail(space))
+function _inspace(vn::VarName{s}, space::Tuple{Expr, Vararg}) where {s}
     expr = first(space)
-    # Filter `(` and `)` out and get a string representation of `exprs`
-    expr_str = replace(string(expr), r"\(|\)" => "")
-    # Check if `vn_str` is in `expr_strs`
-    valid = occursin(expr_str, vn_str)
-    return valid || _in(vn_str, Base.tail(space))
+    ip = expr.args[1] == s && isprefix(tuple(expr.args[2:end]), vn.indexing)
+    return ip || _inspace(vn, Base.tail(space))
 end
+
+isprefix(::Tuple{}, ::Tuple{}) = true
+isprefix(t::Tuple{}, u::Tuple) = true
+isprefix(::Tuple, u::Tuple{}) = false
+isprefix(t::Tuple{<:Any, Vararg}, u::Tuple{<:Any, Vararg}) =
+    (first(t) == first(u)) && isprefix(Base.tail(t), Base.tail(u))
 
 
 """

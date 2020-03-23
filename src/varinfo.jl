@@ -127,7 +127,7 @@ end
     offset = :(0)
     for f in names
         mdf = :(metadata.$f)
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             len = :(length($mdf.vals))
             push!(exprs, :($f = Metadata($mdf.idcs,
                                         $mdf.vns,
@@ -402,7 +402,7 @@ end
         # If the varname is in the sampler space
         # or the sample space is empty (all variables)
         # then return the indices for that variable.
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(exprs, :($f = findinds(metadata.$f, s, Val($space))))
         end
     end
@@ -554,8 +554,7 @@ function TypedVarInfo(vi::UntypedVarInfo)
         sym_vals = foldl(vcat, _vals)
 
         push!(new_metas, Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals,
-                                    sym_dists, sym_gids, sym_orders, sym_flags)
-            )
+                                  sym_dists, sym_gids, sym_orders, sym_flags))
     end
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
@@ -716,7 +715,7 @@ end
 @generated function _link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
     for f in names
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(expr.args, quote
                 f_vns = vi.metadata.$f.vns
                 if ~istrans(vi, f_vns[1])
@@ -762,7 +761,7 @@ end
 @generated function _invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
     for f in names
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(expr.args, quote
                 f_vns = vi.metadata.$f.vns
                 if istrans(vi, f_vns[1])
@@ -1125,7 +1124,7 @@ Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selec
 and `vn`'s symbol is in the space of `spl`.
 """
 function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
-    if vn in getspace(spl)
+    if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
     end
 end
