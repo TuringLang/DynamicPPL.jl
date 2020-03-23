@@ -86,6 +86,7 @@ _inspace(vn::VarName{s}, space::Tuple{Symbol, Vararg}) where {s} =
     s == first(space) || _inspace(vn, Base.tail(space))
 function _inspace(vn::VarName{s}, space::Tuple{Expr, Vararg}) where {s}
     expr = first(space)
+    Meta.isexpr(expr, :ref) || throw("VarName: Mis-formed variable name $(expr)!")
     ip = expr.args[1] == s && isprefix(tuple(expr.args[2:end]), vn.indexing)
     return ip || _inspace(vn, Base.tail(space))
 end
