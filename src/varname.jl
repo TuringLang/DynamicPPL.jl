@@ -87,9 +87,11 @@ _isprefix(::Tuple{}, ::Tuple) = true
 _isprefix(::Tuple, ::Tuple{}) = false
 _isprefix(t::Tuple, u::Tuple) = _subsumes(first(t), first(u)) && _isprefix(Base.tail(t), Base.tail(u))
 
-_subsumes(i::Union{Int, UnitRange{Int}}, j::Union{Int, UnitRange{Int}}) = issubset(i, j)
-_subsumes(i::Union{Int, UnitRange{Int}, Colon}, j::Colon) = true
-_subsumes(i::Colon, ::Union{Int, UnitRange{Int}}) = false
+const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
+"""Determine whether `i` is a valid if `j` is."""
+_subsumes(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
+_subsumes(i::Union{ConcreteIndex, Colon}, j::Colon) = true
+_subsumes(i::Colon, j::ConcreteIndex) = false
 
 _name(vn::Symbol) = vn
 _name(vn::VarName) = getsym(vn)
