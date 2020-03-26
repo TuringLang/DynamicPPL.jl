@@ -49,19 +49,19 @@ function wrong_dist_errormsg(l)
 end
 
 """
-    @preprocess(data_vars, missing_vars, ex)
+    @isassumption(data_vars, missing_vars, ex)
 
-Let `ex` be `x[1]`. This macro returns `@varname x[1]` in any of the following cases:
+Let `ex` be `x[1]`. This macro returns `true` in any of the following cases:
     1. `x` was not among the input data to the model,
     2. `x` was among the input data to the model but with a value `missing`, or
     3. `x` was among the input data to the model with a value other than missing, 
-    but `x[1] === missing`.
-Otherwise, the value of `x[1]` is returned.
+       but `x[1] === missing`.
+When `ex` is not a variable (e.g., a literal), the function returns `false` as well.
 """
-macro preprocess(data_vars, missing_vars, ex)
-    ex
+macro isassumption(data_vars, missing_vars, ex)
+    :false
 end
-macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
+macro isassumption(data_vars, missing_vars, ex::Union{Symbol, Expr})
     sym = gensym(:sym)
     lhs = gensym(:lhs)
     return esc(quote
@@ -70,15 +70,15 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         # This branch should compile nicely in all cases except for partial missing data
         # For example, when `ex` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
         if !DynamicPPL.inparams($sym, $data_vars) || DynamicPPL.inparams($sym, $missing_vars)
-            $(varname(ex)), $(vinds(ex))
+            true
         else
             if DynamicPPL.inparams($sym, $data_vars)
                 # Evaluate the lhs
                 $lhs = $ex
                 if $lhs === missing
-                    $(varname(ex)), $(vinds(ex))
+                    true
                 else
-                    $lhs
+                    false
                 end
             else
                 throw("This point should not be reached. Please report this error.")
@@ -86,6 +86,7 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         end
     end)
 end
+
 @generated function inparams(::Val{s}, ::Val{t}) where {s, t}
     return (s in t) ? :(true) : :(false)
 end
@@ -319,6 +320,9 @@ function replace_tilde!(model_info)
 end
 """ |> Meta.parse |> eval
 
+# """ Unbreak code highlighting in Emacs julia-mode
+
+
 """
     generate_tilde(left, right, model_info)
 
@@ -331,37 +335,43 @@ function generate_tilde(left, right, model_info)
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
     sampler = model_info[:main_body_names][:sampler]
-    temp_right = gensym(:temp_right)
-    out = gensym(:out)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
-    preprocessed = gensym(:preprocessed)
+
+    @gensym(out,
+            lp,
+            vn,
+            inds,
+            isassumption,
+            temp_right)
+    
     assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
+
     if left isa Symbol || left isa Expr
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
-            if $preprocessed isa Tuple
-                $vn, $inds = $preprocessed
-                $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
+            
+            $vn, $inds = $(varname(left)), $(vinds(left))
+            $isassumption = DynamicPPL.@isassumption($arg_syms, DynamicPPL.getmissing($model), $left)
+            if $isassumption 
+                $out = DynamicPPL.tilde_assume($ctx, $sampler, $temp_right, $vn, $inds, $vi)
                 $left = $out[1]
                 DynamicPPL.acclogp!($vi, $out[2])
             else
                 DynamicPPL.acclogp!(
                     $vi,
-                    DynamicPPL.tilde($ctx, $sampler, $temp_right, $preprocessed, $vi),
+                    DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
                 )
             end
         end
     else
+        # we have a literal, which is automatically an observation
         ex = quote
             $temp_right = $right
             $assert_ex
+            
             DynamicPPL.acclogp!(
                 $vi,
-                DynamicPPL.tilde($ctx, $sampler, $temp_right, $left, $vi),
+                DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
             )
         end
     end
@@ -371,7 +381,9 @@ end
 """
     generate_dot_tilde(left, right, model_info)
 
-This function returns the expression that replaces `left .~ right` in the model body. If `preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block will be run.
+This function returns the expression that replaces `left .~ right` in the model body. If
+`preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block
+will be run.
 """
 function generate_dot_tilde(left, right, model_info)
     arg_syms = Val((model_info[:arg_syms]...,))
@@ -379,41 +391,45 @@ function generate_dot_tilde(left, right, model_info)
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
     sampler = model_info[:main_body_names][:sampler]
-    out = gensym(:out)
-    temp_left = gensym(:temp_left)
-    temp_right = gensym(:temp_right)
-    preprocessed = gensym(:preprocessed)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
+    
+    @gensym(out,
+            preprocessed,
+            lp,
+            vn,
+            inds,
+            isassumption,
+            temp_right)
+    
     assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
+    
     if left isa Symbol || left isa Expr
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
-            if $preprocessed isa Tuple
-                $vn, $inds = $preprocessed
-                $temp_left = $left
-                $out = DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vn, $inds, $vi)
+
+            $vn, $inds = $(varname(left)), $(vinds(left))
+            $isassumption = DynamicPPL.@isassumption($arg_syms, DynamicPPL.getmissing($model), $left)
+            
+            if $isassumption
+                $out = DynamicPPL.dot_tilde_assume($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi)
                 $left .= $out[1]
                 DynamicPPL.acclogp!($vi, $out[2])
             else
-                $temp_left = $preprocessed
                 DynamicPPL.acclogp!(
                     $vi,
-                    DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
+                    DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
                 )
             end
         end
     else
+        # we have a literal, which is automatically an observation
         ex = quote
-            $temp_left = $left
             $temp_right = $right
             $assert_ex
+            
             DynamicPPL.acclogp!(
                 $vi,
-                DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
+                DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
             )
         end
     end

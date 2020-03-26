@@ -35,6 +35,12 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
     return tilde(ctx.ctx, sampler, right, left, inds, vi)
 end
 
+
+function tilde_assume(ctx, sampler, right, vn, inds, vi)
+    return tilde(ctx, sampler, right, vn, inds, vi)
+end
+
+
 function _tilde(sampler, right, vn::VarName, vi)
     return assume(sampler, right, vn, vi)
 end
@@ -67,6 +73,14 @@ end
 function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
 end
+
+function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    return tilde(ctx, sampler, right, left, vi)
+end
+function tilde_observe(ctx, sampler, right, left, vi)
+    return tilde(ctx, sampler, right, left, vi)
+end
+
 
 _tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
@@ -162,6 +176,11 @@ function dot_tilde(
     end
     return _dot_tilde(sampler, dist, left, vns, vi)
 end
+
+function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+    return dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+end
+
 
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
     name = dist.name
@@ -336,6 +355,14 @@ end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, left, vi)
 end
+
+function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
+    return dot_tilde(ctx, sampler, right, left, vi)
+end
+function dot_tilde_observe(ctx, sampler, right, left, vi)
+    return dot_tilde(ctx, sampler, right, left, vi)
+end
+
 
 function _dot_tilde(sampler, right, left::AbstractArray, vi)
     return dot_observe(sampler, right, left, vi)
