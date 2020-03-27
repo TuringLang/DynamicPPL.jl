@@ -1,8 +1,7 @@
 """
     struct Model{S, Targs<:NamedTuple, Tdefaults<:NamedTuple, Tmissings <: Val}
-        f::ModelFunction{S}
         args::Targs
-        defaults::Tmodelgen
+        defaults::Tdefaults
         missings::Tmissings
     end
 
