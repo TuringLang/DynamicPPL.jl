@@ -455,6 +455,9 @@ function build_output(model_info)
     end
 
     model_type = :(DynamicPPL.Model{$(QuoteNode(model_tag))})
+    kw_form = isempty(args) ? () : (:($model_type(;$(args...)) = $model_type($(arg_syms...))),)
+    missings = gensym(:missings)
+    args_tuple = gensym(:args_tuple)
     
     ex = quote
         function ($model::$model_type)(
@@ -467,16 +470,20 @@ function build_output(model_info)
             $main_body
         end
 
-        getdefaults(::$model_type) = $defaults_nt
-        $model_gen($(args...)) = $model_type($args_nt)
-    end
+        DynamicPPL.getdefaults(::Type{$model_type}) = $defaults_nt
+        
+        function $model_type($(args...))
+            $args_tuple = $args_nt
+            $missings = DynamicPPL.getmissing($args_tuple)
+            return DynamicPPL.Model{$(QuoteNode(model_tag)),
+                                    typeof($args_tuple),
+                                    typeof($missings)}($args_tuple, $missings)
+        end
+        
+        $(kw_form...)
 
-    if !isempty(args)
-        # Allows passing arguments as kwargs
-        kwform = :($model_gen(;$(args...)) = $model_gen($(arg_syms...)))
-        push!(ex.args, kwform)
+        $model_gen = $model_type
     end
-
 
     return esc(ex)
 end

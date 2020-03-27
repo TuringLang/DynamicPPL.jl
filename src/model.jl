@@ -15,11 +15,6 @@ struct Model{S, Targs<:NamedTuple, Tmissings<:Val} <: AbstractModel
     missings::Tmissings
 end
 
-function Model{S}(args::NamedTuple) where {S}
-    missings = getmissing(args)
-    Model{S, typeof(args), typeof(missings)}(args, missings)
-end
-
 (model::Model)(vi) = model(vi, SampleFromPrior())
 (model::Model)(vi, spl) = model(vi, spl, DefaultContext())
 
