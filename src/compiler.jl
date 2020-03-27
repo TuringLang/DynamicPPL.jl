@@ -1,25 +1,3 @@
-"""
-    struct ModelGen{Targs, F, Tdefaults} <: Function
-        f::F
-        defaults::Tdefaults
-    end
-
-A `Model` generator. This is the output of the `@model` macro. `Targs` is the tuple 
-of the symbols of the model's arguments. `defaults` is the `NamedTuple` of default values
-of the arguments, if any. Every `ModelGen` is callable with the arguments `Targs`, 
-returning an instance of `Model`.
-"""
-struct ModelGen{Targs, F, Tdefaults} <: Function
-    f::F
-    defaults::Tdefaults
-end
-ModelGen{Targs}(args...) where {Targs} = ModelGen{Targs, typeof.(args)...}(args...)
-(m::ModelGen)(args...; kwargs...) = m.f(args...; kwargs...)
-function Base.getproperty(m::ModelGen{Targs}, f::Symbol) where {Targs}
-    f === :args && return Targs
-    return Base.getfield(m, f)
-end
-
 macro varinfo()
     :(throw(_error_msg()))
 end
@@ -151,7 +129,7 @@ function build_model_info(input_expr)
     else
         nt_type = Expr(:curly, :NamedTuple, 
             Expr(:tuple, QuoteNode.(arg_syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in arg_syms]...)
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
         )
         args_nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
@@ -220,7 +198,7 @@ function to_namedtuple_expr(syms::Vector, vals = syms)
     else
         nt_type = Expr(:curly, :NamedTuple, 
             Expr(:tuple, QuoteNode.(syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in vals]...)
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...)
         )
         nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
     end
@@ -440,7 +418,6 @@ function build_output(model_info)
     vi = main_body_names[:vi]
     model = main_body_names[:model]
     sampler = main_body_names[:sampler]
-    model_function = main_body_names[:model_function]
 
     # Arguments with default values
     args = model_info[:args]
@@ -455,16 +432,9 @@ function build_output(model_info)
     whereparams = model_info[:whereparams]
     # Model generator name
     model_gen = model_info[:name]
-    # Outer function name
-    outer_function = gensym(model_info[:name])
     # Main body of the model
     main_body = model_info[:main_body]
-    model_gen_constructor = quote
-        DynamicPPL.ModelGen{$(Tuple(arg_syms))}(
-            $outer_function, 
-            $defaults_nt,
-        )
-    end
+    
     unwrap_data_expr = Expr(:block)
     for var in arg_syms
         temp_var = gensym(:temp_var)
@@ -483,44 +453,35 @@ function build_output(model_info)
         end)
     end
 
+    model_type = :(DynamicPPL.Model{$(QuoteNode(model_function))})
+    defaults = gensym(:defaults)
+    
     ex = quote
-        function (::DynamicPPL.ModelFunction{$(QuoteNode(model_function))})(
+        function ($model::$model_type)(
             $vi::DynamicPPL.VarInfo,
             $sampler::DynamicPPL.AbstractSampler,
             $ctx::DynamicPPL.AbstractContext,
-            $model
         )
             $unwrap_data_expr
             DynamicPPL.resetlogp!($vi)
             $main_body
         end
-        
-        $model_function = DynamicPPL.ModelFunction{$(QuoteNode(model_function))}()
-        
-        function $outer_function($(args...))
-            return DynamicPPL.Model($model_function, $args_nt, $model_gen_constructor)
-        end
-        
-        $model_gen = $model_gen_constructor
+
+        $defaults = $defaults_nt
+        getdefaults(::$model_type) = $defaults
+        $model_gen($(args...)) = $model_type($args_nt, $defaults)
     end
 
     if !isempty(args)
         # Allows passing arguments as kwargs
-        kwform = quote
-            $outer_function(;$(args...)) = $outer_function($(arg_syms...))
-        end
+        kwform = :($model_gen(;$(args...)) = $model_gen($(arg_syms...)))
         push!(ex.args, kwform)
     end
+
 
     return esc(ex)
 end
 
-# A hack for NamedTuple type specialization
-# (T = Int,) has type NamedTuple{(:T,), Tuple{DataType}} by default
-# With this function, we can make it NamedTuple{(:T,), Tuple{Type{Int}}}
-# Both are correct, but the latter is what we want for type stability
-get_type(::Type{T}) where {T} = Type{T}
-get_type(t) = typeof(t)
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
