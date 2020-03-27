@@ -206,7 +206,7 @@ function build_model_info(input_expr)
             :vi => gensym(:vi),
             :sampler => gensym(:sampler),
             :model => gensym(:model),
-            :inner_function => gensym(:inner_function),
+            :model_function => gensym(modeldef[:name]),
             :defaults => gensym(:defaults)
         )
     )
@@ -318,6 +318,9 @@ function replace_tilde!(model_info)
     return model_info
 end
 """ |> Meta.parse |> eval
+
+# """ Unbreak code highlighting in Emacs julia-mode
+
 
 """
     generate_tilde(left, right, model_info)
@@ -437,7 +440,7 @@ function build_output(model_info)
     vi = main_body_names[:vi]
     model = main_body_names[:model]
     sampler = main_body_names[:sampler]
-    inner_function = main_body_names[:inner_function]
+    model_function = main_body_names[:model_function]
 
     # Arguments with default values
     args = model_info[:args]
@@ -481,28 +484,32 @@ function build_output(model_info)
     end
 
     ex = quote
-        function $outer_function($(args...))
-            function $inner_function(
-                $vi::DynamicPPL.VarInfo,
-                $sampler::DynamicPPL.AbstractSampler,
-                $ctx::DynamicPPL.AbstractContext,
-                $model
-            )
-                $unwrap_data_expr
-                DynamicPPL.resetlogp!($vi)
-                $main_body
-            end
-            return DynamicPPL.Model($inner_function, $args_nt, $model_gen_constructor)
+        function (::DynamicPPL.ModelFunction{$(QuoteNode(model_function))})(
+            $vi::DynamicPPL.VarInfo,
+            $sampler::DynamicPPL.AbstractSampler,
+            $ctx::DynamicPPL.AbstractContext,
+            $model
+        )
+            $unwrap_data_expr
+            DynamicPPL.resetlogp!($vi)
+            $main_body
         end
+        
+        $model_function = DynamicPPL.ModelFunction{$(QuoteNode(model_function))}()
+        
+        function $outer_function($(args...))
+            return DynamicPPL.Model($model_function, $args_nt, $model_gen_constructor)
+        end
+        
         $model_gen = $model_gen_constructor
     end
 
     if !isempty(args)
-        ex = quote
-            $ex
-            # Allows passing arguments as kwargs
+        # Allows passing arguments as kwargs
+        kwform = quote
             $outer_function(;$(args...)) = $outer_function($(arg_syms...))
         end
+        push!(ex.args, kwform)
     end
 
     return esc(ex)

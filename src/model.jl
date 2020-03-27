@@ -1,6 +1,10 @@
+"""Tagged type for implementation of inner model functions that allow dispatch on their type."""
+struct ModelFunction{S} end
+
+
 """
-    struct Model{F, Targs <: NamedTuple, Tmodelgen, Tmissings <: Val}
-        f::F
+    struct Model{S, Targs <: NamedTuple, Tmodelgen, Tmissings <: Val}
+        f::ModelFunction{S}
         args::Targs
         modelgen::Tmodelgen
         missings::Tmissings
@@ -12,13 +16,13 @@ argument in `args` with a value `missing` will be in `missings` by default. Howe
 non-traditional use-cases `missings` can be defined differently. All variables in
 `missings` are treated as random variables rather than observations.
 """
-struct Model{F, Targs <: NamedTuple, Tmodelgen, Tmissings <: Val} <: AbstractModel
-    f::F
+struct Model{S, Targs <: NamedTuple, Tmodelgen, Tmissings <: Val} <: AbstractModel
+    f::ModelFunction{S}
     args::Targs
     modelgen::Tmodelgen
     missings::Tmissings
 end
-Model(f, args::NamedTuple, modelgen) = Model(f, args, modelgen, getmissing(args))
+Model(f::ModelFunction, args::NamedTuple, modelgen) = Model(f, args, modelgen, getmissing(args))
 (model::Model)(vi) = model(vi, SampleFromPrior())
 (model::Model)(vi, spl) = model(vi, spl, DefaultContext())
 (model::Model)(args...; kwargs...) = model.f(args..., model; kwargs...)
