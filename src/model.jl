@@ -1,7 +1,6 @@
 """
-    struct Model{S, Targs<:NamedTuple, Tdefaults<:NamedTuple, Tmissings <: Val}
+    struct Model{S, Targs<:NamedTuple, Tmissings <: Val}
         args::Targs
-        defaults::Tdefaults
         missings::Tmissings
     end
 
@@ -11,15 +10,14 @@ argument in `args` with a value `missing` will be in `missings` by default. Howe
 non-traditional use-cases `missings` can be defined differently. All variables in
 `missings` are treated as random variables rather than observations.
 """
-struct Model{S, Targs<:NamedTuple, Tdefaults<:NamedTuple, Tmissings<:Val} <: AbstractModel
+struct Model{S, Targs<:NamedTuple, Tmissings<:Val} <: AbstractModel
     args::Targs
-    defaults::Tdefaults
     missings::Tmissings
 end
 
-function Model{S}(args::NamedTuple, defaults::NamedTuple) where {S}
+function Model{S}(args::NamedTuple) where {S}
     missings = getmissing(args)
-    Model{S, typeof(args), typeof(defaults), typeof(missings)}(args, defaults, missings)
+    Model{S, typeof(args), typeof(missings)}(args, missings)
 end
 
 (model::Model)(vi) = model(vi, SampleFromPrior())
@@ -27,11 +25,11 @@ end
 
 
 """
-    getdefaults(::Type{<:Model})
+    getdefaults(model)
 
 Get a named tuple of the default argument values defined in a `Model` type.
 """
-function getdefaults end
+getdefaults(model::Model) = getdefaults(typeof(model))
 
 
 getargtype(::Type{<:Model{S, Targs}}) where {S, Targs} = Targs

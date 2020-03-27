@@ -173,6 +173,7 @@ function build_model_info(input_expr)
 
     model_info = Dict(
         :name => modeldef[:name],
+        :model_tag => gensym(modeldef[:name]),
         :main_body => modeldef[:body],
         :arg_syms => arg_syms,
         :args_nt => args_nt,
@@ -183,9 +184,7 @@ function build_model_info(input_expr)
             :ctx => gensym(:ctx),
             :vi => gensym(:vi),
             :sampler => gensym(:sampler),
-            :model => gensym(:model),
-            :model_function => gensym(modeldef[:name]),
-            :defaults => gensym(:defaults)
+            :model => gensym(:model)
         )
     )
 
@@ -432,6 +431,8 @@ function build_output(model_info)
     whereparams = model_info[:whereparams]
     # Model generator name
     model_gen = model_info[:name]
+    # Tag used for the model type
+    model_tag = model_info[:model_tag]
     # Main body of the model
     main_body = model_info[:main_body]
     
@@ -453,8 +454,7 @@ function build_output(model_info)
         end)
     end
 
-    model_type = :(DynamicPPL.Model{$(QuoteNode(model_function))})
-    defaults = gensym(:defaults)
+    model_type = :(DynamicPPL.Model{$(QuoteNode(model_tag))})
     
     ex = quote
         function ($model::$model_type)(
@@ -467,9 +467,8 @@ function build_output(model_info)
             $main_body
         end
 
-        $defaults = $defaults_nt
-        getdefaults(::$model_type) = $defaults
-        $model_gen($(args...)) = $model_type($args_nt, $defaults)
+        getdefaults(::$model_type) = $defaults_nt
+        $model_gen($(args...)) = $model_type($args_nt)
     end
 
     if !isempty(args)
