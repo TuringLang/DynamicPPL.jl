@@ -8,11 +8,9 @@ macro prob_str(str)
 end
 
 function get_exprs(str::String)
-    ind = findfirst(isequal('|'), str)
-    ind === nothing && throw("Invalid expression.")
-
-    str1 = str[1:(ind - 1)]
-    str2 = str[(ind + 1):end]
+    substrings = split(str, '|'; limit = 2)
+    length(substrings) == 2 || error("Invalid expression.")
+    str1, str2 = substrings
 
     expr1 = Meta.parse("($str1,)")
     expr1 = Expr(:tuple, expr1.args...)
@@ -57,7 +55,7 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         defaults = getdefaults(modelgen)
         valid_arg(arg) = isdefined(ntl, arg) || isdefined(ntr, arg) || 
             isdefined(defaults, arg) && getfield(defaults, arg) !== missing
-        @assert all(valid_arg.(getargtypes(modelgen)))
+        @assert all(valid_arg, getargtypes(modelgen))
         return Val(:likelihood), modelgen, vi
     else
         @assert isdefined(ntr, :model)
@@ -96,7 +94,7 @@ function probtype(
         a = get_arg(arg)
         return a !== nothing && a !== missing
     end
-    valid_args = all(valid_arg.(args))
+    valid_args = all(valid_arg, args)
 
     # Uses the default values for model arguments not provided.
     # If no default value exists, use `nothing`.
