@@ -173,7 +173,6 @@ function build_model_info(input_expr)
 
     model_info = Dict(
         :name => modeldef[:name],
-        :model_tag => gensym(modeldef[:name]),
         :main_body => modeldef[:body],
         :arg_syms => arg_syms,
         :args_nt => args_nt,
@@ -431,8 +430,6 @@ function build_output(model_info)
     whereparams = model_info[:whereparams]
     # Model generator name
     model_gen = model_info[:name]
-    # Tag used for the model type
-    model_tag = model_info[:model_tag]
     # Main body of the model
     main_body = model_info[:main_body]
     
@@ -454,13 +451,22 @@ function build_output(model_info)
         end)
     end
 
-    model_type = :(DynamicPPL.Model{$(QuoteNode(model_tag))})
-    kw_form = isempty(args) ? () : (:($model_type(;$(args...)) = $model_type($(arg_syms...))),)
+    kw_form = isempty(args) ? () : (:($model_gen(;$(args...)) = $model_gen($(arg_syms...))),)
     missings = gensym(:missings)
     args_tuple = gensym(:args_tuple)
     
     ex = quote
-        function ($model::$model_type)(
+        function $model_gen($(args...))
+            $args_tuple = $args_nt
+            $missings = DynamicPPL.getmissing($args_tuple)
+            return DynamicPPL.Model{typeof($model_gen),
+                                    typeof($args_tuple),
+                                    typeof($missings)}($args_tuple, $missings)
+        end
+        
+        $(kw_form...)
+        
+        function ($model::DynamicPPL.Model{typeof($model_gen)})(
             $vi::DynamicPPL.VarInfo,
             $sampler::DynamicPPL.AbstractSampler,
             $ctx::DynamicPPL.AbstractContext,
@@ -469,20 +475,8 @@ function build_output(model_info)
             DynamicPPL.resetlogp!($vi)
             $main_body
         end
-
-        DynamicPPL.getdefaults(::Type{$model_type}) = $defaults_nt
         
-        function $model_type($(args...))
-            $args_tuple = $args_nt
-            $missings = DynamicPPL.getmissing($args_tuple)
-            return DynamicPPL.Model{$(QuoteNode(model_tag)),
-                                    typeof($args_tuple),
-                                    typeof($missings)}($args_tuple, $missings)
-        end
-        
-        $(kw_form...)
-
-        $model_gen = $model_type
+        DynamicPPL.getdefaults(::typeof($model_gen)) = $defaults_nt
     end
 
     return esc(ex)
