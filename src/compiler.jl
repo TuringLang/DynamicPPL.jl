@@ -475,7 +475,7 @@ function build_output(model_info)
         end
         
         DynamicPPL.getdefaults(::typeof($model_gen)) = $defaults_nt
-        DynamicPPL.getargtypes(::typeof($model_gen)) = $(Tuple(arg_syms))
+        DynamicPPL.getargnames(::typeof($model_gen)) = $(Tuple(arg_syms))
         DynamicPPL.getmodeltype(::typeof($model_gen)) = DynamicPPL.Model{typeof($model_gen)}
         DynamicPPL.getgenerator(::DynamicPPL.Model{typeof($model_gen)}) = $model_gen
     end

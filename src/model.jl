@@ -44,11 +44,11 @@ Get a named tuple of the default argument values defined for a model defined by 
 function getdefaults end
 
 """
-    getargtypes(::typeof(modelgen))
+    getargnames(::typeof(modelgen))
 
-Get a named tuple of the argument
+Get a tuple of the argument names of the model defined by a generating function.
 """
-function getargtypes end
+function getargnames end
 
 
 getmissing(model::Model) = model.missings

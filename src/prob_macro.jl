@@ -55,7 +55,7 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         defaults = getdefaults(modelgen)
         valid_arg(arg) = isdefined(ntl, arg) || isdefined(ntr, arg) || 
             isdefined(defaults, arg) && getfield(defaults, arg) !== missing
-        @assert all(valid_arg, getargtypes(modelgen))
+        @assert all(valid_arg, getargnames(modelgen))
         return Val(:likelihood), modelgen, vi
     else
         @assert isdefined(ntr, :model)
@@ -76,9 +76,9 @@ function probtype(
     modelgen,
     defaults::NamedTuple{defs}
 ) where {namesl, namesr, defs}
-    args = getargtypes(modelgen)
+    argnames = getargnames(modelgen)
     prior_rhs = all(n -> n in (:model, :varinfo) || 
-        n in args && getfield(ntr, n) !== missing, namesr)
+        n in argnames && getfield(ntr, n) !== missing, namesr)
     function get_arg(arg)
         if arg in namesl
             return getfield(ntl, arg)
@@ -94,7 +94,7 @@ function probtype(
         a = get_arg(arg)
         return a !== nothing && a !== missing
     end
-    valid_args = all(valid_arg, args)
+    valid_args = all(valid_arg, argnames)
 
     # Uses the default values for model arguments not provided.
     # If no default value exists, use `nothing`.
@@ -105,9 +105,9 @@ function probtype(
     elseif valid_args
         return Val(:likelihood)
     else
-        for arg in args
-            if !valid_arg(args)
-                throw(ArgumentError(missing_arg_error_msg(arg, get_arg(arg))))
+        for argname in argnames
+            if !valid_arg(argname)
+                throw(ArgumentError(missing_arg_error_msg(argname, get_arg(argname))))
             end
         end
     end
@@ -134,7 +134,10 @@ function logprior(
     # All `observe` and `dot_observe` calls are no-op in the PriorContext
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
-    args, missing_vars = get_prior_model_args(left, right, Val{getargtypes(modelgen)}(), getdefaults(modelgen))
+    args, missing_vars = get_prior_model_args(left,
+                                              right,
+                                              Val{getargnames(modelgen)}(),
+                                              getdefaults(modelgen))
     model = Model{typeof(modelgen)}(args, missing_vars)
     vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
@@ -146,23 +149,23 @@ end
 @generated function get_prior_model_args(
     left::NamedTuple{namesl},
     right::NamedTuple{namesr},
-    ::Val{args},
+    _args::Val{argnames},
     defaults::NamedTuple{default_args}
-) where {namesl, namesr, args, default_args}
+) where {namesl, namesr, argnames, default_args}
     exprs = []
     missing_args = []
     warn_expr = Expr(:block)
-    foreach(args) do arg
-        if arg in namesl
-            push!(exprs, :($arg = deepcopy(left.$arg)))
-            push!(missing_args, arg)
-        elseif arg in namesr
-            push!(exprs, :($arg = right.$arg))
-        elseif arg in default_args
-            push!(exprs, :($arg = defaults.$arg))
+    foreach(argnames) do argname
+        if argname in namesl
+            push!(exprs, :($argname = deepcopy(left.$argname)))
+            push!(missing_args, argname)
+        elseif argname in namesr
+            push!(exprs, :($argname = right.$argname))
+        elseif argname in default_args
+            push!(exprs, :($argname = defaults.$argname))
         else
-            push!(warn_expr.args, :(@warn(warn_msg($(QuoteNode(arg))))))
-            push!(exprs, :($arg = nothing))
+            push!(warn_expr.args, :(@warn(warn_msg($(QuoteNode(argname))))))
+            push!(exprs, :($argname = nothing))
         end
     end
     missing_vars = :(Val{($missing_args...,)}())
@@ -188,7 +191,10 @@ function loglikelihood(
     _vi::Union{Nothing, VarInfo},
 )
     # Pass namesl to model constructor, remaining args are missing
-    args, missing_vars = get_like_model_args(left, right, Val{getargtypes(modelgen)}(), getdefaults(modelgen))
+    args, missing_vars = get_like_model_args(left,
+                                             right,
+                                             Val{getargnames(modelgen)}(),
+                                             getdefaults(modelgen))
     model = Model{typeof(modelgen)}(args, missing_vars)
     vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
     if isdefined(right, :chain)
@@ -212,19 +218,19 @@ end
 @generated function get_like_model_args(
     left::NamedTuple{namesl},
     right::NamedTuple{namesr},
-    ::Val{args},
+    _args::Val{argnames},
     defaults::NamedTuple{default_args},
-) where {namesl, namesr, args, default_args}
+) where {namesl, namesr, argnames, default_args}
     exprs = []
     missing_args = []
-    foreach(args) do arg
-        if arg in namesl
-            push!(exprs, :($arg = left.$arg))
-        elseif arg in namesr
-            push!(exprs, :($arg = right.$arg))
-            push!(missing_args, arg)
-        elseif arg in default_args
-            push!(exprs, :($arg = defaults.$arg))
+    foreach(argnames) do argname
+        if argname in namesl
+            push!(exprs, :($argname = left.$argname))
+        elseif argname in namesr
+            push!(exprs, :($argname = right.$argname))
+            push!(missing_args, argname)
+        elseif argname in default_args
+            push!(exprs, :($argname = defaults.$argname))
         else
             throw("This point should not be reached. Please open an issue in the DynamicPPL.jl repository.")
         end
