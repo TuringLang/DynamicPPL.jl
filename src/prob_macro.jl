@@ -8,19 +8,19 @@ macro prob_str(str)
 end
 
 function get_exprs(str::String)
-	ind = findfirst(isequal('|'), str)
-	ind === nothing && throw("Invalid expression.")
+    ind = findfirst(isequal('|'), str)
+    ind === nothing && throw("Invalid expression.")
 
-	str1 = str[1:(ind - 1)]
-	str2 = str[(ind + 1):end]
+    str1 = str[1:(ind - 1)]
+    str2 = str[(ind + 1):end]
 
-	expr1 = Meta.parse("($str1,)")
-	expr1 = Expr(:tuple, expr1.args...)
+    expr1 = Meta.parse("($str1,)")
+    expr1 = Expr(:tuple, expr1.args...)
 
-	expr2 = Meta.parse("($str2,)")
-	expr2 = Expr(:tuple, expr2.args...)
+    expr2 = Meta.parse("($str2,)")
+    expr2 = Expr(:tuple, expr2.args...)
 
-	return expr1, expr2
+    return expr1, expr2
 end
 
 function logprob(ex1, ex2)
@@ -37,7 +37,7 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         if isdefined(ntr.chain.info, :model)
             model = ntr.chain.info.model
             @assert model isa Model
-            modelgen = model.modelgen
+            modelgen = getgenerator(model)
         elseif isdefined(ntr, :model)
             modelgen = ntr.model
         else
@@ -54,10 +54,10 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         else
             vi = nothing
         end
-        defaults = modelgen.defaults
+        defaults = getdefaults(modelgen)
         valid_arg(arg) = isdefined(ntl, arg) || isdefined(ntr, arg) || 
             isdefined(defaults, arg) && getfield(defaults, arg) !== missing
-        @assert all(valid_arg.(modelgen.args))
+        @assert all(valid_arg.(getargtypes(modelgen)))
         return Val(:likelihood), modelgen, vi
     else
         @assert isdefined(ntr, :model)
@@ -69,15 +69,16 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         else
             vi = nothing
         end
-        return probtype(ntl, ntr, modelgen, modelgen.defaults), modelgen, vi
+        return probtype(ntl, ntr, modelgen, getdefaults(modelgen)), modelgen, vi
     end
 end
 function probtype(
-	ntl::NamedTuple{namesl},
-	ntr::NamedTuple{namesr},
-	modelgen::ModelGen{args},
-	defaults::NamedTuple{defs},
-) where {namesl, namesr, args, defs}
+    ntl::NamedTuple{namesl},
+    ntr::NamedTuple{namesr},
+    modelgen,
+    defaults::NamedTuple{defs}
+) where {namesl, namesr, defs}
+    args = getargtypes(modelgen)
     prior_rhs = all(n -> n in (:model, :varinfo) || 
         n in args && getfield(ntr, n) !== missing, namesr)
     function get_arg(arg)
@@ -120,7 +121,7 @@ missing_arg_error_msg(arg, ::Nothing) = """Variable $arg is not defined and has 
 function logprior(
     left::NamedTuple,
     right::NamedTuple,
-    modelgen::ModelGen,
+    modelgen,
     _vi::Union{Nothing, VarInfo},
 )
     # For model args on the LHS of |, use their passed value but add the symbol to 
@@ -135,8 +136,8 @@ function logprior(
     # All `observe` and `dot_observe` calls are no-op in the PriorContext
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
-    args, missing_vars = get_prior_model_args(left, right, modelgen, modelgen.defaults)
-    model = get_model(modelgen, args, missing_vars)
+    args, missing_vars = get_prior_model_args(left, right, Val{getargtypes(modelgen)}(), getdefaults(modelgen))
+    model = Model{typeof(modelgen)}(args, missing_vars)
     vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
@@ -147,8 +148,8 @@ end
 @generated function get_prior_model_args(
     left::NamedTuple{namesl},
     right::NamedTuple{namesr},
-    modelgen::ModelGen{args},
-    defaults::NamedTuple{default_args},
+    ::Val{args},
+    defaults::NamedTuple{default_args}
 ) where {namesl, namesr, args, default_args}
     exprs = []
     missing_args = []
@@ -182,20 +183,15 @@ end
 
 warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
 
-function get_model(modelgen, args, missing_vars)
-    _model = modelgen(; args...)
-    return Model(_model.f, args, modelgen, missing_vars)
-end
-
 function loglikelihood(
     left::NamedTuple,
     right::NamedTuple,
-    modelgen::ModelGen,
+    modelgen,
     _vi::Union{Nothing, VarInfo},
 )
     # Pass namesl to model constructor, remaining args are missing
-    args, missing_vars = get_like_model_args(left, right, modelgen, modelgen.defaults)
-    model = get_model(modelgen, args, missing_vars)
+    args, missing_vars = get_like_model_args(left, right, Val{getargtypes(modelgen)}(), getdefaults(modelgen))
+    model = Model{typeof(modelgen)}(args, missing_vars)
     vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
     if isdefined(right, :chain)
         # Element-wise likelihood for each value in chain
@@ -218,7 +214,7 @@ end
 @generated function get_like_model_args(
     left::NamedTuple{namesl},
     right::NamedTuple{namesr},
-    modelgen::ModelGen{args},
+    ::Val{args},
     defaults::NamedTuple{default_args},
 ) where {namesl, namesr, args, default_args}
     exprs = []

@@ -451,7 +451,7 @@ function build_output(model_info)
         end)
     end
 
-    kw_form = isempty(args) ? () : (:($model_gen(;$(args...)) = $model_gen($(arg_syms...))),)
+    modelgen_kw_form = isempty(args) ? () : (:($model_gen(;$(args...)) = $model_gen($(arg_syms...))),)
     missings = gensym(:missings)
     args_tuple = gensym(:args_tuple)
     
@@ -459,12 +459,10 @@ function build_output(model_info)
         function $model_gen($(args...))
             $args_tuple = $args_nt
             $missings = DynamicPPL.getmissing($args_tuple)
-            return DynamicPPL.Model{typeof($model_gen),
-                                    typeof($args_tuple),
-                                    typeof($missings)}($args_tuple, $missings)
+            return DynamicPPL.Model{typeof($model_gen)}($args_tuple, $missings)
         end
         
-        $(kw_form...)
+        $(modelgen_kw_form...)
         
         function ($model::DynamicPPL.Model{typeof($model_gen)})(
             $vi::DynamicPPL.VarInfo,
@@ -477,6 +475,9 @@ function build_output(model_info)
         end
         
         DynamicPPL.getdefaults(::typeof($model_gen)) = $defaults_nt
+        DynamicPPL.getargtypes(::typeof($model_gen)) = $(Tuple(arg_syms))
+        DynamicPPL.getmodeltype(::typeof($model_gen)) = DynamicPPL.Model{typeof($model_gen)}
+        DynamicPPL.getgenerator(::DynamicPPL.Model{typeof($model_gen)}) = $model_gen
     end
 
     return esc(ex)
