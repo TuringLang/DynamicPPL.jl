@@ -39,7 +39,7 @@ Otherwise, the value of `x[1]` is returned.
 macro preprocess(data_vars, missing_vars, ex)
     ex
 end
-macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
+macro preprocess(model, ex::Union{Symbol, Expr})
     sym = gensym(:sym)
     lhs = gensym(:lhs)
     return esc(quote
@@ -47,10 +47,10 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         $sym = Val($(vsym(ex)))
         # This branch should compile nicely in all cases except for partial missing data
         # For example, when `ex` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inparams($sym, $data_vars) || DynamicPPL.inparams($sym, $missing_vars)
+        if !DynamicPPL.inargnames($sym, $model) || DynamicPPL.inmissings($sym, $model)
             $(varname(ex)), $(vinds(ex))
         else
-            if DynamicPPL.inparams($sym, $data_vars)
+            if DynamicPPL.inargnames($sym, $model)
                 # Evaluate the lhs
                 $lhs = $ex
                 if $lhs === missing
@@ -64,9 +64,7 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         end
     end)
 end
-@generated function inparams(::Val{s}, ::Val{t}) where {s, t}
-    return (s in t) ? :(true) : :(false)
-end
+
 
 #################
 # Main Compiler #
@@ -305,7 +303,6 @@ The `tilde` function generates `observe` expression for data variables and `assu
 expressions for parameter variables, updating `model_info` in the process.
 """
 function generate_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
@@ -321,7 +318,7 @@ function generate_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, Val{DynamicPPL.getmissings($model)}(), $left)
+            $preprocessed = DynamicPPL.@preprocess($model, $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
@@ -353,7 +350,6 @@ end
 This function returns the expression that replaces `left .~ right` in the model body. If `preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block will be run.
 """
 function generate_dot_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
@@ -370,7 +366,7 @@ function generate_dot_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, Val{DynamicPPL.getmissings($model)}(), $left)
+            $preprocessed = DynamicPPL.@preprocess($model, $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $temp_left = $left

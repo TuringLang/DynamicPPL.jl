@@ -44,6 +44,10 @@ Get a tuple of the argument names of the `model`.
 getargnames(model::Model) = getargnames(typeof(model))
 getargnames(::Type{<:Model{_G, argnames} where {_G}}) where {argnames} = argnames
 
+@generated function inargnames(::Val{s}, ::Model{_G, argnames}) where {s, _G, argnames}
+    return s in argnames
+end
+
 
 """
     getmissings(model::Model)
@@ -54,6 +58,10 @@ getmissings(model::Model{_G, _a, missings}) where {missings, _G, _a} = missings
 
 getmissing(model::Model) = getmissings(model)
 @deprecate getmissing(model) getmissings(model)
+
+@generated function inmissings(::Val{s}, ::Model{_G, _a, missings}) where {s, missings, _G, _a}
+    return s in missings
+end
 
 
 """
