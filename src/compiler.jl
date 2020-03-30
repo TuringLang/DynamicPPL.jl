@@ -321,7 +321,7 @@ function generate_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
+            $preprocessed = DynamicPPL.@preprocess($arg_syms, Val{DynamicPPL.getmissings($model)}(), $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
@@ -370,7 +370,7 @@ function generate_dot_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
+            $preprocessed = DynamicPPL.@preprocess($arg_syms, Val{DynamicPPL.getmissings($model)}(), $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $temp_left = $left
@@ -452,19 +452,13 @@ function build_output(model_info)
     end
 
     modelgen_kw_form = isempty(args) ? () : (:($model_gen(;$(args...)) = $model_gen($(arg_syms...))),)
-    missings = gensym(:missings)
-    args_tuple = gensym(:args_tuple)
+    model_type = :(DynamicPPL.Model{typeof($model_gen), $(Tuple(arg_syms))})
     
     ex = quote
-        function $model_gen($(args...))
-            $args_tuple = $args_nt
-            $missings = DynamicPPL.getmissing($args_tuple)
-            return DynamicPPL.Model{typeof($model_gen)}($args_tuple, $missings)
-        end
-        
+        $model_gen($(args...)) = DynamicPPL.Model{typeof($model_gen)}($args_nt)
         $(modelgen_kw_form...)
         
-        function ($model::DynamicPPL.Model{typeof($model_gen)})(
+        function ($model::$model_type)(
             $vi::DynamicPPL.VarInfo,
             $sampler::DynamicPPL.AbstractSampler,
             $ctx::DynamicPPL.AbstractContext,
@@ -474,10 +468,9 @@ function build_output(model_info)
             $main_body
         end
         
-        DynamicPPL.getdefaults(::typeof($model_gen)) = $defaults_nt
-        DynamicPPL.getargnames(::typeof($model_gen)) = $(Tuple(arg_syms))
-        DynamicPPL.getmodeltype(::typeof($model_gen)) = DynamicPPL.Model{typeof($model_gen)}
-        DynamicPPL.getgenerator(::DynamicPPL.Model{typeof($model_gen)}) = $model_gen
+        DynamicPPL.getmodeltype(::typeof($model_gen)) = $model_type
+        DynamicPPL.getgenerator(::Type{<:$model_type}) = $model_gen
+        DynamicPPL.getdefaults(::Type{<:$model_type}) = $defaults_nt
     end
 
     return esc(ex)

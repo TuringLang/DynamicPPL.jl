@@ -62,7 +62,11 @@ export  VarName,
         set_resume!,
 # Model
         Model,
-        getmissing,
+        getmissings,
+        getargnames,
+        getdefaults,
+        getgenerator,
+        getmodeltype,
         runmodel!,
 # Samplers
         Sampler,

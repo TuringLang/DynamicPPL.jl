@@ -1,25 +1,59 @@
 """
-    struct Model{G, Targs<:NamedTuple, Tmissings <: Val}
-        args::Targs
-        missings::Tmissings
+    struct Model{G, argnames, missings, Targs}
+        args::NamedTuple{argnames, Targs}
     end
 
-A `Model` struct with arguments `args`, model generator type `G` and
-missing data `missings`. `missings` is a `Val` instance, e.g. `Val{(:a, :b)}()`. An
-argument in `args` with a value `missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in
-`missings` are treated as random variables rather than observations.
+A `Model` struct with model generator type `G`, arguments names `argnames`, arguments types `Targs`,
+and missing arguments `missings`. `argnames` and `missings` are tuples of symbols, e.g. `(:a,
+:b)`.  An argument with a type of `Missing` will be in `missings` by default.  However, in
+non-traditional use-cases `missings` can be defined differently.  All variables in `missings` are
+treated as random variables rather than observations.
+
+# Example
+
+```julia
+julia> Model{typeof(gdemo)}((x = 1.0, y = 2.0))
+Model{typeof(gdemo),(),(:x, :y),Tuple{Float64,Float64}}((x = 1.0, y = 2.0))
+
+julia> Model{typeof(gdemo), (:y,)}((x = 1.0, y = 2.0))
+Model{typeof(gdemo),(:y,),(:x, :y),Tuple{Float64,Float64}}((x = 1.0, y = 2.0))
+```
 """
-struct Model{G, Targs<:NamedTuple, Tmissings<:Val} <: AbstractModel
-    args::Targs
-    missings::Tmissings
+struct Model{G, argnames, missings, Targs} <: AbstractModel
+    args::NamedTuple{argnames, Targs}
+
+    Model{G, missings}(args::NamedTuple{argnames, Targs}) where {G, argnames, missings, Targs} =
+        new{G, argnames, missings, Targs}(args)
 end
 
-Model{G}(args::Targs, missings::Tmissings) where {G, Targs, Tmissings} =
-    Model{G, Targs, Tmissings}(args, missings)
+@generated function Model{G}(args::NamedTuple{argnames, Targs}) where {G, argnames, Targs}
+    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
+    return :(Model{G, $missings}(args))
+end
+
 
 (model::Model)(vi) = model(vi, SampleFromPrior())
 (model::Model)(vi, spl) = model(vi, spl, DefaultContext())
+
+
+"""
+    getargnames(model::Model)
+
+Get a tuple of the argument names of the `model`.
+"""
+getargnames(model::Model) = getargnames(typeof(model))
+getargnames(::Type{<:Model{_G, argnames} where {_G}}) where {argnames} = argnames
+
+
+"""
+    getmissings(model::Model)
+
+Get a tuple of the names of the missing arguments of the `model`.
+"""
+getmissings(model::Model{_G, _a, missings}) where {missings, _G, _a} = missings
+
+getmissing(model::Model) = getmissings(model)
+@deprecate getmissing(model) getmissings(model)
 
 
 """
@@ -27,36 +61,20 @@ Model{G}(args::Targs, missings::Tmissings) where {G, Targs, Tmissings} =
 
 Get the generator (the function defined by the `@model` macro) of a certain model instance.
 """
-function getgenerator end
+getgenerator(model::Model) = getgenerator(typeof(model))
+
+
+"""
+    getdefaults(model::Model)
+
+Get a named tuple of the default argument values defined for a model defined by a generating function.
+"""
+getdefaults(model::Model) = getdefaults(typeof(model))
+
 
 """
     getmodeltype(::typeof(modelgen))
 
-Get the associated model type for a model generating function.
+Get the associated model type for a model generator (the function defined by the `@model` macro).
 """
-function getmodeltype end
-
-"""
-    getdefaults(::typeof(modelgen))
-
-Get a named tuple of the default argument values defined for a model defined by a generating function.
-"""
-function getdefaults end
-
-"""
-    getargnames(::typeof(modelgen))
-
-Get a tuple of the argument names of the model defined by a generating function.
-"""
-function getargnames end
-
-
-getmissing(model::Model) = model.missings
-@generated function getmissing(args::NamedTuple{names, ttuple}) where {names, ttuple}
-    length(names) == 0 && return :(Val{()}())
-    minds = filter(1:length(names)) do i
-        ttuple.types[i] == Missing
-    end
-    mnames = names[minds]
-    return :(Val{$mnames}())
-end
+getmodeltype(model::Model) = typeof(model)
