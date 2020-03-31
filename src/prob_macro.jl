@@ -170,7 +170,7 @@ end
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        DynamicPPL.Model{G, $((missings...,))}($(to_namedtuple_expr(argnames, argvals)))
+        DynamicPPL.Model{G, $(Tuple(missings))}($(to_namedtuple_expr(argnames, argvals)))
     end
 end
 
@@ -227,7 +227,7 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression; 
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :(DynamicPPL.Model{G, $((missings...,))}($(to_namedtuple_expr(argnames, argvals))))
+    return :(DynamicPPL.Model{G, $(Tuple(missings))}($(to_namedtuple_expr(argnames, argvals))))
 end
 
 _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
