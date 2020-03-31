@@ -61,12 +61,12 @@ export  VarName,
         vectorize,
         set_resume!,
 # Model
+        ModelGen,
         Model,
         getmissings,
         getargnames,
         getdefaults,
         getgenerator,
-        getmodeltype,
         runmodel!,
 # Samplers
         Sampler,
@@ -94,6 +94,11 @@ const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
 
 # Used here and overloaded in Turing
 function getspace end
+
+# Necessary forward declarations
+abstract type AbstractVarInfo end
+abstract type AbstractContext end
+
 
 include("utils.jl")
 include("selector.jl")

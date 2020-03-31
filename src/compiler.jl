@@ -435,14 +435,13 @@ function build_output(model_info)
         end)
     end
 
-    modelgen_kw_form = isempty(args) ? () : (:($model_gen(;$(args...)) = $model_gen($(arg_syms...))),)
-    model_type = :(DynamicPPL.Model{typeof($model_gen), $(Tuple(arg_syms))})
+    @gensym(evaluator, generator)
+    generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
+    model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
     
     ex = quote
-        $model_gen($(args...)) = DynamicPPL.Model{typeof($model_gen)}($args_nt)
-        $(modelgen_kw_form...)
-        
-        function ($model::$model_type)(
+        function $evaluator(
+            $model::Model,
             $vi::DynamicPPL.VarInfo,
             $sampler::DynamicPPL.AbstractSampler,
             $ctx::DynamicPPL.AbstractContext,
@@ -452,9 +451,11 @@ function build_output(model_info)
             $main_body
         end
         
-        DynamicPPL.getmodeltype(::typeof($model_gen)) = $model_type
-        DynamicPPL.getgenerator(::Type{<:$model_type}) = $model_gen
-        DynamicPPL.getdefaults(::Type{<:$model_type}) = $defaults_nt
+
+        $generator($(args...)) = DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
+        $(generator_kw_form...)
+        
+        $model_gen = $model_gen_constructor
     end
 
     return esc(ex)

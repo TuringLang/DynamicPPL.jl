@@ -22,11 +22,11 @@ function get_exprs(str::String)
 end
 
 function logprob(ex1, ex2)
-    ptype, modeltype, vi = probtype(ex1, ex2)
+    ptype, modelgen, vi = probtype(ex1, ex2)
     if ptype isa Val{:prior}
-        return logprior(ex1, ex2, modeltype, vi)
+        return logprior(ex1, ex2, modelgen, vi)
     elseif ptype isa Val{:likelihood}
-        return loglikelihood(ex1, ex2, modeltype, vi)
+        return loglikelihood(ex1, ex2, modelgen, vi)
     end
 end
 
@@ -35,9 +35,9 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         if isdefined(ntr.chain.info, :model)
             model = ntr.chain.info.model
             @assert model isa Model
-            modeltype = getmodeltype(model)
+            modelgen = getgenerator(model)
         elseif isdefined(ntr, :model)
-            modeltype = getmodeltype(ntr.model)
+            modelgen = ntr.model
         else
             throw("The model is not defined. Please make sure the model is either saved in the chain or passed on the RHS of |.")
         end
@@ -52,14 +52,14 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         else
             vi = nothing
         end
-        defaults = getdefaults(modeltype)
+        defaults = getdefaults(modelgen)
         valid_arg(arg) = isdefined(ntl, arg) || isdefined(ntr, arg) || 
             isdefined(defaults, arg) && getfield(defaults, arg) !== missing
-        @assert all(valid_arg, getargnames(modeltype))
-        return Val(:likelihood), modeltype, vi
+        @assert all(valid_arg, getargnames(modelgen))
+        return Val(:likelihood), modelgen, vi
     else
         @assert isdefined(ntr, :model)
-        modeltype = getmodeltype(ntr.model)
+        modelgen = ntr.model
         if isdefined(ntr, :varinfo)
             _vi = ntr.varinfo
             @assert _vi isa VarInfo
@@ -67,15 +67,15 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         else
             vi = nothing
         end
-        return probtype(ntl, ntr, modeltype), modeltype, vi
+        return probtype(ntl, ntr, modelgen), modelgen, vi
     end
 end
 function probtype(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    modeltype::Type{<:Model{_G, argnames}},
-    defaults::NamedTuple{defaultnames}=getdefaults(modeltype)
+    modelgen::ModelGen{_G, argnames, defaultnames}
 ) where {leftnames, rightnames, argnames, defaultnames, _G}
+    defaults = getdefaults(modelgen)
     prior_rhs = all(n -> n in (:model, :varinfo) || 
         n in argnames && getfield(right, n) !== missing, rightnames)
     function get_arg(arg)
@@ -118,9 +118,9 @@ missing_arg_error_msg(arg, ::Nothing) = """Variable $arg is not defined and has 
 function logprior(
     left::NamedTuple,
     right::NamedTuple,
-    modeltype::Type{<:Model{G}},
-    _vi::Union{Nothing, VarInfo},
-) where {G}
+    modelgen::ModelGen,
+    _vi::Union{Nothing, VarInfo}
+)
     # For model args on the LHS of |, use their passed value but add the symbol to 
     # model.missings. This will lead to an `assume`/`dot_assume` call for those variables.
     # Let `p::PriorContext`. If `p.vars` is `nothing`, `assume` and `dot_assume` will use 
@@ -133,7 +133,7 @@ function logprior(
     # All `observe` and `dot_observe` calls are no-op in the PriorContext
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
-    model = make_prior_model(left, right, modeltype)
+    model = make_prior_model(left, right, modelgen)
     vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
@@ -145,9 +145,8 @@ end
 @generated function make_prior_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    modeltype::Type{<:Model{G, argnames}},
-    defaults::NamedTuple{defaultnames}=getdefaults(modeltype)
-) where {leftnames, rightnames, G, argnames, defaultnames}
+    modelgen::ModelGen{_G, argnames, defaultnames}
+) where {leftnames, rightnames, argnames, defaultnames, _G}
     argvals = []
     missings = []
     warnings = []
@@ -159,7 +158,7 @@ end
         elseif argname in rightnames
             push!(argvals, :(right.$argname))
         elseif argname in defaultnames
-            push!(argvals, :(defaults.$argname))
+            push!(argvals, :(getdefaults(modelgen).$argname))
         else
             push!(warnings, :(@warn($(warn_msg(argname)))))
             push!(argvals, :(nothing))
@@ -170,7 +169,7 @@ end
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        DynamicPPL.Model{G, $(Tuple(missings))}($(to_namedtuple_expr(argnames, argvals)))
+        DynamicPPL.Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals)))
     end
 end
 
@@ -179,10 +178,10 @@ warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
 function loglikelihood(
     left::NamedTuple,
     right::NamedTuple,
-    modeltype::Type{<:Model{G}},
+    modelgen::ModelGen,
     _vi::Union{Nothing, VarInfo},
-) where {G}
-    model = make_likelihood_model(left, right, modeltype)
+)
+    model = make_likelihood_model(left, right, modelgen)
     vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
     if isdefined(right, :chain)
         # Element-wise likelihood for each value in chain
@@ -206,9 +205,8 @@ end
 @generated function make_likelihood_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    modeltype::Type{<:Model{G, argnames}},
-    defaults::NamedTuple{defaultnames}=getdefaults(modeltype)
-) where {leftnames, rightnames, G, argnames, defaultnames}
+    modelgen::ModelGen{_G, argnames, defaultnames}
+) where {leftnames, rightnames, argnames, defaultnames, _G}
     argvals = []
     missings = []
     
@@ -219,7 +217,7 @@ end
             push!(argvals, :(right.$argname))
             push!(missings, argname)
         elseif argname in defaultnames
-            push!(argvals, :(defaults.$argname))
+            push!(argvals, :(getdefaults(modelgen).$argname))
         else
             throw("This point should not be reached. Please open an issue in the DynamicPPL.jl repository.")
         end
@@ -227,7 +225,7 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression; 
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :(DynamicPPL.Model{G, $(Tuple(missings))}($(to_namedtuple_expr(argnames, argvals))))
+    return :(DynamicPPL.Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals))))
 end
 
 _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
