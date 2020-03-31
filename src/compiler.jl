@@ -188,18 +188,6 @@ function build_model_info(input_expr)
     return model_info
 end
 
-function to_namedtuple_expr(syms::Vector, vals = syms)
-    if length(syms) == 0
-        nt = :(NamedTuple())
-    else
-        nt_type = Expr(:curly, :NamedTuple, 
-            Expr(:tuple, QuoteNode.(syms)...), 
-            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...)
-        )
-        nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
-    end
-    return nt
-end
 
 """
     replace_vi!(model_info)

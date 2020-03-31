@@ -1,6 +1,20 @@
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################
+function to_namedtuple_expr(syms, vals=syms)
+    if length(syms) == 0
+        nt = :(NamedTuple())
+    else
+        nt_type = Expr(:curly, :NamedTuple, 
+            Expr(:tuple, QuoteNode.(syms)...), 
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...)
+        )
+        nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
+    end
+    return nt
+end
+
+
 if VERSION == v"1.2"
     @eval function namedtuple(::Type{NamedTuple{names, T}}, args::Tuple) where {names, T <: Tuple}
         if length(args) != length(names)

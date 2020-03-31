@@ -133,8 +133,7 @@ function logprior(
     # All `observe` and `dot_observe` calls are no-op in the PriorContext
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
-    args, missings = get_prior_model_args(left, right, modeltype)
-    model = Model{G, missings}(args)
+    model = make_prior_model(left, right, modeltype)
     vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
@@ -143,35 +142,35 @@ function logprior(
     return getlogp(vi)
 end
 
-@generated function get_prior_model_args(
+@generated function make_prior_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    modeltype::Type{<:Model{_G, argnames}},
+    modeltype::Type{<:Model{G, argnames}},
     defaults::NamedTuple{defaultnames}=getdefaults(modeltype)
-) where {leftnames, rightnames, argnames, defaultnames, _G}
-    args = []
+) where {leftnames, rightnames, G, argnames, defaultnames}
+    argvals = []
     missings = []
     warnings = []
     
     for argname in argnames
         if argname in leftnames
-            push!(args, :($argname = deepcopy(left.$argname)))
+            push!(argvals, :(deepcopy(left.$argname)))
             push!(missings, argname)
         elseif argname in rightnames
-            push!(args, :($argname = right.$argname))
+            push!(argvals, :(right.$argname))
         elseif argname in defaultnames
-            push!(args, :($argname = defaults.$argname))
+            push!(argvals, :(defaults.$argname))
         else
             push!(warnings, :(@warn($(warn_msg(argname)))))
-            push!(args, :($argname = nothing))
+            push!(argvals, :(nothing))
         end
     end
 
-    # `args` is spatted as a NamedTuple expression; `missings` is splatted into a tuple and
-    # inserted as literal
+    # `args` is inserted as properly typed NamedTuple expression; 
+    # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        ((;$(args...))), $((missings...,))
+        DynamicPPL.Model{G, $((missings...,))}($(to_namedtuple_expr(argnames, argvals)))
     end
 end
 
@@ -183,9 +182,7 @@ function loglikelihood(
     modeltype::Type{<:Model{G}},
     _vi::Union{Nothing, VarInfo},
 ) where {G}
-    # Pass namesl to model constructor, remaining args are missing
-    args, missings = get_like_model_args(left, right, modeltype)
-    model = Model{G, missings}(args)
+    model = make_likelihood_model(left, right, modeltype)
     vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
     if isdefined(right, :chain)
         # Element-wise likelihood for each value in chain
@@ -206,31 +203,31 @@ function loglikelihood(
     end
 end
 
-@generated function get_like_model_args(
+@generated function make_likelihood_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    modeltype::Type{<:Model{_G, argnames}},
+    modeltype::Type{<:Model{G, argnames}},
     defaults::NamedTuple{defaultnames}=getdefaults(modeltype)
-) where {leftnames, rightnames, argnames, defaultnames, _G}
-    args = []
+) where {leftnames, rightnames, G, argnames, defaultnames}
+    argvals = []
     missings = []
     
     for argname in argnames
         if argname in leftnames
-            push!(args, :($argname = left.$argname))
+            push!(argvals, :(left.$argname))
         elseif argname in rightnames
-            push!(args, :($argname = right.$argname))
+            push!(argvals, :(right.$argname))
             push!(missings, argname)
         elseif argname in defaultnames
-            push!(args, :($argname = defaults.$argname))
+            push!(argvals, :(defaults.$argname))
         else
             throw("This point should not be reached. Please open an issue in the DynamicPPL.jl repository.")
         end
     end
 
-    # `args` is spatted as a NamedTuple expression; `missings` is splatted into a tuple and
-    # inserted as literal
-    return :((;$(args...)), $((missings...,)))
+    # `args` is inserted as properly typed NamedTuple expression; 
+    # `missings` is splatted into a tuple at compile time and inserted as literal
+    return :(DynamicPPL.Model{G, $((missings...,))}($(to_namedtuple_expr(argnames, argvals))))
 end
 
 _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
