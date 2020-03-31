@@ -284,40 +284,40 @@ function replace_sampler!(model_info)
     return model_info
 end
 
-# The next function is defined that way because .~ gives a parsing error in Julia 1.0
 """
-\"""
     replace_tilde!(model_info)
 
-Replaces `~` expressions with observation or assumption expressions, updating `model_info`.
-\"""
+Replace `~` and `.~` expressions with observation or assumption expressions, updating `model_info`.
+"""
 function replace_tilde!(model_info)
-    ex = model_info[:main_body]
-    ex = MacroTools.postwalk(ex) do x 
-        if @capture(x, @M_ L_ ~ R_) && M == Symbol("@__dot__")
-            generate_dot_tilde(L, R, model_info)
-        else
-            x
+    # Apply the `@.` macro first.
+    expr = model_info[:main_body]
+    dottedexpr = MacroTools.postwalk(apply_dotted, expr)
+
+    # Check for tilde operators.
+    tildeexpr = MacroTools.postwalk(dottedexpr) do x
+        # Check dot tilde first.
+        dotargs = getargs_dottilde(x)
+        if dotargs !== nothing
+            L, R = dotargs
+            return generate_dot_tilde(L, R, model_info)
         end
+
+        # Check tilde.
+        args = getargs_tilde(x)
+        if args !== nothing
+            L, R = args
+            return generate_tilde(L, R, model_info)
+        end
+
+        return x
     end
-    $(VERSION >= v"1.1" ? "ex = MacroTools.postwalk(ex) do x
-        if @capture(x, L_ .~ R_)
-            generate_dot_tilde(L, R, model_info)
-        else
-            x
-        end
-    end" : "")
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, L_ ~ R_)
-            generate_tilde(L, R, model_info)
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
+
+    # Update the function body.
+    model_info[:main_body] = tildeexpr
+
     return model_info
 end
-""" |> Meta.parse |> eval
 
 """
     generate_tilde(left, right, model_info)

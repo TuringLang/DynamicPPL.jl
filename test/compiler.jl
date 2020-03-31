@@ -313,14 +313,23 @@ priors = 0 # See "new grammar" test.
         x = randn(100)
         res = sample(vdemo1(x), alg, 250)
 
+        @model vdemo1b(x) = begin
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0, sqrt(s))
+            @. x ~ Normal(m, $(sqrt(s)))
+            return s, m
+        end
+
+        res = sample(vdemo1b(x), alg, 250)
+
         D = 2
         @model vdemo2(x) = begin
             μ ~ MvNormal(zeros(D), ones(D))
-            @. x ~ MvNormal(μ, ones(D))
+            @. x ~ $(MvNormal(μ, ones(D)))
         end
 
         alg = HMC(0.01, 5)
-        res = sample(vdemo2(randn(D,100)), alg, 250)
+        res = sample(vdemo2(randn(D, 100)), alg, 250)
 
         # Vector assumptions
         N = 10

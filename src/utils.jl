@@ -1,3 +1,53 @@
+"""
+    apply_dotted(x)
+
+Apply the transformation of the `@.` macro if `x` is an expression of the form `@. X`.
+"""
+apply_dotted(x) = x
+function apply_dotted(expr::Expr)
+    if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
+        expr.args[1] === Symbol("@__dot__")
+        return Base.Broadcast.__dot__(expr.args[end])
+    end
+    return expr
+end
+
+"""
+    getargs_dottilde(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
+`(~).(L, R)`, or `nothing` otherwise.
+"""
+getargs_dottilde(x) = nothing
+function getargs_dottilde(expr::Expr)
+    # Check if the expression is of the form `L .~ R`.
+    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :.~
+        return expr.args[2], expr.args[3]
+    end
+
+    # Check if the expression is of the form `(~).(L, R)`.
+    if Meta.isexpr(expr, :., 2) && expr.args[1] === :~ &&
+        Meta.isexpr(expr.args[2], :tuple, 2)
+        return expr.args[2].args[1], expr.args[2].args[2]
+    end
+
+    return
+end
+
+"""
+    getargs_tilde(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L ~ R`, or `nothing`
+otherwise.
+"""
+getargs_tilde(x) = nothing
+function getargs_tilde(expr::Expr)
+    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :~
+        return expr.args[2], expr.args[3]
+    end
+    return
+end
+
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################
