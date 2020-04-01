@@ -214,17 +214,15 @@ priors = 0 # See "new grammar" test.
         @test varinfo === _varinfo
     end
     @testset "nested model" begin
-        function nest(α_0, θ_0)
-            @model gdemo(x) = begin
-                λ ~ Gamma(α_0, θ_0)
-                m ~ Normal(0, √(1 / λ))
-                x .~ Normal(m, √(1 / λ))
+        function makemodel(p)
+            @model testmodel(x) = begin
+                x[1] ~ Bernoulli(p)
                 global lp = @logpdf()
+                return x
             end
-
-            return gdemo
+            return testmodel
         end
-        model = nest(2.0, inv(3.0))([1.5, 2.0])
+        model = makemodel(0.5)([1.0])
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test getlogp(varinfo) == lp
