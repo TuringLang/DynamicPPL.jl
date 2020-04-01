@@ -1,25 +1,3 @@
-"""
-    struct ModelGen{Targs, F, Tdefaults} <: Function
-        f::F
-        defaults::Tdefaults
-    end
-
-A `Model` generator. This is the output of the `@model` macro. `Targs` is the tuple 
-of the symbols of the model's arguments. `defaults` is the `NamedTuple` of default values
-of the arguments, if any. Every `ModelGen` is callable with the arguments `Targs`, 
-returning an instance of `Model`.
-"""
-struct ModelGen{Targs, F, Tdefaults} <: Function
-    f::F
-    defaults::Tdefaults
-end
-ModelGen{Targs}(args...) where {Targs} = ModelGen{Targs, typeof.(args)...}(args...)
-(m::ModelGen)(args...; kwargs...) = m.f(args...; kwargs...)
-function Base.getproperty(m::ModelGen{Targs}, f::Symbol) where {Targs}
-    f === :args && return Targs
-    return Base.getfield(m, f)
-end
-
 macro varinfo()
     :(throw(_error_msg()))
 end
@@ -61,7 +39,7 @@ Otherwise, the value of `x[1]` is returned.
 macro preprocess(data_vars, missing_vars, ex)
     ex
 end
-macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
+macro preprocess(model, ex::Union{Symbol, Expr})
     sym = gensym(:sym)
     lhs = gensym(:lhs)
     return esc(quote
@@ -69,10 +47,10 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         $sym = Val($(vsym(ex)))
         # This branch should compile nicely in all cases except for partial missing data
         # For example, when `ex` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inparams($sym, $data_vars) || DynamicPPL.inparams($sym, $missing_vars)
+        if !DynamicPPL.inargnames($sym, $model) || DynamicPPL.inmissings($sym, $model)
             $(varname(ex)), $(vinds(ex))
         else
-            if DynamicPPL.inparams($sym, $data_vars)
+            if DynamicPPL.inargnames($sym, $model)
                 # Evaluate the lhs
                 $lhs = $ex
                 if $lhs === missing
@@ -86,9 +64,7 @@ macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
         end
     end)
 end
-@generated function inparams(::Val{s}, ::Val{t}) where {s, t}
-    return (s in t) ? :(true) : :(false)
-end
+
 
 #################
 # Main Compiler #
@@ -151,7 +127,7 @@ function build_model_info(input_expr)
     else
         nt_type = Expr(:curly, :NamedTuple, 
             Expr(:tuple, QuoteNode.(arg_syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in arg_syms]...)
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
         )
         args_nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
@@ -205,27 +181,13 @@ function build_model_info(input_expr)
             :ctx => gensym(:ctx),
             :vi => gensym(:vi),
             :sampler => gensym(:sampler),
-            :model => gensym(:model),
-            :inner_function => gensym(:inner_function),
-            :defaults => gensym(:defaults)
+            :model => gensym(:model)
         )
     )
 
     return model_info
 end
 
-function to_namedtuple_expr(syms::Vector, vals = syms)
-    if length(syms) == 0
-        nt = :(NamedTuple())
-    else
-        nt_type = Expr(:curly, :NamedTuple, 
-            Expr(:tuple, QuoteNode.(syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in vals]...)
-        )
-        nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
-    end
-    return nt
-end
 
 """
     replace_vi!(model_info)
@@ -319,6 +281,9 @@ function replace_tilde!(model_info)
 end
 """ |> Meta.parse |> eval
 
+# """ Unbreak code highlighting in Emacs julia-mode
+
+
 """
     generate_tilde(left, right, model_info)
 
@@ -326,7 +291,6 @@ The `tilde` function generates `observe` expression for data variables and `assu
 expressions for parameter variables, updating `model_info` in the process.
 """
 function generate_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
@@ -342,7 +306,7 @@ function generate_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
+            $preprocessed = DynamicPPL.@preprocess($model, $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
@@ -374,7 +338,6 @@ end
 This function returns the expression that replaces `left .~ right` in the model body. If `preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block will be run.
 """
 function generate_dot_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
     model = model_info[:main_body_names][:model]
     vi = model_info[:main_body_names][:vi]
     ctx = model_info[:main_body_names][:ctx]
@@ -391,7 +354,7 @@ function generate_dot_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
+            $preprocessed = DynamicPPL.@preprocess($model, $left)
             if $preprocessed isa Tuple
                 $vn, $inds = $preprocessed
                 $temp_left = $left
@@ -437,7 +400,6 @@ function build_output(model_info)
     vi = main_body_names[:vi]
     model = main_body_names[:model]
     sampler = main_body_names[:sampler]
-    inner_function = main_body_names[:inner_function]
 
     # Arguments with default values
     args = model_info[:args]
@@ -452,16 +414,9 @@ function build_output(model_info)
     whereparams = model_info[:whereparams]
     # Model generator name
     model_gen = model_info[:name]
-    # Outer function name
-    outer_function = gensym(model_info[:name])
     # Main body of the model
     main_body = model_info[:main_body]
-    model_gen_constructor = quote
-        DynamicPPL.ModelGen{$(Tuple(arg_syms))}(
-            $outer_function, 
-            $defaults_nt,
-        )
-    end
+    
     unwrap_data_expr = Expr(:block)
     for var in arg_syms
         temp_var = gensym(:temp_var)
@@ -480,40 +435,32 @@ function build_output(model_info)
         end)
     end
 
+    @gensym(evaluator, generator)
+    generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
+    model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
+    
     ex = quote
-        function $outer_function($(args...))
-            function $inner_function(
-                $vi::DynamicPPL.VarInfo,
-                $sampler::DynamicPPL.AbstractSampler,
-                $ctx::DynamicPPL.AbstractContext,
-                $model
-            )
-                $unwrap_data_expr
-                DynamicPPL.resetlogp!($vi)
-                $main_body
-            end
-            return DynamicPPL.Model($inner_function, $args_nt, $model_gen_constructor)
+        function $evaluator(
+            $model::Model,
+            $vi::DynamicPPL.VarInfo,
+            $sampler::DynamicPPL.AbstractSampler,
+            $ctx::DynamicPPL.AbstractContext,
+        )
+            $unwrap_data_expr
+            DynamicPPL.resetlogp!($vi)
+            $main_body
         end
-        $model_gen = $model_gen_constructor
-    end
+        
 
-    if !isempty(args)
-        ex = quote
-            $ex
-            # Allows passing arguments as kwargs
-            $outer_function(;$(args...)) = $outer_function($(arg_syms...))
-        end
+        $generator($(args...)) = DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
+        $(generator_kw_form...)
+        
+        $model_gen = $model_gen_constructor
     end
 
     return esc(ex)
 end
 
-# A hack for NamedTuple type specialization
-# (T = Int,) has type NamedTuple{(:T,), Tuple{DataType}} by default
-# With this function, we can make it NamedTuple{(:T,), Tuple{Type{Int}}}
-# Both are correct, but the latter is what we want for type stability
-get_type(::Type{T}) where {T} = Type{T}
-get_type(t) = typeof(t)
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)

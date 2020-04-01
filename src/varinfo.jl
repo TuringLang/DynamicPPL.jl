@@ -8,7 +8,6 @@ const CACHERANGES = 0b01
 ####
 
 
-abstract type AbstractVarInfo end
 
 ####################
 # VarInfo metadata #
@@ -108,10 +107,9 @@ const TypedVarInfo = VarInfo{<:NamedTuple}
 
 function VarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
-    model(vi, SampleFromPrior(), ctx)
+    runmodel!(model, vi, SampleFromPrior(), ctx)
     return TypedVarInfo(vi)
 end
-(model::Model)() = model(VarInfo(), SampleFromPrior())
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)
@@ -485,26 +483,6 @@ end
 
 
 # VarInfo
-
-"""
-    runmodel!(model::Model, vi::AbstractVarInfo, spl::AbstractSampler, ctx::AbstractContext)
-
-Sample from `model` using the sampler `spl` storing the sample and log joint
-probability in `vi`.
-"""
-function runmodel!(
-    model::Model,
-    vi::AbstractVarInfo,
-    spl::AbstractSampler = SampleFromPrior(),
-    ctx::AbstractContext = DefaultContext()
-)
-    setlogp!(vi, 0)
-    if has_eval_num(spl)
-        spl.state.eval_num += 1
-    end
-    model(vi, spl, ctx)
-    return vi
-end
 
 VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Real}(0.0), Ref(0))
 
