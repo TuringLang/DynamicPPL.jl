@@ -1,7 +1,7 @@
 using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
-    SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
+    SampleFromPrior, Sampler, runmodel!, SampleFromUniform,
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
@@ -343,7 +343,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
     end
     @testset "varname" begin
         vn1 = @varname x[1]
-        @test vn1 == VarName{:x}("[1]")
+        @test vn1 == VarName(:x, ((1,),))
 
         # Symbol
         v_sym = string(:x)
@@ -351,17 +351,17 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         # Array
         v_arr = @varname x[i]
-        @test v_arr.indexing == "[1]"
+        @test v_arr.indexing == ((1,),)
 
         # Matrix
         v_mat = @varname x[i,j]
-        @test v_mat.indexing == "[1,2]"
+        @test v_mat.indexing == ((1, 2),)
 
         v_mat = @varname x[i,j,k]
-        @test v_mat.indexing == "[1,2,3]"
+        @test v_mat.indexing == ((1,2,3),)
 
         v_mat = @varname x[1,2][1+5][45][3][i]
-        @test v_mat.indexing == "[1,2][6][45][3][1]"
+        @test v_mat.indexing == ((1,2), (6,), (45,), (3,), (1,))
 
         @model mat_name_test() = begin
             p = Array{Any}(undef, 2, 2)
@@ -375,7 +375,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         # Multi array
         v_arrarr = @varname x[i][j]
-        @test v_arrarr.indexing == "[1][2]"
+        @test v_arrarr.indexing == ((1,), (2,))
 
         @model marr_name_test() = begin
             p = Array{Array{Any}}(undef, 2)
