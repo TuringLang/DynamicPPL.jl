@@ -1,5 +1,3 @@
-abstract type AbstractContext end
-
 """
     struct DefaultContext <: AbstractContext end
 
