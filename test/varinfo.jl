@@ -61,7 +61,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         vn2 = @varname x[1][2]
         @test vn2 == vn1
         @test hash(vn2) == hash(vn1)
-        @test in(vn1, (:x,))
+        @test inspace(vn1, (:x,))
 
         function test_base!(vi)
             empty!(vi)
@@ -104,12 +104,12 @@ include(dir*"/test/test_utils/AllUtils.jl")
                 vn5 = @varname z[2]
                 vn6 = @varname z
 
-                @test in(vn1, space)
-                @test in(vn2, space)
-                @test in(vn3, space)
-                @test in(vn4, space)
-                @test ~in(vn5, space)
-                @test ~in(vn6, space)
+                @test inspace(vn1, space)
+                @test inspace(vn2, space)
+                @test inspace(vn3, space)
+                @test inspace(vn4, space)
+                @test ~inspace(vn5, space)
+                @test ~inspace(vn6, space)
             end
             test_in()
         end

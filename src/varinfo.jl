@@ -413,7 +413,7 @@ end
     # Get all the idcs of the vns in `space` and that belong to the selector `s`
     return filter((i) ->
         (s in f_meta.gids[i] || isempty(f_meta.gids[i])) &&
-        (isempty(space) || in(f_meta.vns[i], space)), 1:length(f_meta.gids))
+        (isempty(space) || inspace(f_meta.vns[i], space)), 1:length(f_meta.gids))
 end
 @inline function findinds(f_meta)
     # Get all the idcs of the vns

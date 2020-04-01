@@ -77,43 +77,60 @@ Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
 
 Check whether `vn`'s variable symbol is in `space`.
 """
-inspace(::Union{VarName, Symbol, Expr}, ::Tuple{}) = true
-inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple) = any(_ismatch(vn, s) for s in space)
+inspace(::VarName, ::Tuple{}) = true
+inspace(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
+inspace(vn, space::Tuple) = vn in space
 
-_ismatch(vn, s) = (_name(vn) == _name(s)) && _isprefix(_indexing(s), _indexing(vn))
-
-_isprefix(::Tuple{}, ::Tuple{}) = true
-_isprefix(::Tuple{}, ::Tuple) = true
-_isprefix(::Tuple, ::Tuple{}) = false
-_isprefix(t::Tuple, u::Tuple) = _subsumes(first(t), first(u)) && _isprefix(Base.tail(t), Base.tail(u))
-
-const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
-"""Determine whether `i` is a valid if `j` is."""
-_subsumes(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
-_subsumes(i::Union{ConcreteIndex, Colon}, j::Colon) = true
-_subsumes(i::Colon, j::ConcreteIndex) = false
-
-_name(vn::Symbol) = vn
-_name(vn::VarName) = getsym(vn)
-function _name(vn::Expr)
-    if Meta.isexpr(vn, :ref)
-        _name(vn.args[1])
-    else
-        throw("VarName: Mis-formed variable name $(vn)!")
-    end
+_in(::String, ::Tuple{}) = false
+_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
+function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
+    # Collect expressions from space
+    expr = first(space)
+    # Filter `(` and `)` out and get a string representation of `exprs`
+    expr_str = replace(string(expr), r"\(|\)" => "")
+    # Check if `vn_str` is in `expr_strs`
+    valid = occursin(expr_str, vn_str)
+    return valid || _in(vn_str, Base.tail(space))
 end
 
-_indexing(vn::Symbol) = ()
-_indexing(vn::VarName) = getindexing(vn)
-function _indexing(vn::Expr)
-    if Meta.isexpr(vn, :ref)
-        init = _indexing(vn.args[1])
-        last = Tuple(vn.args[2:end])
-        return (init..., last)
-    else
-        throw("VarName: Mis-formed variable name $(vn)!")
-    end
-end
+
+# inspace(::Union{VarName, Symbol, Expr}, ::Tuple{}) = true
+# inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple) = any(_ismatch(vn, s) for s in space)
+
+# _ismatch(vn, s) = (_name(vn) == _name(s)) && _isprefix(_indexing(s), _indexing(vn))
+
+# _isprefix(::Tuple{}, ::Tuple{}) = true
+# _isprefix(::Tuple{}, ::Tuple) = true
+# _isprefix(::Tuple, ::Tuple{}) = false
+# _isprefix(t::Tuple, u::Tuple) = _subsumes(first(t), first(u)) && _isprefix(Base.tail(t), Base.tail(u))
+
+# const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
+# """Determine whether `i` is a valid if `j` is."""
+# _subsumes(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
+# _subsumes(i::Union{ConcreteIndex, Colon}, j::Colon) = true
+# _subsumes(i::Colon, j::ConcreteIndex) = false
+
+# _name(vn::Symbol) = vn
+# _name(vn::VarName) = getsym(vn)
+# function _name(vn::Expr)
+#     if Meta.isexpr(vn, :ref)
+#         _name(vn.args[1])
+#     else
+#         throw("VarName: Mis-formed variable name $(vn)!")
+#     end
+# end
+
+# _indexing(vn::Symbol) = ()
+# _indexing(vn::VarName) = getindexing(vn)
+# function _indexing(vn::Expr)
+#     if Meta.isexpr(vn, :ref)
+#         init = _indexing(vn.args[1])
+#         last = Tuple(vn.args[2:end])
+#         return (init..., last)
+#     else
+#         throw("VarName: Mis-formed variable name $(vn)!")
+#     end
+# end
 
 
 """
