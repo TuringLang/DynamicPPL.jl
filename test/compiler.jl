@@ -1,5 +1,5 @@
 using .Turing, Random, MacroTools, Distributions, Test
-using DynamicPPL: DynamicPPL, @vsym, @vinds, @varname, VarInfo, VarName
+using DynamicPPL: DynamicPPL, vsym, vinds, @varname, VarInfo, VarName
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
@@ -498,33 +498,29 @@ priors = 0 # See "new grammar" test.
     end
     @testset "var name splitting" begin
         var_expr = :(x)
-        sym, inds = @eval @vsym($var_expr), @vinds($var_expr)
-        @test sym == :x
-        @test inds == ()
+        sym, inds = vsym(var_expr), vinds(var_expr)
+        @test sym == :(:x)
+        @test inds == :(())
 
         var_expr = :(x[1,1][2,3])
-        sym, inds = @eval @vsym($var_expr), @vinds($var_expr)
-        @test sym == :x
-        @test inds[1] == (1, 1)
-        @test inds[2] == (2, 3)
+        sym, inds = vsym(var_expr), vinds(var_expr)
+        @test sym == :(:x)
+        @test inds == :(((1, 1), (2, 3)))
 
-        var_expr = :(x[Colon(),1][2,Colon()])
-        sym, inds = @eval @vsym($var_expr), @vinds($var_expr)
-        @test sym == :x
-        @test inds[1] == (Colon(), 1)
-        @test inds[2] == (2, Colon())
+        var_expr = :(x[:,1][2,:])
+        sym, inds = vsym(var_expr), vinds(var_expr)
+        @test sym == :(:x)
+        @test inds == :(((:, 1), (2, :)))
 
         var_expr = :(x[2:3,1][2,1:2])
-        sym, inds = @eval @vsym($var_expr), @vinds($var_expr)
-        @test sym == :x
-        @test inds[1] == (2:3, 1)
-        @test inds[2] == (2, 1:2)
+        sym, inds = vsym(var_expr), vinds(var_expr)
+        @test sym == :(:x)
+        @test inds == :(((2:3, 1), (2, 1:2)))
 
         var_expr = :(x[2:3,2:3][[1,2],[1,2]])
-        sym, inds = @eval @vsym($var_expr), @vinds($var_expr)
-        @test sym == :x
-        @test inds[1] == (2:3, 2:3)
-        @test inds[2] == ([1, 2], [1, 2])
+        sym, inds = vsym(var_expr), vinds(var_expr)
+        @test sym == :(:x)
+        @test inds == :(((2:3, 2:3), ([1, 2], [1, 2])))
     end
     @testset "user-defined variable name" begin
         @model f1() = begin
