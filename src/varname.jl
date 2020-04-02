@@ -58,7 +58,7 @@ function Base.show(io::IO, vn::VarName)
     print(io, getsym(vn))
     for indices in getindexing(vn)
         print(io, "[")
-        join(io, indices, ", ")
+        join(io, indices, ",")
         print(io, "]")
     end
 end
