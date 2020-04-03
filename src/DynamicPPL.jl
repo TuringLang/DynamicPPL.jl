@@ -44,6 +44,7 @@ export  AbstractVarInfo,
 #VarName
         VarName,
         inspace,
+        subsumes,
 # Compiler
         ModelGen,
         @model,

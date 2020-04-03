@@ -73,64 +73,59 @@ Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
 
 
 """
-    inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple)
+    inspace(vn::Union{VarName, Symbol}, space::Tuple)
 
 Check whether `vn`'s variable symbol is in `space`.
 """
-inspace(::VarName, ::Tuple{}) = true
-inspace(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
+inspace(vn, space::Tuple{}) = true # empty space is treated as universal set
 inspace(vn, space::Tuple) = vn in space
+inspace(vn::VarName, space::Tuple{}) = true
+inspace(vn::VarName, space::Tuple) = any(_in(vn, s) for s in space)
 
-_in(::String, ::Tuple{}) = false
-_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
-function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
-    # Collect expressions from space
-    expr = first(space)
-    # Filter `(` and `)` out and get a string representation of `exprs`
-    expr_str = replace(string(expr), r"\(|\)" => "")
-    # Check if `vn_str` is in `expr_strs`
-    valid = occursin(expr_str, vn_str)
-    return valid || _in(vn_str, Base.tail(space))
+_in(vn::VarName, s::Symbol) = getsym(vn) == s
+_in(vn::VarName, s::VarName) = subsumes(s, vn)
+
+
+"""
+    subsumes(u::VarName, v::VarName)
+
+Check whether the variable name `v` describes a sub-range of the variable `u`.  Supported
+indexing:
+
+- Scalar: `x` subsumes `x[1, 2]`, `x[1, 2]` subsumes `x[1, 2][3]`, etc.
+- Array of scalar: `x[[1, 2], 3]` subsumes `x[1, 3]`, `x[1:3]` subsumes `x[2][1]`, etc.
+  (basically everything that fulfills `issubset`).
+- Slices: `x[2, :]` subsumes `x[2, 10][1]`, etc.
+
+Currently _not_ supported are: 
+
+- Boolean indexing, literal `CartesianIndex` (these could be added, though)
+- Linear indexing of multidimensional arrays: `x[4]` does not subsume `x[2, 2]` for `x` a matrix
+- Trailing ones: `x[2, 1]` does not subsume `x[2]` for `x` a vector
+"""
+function subsumes(u::VarName, v::VarName)
+    return getsym(u) == getsym(v) && subsumes(u.indexing, v.indexing)
 end
 
+subsumes(::Tuple{}, ::Tuple{}) = true  # x subsumes x
+subsumes(::Tuple{}, ::Tuple) = true    # x subsumes x[1]
+subsumes(::Tuple, ::Tuple{}) = false   # x[1] does not subsume x
+function subsumes(t::Tuple, u::Tuple)  # does x[i]... subsume x[j]...?
+    return _issubindex(first(t), first(u)) && subsumes(Base.tail(t), Base.tail(u))
+end
 
-# inspace(::Union{VarName, Symbol, Expr}, ::Tuple{}) = true
-# inspace(vn::Union{VarName, Symbol, Expr}, space::Tuple) = any(_ismatch(vn, s) for s in space)
+const AnyIndex = Union{Int, AbstractVector{Int}, Colon} 
+_issubindex_(::Tuple{Vararg{AnyIndex}}, ::Tuple{Vararg{AnyIndex}}) = false
+function _issubindex(t::NTuple{N, AnyIndex}, u::NTuple{N, AnyIndex}) where {N}
+    return all(_issubrange(j, i) for (i, j) in zip(t, u))
+end
 
-# _ismatch(vn, s) = (_name(vn) == _name(s)) && _isprefix(_indexing(s), _indexing(vn))
+const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
+"""Determine whether indices `i` are contained in `j`, treating `:` as universal set."""
+_issubrange(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
+_issubrange(i::Union{ConcreteIndex, Colon}, j::Colon) = true
+_issubrange(i::Colon, j::ConcreteIndex) = true
 
-# _isprefix(::Tuple{}, ::Tuple{}) = true
-# _isprefix(::Tuple{}, ::Tuple) = true
-# _isprefix(::Tuple, ::Tuple{}) = false
-# _isprefix(t::Tuple, u::Tuple) = _subsumes(first(t), first(u)) && _isprefix(Base.tail(t), Base.tail(u))
-
-# const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
-# """Determine whether `i` is a valid if `j` is."""
-# _subsumes(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
-# _subsumes(i::Union{ConcreteIndex, Colon}, j::Colon) = true
-# _subsumes(i::Colon, j::ConcreteIndex) = false
-
-# _name(vn::Symbol) = vn
-# _name(vn::VarName) = getsym(vn)
-# function _name(vn::Expr)
-#     if Meta.isexpr(vn, :ref)
-#         _name(vn.args[1])
-#     else
-#         throw("VarName: Mis-formed variable name $(vn)!")
-#     end
-# end
-
-# _indexing(vn::Symbol) = ()
-# _indexing(vn::VarName) = getindexing(vn)
-# function _indexing(vn::Expr)
-#     if Meta.isexpr(vn, :ref)
-#         init = _indexing(vn.args[1])
-#         last = Tuple(vn.args[2:end])
-#         return (init..., last)
-#     else
-#         throw("VarName: Mis-formed variable name $(vn)!")
-#     end
-# end
 
 
 """

@@ -95,23 +95,22 @@ include(dir*"/test/test_utils/AllUtils.jl")
             @test isempty(vi)
             push!(vi, vn, r, dist, gid)
 
-            function test_in()
-                space = (:x, :y, :(z[1]))
-                vn1 = @varname x
-                vn2 = @varname y
-                vn3 = @varname x[1]
-                vn4 = @varname z[1][1]
-                vn5 = @varname z[2]
-                vn6 = @varname z
+            function test_inspace()
+                space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
 
-                @test inspace(vn1, space)
-                @test inspace(vn2, space)
-                @test inspace(vn3, space)
-                @test inspace(vn4, space)
-                @test ~inspace(vn5, space)
-                @test ~inspace(vn6, space)
+                @test inspace(@varname(x), space)
+                @test inspace(@varname(y), space)
+                @test inspace(@varname(x[1]), space)
+                @test inspace(@varname(z[1][1]), space)
+                @test inspace(@varname(z[1][:]), space)
+                @test inspace(@varname(z[1][2:3:10]), space)
+                @test inspace(@varname(M[[2,3], 1]), space)
+                @test inspace(@varname(M[:, 1:4]), space)
+                @test inspace(@varname(M[1, [2, 4, 6]]), space)
+                @test !inspace(@varname(z[2]), space)
+                @test !inspace(@varname(z), space)
             end
-            test_in()
+            test_inspace()
         end
         vi = VarInfo()
         test_base!(vi)
