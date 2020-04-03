@@ -16,11 +16,10 @@ struct NamedDist{
 } <: Distribution{variate, support}
     dist::Td
     name::VarName{name}
-
-    NamedDist(dist::Distribution{variate, support}, vn::VarName{name}) where {variate, support, name} =
-        new{variate, support, typeof(dist), name}(dist, vn)
 end
 
+NamedDist(dist::Distribution{variate, support}, vn::VarName{name}) where {variate, support, name} =
+    NamedDist{variate, support, typeof(dist), name}(dist, vn)
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
 
 
