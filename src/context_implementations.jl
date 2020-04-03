@@ -85,7 +85,7 @@ end
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
 This method is applied in the generated code for observed variables, e.g., `x ~ Normal()` where
-`x` does occur the model inputs.
+`x` does occur in the model inputs.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
