@@ -134,3 +134,12 @@ function split_var_str(var_str, inds_as = Vector)
     end
     return sym, inds
 end
+
+
+@generated function inargnames(::VarName{s}, ::Model{_F, argnames}) where {s, argnames, _F}
+    return s in argnames
+end
+
+@generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
+    return s in missings
+end
