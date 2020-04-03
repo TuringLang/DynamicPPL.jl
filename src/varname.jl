@@ -23,15 +23,15 @@ struct VarName{sym, T<:Tuple}
     indexing::T
 end
 
-VarName(sym::Symbol, indexing::T = ()) where {T} = VarName{sym, T}(indexing)
+VarName(sym::Symbol, indexing::Tuple = ()) = VarName{sym, typeof(indexing)}(indexing)
 
 """
     VarName(vn::VarName, indexing)
 
 Return a copy of `vn` with a new index `indexing`.
 """
-function VarName(vn::VarName{sym}, indexing::T = ()) where {sym, T}
-    return VarName{sym, T}(indexing)
+function VarName(vn::VarName, indexing::Tuple = ())
+    return VarName{getsym(vn), typeof(indexing)}(indexing)
 end
 
 
@@ -52,7 +52,7 @@ getindexing(vn::VarName) = vn.indexing
 
 
 Base.hash(vn::VarName, h::UInt) = hash((getsym(vn), getindexing(vn)), h)
-Base.:(==)(x::VarName{S}, y::VarName{T}) where {S, T} = S == T && getindexing(x) == getindexing(y)
+Base.:(==)(x::VarName, y::VarName) = getsym(x) == getsym(y) && getindexing(x) == getindexing(y)
 
 function Base.show(io::IO, vn::VarName)
     print(io, getsym(vn))
