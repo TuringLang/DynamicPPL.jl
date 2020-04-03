@@ -498,29 +498,24 @@ priors = 0 # See "new grammar" test.
     end
     @testset "var name splitting" begin
         var_expr = :(x)
-        sym, inds = vsym(var_expr), vinds(var_expr)
-        @test sym == :(:x)
-        @test inds == :(())
+        @test vsym(var_expr) == :(:x)
+        @test vinds(var_expr) == :(())
 
         var_expr = :(x[1,1][2,3])
-        sym, inds = vsym(var_expr), vinds(var_expr)
-        @test sym == :(:x)
-        @test inds == :(((1, 1), (2, 3)))
+        @test vsym(var_expr) == :(:x)
+        @test vinds(var_expr) == :(((1, 1), (2, 3)))
 
         var_expr = :(x[:,1][2,:])
-        sym, inds = vsym(var_expr), vinds(var_expr)
-        @test sym == :(:x)
-        @test inds == :(((:, 1), (2, :)))
+        @test vsym(var_expr) == :(:x)
+        @test vinds(var_expr) == :(((:, 1), (2, :)))
 
         var_expr = :(x[2:3,1][2,1:2])
-        sym, inds = vsym(var_expr), vinds(var_expr)
-        @test sym == :(:x)
-        @test inds == :(((2:3, 1), (2, 1:2)))
+        @test vsym(var_expr) == :(:x)
+        @test vinds(var_expr) == :(((2:3, 1), (2, 1:2)))
 
         var_expr = :(x[2:3,2:3][[1,2],[1,2]])
-        sym, inds = vsym(var_expr), vinds(var_expr)
-        @test sym == :(:x)
-        @test inds == :(((2:3, 2:3), ([1, 2], [1, 2])))
+        @test vsym(var_expr) == :(:x)
+        @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
     end
     @testset "user-defined variable name" begin
         @model f1() = begin
@@ -529,8 +524,8 @@ priors = 0 # See "new grammar" test.
         @model f2() = begin
             x ~ NamedDist(Normal(), @varname(y[2][:,1]))
         end
-        @model f3() = begin 
-            x ~ NamedDist(Normal(), @varname(y[1])) 
+        @model f3() = begin
+            x ~ NamedDist(Normal(), @varname(y[1]))
         end
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
