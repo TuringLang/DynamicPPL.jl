@@ -27,43 +27,43 @@ function wrong_dist_errormsg(l)
 end
 
 """
-    @isassumption(data_vars, missing_vars, ex)
+    @isassumption(model, expr)
 
-Let `ex` be `x[1]`. This macro returns `true` in any of the following cases:
+Let `expr` be `x[1]`. `vn` is an assumption in the following cases:
     1. `x` was not among the input data to the model,
     2. `x` was among the input data to the model but with a value `missing`, or
     3. `x` was among the input data to the model with a value other than missing, 
        but `x[1] === missing`.
-When `ex` is not a variable (e.g., a literal), the function returns `false` as well.
+When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-macro isassumption(data_vars, missing_vars, ex)
-    :false
-end
-macro isassumption(model, ex::Union{Symbol, Expr})
-    sym = gensym(:sym)
-    lhs = gensym(:lhs)
-    return esc(quote
-        # Extract symbol
-        $sym = Val($(vsym(ex)))
+macro isassumption(model, expr::Union{Symbol, Expr})
+    # Note: never put a return in this... don't forget it's a macro!
+    vn = gensym(:vn)
+    
+    return quote
+        $vn = @varname($expr)
+        
         # This branch should compile nicely in all cases except for partial missing data
-        # For example, when `ex` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inargnames($sym, $model) || DynamicPPL.inmissings($sym, $model)
+        # For example, when `expr` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
+        if !DynamicPPL.inargnames($vn, $model) || DynamicPPL.inmissings($vn, $model)
             true
         else
-            if DynamicPPL.inargnames($sym, $model)
+            if DynamicPPL.inargnames($vn, $model)
                 # Evaluate the lhs
-                $lhs = $ex
-                if $lhs === missing
-                    true
-                else
-                    false
-                end
+                $expr === missing
             else
                 throw("This point should not be reached. Please report this error.")
             end
         end
-    end)
+    end |> esc
 end
+
+macro isassumption(model, expr)
+    # failsafe: a literal is never an assumption
+    false
+end
+
+
 
 #################
 # Main Compiler #
@@ -301,7 +301,7 @@ function generate_tilde(left, right, model_info)
     inds = gensym(:inds)
     isassumption = gensym(:isassumption)
     assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-
+    
     if left isa Symbol || left isa Expr
         ex = quote
             $temp_right = $right
