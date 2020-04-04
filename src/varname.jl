@@ -35,7 +35,7 @@ end
 function varname(expr)
     ex = deepcopy(expr)
     (ex isa Symbol) && return quote
-        DynamicPPL.VarName{$(QuoteNode(ex))}("")
+        $DynamicPPL.VarName{$(QuoteNode(ex))}("")
     end
     (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
     inds = :(())
@@ -46,7 +46,7 @@ function varname(expr)
         end
         ex = ex.args[1]
         isa(ex, Symbol) && return quote
-            DynamicPPL.VarName{$(QuoteNode(ex))}(foldl(*, $inds, init = ""))
+            $DynamicPPL.VarName{$(QuoteNode(ex))}(foldl(*, $inds, init = ""))
         end
     end
     throw("VarName: Mis-formed variable name $(expr)!")

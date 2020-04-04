@@ -45,10 +45,10 @@ macro isassumption(model, expr::Union{Symbol, Expr})
         
         # This branch should compile nicely in all cases except for partial missing data
         # For example, when `expr` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inargnames($vn, $model) || DynamicPPL.inmissings($vn, $model)
+        if !$DynamicPPL.inargnames($vn, $model) || $DynamicPPL.inmissings($vn, $model)
             true
         else
-            if DynamicPPL.inargnames($vn, $model)
+            if $DynamicPPL.inargnames($vn, $model)
                 # Evaluate the lhs
                 $expr === missing
             else
@@ -128,7 +128,7 @@ function build_model_info(input_expr)
             Expr(:tuple, QuoteNode.(arg_syms)...), 
             Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
         )
-        args_nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
+        args_nt = Expr(:call, :($DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
     args = map(modeldef[:args]) do arg
         if (arg isa Symbol)
@@ -300,23 +300,23 @@ function generate_tilde(left, right, model_info)
     vn = gensym(:vn)
     inds = gensym(:inds)
     isassumption = gensym(:isassumption)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-    
+    assert_ex = :($DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
+
     if left isa Symbol || left isa Expr
         ex = quote
             $temp_right = $right
             $assert_ex
-            
+
             $vn, $inds = $(varname(left)), $(vinds(left))
-            $isassumption = DynamicPPL.@isassumption($model, $left)
-            if $isassumption 
-                $out = DynamicPPL.tilde_assume($ctx, $sampler, $temp_right, $vn, $inds, $vi)
+            $isassumption = $DynamicPPL.@isassumption($model, $left)
+            if $isassumption
+                $out = $DynamicPPL.tilde_assume($ctx, $sampler, $temp_right, $vn, $inds, $vi)
                 $left = $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
+                $DynamicPPL.acclogp!($vi, $out[2])
             else
-                DynamicPPL.acclogp!(
+                $DynamicPPL.acclogp!(
                     $vi,
-                    DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
+                    $DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
                 )
             end
         end
@@ -325,10 +325,10 @@ function generate_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            
-            DynamicPPL.acclogp!(
+
+            $DynamicPPL.acclogp!(
                 $vi,
-                DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
+                $DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
             )
         end
     end
@@ -353,24 +353,24 @@ function generate_dot_tilde(left, right, model_info)
     lp = gensym(:lp)
     vn = gensym(:vn)
     inds = gensym(:inds)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-    
+    assert_ex = :($DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
+
     if left isa Symbol || left isa Expr
         ex = quote
             $temp_right = $right
             $assert_ex
 
             $vn, $inds = $(varname(left)), $(vinds(left))
-            $isassumption = DynamicPPL.@isassumption($model, $left)
-            
+            $isassumption = $DynamicPPL.@isassumption($model, $left)
+
             if $isassumption
-                $out = DynamicPPL.dot_tilde_assume($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi)
+                $out = $DynamicPPL.dot_tilde_assume($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi)
                 $left .= $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
+                $DynamicPPL.acclogp!($vi, $out[2])
             else
-                DynamicPPL.acclogp!(
+                $DynamicPPL.acclogp!(
                     $vi,
-                    DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
+                    $DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
                 )
             end
         end
@@ -379,10 +379,10 @@ function generate_dot_tilde(left, right, model_info)
         ex = quote
             $temp_right = $right
             $assert_ex
-            
-            DynamicPPL.acclogp!(
+
+            $DynamicPPL.acclogp!(
                 $vi,
-                DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
+                $DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
             )
         end
     end
@@ -431,10 +431,10 @@ function build_output(model_info)
             local $var
             $temp_var = $model.args.$var
             $varT = typeof($temp_var)
-            if $temp_var isa DynamicPPL.FloatOrArrayType
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $temp_var)
-            elseif DynamicPPL.hasmissing($varT)
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $varT)($temp_var)
+            if $temp_var isa $DynamicPPL.FloatOrArrayType
+                $var = $DynamicPPL.get_matching_type($sampler, $vi, $temp_var)
+            elseif $DynamicPPL.hasmissing($varT)
+                $var = $DynamicPPL.get_matching_type($sampler, $vi, $varT)($temp_var)
             else
                 $var = $temp_var
             end
@@ -443,21 +443,21 @@ function build_output(model_info)
 
     @gensym(evaluator, generator)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
-    model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
+    model_gen_constructor = :($DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
 
     ex = quote
         function $evaluator(
-            $model::DynamicPPL.Model,
-            $vi::DynamicPPL.VarInfo,
-            $sampler::DynamicPPL.AbstractSampler,
-            $ctx::DynamicPPL.AbstractContext,
+            $model::$DynamicPPL.Model,
+            $vi::$DynamicPPL.VarInfo,
+            $sampler::$DynamicPPL.AbstractSampler,
+            $ctx::$DynamicPPL.AbstractContext,
         )
             $unwrap_data_expr
-            DynamicPPL.resetlogp!($vi)
+            $DynamicPPL.resetlogp!($vi)
             $main_body
         end
 
-        $generator($(args...)) = DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
+        $generator($(args...)) = $DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
         $(generator_kw_form...)
 
         $model_gen = $model_gen_constructor

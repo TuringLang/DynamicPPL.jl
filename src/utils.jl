@@ -59,7 +59,7 @@ function to_namedtuple_expr(syms, vals=syms)
             Expr(:tuple, QuoteNode.(syms)...), 
             Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...)
         )
-        nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
+        nt = Expr(:call, :($DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
     end
     return nt
 end
