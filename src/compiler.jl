@@ -444,10 +444,10 @@ function build_output(model_info)
     @gensym(evaluator, generator)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
     model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
-    
+
     ex = quote
         function $evaluator(
-            $model::Model,
+            $model::DynamicPPL.Model,
             $vi::DynamicPPL.VarInfo,
             $sampler::DynamicPPL.AbstractSampler,
             $ctx::DynamicPPL.AbstractContext,
@@ -456,11 +456,10 @@ function build_output(model_info)
             DynamicPPL.resetlogp!($vi)
             $main_body
         end
-        
 
         $generator($(args...)) = DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
         $(generator_kw_form...)
-        
+
         $model_gen = $model_gen_constructor
     end
 
