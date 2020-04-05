@@ -18,8 +18,6 @@ struct NamedDist{
     name::VarName{name}
 end
 
-NamedDist(dist::Distribution{variate, support}, vn::VarName{name}) where {variate, support, name} =
-    NamedDist{variate, support, typeof(dist), name}(dist, vn)
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
 
 
