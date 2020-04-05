@@ -4,6 +4,7 @@ using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
 using MacroTools
+import ZygoteRules
 
 import Base: string,
              Symbol,
@@ -111,5 +112,6 @@ include("varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
+include("ad.jl")
 
 end # module
