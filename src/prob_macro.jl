@@ -1,10 +1,10 @@
 macro logprob_str(str)
     expr1, expr2 = get_exprs(str)
-    return :($DynamicPPL.logprob($expr1, $expr2)) |> esc
+    return :(logprob($(esc(expr1)), $(esc(expr2))))
 end
 macro prob_str(str)
     expr1, expr2 = get_exprs(str)
-    return :(exp.($DynamicPPL.logprob($expr1, $expr2))) |> esc
+    return :(exp.(logprob($(esc(expr1)), $(esc(expr2)))))
 end
 
 function get_exprs(str::String)
@@ -169,7 +169,7 @@ end
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        $DynamicPPL.Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals)))
+        Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals)))
     end
 end
 
@@ -225,7 +225,7 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression; 
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :($DynamicPPL.Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals))))
+    return :(Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals))))
 end
 
 _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
