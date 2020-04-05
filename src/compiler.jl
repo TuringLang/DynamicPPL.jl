@@ -86,9 +86,29 @@ end
 
 To generate a `Model`, call `model_generator(x_value)`.
 """
-macro model(input_expr)
-    build_model_info(input_expr) |> replace_tilde! |> replace_vi! |> 
-        replace_logpdf! |> replace_sampler! |> build_output
+macro model(expr)
+    esc(model(expr))
+end
+
+function model(expr)
+    model_info = build_model_info(expr)
+
+    # Replace macros in the function body.
+    vi = gensym(:vi)
+    sampler = gensym(:sampler)
+    ex = replacemacro(model_info[:main_body],
+                      Symbol("@varinfo") => vi,
+                      Symbol("@logpdf") => :($(DynamicPPL.getlogp)($vi)),
+                      Symbol("@sampler") => sampler)
+
+    # Replace tildes in the function body.
+    model = gensym(:model)
+    context = gensym(:ctx)
+    mainbody = replacetilde(ex, model, vi, sampler, context)
+
+    model_info[:main_body] = mainbody
+
+    return build_output(model_info, model, vi, sampler, context)
 end
 
 """
@@ -175,125 +195,52 @@ function build_model_info(input_expr)
         :args_nt => args_nt,
         :defaults_nt => defaults_nt,
         :args => args,
-        :whereparams => modeldef[:whereparams],
-        :main_body_names => Dict(
-            :ctx => gensym(:ctx),
-            :vi => gensym(:vi),
-            :sampler => gensym(:sampler),
-            :model => gensym(:model)
-        )
+        :whereparams => modeldef[:whereparams]
     )
 
     return model_info
 end
 
-
 """
-    replace_vi!(model_info)
+    replacetilde(expr, model, vi, sampler, context)
 
-Replaces `@varinfo()` expressions with a handle to the `VarInfo` struct.
+Replace `~` and `.~` expressions in `expr` with observation or assumption expressions for
+the given `model`, `vi` object, `sampler`, and `context`.
 """
-function replace_vi!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @varinfo())
-            vi
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-
-"""
-    replace_logpdf!(model_info)
-
-Replaces `@logpdf()` expressions with the value of the accumulated `logpdf` in the `VarInfo` struct.
-"""
-function replace_logpdf!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @logpdf())
-            :($vi.logp[])
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-
-"""
-    replace_sampler!(model_info)
-
-Replaces `@sampler()` expressions with a handle to the sampler struct.
-"""
-function replace_sampler!(model_info)
-    ex = model_info[:main_body]
-    spl = model_info[:main_body_names][:sampler]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @sampler())
-            spl
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-
-"""
-    replace_tilde!(model_info)
-
-Replace `~` and `.~` expressions with observation or assumption expressions, updating `model_info`.
-"""
-function replace_tilde!(model_info)
+function replacetilde(expr, model, vi, sampler, context)
     # Apply the `@.` macro first.
-    expr = model_info[:main_body]
     dottedexpr = MacroTools.postwalk(apply_dotted, expr)
 
     # Check for tilde operators.
-    tildeexpr = MacroTools.postwalk(dottedexpr) do x
+    return MacroTools.postwalk(dottedexpr) do x
         # Check dot tilde first.
         dotargs = getargs_dottilde(x)
         if dotargs !== nothing
             L, R = dotargs
-            return generate_dot_tilde(L, R, model_info)
+            return generate_dot_tilde(L, R, model, vi, sampler, context)
         end
 
         # Check tilde.
         args = getargs_tilde(x)
         if args !== nothing
             L, R = args
-            return generate_tilde(L, R, model_info)
+            return generate_tilde(L, R, model, vi, sampler, context)
         end
 
         return x
     end
-
-    # Update the function body.
-    model_info[:main_body] = tildeexpr
-
-    return model_info
 end
 
 # """ Unbreak code highlighting in Emacs julia-mode
 
 
 """
-    generate_tilde(left, right, model_info)
+    generate_tilde(left, right, model, vi, sampler, context)
 
-The `tilde` function generates `observe` expression for data variables and `assume` 
-expressions for parameter variables, updating `model_info` in the process.
+Return the expression that replaces `left ~ right` in the function body for the provided
+`model`, `vi` object, `sampler`, and `context`.
 """
-function generate_tilde(left, right, model_info)
-    model = model_info[:main_body_names][:model]
-    vi = model_info[:main_body_names][:vi]
-    ctx = model_info[:main_body_names][:ctx]
-    sampler = model_info[:main_body_names][:sampler]
+function generate_tilde(left, right, model, vi, sampler, ctx)
     temp_right = gensym(:temp_right)
     out = gensym(:out)
     lp = gensym(:lp)
@@ -336,17 +283,12 @@ function generate_tilde(left, right, model_info)
 end
 
 """
-    generate_dot_tilde(left, right, model_info)
+    generate_dot_tilde(left, right, model, vi, sampler, context)
 
-This function returns the expression that replaces `left .~ right` in the model body. If
-`preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block
-will be run.
+Return the expression that replaces `left .~ right` in the function body for the provided
+`model`, `vi` object, `sampler`, and `context`.
 """
-function generate_dot_tilde(left, right, model_info)
-    model = model_info[:main_body_names][:model]
-    vi = model_info[:main_body_names][:vi]
-    ctx = model_info[:main_body_names][:ctx]
-    sampler = model_info[:main_body_names][:sampler]
+function generate_dot_tilde(left, right, model, vi, sampler, ctx)
     out = gensym(:out)
     temp_right = gensym(:temp_right)
     isassumption = gensym(:isassumption)
@@ -395,18 +337,11 @@ hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
 """
-    build_output(model_info)
+    build_output(model_info, model, vi, sampler, context)
 
-Builds the output expression.
+Build the output expression.
 """
-function build_output(model_info)
-    # Construct user-facing function
-    main_body_names = model_info[:main_body_names]
-    ctx = main_body_names[:ctx]
-    vi = main_body_names[:vi]
-    model = main_body_names[:model]
-    sampler = main_body_names[:sampler]
-
+function build_output(model_info, model, vi, sampler, ctx)
     # Arguments with default values
     args = model_info[:args]
     # Argument symbols without default values
@@ -445,7 +380,7 @@ function build_output(model_info)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
     model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
     
-    ex = quote
+    return quote
         function $evaluator(
             $model::Model,
             $vi::DynamicPPL.VarInfo,
@@ -463,8 +398,6 @@ function build_output(model_info)
         
         $model_gen = $model_gen_constructor
     end
-
-    return esc(ex)
 end
 
 

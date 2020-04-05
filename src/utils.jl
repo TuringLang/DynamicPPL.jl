@@ -48,6 +48,23 @@ function getargs_tilde(expr::Expr)
     return
 end
 
+"""
+    replacemacro(expr, old_new::Pair{Symbol}...)
+
+Replace occurrences of macro calls in `expr` of the form `old` with `new`.
+"""
+function replacemacro(expr, old_new::Pair{Symbol}...)
+    return MacroTools.postwalk(expr) do ex
+        if Meta.isexpr(ex, :macrocall) && !isempty(ex.args)
+            name = Symbol(ex.args[1])
+            for (old, new) in old_new
+                name === old && return new
+            end
+        end
+        return ex
+    end
+end
+
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################
