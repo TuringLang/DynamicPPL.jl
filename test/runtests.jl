@@ -6,6 +6,7 @@ using .Turing
 turnprogress(false)
 
 @testset "DynamicPPL.jl" begin
+    include("utils.jl")
     include("compiler.jl")
     include("varinfo.jl")
     include("prob_macro.jl")

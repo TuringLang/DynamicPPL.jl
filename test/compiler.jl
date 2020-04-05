@@ -214,20 +214,18 @@ priors = 0 # See "new grammar" test.
         @test varinfo === _varinfo
     end
     @testset "nested model" begin
-        # function nest(α_0, θ_0)
-        #     @model gdemo(x) = begin
-        #         λ ~ Gamma(α_0, θ_0)
-        #         m ~ Normal(0, √(1 / λ))
-        #         x .~ Normal(m, √(1 / λ))
-        #         global lp = @logpdf()
-        #     end
-
-        #     return gdemo
-        # end
-        # model = nest(2.0, inv(3.0))([1.5, 2.0])
-        # varinfo = DynamicPPL.VarInfo(model)
-        # model(varinfo)
-        # @test getlogp(varinfo) = lp
+        function makemodel(p)
+            @model testmodel(x) = begin
+                x[1] ~ Bernoulli(p)
+                global lp = @logpdf()
+                return x
+            end
+            return testmodel
+        end
+        model = makemodel(0.5)([1.0])
+        varinfo = DynamicPPL.VarInfo(model)
+        model(varinfo)
+        @test getlogp(varinfo) == lp
     end
     @testset "new grammar" begin
         x = Float64[1 2]
@@ -329,14 +327,23 @@ priors = 0 # See "new grammar" test.
         x = randn(100)
         res = sample(vdemo1(x), alg, 250)
 
+        @model vdemo1b(x) = begin
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0, sqrt(s))
+            @. x ~ Normal(m, $(sqrt(s)))
+            return s, m
+        end
+
+        res = sample(vdemo1b(x), alg, 250)
+
         D = 2
         @model vdemo2(x) = begin
             μ ~ MvNormal(zeros(D), ones(D))
-            @. x ~ MvNormal(μ, ones(D))
+            @. x ~ $(MvNormal(μ, ones(D)))
         end
 
         alg = HMC(0.01, 5)
-        res = sample(vdemo2(randn(D,100)), alg, 250)
+        res = sample(vdemo2(randn(D, 100)), alg, 250)
 
         # Vector assumptions
         N = 10
@@ -388,78 +395,75 @@ priors = 0 # See "new grammar" test.
         sample(vdemo7(), alg, 1000)
     end
 
-    if VERSION >= v"1.1"
-        """
-        @testset "vectorization .~" begin
-            @model vdemo1(x) = begin
-                s ~ InverseGamma(2,3)
-                m ~ Normal(0, sqrt(s))
-                x .~ Normal(m, sqrt(s))
-                return s, m
-            end
-
-            alg = HMC(0.01, 5)
-            x = randn(100)
-            res = sample(vdemo1(x), alg, 250)
-
-            D = 2
-            @model vdemo2(x) = begin
-                μ ~ MvNormal(zeros(D), ones(D))
-                x .~ MvNormal(μ, ones(D))
-            end
-
-            alg = HMC(0.01, 5)
-            res = sample(vdemo2(randn(D,100)), alg, 250)
-
-            # Vector assumptions
-            N = 10
-            setchunksize(N)
-            alg = HMC(0.2, 4)
-
-            @model vdemo3() = begin
-                x = Vector{Real}(undef, N)
-                for i = 1:N
-                    x[i] ~ Normal(0, sqrt(4))
-                end
-            end
-
-            t_loop = @elapsed res = sample(vdemo3(), alg, 1000)
-
-            # Test for vectorize UnivariateDistribution
-            @model vdemo4() = begin
-            x = Vector{Real}(undef, N)
-            x .~ Normal(0, 2)
-            end
-
-            t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
-
-            @model vdemo5() = begin
-                x ~ MvNormal(zeros(N), 2 * ones(N))
-            end
-
-            t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
-
-            println("Time for")
-            println("  Loop : \$t_loop")
-            println("  Vec  : \$t_vec")
-            println("  Mv   : \$t_mv")
-
-            # Transformed test
-            @model vdemo6() = begin
-                x = Vector{Real}(undef, N)
-                x .~ InverseGamma(2, 3)
-            end
-
-            sample(vdemo6(), alg, 1000)
-
-            @model vdemo7() = begin
-                x = Array{Real}(undef, N, N)
-                x .~ [InverseGamma(2, 3) for i in 1:N]
-            end
-    
-            sample(vdemo7(), alg, 1000)
+    # Notation is ugly since `x .~ Normal(μ, σ)` cannot be parsed in Julia 1.0
+    @testset "vectorization .~" begin
+        @model vdemo1(x) = begin
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0, sqrt(s))
+            (.~)(x, Normal(m, sqrt(s)))
+            return s, m
         end
-        """ |> Meta.parse |> eval
+
+        alg = HMC(0.01, 5)
+        x = randn(100)
+        res = sample(vdemo1(x), alg, 250)
+
+        D = 2
+        @model vdemo2(x) = begin
+            μ ~ MvNormal(zeros(D), ones(D))
+            (.~)(x, MvNormal(μ, ones(D)))
+        end
+
+        alg = HMC(0.01, 5)
+        res = sample(vdemo2(randn(D,100)), alg, 250)
+
+        # Vector assumptions
+        N = 10
+        setchunksize(N)
+        alg = HMC(0.2, 4)
+
+        @model vdemo3() = begin
+            x = Vector{Real}(undef, N)
+            for i = 1:N
+                x[i] ~ Normal(0, sqrt(4))
+            end
+        end
+
+        t_loop = @elapsed res = sample(vdemo3(), alg, 1000)
+
+        # Test for vectorize UnivariateDistribution
+        @model vdemo4() = begin
+            x = Vector{Real}(undef, N)
+            (.~)(x, Normal(0, 2))
+        end
+
+        t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
+
+        @model vdemo5() = begin
+            x ~ MvNormal(zeros(N), 2 * ones(N))
+        end
+
+        t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
+
+        println("Time for")
+        println("  Loop : \$t_loop")
+        println("  Vec  : \$t_vec")
+        println("  Mv   : \$t_mv")
+
+        # Transformed test
+        @model vdemo6() = begin
+            x = Vector{Real}(undef, N)
+            (.~)(x, InverseGamma(2, 3))
+        end
+
+        sample(vdemo6(), alg, 1000)
+
+        @model vdemo7() = begin
+            x = Array{Real}(undef, N, N)
+            (.~)(x, [InverseGamma(2, 3) for i in 1:N])
+        end
+
+        sample(vdemo7(), alg, 1000)
     end
 
     @testset "Type parameters" begin
