@@ -216,7 +216,7 @@ function replace_logpdf!(model_info)
     vi = model_info[:main_body_names][:vi]
     ex = MacroTools.postwalk(ex) do x
         if @capture(x, @logpdf())
-            :(getlogp($vi))
+            :($(DynamicPPL.getlogp)($vi))
         else
             x
         end
