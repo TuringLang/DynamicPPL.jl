@@ -11,20 +11,8 @@ function _error_msg()
     return "This macro is only for use in the `@model` macro and not for external use."
 end
 
-
-
-# Check if the right-hand side is a distribution.
-function assert_dist(dist; msg)
-    isa(dist, Distribution) || throw(ArgumentError(msg))
-end
-function assert_dist(dist::AbstractVector; msg)
-    all(d -> isa(d, Distribution), dist) || throw(ArgumentError(msg))
-end
-
-function wrong_dist_errormsg(l)
-    return "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
-        "Distributions on line $(l)."
-end
+const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
+    "Distributions."
 
 """
     isassumption(model, expr)
@@ -260,14 +248,14 @@ function replace_tilde!(model_info)
         dotargs = getargs_dottilde(x)
         if dotargs !== nothing
             L, R = dotargs
-            return generate_dot_tilde(L, R, model_info)
+            return Base.remove_linenums!(generate_dot_tilde(L, R, model_info))
         end
 
         # Check tilde.
         args = getargs_tilde(x)
         if args !== nothing
             L, R = args
-            return generate_tilde(L, R, model_info)
+            return Base.remove_linenums!(generate_tilde(L, R, model_info))
         end
 
         return x
@@ -296,7 +284,8 @@ function generate_tilde(left, right, model_info)
 
     @gensym tmpright
     top = [:($tmpright = $right),
-           :($(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__))))]
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds
@@ -358,7 +347,8 @@ function generate_dot_tilde(left, right, model_info)
 
     @gensym tmpright
     top = [:($tmpright = $right),
-           :($(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__))))]
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds
