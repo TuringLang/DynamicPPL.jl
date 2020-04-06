@@ -38,12 +38,8 @@ function isassumption(model, expr::Union{Symbol, Expr})
             if !$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)
                 true
             else
-                if $(DynamicPPL.inargnames)($vn, $model)
-                    # Evaluate the lhs
-                    $expr === missing
-                else
-                    throw("This point should not be reached. Please report this error.")
-                end
+                # Evaluate the LHS
+                $expr === missing
             end
         end
     end
