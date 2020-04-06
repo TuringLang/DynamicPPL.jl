@@ -295,32 +295,28 @@ function generate_tilde(left, right, model_info)
     sampler = model_info[:main_body_names][:sampler]
 
     @gensym tmpright
-    expr = quote
-        $tmpright = $right
-        $(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__)))
-    end
+    top = [:($tmpright = $right),
+           :($(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__))))]
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds
-        push!(expr.args,
-              :($vn = $(varname(left))),
-              :($inds = $(vinds(left))))
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
-        assumption = quote
-            $out = $(DynamicPPL.tilde_assume)($ctx, $sampler, $tmpright, $vn, $inds,
-                                              $vi)
-            $left = $out[1]
-            $(DynamicPPL.acclogp!)($vi, $out[2])
-        end
+        assumption = [
+            :($out = $(DynamicPPL.tilde_assume)($ctx, $sampler, $tmpright, $vn, $inds,
+                                                $vi)),
+            :($left = $out[1]),
+            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+        ]
 
         # It can only be an observation if the LHS is an argument of the model
         if vsym(left) in model_info[:args]
             @gensym isassumption
             return quote
-                $expr
+                $(top...)
                 $isassumption = $(DynamicPPL.isassumption(model, left))
                 if $isassumption
-                    $assumption
+                    $(assumption...)
                 else
                     $(DynamicPPL.acclogp!)(
                         $vi,
@@ -332,14 +328,14 @@ function generate_tilde(left, right, model_info)
         end
 
         return quote
-            $expr
-            $assumption
+            $(top...)
+            $(assumption...)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
-        $expr
+        $(top...)
         $(DynamicPPL.acclogp!)(
             $vi,
             $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
@@ -361,32 +357,28 @@ function generate_dot_tilde(left, right, model_info)
     sampler = model_info[:main_body_names][:sampler]
 
     @gensym tmpright
-    expr = quote
-        $tmpright = $right
-        $(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__)))
-    end
+    top = [:($tmpright = $right),
+           :($(DynamicPPL.assert_dist)($tmpright, msg = $(wrong_dist_errormsg(@__LINE__))))]
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds
-        push!(expr.args,
-              :($vn = $(varname(left))),
-              :($inds = $(vinds(left))))
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
-        assumption = quote
-            $out = $(DynamicPPL.dot_tilde_assume)($ctx, $sampler, $tmpright, $left,
-                                                  $vn, $inds, $vi)
-            $left .= $out[1]
-            $(DynamicPPL.acclogp!)($vi, $out[2])
-        end
+        assumption = [
+            :($out = $(DynamicPPL.dot_tilde_assume)($ctx, $sampler, $tmpright, $left,
+                                                    $vn, $inds, $vi)),
+            :($left .= $out[1]),
+            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+        ]
 
         # It can only be an observation if the LHS is an argument of the model
         if vsym(left) in model_info[:args]
             @gensym isassumption
             return quote
-                $expr
+                $(top...)
                 $isassumption = $(DynamicPPL.isassumption(model, left))
                 if $isassumption
-                    $assumption
+                    $(assumption...)
                 else
                     $(DynamicPPL.acclogp!)(
                         $vi,
@@ -398,14 +390,14 @@ function generate_dot_tilde(left, right, model_info)
         end
 
         return quote
-            $expr
-            $assumption
+            $(top...)
+            $(assumption...)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
-        $expr
+        $(top...)
         $(DynamicPPL.acclogp!)(
             $vi,
             $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
