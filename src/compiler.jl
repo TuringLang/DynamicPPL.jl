@@ -87,7 +87,7 @@ function model(expr)
     # Replace tildes in the function body.
     model = gensym(:model)
     context = gensym(:ctx)
-    mainbody = replacetilde(ex, model, vi, sampler, context)
+    mainbody = replacetilde(ex, model, vi, sampler, context, model_info[:args])
 
     model_info[:main_body] = mainbody
 
@@ -185,29 +185,29 @@ function build_model_info(input_expr)
 end
 
 """
-    replacetilde(expr, model, vi, sampler, context)
+    replacetilde(expr, model, vi, sampler, context, args)
 
 Replace `~` and `.~` expressions in `expr` with observation or assumption expressions for
-the given `model`, `vi` object, `sampler`, and `context`.
+the given `model`, `vi` object, `sampler`, and `context` with user-provided arguments `args`.
 """
-function replacetilde(expr, model, vi, sampler, context)
+function replacetilde(expr, model, vi, sampler, context, args)
     # Apply the `@.` macro first.
     dottedexpr = MacroTools.postwalk(apply_dotted, expr)
 
     # Check for tilde operators.
     return MacroTools.postwalk(dottedexpr) do x
         # Check dot tilde first.
-        dotargs = getargs_dottilde(x)
-        if dotargs !== nothing
-            L, R = dotargs
-            return Base.remove_linenums!(generate_dot_tilde(L, R, model, vi, sampler, context))
+        args_dottilde = getargs_dottilde(x)
+        if args_dottilde !== nothing
+            L, R = args_dottilde
+            return Base.remove_linenums!(generate_dot_tilde(L, R, model, vi, sampler, context, args))
         end
 
         # Check tilde.
-        args = getargs_tilde(x)
-        if args !== nothing
-            L, R = args
-            return Base.remove_linenums!(generate_tilde(L, R, model, vi, sampler, context))
+        args_tilde = getargs_tilde(x)
+        if args_tilde !== nothing
+            L, R = args_tilde
+            return Base.remove_linenums!(generate_tilde(L, R, model, vi, sampler, context, args))
         end
 
         return x
@@ -218,12 +218,12 @@ end
 
 
 """
-    generate_tilde(left, right, model, vi, sampler, context)
+    generate_tilde(left, right, model, vi, sampler, context, args)
 
 Return the expression that replaces `left ~ right` in the function body for the provided
-`model`, `vi` object, `sampler`, and `context`.
+`model`, `vi` object, `sampler`, and `context` with user-provided arguments `args`.
 """
-function generate_tilde(left, right, model, vi, sampler, ctx)
+function generate_tilde(left, right, model, vi, sampler, ctx, args)
     @gensym tmpright
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
@@ -241,7 +241,7 @@ function generate_tilde(left, right, model, vi, sampler, ctx)
         ]
 
         # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in model_info[:args]
+        if vsym(left) in args
             @gensym isassumption
             return quote
                 $(top...)
@@ -275,12 +275,12 @@ function generate_tilde(left, right, model, vi, sampler, ctx)
 end
 
 """
-    generate_dot_tilde(left, right, model, vi, sampler, context)
+    generate_dot_tilde(left, right, model, vi, sampler, context, args)
 
 Return the expression that replaces `left .~ right` in the function body for the provided
-`model`, `vi` object, `sampler`, and `context`.
+`model`, `vi` object, `sampler`, and `context` with user-provided arguments `args`.
 """
-function generate_dot_tilde(left, right, model, vi, sampler, ctx)
+function generate_dot_tilde(left, right, model, vi, sampler, ctx, args)
     @gensym tmpright
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
@@ -298,7 +298,7 @@ function generate_dot_tilde(left, right, model, vi, sampler, ctx)
         ]
 
         # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in model_info[:args]
+        if vsym(left) in args
             @gensym isassumption
             return quote
                 $(top...)
