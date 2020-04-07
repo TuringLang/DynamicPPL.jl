@@ -12,10 +12,10 @@ struct NamedDist{
     variate, 
     support, 
     Td <: Distribution{variate, support},
-    name
+    Tv <: VarName
 } <: Distribution{variate, support}
     dist::Td
-    name::VarName{name}
+    name::Tv
 end
 
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
