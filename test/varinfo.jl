@@ -11,8 +11,6 @@ using Distributions
 using ForwardDiff: Dual
 using Test
 
-i, j, k = 1, 2, 3
-
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
 
@@ -341,6 +339,8 @@ include(dir*"/test/test_utils/AllUtils.jl")
         chain = sample(priorsinarray(xs), HMC(0.01, 10), 10)
     end
     @testset "varname" begin
+        i, j, k = 1, 2, 3
+
         vn1 = @varname x[1]
         @test vn1 == VarName(:x, ((1,),))
 
