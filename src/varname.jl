@@ -34,10 +34,8 @@ macro varname(expr::Union{Expr, Symbol})
 end
 function varname(expr)
     ex = deepcopy(expr)
-    (ex isa Symbol) && return quote
-        DynamicPPL.VarName{$(QuoteNode(ex))}("")
-    end
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
+    ex isa Symbol && return :($(DynamicPPL.VarName){$(QuoteNode(ex))}(""))
+    ex.head == :ref || throw("VarName: Mis-formed variable name $(expr)!")
     inds = :(())
     while ex.head == :ref
         if length(ex.args) >= 2
@@ -45,15 +43,13 @@ function varname(expr)
             pushfirst!(inds.args, :("[" * join($(Expr(:vect, strs...)), ",") * "]"))
         end
         ex = ex.args[1]
-        isa(ex, Symbol) && return quote
-            DynamicPPL.VarName{$(QuoteNode(ex))}(foldl(*, $inds, init = ""))
-        end
+        ex isa Symbol && return :($(DynamicPPL.VarName){$(QuoteNode(ex))}(foldl(*, $inds, init = "")))
     end
     throw("VarName: Mis-formed variable name $(expr)!")
 end
 
 macro vsym(expr::Union{Expr, Symbol})
-    expr |> vsym
+    return :(QuoteNode($(vsym(expr))))
 end
 
 """
@@ -61,16 +57,11 @@ end
 
 Returns the variable symbol given the input variable expression `expr`. For example, if the input `expr = :(x[1])`, the output is `:x`.
 """
-function vsym(expr::Union{Expr, Symbol})
-    ex = deepcopy(expr)
-    (ex isa Symbol) && return QuoteNode(ex)
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    while ex.head == :ref
-        ex = ex.args[1]
-        isa(ex, Symbol) && return QuoteNode(ex)
-    end
-    throw("VarName: Mis-formed variable name $(expr)!")
+function vsym(expr::Expr)
+    (expr.head == :ref && !isempty(expr.args)) || throw("VarName: Mis-formed variable name $(expr)!")
+    vsym(expr.args[1])
 end
+vsym(sym::Symbol) = sym
 
 """
     @vinds(expr)
