@@ -11,59 +11,42 @@ function _error_msg()
     return "This macro is only for use in the `@model` macro and not for external use."
 end
 
-
-
-# Check if the right-hand side is a distribution.
-function assert_dist(dist; msg)
-    isa(dist, Distribution) || throw(ArgumentError(msg))
-end
-function assert_dist(dist::AbstractVector; msg)
-    all(d -> isa(d, Distribution), dist) || throw(ArgumentError(msg))
-end
-
-function wrong_dist_errormsg(l)
-    return "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
-        "Distributions on line $(l)."
-end
+const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
+    "Distributions."
 
 """
-    @isassumption(model, expr)
+    isassumption(model, expr)
 
-Let `expr` be `x[1]`. `vn` is an assumption in the following cases:
-    1. `x` was not among the input data to the model,
-    2. `x` was among the input data to the model but with a value `missing`, or
-    3. `x` was among the input data to the model with a value other than missing, 
+Return an expression that can be evaluated to check if `expr` is an assumption in the
+`model`.
+
+Let `expr` be `:(x[1])`. It is an assumption in the following cases:
+    1. `x` is not among the input data to the `model`,
+    2. `x` is among the input data to the `model` but with a value `missing`, or
+    3. `x` is among the input data to the `model` with a value other than missing,
        but `x[1] === missing`.
+
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-macro isassumption(model, expr::Union{Symbol, Expr})
-    # Note: never put a return in this... don't forget it's a macro!
+function isassumption(model, expr::Union{Symbol, Expr})
     vn = gensym(:vn)
-    
+
     return quote
-        $vn = @varname($expr)
-        
-        # This branch should compile nicely in all cases except for partial missing data
-        # For example, when `expr` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inargnames($vn, $model) || DynamicPPL.inmissings($vn, $model)
-            true
-        else
-            if DynamicPPL.inargnames($vn, $model)
-                # Evaluate the lhs
-                $expr === missing
+        let $vn = $(varname(expr))
+            # This branch should compile nicely in all cases except for partial missing data
+            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
+            if !$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)
+                true
             else
-                throw("This point should not be reached. Please report this error.")
+                # Evaluate the LHS
+                $expr === missing
             end
         end
-    end |> esc
+    end
 end
 
-macro isassumption(model, expr)
-    # failsafe: a literal is never an assumption
-    false
-end
-
-
+# failsafe: a literal is never an assumption
+isassumption(model, expr) = :(false)
 
 #################
 # Main Compiler #
@@ -98,7 +81,7 @@ function model(expr)
     sampler = gensym(:sampler)
     ex = replacemacro(model_info[:main_body],
                       Symbol("@varinfo") => vi,
-                      Symbol("@logpdf") => :($(DynamicPPL.getlogp)($vi)),
+                      Symbol("@logpdf") => :($(vi).logp[]),
                       Symbol("@sampler") => sampler)
 
     # Replace tildes in the function body.
@@ -148,7 +131,7 @@ function build_model_info(input_expr)
             Expr(:tuple, QuoteNode.(arg_syms)...), 
             Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
         )
-        args_nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
+        args_nt = Expr(:call, :($namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
     args = map(modeldef[:args]) do arg
         if (arg isa Symbol)
@@ -217,14 +200,14 @@ function replacetilde(expr, model, vi, sampler, context)
         dotargs = getargs_dottilde(x)
         if dotargs !== nothing
             L, R = dotargs
-            return generate_dot_tilde(L, R, model, vi, sampler, context)
+            return Base.remove_linenums!(generate_dot_tilde(L, R, model, vi, sampler, context))
         end
 
         # Check tilde.
         args = getargs_tilde(x)
         if args !== nothing
             L, R = args
-            return generate_tilde(L, R, model, vi, sampler, context)
+            return Base.remove_linenums!(generate_tilde(L, R, model, vi, sampler, context))
         end
 
         return x
@@ -241,45 +224,54 @@ Return the expression that replaces `left ~ right` in the function body for the 
 `model`, `vi` object, `sampler`, and `context`.
 """
 function generate_tilde(left, right, model, vi, sampler, ctx)
-    temp_right = gensym(:temp_right)
-    out = gensym(:out)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
-    isassumption = gensym(:isassumption)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-    
+    @gensym tmpright
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
+
     if left isa Symbol || left isa Expr
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            
-            $vn, $inds = $(varname(left)), $(vinds(left))
-            $isassumption = DynamicPPL.@isassumption($model, $left)
-            if $isassumption 
-                $out = DynamicPPL.tilde_assume($ctx, $sampler, $temp_right, $vn, $inds, $vi)
-                $left = $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
-            else
-                DynamicPPL.acclogp!(
-                    $vi,
-                    DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
-                )
+        @gensym out vn inds
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        assumption = [
+            :($out = $(DynamicPPL.tilde_assume)($ctx, $sampler, $tmpright, $vn, $inds,
+                                                $vi)),
+            :($left = $out[1]),
+            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+        ]
+
+        # It can only be an observation if the LHS is an argument of the model
+        if vsym(left) in model_info[:args]
+            @gensym isassumption
+            return quote
+                $(top...)
+                $isassumption = $(DynamicPPL.isassumption(model, left))
+                if $isassumption
+                    $(assumption...)
+                else
+                    $(DynamicPPL.acclogp!)(
+                        $vi,
+                        $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $left, $vn,
+                                                    $inds, $vi)
+                    )
+                end
             end
         end
-    else
-        # we have a literal, which is automatically an observation
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            
-            DynamicPPL.acclogp!(
-                $vi,
-                DynamicPPL.tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
-            )
+
+        return quote
+            $(top...)
+            $(assumption...)
         end
     end
-    return ex
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        $(DynamicPPL.acclogp!)(
+            $vi,
+            $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
+        )
+    end
 end
 
 """
@@ -289,46 +281,54 @@ Return the expression that replaces `left .~ right` in the function body for the
 `model`, `vi` object, `sampler`, and `context`.
 """
 function generate_dot_tilde(left, right, model, vi, sampler, ctx)
-    out = gensym(:out)
-    temp_right = gensym(:temp_right)
-    isassumption = gensym(:isassumption)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-    
-    if left isa Symbol || left isa Expr
-        ex = quote
-            $temp_right = $right
-            $assert_ex
+    @gensym tmpright
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
 
-            $vn, $inds = $(varname(left)), $(vinds(left))
-            $isassumption = DynamicPPL.@isassumption($model, $left)
-            
-            if $isassumption
-                $out = DynamicPPL.dot_tilde_assume($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi)
-                $left .= $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
-            else
-                DynamicPPL.acclogp!(
-                    $vi,
-                    DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vn, $inds, $vi),
-                )
+    if left isa Symbol || left isa Expr
+        @gensym out vn inds
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        assumption = [
+            :($out = $(DynamicPPL.dot_tilde_assume)($ctx, $sampler, $tmpright, $left,
+                                                    $vn, $inds, $vi)),
+            :($left .= $out[1]),
+            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+        ]
+
+        # It can only be an observation if the LHS is an argument of the model
+        if vsym(left) in model_info[:args]
+            @gensym isassumption
+            return quote
+                $(top...)
+                $isassumption = $(DynamicPPL.isassumption(model, left))
+                if $isassumption
+                    $(assumption...)
+                else
+                    $(DynamicPPL.acclogp!)(
+                        $vi,
+                        $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $left,
+                                                        $vn, $inds, $vi)
+                    )
+                end
             end
         end
-    else
-        # we have a literal, which is automatically an observation
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            
-            DynamicPPL.acclogp!(
-                $vi,
-                DynamicPPL.dot_tilde_observe($ctx, $sampler, $temp_right, $left, $vi),
-            )
+
+        return quote
+            $(top...)
+            $(assumption...)
         end
     end
-    return ex
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        $(DynamicPPL.acclogp!)(
+            $vi,
+            $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
+        )
+    end
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat, AbstractArray}}
@@ -360,42 +360,29 @@ function build_output(model_info, model, vi, sampler, ctx)
 
     unwrap_data_expr = Expr(:block)
     for var in arg_syms
-        temp_var = gensym(:temp_var)
-        varT = gensym(:varT)
-        push!(unwrap_data_expr.args, quote
-            local $var
-            $temp_var = $model.args.$var
-            $varT = typeof($temp_var)
-            if $temp_var isa DynamicPPL.FloatOrArrayType
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $temp_var)
-            elseif DynamicPPL.hasmissing($varT)
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $varT)($temp_var)
-            else
-                $var = $temp_var
-            end
-        end)
+        push!(unwrap_data_expr.args,
+              :($var = $(DynamicPPL.matchingvalue)($sampler, $vi, $(model).args.$var)))
     end
 
     @gensym(evaluator, generator)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
-    model_gen_constructor = :(DynamicPPL.ModelGen{$(Tuple(arg_syms))}($generator, $defaults_nt))
-    
+    model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
+
     return quote
         function $evaluator(
-            $model::Model,
-            $vi::DynamicPPL.VarInfo,
-            $sampler::DynamicPPL.AbstractSampler,
-            $ctx::DynamicPPL.AbstractContext,
+            $model::$(DynamicPPL.Model),
+            $vi::$(DynamicPPL.VarInfo),
+            $sampler::$(DynamicPPL.AbstractSampler),
+            $ctx::$(DynamicPPL.AbstractContext),
         )
             $unwrap_data_expr
-            DynamicPPL.resetlogp!($vi)
+            $(DynamicPPL.resetlogp!)($vi)
             $main_body
         end
-        
 
-        $generator($(args...)) = DynamicPPL.Model($evaluator, $args_nt, $model_gen_constructor)
+        $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
         $(generator_kw_form...)
-        
+
         $model_gen = $model_gen_constructor
     end
 end
@@ -407,6 +394,21 @@ function warn_empty(body)
     end
     return
 end
+
+"""
+    matchingvalue(sampler, vi, value)
+
+Convert the `value` to the correct type for the `sampler` and the `vi` object.
+"""
+function matchingvalue(sampler, vi, value)
+    T = typeof(value)
+    if hasmissing(T)
+        return get_matching_type(sampler, vi, T)(value)
+    else
+        return value
+    end
+end
+matchingvalue(sampler, vi, value::FloatOrArrayType) = get_matching_type(sampler, vi, value)
 
 """
     get_matching_type(spl, vi, ::Type{T}) where {T}
