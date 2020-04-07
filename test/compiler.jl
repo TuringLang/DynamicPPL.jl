@@ -502,23 +502,23 @@ priors = 0 # See "new grammar" test.
     end
     @testset "var name splitting" begin
         var_expr = :(x)
-        @test vsym(var_expr) == :(:x)
+        @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(())
 
         var_expr = :(x[1,1][2,3])
-        @test vsym(var_expr) == :(:x)
+        @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((1, 1), (2, 3)))
 
         var_expr = :(x[:,1][2,:])
-        @test vsym(var_expr) == :(:x)
+        @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((:, 1), (2, :)))
 
         var_expr = :(x[2:3,1][2,1:2])
-        @test vsym(var_expr) == :(:x)
+        @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((2:3, 1), (2, 1:2)))
 
         var_expr = :(x[2:3,2:3][[1,2],[1,2]])
-        @test vsym(var_expr) == :(:x)
+        @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
     end
     @testset "user-defined variable name" begin

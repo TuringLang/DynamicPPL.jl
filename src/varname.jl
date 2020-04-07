@@ -141,14 +141,14 @@ A macro that returns an instance of `VarName` given the symbol or expression of 
 e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}(((1, 2), (6,), (45,), (3,)))`.
 """
 macro varname(expr::Union{Expr, Symbol})
-    expr |> varname |> esc
+    return esc(varname(expr))
 end
 
 varname(expr::Symbol) = VarName(expr)
 function varname(expr::Expr)
     if Meta.isexpr(expr, :ref)
         sym, inds = vsym(expr), vinds(expr)
-        return :(DynamicPPL.VarName($sym, $inds))
+        return :($(DynamicPPL.VarName)($(QuoteNode(sym)), $inds))
     else
         throw("VarName: Mis-formed variable name $(expr)!")
     end
@@ -162,10 +162,10 @@ A macro that returns the variable symbol given the input variable expression `ex
 For example, `@vsym x[1]` returns `:x`.
 """
 macro vsym(expr::Union{Expr, Symbol})
-    expr |> vsym
+    return QuoteNode(vsym(expr))
 end
 
-vsym(expr::Symbol) = QuoteNode(expr)
+vsym(expr::Symbol) = expr
 function vsym(expr::Expr)
     if Meta.isexpr(expr, :ref)
         return vsym(expr.args[1])
@@ -174,7 +174,6 @@ function vsym(expr::Expr)
     end
 end
 
-
 """
     @vinds(expr)
 
@@ -182,7 +181,7 @@ Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1, :]
 `((1, Colon()), (2,))`.
 """
 macro vinds(expr::Union{Expr, Symbol})
-    expr |> vinds |> esc
+    return esc(vinds(expr))
 end
 
 vinds(expr::Symbol) = Expr(:tuple)
