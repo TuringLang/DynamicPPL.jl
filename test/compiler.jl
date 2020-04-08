@@ -212,6 +212,15 @@ priors = 0 # See "new grammar" test.
         model(varinfo)
         @test getlogp(varinfo) == lp
         @test varinfo === _varinfo
+
+        # test DPPL#61
+        @model testmodel(z) = begin
+            m ~ Normal()
+            z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
+            return m
+        end
+        model = testmodel(rand(10))
+        @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
     end
     @testset "nested model" begin
         function makemodel(p)
