@@ -445,6 +445,7 @@ function build_output(model_info)
             $unwrap_data_expr
             $(DynamicPPL.resetlogp!)($vi)
             $main_body
+            return
         end
 
         $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
