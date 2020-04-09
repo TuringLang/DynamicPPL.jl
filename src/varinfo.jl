@@ -107,7 +107,7 @@ const TypedVarInfo = VarInfo{<:NamedTuple}
 
 function VarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
-    runmodel!(model, vi, SampleFromPrior(), ctx)
+    model(vi, SampleFromPrior(), ctx)
     return TypedVarInfo(vi)
 end
 

@@ -1,7 +1,7 @@
 using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
-    SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
+    SampleFromPrior, Sampler, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
@@ -117,19 +117,18 @@ include(dir*"/test/test_utils/AllUtils.jl")
         test_base!(vi)
         test_base!(empty!(TypedVarInfo(vi)))
     end
-    @testset "runmodel!" begin
-        # Test that eval_num is incremented when calling runmodel!
+    @testset "in-place" begin
+        # Test that eval_num is incremented when running the model
         @model testmodel() = begin
             x ~ Normal()
         end
         alg = HMC(0.1, 5)
         spl = Sampler(alg, testmodel())
-        vi = VarInfo()
         m = testmodel()
-        m(vi)
-        runmodel!(m, vi, spl)
+        vi = VarInfo(m)
+        m(vi, spl)
         @test spl.state.eval_num == 1
-        runmodel!(m, vi, spl)
+        m(vi, spl)
         @test spl.state.eval_num == 2
     end
     @testset "flags" begin

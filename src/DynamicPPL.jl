@@ -68,7 +68,6 @@ export  VarName,
         getargnames,
         getdefaults,
         getgenerator,
-        runmodel!,
 # Samplers
         Sampler,
         SampleFromPrior,

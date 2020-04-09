@@ -76,7 +76,7 @@ function AbstractMCMC.step!(
 
     # recompute log-likelihood in logp
     if spl.selector.tag !== :default
-        runmodel!(model, vi, spl)
+        model(vi, spl)
     end
 
     # define previous sampler state
@@ -117,7 +117,7 @@ function EllipticalSliceSampling.sample_prior(rng::Random.AbstractRNG, model::ES
     vi = spl.state.vi
     vns = _getvns(vi, spl)
     set_flag!(vi, vns[1][1], "del")
-    runmodel!(model.model, vi, spl)
+    model.model(vi, spl)
     return vi[spl]
 end
 
@@ -140,7 +140,7 @@ function Distributions.loglikelihood(model::ESSModel, f)
     spl = model.spl
     vi = spl.state.vi
     vi[spl] = f
-    runmodel!(model.model, vi, spl)
+    model.model(vi, spl)
     getlogp(vi)
 end
 
