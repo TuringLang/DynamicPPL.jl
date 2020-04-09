@@ -131,7 +131,7 @@ function runmodel!(
     spl::AbstractSampler=SampleFromPrior(),
     ctx::AbstractContext=DefaultContext()
 )
-    setlogp!(vi, 0)
+    resetlogp!(vi)
     if has_eval_num(spl)
         spl.state.eval_num += 1
     end

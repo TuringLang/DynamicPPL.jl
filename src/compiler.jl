@@ -443,7 +443,6 @@ function build_output(model_info)
             $ctx::$(DynamicPPL.AbstractContext),
         )
             $unwrap_data_expr
-            $(DynamicPPL.resetlogp!)($vi)
             $main_body
             return
         end
