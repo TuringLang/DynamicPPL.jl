@@ -278,7 +278,7 @@ function generate_tilde(left, right, model_info)
     ctx = model_info[:main_body_names][:ctx]
     sampler = model_info[:main_body_names][:sampler]
 
-    @gensym tmpright
+    @gensym tmpright tmpleft
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
              || throw(ArgumentError($DISTMSG)))]
@@ -290,8 +290,8 @@ function generate_tilde(left, right, model_info)
         assumption = [
             :($out = $(DynamicPPL.tilde_assume)($ctx, $sampler, $tmpright, $vn, $inds,
                                                 $vi)),
-            :($left = $out[1]),
-            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+            :($(DynamicPPL.acclogp!)($vi, $out[2])),
+            :($left = $out[1])
         ]
 
         # It can only be an observation if the LHS is an argument of the model
@@ -303,11 +303,13 @@ function generate_tilde(left, right, model_info)
                 if $isassumption
                     $(assumption...)
                 else
+                    $tmpleft = $left
                     $(DynamicPPL.acclogp!)(
                         $vi,
-                        $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $left, $vn,
+                        $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $tmpleft, $vn,
                                                     $inds, $vi)
                     )
+                    $tmpleft
                 end
             end
         end
@@ -321,10 +323,12 @@ function generate_tilde(left, right, model_info)
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
+        $tmpleft = $left
         $(DynamicPPL.acclogp!)(
             $vi,
-            $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
+            $(DynamicPPL.tilde_observe)($ctx, $sampler, $tmpright, $tmpleft, $vi)
         )
+        $tmpleft
     end
 end
 
@@ -341,7 +345,7 @@ function generate_dot_tilde(left, right, model_info)
     ctx = model_info[:main_body_names][:ctx]
     sampler = model_info[:main_body_names][:sampler]
 
-    @gensym tmpright
+    @gensym tmpright tmpleft
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
              || throw(ArgumentError($DISTMSG)))]
@@ -353,8 +357,8 @@ function generate_dot_tilde(left, right, model_info)
         assumption = [
             :($out = $(DynamicPPL.dot_tilde_assume)($ctx, $sampler, $tmpright, $left,
                                                     $vn, $inds, $vi)),
-            :($left .= $out[1]),
-            :($(DynamicPPL.acclogp!)($vi, $out[2]))
+            :($(DynamicPPL.acclogp!)($vi, $out[2])),
+            :($left .= $out[1])
         ]
 
         # It can only be an observation if the LHS is an argument of the model
@@ -366,11 +370,13 @@ function generate_dot_tilde(left, right, model_info)
                 if $isassumption
                     $(assumption...)
                 else
+                    $tmpleft = $left
                     $(DynamicPPL.acclogp!)(
                         $vi,
-                        $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $left,
+                        $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $tmpleft,
                                                         $vn, $inds, $vi)
                     )
+                    $tmpleft
                 end
             end
         end
@@ -384,10 +390,12 @@ function generate_dot_tilde(left, right, model_info)
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
+        $tmpleft = $left
         $(DynamicPPL.acclogp!)(
             $vi,
-            $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $left, $vi)
+            $(DynamicPPL.dot_tilde_observe)($ctx, $sampler, $tmpright, $tmpleft, $vi)
         )
+        $tmpleft
     end
 end
 
@@ -444,7 +452,6 @@ function build_output(model_info)
         )
             $unwrap_data_expr
             $main_body
-            return
         end
 
         $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
