@@ -1,129 +1,198 @@
 """
 ```
-struct VarName{sym}
-    indexing  ::    String
+struct VarName{sym, T<:Tuple}
+    indexing::T
 end
 ```
 
-A variable identifier. Every variable has a symbol `sym` and `indices `indexing`. 
-The Julia variable in the model corresponding to `sym` can refer to a single value or 
-to a hierarchical array structure of univariate, multivariate or matrix variables. `indexing` stores the indices that can access the random variable from the Julia 
+A variable identifier. Every variable has a symbol `sym` and indices `indexing` in the format
+returned by [`@vinds`](@ref).  The Julia variable in the model corresponding to `sym` can refer to a
+single value or to a hierarchical array structure of univariate, multivariate or matrix
+variables. `indexing` stores the indices that can access the random variable from the Julia
 variable.
 
 Examples:
 
-- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "[1]"`.
+- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "((1,))"`.
 - `x[:,1] ~ MvNormal(zeros(2))` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1]"`.
+ `indexing == ((Colon(), 1))"`.
 - `x[:,1][2] ~ Normal()` will generate a `VarName` with `sym == :x` and
- `indexing == "[Colon(),1][2]"`.
+ `indexing == ((Colon(), 1), (2,))`.
 """
-struct VarName{sym}
-    indexing::String
+struct VarName{sym, T<:Tuple}
+    indexing::T
+end
+
+VarName(sym::Symbol, indexing::Tuple = ()) = VarName{sym, typeof(indexing)}(indexing)
+
+"""
+    VarName(vn::VarName, indexing)
+
+Return a copy of `vn` with a new index `indexing`.
+"""
+function VarName(vn::VarName, indexing::Tuple = ())
+    return VarName{getsym(vn), typeof(indexing)}(indexing)
 end
 
 
+"""
+    getsym(vn::VarName)
+
+Return the symbol of the Julia variable used to generate `vn`.
+"""
+getsym(vn::VarName{sym}) where sym = sym
+
 
 """
-    @varname(var)
+    getindexing(vn::VarName)
 
-A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}("[1,2][6][45][3]")`.
+Return the indexing tuple of the Julia variable used to generate `vn`.
+"""
+getindexing(vn::VarName) = vn.indexing
+
+
+Base.hash(vn::VarName, h::UInt) = hash((getsym(vn), getindexing(vn)), h)
+Base.:(==)(x::VarName, y::VarName) = getsym(x) == getsym(y) && getindexing(x) == getindexing(y)
+
+function Base.show(io::IO, vn::VarName)
+    print(io, getsym(vn))
+    for indices in getindexing(vn)
+        print(io, "[")
+        join(io, indices, ",")
+        print(io, "]")
+    end
+end
+
+
+"""
+    Symbol(vn::VarName)
+
+Return a `Symbol` represenation of the variable identifier `VarName`.
+"""
+Base.Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
+
+
+"""
+    inspace(vn::Union{VarName, Symbol}, space::Tuple)
+
+Check whether `vn`'s variable symbol is in `space`.
+"""
+inspace(vn, space::Tuple{}) = true # empty space is treated as universal set
+inspace(vn, space::Tuple) = vn in space
+inspace(vn::VarName, space::Tuple{}) = true
+inspace(vn::VarName, space::Tuple) = any(_in(vn, s) for s in space)
+
+@noinline function Base.in(vn::VarName, space::Tuple)
+    Base.depwarn("`Base.in(vn::VarName, space::Tuple)` is deprecated, use `inspace(vn, space)` instead.",
+                 nameof(Base.in))
+    return inspace(vn, space)
+end
+
+_in(vn::VarName, s::Symbol) = getsym(vn) == s
+_in(vn::VarName, s::VarName) = subsumes(s, vn)
+
+
+"""
+    subsumes(u::VarName, v::VarName)
+
+Check whether the variable name `v` describes a sub-range of the variable `u`.  Supported
+indexing:
+
+- Scalar: `x` subsumes `x[1, 2]`, `x[1, 2]` subsumes `x[1, 2][3]`, etc.
+- Array of scalar: `x[[1, 2], 3]` subsumes `x[1, 3]`, `x[1:3]` subsumes `x[2][1]`, etc.
+  (basically everything that fulfills `issubset`).
+- Slices: `x[2, :]` subsumes `x[2, 10][1]`, etc.
+
+Currently _not_ supported are: 
+
+- Boolean indexing, literal `CartesianIndex` (these could be added, though)
+- Linear indexing of multidimensional arrays: `x[4]` does not subsume `x[2, 2]` for `x` a matrix
+- Trailing ones: `x[2, 1]` does not subsume `x[2]` for `x` a vector
+"""
+function subsumes(u::VarName, v::VarName)
+    return getsym(u) == getsym(v) && subsumes(u.indexing, v.indexing)
+end
+
+subsumes(::Tuple{}, ::Tuple{}) = true  # x subsumes x
+subsumes(::Tuple{}, ::Tuple) = true    # x subsumes x[1]
+subsumes(::Tuple, ::Tuple{}) = false   # x[1] does not subsume x
+function subsumes(t::Tuple, u::Tuple)  # does x[i]... subsume x[j]...?
+    return _issubindex(first(t), first(u)) && subsumes(Base.tail(t), Base.tail(u))
+end
+
+const AnyIndex = Union{Int, AbstractVector{Int}, Colon} 
+_issubindex_(::Tuple{Vararg{AnyIndex}}, ::Tuple{Vararg{AnyIndex}}) = false
+function _issubindex(t::NTuple{N, AnyIndex}, u::NTuple{N, AnyIndex}) where {N}
+    return all(_issubrange(j, i) for (i, j) in zip(t, u))
+end
+
+const ConcreteIndex = Union{Int, AbstractVector{Int}} # this include all kinds of ranges
+"""Determine whether indices `i` are contained in `j`, treating `:` as universal set."""
+_issubrange(i::ConcreteIndex, j::ConcreteIndex) = issubset(i, j)
+_issubrange(i::Union{ConcreteIndex, Colon}, j::Colon) = true
+_issubrange(i::Colon, j::ConcreteIndex) = true
+
+
+
+"""
+    @varname(expr)
+
+A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, 
+e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}(((1, 2), (6,), (45,), (3,)))`.
 """
 macro varname(expr::Union{Expr, Symbol})
-    expr |> varname |> esc
+    return esc(varname(expr))
 end
-function varname(expr)
-    ex = deepcopy(expr)
-    ex isa Symbol && return :($(DynamicPPL.VarName){$(QuoteNode(ex))}(""))
-    ex.head == :ref || throw("VarName: Mis-formed variable name $(expr)!")
-    inds = :(())
-    while ex.head == :ref
-        if length(ex.args) >= 2
-            strs = map(x -> :($x === (:) ? "Colon()" : string($x)), ex.args[2:end])
-            pushfirst!(inds.args, :("[" * join($(Expr(:vect, strs...)), ",") * "]"))
-        end
-        ex = ex.args[1]
-        ex isa Symbol && return :($(DynamicPPL.VarName){$(QuoteNode(ex))}(foldl(*, $inds, init = "")))
+
+varname(expr::Symbol) = VarName(expr)
+function varname(expr::Expr)
+    if Meta.isexpr(expr, :ref)
+        sym, inds = vsym(expr), vinds(expr)
+        return :($(DynamicPPL.VarName)($(QuoteNode(sym)), $inds))
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
     end
-    throw("VarName: Mis-formed variable name $(expr)!")
 end
 
+
+"""
+    @vsym(expr)
+
+A macro that returns the variable symbol given the input variable expression `expr`. 
+For example, `@vsym x[1]` returns `:x`.
+"""
 macro vsym(expr::Union{Expr, Symbol})
-    return :(QuoteNode($(vsym(expr))))
+    return QuoteNode(vsym(expr))
 end
 
-"""
-    vsym(expr::Union{Expr, Symbol})
-
-Returns the variable symbol given the input variable expression `expr`. For example, if the input `expr = :(x[1])`, the output is `:x`.
-"""
+vsym(expr::Symbol) = expr
 function vsym(expr::Expr)
-    (expr.head == :ref && !isempty(expr.args)) || throw("VarName: Mis-formed variable name $(expr)!")
-    vsym(expr.args[1])
+    if Meta.isexpr(expr, :ref)
+        return vsym(expr.args[1])
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
+    end
 end
-vsym(sym::Symbol) = sym
 
 """
     @vinds(expr)
 
-Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1,:][2]` returns 
+Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1, :][2]` returns 
 `((1, Colon()), (2,))`.
 """
 macro vinds(expr::Union{Expr, Symbol})
-    expr |> vinds |> esc
-end
-function vinds(expr::Union{Expr, Symbol})
-    ex = deepcopy(expr)
-    inds = Expr(:tuple)
-    (ex isa Symbol) && return inds
-    (ex.head == :ref) || throw("VarName: Mis-formed variable name $(expr)!")
-    while ex.head == :ref
-        pushfirst!(inds.args, Expr(:tuple, ex.args[2:end]...))
-        ex = ex.args[1]
-        isa(ex, Symbol) && return inds
-    end
-    throw("VarName: Mis-formed variable name $(expr)!")
+    return esc(vinds(expr))
 end
 
-"""
-    split_var_str(var_str, inds_as = Vector)
-
-This function splits a variable string, e.g. `"x[1:3,1:2][3,2]"` to the variable's symbol `"x"` and the indexing `"[1:3,1:2][3,2]"`. If `inds_as = String`, the indices are returned as a string, e.g. `"[1:3,1:2][3,2]"`. If `inds_as = Vector`, the indices are returned as a vector of vectors of strings, e.g. `[["1:3", "1:2"], ["3", "2"]]`.
-"""
-function split_var_str(var_str, inds_as = Vector)
-    ind = findfirst(c -> c == '[', var_str)
-    if inds_as === String
-        if ind === nothing
-            return var_str, ""
-        else
-            return var_str[1:ind-1], var_str[ind:end]
-        end
+vinds(expr::Symbol) = Expr(:tuple)
+function vinds(expr::Expr)
+    if Meta.isexpr(expr, :ref)
+        last = Expr(:tuple, expr.args[2:end]...)
+        init = vinds(expr.args[1]).args
+        return Expr(:tuple, init..., last)
+    else
+        throw("VarName: Mis-formed variable name $(expr)!")
     end
-    @assert inds_as === Vector
-    inds = Vector{String}[]
-    if ind === nothing
-        return var_str, inds
-    end
-    sym = var_str[1:ind-1]
-    ind = length(sym)
-    while ind < length(var_str)
-        ind += 1
-        @assert var_str[ind] == '['
-        push!(inds, String[])
-        while var_str[ind] != ']'
-            ind += 1
-            if var_str[ind] == '['
-                ind2 = findnext(c -> c == ']', var_str, ind)
-                push!(inds[end], strip(var_str[ind:ind2]))
-                ind = ind2+1
-            else
-                ind2 = findnext(c -> c == ',' || c == ']', var_str, ind)
-                push!(inds[end], strip(var_str[ind:ind2-1]))
-                ind = ind2
-            end
-        end
-    end
-    return sym, inds
 end
 
 

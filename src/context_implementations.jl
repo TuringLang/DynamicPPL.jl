@@ -52,19 +52,7 @@ function _tilde(sampler, right, vn::VarName, vi)
     return assume(sampler, right, vn, vi)
 end
 function _tilde(sampler, right::NamedDist, vn::VarName, vi)
-    name = right.name
-    if name isa String
-        sym_str, inds = split_var_str(name, String)
-        sym = Symbol(sym_str)
-        vn = VarName{sym}(inds)
-    elseif name isa Symbol
-        vn = VarName{name}("")
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
-    return _tilde(sampler, right.dist, vn, vi)
+    return _tilde(sampler, right.dist, right.name, vi)
 end
 
 # observe
@@ -214,30 +202,19 @@ end
 
 
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
-    name = dist.name
-    if name isa String
-        sym_str, inds = split_var_str(name, String)
-        sym = Symbol(sym_str)
-        vn = VarName{sym}(inds)
-    elseif name isa Symbol
-        vn = VarName{name}("")
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
-    return get_vns_and_dist(dist.dist, var, vn)
+    return get_vns_and_dist(dist.dist, var, dist.name)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
-    getvn = i -> VarName(vn, vn.indexing * "[Colon(),$i]")
+    getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))
     return getvn.(1:size(var, 2)), dist
+    
 end
 function get_vns_and_dist(
     dist::Union{Distribution, AbstractArray{<:Distribution}}, 
     var::AbstractArray, 
     vn::VarName
 )
-    getvn = ind -> VarName(vn, vn.indexing * "[" * join(Tuple(ind), ",") * "]")
+    getvn = ind -> VarName(vn, (vn.indexing..., Tuple(ind)))
     return getvn.(CartesianIndices(var)), dist
 end
 
