@@ -1,7 +1,7 @@
 using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
-    SampleFromPrior, Sampler, SampleFromUniform, uid, 
+    SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
@@ -10,8 +10,6 @@ using DynamicPPL
 using Distributions
 using ForwardDiff: Dual
 using Test
-
-i, j, k = 1, 2, 3
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
@@ -61,7 +59,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
         vn2 = @varname x[1][2]
         @test vn2 == vn1
         @test hash(vn2) == hash(vn1)
-        @test in(vn1, (:x,))
+        @test inspace(vn1, (:x,))
 
         function test_base!(vi)
             empty!(vi)
@@ -95,23 +93,22 @@ include(dir*"/test/test_utils/AllUtils.jl")
             @test isempty(vi)
             push!(vi, vn, r, dist, gid)
 
-            function test_in()
-                space = (:x, :y, :(z[1]))
-                vn1 = @varname x
-                vn2 = @varname y
-                vn3 = @varname x[1]
-                vn4 = @varname z[1][1]
-                vn5 = @varname z[2]
-                vn6 = @varname z
+            function test_inspace()
+                space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
 
-                @test in(vn1, space)
-                @test in(vn2, space)
-                @test in(vn3, space)
-                @test in(vn4, space)
-                @test ~in(vn5, space)
-                @test ~in(vn6, space)
+                @test inspace(@varname(x), space)
+                @test inspace(@varname(y), space)
+                @test inspace(@varname(x[1]), space)
+                @test inspace(@varname(z[1][1]), space)
+                @test inspace(@varname(z[1][:]), space)
+                @test inspace(@varname(z[1][2:3:10]), space)
+                @test inspace(@varname(M[[2,3], 1]), space)
+                @test inspace(@varname(M[:, 1:4]), space)
+                @test inspace(@varname(M[1, [2, 4, 6]]), space)
+                @test !inspace(@varname(z[2]), space)
+                @test !inspace(@varname(z), space)
             end
-            test_in()
+            test_inspace()
         end
         vi = VarInfo()
         test_base!(vi)
@@ -341,8 +338,10 @@ include(dir*"/test/test_utils/AllUtils.jl")
         chain = sample(priorsinarray(xs), HMC(0.01, 10), 10)
     end
     @testset "varname" begin
+        i, j, k = 1, 2, 3
+
         vn1 = @varname x[1]
-        @test vn1 == VarName{:x}("[1]")
+        @test vn1 == VarName(:x, ((1,),))
 
         # Symbol
         v_sym = string(:x)
@@ -350,17 +349,17 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         # Array
         v_arr = @varname x[i]
-        @test v_arr.indexing == "[1]"
+        @test v_arr.indexing == ((1,),)
 
         # Matrix
         v_mat = @varname x[i,j]
-        @test v_mat.indexing == "[1,2]"
+        @test v_mat.indexing == ((1, 2),)
 
         v_mat = @varname x[i,j,k]
-        @test v_mat.indexing == "[1,2,3]"
+        @test v_mat.indexing == ((1,2,3),)
 
         v_mat = @varname x[1,2][1+5][45][3][i]
-        @test v_mat.indexing == "[1,2][6][45][3][1]"
+        @test v_mat.indexing == ((1,2), (6,), (45,), (3,), (1,))
 
         @model mat_name_test() = begin
             p = Array{Any}(undef, 2, 2)
@@ -374,7 +373,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         # Multi array
         v_arrarr = @varname x[i][j]
-        @test v_arrarr.indexing == "[1][2]"
+        @test v_arrarr.indexing == ((1,), (2,))
 
         @model marr_name_test() = begin
             p = Array{Array{Any}}(undef, 2)

@@ -145,7 +145,7 @@ function Distributions.loglikelihood(model::ESSModel, f)
 end
 
 function DynamicPPL.tilde(ctx::DefaultContext, sampler::Sampler{<:ESS}, right, vn::VarName, inds, vi)
-    if vn in getspace(sampler)
+    if DynamicPPL.inspace(vn, getspace(sampler))
         return DynamicPPL.tilde(LikelihoodContext(), SampleFromPrior(), right, vn, inds, vi)
     else
         return DynamicPPL.tilde(ctx, SampleFromPrior(), right, vn, inds, vi)
@@ -157,7 +157,7 @@ function DynamicPPL.tilde(ctx::DefaultContext, sampler::Sampler{<:ESS}, right, l
 end
 
 function DynamicPPL.dot_tilde(ctx::DefaultContext, sampler::Sampler{<:ESS}, right, left, vn::VarName, inds, vi)
-    if vn in getspace(sampler)
+    if DynamicPPL.inspace(vn, getspace(sampler))
         return DynamicPPL.dot_tilde(LikelihoodContext(), SampleFromPrior(), right, left, vn, inds, vi)
     else
         return DynamicPPL.dot_tilde(ctx, SampleFromPrior(), right, left, vn, inds, vi)

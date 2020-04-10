@@ -70,7 +70,7 @@ end
 To generate a `Model`, call `model_generator(x_value)`.
 """
 macro model(input_expr)
-    build_model_info(input_expr) |> replace_tilde! |> replace_vi! |> 
+    Base.replace_ref_end!(input_expr) |> build_model_info |> replace_tilde! |> replace_vi! |> 
         replace_logpdf! |> replace_sampler! |> build_output
 end
 

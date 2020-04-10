@@ -125,7 +125,7 @@ end
     offset = :(0)
     for f in names
         mdf = :(metadata.$f)
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             len = :(length($mdf.vals))
             push!(exprs, :($f = Metadata($mdf.idcs,
                                         $mdf.vns,
@@ -331,13 +331,6 @@ setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 end
 
 """
-    getsym(vn::VarName)
-
-Return the symbol of the Julia variable used to generate `vn`.
-"""
-getsym(vn::VarName{sym}) where sym = sym
-
-"""
     getgid(vi::VarInfo, vn::VarName)
 
 Return the set of sampler selectors associated with `vn` in `vi`.
@@ -407,7 +400,7 @@ end
         # If the varname is in the sampler space
         # or the sample space is empty (all variables)
         # then return the indices for that variable.
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(exprs, :($f = findinds(metadata.$f, s, Val($space))))
         end
     end
@@ -418,7 +411,7 @@ end
     # Get all the idcs of the vns in `space` and that belong to the selector `s`
     return filter((i) ->
         (s in f_meta.gids[i] || isempty(f_meta.gids[i])) &&
-        (isempty(space) || in(f_meta.vns[i], space)), 1:length(f_meta.gids))
+        (isempty(space) || inspace(f_meta.vns[i], space)), 1:length(f_meta.gids))
 end
 @inline function findinds(f_meta)
     # Get all the idcs of the vns
@@ -488,69 +481,6 @@ end
 #### APIs for typed and untyped VarInfo
 ####
 
-# VarName
-
-"""
-    VarName(sym, indexing)
-    VarName{sym}(indexing::String)
-
-Construct a new instance of `VarName{sym}`
-"""
-VarName(sym, indexing) = VarName{sym}(indexing)
-
-"""
-    VarName(vn::VarName, indexing::String)
-
-Return a copy of `vn` with a new index `indexing`.
-"""
-function VarName(vn::VarName, indexing::String)
-    return VarName{getsym(vn)}(indexing)
-end
-
-"""
-    uid(vn::VarName)
-
-Return a unique tuple identifier for `vn`.
-"""
-uid(vn::VarName) = (getsym(vn), vn.indexing)
-
-hash(vn::VarName) = hash(uid(vn))
-
-==(x::VarName, y::VarName) = hash(uid(x)) == hash(uid(y))
-
-function string(vn::VarName)
-    return "$(getsym(vn))$(vn.indexing)"
-end
-function string(vns::Vector{<:VarName})
-    return replace(string(map(string, vns)), "String" => "")
-end
-
-"""
-    Symbol(vn::VarName)
-
-Return a `Symbol` represenation of the variable identifier `VarName`.
-"""
-Symbol(vn::VarName) = Symbol(string(vn))  # simplified symbol
-
-"""
-    in(vn::VarName, space::Set)
-
-Check whether `vn`'s symbol is in `space`.
-"""
-in(::VarName, ::Tuple{}) = true
-in(vn::VarName, space::Tuple)::Bool = getsym(vn) in space || _in(string(vn), space)
-
-_in(::String, ::Tuple{}) = false
-_in(vn_str::String, space::Tuple)::Bool = _in(vn_str, Base.tail(space))
-function _in(vn_str::String, space::Tuple{Expr,Vararg})::Bool
-    # Collect expressions from space
-    expr = first(space)
-    # Filter `(` and `)` out and get a string representation of `exprs`
-    expr_str = replace(string(expr), r"\(|\)" => "")
-    # Check if `vn_str` is in `expr_strs`
-    valid = occursin(expr_str, vn_str)
-    return valid || _in(vn_str, Base.tail(space))
-end
 
 # VarInfo
 
@@ -602,8 +532,7 @@ function TypedVarInfo(vi::UntypedVarInfo)
         sym_vals = foldl(vcat, _vals)
 
         push!(new_metas, Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals,
-                                    sym_dists, sym_gids, sym_orders, sym_flags)
-            )
+                                  sym_dists, sym_gids, sym_orders, sym_flags))
     end
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
@@ -764,7 +693,7 @@ end
 @generated function _link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
     for f in names
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(expr.args, quote
                 f_vns = vi.metadata.$f.vns
                 if ~istrans(vi, f_vns[1])
@@ -810,7 +739,7 @@ end
 @generated function _invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
     for f in names
-        if f in space || length(space) == 0
+        if inspace(f, space) || length(space) == 0
             push!(expr.args, quote
                 f_vns = vi.metadata.$f.vns
                 if istrans(vi, f_vns[1])
@@ -1173,7 +1102,7 @@ Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selec
 and `vn`'s symbol is in the space of `spl`.
 """
 function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
-    if vn in getspace(spl)
+    if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
     end
 end

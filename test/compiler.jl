@@ -1,5 +1,5 @@
 using .Turing, Random, MacroTools, Distributions, Test
-using DynamicPPL: DynamicPPL, split_var_str, @varname, VarInfo, VarName
+using DynamicPPL: DynamicPPL, vsym, vinds, @varname, VarInfo, VarName
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
@@ -212,6 +212,15 @@ priors = 0 # See "new grammar" test.
         model(varinfo)
         @test getlogp(varinfo) == lp
         @test varinfo === _varinfo
+
+        # test DPPL#61
+        @model testmodel(z) = begin
+            m ~ Normal()
+            z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
+            return m
+        end
+        model = testmodel(rand(10))
+        @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
     end
     @testset "nested model" begin
         function makemodel(p)
@@ -500,35 +509,26 @@ priors = 0 # See "new grammar" test.
         sample(vdemo3(Vector{Float64}), alg, 250)
         sample(vdemo3(TV=Vector{Float64}), alg, 250)
     end
-    @testset "split var string" begin
-        var_str = "x"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds == Vector{String}[]
+    @testset "var name splitting" begin
+        var_expr = :(x)
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(())
 
-        var_str = "x[1,1][2,3]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["1", "1"]
-        @test inds[2] == ["2", "3"]
+        var_expr = :(x[1,1][2,3])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((1, 1), (2, 3)))
 
-        var_str = "x[Colon(),1][2,Colon()]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["Colon()", "1"]
-        @test inds[2] == ["2", "Colon()"]
+        var_expr = :(x[:,1][2,:])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((:, 1), (2, :)))
 
-        var_str = "x[2:3,1][2,1:2]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["2:3", "1"]
-        @test inds[2] == ["2", "1:2"]
+        var_expr = :(x[2:3,1][2,1:2])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((2:3, 1), (2, 1:2)))
 
-        var_str = "x[2:3,2:3][[1,2],[1,2]]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["2:3", "2:3"]
-        @test inds[2] == ["[1,2]", "[1,2]"]
+        var_expr = :(x[2:3,2:3][[1,2],[1,2]])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
     end
     @testset "user-defined variable name" begin
         @model f1() = begin
@@ -538,16 +538,16 @@ priors = 0 # See "new grammar" test.
             x ~ NamedDist(Normal(), @varname(y[2][:,1]))
         end
         @model f3() = begin
-            x ~ NamedDist(Normal(), "y[1]")
+            x ~ NamedDist(Normal(), @varname(y[1]))
         end
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == VarName{:y}("")
+        @test vi1.metadata.y.vns[1] == VarName(:y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == VarName{:y}("[2][Colon(),1]")
+        @test vi2.metadata.y.vns[1] == VarName(:y, ((2,), (Colon(), 1)))
         @test haskey(vi3.metadata, :y)
-        @test vi3.metadata.y.vns[1] == VarName{:y}("[1]")
+        @test vi3.metadata.y.vns[1] == VarName(:y, ((1,),))
     end
 end
