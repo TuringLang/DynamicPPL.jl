@@ -69,7 +69,6 @@ export  AbstractVarInfo,
         getargnames,
         getdefaults,
         getgenerator,
-        runmodel!,
 # Samplers
         Sampler,
         SampleFromPrior,

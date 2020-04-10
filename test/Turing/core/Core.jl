@@ -6,7 +6,7 @@ using Distributions, LinearAlgebra
 using ..Utilities, Reexport
 using Tracker: Tracker
 using ..Turing: Turing
-using DynamicPPL: Model, runmodel!,
+using DynamicPPL: Model,
     AbstractSampler, Sampler, SampleFromPrior
 using LinearAlgebra: copytri!
 using Bijectors: PDMatDistribution

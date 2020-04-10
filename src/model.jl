@@ -109,34 +109,34 @@ function Model{missings}(
     return Model{missings}(model.f, args, modelgen)
 end
 
+"""
+    (model::Model)([spl = SampleFromPrior(), ctx = DefaultContext()])
 
+Sample from `model` using the sampler `spl`.
+"""
 function (model::Model)(
-    vi::AbstractVarInfo=VarInfo(),
     spl::AbstractSampler=SampleFromPrior(),
     ctx::AbstractContext=DefaultContext()
 )
-    return model.f(model, vi, spl, ctx)
+    return model(VarInfo(), spl, ctx)
 end
 
-
 """
-    runmodel!(model::Model, vi::AbstractVarInfo[, spl::AbstractSampler, ctx::AbstractContext])
+    (model::Model)(vi::AbstractVarInfo[, spl = SampleFromPrior(), ctx = DefaultContext()])
 
 Sample from `model` using the sampler `spl` storing the sample and log joint probability in `vi`.
 Resets the `vi` and increases `spl`s `state.eval_num`.
 """
-function runmodel!(
-    model::Model,
+function (model::Model)(
     vi::AbstractVarInfo,
     spl::AbstractSampler=SampleFromPrior(),
     ctx::AbstractContext=DefaultContext()
 )
-    setlogp!(vi, 0)
+    resetlogp!(vi)
     if has_eval_num(spl)
         spl.state.eval_num += 1
     end
-    model(vi, spl, ctx)
-    return vi
+    return model.f(model, vi, spl, ctx)
 end
 
 
