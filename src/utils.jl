@@ -1,18 +1,4 @@
 """
-    apply_dotted(x)
-
-Apply the transformation of the `@.` macro if `x` is an expression of the form `@. X`.
-"""
-apply_dotted(x) = x
-function apply_dotted(expr::Expr)
-    if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
-        expr.args[1] === Symbol("@__dot__")
-        return Base.Broadcast.__dot__(expr.args[end])
-    end
-    return expr
-end
-
-"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
