@@ -924,7 +924,7 @@ function haskey(vi::TypedVarInfo, vn::VarName)
     return getsym(vn) in fieldnames(Tmeta) && haskey(getmetadata(vi, vn).idcs, vn)
 end
 
-function show(io::IO, vi::UntypedVarInfo)
+function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     vi_str = """
     /=======================================================================
     | VarInfo
@@ -941,6 +941,8 @@ function show(io::IO, vi::UntypedVarInfo)
     """
     print(io, vi_str)
 end
+
+Base.show(io::IO, vi::UntypedVarInfo) = print(io, "VarInfo of ", vi.metadata.vns)
 
 # Add a new entry to VarInfo
 """
