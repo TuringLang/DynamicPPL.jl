@@ -1,7 +1,7 @@
 using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
-    SampleFromPrior, Sampler, runmodel!, SampleFromUniform, uid, 
+    SampleFromPrior, Sampler, SampleFromUniform, uid, 
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
