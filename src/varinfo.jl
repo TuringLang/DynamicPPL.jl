@@ -942,7 +942,12 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     print(io, vi_str)
 end
 
-Base.show(io::IO, vi::UntypedVarInfo) = print(io, "VarInfo of ", vi.metadata.vns)
+function Base.show(io::IO, vi::UntypedVarInfo)
+    print(io, "VarInfo (")
+    print(io, length(vi.metadata.vns), " variables, ")
+    print(io, "logp = ", round(getlogp(vi), digits=3))
+    print(io, ")")
+end
 
 # Add a new entry to VarInfo
 """
