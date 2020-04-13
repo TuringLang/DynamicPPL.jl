@@ -69,9 +69,17 @@ end
 
 To generate a `Model`, call `model_generator(x_value)`.
 """
-macro model(input_expr)
-    Base.replace_ref_end!(input_expr) |> build_model_info |> replace_tilde! |> replace_vi! |> 
-        replace_logpdf! |> replace_sampler! |> build_output
+macro model(expr)
+    esc(model(expr))
+end
+
+function model(expr)
+    modelinfo = build_model_info(expr)
+
+    # Generate main body
+    modelinfo[:main_body] = generate_mainbody(modelinfo)
+
+    return build_output(modelinfo)
 end
 
 """
@@ -170,62 +178,55 @@ function build_model_info(input_expr)
     return model_info
 end
 
-
 """
-    replace_vi!(model_info)
+    generate_mainbody([expr, ]modelinfo)
 
-Replaces `@varinfo()` expressions with a handle to the `VarInfo` struct.
+Generate the body of the main evaluation function.
 """
-function replace_vi!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @varinfo())
-            vi
-        else
-            x
+generate_mainbody(modelinfo) = generate_mainbody(modelinfo[:main_body], modelinfo)
+
+generate_mainbody(x, modelinfo) = x
+function generate_mainbody(expr::Expr, modelinfo)
+    # Do not touch interpolated expressions
+    expr.head === :$ && return expr.args[1]
+
+    # Apply the `@.` macro first.
+    if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
+        expr.args[1] === Symbol("@__dot__")
+        return generate_mainbody(Base.Broadcast.__dot__(expr.args[end]), modelinfo)
+    end
+
+    # Modify macro calls.
+    if Meta.isexpr(expr, :macrocall) && !isempty(expr.args)
+        name = expr.args[1]
+        if name === Symbol("@varinfo")
+            return modelinfo[:main_body_names][:vi]
+        elseif name === Symbol("@logpdf")
+            return :($(modelinfo[:main_body_names][:vi]).logp[])
+        elseif name === Symbol("@sampler")
+            return :($(modelinfo[:main_body_names][:sampler]))
         end
     end
-    model_info[:main_body] = ex
-    return model_info
-end
 
-"""
-    replace_logpdf!(model_info)
-
-Replaces `@logpdf()` expressions with the value of the accumulated `logpdf` in the `VarInfo` struct.
-"""
-function replace_logpdf!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @logpdf())
-            :($(vi).logp[])
-        else
-            x
-        end
+    # Modify dotted tilde operators.
+    args_dottilde = getargs_dottilde(expr)
+    if args_dottilde !== nothing
+        L, R = args_dottilde
+        return Base.remove_linenums!(generate_dot_tilde(generate_mainbody(L, modelinfo),
+                                                        generate_mainbody(R, modelinfo),
+                                                        modelinfo))
     end
-    model_info[:main_body] = ex
-    return model_info
-end
 
-"""
-    replace_sampler!(model_info)
-
-Replaces `@sampler()` expressions with a handle to the sampler struct.
-"""
-function replace_sampler!(model_info)
-    ex = model_info[:main_body]
-    spl = model_info[:main_body_names][:sampler]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @sampler())
-            spl
-        else
-            x
-        end
+    # Modify tilde operators.
+    args_tilde = getargs_tilde(expr)
+    if args_tilde !== nothing
+        L, R = args_tilde
+        return Base.remove_linenums!(generate_tilde(generate_mainbody(L, modelinfo),
+                                                    generate_mainbody(R, modelinfo),
+                                                    modelinfo))
     end
-    model_info[:main_body] = ex
-    return model_info
+
+    return Expr(expr.head, map(x -> generate_mainbody(x, modelinfo), expr.args)...)
 end
 
 """
@@ -443,7 +444,7 @@ function build_output(model_info)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
     model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
 
-    ex = quote
+    return quote
         function $evaluator(
             $model::$(DynamicPPL.Model),
             $vi::$(DynamicPPL.VarInfo),
@@ -459,8 +460,6 @@ function build_output(model_info)
 
         $model_gen = $model_gen_constructor
     end
-
-    return esc(ex)
 end
 
 

@@ -8,6 +8,14 @@ Random.seed!(129)
 
 priors = 0 # See "new grammar" test.
 
+macro custom(expr)
+    (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) ||
+        error("incorrect macro usage")
+    quote
+        $(esc(expr.args[2])) = 0.0
+    end
+end
+
 @testset "compiler.jl" begin
     @testset "assume" begin
         @model test_assume() = begin
@@ -549,5 +557,13 @@ priors = 0 # See "new grammar" test.
         @test vi2.metadata.y.vns[1] == VarName(:y, ((2,), (Colon(), 1)))
         @test haskey(vi3.metadata, :y)
         @test vi3.metadata.y.vns[1] == VarName(:y, ((1,),))
+    end
+    @testset "custom tilde" begin
+        @model demo() = begin
+            $(@custom m ~ Normal())
+            return m
+        end
+        model = demo()
+        @test all(iszero(model()) for _ in 1:1000)
     end
 end

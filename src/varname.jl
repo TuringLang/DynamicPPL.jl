@@ -187,8 +187,10 @@ end
 vinds(expr::Symbol) = Expr(:tuple)
 function vinds(expr::Expr)
     if Meta.isexpr(expr, :ref)
-        last = Expr(:tuple, expr.args[2:end]...)
-        init = vinds(expr.args[1]).args
+        ex = copy(expr)
+        Base.replace_ref_end!(ex)
+        last = Expr(:tuple, ex.args[2:end]...)
+        init = vinds(ex.args[1]).args
         return Expr(:tuple, init..., last)
     else
         throw("VarName: Mis-formed variable name $(expr)!")
