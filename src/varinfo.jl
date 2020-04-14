@@ -924,7 +924,7 @@ function haskey(vi::TypedVarInfo, vn::VarName)
     return getsym(vn) in fieldnames(Tmeta) && haskey(getmetadata(vi, vn).idcs, vn)
 end
 
-function show(io::IO, vi::UntypedVarInfo)
+function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     vi_str = """
     /=======================================================================
     | VarInfo
@@ -942,7 +942,33 @@ function show(io::IO, vi::UntypedVarInfo)
     print(io, vi_str)
 end
 
-# Add a new entry to VarInfo
+
+const _MAX_VARS_SHOWN = 4
+
+function _show_varnames(io::IO, vi)
+    md = vi.metadata
+    vns = md.vns
+
+    groups = Dict{Symbol, Vector{VarName}}()
+    for vn in vns
+        group = get!(() -> Vector{VarName}(), groups, getsym(vn))
+        push!(group, vn)
+    end
+
+    print(io, length(groups), length(groups) == 1 ? " variable " : " variables ", "(")
+    join(io, Iterators.take(keys(groups), _MAX_VARS_SHOWN), ", ")
+    length(groups) > _MAX_VARS_SHOWN && print(io, ", ...")
+    print(io, "), dimension ", sum(prod(size(md.vals[md.ranges[md.idcs[vn]]])) for vn in vns))
+end
+
+function Base.show(io::IO, vi::UntypedVarInfo)
+    print(io, "VarInfo (")
+    _show_varnames(io, vi)
+    print(io, "; logp: ", round(getlogp(vi), digits=3))
+    print(io, ")")
+end
+
+
 """
     push!(vi::VarInfo, vn::VarName, r, dist::Distribution)
 
