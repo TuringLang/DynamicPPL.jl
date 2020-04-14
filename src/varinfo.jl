@@ -942,10 +942,29 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     print(io, vi_str)
 end
 
+
+const _MAX_VARS_SHOWN = 4
+
+function _show_varnames(io::IO, vi)
+    md = vi.metadata
+    vns = md.vns
+
+    groups = Dict{Symbol, Vector{VarName}}()
+    for vn in vns
+        group = get!(() -> Vector{VarName}(), groups, getsym(vn))
+        push!(group, vn)
+    end
+
+    print(io, length(groups), " variables (")
+    join(io, Iterators.take(keys(groups), _MAX_VARS_SHOWN), ", ")
+    length(groups) > _MAX_VARS_SHOWN && print(io, ", ...")
+    print(io, "), dimension ", sum(prod(size(md.vals[md.ranges[md.idcs[vn]]])) for vn in vns))
+end
+
 function Base.show(io::IO, vi::UntypedVarInfo)
     print(io, "VarInfo (")
-    print(io, length(vi.metadata.vns), " variables, ")
-    print(io, "logp = ", round(getlogp(vi), digits=3))
+    _show_varnames(io, vi)
+    print(io, "; logp: ", round(getlogp(vi), digits=3))
     print(io, ")")
 end
 
