@@ -229,41 +229,6 @@ function generate_mainbody(expr::Expr, modelinfo)
     return Expr(expr.head, map(x -> generate_mainbody(x, modelinfo), expr.args)...)
 end
 
-"""
-    replace_tilde!(model_info)
-
-Replace `~` and `.~` expressions with observation or assumption expressions, updating `model_info`.
-"""
-function replace_tilde!(model_info)
-    # Apply the `@.` macro first.
-    expr = model_info[:main_body]
-    dottedexpr = MacroTools.postwalk(apply_dotted, expr)
-
-    # Check for tilde operators.
-    tildeexpr = MacroTools.postwalk(dottedexpr) do x
-        # Check dot tilde first.
-        dotargs = getargs_dottilde(x)
-        if dotargs !== nothing
-            L, R = dotargs
-            return Base.remove_linenums!(generate_dot_tilde(L, R, model_info))
-        end
-
-        # Check tilde.
-        args = getargs_tilde(x)
-        if args !== nothing
-            L, R = args
-            return Base.remove_linenums!(generate_tilde(L, R, model_info))
-        end
-
-        return x
-    end
-
-    # Update the function body.
-    model_info[:main_body] = tildeexpr
-
-    return model_info
-end
-
 # """ Unbreak code highlighting in Emacs julia-mode
 
 
