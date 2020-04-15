@@ -109,6 +109,6 @@ include("varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
-include("ad.jl")
+include("compat/ad.jl")
 
 end # module
