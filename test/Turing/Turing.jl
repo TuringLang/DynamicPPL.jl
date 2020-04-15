@@ -66,9 +66,6 @@ end
 # Turing essentials - modelling macros and inference algorithms
 export  @model,                 # modelling
         @varname,
-        @varinfo,
-        @logpdf,
-        @sampler,
         DynamicPPL,
 
         MH,                     # classic sampling
