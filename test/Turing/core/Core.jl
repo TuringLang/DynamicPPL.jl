@@ -52,9 +52,6 @@ export  @model,
         ADBACKEND,
         setchunksize,
         verifygrad,
-        @varinfo,
-        @logpdf,
-        @sampler,
         @logprob_str,
         @prob_str
 

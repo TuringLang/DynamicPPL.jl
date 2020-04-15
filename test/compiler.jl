@@ -208,18 +208,24 @@ end
         end
         @test_throws MethodError testmodel(missing)()
 
-        # Test @varinfo() and @logpdf()
+        # Test use of internal names
         @model testmodel(x) = begin
             x[1] ~ Bernoulli(0.5)
-            global _varinfo = @varinfo()
-            global lp = @logpdf()
+            global varinfo_ = _varinfo
+            global sampler_ = _sampler
+            global model_ = _model
+            global context_ = _context
+            global lp = getlogp(_varinfo)
             return x
         end
         model = testmodel([1.0])
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test getlogp(varinfo) == lp
-        @test varinfo === _varinfo
+        @test varinfo_ === varinfo
+        @test model_ === model
+        @test sampler_ === SampleFromPrior()
+        @test context_ === DefaultContext()
 
         # test DPPL#61
         @model testmodel(z) = begin
@@ -234,7 +240,7 @@ end
         function makemodel(p)
             @model testmodel(x) = begin
                 x[1] ~ Bernoulli(p)
-                global lp = @logpdf()
+                global lp = getlogp(_varinfo)
                 return x
             end
             return testmodel
