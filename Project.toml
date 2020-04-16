@@ -11,7 +11,7 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [compat]
-AbstractMCMC = "0.4, 0.5, 1.0"
+AbstractMCMC = "1.0"
 Bijectors = "0.5.2, 0.6"
 Distributions = "0.22, 0.23"
 MacroTools = "0.5.1"
