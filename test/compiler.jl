@@ -1,5 +1,5 @@
 using .Turing, Random, MacroTools, Distributions, Test
-using DynamicPPL: DynamicPPL, split_var_str, @varname, VarInfo, VarName
+using DynamicPPL: DynamicPPL, vsym, vinds, @varname, VarInfo, VarName
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
@@ -7,6 +7,14 @@ include(dir*"/test/test_utils/AllUtils.jl")
 Random.seed!(129)
 
 priors = 0 # See "new grammar" test.
+
+macro custom(expr)
+    (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) ||
+        error("incorrect macro usage")
+    quote
+        $(esc(expr.args[2])) = 0.0
+    end
+end
 
 @testset "compiler.jl" begin
     @testset "assume" begin
@@ -200,18 +208,47 @@ priors = 0 # See "new grammar" test.
         end
         @test_throws MethodError testmodel(missing)()
 
-        # Test @varinfo() and @logpdf()
+        # Test use of internal names
         @model testmodel(x) = begin
             x[1] ~ Bernoulli(0.5)
-            global _varinfo = @varinfo()
-            global lp = @logpdf()
+            global varinfo_ = _varinfo
+            global sampler_ = _sampler
+            global model_ = _model
+            global context_ = _context
+            global lp = getlogp(_varinfo)
             return x
         end
         model = testmodel([1.0])
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test getlogp(varinfo) == lp
-        @test varinfo === _varinfo
+        @test varinfo_ === varinfo
+        @test model_ === model
+        @test sampler_ === SampleFromPrior()
+        @test context_ === DefaultContext()
+
+        # test DPPL#61
+        @model testmodel(z) = begin
+            m ~ Normal()
+            z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
+            return m
+        end
+        model = testmodel(rand(10))
+        @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
+    end
+    @testset "nested model" begin
+        function makemodel(p)
+            @model testmodel(x) = begin
+                x[1] ~ Bernoulli(p)
+                global lp = getlogp(_varinfo)
+                return x
+            end
+            return testmodel
+        end
+        model = makemodel(0.5)([1.0])
+        varinfo = DynamicPPL.VarInfo(model)
+        model(varinfo)
+        @test getlogp(varinfo) == lp
     end
     @testset "new grammar" begin
         x = Float64[1 2]
@@ -313,14 +350,23 @@ priors = 0 # See "new grammar" test.
         x = randn(100)
         res = sample(vdemo1(x), alg, 250)
 
+        @model vdemo1b(x) = begin
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0, sqrt(s))
+            @. x ~ Normal(m, $(sqrt(s)))
+            return s, m
+        end
+
+        res = sample(vdemo1b(x), alg, 250)
+
         D = 2
         @model vdemo2(x) = begin
             μ ~ MvNormal(zeros(D), ones(D))
-            @. x ~ MvNormal(μ, ones(D))
+            @. x ~ $(MvNormal(μ, ones(D)))
         end
 
         alg = HMC(0.01, 5)
-        res = sample(vdemo2(randn(D,100)), alg, 250)
+        res = sample(vdemo2(randn(D, 100)), alg, 250)
 
         # Vector assumptions
         N = 10
@@ -372,78 +418,75 @@ priors = 0 # See "new grammar" test.
         sample(vdemo7(), alg, 1000)
     end
 
-    if VERSION >= v"1.1"
-        """
-        @testset "vectorization .~" begin
-            @model vdemo1(x) = begin
-                s ~ InverseGamma(2,3)
-                m ~ Normal(0, sqrt(s))
-                x .~ Normal(m, sqrt(s))
-                return s, m
-            end
-
-            alg = HMC(0.01, 5)
-            x = randn(100)
-            res = sample(vdemo1(x), alg, 250)
-
-            D = 2
-            @model vdemo2(x) = begin
-                μ ~ MvNormal(zeros(D), ones(D))
-                x .~ MvNormal(μ, ones(D))
-            end
-
-            alg = HMC(0.01, 5)
-            res = sample(vdemo2(randn(D,100)), alg, 250)
-
-            # Vector assumptions
-            N = 10
-            setchunksize(N)
-            alg = HMC(0.2, 4)
-
-            @model vdemo3() = begin
-                x = Vector{Real}(undef, N)
-                for i = 1:N
-                    x[i] ~ Normal(0, sqrt(4))
-                end
-            end
-
-            t_loop = @elapsed res = sample(vdemo3(), alg, 1000)
-
-            # Test for vectorize UnivariateDistribution
-            @model vdemo4() = begin
-            x = Vector{Real}(undef, N)
-            x .~ Normal(0, 2)
-            end
-
-            t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
-
-            @model vdemo5() = begin
-                x ~ MvNormal(zeros(N), 2 * ones(N))
-            end
-
-            t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
-
-            println("Time for")
-            println("  Loop : \$t_loop")
-            println("  Vec  : \$t_vec")
-            println("  Mv   : \$t_mv")
-
-            # Transformed test
-            @model vdemo6() = begin
-                x = Vector{Real}(undef, N)
-                x .~ InverseGamma(2, 3)
-            end
-
-            sample(vdemo6(), alg, 1000)
-
-            @model vdemo7() = begin
-                x = Array{Real}(undef, N, N)
-                x .~ [InverseGamma(2, 3) for i in 1:N]
-            end
-    
-            sample(vdemo7(), alg, 1000)
+    # Notation is ugly since `x .~ Normal(μ, σ)` cannot be parsed in Julia 1.0
+    @testset "vectorization .~" begin
+        @model vdemo1(x) = begin
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0, sqrt(s))
+            (.~)(x, Normal(m, sqrt(s)))
+            return s, m
         end
-        """ |> Meta.parse |> eval
+
+        alg = HMC(0.01, 5)
+        x = randn(100)
+        res = sample(vdemo1(x), alg, 250)
+
+        D = 2
+        @model vdemo2(x) = begin
+            μ ~ MvNormal(zeros(D), ones(D))
+            (.~)(x, MvNormal(μ, ones(D)))
+        end
+
+        alg = HMC(0.01, 5)
+        res = sample(vdemo2(randn(D,100)), alg, 250)
+
+        # Vector assumptions
+        N = 10
+        setchunksize(N)
+        alg = HMC(0.2, 4)
+
+        @model vdemo3() = begin
+            x = Vector{Real}(undef, N)
+            for i = 1:N
+                x[i] ~ Normal(0, sqrt(4))
+            end
+        end
+
+        t_loop = @elapsed res = sample(vdemo3(), alg, 1000)
+
+        # Test for vectorize UnivariateDistribution
+        @model vdemo4() = begin
+            x = Vector{Real}(undef, N)
+            (.~)(x, Normal(0, 2))
+        end
+
+        t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
+
+        @model vdemo5() = begin
+            x ~ MvNormal(zeros(N), 2 * ones(N))
+        end
+
+        t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
+
+        println("Time for")
+        println("  Loop : \$t_loop")
+        println("  Vec  : \$t_vec")
+        println("  Mv   : \$t_mv")
+
+        # Transformed test
+        @model vdemo6() = begin
+            x = Vector{Real}(undef, N)
+            (.~)(x, InverseGamma(2, 3))
+        end
+
+        sample(vdemo6(), alg, 1000)
+
+        @model vdemo7() = begin
+            x = Array{Real}(undef, N, N)
+            (.~)(x, [InverseGamma(2, 3) for i in 1:N])
+        end
+
+        sample(vdemo7(), alg, 1000)
     end
 
     @testset "Type parameters" begin
@@ -480,35 +523,26 @@ priors = 0 # See "new grammar" test.
         sample(vdemo3(Vector{Float64}), alg, 250)
         sample(vdemo3(TV=Vector{Float64}), alg, 250)
     end
-    @testset "split var string" begin
-        var_str = "x"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds == Vector{String}[]
+    @testset "var name splitting" begin
+        var_expr = :(x)
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(())
 
-        var_str = "x[1,1][2,3]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["1", "1"]
-        @test inds[2] == ["2", "3"]
+        var_expr = :(x[1,1][2,3])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((1, 1), (2, 3)))
 
-        var_str = "x[Colon(),1][2,Colon()]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["Colon()", "1"]
-        @test inds[2] == ["2", "Colon()"]
+        var_expr = :(x[:,1][2,:])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((:, 1), (2, :)))
 
-        var_str = "x[2:3,1][2,1:2]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["2:3", "1"]
-        @test inds[2] == ["2", "1:2"]
+        var_expr = :(x[2:3,1][2,1:2])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((2:3, 1), (2, 1:2)))
 
-        var_str = "x[2:3,2:3][[1,2],[1,2]]"
-        sym, inds = split_var_str(var_str)
-        @test sym == "x"
-        @test inds[1] == ["2:3", "2:3"]
-        @test inds[2] == ["[1,2]", "[1,2]"]
+        var_expr = :(x[2:3,2:3][[1,2],[1,2]])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
     end
     @testset "user-defined variable name" begin
         @model f1() = begin
@@ -518,16 +552,24 @@ priors = 0 # See "new grammar" test.
             x ~ NamedDist(Normal(), @varname(y[2][:,1]))
         end
         @model f3() = begin
-            x ~ NamedDist(Normal(), "y[1]")
+            x ~ NamedDist(Normal(), @varname(y[1]))
         end
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == VarName{:y}("")
+        @test vi1.metadata.y.vns[1] == VarName(:y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == VarName{:y}("[2][Colon(),1]")
+        @test vi2.metadata.y.vns[1] == VarName(:y, ((2,), (Colon(), 1)))
         @test haskey(vi3.metadata, :y)
-        @test vi3.metadata.y.vns[1] == VarName{:y}("[1]")
+        @test vi3.metadata.y.vns[1] == VarName(:y, ((1,),))
+    end
+    @testset "custom tilde" begin
+        @model demo() = begin
+            $(@custom m ~ Normal())
+            return m
+        end
+        model = demo()
+        @test all(iszero(model()) for _ in 1:1000)
     end
 end

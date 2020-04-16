@@ -7,8 +7,5 @@
         end
     end
     model = coinflip([1,1,0])
-
-    vi = VarInfo()
-
-    runmodel!(model, vi, SampleFromPrior(), LikelihoodContext())
+    model(SampleFromPrior(), LikelihoodContext())
 end

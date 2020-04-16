@@ -1,6 +1,56 @@
+"""
+    getargs_dottilde(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
+`(~).(L, R)`, or `nothing` otherwise.
+"""
+getargs_dottilde(x) = nothing
+function getargs_dottilde(expr::Expr)
+    # Check if the expression is of the form `L .~ R`.
+    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :.~
+        return expr.args[2], expr.args[3]
+    end
+
+    # Check if the expression is of the form `(~).(L, R)`.
+    if Meta.isexpr(expr, :., 2) && expr.args[1] === :~ &&
+        Meta.isexpr(expr.args[2], :tuple, 2)
+        return expr.args[2].args[1], expr.args[2].args[2]
+    end
+
+    return
+end
+
+"""
+    getargs_tilde(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L ~ R`, or `nothing`
+otherwise.
+"""
+getargs_tilde(x) = nothing
+function getargs_tilde(expr::Expr)
+    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :~
+        return expr.args[2], expr.args[3]
+    end
+    return
+end
+
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################
+function to_namedtuple_expr(syms, vals=syms)
+    if length(syms) == 0
+        nt = :(NamedTuple())
+    else
+        nt_type = Expr(:curly, :NamedTuple, 
+            Expr(:tuple, QuoteNode.(syms)...), 
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...)
+        )
+        nt = Expr(:call, :($(DynamicPPL.namedtuple)), nt_type, Expr(:tuple, vals...))
+    end
+    return nt
+end
+
+
 if VERSION == v"1.2"
     @eval function namedtuple(::Type{NamedTuple{names, T}}, args::Tuple) where {names, T <: Tuple}
         if length(args) != length(names)

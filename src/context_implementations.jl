@@ -35,23 +35,24 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
     return tilde(ctx.ctx, sampler, right, left, inds, vi)
 end
 
+"""
+    tilde_assume(ctx, sampler, right, vn, inds, vi)
+
+This method is applied in the generated code for assumed variables, e.g., `x ~ Normal()` where
+`x` does not occur in the model inputs.
+
+Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
+"""
+function tilde_assume(ctx, sampler, right, vn, inds, vi)
+    return tilde(ctx, sampler, right, vn, inds, vi)
+end
+
+
 function _tilde(sampler, right, vn::VarName, vi)
     return assume(sampler, right, vn, vi)
 end
 function _tilde(sampler, right::NamedDist, vn::VarName, vi)
-    name = right.name
-    if name isa String
-        sym_str, inds = split_var_str(name, String)
-        sym = Symbol(sym_str)
-        vn = VarName{sym}(inds)
-    elseif name isa Symbol
-        vn = VarName{name}("")
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
-    return _tilde(sampler, right.dist, vn, vi)
+    return _tilde(sampler, right.dist, right.name, vi)
 end
 
 # observe
@@ -67,6 +68,30 @@ end
 function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
 end
+
+"""
+    tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+
+This method is applied in the generated code for observed variables, e.g., `x ~ Normal()` where
+`x` does occur in the model inputs.
+
+Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
+name and indices; if needed, these can be accessed through this function, though.
+"""
+function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    return tilde(ctx, sampler, right, left, vi)
+end
+
+"""
+    tilde_observe(ctx, sampler, right, left, vi)
+
+This method is applied in the generated code for observed constants, e.g., `1.0 ~ Normal()`.
+Falls back to `tilde(ctx, sampler, right, left, vi)`.
+"""
+function tilde_observe(ctx, sampler, right, left, vi)
+    return tilde(ctx, sampler, right, left, vi)
+end
+
 
 _tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
@@ -163,31 +188,33 @@ function dot_tilde(
     return _dot_tilde(sampler, dist, left, vns, vi)
 end
 
+"""
+    dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+
+This method is applied in the generated code for assumed vectorized variables, e.g., `x .~
+MvNormal()` where `x` does not occur in the model inputs.
+
+Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
+"""
+function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+    return dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+end
+
+
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
-    name = dist.name
-    if name isa String
-        sym_str, inds = split_var_str(name, String)
-        sym = Symbol(sym_str)
-        vn = VarName{sym}(inds)
-    elseif name isa Symbol
-        vn = VarName{name}("")
-    elseif name isa VarName
-        vn = name
-    else
-        throw("Unsupported variable name. Please use either a string, symbol or VarName.")
-    end
-    return get_vns_and_dist(dist.dist, var, vn)
+    return get_vns_and_dist(dist.dist, var, dist.name)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
-    getvn = i -> VarName(vn, vn.indexing * "[Colon(),$i]")
+    getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))
     return getvn.(1:size(var, 2)), dist
+    
 end
 function get_vns_and_dist(
     dist::Union{Distribution, AbstractArray{<:Distribution}}, 
     var::AbstractArray, 
     vn::VarName
 )
-    getvn = ind -> VarName(vn, vn.indexing * "[" * join(Tuple(ind), ",") * "]")
+    getvn = ind -> VarName(vn, (vn.indexing..., Tuple(ind)))
     return getvn.(CartesianIndices(var)), dist
 end
 
@@ -336,6 +363,30 @@ end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, left, vi)
 end
+
+"""
+    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+
+This method is applied in the generated code for vectorized observed variables, e.g., `x .~
+MvNormal()` where `x` does occur the model inputs.
+
+Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
+name and indices; if needed, these can be accessed through this function, though.
+"""
+function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
+    return dot_tilde(ctx, sampler, right, left, vi)
+end
+
+"""
+    dot_tilde_observe(ctx, sampler, right, left, vi)
+
+This method is applied in the generated code for vectorized observed constants, e.g., `[1.0] .~
+MvNormal()`.  Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
+"""
+function dot_tilde_observe(ctx, sampler, right, left, vi)
+    return dot_tilde(ctx, sampler, right, left, vi)
+end
+
 
 function _dot_tilde(sampler, right, left::AbstractArray, vi)
     return dot_observe(sampler, right, left, vi)

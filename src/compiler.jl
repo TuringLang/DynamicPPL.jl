@@ -1,94 +1,41 @@
-"""
-    struct ModelGen{Targs, F, Tdefaults} <: Function
-        f::F
-        defaults::Tdefaults
-    end
+const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
+    "Distributions."
 
-A `Model` generator. This is the output of the `@model` macro. `Targs` is the tuple 
-of the symbols of the model's arguments. `defaults` is the `NamedTuple` of default values
-of the arguments, if any. Every `ModelGen` is callable with the arguments `Targs`, 
-returning an instance of `Model`.
-"""
-struct ModelGen{Targs, F, Tdefaults} <: Function
-    f::F
-    defaults::Tdefaults
-end
-ModelGen{Targs}(args...) where {Targs} = ModelGen{Targs, typeof.(args)...}(args...)
-(m::ModelGen)(args...; kwargs...) = m.f(args...; kwargs...)
-function Base.getproperty(m::ModelGen{Targs}, f::Symbol) where {Targs}
-    f === :args && return Targs
-    return Base.getfield(m, f)
-end
-
-macro varinfo()
-    :(throw(_error_msg()))
-end
-macro logpdf()
-    :(throw(_error_msg()))
-end
-macro sampler()
-    :(throw(_error_msg()))
-end
-function _error_msg()
-    return "This macro is only for use in the `@model` macro and not for external use."
-end
-
-
-
-# Check if the right-hand side is a distribution.
-function assert_dist(dist; msg)
-    isa(dist, Distribution) || throw(ArgumentError(msg))
-end
-function assert_dist(dist::AbstractVector; msg)
-    all(d -> isa(d, Distribution), dist) || throw(ArgumentError(msg))
-end
-
-function wrong_dist_errormsg(l)
-    return "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
-        "Distributions on line $(l)."
-end
+const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo)
 
 """
-    @preprocess(data_vars, missing_vars, ex)
+    isassumption(expr)
 
-Let `ex` be `x[1]`. This macro returns `@varname x[1]` in any of the following cases:
-    1. `x` was not among the input data to the model,
-    2. `x` was among the input data to the model but with a value `missing`, or
-    3. `x` was among the input data to the model with a value other than missing, 
-    but `x[1] === missing`.
-Otherwise, the value of `x[1]` is returned.
+Return an expression that can be evaluated to check if `expr` is an assumption in the
+model.
+
+Let `expr` be `:(x[1])`. It is an assumption in the following cases:
+    1. `x` is not among the input data to the model,
+    2. `x` is among the input data to the model but with a value `missing`, or
+    3. `x` is among the input data to the model with a value other than missing,
+       but `x[1] === missing`.
+
+When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-macro preprocess(data_vars, missing_vars, ex)
-    ex
-end
-macro preprocess(data_vars, missing_vars, ex::Union{Symbol, Expr})
-    sym = gensym(:sym)
-    lhs = gensym(:lhs)
-    return esc(quote
-        # Extract symbol
-        $sym = Val($(vsym(ex)))
-        # This branch should compile nicely in all cases except for partial missing data
-        # For example, when `ex` is `x[i]` and `x isa Vector{Union{Missing, Float64}}`
-        if !DynamicPPL.inparams($sym, $data_vars) || DynamicPPL.inparams($sym, $missing_vars)
-            $(varname(ex)), $(vinds(ex))
-        else
-            if DynamicPPL.inparams($sym, $data_vars)
-                # Evaluate the lhs
-                $lhs = $ex
-                if $lhs === missing
-                    $(varname(ex)), $(vinds(ex))
-                else
-                    $lhs
-                end
+function isassumption(expr::Union{Symbol, Expr})
+    vn = gensym(:vn)
+
+    return quote
+        let $vn = $(varname(expr))
+            # This branch should compile nicely in all cases except for partial missing data
+            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
+            if !$(DynamicPPL.inargnames)($vn, _model) || $(DynamicPPL.inmissings)($vn, _model)
+                true
             else
-                throw("This point should not be reached. Please report this error.")
+                # Evaluate the LHS
+                $expr === missing
             end
         end
-    end)
+    end
 end
-@generated function inparams(::Val{s}, ::Val{t}) where {s, t}
-    return (s in t) ? :(true) : :(false)
-end
+
+# failsafe: a literal is never an assumption
+isassumption(expr) = :(false)
 
 #################
 # Main Compiler #
@@ -111,9 +58,17 @@ end
 
 To generate a `Model`, call `model_generator(x_value)`.
 """
-macro model(input_expr)
-    build_model_info(input_expr) |> replace_tilde! |> replace_vi! |> 
-        replace_logpdf! |> replace_sampler! |> build_output
+macro model(expr)
+    esc(model(expr))
+end
+
+function model(expr)
+    modelinfo = build_model_info(expr)
+
+    # Generate main body
+    modelinfo[:main_body] = generate_mainbody(modelinfo[:main_body], modelinfo[:args])
+
+    return build_output(modelinfo)
 end
 
 """
@@ -151,9 +106,9 @@ function build_model_info(input_expr)
     else
         nt_type = Expr(:curly, :NamedTuple, 
             Expr(:tuple, QuoteNode.(arg_syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in arg_syms]...)
+            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
         )
-        args_nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, arg_syms...))
+        args_nt = Expr(:call, :($namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
     args = map(modeldef[:args]) do arg
         if (arg isa Symbol)
@@ -200,224 +155,182 @@ function build_model_info(input_expr)
         :args_nt => args_nt,
         :defaults_nt => defaults_nt,
         :args => args,
-        :whereparams => modeldef[:whereparams],
-        :main_body_names => Dict(
-            :ctx => gensym(:ctx),
-            :vi => gensym(:vi),
-            :sampler => gensym(:sampler),
-            :model => gensym(:model),
-            :inner_function => gensym(:inner_function),
-            :defaults => gensym(:defaults)
-        )
+        :whereparams => modeldef[:whereparams]
     )
 
     return model_info
 end
 
-function to_namedtuple_expr(syms::Vector, vals = syms)
-    if length(syms) == 0
-        nt = :(NamedTuple())
-    else
-        nt_type = Expr(:curly, :NamedTuple, 
-            Expr(:tuple, QuoteNode.(syms)...), 
-            Expr(:curly, :Tuple, [:(DynamicPPL.get_type($x)) for x in vals]...)
+"""
+    generate_mainbody(expr, args)
+
+Generate the body of the main evaluation function from expression `expr` and arguments
+`args`.
+"""
+generate_mainbody(expr, args) = generate_mainbody!(Symbol[], expr, args)
+
+generate_mainbody!(found, x, args) = x
+function generate_mainbody!(found, sym::Symbol, args)
+    if sym in INTERNALNAMES && sym ∉ found
+        @warn "you are using the internal variable `$(sym)`"
+        push!(found, sym)
+    end
+    return sym
+end
+function generate_mainbody!(found, expr::Expr, args)
+    # Do not touch interpolated expressions
+    expr.head === :$ && return expr.args[1]
+
+    # Apply the `@.` macro first.
+    if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
+        expr.args[1] === Symbol("@__dot__")
+        return generate_mainbody!(found, Base.Broadcast.__dot__(expr.args[end]), args)
+    end
+
+    # Modify dotted tilde operators.
+    args_dottilde = getargs_dottilde(expr)
+    if args_dottilde !== nothing
+        L, R = args_dottilde
+        return Base.remove_linenums!(generate_dot_tilde(generate_mainbody!(found, L, args),
+                                                        generate_mainbody!(found, R, args),
+                                                        args))
+    end
+
+    # Modify tilde operators.
+    args_tilde = getargs_tilde(expr)
+    if args_tilde !== nothing
+        L, R = args_tilde
+        return Base.remove_linenums!(generate_tilde(generate_mainbody!(found, L, args),
+                                                    generate_mainbody!(found, R, args),
+                                                    args))
+    end
+
+    return Expr(expr.head, map(x -> generate_mainbody!(found, x, args), expr.args)...)
+end
+
+# """ Unbreak code highlighting in Emacs julia-mode
+
+
+"""
+    generate_tilde(left, right, args)
+
+Generate an `observe` expression for data variables and `assume` expression for parameter
+variables.
+"""
+function generate_tilde(left, right, args)
+    @gensym tmpright tmpleft
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
+
+    if left isa Symbol || left isa Expr
+        @gensym out vn inds
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        assumption = [
+            :($out = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds,
+                                                _varinfo)),
+            :($(DynamicPPL.acclogp!)(_varinfo, $out[2])),
+            :($left = $out[1])
+        ]
+
+        # It can only be an observation if the LHS is an argument of the model
+        if vsym(left) in args
+            @gensym isassumption
+            return quote
+                $(top...)
+                $isassumption = $(DynamicPPL.isassumption(left))
+                if $isassumption
+                    $(assumption...)
+                else
+                    $tmpleft = $left
+                    $(DynamicPPL.acclogp!)(
+                        _varinfo,
+                        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $tmpleft,
+                                                    $vn, $inds, _varinfo)
+                    )
+                    $tmpleft
+                end
+            end
+        end
+
+        return quote
+            $(top...)
+            $(assumption...)
+        end
+    end
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        $tmpleft = $left
+        $(DynamicPPL.acclogp!)(
+            _varinfo,
+            $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $tmpleft, _varinfo)
         )
-        nt = Expr(:call, :(DynamicPPL.namedtuple), nt_type, Expr(:tuple, vals...))
+        $tmpleft
     end
-    return nt
 end
 
 """
-    replace_vi!(model_info)
+    generate_dot_tilde(left, right, args)
 
-Replaces `@varinfo()` expressions with a handle to the `VarInfo` struct.
+Generate the expression that replaces `left .~ right` in the model body.
 """
-function replace_vi!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @varinfo())
-            vi
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
+function generate_dot_tilde(left, right, args)
+    @gensym tmpright tmpleft
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
 
-"""
-    replace_logpdf!(model_info)
-
-Replaces `@logpdf()` expressions with the value of the accumulated `logpdf` in the `VarInfo` struct.
-"""
-function replace_logpdf!(model_info)
-    ex = model_info[:main_body]
-    vi = model_info[:main_body_names][:vi]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @logpdf())
-            :($vi.logp[])
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-
-"""
-    replace_sampler!(model_info)
-
-Replaces `@sampler()` expressions with a handle to the sampler struct.
-"""
-function replace_sampler!(model_info)
-    ex = model_info[:main_body]
-    spl = model_info[:main_body_names][:sampler]
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, @sampler())
-            spl
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-
-# The next function is defined that way because .~ gives a parsing error in Julia 1.0
-"""
-\"""
-    replace_tilde!(model_info)
-
-Replaces `~` expressions with observation or assumption expressions, updating `model_info`.
-\"""
-function replace_tilde!(model_info)
-    ex = model_info[:main_body]
-    ex = MacroTools.postwalk(ex) do x 
-        if @capture(x, @M_ L_ ~ R_) && M == Symbol("@__dot__")
-            generate_dot_tilde(L, R, model_info)
-        else
-            x
-        end
-    end
-    $(VERSION >= v"1.1" ? "ex = MacroTools.postwalk(ex) do x
-        if @capture(x, L_ .~ R_)
-            generate_dot_tilde(L, R, model_info)
-        else
-            x
-        end
-    end" : "")
-    ex = MacroTools.postwalk(ex) do x
-        if @capture(x, L_ ~ R_)
-            generate_tilde(L, R, model_info)
-        else
-            x
-        end
-    end
-    model_info[:main_body] = ex
-    return model_info
-end
-""" |> Meta.parse |> eval
-
-"""
-    generate_tilde(left, right, model_info)
-
-The `tilde` function generates `observe` expression for data variables and `assume` 
-expressions for parameter variables, updating `model_info` in the process.
-"""
-function generate_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
-    model = model_info[:main_body_names][:model]
-    vi = model_info[:main_body_names][:vi]
-    ctx = model_info[:main_body_names][:ctx]
-    sampler = model_info[:main_body_names][:sampler]
-    temp_right = gensym(:temp_right)
-    out = gensym(:out)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
-    preprocessed = gensym(:preprocessed)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
     if left isa Symbol || left isa Expr
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
-            if $preprocessed isa Tuple
-                $vn, $inds = $preprocessed
-                $out = DynamicPPL.tilde($ctx, $sampler, $temp_right, $vn, $inds, $vi)
-                $left = $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
-            else
-                DynamicPPL.acclogp!(
-                    $vi,
-                    DynamicPPL.tilde($ctx, $sampler, $temp_right, $preprocessed, $vi),
-                )
+        @gensym out vn inds
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        assumption = [
+            :($out = $(DynamicPPL.dot_tilde_assume)(_context, _sampler, $tmpright, $left,
+                                                    $vn, $inds, _varinfo)),
+            :($(DynamicPPL.acclogp!)(_varinfo, $out[2])),
+            :($left .= $out[1])
+        ]
+
+        # It can only be an observation if the LHS is an argument of the model
+        if vsym(left) in args
+            @gensym isassumption
+            return quote
+                $(top...)
+                $isassumption = $(DynamicPPL.isassumption(left))
+                if $isassumption
+                    $(assumption...)
+                else
+                    $tmpleft = $left
+                    $(DynamicPPL.acclogp!)(
+                        _varinfo,
+                        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright,
+                                                        $tmpleft, $vn, $inds, _varinfo)
+                    )
+                    $tmpleft
+                end
             end
         end
-    else
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            DynamicPPL.acclogp!(
-                $vi,
-                DynamicPPL.tilde($ctx, $sampler, $temp_right, $left, $vi),
-            )
+
+        return quote
+            $(top...)
+            $(assumption...)
         end
     end
-    return ex
-end
 
-"""
-    generate_dot_tilde(left, right, model_info)
-
-This function returns the expression that replaces `left .~ right` in the model body. If `preprocessed isa VarName`, then a `dot_assume` block will be run. Otherwise, a `dot_observe` block will be run.
-"""
-function generate_dot_tilde(left, right, model_info)
-    arg_syms = Val((model_info[:arg_syms]...,))
-    model = model_info[:main_body_names][:model]
-    vi = model_info[:main_body_names][:vi]
-    ctx = model_info[:main_body_names][:ctx]
-    sampler = model_info[:main_body_names][:sampler]
-    out = gensym(:out)
-    temp_left = gensym(:temp_left)
-    temp_right = gensym(:temp_right)
-    preprocessed = gensym(:preprocessed)
-    lp = gensym(:lp)
-    vn = gensym(:vn)
-    inds = gensym(:inds)
-    assert_ex = :(DynamicPPL.assert_dist($temp_right, msg = $(wrong_dist_errormsg(@__LINE__))))
-    if left isa Symbol || left isa Expr
-        ex = quote
-            $temp_right = $right
-            $assert_ex
-            $preprocessed = DynamicPPL.@preprocess($arg_syms, DynamicPPL.getmissing($model), $left)
-            if $preprocessed isa Tuple
-                $vn, $inds = $preprocessed
-                $temp_left = $left
-                $out = DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vn, $inds, $vi)
-                $left .= $out[1]
-                DynamicPPL.acclogp!($vi, $out[2])
-            else
-                $temp_left = $preprocessed
-                DynamicPPL.acclogp!(
-                    $vi,
-                    DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
-                )
-            end
-        end
-    else
-        ex = quote
-            $temp_left = $left
-            $temp_right = $right
-            $assert_ex
-            DynamicPPL.acclogp!(
-                $vi,
-                DynamicPPL.dot_tilde($ctx, $sampler, $temp_right, $temp_left, $vi),
-            )
-        end
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        $tmpleft = $left
+        $(DynamicPPL.acclogp!)(
+            _varinfo,
+            $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $tmpleft,
+                                            _varinfo)
+        )
+        $tmpleft
     end
-    return ex
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat, AbstractArray}}
@@ -431,14 +344,6 @@ hasmissing(T::Type) = false
 Builds the output expression.
 """
 function build_output(model_info)
-    # Construct user-facing function
-    main_body_names = model_info[:main_body_names]
-    ctx = main_body_names[:ctx]
-    vi = main_body_names[:vi]
-    model = main_body_names[:model]
-    sampler = main_body_names[:sampler]
-    inner_function = main_body_names[:inner_function]
-
     # Arguments with default values
     args = model_info[:args]
     # Argument symbols without default values
@@ -452,68 +357,37 @@ function build_output(model_info)
     whereparams = model_info[:whereparams]
     # Model generator name
     model_gen = model_info[:name]
-    # Outer function name
-    outer_function = gensym(model_info[:name])
     # Main body of the model
     main_body = model_info[:main_body]
-    model_gen_constructor = quote
-        DynamicPPL.ModelGen{$(Tuple(arg_syms))}(
-            $outer_function, 
-            $defaults_nt,
-        )
-    end
+
     unwrap_data_expr = Expr(:block)
     for var in arg_syms
-        temp_var = gensym(:temp_var)
-        varT = gensym(:varT)
-        push!(unwrap_data_expr.args, quote
-            local $var
-            $temp_var = $model.args.$var
-            $varT = typeof($temp_var)
-            if $temp_var isa DynamicPPL.FloatOrArrayType
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $temp_var)
-            elseif DynamicPPL.hasmissing($varT)
-                $var = DynamicPPL.get_matching_type($sampler, $vi, $varT)($temp_var)
-            else
-                $var = $temp_var
-            end
-        end)
+        push!(unwrap_data_expr.args,
+              :($var = $(DynamicPPL.matchingvalue)(_sampler, _varinfo, _model.args.$var)))
     end
 
-    ex = quote
-        function $outer_function($(args...))
-            function $inner_function(
-                $vi::DynamicPPL.VarInfo,
-                $sampler::DynamicPPL.AbstractSampler,
-                $ctx::DynamicPPL.AbstractContext,
-                $model
-            )
-                $unwrap_data_expr
-                DynamicPPL.resetlogp!($vi)
-                $main_body
-            end
-            return DynamicPPL.Model($inner_function, $args_nt, $model_gen_constructor)
+    @gensym(evaluator, generator)
+    generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
+    model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
+
+    return quote
+        function $evaluator(
+            _model::$(DynamicPPL.Model),
+            _varinfo::$(DynamicPPL.VarInfo),
+            _sampler::$(DynamicPPL.AbstractSampler),
+            _context::$(DynamicPPL.AbstractContext),
+        )
+            $unwrap_data_expr
+            $main_body
         end
+
+        $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
+        $(generator_kw_form...)
+
         $model_gen = $model_gen_constructor
     end
-
-    if !isempty(args)
-        ex = quote
-            $ex
-            # Allows passing arguments as kwargs
-            $outer_function(;$(args...)) = $outer_function($(arg_syms...))
-        end
-    end
-
-    return esc(ex)
 end
 
-# A hack for NamedTuple type specialization
-# (T = Int,) has type NamedTuple{(:T,), Tuple{DataType}} by default
-# With this function, we can make it NamedTuple{(:T,), Tuple{Type{Int}}}
-# Both are correct, but the latter is what we want for type stability
-get_type(::Type{T}) where {T} = Type{T}
-get_type(t) = typeof(t)
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
@@ -521,6 +395,21 @@ function warn_empty(body)
     end
     return
 end
+
+"""
+    matchingvalue(sampler, vi, value)
+
+Convert the `value` to the correct type for the `sampler` and the `vi` object.
+"""
+function matchingvalue(sampler, vi, value)
+    T = typeof(value)
+    if hasmissing(T)
+        return get_matching_type(sampler, vi, T)(value)
+    else
+        return value
+    end
+end
+matchingvalue(sampler, vi, value::FloatOrArrayType) = get_matching_type(sampler, vi, value)
 
 """
     get_matching_type(spl, vi, ::Type{T}) where {T}

@@ -4,12 +4,11 @@ using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
 using MacroTools
+import ZygoteRules
 
-import Base: string,
-             Symbol,
+import Base: Symbol,
              ==,
              hash,
-             in,
              getindex,
              setindex!,
              push!,
@@ -22,8 +21,7 @@ import Base: string,
              haskey
 
 # VarInfo
-export  VarName,
-        AbstractVarInfo,
+export  AbstractVarInfo,
         VarInfo,
         UntypedVarInfo,
         getlogp,
@@ -44,13 +42,14 @@ export  VarName,
         link!,
         invlink!,
         tonamedtuple,
+#VarName
+        VarName,
+        inspace,
+        subsumes,
 # Compiler
         ModelGen,
         @model,
         @varname,
-        @varinfo,
-        @logpdf,
-        @sampler,
 # Utilities
         vectorize,
         reconstruct,
@@ -61,9 +60,12 @@ export  VarName,
         vectorize,
         set_resume!,
 # Model
+        ModelGen,
         Model,
-        getmissing,
-        runmodel!,
+        getmissings,
+        getargnames,
+        getdefaults,
+        getgenerator,
 # Samplers
         Sampler,
         SampleFromPrior,
@@ -91,6 +93,11 @@ const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
 # Used here and overloaded in Turing
 function getspace end
 
+# Necessary forward declarations
+abstract type AbstractVarInfo end
+abstract type AbstractContext end
+
+
 include("utils.jl")
 include("selector.jl")
 include("model.jl")
@@ -102,5 +109,6 @@ include("varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
+include("compat/ad.jl")
 
 end # module

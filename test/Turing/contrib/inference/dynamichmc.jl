@@ -60,11 +60,11 @@ function AbstractMCMC.sample_init!(
         gradient_logp(x, spl.state.vi, model, spl)
     end
 
-    runmodel!(model, spl.state.vi, SampleFromUniform())
+    model(spl.state.vi, SampleFromUniform())
 
     if spl.selector.tag == :default
         link!(spl.state.vi, spl)
-        runmodel!(model, spl.state.vi, spl)
+        model(spl.state.vi, spl)
     end
 
     # Set the parameters to a starting value.

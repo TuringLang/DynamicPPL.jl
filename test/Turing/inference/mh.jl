@@ -105,7 +105,7 @@ function gen_logπ_mh(spl::Sampler, model)
         x_old, lj_old = vi[spl], getlogp(vi)
         # vi[spl] = x
         set_namedtuple!(vi, x)
-        runmodel!(model, vi)
+        model(vi)
         lj = getlogp(vi)
         vi[spl] = x_old
         setlogp!(vi, lj_old)
@@ -231,7 +231,7 @@ function AbstractMCMC.step!(
     kwargs...
 )
     if spl.selector.rerun # Recompute joint in logp
-        runmodel!(model, spl.state.vi)
+        model(spl.state.vi)
     end
 
     # Retrieve distribution and value NamedTuples.

@@ -3,8 +3,8 @@ module Inference
 using ..Core, ..Utilities
 using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, 
     islinked, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
-    settrans!, _getvns, getdist, split_var_str, CACHERESET, AbstractSampler,
-    Model, runmodel!, Sampler, SampleFromPrior, SampleFromUniform,
+    settrans!, _getvns, getdist, CACHERESET, AbstractSampler,
+    Model, Sampler, SampleFromPrior, SampleFromUniform,
     Selector, AbstractSamplerState, DefaultContext, PriorContext,
     LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!, NamedDist, NoDist
 using Distributions, Libtask, Bijectors

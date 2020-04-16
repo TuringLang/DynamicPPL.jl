@@ -16,7 +16,7 @@ using Markdown, Libtask, MacroTools
 using Tracker: Tracker
 
 import Base: ~, ==, convert, hash, promote_rule, rand, getindex, setindex!
-import DynamicPPL: getspace, runmodel!
+import DynamicPPL: getspace
 
 const PROGRESS = Ref(true)
 function turnprogress(switch::Bool)
@@ -66,9 +66,6 @@ end
 # Turing essentials - modelling macros and inference algorithms
 export  @model,                 # modelling
         @varname,
-        @varinfo,
-        @logpdf,
-        @sampler,
         DynamicPPL,
 
         MH,                     # classic sampling
