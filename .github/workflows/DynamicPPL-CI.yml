@@ -1,4 +1,4 @@
-name: AdvancedMH-CI
+name: DynamicPPL-CI
 
 on:
   push:
