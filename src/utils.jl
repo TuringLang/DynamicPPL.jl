@@ -117,8 +117,8 @@ end
 
 # ROBUST INITIALISATIONS
 # Uniform rand with range 2; ref: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
-randrealuni() = Real(2rand())
-randrealuni(args...) = map(Real, 2rand(args...))
+randrealuni() = Real(4rand()-2)
+randrealuni(args...) = map(Real, 4rand(args...)-2)
 
 const Transformable = Union{TransformDistribution, SimplexDistribution, PDMatDistribution}
 
