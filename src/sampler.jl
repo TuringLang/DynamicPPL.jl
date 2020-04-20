@@ -43,3 +43,18 @@ end
 Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model) = Sampler(alg, model, Selector())
 Sampler(alg, model::Model, s::Selector) = Sampler(alg, model, s)
+
+# AbstractMCMC interface for SampleFromUniform and SampleFromPrior
+
+function AbstractMCMC.step!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::Union{SampleFromUniform,SampleFromPrior},
+    ::Integer,
+    transition;
+    kwargs...
+)
+    vi = VarInfo()
+    model(vi, sampler)
+    return vi
+end
