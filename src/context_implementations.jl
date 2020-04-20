@@ -36,12 +36,13 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
 end
 
 """
-    tilde_assume(ctx, sampler, right, vn, inds, vi)
+    tilde_assume(ctx, sampler, right, vn, inds, vi) -> sampled value
 
 This method is applied in the generated code for assumed variables, e.g., `x ~ Normal()` where
 `x` does not occur in the model inputs.
 
-Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
+Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`, but automatically accumulates the
+log-probability and returns only the sampled value.
 """
 function tilde_assume(ctx, sampler, right, vn, inds, vi)
     value, logp = tilde(ctx, sampler, right, vn, inds, vi)
@@ -72,13 +73,14 @@ function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
 end
 
 """
-    tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    tilde_observe(ctx, sampler, right, left, vname, vinds, vi) -> observed value
 
 This method is applied in the generated code for observed variables, e.g., `x ~ Normal()` where
 `x` does occur in the model inputs.
 
-Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
-name and indices; if needed, these can be accessed through this function, though.
+Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
+and indices; if needed, these can be accessed through this function, though.  Automatically
+accumulates the log-probability and returns only the observed value.
 """
 function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
     logp = tilde(ctx, sampler, right, left, vi)
@@ -87,10 +89,11 @@ function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 end
 
 """
-    tilde_observe(ctx, sampler, right, left, vi)
+    tilde_observe(ctx, sampler, right, left, vi) -> observed value
 
 This method is applied in the generated code for observed constants, e.g., `1.0 ~ Normal()`.
-Falls back to `tilde(ctx, sampler, right, left, vi)`.
+Falls back to `tilde(ctx, sampler, right, left, vi)`.  Automatically accumulates the log-probability
+and returns only the observed value.
 """
 function tilde_observe(ctx, sampler, right, left, vi)
     logp = tilde(ctx, sampler, right, left, vi)
@@ -195,12 +198,13 @@ function dot_tilde(
 end
 
 """
-    dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+    dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi) -> sampled value
 
 This method is applied in the generated code for assumed vectorized variables, e.g., `x .~
 MvNormal()` where `x` does not occur in the model inputs.
 
-Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`, but automatically accumulates
+the log-probability and returns only the sampled value.
 """
 function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
     value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
@@ -373,13 +377,14 @@ function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi) -> observed value
 
 This method is applied in the generated code for vectorized observed variables, e.g., `x .~
 MvNormal()` where `x` does occur the model inputs.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
-name and indices; if needed, these can be accessed through this function, though.
+name and indices; if needed, these can be accessed through this function, though.  Automatically
+accumulates the log-probability and returns only the observed value.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
@@ -388,10 +393,11 @@ function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vi)
+    dot_tilde_observe(ctx, sampler, right, left, vi) -> observed value
 
 This method is applied in the generated code for vectorized observed constants, e.g., `[1.0] .~
-MvNormal()`.  Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
+MvNormal()`.  Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.  Automatically
+accumulates the log-probability and returns only the observed value.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
