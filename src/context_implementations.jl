@@ -44,7 +44,7 @@ This method is applied in the generated code for assumed variables, e.g., `x ~ N
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
 function tilde_assume(ctx, sampler, right, vn, inds, vi)
-    (value, logp) = tilde(ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde(ctx, sampler, right, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -203,7 +203,7 @@ MvNormal()` where `x` does not occur in the model inputs.
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
-    (value, logp) = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
