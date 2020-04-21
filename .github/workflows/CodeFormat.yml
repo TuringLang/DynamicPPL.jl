@@ -27,8 +27,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Format .jl files
-          title: 'Automatic JuliaFormatter.jl run'
+          title: 'Code format fixes by JuliaFormatter'
           branch: auto-juliaformatter-pr
+          body: 'Code format changes by [JuliaFormatter](https://github.com/domluna/JuliaFormatter.jl) via [julia-format](https://github.com/julia-actions/julia-format).'
           labels: formatting, automated pr, no changelog
       - name: Check outputs
         run: |
