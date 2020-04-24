@@ -139,6 +139,10 @@ _issubrange(i::Colon, j::ConcreteIndex) = true
 
 A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, 
 e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}(((1, 2), (6,), (45,), (3,)))`.
+
+!!! compat "Julia 1.5"
+    Using `begin` in an indexing expression to refer to the first index requires at least
+    Julia 1.5.
 """
 macro varname(expr::Union{Expr, Symbol})
     return esc(varname(expr))
@@ -177,8 +181,12 @@ end
 """
     @vinds(expr)
 
-Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1, :][2]` returns 
+Returns a tuple of tuples of the indices in `expr`. For example, `@vinds x[1, :][2]` returns
 `((1, Colon()), (2,))`.
+
+!!! compat "Julia 1.5"
+    Using `begin` in an indexing expression to refer to the first index requires at least
+    Julia 1.5.
 """
 macro vinds(expr::Union{Expr, Symbol})
     return esc(vinds(expr))
@@ -188,7 +196,11 @@ vinds(expr::Symbol) = Expr(:tuple)
 function vinds(expr::Expr)
     if Meta.isexpr(expr, :ref)
         ex = copy(expr)
-        Base.replace_ref_end!(ex)
+        @static if VERSION < v"1.5.0-DEV.666"
+            Base.replace_ref_end!(ex)
+        else
+            Base.replace_ref_begin_end!(ex)
+        end
         last = Expr(:tuple, ex.args[2:end]...)
         init = vinds(ex.args[1]).args
         return Expr(:tuple, init..., last)
@@ -196,7 +208,6 @@ function vinds(expr::Expr)
         throw("VarName: Mis-formed variable name $(expr)!")
     end
 end
-
 
 @generated function inargnames(::VarName{s}, ::Model{_F, argnames}) where {s, argnames, _F}
     return s in argnames

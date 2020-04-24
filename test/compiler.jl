@@ -543,6 +543,24 @@ end
         var_expr = :(x[2:3,2:3][[1,2],[1,2]])
         @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
+
+        var_expr = :(x[end])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :((($lastindex(x),),))
+
+        var_expr = :(x[1, end])
+        @test vsym(var_expr) == :x
+        @test vinds(var_expr) == :(((1, $lastindex(x, 2)),))
+
+        if VERSION >= v"1.5.0-DEV.666"
+            var_expr = :(x[begin])
+            @test vsym(var_expr) == :x
+            @test vinds(var_expr) == :((($firstindex(x),),))
+
+            var_expr = :(x[1, begin])
+            @test vsym(var_expr) == :x
+            @test vinds(var_expr) == :(((1, $firstindex(x, 2)),))
+        end
     end
     @testset "user-defined variable name" begin
         @model f1() = begin
