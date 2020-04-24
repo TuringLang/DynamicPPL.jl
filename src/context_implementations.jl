@@ -38,8 +38,8 @@ end
 """
     tilde_assume(ctx, sampler, right, vn, inds, vi)
 
-Handles assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulates the log probability, and returns the sampled value.
+Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the sampled value.
 
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
@@ -74,8 +74,8 @@ end
 """
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-Handles observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulates the log probability, and returns the observed value.
+Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
@@ -89,7 +89,7 @@ end
 """
     tilde_observe(ctx, sampler, right, left, vi)
 
-Handles observed constants, e.g., `1.0 ~ Normal()`, accumulates the log probability, and returns the
+Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and return the
 observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
@@ -199,8 +199,8 @@ end
 """
     dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
 
-Handles broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
-model inputs), accumulates the log probability, and returns the sampled value.
+Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
+model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
@@ -377,8 +377,8 @@ end
 """
     dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-Handles broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
-accumulates the log probability, and returns the observed value.
+Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
+accumulate the log probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
@@ -392,8 +392,8 @@ end
 """
     dot_tilde_observe(ctx, sampler, right, left, vi)
 
-Handles broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulates the log
-probability, and returns the observed value.
+Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
+probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
