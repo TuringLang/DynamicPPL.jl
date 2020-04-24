@@ -552,7 +552,7 @@ end
         @test vsym(var_expr) == :x
         @test vinds(var_expr) == :(((1, $lastindex(x, 2)),))
 
-        if VERSION >= v"1.5.0-DEV.666"
+        @static if VERSION >= v"1.5.0-DEV.666"
             var_expr = :(x[begin])
             @test vsym(var_expr) == :x
             @test vinds(var_expr) == :((($firstindex(x),),))
