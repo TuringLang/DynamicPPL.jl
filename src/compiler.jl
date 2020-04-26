@@ -208,7 +208,6 @@ function generate_mainbody!(found, expr::Expr, args)
     return Expr(expr.head, map(x -> generate_mainbody!(found, x, args), expr.args)...)
 end
 
-# """ Unbreak code highlighting in Emacs julia-mode
 
 
 """
@@ -218,7 +217,7 @@ Generate an `observe` expression for data variables and `assume` expression for 
 variables.
 """
 function generate_tilde(left, right, args)
-    @gensym tmpright tmpleft
+    @gensym tmpright
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
              || throw(ArgumentError($DISTMSG)))]
@@ -227,13 +226,6 @@ function generate_tilde(left, right, args)
         @gensym out vn inds
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
-        assumption = [
-            :($out = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds,
-                                                _varinfo)),
-            :($(DynamicPPL.acclogp!)(_varinfo, $out[2])),
-            :($left = $out[1])
-        ]
-
         # It can only be an observation if the LHS is an argument of the model
         if vsym(left) in args
             @gensym isassumption
@@ -241,34 +233,25 @@ function generate_tilde(left, right, args)
                 $(top...)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
-                    $(assumption...)
+                    $left = $(DynamicPPL.tilde_assume)(
+                        _context, _sampler, $tmpright, $vn, $inds, _varinfo)
                 else
-                    $tmpleft = $left
-                    $(DynamicPPL.acclogp!)(
-                        _varinfo,
-                        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $tmpleft,
-                                                    $vn, $inds, _varinfo)
-                    )
-                    $tmpleft
+                    $(DynamicPPL.tilde_observe)(
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
                 end
             end
         end
 
         return quote
             $(top...)
-            $(assumption...)
+            $left = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds, _varinfo)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $tmpleft = $left
-        $(DynamicPPL.acclogp!)(
-            _varinfo,
-            $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $tmpleft, _varinfo)
-        )
-        $tmpleft
+        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
     end
 end
 
@@ -278,7 +261,7 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right, args)
-    @gensym tmpright tmpleft
+    @gensym tmpright
     top = [:($tmpright = $right),
            :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
              || throw(ArgumentError($DISTMSG)))]
@@ -287,13 +270,6 @@ function generate_dot_tilde(left, right, args)
         @gensym out vn inds
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
-        assumption = [
-            :($out = $(DynamicPPL.dot_tilde_assume)(_context, _sampler, $tmpright, $left,
-                                                    $vn, $inds, _varinfo)),
-            :($(DynamicPPL.acclogp!)(_varinfo, $out[2])),
-            :($left .= $out[1])
-        ]
-
         # It can only be an observation if the LHS is an argument of the model
         if vsym(left) in args
             @gensym isassumption
@@ -301,35 +277,26 @@ function generate_dot_tilde(left, right, args)
                 $(top...)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
-                    $(assumption...)
+                    $left .= $(DynamicPPL.dot_tilde_assume)(
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
                 else
-                    $tmpleft = $left
-                    $(DynamicPPL.acclogp!)(
-                        _varinfo,
-                        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright,
-                                                        $tmpleft, $vn, $inds, _varinfo)
-                    )
-                    $tmpleft
+                    $(DynamicPPL.dot_tilde_observe)(
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
                 end
             end
         end
 
         return quote
             $(top...)
-            $(assumption...)
+            $left .= $(DynamicPPL.dot_tilde_assume)(
+                _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $tmpleft = $left
-        $(DynamicPPL.acclogp!)(
-            _varinfo,
-            $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $tmpleft,
-                                            _varinfo)
-        )
-        $tmpleft
+        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
     end
 end
 

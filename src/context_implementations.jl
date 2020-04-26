@@ -38,13 +38,15 @@ end
 """
     tilde_assume(ctx, sampler, right, vn, inds, vi)
 
-This method is applied in the generated code for assumed variables, e.g., `x ~ Normal()` where
-`x` does not occur in the model inputs.
+Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the sampled value.
 
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
 function tilde_assume(ctx, sampler, right, vn, inds, vi)
-    return tilde(ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde(ctx, sampler, right, vn, inds, vi)
+    acclogp!(vi, logp)
+    return value
 end
 
 
@@ -72,24 +74,30 @@ end
 """
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-This method is applied in the generated code for observed variables, e.g., `x ~ Normal()` where
-`x` does occur in the model inputs.
+Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the observed value.
 
-Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
-name and indices; if needed, these can be accessed through this function, though.
+Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
+and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
-    return tilde(ctx, sampler, right, left, vi)
+    logp = tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 """
     tilde_observe(ctx, sampler, right, left, vi)
 
-This method is applied in the generated code for observed constants, e.g., `1.0 ~ Normal()`.
+Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and return the
+observed value.
+
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
 function tilde_observe(ctx, sampler, right, left, vi)
-    return tilde(ctx, sampler, right, left, vi)
+    logp = tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 
@@ -191,13 +199,15 @@ end
 """
     dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
 
-This method is applied in the generated code for assumed vectorized variables, e.g., `x .~
-MvNormal()` where `x` does not occur in the model inputs.
+Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
+model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
-    return dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+    acclogp!(vi, logp)
+    return value
 end
 
 
@@ -367,24 +377,30 @@ end
 """
     dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-This method is applied in the generated code for vectorized observed variables, e.g., `x .~
-MvNormal()` where `x` does occur the model inputs.
+Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
+accumulate the log probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
-    return dot_tilde(ctx, sampler, right, left, vi)
+    logp = dot_tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 """
     dot_tilde_observe(ctx, sampler, right, left, vi)
 
-This method is applied in the generated code for vectorized observed constants, e.g., `[1.0] .~
-MvNormal()`.  Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
+Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
+probability, and return the observed value.
+
+Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vi)
-    return dot_tilde(ctx, sampler, right, left, vi)
+    logp = dot_tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 
