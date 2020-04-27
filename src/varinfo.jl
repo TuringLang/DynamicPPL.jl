@@ -485,7 +485,7 @@ end
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Real}(0.0), Ref(0))
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 
 """
     TypedVarInfo(vi::UntypedVarInfo)
@@ -618,8 +618,7 @@ acclogp!(vi::AbstractVarInfo, logp::Real) = vi.logp[] += logp
 Reset the value of the log of the joint probability of the observed data and parameters
 sampled in `vi` to 0.
 """
-resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, 0)
-
+resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, zero(getlogp(vi)))
 
 """
     get_num_produce(vi::VarInfo)

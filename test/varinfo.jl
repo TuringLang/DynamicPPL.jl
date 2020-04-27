@@ -391,13 +391,13 @@ include(dir*"/test/test_utils/AllUtils.jl")
     @testset "varinfo" begin
         dists = [Normal(0, 1), MvNormal([0; 0], [1.0 0; 0 1.0]), Wishart(7, [1 0.5; 0.5 1])]
         function test_varinfo!(vi)
-            @test getlogp(vi) == 0
+            @test getlogp(vi) === 0.0
             setlogp!(vi, 1)
-            @test getlogp(vi) == 1
+            @test getlogp(vi) === 1.0
             acclogp!(vi, 1)
-            @test getlogp(vi) == 2
+            @test getlogp(vi) === 2.0
             resetlogp!(vi)
-            @test getlogp(vi) == 0
+            @test getlogp(vi) === 0.0
 
             spl2 = Sampler(PG(5, :w, :u), empty_model())
             vn_w = @varname w
