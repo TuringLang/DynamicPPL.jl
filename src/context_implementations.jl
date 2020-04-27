@@ -111,8 +111,9 @@ function observe(spl::Sampler, weight)
     error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
+# If parameters exist, they are used and not overwritten.
 function assume(
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::SampleFromPrior,
     dist::Distribution,
     vn::VarName,
     vi::VarInfo,
@@ -120,15 +121,38 @@ function assume(
     if haskey(vi, vn)
         if is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
-            r = spl isa SampleFromUniform ? init(dist) : rand(dist)
+            r = rand(dist)
             vi[vn] = vectorize(dist, r)
+            settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
-        r = vi[vn]
+            r = vi[vn]
         end
     else
-        r = isa(spl, SampleFromUniform) ? init(dist) : rand(dist)
+        r = rand(dist)
         push!(vi, vn, r, dist, spl)
+        settrans!(vi, false, vn)
+    end
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+end
+
+# Always overwrites the parameters with new ones.
+function assume(
+    spl::SampleFromUniform,
+    dist::Distribution,
+    vn::VarName,
+    vi::VarInfo,
+)
+    if haskey(vi, vn)
+        unset_flag!(vi, vn, "del")
+        r = init(dist)
+        vi[vn] = vectorize(dist, r)
+        settrans!(vi, true, vn)
+        setorder!(vi, vn, get_num_produce(vi))
+    else
+        r = init(dist)
+        push!(vi, vn, r, dist, spl)
+        settrans!(vi, true, vn)
     end
     # NOTE: The importance weight is not correctly computed here because
     #       r is genereated from some uniform distribution which is different from the prior
