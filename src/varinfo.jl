@@ -420,6 +420,7 @@ end
 
 # Get all vns of variables belonging to spl
 _getvns(vi::AbstractVarInfo, spl::Sampler) = _getvns(vi, spl.selector, Val(getspace(spl)))
+_getvns(vi::AbstractVarInfo, spl::Union{SampleFromPrior, SampleFromUniform}) = _getvns(vi, Selector(), Val(()))
 _getvns(vi::UntypedVarInfo, s::Selector, space) = view(vi.metadata.vns, _getidcs(vi, s, space))
 function _getvns(vi::TypedVarInfo, s::Selector, space)
     return _getvns(vi.metadata, _getidcs(vi, s, space))
@@ -820,6 +821,7 @@ Return the current value(s) of the random variables sampled by `spl` in `vi`.
 The value(s) may or may not be transformed to Euclidean space.
 """
 getindex(vi::AbstractVarInfo, spl::SampleFromPrior) = copy(getall(vi))
+getindex(vi::AbstractVarInfo, spl::SampleFromUniform) = copy(getall(vi))
 getindex(vi::UntypedVarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
 function getindex(vi::TypedVarInfo, spl::Sampler)
     # Gets the ranges as a NamedTuple

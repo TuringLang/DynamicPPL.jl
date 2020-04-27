@@ -6,7 +6,7 @@ using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
     setorder!, updategid!
-using DynamicPPL
+using DynamicPPL, LinearAlgebra
 using Distributions
 using ForwardDiff: Dual
 using Test
@@ -167,32 +167,32 @@ include(dir*"/test/test_utils/AllUtils.jl")
         meta = vi.metadata
         model(vi, SampleFromUniform())
 
-        @test all(x -> ~istrans(vi, x), meta.vns)
+        @test all(x -> istrans(vi, x), meta.vns)
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
-        link!(vi, spl)
-        @test all(x -> istrans(vi, x), meta.vns)
         invlink!(vi, spl)
         @test all(x -> ~istrans(vi, x), meta.vns)
-        @test meta.vals == v
+        link!(vi, spl)
+        @test all(x -> istrans(vi, x), meta.vns)
+        @test norm(meta.vals - v) <= 1e-6
 
         vi = TypedVarInfo(vi)
         meta = vi.metadata
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
-        @test all(x -> ~istrans(vi, x), meta.s.vns)
-        @test all(x -> ~istrans(vi, x), meta.m.vns)
-        v_s = copy(meta.s.vals)
-        v_m = copy(meta.m.vals)
-        link!(vi, spl)
         @test all(x -> istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
+        v_s = copy(meta.s.vals)
+        v_m = copy(meta.m.vals)
         invlink!(vi, spl)
         @test all(x -> ~istrans(vi, x), meta.s.vns)
         @test all(x -> ~istrans(vi, x), meta.m.vns)
-        @test meta.s.vals == v_s
-        @test meta.m.vals == v_m
+        link!(vi, spl)
+        @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test norm(meta.s.vals - v_s) <= 1e-6
+        @test norm(meta.m.vals - v_m) <= 1e-6
     end
     @testset "setgid!" begin
         vi = VarInfo()

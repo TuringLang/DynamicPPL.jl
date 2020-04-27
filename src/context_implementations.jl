@@ -38,13 +38,15 @@ end
 """
     tilde_assume(ctx, sampler, right, vn, inds, vi)
 
-This method is applied in the generated code for assumed variables, e.g., `x ~ Normal()` where
-`x` does not occur in the model inputs.
+Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the sampled value.
 
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
 function tilde_assume(ctx, sampler, right, vn, inds, vi)
-    return tilde(ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde(ctx, sampler, right, vn, inds, vi)
+    acclogp!(vi, logp)
+    return value
 end
 
 
@@ -72,24 +74,30 @@ end
 """
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-This method is applied in the generated code for observed variables, e.g., `x ~ Normal()` where
-`x` does occur in the model inputs.
+Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
+accumulate the log probability, and return the observed value.
 
-Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
-name and indices; if needed, these can be accessed through this function, though.
+Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
+and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
-    return tilde(ctx, sampler, right, left, vi)
+    logp = tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 """
     tilde_observe(ctx, sampler, right, left, vi)
 
-This method is applied in the generated code for observed constants, e.g., `1.0 ~ Normal()`.
+Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and return the
+observed value.
+
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
 function tilde_observe(ctx, sampler, right, left, vi)
-    return tilde(ctx, sampler, right, left, vi)
+    logp = tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 
@@ -103,8 +111,9 @@ function observe(spl::Sampler, weight)
     error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
+# If parameters exist, they are used and not overwritten.
 function assume(
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::SampleFromPrior,
     dist::Distribution,
     vn::VarName,
     vi::VarInfo,
@@ -112,15 +121,38 @@ function assume(
     if haskey(vi, vn)
         if is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
-            r = spl isa SampleFromUniform ? init(dist) : rand(dist)
+            r = rand(dist)
             vi[vn] = vectorize(dist, r)
+            settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
-        r = vi[vn]
+            r = vi[vn]
         end
     else
-        r = isa(spl, SampleFromUniform) ? init(dist) : rand(dist)
+        r = rand(dist)
         push!(vi, vn, r, dist, spl)
+        settrans!(vi, false, vn)
+    end
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+end
+
+# Always overwrites the parameters with new ones.
+function assume(
+    spl::SampleFromUniform,
+    dist::Distribution,
+    vn::VarName,
+    vi::VarInfo,
+)
+    if haskey(vi, vn)
+        unset_flag!(vi, vn, "del")
+        r = init(dist)
+        vi[vn] = vectorize(dist, r)
+        settrans!(vi, true, vn)
+        setorder!(vi, vn, get_num_produce(vi))
+    else
+        r = init(dist)
+        push!(vi, vn, r, dist, spl)
+        settrans!(vi, true, vn)
     end
     # NOTE: The importance weight is not correctly computed here because
     #       r is genereated from some uniform distribution which is different from the prior
@@ -191,13 +223,15 @@ end
 """
     dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
 
-This method is applied in the generated code for assumed vectorized variables, e.g., `x .~
-MvNormal()` where `x` does not occur in the model inputs.
+Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
+model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
-    return dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+    acclogp!(vi, logp)
+    return value
 end
 
 
@@ -367,24 +401,30 @@ end
 """
     dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
-This method is applied in the generated code for vectorized observed variables, e.g., `x .~
-MvNormal()` where `x` does occur the model inputs.
+Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
+accumulate the log probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
-    return dot_tilde(ctx, sampler, right, left, vi)
+    logp = dot_tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 """
     dot_tilde_observe(ctx, sampler, right, left, vi)
 
-This method is applied in the generated code for vectorized observed constants, e.g., `[1.0] .~
-MvNormal()`.  Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
+Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
+probability, and return the observed value.
+
+Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vi)
-    return dot_tilde(ctx, sampler, right, left, vi)
+    logp = dot_tilde(ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+    return left
 end
 
 
