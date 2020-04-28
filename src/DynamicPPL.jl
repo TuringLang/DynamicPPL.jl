@@ -4,6 +4,9 @@ using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
 using MacroTools
+
+import AbstractMCMC
+import Random
 import ZygoteRules
 
 import Base: Symbol,

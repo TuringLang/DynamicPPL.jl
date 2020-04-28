@@ -6,6 +6,15 @@ struct SampleFromPrior <: AbstractSampler end
 
 getspace(::Union{SampleFromPrior, SampleFromUniform}) = ()
 
+# Initializations.
+init(dist, ::SampleFromPrior) = rand(dist)
+init(dist, ::SampleFromUniform) = istransformable(dist) ? inittrans(dist) : rand(dist)
+
+init(dist, ::SampleFromPrior, n::Int) = rand(dist, n)
+function init(dist, ::SampleFromUniform, n::Int)
+    return istransformable(dist) ? inittrans(dist, n) : rand(dist, n)
+end
+
 """
     has_eval_num(spl::AbstractSampler)
 
@@ -43,3 +52,18 @@ end
 Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model) = Sampler(alg, model, Selector())
 Sampler(alg, model::Model, s::Selector) = Sampler(alg, model, s)
+
+# AbstractMCMC interface for SampleFromUniform and SampleFromPrior
+
+function AbstractMCMC.step!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::Union{SampleFromUniform,SampleFromPrior},
+    ::Integer,
+    transition;
+    kwargs...
+)
+    vi = VarInfo()
+    model(vi, sampler)
+    return vi
+end

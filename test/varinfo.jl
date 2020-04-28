@@ -165,34 +165,35 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         vi = VarInfo()
         meta = vi.metadata
-        model(vi, SampleFromUniform())
 
-        @test all(x -> istrans(vi, x), meta.vns)
+        model(vi, SampleFromUniform())
+        @test all(x -> !istrans(vi, x), meta.vns)
+
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
-        invlink!(vi, spl)
-        @test all(x -> ~istrans(vi, x), meta.vns)
         link!(vi, spl)
         @test all(x -> istrans(vi, x), meta.vns)
-        @test norm(meta.vals - v) <= 1e-6
+        invlink!(vi, spl)
+        @test all(x -> !istrans(vi, x), meta.vns)
+        @test meta.vals == v
 
         vi = TypedVarInfo(vi)
         meta = vi.metadata
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
-        invlink!(vi, spl)
-        @test all(x -> ~istrans(vi, x), meta.s.vns)
-        @test all(x -> ~istrans(vi, x), meta.m.vns)
         link!(vi, spl)
         @test all(x -> istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
-        @test norm(meta.s.vals - v_s) <= 1e-6
-        @test norm(meta.m.vals - v_m) <= 1e-6
+        invlink!(vi, spl)
+        @test all(x -> ~istrans(vi, x), meta.s.vns)
+        @test all(x -> ~istrans(vi, x), meta.m.vns)
+        @test meta.s.vals == v_s
+        @test meta.m.vals == v_m
     end
     @testset "setgid!" begin
         vi = VarInfo()

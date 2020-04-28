@@ -9,6 +9,7 @@ turnprogress(false)
     include("utils.jl")
     include("compiler.jl")
     include("varinfo.jl")
+    include("sampler.jl")
     include("prob_macro.jl")
     include("independence.jl")
 end

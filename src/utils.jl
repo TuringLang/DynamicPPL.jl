@@ -114,37 +114,31 @@ function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector, n::In
     return r
 end
 
-
-# ROBUST INITIALISATIONS
-# Uniform rand with range 2; ref: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
+# Uniform random numbers with range 4 for robust initializations
+# Reference: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
 randrealuni() = 4 * rand() - 2
 randrealuni(args...) = 4 .* rand(args...) .- 2
 
-const Transformable = Union{TransformDistribution, SimplexDistribution, PDMatDistribution}
-
+const Transformable = Union{PositiveDistribution,UnitDistribution,TransformDistribution,
+                            SimplexDistribution,PDMatDistribution}
+istransformable(dist) = false
+istransformable(::Transformable) = true
 
 #################################
 # Single-sample initialisations #
 #################################
 
-init(dist::Transformable) = inittrans(dist)
-init(dist::Distribution) = rand(dist)
-
 inittrans(dist::UnivariateDistribution) = invlink(dist, randrealuni())
-inittrans(dist::MultivariateDistribution) = invlink(dist, randrealuni(size(dist)[1]))
+inittrans(dist::MultivariateDistribution) = invlink(dist, randrealuni(size(dist, 1)))
 inittrans(dist::MatrixDistribution) = invlink(dist, randrealuni(size(dist)...))
-
 
 ################################
 # Multi-sample initialisations #
 ################################
 
-init(dist::Transformable, n::Int) = inittrans(dist, n)
-init(dist::Distribution, n::Int) = rand(dist, n)
-
 inittrans(dist::UnivariateDistribution, n::Int) = invlink(dist, randrealuni(n))
 function inittrans(dist::MultivariateDistribution, n::Int)
-    return invlink(dist, randrealuni(size(dist)[1], n))
+    return invlink(dist, randrealuni(size(dist, 1), n))
 end
 function inittrans(dist::MatrixDistribution, n::Int)
     return invlink(dist, [randrealuni(size(dist)...) for _ in 1:n])
