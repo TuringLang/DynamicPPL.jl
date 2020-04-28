@@ -37,6 +37,8 @@ function Distributions.logpdf(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Rea
     return zeros(Int, size(x, 2))
 end
 Distributions.logpdf(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
+Distributions.minimum(d::NoDist) = minimum(d.dist)
+Distributions.maximum(d::NoDist) = maximum(d.dist)
 
 Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real) = 0
 Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
