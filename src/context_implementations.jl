@@ -111,17 +111,17 @@ function observe(spl::Sampler, weight)
     error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
-# If parameters exist, they are used and not overwritten.
 function assume(
-    spl::SampleFromPrior,
+    spl::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
     vi::VarInfo,
 )
     if haskey(vi, vn)
-        if is_flagged(vi, vn, "del")
+        # Always overwrite the parameters with new ones for `SampleFromUniform`.
+        if spl isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
-            r = rand(dist)
+            r = init(dist, spl)
             vi[vn] = vectorize(dist, r)
             settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
@@ -129,35 +129,10 @@ function assume(
             r = vi[vn]
         end
     else
-        r = rand(dist)
+        r = init(dist, spl)
         push!(vi, vn, r, dist, spl)
         settrans!(vi, false, vn)
     end
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
-end
-
-# Always overwrites the parameters with new ones.
-function assume(
-    spl::SampleFromUniform,
-    dist::Distribution,
-    vn::VarName,
-    vi::VarInfo,
-)
-    if haskey(vi, vn)
-        unset_flag!(vi, vn, "del")
-        r = init(dist)
-        vi[vn] = vectorize(dist, r)
-        settrans!(vi, true, vn)
-        setorder!(vi, vn, get_num_produce(vi))
-    else
-        r = init(dist)
-        push!(vi, vn, r, dist, spl)
-        settrans!(vi, true, vn)
-    end
-    # NOTE: The importance weight is not correctly computed here because
-    #       r is genereated from some uniform distribution which is different from the prior
-    # acclogp!(vi, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)))
-
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
@@ -307,53 +282,60 @@ function get_and_set_val!(
     vi::VarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
-    spl::AbstractSampler,
+    spl::Union{SampleFromPrior,SampleFromUniform},
 )
     n = length(vns)
     if haskey(vi, vns[1])
-        if is_flagged(vi, vns[1], "del")
+        # Always overwrite the parameters with new ones for `SampleFromUniform`.
+        if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             unset_flag!(vi, vns[1], "del")
-            r = spl isa SampleFromUniform ? init(dist, n) : rand(dist, n)
+            r = init(dist, spl, n)
             for i in 1:n
                 vn = vns[i]
                 vi[vn] = vectorize(dist, r[:, i])
+                settrans!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-        r = vi[vns]
+            r = vi[vns]
         end
     else
-        r = spl isa SampleFromUniform ? init(dist, n) : rand(dist, n)
+        r = init(dist, spl, n)
         for i in 1:n
             push!(vi, vns[i], r[:,i], dist, spl)
+            settrans!(vi, false, vn)
         end
     end
     return r
 end
+
 function get_and_set_val!(
     vi::VarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
-    spl::AbstractSampler,
+    spl::Union{SampleFromPrior,SampleFromUniform},
 )
     if haskey(vi, vns[1])
-        if is_flagged(vi, vns[1], "del")
+        # Always overwrite the parameters with new ones for `SampleFromUniform`.
+        if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             unset_flag!(vi, vns[1], "del")
-            f = (vn, dist) -> spl isa SampleFromUniform ? init(dist) : rand(dist)
+            f = (vn, dist) -> init(dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
                 vi[vn] = vectorize(dist, r[i])
+                settrans!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-        r = reshape(vi[vec(vns)], size(vns))
+            r = reshape(vi[vec(vns)], size(vns))
         end
     else
-        f = (vn, dist) -> spl isa SampleFromUniform ? init(dist) : rand(dist)
+        f = (vn, dist) -> init(dist, spl)
         r = f.(vns, dists)
         push!.(Ref(vi), vns, r, dists, Ref(spl))
+        settrans!.(Ref(vi), false, vns)
     end
     return r
 end
