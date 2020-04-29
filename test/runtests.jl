@@ -12,4 +12,5 @@ turnprogress(false)
     include("sampler.jl")
     include("prob_macro.jl")
     include("independence.jl")
+    include("distribution_wrappers.jl")
 end
