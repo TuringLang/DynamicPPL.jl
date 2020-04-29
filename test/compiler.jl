@@ -210,12 +210,13 @@ end
 
         # Test use of internal names
         @model testmodel(x) = begin
-            x[1] ~ Bernoulli(0.5)
+            x[1] ~  Bernoulli(0.5)
             global varinfo_ = _varinfo
             global sampler_ = _sampler
             global model_ = _model
             global context_ = _context
-            global lp = getlogp(_varinfo)
+            global logps_ = _logps
+            global lp = sum(_logps)
             return x
         end
         model = testmodel([1.0])
@@ -226,6 +227,15 @@ end
         @test model_ === model
         @test sampler_ === SampleFromPrior()
         @test context_ === DefaultContext()
+        @test length(logps_) == Threads.nthreads()
+        @test sum(logps_) == lp
+        for i in 1:length(logps_)
+            if i == Threads.threadid()
+                @test logps_[i] == lp
+            else
+                @test iszero(logps_[i])
+            end
+        end
 
         # test DPPL#61
         @model testmodel(z) = begin
@@ -240,7 +250,7 @@ end
         function makemodel(p)
             @model testmodel(x) = begin
                 x[1] ~ Bernoulli(p)
-                global lp = getlogp(_varinfo)
+                global lp = sum(_logps)
                 return x
             end
             return testmodel

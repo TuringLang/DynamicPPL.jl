@@ -357,7 +357,7 @@ function build_output(model_info)
             _varinfo::$(DynamicPPL.VarInfo),
             _sampler::$(DynamicPPL.AbstractSampler),
             _context::$(DynamicPPL.AbstractContext),
-            _logps
+            _logps,
         )
             $unwrap_data_expr
             $main_body
