@@ -580,4 +580,39 @@ end
         model = demo()
         @test all(iszero(model()) for _ in 1:1000)
     end
+    @testset "threading" begin
+        @info "Peforming threading tests with $(Threads.nthreads()) threads"
+
+        x = rand(10_000)
+
+        @model function wthreads(x)
+            x[1] ~ Normal(0, 1)
+            Threads.@threads for i in 2:length(x)
+                x[i] ~ Normal(x[i-1], 1)
+            end
+        end
+
+        vi = VarInfo()
+        wthreads(x)(vi)
+        lp_w_threads = getlogp(vi)
+
+        println("With threading:")
+        @time wthreads(x)(vi)
+
+        @model function wothreads(x)
+            x[1] ~ Normal(0, 1)
+            for i in 2:length(x)
+                x[i] ~ Normal(x[i-1], 1)
+            end
+        end
+
+        vi = VarInfo()
+        wothreads(x)(vi)
+        lp_wo_threads = getlogp(vi)
+
+        println("Without threading:")
+        @time wothreads(x)(vi)
+
+        @test lp_w_threads ≈ lp_wo_threads
+    end
 end
