@@ -397,9 +397,9 @@ end
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
         println("Time for")
-        println("  Loop : $t_loop")
-        println("  Vec  : $t_vec")
-        println("  Mv   : $t_mv")
+        println("  Loop : ", t_loop)
+        println("  Vec  : ", t_vec)
+        println("  Mv   : ", t_mv)
 
         # Transformed test
         @model vdemo6() = begin
@@ -469,9 +469,9 @@ end
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
         println("Time for")
-        println("  Loop : \$t_loop")
-        println("  Vec  : \$t_vec")
-        println("  Mv   : \$t_mv")
+        println("  Loop : ", t_loop)
+        println("  Vec  : ", t_vec)
+        println("  Mv   : ", t_mv)
 
         # Transformed test
         @model vdemo6() = begin
