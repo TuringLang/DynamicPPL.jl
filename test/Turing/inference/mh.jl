@@ -94,9 +94,9 @@ function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
 end
 
 """
-    gen_logπ_mh(vi::VarInfo, spl::Sampler, model)   
+    gen_logπ_mh(vi, spl::Sampler, model)
 
-Generate a log density function -- this variant uses the 
+Generate a log density function -- this variant uses the
 `set_namedtuple!` function to update the `VarInfo`.
 """
 function gen_logπ_mh(spl::Sampler, model)
@@ -114,7 +114,7 @@ function gen_logπ_mh(spl::Sampler, model)
     return logπ
 end
 
-function scalar_map(vi::VarInfo, vns::Vector{V}) where V<:VarName
+function scalar_map(vi, vns::Vector{V}) where V<:VarName
     vals = getindex(vi, vns)
     if length(vals) == length(vns) == 1
         # It's a scalar!
@@ -138,7 +138,7 @@ function dist_val_tuple(spl::Sampler{<:MH})
     return dt, vt
 end
 
-@generated function _val_tuple(metadata::NamedTuple, vi::VarInfo, vns::NamedTuple{names}) where {names}
+@generated function _val_tuple(metadata::NamedTuple, vi, vns::NamedTuple{names}) where {names}
     length(names) === 0 && return :(NamedTuple())
     expr = Expr(:tuple)
     map(names) do f
@@ -150,7 +150,7 @@ end
 @generated function _dist_tuple(
     metadata::NamedTuple, 
     props::NamedTuple{propnames}, 
-    vi::VarInfo, 
+    vi, 
     vns::NamedTuple{names}
 ) where {names, propnames}
     length(names) === 0 && return :(NamedTuple())
@@ -258,7 +258,7 @@ function DynamicPPL.assume(
     spl::Sampler{<:MH},
     dist::Distribution,
     vn::VarName,
-    vi::VarInfo
+    vi,
 )
     updategid!(vi, vn, spl)
     r = vi[vn]
@@ -270,7 +270,7 @@ function DynamicPPL.dot_assume(
     dist::MultivariateDistribution,
     vn::VarName,
     var::AbstractMatrix,
-    vi::VarInfo,
+    vi,
 )
     @assert dim(dist) == size(var, 1)
     getvn = i -> VarName(vn, vn.indexing * "[:,$i]")
@@ -285,7 +285,7 @@ function DynamicPPL.dot_assume(
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     vn::VarName,
     var::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     getvn = ind -> VarName(vn, vn.indexing * "[" * join(Tuple(ind), ",") * "]")
     vns = getvn.(CartesianIndices(var))
@@ -299,7 +299,7 @@ function DynamicPPL.observe(
     spl::Sampler{<:MH},
     d::Distribution,
     value,
-    vi::VarInfo,
+    vi,
 )
     return DynamicPPL.observe(SampleFromPrior(), d, value, vi)
 end
@@ -308,7 +308,7 @@ function DynamicPPL.dot_observe(
     spl::Sampler{<:MH},
     ds::Union{Distribution, AbstractArray{<:Distribution}},
     value::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     return DynamicPPL.dot_observe(SampleFromPrior(), ds, value, vi)
 end

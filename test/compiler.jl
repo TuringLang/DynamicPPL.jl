@@ -215,8 +215,7 @@ end
             global sampler_ = _sampler
             global model_ = _model
             global context_ = _context
-            global logps_ = _logps
-            global lp = sum(_logps)
+            global lp = getlogp(_varinfo)
             return x
         end
         model = testmodel([1.0])
@@ -250,7 +249,7 @@ end
         function makemodel(p)
             @model testmodel(x) = begin
                 x[1] ~ Bernoulli(p)
-                global lp = sum(_logps)
+                global lp = getlogp(_varinfo)
                 return x
             end
             return testmodel
