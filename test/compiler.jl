@@ -222,19 +222,10 @@ end
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test getlogp(varinfo) == lp
-        @test varinfo_ === varinfo
+        @test varinfo_ isa AbstractVarInfo
         @test model_ === model
         @test sampler_ === SampleFromPrior()
         @test context_ === DefaultContext()
-        @test length(logps_) == Threads.nthreads()
-        @test sum(logps_) == lp
-        for i in 1:length(logps_)
-            if i == Threads.threadid()
-                @test logps_[i] == lp
-            else
-                @test iszero(logps_[i])
-            end
-        end
 
         # test DPPL#61
         @model testmodel(z) = begin

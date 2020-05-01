@@ -56,10 +56,12 @@ getmetadata(vi::ThreadSafeVarInfo, vn::VarName) = getmetadata(vi.varinfo, vn)
 getidx(vi::ThreadSafeVarInfo, vn::VarName) = getidx(vi.varinfo, vn)
 getrange(vi::ThreadSafeVarInfo, vn::VarName) = getrange(vi.varinfo, vn)
 getdist(vi::ThreadSafeVarInfo, vn::VarName) = getdist(vi.varinfo, vn)
+getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
 
 function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
     setgid!(vi.varinfo, gid, vn)
 end
+setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
