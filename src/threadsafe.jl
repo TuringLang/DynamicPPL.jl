@@ -15,7 +15,7 @@ ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
 # Instead of updating the log probability of the underlying variables we
 # just update the array of log probabilities.
-function acclogp!(vi::ThreadSafeVarInfo, logp::Real)
+function acclogp!(vi::ThreadSafeVarInfo, logp)
     vi.logps[Threads.threadid()] += logp
     return getlogp(vi)
 end
@@ -27,19 +27,12 @@ getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(vi.logps)
 # TODO: Make remaining methods thread-safe.
 
 function resetlogp!(vi::ThreadSafeVarInfo)
-    resetlogp!(vi.varinfo)
-    z = zero(getlogp(vi))
-    fill!(vi.logps, z)
-    z
+    fill!(vi.logps, zero(getlogp(vi)))
+    return resetlogp!(vi.varinfo)
 end
-function setlogp!(vi::ThreadSafeVarInfo, logp::Real)
-    if length(vi.logp) == 0
-        push!(vi.logp, logp)
-    else
-        vi.logp[1] = logp
-    end
-    vi.lastidx[] = 1
-    return logp
+function setlogp!(vi::ThreadSafeVarInfo, logp)
+    fill!(vi.logps, zero(logp))
+    return setlogp!(vi.varinfo, logp)
 end
 
 get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)
@@ -47,16 +40,7 @@ increment_num_produce!(vi::ThreadSafeVarInfo) = increment_num_produce!(vi.varinf
 reset_num_produce!(vi::ThreadSafeVarInfo) = reset_num_produce!(vi.varinfo)
 set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n)
 
-getall(vi::ThreadSafeVarInfo) = getall(vi.varinfo)
-setall!(vi::ThreadSafeVarInfo, val) = setall!(vi.varinfo, val)
-
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
-
-getmetadata(vi::ThreadSafeVarInfo, vn::VarName) = getmetadata(vi.varinfo, vn)
-getidx(vi::ThreadSafeVarInfo, vn::VarName) = getidx(vi.varinfo, vn)
-getrange(vi::ThreadSafeVarInfo, vn::VarName) = getrange(vi.varinfo, vn)
-getdist(vi::ThreadSafeVarInfo, vn::VarName) = getdist(vi.varinfo, vn)
-getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
 
 function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
     setgid!(vi.varinfo, gid, vn)
@@ -66,18 +50,25 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-_getranges(vi::ThreadSafeVarInfo, idcs::NamedTuple) = _getranges(vi.varinfo, idcs)
-_getidcs(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = _getidcs(vi.varinfo, spl)
-_getidcs(vi::ThreadSafeVarInfo, s::Selector, space) = _getidcs(vi.varinfo, s, space)
-_getvns(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = _getvns(vi.varinfo, spl)
-_getvns(vi::ThreadSafeVarInfo, s::Selector, space) = _getvns(vi.varinfo, s, space)
-
 link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
 invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
-getindex(vi::ThreadSafeVarInfo, spl::Sampler) = getindex(vi.varinfo, spl)
-setindex!(vi::ThreadSafeVarInfo, val, spl::Sampler) = setindex!(vi.varinfo, val, spl)
+getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
+getindex(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = getindex(vi.varinfo, spl)
+getindex(vi::ThreadSafeVarInfo, spl::SampleFromUniform) = getindex(vi.varinfo, spl)
+getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
+getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
+
+function setindex!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
+    setindex!(vi.varinfo, val, spl)
+end
+function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
+    setindex!(vi.varinfo, val, spl)
+end
+function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
+    setindex!(vi.varinfo, val, spl)
+end
 
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
     return set_retained_vns_del_by_spl!(vi.varinfo, spl)
@@ -98,9 +89,6 @@ function push!(
     gidset::Set{Selector}
 )
     push!(vi.varinfo, vn, r, dist, gidset)
-end
-function push_assert(vi::ThreadSafeVarInfo, vn::VarName, dist, gidset)
-    return push_assert(vi.varinfo, vn, dist, gidset)
 end
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
