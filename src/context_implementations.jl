@@ -36,17 +36,16 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
 end
 
 """
-    tilde_assume(ctx, sampler, right, vn, inds, vi, logps)
+    tilde_assume(ctx, sampler, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability in `logps` (separately for each thread), and return the
-sampled value.
+accumulate the log probability, and return the sampled value.
 
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
-function tilde_assume(ctx, sampler, right, vn, inds, vi, logps)
+function tilde_assume(ctx, sampler, right, vn, inds, vi)
     value, logp = tilde(ctx, sampler, right, vn, inds, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return value
 end
 
@@ -76,29 +75,28 @@ end
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability in `logps` (separately for each thread), and return the
-observed value.
+accumulate the log probability, and return the observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe(ctx, sampler, right, left, vname, vinds, vi, logps)
+function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
     logp = tilde(ctx, sampler, right, left, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return left
 end
 
 """
-    tilde_observe(ctx, sampler, right, left, vi, logps)
+    tilde_observe(ctx, sampler, right, left, vi)
 
-Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability in `logps`
-(separately for each thread), and return the observed value.
+Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
+return the observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
-function tilde_observe(ctx, sampler, right, left, vi, logps)
+function tilde_observe(ctx, sampler, right, left, vi)
     logp = tilde(ctx, sampler, right, left, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return left
 end
 
@@ -117,7 +115,7 @@ function assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::VarInfo,
+    vi,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
@@ -142,7 +140,7 @@ function observe(
     spl::Union{SampleFromPrior, SampleFromUniform},
     dist::Distribution,
     value,
-    vi::VarInfo,
+    vi,
 )
     increment_num_produce!(vi)
     return Distributions.logpdf(dist, value)
@@ -201,14 +199,13 @@ end
     dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
-model inputs), accumulate the log probability in `logps` (separately for each thread), and
-return the sampled value.
+model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi, logps)
+function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
     value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return value
 end
 
@@ -240,7 +237,7 @@ function _dot_tilde(
     right::Union{MultivariateDistribution, AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
     vn::AbstractVector{<:VarName},
-    vi::VarInfo,
+    vi,
 )
     throw(ambiguity_error_msg())
 end
@@ -250,7 +247,7 @@ function dot_assume(
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
     var::AbstractMatrix,
-    vi::VarInfo,
+    vi,
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(vi, vns, dist, spl)
@@ -263,7 +260,7 @@ function dot_assume(
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     r = get_and_set_val!(vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
@@ -276,13 +273,13 @@ function dot_assume(
     ::Any,
     ::AbstractArray{<:VarName},
     ::Any,
-    ::VarInfo
+    ::Any,
 )
     error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing assume statement")
 end
 
 function get_and_set_val!(
-    vi::VarInfo,
+    vi,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -313,7 +310,7 @@ function get_and_set_val!(
 end
 
 function get_and_set_val!(
-    vi::VarInfo,
+    vi,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -344,7 +341,7 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi::VarInfo,
+    vi,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     val::AbstractMatrix,
@@ -356,7 +353,7 @@ function set_val!(
     return val
 end
 function set_val!(
-    vi::VarInfo,
+    vi,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     val::AbstractArray,
@@ -384,35 +381,33 @@ function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi, logps)
+    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
-accumulate the log probability in `logps` (separately for each thread), and return the
-observed value.
+accumulate the log probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi, logps)
+function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return left
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vi, logps)
+    dot_tilde_observe(ctx, sampler, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
-probability in `logps` (separately for each thread), and return the observed value.
+probability, and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vi, logps)
+function dot_tilde_observe(ctx, sampler, right, left, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    logps[Threads.threadid()] += logp
+    acclogp!(vi, logp)
     return left
 end
-
 
 function _dot_tilde(sampler, right, left::AbstractArray, vi)
     return dot_observe(sampler, right, left, vi)
@@ -422,7 +417,7 @@ function _dot_tilde(
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution, AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
-    vi::VarInfo,
+    vi,
 )
     throw(ambiguity_error_msg())
 end
@@ -431,7 +426,7 @@ function dot_observe(
     spl::Union{SampleFromPrior, SampleFromUniform},
     dist::MultivariateDistribution,
     value::AbstractMatrix,
-    vi::VarInfo,
+    vi,
 )
     increment_num_produce!(vi)
     DynamicPPL.DEBUG && @debug "dist = $dist"
@@ -442,7 +437,7 @@ function dot_observe(
     spl::Union{SampleFromPrior, SampleFromUniform},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     value::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     increment_num_produce!(vi)
     DynamicPPL.DEBUG && @debug "dists = $dists"
@@ -453,7 +448,7 @@ function dot_observe(
     spl::Sampler,
     ::Any,
     ::Any,
-    ::VarInfo,
+    ::Any,
 )
     error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing observe statement")
 end

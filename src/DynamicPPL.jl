@@ -6,7 +6,6 @@ using Bijectors
 using MacroTools
 
 import AbstractMCMC
-import StaticArrays
 import ZygoteRules
 
 import Random
@@ -111,6 +110,7 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
+include("threadsafe.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")

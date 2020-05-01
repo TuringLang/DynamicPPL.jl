@@ -9,7 +9,6 @@ Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [compat]
@@ -17,7 +16,6 @@ AbstractMCMC = "1.0"
 Bijectors = "0.5.2, 0.6"
 Distributions = "0.22, 0.23"
 MacroTools = "0.5.1"
-StaticArrays = "0.12.2"
 ZygoteRules = "0.2"
 julia = "1"
 

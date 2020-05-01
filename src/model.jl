@@ -132,13 +132,31 @@ function (model::Model)(
     spl::AbstractSampler=SampleFromPrior(),
     ctx::AbstractContext=DefaultContext()
 )
-    resetlogp!(vi)
-    if has_eval_num(spl)
-        spl.state.eval_num += 1
+    if Threads.nthreads() == 1
+        return evaluate_singlethreaded(model, vi, spl, ctx)
+    else
+        return evaluate_multithreaded(model, vi, spl, ctx)
     end
-    return model.f(model, vi, spl, ctx)
 end
 
+function evaluate_singlethreaded(model, varinfo, sampler, context)
+    resetlogp!(varinfo)
+    if has_eval_num(sampler)
+        sampler.state.eval_num += 1
+    end
+    return model.f(model, varinfo, sampler, context)
+end
+
+function evaluate_multithreaded(model, varinfo, sampler, context)
+    resetlogp!(varinfo)
+    if has_eval_num(sampler)
+        sampler.state.eval_num += 1
+    end
+    wrapper = ThreadSafeVarInfo(varinfo)
+    result = model.f(model, wrapper, sampler, context)
+    acclogp!(varinfo, sum(wrapper.logps))
+    return result
+end
 
 """
     getargnames(model::Model)
