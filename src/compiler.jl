@@ -1,7 +1,7 @@
 const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
     "Distributions."
 
-const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo)
+const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_logps)
 
 """
     isassumption(expr)
@@ -234,24 +234,25 @@ function generate_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left = $(DynamicPPL.tilde_assume)(
-                        _context, _sampler, $tmpright, $vn, $inds, _varinfo)
+                        _context, _sampler, $tmpright, $vn, $inds, _varinfo, _logps)
                 else
                     $(DynamicPPL.tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo, _logps)
                 end
             end
         end
 
         return quote
             $(top...)
-            $left = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds, _varinfo)
+            $left = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds,
+                                               _varinfo, _logps)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo, _logps)
     end
 end
 
@@ -278,10 +279,10 @@ function generate_dot_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left .= $(DynamicPPL.dot_tilde_assume)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo, _logps)
                 else
                     $(DynamicPPL.dot_tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo, _logps)
                 end
             end
         end
@@ -289,14 +290,15 @@ function generate_dot_tilde(left, right, args)
         return quote
             $(top...)
             $left .= $(DynamicPPL.dot_tilde_assume)(
-                _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo, _logps)
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo,
+                                        _logps)
     end
 end
 
@@ -333,16 +335,29 @@ function build_output(model_info)
               :($var = $(DynamicPPL.matchingvalue)(_sampler, _varinfo, _model.args.$var)))
     end
 
-    @gensym(evaluator, generator)
+    @gensym(evaluator, innerevaluator, generator)
     generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
     model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
 
     return quote
         function $evaluator(
+            model::$(DynamicPPL.Model),
+            varinfo::$(DynamicPPL.VarInfo),
+            sampler::$(DynamicPPL.AbstractSampler),
+            context::$(DynamicPPL.AbstractContext),
+        )
+            logps = $(DynamicPPL.initlogps)(varinfo)
+            result = $innerevaluator(model, varinfo, sampler, context, logps)
+            $(DynamicPPL.acclogp!)(varinfo, $(Base.sum)(logps))
+            return result
+        end
+
+        function $innerevaluator(
             _model::$(DynamicPPL.Model),
             _varinfo::$(DynamicPPL.VarInfo),
             _sampler::$(DynamicPPL.AbstractSampler),
             _context::$(DynamicPPL.AbstractContext),
+            _logps,
         )
             $unwrap_data_expr
             $main_body

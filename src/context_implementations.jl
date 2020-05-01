@@ -36,16 +36,17 @@ function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
 end
 
 """
-    tilde_assume(ctx, sampler, right, vn, inds, vi)
+    tilde_assume(ctx, sampler, right, vn, inds, vi, logps)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the sampled value.
+accumulate the log probability in `logps` (separately for each thread), and return the
+sampled value.
 
 Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
 """
-function tilde_assume(ctx, sampler, right, vn, inds, vi)
+function tilde_assume(ctx, sampler, right, vn, inds, vi, logps)
     value, logp = tilde(ctx, sampler, right, vn, inds, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return value
 end
 
@@ -75,28 +76,29 @@ end
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the observed value.
+accumulate the log probability in `logps` (separately for each thread), and return the
+observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+function tilde_observe(ctx, sampler, right, left, vname, vinds, vi, logps)
     logp = tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return left
 end
 
 """
-    tilde_observe(ctx, sampler, right, left, vi)
+    tilde_observe(ctx, sampler, right, left, vi, logps)
 
-Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and return the
-observed value.
+Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability in `logps`
+(separately for each thread), and return the observed value.
 
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
-function tilde_observe(ctx, sampler, right, left, vi)
+function tilde_observe(ctx, sampler, right, left, vi, logps)
     logp = tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return left
 end
 
@@ -199,13 +201,14 @@ end
     dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
-model inputs), accumulate the log probability, and return the sampled value.
+model inputs), accumulate the log probability in `logps` (separately for each thread), and
+return the sampled value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi, logps)
     value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return value
 end
 
@@ -381,31 +384,32 @@ function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi, logps)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
-accumulate the log probability, and return the observed value.
+accumulate the log probability in `logps` (separately for each thread), and return the
+observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
+function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi, logps)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return left
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vi)
+    dot_tilde_observe(ctx, sampler, right, left, vi, logps)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
-probability, and return the observed value.
+probability in `logps` (separately for each thread), and return the observed value.
 
 Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vi)
+function dot_tilde_observe(ctx, sampler, right, left, vi, logps)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
+    logps[Threads.threadid()] += logp
     return left
 end
 

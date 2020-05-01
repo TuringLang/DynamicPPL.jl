@@ -6,8 +6,10 @@ using Bijectors
 using MacroTools
 
 import AbstractMCMC
-import Random
+import StaticArrays
 import ZygoteRules
+
+import Random
 
 import Base: Symbol,
              ==,

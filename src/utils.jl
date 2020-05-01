@@ -34,6 +34,19 @@ function getargs_tilde(expr::Expr)
     return
 end
 
+"""
+    initlogps(varinfo)
+
+Return an `MVector` of length `Threads.nthreads()` filled with `zero(getlogp(varinfo))`.
+
+It is used for accumulating the log probability in the model evaluation in a thread-safe
+way.
+"""
+function initlogps(varinfo)
+    T = typeof(getlogp(varinfo))
+    return zeros(StaticArrays.MVector{Threads.nthreads(),T})
+end
+
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################
