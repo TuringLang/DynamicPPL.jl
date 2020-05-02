@@ -215,27 +215,17 @@ end
             global sampler_ = _sampler
             global model_ = _model
             global context_ = _context
-            global logps_ = _logps
-            global lp = sum(_logps)
+            global lp = getlogp(_varinfo)
             return x
         end
         model = testmodel([1.0])
         varinfo = DynamicPPL.VarInfo(model)
         model(varinfo)
         @test getlogp(varinfo) == lp
-        @test varinfo_ === varinfo
+        @test varinfo_ isa AbstractVarInfo
         @test model_ === model
         @test sampler_ === SampleFromPrior()
         @test context_ === DefaultContext()
-        @test length(logps_) == Threads.nthreads()
-        @test sum(logps_) == lp
-        for i in 1:length(logps_)
-            if i == Threads.threadid()
-                @test logps_[i] == lp
-            else
-                @test iszero(logps_[i])
-            end
-        end
 
         # test DPPL#61
         @model testmodel(z) = begin
@@ -250,7 +240,7 @@ end
         function makemodel(p)
             @model testmodel(x) = begin
                 x[1] ~ Bernoulli(p)
-                global lp = sum(_logps)
+                global lp = getlogp(_varinfo)
                 return x
             end
             return testmodel
@@ -407,9 +397,9 @@ end
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
         println("Time for")
-        println("  Loop : $t_loop")
-        println("  Vec  : $t_vec")
-        println("  Mv   : $t_mv")
+        println("  Loop : ", t_loop)
+        println("  Vec  : ", t_vec)
+        println("  Mv   : ", t_mv)
 
         # Transformed test
         @model vdemo6() = begin
@@ -479,9 +469,9 @@ end
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
         println("Time for")
-        println("  Loop : \$t_loop")
-        println("  Vec  : \$t_vec")
-        println("  Mv   : \$t_mv")
+        println("  Loop : ", t_loop)
+        println("  Vec  : ", t_vec)
+        println("  Mv   : ", t_mv)
 
         # Transformed test
         @model vdemo6() = begin

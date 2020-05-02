@@ -597,23 +597,29 @@ Return the log of the joint probability of the observed data and parameters samp
 getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
-    setlogp!(vi::VarInfo, logp::Real)
+    setlogp!(vi::VarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`.
 """
-setlogp!(vi::AbstractVarInfo, logp::Real) = vi.logp[] = logp
+function setlogp!(vi::VarInfo, logp)
+    vi.logp[] = logp
+    return vi
+end
 
 """
-    acclogp!(vi::VarInfo, logp::Real)
+    acclogp!(vi::VarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`.
 """
-acclogp!(vi::AbstractVarInfo, logp::Real) = vi.logp[] += logp
+function acclogp!(vi::VarInfo, logp)
+    vi.logp[] += logp
+    return vi
+end
 
 """
-    resetlogp!(vi::VarInfo)
+    resetlogp!(vi::AbstractVarInfo)
 
 Reset the value of the log of the joint probability of the observed data and parameters
 sampled in `vi` to 0.
@@ -625,24 +631,24 @@ resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, zero(getlogp(vi)))
 
 Return the `num_produce` of `vi`.
 """
-get_num_produce(vi::AbstractVarInfo) = vi.num_produce[]
+get_num_produce(vi::VarInfo) = vi.num_produce[]
 
 """
     set_num_produce!(vi::VarInfo, n::Int)
 
 Set the `num_produce` field of `vi` to `n`.
 """
-set_num_produce!(vi::AbstractVarInfo, n::Int) = vi.num_produce[] = n
+set_num_produce!(vi::VarInfo, n::Int) = vi.num_produce[] = n
 
 """
     increment_num_produce!(vi::VarInfo)
 
 Add 1 to `num_produce` in `vi`.
 """
-increment_num_produce!(vi::AbstractVarInfo) = vi.num_produce[] += 1
+increment_num_produce!(vi::VarInfo) = vi.num_produce[] += 1
 
 """
-    reset_num_produce!(vi::VarInfo)
+    reset_num_produce!(vi::AbstractVarInfo)
 
 Reset the value of `num_produce` the log of the joint probability of the observed data
 and parameters sampled in `vi` to 0.

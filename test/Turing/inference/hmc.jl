@@ -391,12 +391,12 @@ end
 #####
 
 """
-    gen_∂logπ∂θ(vi::VarInfo, spl::Sampler, model)
+    gen_∂logπ∂θ(vi, spl::Sampler, model)
 
 Generate a function that takes a vector of reals `θ` and compute the logpdf and
 gradient at `θ` for the model specified by `(vi, spl, model)`.
 """
-function gen_∂logπ∂θ(vi::VarInfo, spl::Sampler, model)
+function gen_∂logπ∂θ(vi, spl::Sampler, model)
     function ∂logπ∂θ(x)
         return gradient_logp(x, vi, model, spl)
     end
@@ -404,12 +404,12 @@ function gen_∂logπ∂θ(vi::VarInfo, spl::Sampler, model)
 end
 
 """
-    gen_logπ(vi::VarInfo, spl::Sampler, model)
+    gen_logπ(vi, spl::Sampler, model)
 
 Generate a function that takes `θ` and returns logpdf at `θ` for the model specified by
 `(vi, spl, model)`.
 """
-function gen_logπ(vi::VarInfo, spl::Sampler, model)
+function gen_logπ(vi, spl::Sampler, model)
     function logπ(x)::Float64
         x_old, lj_old = vi[spl], getlogp(vi)
         vi[spl] = x
@@ -437,7 +437,7 @@ function DynamicPPL.assume(
     spl::Sampler{<:Hamiltonian},
     dist::Distribution,
     vn::VarName,
-    vi::VarInfo
+    vi,
 )
     Turing.DEBUG && _debug("assuming...")
     updategid!(vi, vn, spl)
@@ -455,7 +455,7 @@ function DynamicPPL.dot_assume(
     dist::MultivariateDistribution,
     vns::AbstractArray{<:VarName},
     var::AbstractMatrix,
-    vi::VarInfo,
+    vi,
 )
     @assert length(dist) == size(var, 1)
     updategid!.(Ref(vi), vns, Ref(spl))
@@ -468,7 +468,7 @@ function DynamicPPL.dot_assume(
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     updategid!.(Ref(vi), vns, Ref(spl))
     r = reshape(vi[vec(vns)], size(var))
@@ -480,7 +480,7 @@ function DynamicPPL.observe(
     spl::Sampler{<:Hamiltonian},
     d::Distribution,
     value,
-    vi::VarInfo,
+    vi,
 )
     return DynamicPPL.observe(SampleFromPrior(), d, value, vi)
 end
@@ -489,7 +489,7 @@ function DynamicPPL.dot_observe(
     spl::Sampler{<:Hamiltonian},
     ds::Union{Distribution, AbstractArray{<:Distribution}},
     value::AbstractArray,
-    vi::VarInfo,
+    vi,
 )
     return DynamicPPL.dot_observe(SampleFromPrior(), ds, value, vi)
 end
