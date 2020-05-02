@@ -17,7 +17,7 @@ ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 # just update the array of log probabilities.
 function acclogp!(vi::ThreadSafeVarInfo, logp)
     vi.logps[Threads.threadid()] += logp
-    return getlogp(vi)
+    return vi
 end
 
 # The current log probability of the variables has to be computed from

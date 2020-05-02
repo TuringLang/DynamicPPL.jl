@@ -602,7 +602,10 @@ getlogp(vi::AbstractVarInfo) = vi.logp[]
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`.
 """
-setlogp!(vi::VarInfo, logp) = vi.logp[] = logp
+function setlogp!(vi::VarInfo, logp)
+    vi.logp[] = logp
+    return vi
+end
 
 """
     acclogp!(vi::VarInfo, logp)
@@ -610,7 +613,10 @@ setlogp!(vi::VarInfo, logp) = vi.logp[] = logp
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`.
 """
-acclogp!(vi::VarInfo, logp) = vi.logp[] += logp
+function acclogp!(vi::VarInfo, logp)
+    vi.logp[] += logp
+    return vi
+end
 
 """
     resetlogp!(vi::AbstractVarInfo)
