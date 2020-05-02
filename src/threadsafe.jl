@@ -45,6 +45,7 @@ syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
     setgid!(vi.varinfo, gid, vn)
 end
+setorder!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = setorder!(vi.varinfo, vn, index)
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
