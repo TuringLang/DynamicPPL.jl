@@ -8,6 +8,7 @@ turnprogress(false)
 @testset "DynamicPPL.jl" begin
     include("utils.jl")
     include("compiler.jl")
+    include("compat/ad.jl")
     include("varinfo.jl")
     include("sampler.jl")
     include("prob_macro.jl")
