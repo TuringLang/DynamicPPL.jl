@@ -1,3 +1,30 @@
+#################
+# VectorOfLogps #
+#################
+
+struct VectorOfLogps{T1, T2 <: Vector{Base.RefValue{T1}}}
+    v::T2
+end
+VectorOfLogps(::Type{T}, n::Int) where {T} = VectorOfLogps(zero(T), n)
+function VectorOfLogps(val::T, n::Int) where {T}
+    v = [val for i in 1:Threads.nthreads()]
+    return VectorOfLogps(v)
+end
+VectorOfLogps(v::Vector) = VectorOfLogps(Ref.(v))
+Base.getindex(v::VectorOfLogps, i::Integer) = v.v[i][]
+function Base.setindex!(v::VectorOfLogps, val, i::Integer)
+    v.v[i][] = val
+    return v
+end
+Base.sum(v::VectorOfLogps) = sum(v -> v[], v.v)
+function Base.fill!(v::VectorOfLogps, val)
+    for i in 1:length(v.v)
+        v.v[i][] = val
+    end
+    return v
+end
+
+
 """
     ThreadSafeVarInfo
 
@@ -9,7 +36,7 @@ struct ThreadSafeVarInfo{V<:AbstractVarInfo,L} <: AbstractVarInfo
     logps::L
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    return ThreadSafeVarInfo(vi, [zero(getlogp(vi)) for _ in 1:Threads.nthreads()])
+    return ThreadSafeVarInfo(vi, VectorOfLogps(zero(getlogp(vi)), Threads.nthreads()))
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
