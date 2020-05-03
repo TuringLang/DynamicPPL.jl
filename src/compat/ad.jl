@@ -7,7 +7,7 @@ ZygoteRules.@adjoint function push!(
     dist::Distribution,
     gidset::Set{Selector}
 )
-    return push!(vi, vn, r, dist, gidset), _ -> ntuple(_ -> nothing, 5)
+    return push!(vi, vn, r, dist, gidset), _ -> nothing
 end
 
 ZygoteRules.@adjoint function Threads.nthreads()
