@@ -11,8 +11,8 @@ ZygoteRules.@adjoint function push!(
 end
 
 ZygoteRules.@adjoint function Threads.nthreads()
-    Threads.nthreads(), _ -> (nothing,)
+    return Threads.nthreads(), _ -> nothing
 end
 ZygoteRules.@adjoint function Threads.threadid()
-    Threads.threadid(), _ -> (nothing,)
+    return Threads.threadid(), _ -> nothing
 end
