@@ -60,7 +60,7 @@ using Tracker
     @test Tracker.data(y) ≈ lp
     @test Tracker.data(back(1)[1]) ≈ grad
 
-    y, back = Zygote.gradient(logp_model, x)
+    y, back = Zygote.pullback(logp_model, x)
     @test y ≈ lp
     @test back(1) ≈ grad
 end
