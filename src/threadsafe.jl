@@ -5,12 +5,10 @@
 struct VectorOfLogps{T1, T2 <: Vector{Base.RefValue{T1}}}
     v::T2
 end
-VectorOfLogps(::Type{T}, n::Int) where {T} = VectorOfLogps(zero(T), n)
 function VectorOfLogps(val::T, n::Int) where {T}
-    v = [val for i in 1:Threads.nthreads()]
+    v = [Ref(val) for i in 1:n]
     return VectorOfLogps(v)
 end
-VectorOfLogps(v::Vector) = VectorOfLogps(Ref.(v))
 Base.getindex(v::VectorOfLogps, i::Integer) = v.v[i][]
 function Base.setindex!(v::VectorOfLogps, val, i::Integer)
     v.v[i][] = val
