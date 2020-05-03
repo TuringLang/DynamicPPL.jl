@@ -352,7 +352,7 @@ function build_output(model_info)
         $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
         $(generator_kw_form...)
 
-        $model_gen = $model_gen_constructor
+        $(Base).@__doc__ $model_gen = $model_gen_constructor
     end
 end
 

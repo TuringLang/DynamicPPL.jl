@@ -580,4 +580,18 @@ end
         model = demo()
         @test all(iszero(model()) for _ in 1:1000)
     end
+    @testset "docstring" begin
+        "This is a test"
+        @model function demo(x)
+            m ~ Normal()
+            x ~ Normal(m, 1)
+        end
+
+        s = @doc(demo)
+        @test string(s) == "This is a test\n"
+
+        # Verify that adding docstring didn't completely break execution of model
+        m = demo(0.)
+        @test m() isa Float64
+    end
 end
