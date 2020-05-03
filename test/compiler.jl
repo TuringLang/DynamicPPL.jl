@@ -624,7 +624,7 @@ end
         end
 
         s = @doc(demo)
-        @test s == "This is a test"
+        @test "$s" == "This is a test\n"
 
         # Verify that adding docstring didn't completely break execution of model
         m = demo(0.)
