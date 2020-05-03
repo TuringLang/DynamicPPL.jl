@@ -581,7 +581,7 @@ end
         @test all(iszero(model()) for _ in 1:1000)
     end
     @testset "threading" begin
-        @info "Peforming threading tests with $(Threads.nthreads()) threads"
+        println("Peforming threading tests with $(Threads.nthreads()) threads")
 
         x = rand(10_000)
 
@@ -596,8 +596,18 @@ end
         wthreads(x)(vi)
         lp_w_threads = getlogp(vi)
 
-        println("With threading:")
+        println("With `@threads`:")
+        println("  default:")
         @time wthreads(x)(vi)
+
+        # Ensure that we use `ThreadSafeVarInfo`.
+        @test getlogp(vi) ≈ lp_w_threads
+        DynamicPPL.evaluate_multithreaded(wthreads(x), vi, SampleFromPrior(),
+                                          DefaultContext())
+
+        println("  evaluate_multithreaded:")
+        @time DynamicPPL.evaluate_multithreaded(wthreads(x), vi, SampleFromPrior(),
+                                                DefaultContext())
 
         @model function wothreads(x)
             x[1] ~ Normal(0, 1)
@@ -610,9 +620,19 @@ end
         wothreads(x)(vi)
         lp_wo_threads = getlogp(vi)
 
-        println("Without threading:")
+        println("Without `@threads`:")
+        println("  default:")
         @time wothreads(x)(vi)
 
         @test lp_w_threads ≈ lp_wo_threads
+
+        # Ensure that we use `VarInfo`.
+        DynamicPPL.evaluate_singlethreaded(wothreads(x), vi, SampleFromPrior(),
+                                           DefaultContext())
+        @test getlogp(vi) ≈ lp_w_threads
+
+        println("  evaluate_singlethreaded:")
+        @time DynamicPPL.evaluate_singlethreaded(wothreads(x), vi, SampleFromPrior(),
+                                                 DefaultContext())
     end
 end
