@@ -615,4 +615,16 @@ end
 
         @test lp_w_threads ≈ lp_wo_threads
     end
+
+    @testset "docstring" begin
+        "This is a test"
+        @model function demo(x)
+            m ~ Normal()
+            x ~ Normal(m, 1)
+        end
+
+        m = demo(0.)
+        s = @doc(m)
+        @test s == "This is a test"
+    end
 end
