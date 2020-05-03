@@ -623,8 +623,11 @@ end
             x ~ Normal(m, 1)
         end
 
-        m = demo(0.)
-        s = @doc(m)
+        s = @doc(demo)
         @test s == "This is a test"
+
+        # Verify that adding docstring didn't completely break execution of model
+        m = demo(0.)
+        @test m() isa Float64
     end
 end
