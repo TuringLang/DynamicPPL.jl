@@ -62,6 +62,6 @@ using Tracker
 
     y, back = Zygote.pullback(logp_model, x)
     @test y ≈ lp
-    @test back(1) ≈ grad
+    @test back(1)[1] ≈ grad
 end
 

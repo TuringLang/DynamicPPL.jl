@@ -154,7 +154,7 @@ function evaluate_multithreaded(model, varinfo, sampler, context)
     end
     wrapper = ThreadSafeVarInfo(varinfo)
     result = model.f(model, wrapper, sampler, context)
-    acclogp!(varinfo, sum(wrapper.logps))
+    setlogp!(varinfo, getlogp(wrapper))
     return result
 end
 

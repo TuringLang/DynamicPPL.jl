@@ -9,29 +9,33 @@ struct ThreadSafeVarInfo{V<:AbstractVarInfo,L} <: AbstractVarInfo
     logps::L
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    return ThreadSafeVarInfo(vi, [zero(getlogp(vi)) for _ in 1:Threads.nthreads()])
+    return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
 # Instead of updating the log probability of the underlying variables we
 # just update the array of log probabilities.
 function acclogp!(vi::ThreadSafeVarInfo, logp)
-    vi.logps[Threads.threadid()] += logp
+    vi.logps[Threads.threadid()][] += logp
     return vi
 end
 
 # The current log probability of the variables has to be computed from
 # both the wrapped variables and the thread-specific log probabilities.
-getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(vi.logps)
+getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(getindex, vi.logps)
 
 # TODO: Make remaining methods thread-safe.
 
 function resetlogp!(vi::ThreadSafeVarInfo)
-    fill!(vi.logps, zero(getlogp(vi)))
+    for x in vi.logps
+        x[] = zero(x[])
+    end
     return resetlogp!(vi.varinfo)
 end
 function setlogp!(vi::ThreadSafeVarInfo, logp)
-    fill!(vi.logps, zero(logp))
+    for x in vi.logps
+        x[] = zero(x[])
+    end
     return setlogp!(vi.varinfo, logp)
 end
 
