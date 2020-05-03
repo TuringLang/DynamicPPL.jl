@@ -302,7 +302,8 @@ function get_and_set_val!(
     else
         r = init(dist, spl, n)
         for i in 1:n
-            push!(vi, vns[i], r[:,i], dist, spl)
+            vn = vns[i]
+            push!(vi, vn, r[:,i], dist, spl)
             settrans!(vi, false, vn)
         end
     end
