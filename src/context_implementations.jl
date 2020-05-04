@@ -3,6 +3,11 @@ using Distributions: UnivariateDistribution,
                      MatrixDistribution,
                      Distribution
 
+const AMBIGUITY_MSG = "Ambiguous `LHS .~ RHS` or `@. LHS ~ RHS` syntax. The broadcasting " *
+    "can either be column-wise following the convention of Distributions.jl or " *
+    "element-wise following Julia's general broadcasting semantics. Please make sure " *
+    "that the element type of `LHS` is not a supertype of the support type of " *
+    "`AbstractVector` to eliminate ambiguity."
 
 alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 
@@ -239,7 +244,7 @@ function _dot_tilde(
     vn::AbstractVector{<:VarName},
     vi,
 )
-    throw(ambiguity_error_msg())
+    throw(DimensionMismatch(AMBIGUITY_MSG))
 end
 
 function dot_assume(
@@ -420,7 +425,7 @@ function _dot_tilde(
     left::AbstractMatrix{>:AbstractVector},
     vi,
 )
-    throw(ambiguity_error_msg())
+    throw(DimensionMismatch(AMBIGUITY_MSG))
 end
 
 function dot_observe(
