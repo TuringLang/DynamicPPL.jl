@@ -129,7 +129,7 @@ istransformable(::Transformable) = true
 #################################
 
 inittrans(dist::UnivariateDistribution) = invlink(dist, randrealuni())
-inittrans(dist::MultivariateDistribution) = invlink(dist, randrealuni(size(dist, 1)))
+inittrans(dist::MultivariateDistribution) = invlink(dist, randrealuni(size(dist)[1]))
 inittrans(dist::MatrixDistribution) = invlink(dist, randrealuni(size(dist)...))
 
 ################################
@@ -138,7 +138,7 @@ inittrans(dist::MatrixDistribution) = invlink(dist, randrealuni(size(dist)...))
 
 inittrans(dist::UnivariateDistribution, n::Int) = invlink(dist, randrealuni(n))
 function inittrans(dist::MultivariateDistribution, n::Int)
-    return invlink(dist, randrealuni(size(dist, 1), n))
+    return invlink(dist, randrealuni(size(dist)[1], n))
 end
 function inittrans(dist::MatrixDistribution, n::Int)
     return invlink(dist, [randrealuni(size(dist)...) for _ in 1:n])
