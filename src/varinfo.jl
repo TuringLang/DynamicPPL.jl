@@ -108,7 +108,7 @@ const TypedVarInfo = VarInfo{<:NamedTuple}
 function VarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
     model(vi, SampleFromPrior(), ctx)
-    return TypedVarInfo(vi)
+    return MixedVarInfo(vi)
 end
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
@@ -930,6 +930,14 @@ function haskey(vi::TypedVarInfo, vn::VarName)
     Tmeta = typeof(metadata)
     return getsym(vn) in fieldnames(Tmeta) && haskey(getmetadata(vi, vn).idcs, vn)
 end
+
+"""
+    hassymbol(vi::VarInfo, vn::VarName)
+
+Check whether the symbol of `vn` has been sampled in `vi`.
+"""
+hassymbol(vi::VarInfo, vn::VarName) = haskey(vi, vn)
+hassymbol(vi::TypedVarInfo, vn::VarName) = haskey(vi.metadata, getsym(vn))
 
 function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     vi_str = """
