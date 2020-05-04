@@ -234,18 +234,18 @@ getmetadata(vi::VarInfo, vn::VarName) = vi.metadata
 getmetadata(vi::TypedVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
 
 """
-    getidx(vi::VarInfo, vn::VarName)
+    getidx(vi::AbstractVarInfo, vn::VarName)
 
 Return the index of `vn` in the metadata of `vi` corresponding to `vn`.
 """
-getidx(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).idcs[vn]
+getidx(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).idcs[vn]
 
 """
     getrange(vi::VarInfo, vn::VarName)
 
 Return the index range of `vn` in the metadata of `vi`.
 """
-getrange(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).ranges[getidx(vi, vn)]
+getrange(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).ranges[getidx(vi, vn)]
 
 """
     getranges(vi::AbstractVarInfo, vns::Vector{<:VarName})
@@ -257,11 +257,11 @@ function getranges(vi::AbstractVarInfo, vns::Vector{<:VarName})
 end
 
 """
-    getdist(vi::VarInfo, vn::VarName)
+    getdist(vi::AbstractVarInfo, vn::VarName)
 
 Return the distribution from which `vn` was sampled in `vi`.
 """
-getdist(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).dists[getidx(vi, vn)]
+getdist(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).dists[getidx(vi, vn)]
 
 """
     getval(vi::VarInfo, vn::VarName)
@@ -270,7 +270,7 @@ Return the value(s) of `vn`.
 
 The values may or may not be transformed to Euclidean space.
 """
-getval(vi::VarInfo, vn::VarName) = view(getmetadata(vi, vn).vals, getrange(vi, vn))
+getval(vi::AbstractVarInfo, vn::VarName) = view(getmetadata(vi, vn).vals, getrange(vi, vn))
 
 """
     setval!(vi::VarInfo, val, vn::VarName)
@@ -279,7 +279,7 @@ Set the value(s) of `vn` in the metadata of `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-setval!(vi::VarInfo, val, vn::VarName) = getmetadata(vi, vn).vals[getrange(vi, vn)] = val
+setval!(vi::AbstractVarInfo, val, vn::VarName) = getmetadata(vi, vn).vals[getrange(vi, vn)] = val
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
@@ -335,7 +335,7 @@ end
 
 Return the set of sampler selectors associated with `vn` in `vi`.
 """
-getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
+getgid(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
     settrans!(vi::VarInfo, trans::Bool, vn::VarName)
@@ -474,7 +474,7 @@ end
 
 Set `vn`'s value for `flag` to `true` in `vi`.
 """
-function set_flag!(vi::VarInfo, vn::VarName, flag::String)
+function set_flag!(vi::AbstractVarInfo, vn::VarName, flag::String)
     return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
 end
 
@@ -578,7 +578,7 @@ keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-setgid!(vi::VarInfo, gid::Selector, vn::VarName) = push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
+setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
 
 """
     istrans(vi::VarInfo, vn::VarName)
@@ -1145,5 +1145,95 @@ and `vn`'s symbol is in the space of `spl`.
 function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
+    end
+end
+function updategid!(vi::TypedVarInfo, spls::Tuple{Vararg{AbstractSampler}})
+    foreach(keys(vi.metadata)) do sym
+        for vn in vi.metadata[sym].vns
+            updategid!.(Ref(vi), Ref(vn), spls)
+        end
+    end
+    return vi
+end
+function updategid!(vi::UntypedVarInfo, spls::Tuple{Vararg{AbstractSampler}})
+    for vn in vi.metadata.vns
+        updategid!.(Ref(vi), Ref(vn), spls)
+    end
+    return vi
+end
+
+#=
+"""
+    set_namedtuple!(vi::AbstractVarInfo, nt::NamedTuple)
+
+Places the values of a `NamedTuple` into the relevant places of `vi`.
+"""
+function set_namedtuple!(vi::UntypedVarInfo, nt::NamedTuple)
+    for (n, vals) in pairs(nt)
+        vns = vi.metadata[n].vns
+
+        n_vns = length(vns)
+        n_vals = length(vals)
+        v_isarr = vals isa AbstractArray
+
+        if v_isarr && n_vals == 1 && n_vns > 1
+            for (vn, val) in zip(vns, vals[1])
+                vi[vn] = val isa AbstractArray ? val : [val]
+            end
+        elseif v_isarr && n_vals > 1 && n_vns == 1
+            vi[vns[1]] = vals
+        elseif v_isarr && n_vals == n_vns > 1
+            for (vn, val) in zip(vns, vals)
+                vi[vn] = [val]
+            end
+        elseif v_isarr && n_vals == 1 && n_vns == 1
+            if vals[1] isa AbstractArray
+                vi[vns[1]] = vals[1]
+            else
+                vi[vns[1]] = [vals[1]]
+            end
+        elseif !(v_isarr)
+            vi[vns[1]] = [vals]
+        else
+            error("Cannot assign `NamedTuple` to `VarInfo`")
+        end
+    end
+end
+=#
+
+"""
+    set_namedtuple!(vi, nt::NamedTuple)
+
+Places the values of a `NamedTuple` into the relevant places of `vi`.
+"""
+function set_namedtuple!(vi::TypedVarInfo, nt::NamedTuple)
+    for (n, vals) in pairs(nt)
+        vns = vi.metadata[n].vns
+
+        n_vns = length(vns)
+        n_vals = length(vals)
+        v_isarr = vals isa AbstractArray
+
+        if v_isarr && n_vals == 1 && n_vns > 1
+            for (vn, val) in zip(vns, vals[1])
+                vi[vn] = val isa AbstractArray ? val : [val]
+            end
+        elseif v_isarr && n_vals > 1 && n_vns == 1
+            vi[vns[1]] = vals
+        elseif v_isarr && n_vals == n_vns > 1
+            for (vn, val) in zip(vns, vals)
+                vi[vn] = [val]
+            end
+        elseif v_isarr && n_vals == 1 && n_vns == 1
+            if vals[1] isa AbstractArray
+                vi[vns[1]] = vals[1]
+            else
+                vi[vns[1]] = [vals[1]]
+            end
+        elseif !(v_isarr)
+            vi[vns[1]] = [vals]
+        else
+            error("Cannot assign `NamedTuple` to `VarInfo`")
+        end
     end
 end

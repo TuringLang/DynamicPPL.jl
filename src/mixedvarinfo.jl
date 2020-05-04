@@ -15,6 +15,15 @@ function VarInfo(old_vi::MixedVarInfo, spl, x::AbstractVector)
     return MixedVarInfo(VarInfo(old_vi.tvi, spl, x), old_vi.uvi, old_vi.is_uvi_empty)
 end
 
+_getvns(vi::MixedVarInfo, s::Selector, space) = _getvns(vi.tvi, s, space)
+
+function getmetadata(vi::MixedVarInfo, vn::VarName)
+    if haskey(vi.tvi, vn)
+        return getmetadata(vi.tvi, vn)
+    else
+        return getmetadata(vi.uvi, vn)
+    end
+end
 function Base.show(io::IO, vi::MixedVarInfo)
     print(io, "Instance of MixedVarInfo")
 end
@@ -24,7 +33,7 @@ function fullyinspace(spl::AbstractSampler, vi::TypedVarInfo)
     return space !== () && all(haskey.(Ref(vi.metadata), space))
 end
 
-acclogp!(vi::MixedVarInfo, logp) = acclogp!(vi.tvi)
+acclogp!(vi::MixedVarInfo, logp) = acclogp!(vi.tvi, logp)
 getlogp(vi::MixedVarInfo) = getlogp(vi.tvi)
 resetlogp!(vi::MixedVarInfo) = resetlogp!(vi.tvi)
 setlogp!(vi::MixedVarInfo, logp) = setlogp!(vi.tvi, logp)
@@ -157,6 +166,17 @@ function is_flagged(vi::MixedVarInfo, vn::VarName, flag::String)
     else
         return is_flagged(vi.uvi, vn, flag)
     end
+end
+
+function updategid!(vi::MixedVarInfo, spls::Tuple{Vararg{AbstractSampler}})
+    foreach(spls) do spl
+        if fullyinspace(spl, vi.tvi) || vi.is_empty_uvi[]
+            updategid!(vi.tvi, spls)
+        else
+            updategid!(vi.uvi, spls)
+        end
+    end
+    return vi
 end
 
 function tonamedtuple(vi::MixedVarInfo)
