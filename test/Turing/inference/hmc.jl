@@ -37,6 +37,7 @@ function additional_parameters(::Type{<:HamiltonianTransition})
     return [:lp,:stat]
 end
 
+DynamicPPL.getlogp(t::HamiltonianTransition) = t.lp
 
 ###
 ### Hamiltonian Monte Carlo samplers.
@@ -78,7 +79,7 @@ end
 
 alg_str(::Sampler{<:Hamiltonian}) = "HMC"
 
-HMC(args...) = HMC{ADBackend()}(args...)
+HMC(args...; kwargs...) = HMC{ADBackend()}(args...; kwargs...)
 function HMC{AD}(ϵ::Float64, n_leapfrog::Int, ::Type{metricT}, space::Tuple) where {AD, metricT <: AHMC.AbstractMetric}
     return HMC{AD, space, metricT}(ϵ, n_leapfrog)
 end
@@ -99,21 +100,52 @@ function HMC{AD}(
     return HMC{AD}(ϵ, n_leapfrog, metricT, space)
 end
 
+function update_hamiltonian!(spl, model, n)
+    metric = gen_metric(n, spl)
+    ℓπ = gen_logπ(spl.state.vi, spl, model)
+    ∂ℓπ∂θ = gen_∂logπ∂θ(spl.state.vi, spl, model)    
+    spl.state.h = AHMC.Hamiltonian(metric, ℓπ, ∂ℓπ∂θ)
+    return spl
+end
+
 function AbstractMCMC.sample_init!(
     rng::AbstractRNG,
-    model::Model,
+    model::AbstractModel,
     spl::Sampler{<:Hamiltonian},
     N::Integer;
     verbose::Bool=true,
     resume_from=nothing,
+    init_theta=nothing,
     kwargs...
 )
-
     # Resume the sampler.
     set_resume!(spl; resume_from=resume_from, kwargs...)
 
     # Get `init_theta`
     initialize_parameters!(spl; verbose=verbose, kwargs...)
+    if init_theta !== nothing
+        # Doesn't support dynamic models
+        link!(spl.state.vi, spl)
+        model(spl.state.vi, spl)
+        theta = spl.state.vi[spl]
+        spl.state.z.θ .= theta
+    else
+        # Samples new values and sets trans to true, then computes the logp
+        model(empty!(spl.state.vi), SampleFromUniform())
+        link!(spl.state.vi, spl)
+        theta = spl.state.vi[spl]
+        resize!(spl.state.z.θ, length(theta))
+        spl.state.z.θ .= theta
+        update_hamiltonian!(spl, model, length(theta))
+        while !isfinite(spl.state.z.ℓπ.value) || !isfinite(spl.state.z.ℓπ.gradient)
+            model(empty!(spl.state.vi), SampleFromUniform())
+            link!(spl.state.vi, spl)
+            theta = spl.state.vi[spl]
+            resize!(spl.state.z.θ, length(theta))
+            spl.state.z.θ .= theta
+            update_hamiltonian!(spl, model, length(theta))
+        end
+    end
 
     # Set the default number of adaptations, if relevant.
     if spl.alg isa AdaptiveHamiltonian
@@ -138,7 +170,47 @@ function AbstractMCMC.sample_init!(
     if !islinked(spl.state.vi, spl) && spl.selector.tag == :default
         link!(spl.state.vi, spl)
         model(spl.state.vi, spl)
+    elseif islinked(spl.state.vi, spl) && spl.selector.tag != :default
+        invlink!(spl.state.vi, spl)
+        model(spl.state.vi, spl)        
     end
+end
+
+function AbstractMCMC.transitions_init(
+    transition,
+    ::AbstractModel,
+    sampler::Sampler{<:Hamiltonian},
+    N::Integer;
+    discard_adapt = true,
+    kwargs...
+)
+    if discard_adapt && isdefined(sampler.alg, :n_adapts)
+        n = max(0, N - sampler.alg.n_adapts)
+    else
+        n = N
+    end
+    return Vector{typeof(transition)}(undef, n)
+end
+
+function AbstractMCMC.transitions_save!(
+    transitions::AbstractVector,
+    iteration::Integer,
+    transition,
+    ::AbstractModel,
+    sampler::Sampler{<:Hamiltonian},
+    ::Integer;
+    discard_adapt = true,
+    kwargs...
+)
+    if discard_adapt && isdefined(sampler.alg, :n_adapts)
+        if iteration > sampler.alg.n_adapts
+            transitions[iteration - sampler.alg.n_adapts] = transition
+        end
+        return
+    end
+
+    transitions[iteration] = transition
+    return
 end
 
 """
@@ -337,22 +409,21 @@ function AbstractMCMC.step!(
     spl.state.eval_num = 0
 
     Turing.DEBUG && @debug "current ϵ: $ϵ"
-    
-    # Gibbs component specified cares
+
+    # When a Gibbs component
     if spl.selector.tag != :default
         # Transform the space
         Turing.DEBUG && @debug "X-> R..."
         link!(spl.state.vi, spl)
         model(spl.state.vi, spl)
-        # Update Hamiltonian
-        metric = gen_metric(length(spl.state.vi[spl]), spl)
-        ∂logπ∂θ = gen_∂logπ∂θ(spl.state.vi, spl, model)
-        logπ = gen_logπ(spl.state.vi, spl, model)
-        spl.state.h = AHMC.Hamiltonian(metric, logπ, ∂logπ∂θ)
     end
-
     # Get position and log density before transition
     θ_old, log_density_old = spl.state.vi[spl], getlogp(spl.state.vi)
+    if spl.selector.tag != :default
+        update_hamiltonian!(spl, model, length(θ_old))
+        resize!(spl.state.z.θ, length(θ_old))
+        spl.state.z.θ .= θ_old
+    end
 
     # Transition
     t = AHMC.step(rng, spl.state.h, spl.state.traj, spl.state.z)
@@ -499,8 +570,8 @@ end
 ####
 
 function AHMCAdaptor(alg::AdaptiveHamiltonian, metric::AHMC.AbstractMetric; ϵ=alg.ϵ)
-    pc = AHMC.Preconditioner(metric)
-    da = AHMC.NesterovDualAveraging(alg.δ, ϵ)
+    pc = AHMC.MassMatrixAdaptor(metric)
+    da = AHMC.StepSizeAdaptor(alg.δ, ϵ)
 
     if iszero(alg.n_adapts)
         adaptor = AHMC.Adaptation.NoAdaptation()
@@ -549,7 +620,7 @@ function HMCState(
 
     # Find good eps if not provided one
     if spl.alg.ϵ == 0.0
-        ϵ = AHMC.find_good_eps(h, θ_init)
+        ϵ = AHMC.find_good_stepsize(h, θ_init)
         @info "Found initial step size" ϵ
     else
         ϵ = spl.alg.ϵ

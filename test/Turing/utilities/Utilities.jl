@@ -1,9 +1,9 @@
 module Utilities
 
 using DynamicPPL: AbstractSampler, Sampler
+using DynamicPPL: init, inittrans, reconstruct, reconstruct!, vectorize
 using Distributions, Bijectors
 using StatsFuns, SpecialFunctions
-using MCMCChains: Chains, setinfo
 import Distributions: sample
 
 export  vectorize,
@@ -12,11 +12,9 @@ export  vectorize,
         Sample,
         Chain,
         init,
-        vectorize,
         set_resume!,
         FlattenIterator
 
-include("robustinit.jl")
 include("helper.jl")
 
 end # module

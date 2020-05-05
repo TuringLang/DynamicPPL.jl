@@ -26,33 +26,48 @@ function additional_parameters(::Type{<:ParticleTransition})
     return [:lp,:le, :weight]
 end
 
+DynamicPPL.getlogp(t::ParticleTransition) = t.lp
+
 ####
 #### Generic Sequential Monte Carlo sampler.
 ####
 
 """
-    SMC()
+$(TYPEDEF)
 
 Sequential Monte Carlo sampler.
 
-Note that this method is particle-based, and arrays of variables
-must be stored in a [`TArray`](@ref) object.
+# Fields
 
-Usage:
-
-```julia
-SMC()
-```
+$(TYPEDFIELDS)
 """
 struct SMC{space, R} <: ParticleInference
     resampler::R
 end
 
+"""
+    SMC(space...)
+    SMC([resampler = ResampleWithESSThreshold(), space = ()])
+    SMC([resampler = resample_systematic, ]threshold[, space = ()])
+
+Create a sequential Monte Carlo sampler of type [`SMC`](@ref) for the variables in `space`.
+
+If the algorithm for the resampling step is not specified explicitly, systematic resampling
+is performed if the estimated effective sample size per particle drops below 0.5.
+"""
 function SMC(resampler = Turing.Core.ResampleWithESSThreshold(), space::Tuple = ())
-    SMC{space, typeof(resampler)}(resampler)
+    return SMC{space, typeof(resampler)}(resampler)
 end
-SMC(::Tuple{}) = SMC()
+
+# Convenient constructors with ESS threshold
+function SMC(resampler, threshold::Real, space::Tuple = ())
+    return SMC(Turing.Core.ResampleWithESSThreshold(resampler, threshold), space)
+end
+SMC(threshold::Real, space::Tuple = ()) = SMC(resample_systematic, threshold, space)
+
+# If only the space is defined
 SMC(space::Symbol...) = SMC(space)
+SMC(space::Tuple) = SMC(Turing.Core.ResampleWithESSThreshold(), space)
 
 mutable struct SMCState{V<:VarInfo, F<:AbstractFloat} <: AbstractSamplerState
     vi                   ::   V
@@ -63,7 +78,7 @@ end
 
 function SMCState(model::Model)
     vi = VarInfo(model)
-    particles = ParticleContainer(model, Trace[])
+    particles = ParticleContainer(Trace[])
 
     return SMCState(vi, 0.0, particles)
 end
@@ -96,11 +111,19 @@ function AbstractMCMC.sample_init!(
     particles = T[Trace(model, spl, vi) for _ in 1:N]
 
     # create a new particle container
-    spl.state.particles = pc = ParticleContainer(model, particles)
+    spl.state.particles = pc = ParticleContainer(particles)
 
-    while consume(pc) !== Val{:done}
+    # Run particle filter.
+    logevidence = zero(spl.state.average_logevidence)
+    isdone = false
+    while !isdone
         resample!(pc, spl.alg.resampler)
+        isdone = propagate!(pc)
+        logevidence += logZ(pc)
     end
+    spl.state.average_logevidence = logevidence
+
+    return
 end
 
 function AbstractMCMC.step!(
@@ -124,7 +147,7 @@ function AbstractMCMC.step!(
     params = tonamedtuple(particle.vi)
     lp = getlogp(particle.vi)
 
-    return ParticleTransition(params, lp, pc.logE, Ws[iteration])
+    return ParticleTransition(params, lp, spl.state.average_logevidence, Ws[iteration])
 end
 
 ####
@@ -212,11 +235,15 @@ function AbstractMCMC.step!(
     end
 
     # create a new particle container
-    pc = ParticleContainer(model, particles)
+    pc = ParticleContainer(particles)
 
     # run the particle filter
-    while consume(pc) !== Val{:done}
-        resample!(pc, spl.alg.resampler, ref_particle)
+    logevidence = zero(spl.state.average_logevidence)
+    isdone = false
+    while !isdone
+        resample!(pc, spl.alg.resampler)
+        isdone = propagate!(pc)
+        logevidence += logZ(pc)
     end
 
     # pick a particle to be retained.
@@ -229,7 +256,7 @@ function AbstractMCMC.step!(
     lp = getlogp(spl.state.vi)
 
     # update the master vi.
-    return ParticleTransition(params, lp, pc.logE, 1.0)
+    return ParticleTransition(params, lp, logevidence, 1.0)
 end
 
 function AbstractMCMC.sample_end!(
@@ -246,14 +273,14 @@ function AbstractMCMC.sample_end!(
     loge = mean(t.le for t in ts)
 
     # If we already had a chain, grab the logevidence.
-    if resume_from isa Chains
+    if resume_from isa MCMCChains.Chains
         # pushfirst!(samples, resume_from.info[:samples]...)
         pre_loge = resume_from.logevidence
         # Calculate new log-evidence
         pre_n = length(resume_from)
         loge = (pre_loge * pre_n + loge * N) / (pre_n + N)
     elseif resume_from !== nothing
-        error("keyword argument `resume_from` has to be `nothing` or a `Chains` object")
+        error("keyword argument `resume_from` has to be `nothing` or a `MCMCChains.Chains` object")
     end
 
     # Store the logevidence.
@@ -264,10 +291,10 @@ function DynamicPPL.assume(
     spl::Sampler{<:Union{PG,SMC}},
     dist::Distribution,
     vn::VarName,
-    vi
+    ::Any
 )
     vi = current_trace().vi
-    if DynamicPPL.inspace(vn, getspace(spl))
+    if inspace(vn, spl)
         if ~haskey(vi, vn)
             r = rand(dist)
             push!(vi, vn, r, dist, spl)
