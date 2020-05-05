@@ -896,7 +896,7 @@ variables `x` would return
 (x = ([1.5, 2.0], [3.0, 1.0], ["x[1]", "x[2]"]), )
 ```
 """
-function tonamedtuple(vi::VarInfo)
+function tonamedtuple(vi::TypedVarInfo)
     return tonamedtuple(vi.metadata, vi)
 end
 @generated function tonamedtuple(metadata::NamedTuple{names}, vi::VarInfo) where {names}
@@ -907,6 +907,7 @@ end
     end
     return expr
 end
+tonamedtuple(vi::UntypedVarInfo) = tonamedtuple(TypedVarInfo(vi))
 
 @inline function findvns(vi, f_vns)
     if length(f_vns) == 0

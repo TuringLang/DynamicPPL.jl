@@ -182,7 +182,7 @@ function loglikelihood(
     _vi::Union{Nothing, VarInfo},
 )
     model = make_likelihood_model(left, right, modelgen)
-    vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
+    vi = _vi === nothing ? TypedVarInfo(deepcopy(model)) : TypedVarInfo(_vi)
     if isdefined(right, :chain)
         # Element-wise likelihood for each value in chain
         chain = right.chain
