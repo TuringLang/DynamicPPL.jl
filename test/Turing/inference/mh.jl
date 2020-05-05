@@ -55,48 +55,11 @@ alg_str(::Sampler{<:MH}) = "MH"
 #####################
 
 """
-    set_namedtuple!(vi::VarInfo, nt::NamedTuple)
-
-Places the values of a `NamedTuple` into the relevant places of a `VarInfo`.
-"""
-function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
-    for (n, vals) in pairs(nt)
-        vns = vi.metadata[n].vns
-
-        n_vns = length(vns)
-        n_vals = length(vals)
-        v_isarr = vals isa AbstractArray
-
-        if v_isarr && n_vals == 1 && n_vns > 1
-            for (vn, val) in zip(vns, vals[1])
-                vi[vn] = val isa AbstractArray ? val : [val]
-            end
-        elseif v_isarr && n_vals > 1 && n_vns == 1
-            vi[vns[1]] = vals
-        elseif v_isarr && n_vals == n_vns > 1
-            for (vn, val) in zip(vns, vals)
-                vi[vn] = [val]
-            end
-        elseif v_isarr && n_vals == 1 && n_vns == 1
-            if vals[1] isa AbstractArray
-                vi[vns[1]] = vals[1]
-            else
-                vi[vns[1]] = [vals[1]]
-            end
-        elseif !(v_isarr)
-            vi[vns[1]] = [vals]
-        else
-            error("Cannot assign `NamedTuple` to `VarInfo`")
-        end
-    end
-end
-
-"""
     MHLogDensityFunction
 
 A log density function for the MH sampler.
 
-This variant uses the  `set_namedtuple!` function to update the `VarInfo`.
+This variant uses the  `set_namedtuple!` function to update the variables.
 """
 struct MHLogDensityFunction{M<:Model,S<:Sampler{<:MH}} <: Function # Relax AMH.DensityModel?
     model::M
@@ -143,7 +106,7 @@ function dist_val_tuple(spl::Sampler{<:MH})
 end
 
 @generated function _val_tuple(
-    vi::VarInfo,
+    vi,
     vns::NamedTuple{names}
 ) where {names}
     isempty(names) === 0 && return :(NamedTuple())
@@ -157,7 +120,7 @@ end
 
 @generated function _dist_tuple(
     props::NamedTuple{propnames}, 
-    vi::VarInfo,
+    vi,
     vns::NamedTuple{names}
 ) where {names,propnames}
     isempty(names) === 0 && return :(NamedTuple())

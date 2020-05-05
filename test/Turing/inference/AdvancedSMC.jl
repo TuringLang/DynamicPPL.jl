@@ -69,7 +69,7 @@ SMC(threshold::Real, space::Tuple = ()) = SMC(resample_systematic, threshold, sp
 SMC(space::Symbol...) = SMC(space)
 SMC(space::Tuple) = SMC(Turing.Core.ResampleWithESSThreshold(), space)
 
-mutable struct SMCState{V<:VarInfo, F<:AbstractFloat} <: AbstractSamplerState
+mutable struct SMCState{V<:AbstractVarInfo, F<:AbstractFloat} <: AbstractSamplerState
     vi                   ::   V
     # The logevidence after aggregating all samples together.
     average_logevidence  ::   F
@@ -180,7 +180,7 @@ function PG(n1::Int, space::Symbol...)
     PG(n1, resample_systematic, space)
 end
 
-mutable struct PGState{V<:VarInfo, F<:AbstractFloat} <: AbstractSamplerState
+mutable struct PGState{V<:AbstractVarInfo, F<:AbstractFloat} <: AbstractSamplerState
     vi                   ::   V
     # The logevidence after aggregating all samples together.
     average_logevidence  ::   F
