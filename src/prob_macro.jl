@@ -43,11 +43,11 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         end
         if isdefined(ntr.chain.info, :vi)
             _vi = ntr.chain.info.vi
-            @assert _vi isa VarInfo
+            @assert _vi isa AbstractVarInfo
             vi = TypedVarInfo(_vi)
         elseif isdefined(ntr, :varinfo)
             _vi = ntr.varinfo
-            @assert _vi isa VarInfo
+            @assert _vi isa AbstractVarInfo
             vi = TypedVarInfo(_vi)
         else
             vi = nothing
@@ -62,7 +62,7 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         modelgen = ntr.model
         if isdefined(ntr, :varinfo)
             _vi = ntr.varinfo
-            @assert _vi isa VarInfo
+            @assert _vi isa AbstractVarInfo
             vi = TypedVarInfo(_vi)
         else
             vi = nothing
@@ -134,7 +134,7 @@ function logprior(
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
     model = make_prior_model(left, right, modelgen)
-    vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
+    vi = _vi === nothing ? TypedVarInfo(deepcopy(model), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
     end

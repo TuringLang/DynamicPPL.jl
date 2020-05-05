@@ -97,7 +97,7 @@ Note: It is the user's responsibility to ensure that each "symbol" is visited at
 once whenever the model is called, regardless of any stochastic branching. Each symbol
 refers to a Julia variable and can be a hierarchical array of many random variables, e.g. `x[1] ~ ...` and `x[2] ~ ...` both have the same symbol `x`.
 """
-struct VarInfo{Tmeta, Tlogp} <: AbstractVarInfo
+struct VarInfo{Tmeta <: Union{Metadata, NamedTuple}, Tlogp} <: AbstractVarInfo
     metadata::Tmeta
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
@@ -105,10 +105,10 @@ end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 
-function VarInfo(model::Model, ctx = DefaultContext())
+function TypedVarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
     model(vi, SampleFromPrior(), ctx)
-    return MixedVarInfo(vi)
+    return TypedVarInfo(vi)
 end
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
@@ -485,7 +485,7 @@ end
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta::Metadata=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 
 """
     TypedVarInfo(vi::UntypedVarInfo)

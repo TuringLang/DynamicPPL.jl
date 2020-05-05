@@ -6,13 +6,24 @@ struct MixedVarInfo{
     uvi::Tuvi
     is_uvi_empty::Base.RefValue{Bool}
 end
-MixedVarInfo(vi::MixedVarInfo) = vi
 MixedVarInfo(vi::TypedVarInfo) = MixedVarInfo(vi, VarInfo(), Ref(true))
 function MixedVarInfo(vi::UntypedVarInfo)
     MixedVarInfo(TypedVarInfo(vi), empty!(deepcopy(vi)), Ref(true))
 end
+function VarInfo(model::Model, ctx = DefaultContext())
+    vi = VarInfo()
+    model(vi, SampleFromPrior(), ctx)
+    return MixedVarInfo(vi)
+end
 function VarInfo(old_vi::MixedVarInfo, spl, x::AbstractVector)
     return MixedVarInfo(VarInfo(old_vi.tvi, spl, x), old_vi.uvi, old_vi.is_uvi_empty)
+end
+function TypedVarInfo(vi::MixedVarInfo)
+    return VarInfo(
+        merge(vi.tvi.metadata, TypedVarInfo(vi.uvi).metadata),
+        Ref(getlogp(vi.tvi)),
+        Ref(get_num_produce(vi.tvi)),
+    )
 end
 
 _getvns(vi::MixedVarInfo, s::Selector, space) = _getvns(vi.tvi, s, space)
@@ -121,6 +132,8 @@ for splT in (:SampleFromPrior, :SampleFromUniform, :AbstractSampler)
         end
     end
 end
+
+getall(vi::MixedVarInfo) = vcat(getall(vi.tvi), getall(vi.uvi))
 
 function set_retained_vns_del_by_spl!(vi::MixedVarInfo, spl::Sampler)
     if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
