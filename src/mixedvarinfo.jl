@@ -203,3 +203,4 @@ function tonamedtuple(vi::MixedVarInfo)
     t1 = tonamedtuple(vi.tvi)
     return vi.is_uvi_empty[] ? t1 : merge(t1, tonamedtuple(vi.uvi))
 end
+set_namedtuple!(vi::MixedVarInfo, nt::NamedTuple) = set_namedtuple!(vi.tvi, nt)
