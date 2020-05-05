@@ -5,6 +5,11 @@ on:
     branches:
       - master
       - dev
+      # This is where pull requests from "bors r+" are built.
+      - staging
+      # This is where pull requests from "bors try" are built.
+      - trying
+  # Enable building pull requests.
   pull_request:
 
 jobs:

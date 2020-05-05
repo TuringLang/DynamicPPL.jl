@@ -1,0 +1,10 @@
+status = [
+  "continuous-integration/travis-ci/push",
+  "DynamicPPL-CI / test (1%"
+]
+delete_merged_branches = true
+# Uncomment this to require at least on approval of a project member.
+#required_approvals = 1
+# Uncomment this to use a two hour timeout.
+# The default is one hour.
+#timeout_sec = 7200
