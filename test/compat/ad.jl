@@ -1,3 +1,9 @@
+using DynamicPPL, .Turing, Distributions, ForwardDiff, Tracker, Zygote
+
+dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
+include(dir*"/test/test_utils/AllUtils.jl")
+include(dir*"/test/test_util.jl")
+
 @testset "ad.jl" begin
     @testset "logp" begin
         # Hand-written log probabilities for vector `x = [s, m]`.

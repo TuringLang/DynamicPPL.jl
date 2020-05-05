@@ -1,5 +1,7 @@
+using DynamicPPL: TypedVarInfo
+
 function test_model_ad(model, logp_manual)
-    vi = VarInfo(model)
+    vi = TypedVarInfo(model)
     model(vi, SampleFromPrior())
     x = DynamicPPL.getall(vi)
 

@@ -916,7 +916,7 @@ tonamedtuple(vi::UntypedVarInfo) = tonamedtuple(TypedVarInfo(vi))
     return map(vn -> vi[vn], f_vns)
 end
 
-function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler, SampleFromPrior})
+function Base.eltype(vi::AbstractVarInfo, spl::AbstractSampler)
     return eltype(Core.Compiler.return_type(getindex, Tuple{typeof(vi), typeof(spl)}))
 end
 

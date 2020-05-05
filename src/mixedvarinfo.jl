@@ -13,10 +13,11 @@ end
 function VarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
     model(vi, SampleFromPrior(), ctx)
-    return MixedVarInfo(vi)
+    return MixedVarInfo(TypedVarInfo(vi))
 end
 function VarInfo(old_vi::MixedVarInfo, spl, x::AbstractVector)
-    return MixedVarInfo(VarInfo(old_vi.tvi, spl, x), old_vi.uvi, old_vi.is_uvi_empty)
+    new_tvi = VarInfo(old_vi.tvi, spl, x)
+    return MixedVarInfo(new_tvi, old_vi.uvi, old_vi.is_uvi_empty)
 end
 function TypedVarInfo(vi::MixedVarInfo)
     return VarInfo(
@@ -133,7 +134,13 @@ for splT in (:SampleFromPrior, :SampleFromUniform, :AbstractSampler)
     end
 end
 
-getall(vi::MixedVarInfo) = vcat(getall(vi.tvi), getall(vi.uvi))
+function getall(vi::MixedVarInfo)
+    if vi.is_empty_uvi[]
+        return getall(vi.tvi)
+    else
+        return vcat(getall(vi.tvi), getall(vi.uvi))
+    end
+end
 
 function set_retained_vns_del_by_spl!(vi::MixedVarInfo, spl::Sampler)
     if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]

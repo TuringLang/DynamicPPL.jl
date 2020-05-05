@@ -115,6 +115,8 @@ end
 missing_arg_error_msg(arg, ::Missing) = """Variable $arg has a value of `missing`, or is not defined and its default value is `missing`. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
 missing_arg_error_msg(arg, ::Nothing) = """Variable $arg is not defined and has no default value. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
 
+warn_msg(arg::Symbol) = "Argument $arg is not defined. A value of `nothing` is used."
+
 function logprior(
     left::NamedTuple,
     right::NamedTuple,
@@ -172,8 +174,6 @@ end
         Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals)))
     end
 end
-
-warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
 
 function loglikelihood(
     left::NamedTuple,
