@@ -1,6 +1,15 @@
 status = [
   "continuous-integration/travis-ci/push",
-  "DynamicPPL-CI / test (1%"
+  "test (1.%, ubuntu-latest, x86)",
+  "test (1, ubuntu-latest, x86)",
+  "test (1.%, ubuntu-latest, x64)",
+  "test (1, ubuntu-latest, x64)",
+  "test (1.%, macOS-latest, x64)",
+  "test (1, macOS-latest, x64)",
+  "test (1.%, windows-latest, x86)",
+  "test (1, windows-latest, x86)",
+  "test (1.%, windows-latest, x64)",
+  "test (1, windows-latest, x64)"
 ]
 delete_merged_branches = true
 # Uncomment this to require at least on approval of a project member.
