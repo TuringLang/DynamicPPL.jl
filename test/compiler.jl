@@ -242,6 +242,22 @@ end
         @test sampler_ === SampleFromPrior()
         @test context_ === DefaultContext()
 
+        # disable warnings
+        @model testmodel(x) = begin
+            x[1] ~  Bernoulli(0.5)
+            global varinfo_ = _varinfo
+            global sampler_ = _sampler
+            global model_ = _model
+            global context_ = _context
+            global lp = getlogp(_varinfo)
+            return x
+        end false
+        lpold = lp
+        model = testmodel([1.0])
+        varinfo = DynamicPPL.VarInfo(model)
+        model(varinfo)
+        @test getlogp(varinfo) == lp == lpold
+
         # test DPPL#61
         @model testmodel(z) = begin
             m ~ Normal()

@@ -42,31 +42,34 @@ isassumption(expr) = :(false)
 #################
 
 """
-    @model(body)
+    @model(expr[, warn = true])
 
 Macro to specify a probabilistic model.
 
-Example:
+If `warn` is `true`, a warning is displayed if internal variable names are used in the model
+definition.
+
+# Example
 
 Model definition:
 
 ```julia
-@model model_generator(x = default_x, y) = begin
+@model function model_generator(x = default_x, y)
     ...
 end
 ```
 
 To generate a `Model`, call `model_generator(x_value)`.
 """
-macro model(expr)
-    esc(model(expr))
+macro model(expr, warn=true)
+    esc(model(expr, warn))
 end
 
-function model(expr)
+function model(expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
-    modelinfo[:modelbody] = generate_mainbody(modelinfo[:body], modelinfo[:modelargs])
+    modelinfo[:modelbody] = generate_mainbody(modelinfo[:body], modelinfo[:modelargs], warn)
 
     return build_output(modelinfo)
 end
@@ -161,50 +164,53 @@ function build_model_info(input_expr)
 end
 
 """
-    generate_mainbody(expr, args)
+    generate_mainbody(expr, args, warn)
 
 Generate the body of the main evaluation function from expression `expr` and arguments
 `args`.
-"""
-generate_mainbody(expr, args) = generate_mainbody!(Symbol[], expr, args)
 
-generate_mainbody!(found, x, args) = x
-function generate_mainbody!(found, sym::Symbol, args)
-    if sym in INTERNALNAMES && sym ∉ found
+If `warn` is true, a warning is displayed if internal variables are used in the model
+definition.
+"""
+generate_mainbody(expr, args, warn) = generate_mainbody!(Symbol[], expr, args, warn)
+
+generate_mainbody!(found, x, args, warn) = x
+function generate_mainbody!(found, sym::Symbol, args, warn)
+    if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$(sym)`"
         push!(found, sym)
     end
     return sym
 end
-function generate_mainbody!(found, expr::Expr, args)
+function generate_mainbody!(found, expr::Expr, args, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
     # Apply the `@.` macro first.
     if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
         expr.args[1] === Symbol("@__dot__")
-        return generate_mainbody!(found, Base.Broadcast.__dot__(expr.args[end]), args)
+        return generate_mainbody!(found, Base.Broadcast.__dot__(expr.args[end]), args, warn)
     end
 
     # Modify dotted tilde operators.
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return Base.remove_linenums!(generate_dot_tilde(generate_mainbody!(found, L, args),
-                                                        generate_mainbody!(found, R, args),
-                                                        args))
+        return generate_dot_tilde(generate_mainbody!(found, L, args, warn),
+                                  generate_mainbody!(found, R, args, warn),
+                                  args) |> Base.remove_linenums!
     end
 
     # Modify tilde operators.
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        return Base.remove_linenums!(generate_tilde(generate_mainbody!(found, L, args),
-                                                    generate_mainbody!(found, R, args),
-                                                    args))
+        return generate_tilde(generate_mainbody!(found, L, args, warn),
+                              generate_mainbody!(found, R, args, warn),
+                              args) |> Base.remove_linenums!
     end
 
-    return Expr(expr.head, map(x -> generate_mainbody!(found, x, args), expr.args)...)
+    return Expr(expr.head, map(x -> generate_mainbody!(found, x, args, warn), expr.args)...)
 end
 
 
