@@ -13,12 +13,14 @@ using .Turing
 
 turnprogress(false)
 
+include("test_utils/AllUtils.jl")
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
     include("utils.jl")
     include("compiler.jl")
     include("varinfo.jl")
+    include("model.jl")
     include("sampler.jl")
     include("prob_macro.jl")
     include("independence.jl")

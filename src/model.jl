@@ -183,3 +183,39 @@ getmissing(model::Model) = getmissings(model)
 Get the model generator associated with `model`.
 """
 getgenerator(model::Model) = model.modelgen
+
+"""
+    logjoint(model::Model, varinfo::AbstractVarInfo)
+
+Return the log joint probability of variables `varinfo` for the probabilistic `model`.
+
+See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+"""
+function logjoint(model::Model, varinfo::AbstractVarInfo)
+    model(varinfo, SampleFromPrior(), DefaultContext())
+	  return getlogp(varinfo)
+end
+
+"""
+    logprior(model::Model, varinfo::AbstractVarInfo)
+
+Return the log prior probability of variables `varinfo` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+"""
+function logprior(model::Model, varinfo::AbstractVarInfo)
+    model(varinfo, SampleFromPrior(), PriorContext())
+	  return getlogp(varinfo)
+end
+
+"""
+    loglikelihood(model::Model, varinfo::AbstractVarInfo)
+
+Return the log likelihood of variables `varinfo` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`logprior`](@ref).
+"""
+function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
+    model(varinfo, SampleFromPrior(), LikelihoodContext())
+	  return getlogp(varinfo)
+end

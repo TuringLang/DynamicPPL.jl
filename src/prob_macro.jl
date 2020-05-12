@@ -175,7 +175,7 @@ end
 
 warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
 
-function loglikelihood(
+function Distributions.loglikelihood(
     left::NamedTuple,
     right::NamedTuple,
     modelgen::ModelGen,

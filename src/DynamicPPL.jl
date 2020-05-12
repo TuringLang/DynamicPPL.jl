@@ -90,7 +90,14 @@ export  AbstractVarInfo,
         NoDist,
 # Prob macros
         @prob_str,
-        @logprob_str
+        @logprob_str,
+# Convenience functions
+        logprior,
+        logjoint
+
+# Reexport
+using Distributions: loglikelihood
+export loglikelihood
 
 const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
 
