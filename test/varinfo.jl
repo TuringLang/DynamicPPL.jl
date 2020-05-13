@@ -169,26 +169,26 @@ include(dir*"/test/test_utils/AllUtils.jl")
         meta = vi.metadata
 
         model(vi, SampleFromUniform())
-        @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> !DynamicPPL.istrans(vi, x), meta.vns)
 
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
-        @test islinked(link(vi))
-        @test !islinked(invlink(link(vi)))
+        @test DynamicPPL.islinked(DynamicPPL.link(vi))
+        @test !DynamicPPL.islinked(DynamicPPL.invlink(DynamicPPL.link(vi)))
         @test vi[SampleFromPrior()] == v
-        @test invlink(link(vi))[SampleFromPrior()] == v
+        @test DynamicPPL.invlink(DynamicPPL.link(vi))[SampleFromPrior()] == v
 
         vi = TypedVarInfo(vi)
         meta = vi.metadata
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> !DynamicPPL.istrans(vi, x), meta.s.vns)
+        @test all(x -> !DynamicPPL.istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
         @test vi[SampleFromPrior()] == [v_s; v_m]
-        @test invlink(link(vi))[SampleFromPrior()] == [v_s; v_m]
+        @test DynamicPPL.invlink(DynamicPPL.link(vi))[SampleFromPrior()] == [v_s; v_m]
     end
     @testset "setgid!" begin
         vi = VarInfo()
