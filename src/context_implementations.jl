@@ -23,16 +23,16 @@ function tilde(ctx::DefaultContext, sampler, right, vn::VarName, _, vi)
     return _tilde(sampler, right, vn, vi)
 end
 function tilde(ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
+    @assert !islinked(vi)
     if ctx.vars !== nothing
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi[vn, right] = _getindex(getfield(ctx.vars, getsym(vn)), inds)
     end
     return _tilde(sampler, right, vn, vi)
 end
 function tilde(ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
+    @assert !islinked(vi)
     if ctx.vars !== nothing
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi[vn, right] = _getindex(getfield(ctx.vars, getsym(vn)), inds)
     end
     return _tilde(sampler, NoDist(right), vn, vi)
 end
@@ -125,20 +125,20 @@ function assume(
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vn, "del")
+            @assert !islinked(vi)
             unset_flag!(vi, vn, "del")
             r = init(dist, spl)
-            vi[vn] = vectorize(dist, r)
-            settrans!(vi, false, vn)
+            vi[vn, dist] = r
             setorder!(vi, vn, get_num_produce(vi))
         else
-            r = vi[vn]
+            r = vi[vn, dist]
         end
     else
+        @assert !islinked(vi)
         r = init(dist, spl)
         push!(vi, vn, r, dist, spl)
-        settrans!(vi, false, vn)
     end
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, islinked_and_trans(vi, vn))
 end
 
 function observe(
@@ -167,11 +167,11 @@ function dot_tilde(
     inds,
     vi,
 )
+    @assert !islinked(vi)
     if ctx.vars !== nothing
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         vns, dist = get_vns_and_dist(right, var, vn)
         set_val!(vi, vns, dist, var)
-        settrans!.(Ref(vi), false, vns)
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
@@ -189,11 +189,11 @@ function dot_tilde(
     inds,
     vi,
 )
+    @assert !islinked(vi)
     if ctx.vars !== nothing
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         vns, dist = get_vns_and_dist(right, var, vn)
         set_val!(vi, vns, dist, var)
-        settrans!.(Ref(vi), false, vns)
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
@@ -214,14 +214,12 @@ function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
     return value
 end
 
-
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
     return get_vns_and_dist(dist.dist, var, dist.name)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
     getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))
     return getvn.(1:size(var, 2)), dist
-    
 end
 function get_vns_and_dist(
     dist::Union{Distribution, AbstractArray{<:Distribution}}, 
@@ -256,7 +254,7 @@ function dot_assume(
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(vi, vns, dist, spl)
-    lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
+    lp = sum(Bijectors.logpdf_with_trans(dist, r, islinked_and_trans(vi, vns[1])))
     var .= r
     return var, lp
 end
@@ -269,7 +267,9 @@ function dot_assume(
 )
     r = get_and_set_val!(vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    mode = getmode(vi)
+    trans = istrans(vi, vns[1]) && (mode isa LinkMode || mode isa InitLinkMode)
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, trans))
     var .= r
     return var, lp
 end
@@ -293,23 +293,23 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
+            @assert !islinked(vi)
             unset_flag!(vi, vns[1], "del")
             r = init(dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                vi[vn] = vectorize(dist, r[:, i])
-                settrans!(vi, false, vn)
+                vi[vn, dist] = r[:, i]
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = vi[vns]
+            r = vi[vns, dist]
         end
     else
+        @assert !islinked(vi)
         r = init(dist, spl, n)
         for i in 1:n
             vn = vns[i]
             push!(vi, vn, r[:,i], dist, spl)
-            settrans!(vi, false, vn)
         end
     end
     return r
@@ -324,24 +324,24 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
+            @assert !islinked(vi)
             unset_flag!(vi, vns[1], "del")
             f = (vn, dist) -> init(dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, r[i])
-                settrans!(vi, false, vn)
+                vi[vn, dist] = r[i]
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = reshape(vi[vec(vns)], size(vns))
+            r = vi[vns, dists]
         end
     else
+        @assert !islinked(vi)
         f = (vn, dist) -> init(dist, spl)
         r = f.(vns, dists)
         push!.(Ref(vi), vns, r, dists, Ref(spl))
-        settrans!.(Ref(vi), false, vns)
     end
     return r
 end
@@ -354,7 +354,7 @@ function set_val!(
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
-        vi[vn] = val[:,i]
+        vi[vn, dist] = val[:,i]
     end
     return val
 end
@@ -367,7 +367,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        vi[vns[ind]] = vectorize(dist, val[ind])
+        vi[vns[ind], dist] = val[ind]
     end
     return val
 end

@@ -32,7 +32,7 @@ When sampling, the first iteration uses a type unstable `Metadata` for all the
 variables then a specialized `Metadata` is used for each symbol along with a function
 barrier to make the rest of the sampling type stable.
 """
-struct Metadata{TIdcs <: Dict{<:VarName,Int}, TDists <: AbstractVector{<:Distribution}, TVN <: AbstractVector{<:VarName}, TVal <: AbstractVector{<:Real}, TGIds <: AbstractVector{Set{Selector}}}
+struct Metadata{TIdcs <: Dict{<:VarName,Int}, TDists <: AbstractVector{<:Distribution}, TVN <: AbstractVector{<:VarName}, TVal <: AbstractVector{<:Real}, TTransVal <: AbstractVector{<:Real}, TGIds <: AbstractVector{Set{Selector}}}
     # Mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`
     idcs        ::    TIdcs # Dict{<:VarName,Int}
 
@@ -46,6 +46,10 @@ struct Metadata{TIdcs <: Dict{<:VarName,Int}, TDists <: AbstractVector{<:Distrib
     # Vector of values of all the univariate, multivariate and matrix variables
     # The value(s) of `vn` is/are `vals[ranges[idcs[vn]]]`
     vals        ::    TVal # AbstractVector{<:Real}
+
+    # Vector of the transformed values of all the univariate, multivariate and matrix 
+    # variablse. The value(s) of `vn` is/are `vals[ranges[idcs[vn]]]`
+    trans_vals  ::    TTransVal # AbstractVector{<:Real}
 
     # Vector of distributions correpsonding to `vns`
     dists       ::    TDists # AbstractVector{<:Distribution}
@@ -68,6 +72,7 @@ Construct an empty type unstable instance of `Metadata`.
 """
 function Metadata()
     vals  = Vector{Real}()
+    trans_vals  = Vector{Real}()
     flags = Dict{String, BitVector}()
     flags["del"] = BitVector()
     flags["trans"] = BitVector()
@@ -77,6 +82,7 @@ function Metadata()
         Vector{VarName}(),
         Vector{UnitRange{Int}}(),
         vals,
+        trans_vals,
         Vector{Distribution}(),
         Vector{Set{Selector}}(),
         Vector{Int}(),
@@ -87,6 +93,47 @@ end
 ###########
 # VarInfo #
 ###########
+
+abstract type VarInfoMode end
+
+"""
+    LinkMode
+
+For any random variable whose `"trans"` flag is set to `true`:
+1. The transformed values are used in `getindex` and `setindex!`.
+2. The untransformed values are computed and cached, and
+3. The `logpdf_with_trans` is computed with `trans` set as `true`.
+
+For random variables whose `"trans"` flag is set to `false`, this is equivalent to 
+the `StandardMode`. This model can be used when running HMC or MAP in the 
+unconstrained space.
+"""
+struct LinkMode <: VarInfoMode end
+
+"""
+    InitLinkMode
+
+For any random variable whose `"trans"` flag is set to `true`:
+1. The untransformed values are used in `getindex` and `setindex!`.
+2. The transformed values are computed and cached, and
+3. The `logpdf_with_trans` is computed with `trans` set as `true`.
+
+For random variables whose `"trans"` flag is set to `false`, this is equivalent to 
+the `StandardMode`. This mode can be used to initialize a `VarInfo` for HMC or MAP.
+"""
+struct InitLinkMode <: VarInfoMode end
+
+"""
+    StandardMode
+
+For all random variables:
+1. The untransformed values are used in `getindex` and `setindex!`.
+2. The `logpdf` is computed, ie. `logpdf_with_trans` with `trans` as `false`.
+
+This mode can be used when running non-HMC samplers or when doing MAP on the 
+constrained support directly.
+"""
+struct StandardMode <: VarInfoMode end
 
 """
 ```
@@ -109,48 +156,72 @@ Note: It is the user's responsibility to ensure that each "symbol" is visited at
 once whenever the model is called, regardless of any stochastic branching. Each symbol
 refers to a Julia variable and can be a hierarchical array of many random variables, e.g. `x[1] ~ ...` and `x[2] ~ ...` both have the same symbol `x`.
 """
-struct VarInfo{Tmeta, Tlogp} <: AbstractVarInfo
+struct VarInfo{Tmeta, Tlogp, Tmode <: VarInfoMode} <: AbstractVarInfo
     metadata::Tmeta
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
+    mode::Tmode
+    fixed_support::Base.RefValue{Bool}
+    synced::Base.RefValue{Bool}
 end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 function VarInfo(model::Model, ctx = DefaultContext())
     vi = VarInfo()
     model(vi, SampleFromPrior(), ctx)
     return TypedVarInfo(vi)
 end
-
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)
     new_vi[spl] = x
     return new_vi
 end
 function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
-    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
-    VarInfo(md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi)))
+    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x, Val(getmode(old_vi) isa LinkMode))
+    return VarInfo(
+        md,
+        Base.RefValue{eltype(x)}(getlogp(old_vi)),
+        Ref(get_num_produce(old_vi)),
+        old_vi.mode,
+        old_vi.fixed_support,
+        Ref(false),
+    )
 end
-@generated function newmetadata(metadata::NamedTuple{names}, ::Val{space}, x) where {names, space}
+@generated function newmetadata(metadata::NamedTuple{names}, ::Val{space}, x, ::Val{islinked}) where {names, space, islinked}
     exprs = []
     offset = :(0)
     for f in names
         mdf = :(metadata.$f)
         if inspace(f, space) || length(space) == 0
             len = :(length($mdf.vals))
-            push!(exprs, :($f = Metadata($mdf.idcs,
-                                        $mdf.vns,
-                                        $mdf.ranges,
-                                        x[($offset + 1):($offset + $len)],
-                                        $mdf.dists,
-                                        $mdf.gids,
-                                        $mdf.orders,
-                                        $mdf.flags
-                                    )
-                            )
-            )
+            if islinked
+                push!(exprs, :($f = Metadata($mdf.idcs,
+                                            $mdf.vns,
+                                            $mdf.ranges,
+                                            $mdf.vals,
+                                            x[($offset + 1):($offset + $len)],
+                                            $mdf.dists,
+                                            $mdf.gids,
+                                            $mdf.orders,
+                                            $mdf.flags
+                                        )
+                                )
+                )
+            else
+                push!(exprs, :($f = Metadata($mdf.idcs,
+                                            $mdf.vns,
+                                            $mdf.ranges,
+                                            x[($offset + 1):($offset + $len)],
+                                            $mdf.trans_vals,
+                                            $mdf.dists,
+                                            $mdf.gids,
+                                            $mdf.orders,
+                                            $mdf.flags
+                                        )
+                                )
+                )
+            end
             offset = :($offset + $len)
         else
             push!(exprs, :($f = $mdf))
@@ -159,6 +230,8 @@ end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
+
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0), StandardMode(), Ref(true), Ref(false))
 
 """
     TypedVarInfo(vi::UntypedVarInfo)
@@ -197,6 +270,7 @@ function TypedVarInfo(vi::UntypedVarInfo)
         _ranges = getindex.((meta.ranges,), inds)
         # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
         _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
+        _trans_vals = [copy.(meta.trans_vals[_ranges[i]]) for i in 1:n]
         sym_ranges = Vector{eltype(_ranges)}(undef, n)
         start = 0
         for i in 1:n
@@ -204,16 +278,27 @@ function TypedVarInfo(vi::UntypedVarInfo)
             start += length(_vals[i])
         end
         sym_vals = foldl(vcat, _vals)
+        sym_trans_vals = foldl(vcat, _trans_vals)
 
-        push!(new_metas, Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals,
-                                  sym_dists, sym_gids, sym_orders, sym_flags))
+        push!(
+            new_metas,
+            Metadata(
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_trans_vals, 
+                sym_dists, sym_gids, sym_orders, sym_flags
+            )
+        )
     end
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
+    return VarInfo(nt, Ref(logp), Ref(num_produce), vi.mode, vi.fixed_support, vi.synced)
 end
 TypedVarInfo(vi::TypedVarInfo) = vi
+
+
+####
+#### Printing
+####
 
 function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     vi_str = """

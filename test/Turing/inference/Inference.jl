@@ -3,9 +3,9 @@ module Inference
 using ..Core
 using ..Core: logZ
 using ..Utilities
-using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, 
+using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, set_namedtuple!,
     islinked, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
-    settrans!, _getvns, getdist, CACHERESET, AbstractSampler,
+    settrans!, getvns, getinitdist, CACHERESET, AbstractSampler,
     Model, Sampler, SampleFromPrior, SampleFromUniform,
     Selector, AbstractSamplerState, DefaultContext, PriorContext,
     LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!, NamedDist, NoDist,
@@ -26,7 +26,7 @@ import AdvancedHMC; const AHMC = AdvancedHMC
 import AdvancedMH; const AMH = AdvancedMH
 import ..Core: getchunksize, getADbackend
 import DynamicPPL: get_matching_type,
-    VarName, _getranges, _getindex, getval, _getvns
+    VarName, getval, getvns
 import EllipticalSliceSampling
 import Random
 import MCMCChains
@@ -566,7 +566,7 @@ function get_matching_type(
 end
 function get_matching_type(
     spl::AbstractSampler,
-    vi,
+    vi, 
     ::Type{<:AbstractFloat},
 )
     return floatof(eltype(vi, spl))

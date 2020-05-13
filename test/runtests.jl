@@ -1,6 +1,7 @@
 using DynamicPPL
 using Distributions
 using ForwardDiff
+using ReverseDiff
 using Tracker
 using Zygote
 
@@ -10,6 +11,7 @@ using Test
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/Turing/Turing.jl")
 using .Turing
+using DynamicPPL: link, invlink, islinked
 
 turnprogress(false)
 

@@ -1,98 +1,3 @@
-# X -> R for all variables associated with given sampler
-"""
-    link!(vi::VarInfo, spl::Sampler)
-
-Transform the values of the random variables sampled by `spl` in `vi` from the support
-of their distributions to the Euclidean space and set their corresponding `"trans"`
-flag values to `true`.
-"""
-function link!(vi::UntypedVarInfo, spl::Sampler)
-    # TODO: Change to a lazy iterator over `vns`
-    vns = _getvns(vi, spl)
-    if ~istrans(vi, vns[1])
-        for vn in vns
-            dist = getdist(vi, vn)
-            # TODO: Use inplace versions to avoid allocations
-            setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
-            settrans!(vi, true, vn)
-        end
-    else
-        @warn("[DynamicPPL] attempt to link a linked vi")
-    end
-end
-function link!(vi::TypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
-    return _link!(vi.metadata, vi, vns, Val(getspace(spl)))
-end
-@generated function _link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
-    expr = Expr(:block)
-    for f in names
-        if inspace(f, space) || length(space) == 0
-            push!(expr.args, quote
-                f_vns = vi.metadata.$f.vns
-                if ~istrans(vi, f_vns[1])
-                    # Iterate over all `f_vns` and transform
-                    for vn in f_vns
-                        dist = getdist(vi, vn)
-                        setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
-                        settrans!(vi, true, vn)
-                    end
-                else
-                    @warn("[DynamicPPL] attempt to link a linked vi")
-                end
-            end)
-        end
-    end
-    return expr
-end
-
-# R -> X for all variables associated with given sampler
-"""
-    invlink!(vi::VarInfo, spl::AbstractSampler)
-
-Transform the values of the random variables sampled by `spl` in `vi` from the
-Euclidean space back to the support of their distributions and sets their corresponding
-`"trans"` flag values to `false`.
-"""
-function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
-    if istrans(vi, vns[1])
-        for vn in vns
-            dist = getdist(vi, vn)
-            setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
-            settrans!(vi, false, vn)
-        end
-    else
-        @warn("[DynamicPPL] attempt to invlink an invlinked vi")
-    end
-end
-function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
-    return _invlink!(vi.metadata, vi, vns, Val(getspace(spl)))
-end
-@generated function _invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
-    expr = Expr(:block)
-    for f in names
-        if inspace(f, space) || length(space) == 0
-            push!(expr.args, quote
-                f_vns = vi.metadata.$f.vns
-                if istrans(vi, f_vns[1])
-                    # Iterate over all `f_vns` and transform
-                    for vn in f_vns
-                        dist = getdist(vi, vn)
-                        setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
-                        settrans!(vi, false, vn)
-                    end
-                else
-                    @warn("[DynamicPPL] attempt to invlink an invlinked vi")
-                end
-            end)
-        end
-    end
-    return expr
-end
-
-
 """
     islinked(vi::VarInfo, spl::Sampler)
 
@@ -104,12 +9,12 @@ Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
 function islinked(vi::UntypedVarInfo, spl::Sampler)
-    vns = _getvns(vi, spl)
-    return istrans(vi, vns[1])
+    vns = getvns(vi, spl)
+    return islinked(vi) && istrans(vi, vns[1])
 end
 function islinked(vi::TypedVarInfo, spl::Sampler)
-    vns = _getvns(vi, spl)
-    return _islinked(vi, vns)
+    vns = getvns(vi, spl)
+    return islinked(vi) && _islinked(vi, vns)
 end
 @generated function _islinked(vi, vns::NamedTuple{names}) where {names}
     out = []
@@ -118,18 +23,183 @@ end
     end
     return Expr(:||, false, out...)
 end
+function islinked_and_trans(vi::AbstractVarInfo, vn::VarName)
+    return islinked(vi) && istrans(vi, vn)
+end
 
-"""
-    istrans(vi::VarInfo, vn::VarName)
+function Bijectors.link(vi::VarInfo)
+    return VarInfo(
+        vi.metadata,
+        vi.logp,
+        vi.num_produce,
+        LinkMode(),
+        vi.fixed_support,
+        vi.synced,
+    )
+end
+function initlink(vi::VarInfo)
+    return VarInfo(
+        vi.metadata,
+        vi.logp,
+        vi.num_produce,
+        InitLinkMode(),
+        vi.fixed_support,
+        vi.synced,
+    )
+end
+function Bijectors.invlink(vi::VarInfo)
+    return VarInfo(
+        vi.metadata,
+        vi.logp,
+        vi.num_produce,
+        StandardMode(),
+        vi.fixed_support,
+        vi.synced,
+    )
+end
+islinked(vi::AbstractVarInfo) = getmode(vi) isa LinkMode || getmode(vi) isa InitLinkMode
 
-Return true if `vn`'s values in `vi` are transformed to Euclidean space, and false if
-they are in the support of `vn`'s distribution.
+# X -> R for all variables associated with given sampler
 """
-istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
+    init_dist_link!(vi::VarInfo, spl::Sampler)
+Transform the values of the random variables sampled by `spl` in `vi` from the support
+of their distributions to the Euclidean space and set their corresponding `"trans"`
+flag values to `true`.
+"""
+function init_dist_link!(vi::UntypedVarInfo, spl::Sampler)
+    # TODO: Change to a lazy iterator over `vns`
+    vns = getvns(vi, spl)
+    for vn in vns
+        dist = getinitdist(vi, vn)
+        initlink(vi)[vn, dist]
+    end
+    return vi
+end
+function init_dist_link!(vi::TypedVarInfo, spl::AbstractSampler)
+    vns = getvns(vi, spl)
+    _init_dist_link!(vi.metadata, vi, vns, Val(getspace(spl)))
+    return vi
+end
+@generated function _init_dist_link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
+    expr = Expr(:block)
+    for f in names
+        if inspace(f, space) || length(space) == 0
+            push!(expr.args, quote
+                f_vns = vi.metadata.$f.vns
+                # Iterate over all `f_vns` and transform
+                for vn in f_vns
+                    dist = getinitdist(vi, vn)
+                    initlink(vi)[vn, dist]
+                end
+            end)
+        end
+    end
+    return expr
+end
+
+function invlink!(vi::AbstractVarInfo, spl::AbstractSampler, model)
+    settrans!(vi, spl)
+    if !issynced(vi)
+        if has_fixed_support(vi)
+            init_dist_invlink!(vi, spl)
+        else
+            model(link(vi), spl)
+        end
+        setsynced!(vi, true)
+    end
+    return vi
+end
+function link!(vi::AbstractVarInfo, spl::AbstractSampler, model)
+    settrans!(vi, spl)
+    if !issynced(vi)
+        if has_fixed_support(vi)
+            init_dist_link!(vi, spl)
+        else
+            model(initlink(vi), spl)
+        end
+        setsynced!(vi, true)
+    end
+    return vi
+end
+
+# R -> X for all variables associated with given sampler
+"""
+    init_dist_invlink!(vi::VarInfo, spl::AbstractSampler)
+Transform the values of the random variables sampled by `spl` in `vi` from the
+Euclidean space back to the support of their distributions and sets their corresponding
+`"trans"` flag values to `false`.
+"""
+function init_dist_invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
+    vns = getvns(vi, spl)
+    for vn in vns
+        dist = getinitdist(vi, vn)
+        link(vi)[vn, dist]
+    end
+    return vi
+end
+function init_dist_invlink!(vi::TypedVarInfo, spl::AbstractSampler)
+    vns = getvns(vi, spl)
+    _init_dist_invlink!(vi.metadata, vi, vns, Val(getspace(spl)))
+    return vi
+end
+@generated function _init_dist_invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
+    expr = Expr(:block)
+    for f in names
+        if inspace(f, space) || length(space) == 0
+            push!(expr.args, quote
+                f_vns = vi.metadata.$f.vns
+                # Iterate over all `f_vns` and transform
+                for vn in f_vns
+                    dist = getinitdist(vi, vn)
+                    link(vi)[vn, dist]
+                end
+            end)
+        end
+    end
+    return expr
+end
+
+# X -> R for all variables associated with given sampler
+"""
+    settrans!(vi::VarInfo, spl::Sampler)
+
+Set the `"trans"` flag to `true` for all the vaiables in the space of `spl`.
+"""
+function settrans!(vi::UntypedVarInfo, spl::Sampler)
+    # TODO: Change to a lazy iterator over `vns`
+    vns = getvns(vi, spl)
+    if ~istrans(vi, vns[1])
+        for vn in vns
+            settrans!(vi, true, vn)
+        end
+    end
+    return vi
+end
+function settrans!(vi::TypedVarInfo, spl::AbstractSampler)
+    vns = getvns(vi, spl)
+    _settrans!(vi.metadata, vi, vns, Val(getspace(spl)))
+    return vi
+end
+@generated function _settrans!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
+    expr = Expr(:block)
+    for f in names
+        if inspace(f, space) || length(space) == 0
+            push!(expr.args, quote
+                f_vns = vi.metadata.$f.vns
+                if ~istrans(vi, f_vns[1])
+                    # Iterate over all `f_vns` and transform
+                    for vn in f_vns
+                        settrans!(vi, true, vn)
+                    end
+                end
+            end)
+        end
+    end
+    return expr
+end
 
 """
     settrans!(vi::VarInfo, trans::Bool, vn::VarName)
-
 Set the `trans` flag value of `vn` in `vi`.
 """
 function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)

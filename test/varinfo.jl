@@ -1,8 +1,8 @@
 using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
-    SampleFromPrior, Sampler, SampleFromUniform,
-    _getidcs, set_retained_vns_del_by_spl!, is_flagged,
+    SampleFromPrior, Sampler, SampleFromUniform, getinitdist,
+    getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
     setorder!, updategid!
@@ -32,7 +32,9 @@ include(dir*"/test/test_utils/AllUtils.jl")
         for f in fieldnames(typeof(tvi.metadata))
             fmeta = getfield(tvi.metadata, f)
             for vn in fmeta.vns
-                @test tvi[vn] == vi[vn]
+                dist1 = getinitdist(tvi, vn)
+                dist2 = getinitdist(vi, vn)
+                @test tvi[vn, dist1] == vi[vn, dist2]
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
@@ -77,16 +79,16 @@ include(dir*"/test/test_utils/AllUtils.jl")
             @test ~isempty(vi)
             @test haskey(vi, vn)
 
-            @test length(vi[vn]) == 1
+            @test length(vi[vn, dist]) == 1
             @test length(vi[SampleFromPrior()]) == 1
 
-            @test vi[vn] == r
+            @test vi[vn, dist] == r
             @test vi[SampleFromPrior()][1] == r
-            vi[vn] = [2*r]
-            @test vi[vn] == 2*r
+            vi[vn, dist] = 2*r
+            @test vi[vn, dist] == 2*r
             @test vi[SampleFromPrior()][1] == 2*r
             vi[SampleFromPrior()] = [3*r]
-            @test vi[vn] == 3*r
+            @test vi[vn, dist] == 3*r
             @test vi[SampleFromPrior()][1] == 3*r
 
             empty!(vi)
@@ -152,9 +154,9 @@ include(dir*"/test/test_utils/AllUtils.jl")
         test_varinfo!(vi)
         test_varinfo!(empty!(TypedVarInfo(vi)))
     end
-    @testset "link!" begin
+    @testset "link" begin
         # Test linking spl and vi:
-        #    link!, invlink!, istrans
+        #    link, invlink
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2,3)
             m ~ Uniform(0, 2)
@@ -172,11 +174,10 @@ include(dir*"/test/test_utils/AllUtils.jl")
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
-        link!(vi, spl)
-        @test all(x -> istrans(vi, x), meta.vns)
-        invlink!(vi, spl)
-        @test all(x -> !istrans(vi, x), meta.vns)
-        @test meta.vals == v
+        @test islinked(link(vi))
+        @test !islinked(invlink(link(vi)))
+        @test vi[SampleFromPrior()] == v
+        @test invlink(link(vi))[SampleFromPrior()] == v
 
         vi = TypedVarInfo(vi)
         meta = vi.metadata
@@ -186,14 +187,8 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test all(x -> !istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
-        link!(vi, spl)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> istrans(vi, x), meta.m.vns)
-        invlink!(vi, spl)
-        @test all(x -> ~istrans(vi, x), meta.s.vns)
-        @test all(x -> ~istrans(vi, x), meta.m.vns)
-        @test meta.s.vals == v_s
-        @test meta.m.vals == v_m
+        @test vi[SampleFromPrior()] == [v_s; v_m]
+        @test invlink(link(vi))[SampleFromPrior()] == [v_s; v_m]
     end
     @testset "setgid!" begin
         vi = VarInfo()
@@ -225,12 +220,12 @@ include(dir*"/test/test_utils/AllUtils.jl")
             elseif is_flagged(vi, vn, "del")
                 unset_flag!(vi, vn, "del")
                 r = rand(dist)
-                vi[vn] = vectorize(dist, r)
+                vi[vn, dist] = r
                 setorder!(vi, vn, get_num_produce(vi))
                 r
             else
                 updategid!(vi, vn, spl)
-                vi[vn]
+                vi[vn, dist]
             end
         end
 
@@ -412,11 +407,11 @@ include(dir*"/test/test_utils/AllUtils.jl")
             spl1 = Sampler(PG(5, :x, :y, :z), empty_model())
             for i = 1:3
                 r = randr(vi, vns[i], dists[i], spl1, false)
-                val = vi[vns[i]]
+                val = vi[vns[i], dists[i]]
                 @test sum(val - r) <= 1e-9
             end
 
-            idcs = _getidcs(vi, spl1)
+            idcs = getidcs(vi, spl1)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 3
             else
@@ -424,7 +419,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
             end
             @test length(vi[spl1]) == 7
 
-            idcs = _getidcs(vi, spl2)
+            idcs = getidcs(vi, spl2)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 1
             else
@@ -435,7 +430,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
             vn_u = @varname u
             randr(vi, vn_u, dists[1], spl2, true)
 
-            idcs = _getidcs(vi, spl2)
+            idcs = getidcs(vi, spl2)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 2
             else
@@ -488,5 +483,20 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test vi.metadata.z.gids[1] == Set([pg.selector])
         @test vi.metadata.w.gids[1] == Set([hmc.selector])
         @test vi.metadata.u.gids[1] == Set([hmc.selector])
+    end
+
+    @testset "random support distributions" begin
+        @model function grm(::Type{TV}=Vector{Float64}) where {TV}
+            b = TV(undef, 5)
+            b[1] ~ Normal(0,1)
+            for i in 2:5
+                b[i] ~ truncated(Normal(0,1), b[i-1], Inf)
+                @test b[i] >= b[i-1]
+            end
+        end
+        chain = sample(grm(), HMC(0.05, 1), 100)
+        for s in 1:100, i in 2:5
+            @test chain["b[$i]"].value[s] >= chain["b[$(i-1)]"].value[s]
+        end
     end
 end

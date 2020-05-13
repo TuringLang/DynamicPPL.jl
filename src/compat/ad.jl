@@ -9,3 +9,6 @@ ZygoteRules.@adjoint function push!(
 )
     return push!(vi, vn, r, dist, gidset), _ -> nothing
 end
+ZygoteRules.@adjoint function zygote_setval!(vi, val, vn)
+    return zygote_setval!(vi, val, vn), _ -> nothing
+end

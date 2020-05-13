@@ -1,6 +1,7 @@
 module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
+using Requires
 using Distributions
 using Bijectors
 using MacroTools
@@ -36,13 +37,14 @@ export  AbstractVarInfo,
         set_num_produce!,
         reset_num_produce!,
         increment_num_produce!,
+        getmode,
         set_retained_vns_del_by_spl!,
         is_flagged,
         unset_flag!,
         setgid!,
         updategid!,
         setorder!,
-        istrans,
+        islinked_and_trans,
         link!,
         invlink!,
         tonamedtuple,

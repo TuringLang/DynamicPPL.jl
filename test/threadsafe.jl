@@ -1,3 +1,6 @@
+dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
+include(dir*"/test/test_utils/AllUtils.jl")
+
 @testset "threadsafe.jl" begin
     @testset "constructor" begin
         vi = VarInfo(gdemo_default)

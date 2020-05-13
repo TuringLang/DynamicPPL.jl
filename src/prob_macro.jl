@@ -235,7 +235,6 @@ _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
             for vn in md.$n.vns
                 val = copy.(vec(c[Symbol(string(vn))].value))
                 setval!(vi, val, vn)
-                settrans!(vi, false, vn)
             end
         end
     end...)
