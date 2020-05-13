@@ -47,16 +47,6 @@ struct BinomialLogit{T<:Real, I<:Integer} <: DiscreteUnivariateDistribution
     logitp::T
 end
 
-"""
-    BinomialLogit(n<:Real, I<:Integer)
-
-A multivariate binomial logit distribution.
-"""
-struct VecBinomialLogit{T<:Real, I<:Integer} <: DiscreteUnivariateDistribution
-    n::Vector{I}
-    logitp::Vector{T}
-end
-
 function logpdf_binomial_logit(n, logitp, k)
     logcomb = -StatsFuns.log1p(n) - SpecialFunctions.logbeta(n - k + 1, k + 1)
     return logcomb + k * logitp - n * StatsFuns.log1pexp(logitp)
@@ -66,8 +56,17 @@ function Distributions.logpdf(d::BinomialLogit{<:Real}, k::Int)
     return logpdf_binomial_logit(d.n, d.logitp, k)
 end
 
-function Distributions.logpdf(d::VecBinomialLogit{<:Real}, ks::Vector{<:Integer})
-    return sum(logpdf_binomial_logit.(d.n, d.logitp, ks))
+function Distributions.pdf(d::BinomialLogit{<:Real}, k::Int)
+    return exp(logpdf_binomial_logit(d.n, d.logitp, k))
+end
+
+"""
+    BernoulliLogit(p<:Real)
+
+A univariate logit-parameterised Bernoulli distribution.
+"""
+function BernoulliLogit(logitp::Real)
+    return BinomialLogit(1, logitp)
 end
 
 """
@@ -134,3 +133,10 @@ end
 function Distributions.logpdf(lp::LogPoisson, k::Int)
     return k * lp.logλ - exp(lp.logλ) - SpecialFunctions.loggamma(k + 1)
 end
+
+Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real, ::Bool) = 0
+Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool) = 0
+function Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool)
+    return zeros(Int, size(x, 2))
+end
+Bijectors.logpdf_with_trans(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool) = 0
