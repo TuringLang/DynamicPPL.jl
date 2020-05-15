@@ -19,47 +19,47 @@ _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
 # assume
-function tilde(ctx::DefaultContext, sampler, right, vn::VarName, _, vi)
-    return _tilde(sampler, right, vn, vi)
+function tilde(rng, ctx::DefaultContext, sampler, right, vn::VarName, _, vi)
+    return _tilde(rng, sampler, right, vn, vi)
 end
-function tilde(ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
+function tilde(rng, ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars !== nothing
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(sampler, right, vn, vi)
+    return _tilde(rng, sampler, right, vn, vi)
 end
-function tilde(ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
+function tilde(rng, ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars !== nothing
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(sampler, NoDist(right), vn, vi)
+    return _tilde(rng, sampler, NoDist(right), vn, vi)
 end
-function tilde(ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
-    return tilde(ctx.ctx, sampler, right, left, inds, vi)
+function tilde(rng, ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
+    return tilde(rng, ctx.ctx, sampler, right, left, inds, vi)
 end
 
 """
-    tilde_assume(ctx, sampler, right, vn, inds, vi)
+    tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
-Falls back to `tilde(ctx, sampler, right, vn, inds, vi)`.
+Falls back to `tilde(rng, ctx, sampler, right, vn, inds, vi)`.
 """
-function tilde_assume(ctx, sampler, right, vn, inds, vi)
-    value, logp = tilde(ctx, sampler, right, vn, inds, vi)
+function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde(rng, ctx, sampler, right, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
 
-function _tilde(sampler, right, vn::VarName, vi)
-    return assume(sampler, right, vn, vi)
+function _tilde(rng, sampler, right, vn::VarName, vi)
+    return assume(rng, sampler, right, vn, vi)
 end
-function _tilde(sampler, right::NamedDist, vn::VarName, vi)
-    return _tilde(sampler, right.dist, right.name, vi)
+function _tilde(rng, sampler, right::NamedDist, vn::VarName, vi)
+    return _tilde(rng, sampler, right.dist, right.name, vi)
 end
 
 # observe
@@ -108,7 +108,7 @@ end
 
 _tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
-function assume(spl::Sampler, dist)
+function assume(rng, spl::Sampler, dist)
     error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 
@@ -117,6 +117,7 @@ function observe(spl::Sampler, weight)
 end
 
 function assume(
+    rng,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
@@ -126,7 +127,7 @@ function assume(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
-            r = init(dist, spl)
+            r = init(rng, dist, spl)
             vi[vn] = vectorize(dist, r)
             settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
@@ -134,7 +135,7 @@ function assume(
             r = vi[vn]
         end
     else
-        r = init(dist, spl)
+        r = init(rng, dist, spl)
         push!(vi, vn, r, dist, spl)
         settrans!(vi, false, vn)
     end
@@ -154,11 +155,12 @@ end
 # .~ functions
 
 # assume
-function dot_tilde(ctx::DefaultContext, sampler, right, left, vn::VarName, _, vi)
+function dot_tilde(rng, ctx::DefaultContext, sampler, right, left, vn::VarName, _, vi)
     vns, dist = get_vns_and_dist(right, left, vn)
-    return _dot_tilde(sampler, dist, left, vns, vi)
+    return _dot_tilde(rng, sampler, dist, left, vns, vi)
 end
 function dot_tilde(
+    rng,
     ctx::LikelihoodContext,
     sampler,
     right,
@@ -175,12 +177,13 @@ function dot_tilde(
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(sampler, NoDist(dist), left, vns, vi)
+    return _dot_tilde(rng, sampler, NoDist(dist), left, vns, vi)
 end
-function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
-    return dot_tilde(ctx.ctx, sampler, right, left, vn, inds, vi)
+function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
+    return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
 end
 function dot_tilde(
+    rng,
     ctx::PriorContext,
     sampler,
     right,
@@ -197,19 +200,19 @@ function dot_tilde(
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(sampler, dist, left, vns, vi)
+    return _dot_tilde(rng, sampler, dist, left, vns, vi)
 end
 
 """
-    dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
+    dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
-Falls back to `dot_tilde(ctx, sampler, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume(ctx, sampler, right, left, vn, inds, vi)
-    value, logp = dot_tilde(ctx, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -232,12 +235,13 @@ function get_vns_and_dist(
     return getvn.(CartesianIndices(var)), dist
 end
 
-function _dot_tilde(sampler, right, left, vns::AbstractArray{<:VarName}, vi)
-    return dot_assume(sampler, right, vns, left, vi)
+function _dot_tilde(rng, sampler, right, left, vns::AbstractArray{<:VarName}, vi)
+    return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
 function _dot_tilde(
+    rng,
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution, AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
@@ -248,6 +252,7 @@ function _dot_tilde(
 end
 
 function dot_assume(
+    rng,
     spl::Union{SampleFromPrior, SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
@@ -255,25 +260,27 @@ function dot_assume(
     vi,
 )
     @assert length(dist) == size(var, 1)
-    r = get_and_set_val!(vi, vns, dist, spl)
+    r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
     var .= r
     return var, lp
 end
 function dot_assume(
+    rng,
     spl::Union{SampleFromPrior, SampleFromUniform},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
     vi,
 )
-    r = get_and_set_val!(vi, vns, dists, spl)
+    r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     var .= r
     return var, lp
 end
 function dot_assume(
+    rng,
     spl::Sampler,
     ::Any,
     ::AbstractArray{<:VarName},
@@ -284,6 +291,7 @@ function dot_assume(
 end
 
 function get_and_set_val!(
+    rng,
     vi,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
@@ -294,7 +302,7 @@ function get_and_set_val!(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             unset_flag!(vi, vns[1], "del")
-            r = init(dist, spl, n)
+            r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
                 vi[vn] = vectorize(dist, r[:, i])
@@ -305,7 +313,7 @@ function get_and_set_val!(
             r = vi[vns]
         end
     else
-        r = init(dist, spl, n)
+        r = init(rng, dist, spl, n)
         for i in 1:n
             vn = vns[i]
             push!(vi, vn, r[:,i], dist, spl)
@@ -316,6 +324,7 @@ function get_and_set_val!(
 end
 
 function get_and_set_val!(
+    rng,
     vi,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution, AbstractArray{<:Distribution}},
@@ -325,7 +334,7 @@ function get_and_set_val!(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             unset_flag!(vi, vns[1], "del")
-            f = (vn, dist) -> init(dist, spl)
+            f = (vn, dist) -> init(rng, dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)
                 vn = vns[i]
@@ -338,7 +347,7 @@ function get_and_set_val!(
             r = reshape(vi[vec(vns)], size(vns))
         end
     else
-        f = (vn, dist) -> init(dist, spl)
+        f = (vn, dist) -> init(rng, dist, spl)
         r = f.(vns, dists)
         push!.(Ref(vi), vns, r, dists, Ref(spl))
         settrans!.(Ref(vi), false, vns)

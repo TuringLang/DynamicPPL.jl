@@ -7,12 +7,14 @@ struct SampleFromPrior <: AbstractSampler end
 getspace(::Union{SampleFromPrior, SampleFromUniform}) = ()
 
 # Initializations.
-init(dist, ::SampleFromPrior) = rand(dist)
-init(dist, ::SampleFromUniform) = istransformable(dist) ? inittrans(dist) : rand(dist)
+init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
+function init(rng, dist, ::SampleFromUniform)
+    return istransformable(dist) ? inittrans(rng, dist) : rand(rng, dist)
+end
 
-init(dist, ::SampleFromPrior, n::Int) = rand(dist, n)
-function init(dist, ::SampleFromUniform, n::Int)
-    return istransformable(dist) ? inittrans(dist, n) : rand(dist, n)
+init(rng, dist, ::SampleFromPrior, n::Int) = rand(rng, dist, n)
+function init(rng, dist, ::SampleFromUniform, n::Int)
+    return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
 end
 
 """

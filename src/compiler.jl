@@ -1,7 +1,7 @@
 const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
     "Distributions."
 
-const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo)
+const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
     isassumption(expr)
@@ -240,7 +240,7 @@ function generate_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left = $(DynamicPPL.tilde_assume)(
-                        _context, _sampler, $tmpright, $vn, $inds, _varinfo)
+                        _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
                 else
                     $(DynamicPPL.tilde_observe)(
                         _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
@@ -250,8 +250,8 @@ function generate_tilde(left, right, args)
 
         return quote
             $(top...)
-            $left = $(DynamicPPL.tilde_assume)(_context, _sampler, $tmpright, $vn, $inds,
-                                               _varinfo)
+            $left = $(DynamicPPL.tilde_assume)(_rng, _context, _sampler, $tmpright, $vn,
+                                               $inds, _varinfo)
         end
     end
 
@@ -285,7 +285,7 @@ function generate_dot_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left .= $(DynamicPPL.dot_tilde_assume)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
                 else
                     $(DynamicPPL.dot_tilde_observe)(
                         _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
@@ -296,7 +296,7 @@ function generate_dot_tilde(left, right, args)
         return quote
             $(top...)
             $left .= $(DynamicPPL.dot_tilde_assume)(
-                _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
         end
     end
 
@@ -346,6 +346,7 @@ function build_output(model_info)
 
     return quote
         function $evaluator(
+            _rng::$(Random.AbstractRNG),
             _model::$(DynamicPPL.Model),
             _varinfo::$(DynamicPPL.AbstractVarInfo),
             _sampler::$(DynamicPPL.AbstractSampler),
