@@ -55,12 +55,12 @@
 
         # Ensure that we use `ThreadSafeVarInfo`.
         @test getlogp(vi) ≈ lp_w_threads
-        DynamicPPL.evaluate_multithreaded(wthreads(x), vi, SampleFromPrior(),
-                                          DefaultContext())
+        DynamicPPL.evaluate_multithreaded(Random.GLOBAL_RNG, wthreads(x), vi,
+                                          SampleFromPrior(), DefaultContext())
 
         println("  evaluate_multithreaded:")
-        @time DynamicPPL.evaluate_multithreaded(wthreads(x), vi, SampleFromPrior(),
-                                                DefaultContext())
+        @time DynamicPPL.evaluate_multithreaded(Random.GLOBAL_RNG, wthreads(x), vi,
+                                                SampleFromPrior(), DefaultContext())
 
         @model function wothreads(x)
             x[1] ~ Normal(0, 1)
@@ -80,12 +80,12 @@
         @test lp_w_threads ≈ lp_wo_threads
 
         # Ensure that we use `VarInfo`.
-        DynamicPPL.evaluate_singlethreaded(wothreads(x), vi, SampleFromPrior(),
-                                           DefaultContext())
+        DynamicPPL.evaluate_singlethreaded(Random.GLOBAL_RNG, wothreads(x), vi,
+                                           SampleFromPrior(), DefaultContext())
         @test getlogp(vi) ≈ lp_w_threads
 
         println("  evaluate_singlethreaded:")
-        @time DynamicPPL.evaluate_singlethreaded(wothreads(x), vi, SampleFromPrior(),
-                                                 DefaultContext())
+        @time DynamicPPL.evaluate_singlethreaded(Random.GLOBAL_RNG, wothreads(x), vi,
+                                                 SampleFromPrior(), DefaultContext())
     end
 end
