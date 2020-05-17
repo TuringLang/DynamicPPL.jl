@@ -257,11 +257,11 @@ function getranges(vi::AbstractVarInfo, vns::Vector{<:VarName})
 end
 
 """
-    getdist(vi::AbstractVarInfo, vn::VarName)
+    getinitdist(vi::AbstractVarInfo, vn::VarName)
 
 Return the distribution from which `vn` was sampled in `vi`.
 """
-getdist(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).dists[getidx(vi, vn)]
+getinitdist(vi::AbstractVarInfo, vn::VarName) = getmetadata(vi, vn).dists[getidx(vi, vn)]
 
 """
     getval(vi::VarInfo, vn::VarName)
@@ -419,14 +419,14 @@ end
 end
 
 # Get all vns of variables belonging to spl
-_getvns(vi::AbstractVarInfo, spl::Sampler) = _getvns(vi, spl.selector, Val(getspace(spl)))
-_getvns(vi::AbstractVarInfo, spl::Union{SampleFromPrior, SampleFromUniform}) = _getvns(vi, Selector(), Val(()))
-_getvns(vi::UntypedVarInfo, s::Selector, space) = view(vi.metadata.vns, _getidcs(vi, s, space))
-function _getvns(vi::TypedVarInfo, s::Selector, space)
-    return _getvns(vi.metadata, _getidcs(vi, s, space))
+getvns(vi::AbstractVarInfo, spl::Sampler) = getvns(vi, spl.selector, Val(getspace(spl)))
+getvns(vi::AbstractVarInfo, spl::Union{SampleFromPrior, SampleFromUniform}) = getvns(vi, Selector(), Val(()))
+getvns(vi::UntypedVarInfo, s::Selector, space) = view(vi.metadata.vns, getidcs(vi, s, space))
+function getvns(vi::TypedVarInfo, s::Selector, space)
+    return getvns(vi.metadata, getidcs(vi, s, space))
 end
 # Get a NamedTuple for all the `vns` of indices `idcs`, one entry for each symbol
-@generated function _getvns(metadata, idcs::NamedTuple{names}) where {names}
+@generated function getvns(metadata, idcs::NamedTuple{names}) where {names}
     exprs = []
     for f in names
         push!(exprs, :($f = metadata.$f.vns[idcs.$f]))
@@ -436,28 +436,28 @@ end
 end
 
 # Get the index (in vals) ranges of all the vns of variables belonging to spl
-@inline function _getranges(vi::AbstractVarInfo, spl::Sampler)
+@inline function getranges(vi::AbstractVarInfo, spl::Sampler)
     ## Uncomment the spl.info stuff when it is concretely typed, not Dict{Symbol, Any}
     #if ~haskey(spl.info, :cache_updated) spl.info[:cache_updated] = CACHERESET end
     #if haskey(spl.info, :ranges) && (spl.info[:cache_updated] & CACHERANGES) > 0
     #    spl.info[:ranges]
     #else
         #spl.info[:cache_updated] = spl.info[:cache_updated] | CACHERANGES
-        ranges = _getranges(vi, spl.selector, Val(getspace(spl)))
+        ranges = getranges(vi, spl.selector, Val(getspace(spl)))
         #spl.info[:ranges] = ranges
         return ranges
     #end
 end
 # Get the index (in vals) ranges of all the vns of variables belonging to selector `s` in `space`
-@inline function _getranges(vi::AbstractVarInfo, s::Selector, space)
-    return _getranges(vi, _getidcs(vi, s, space))
+@inline function getranges(vi::AbstractVarInfo, s::Selector, space)
+    return getranges(vi, getidcs(vi, s, space))
 end
-@inline function _getranges(vi::UntypedVarInfo, idcs::Vector{Int})
+@inline function getranges(vi::UntypedVarInfo, idcs::Vector{Int})
     mapreduce(i -> vi.metadata.ranges[i], vcat, idcs, init=Int[])
 end
-@inline _getranges(vi::TypedVarInfo, idcs::NamedTuple) = _getranges(vi.metadata, idcs)
+@inline getranges(vi::TypedVarInfo, idcs::NamedTuple) = getranges(vi.metadata, idcs)
 
-@generated function _getranges(metadata::NamedTuple, idcs::NamedTuple{names}) where {names}
+@generated function getranges(metadata::NamedTuple, idcs::NamedTuple{names}) where {names}
     exprs = []
     for f in names
         push!(exprs, :($f = findranges(metadata.$f.ranges, idcs.$f)))
@@ -680,10 +680,10 @@ flag values to `true`.
 """
 function link!(vi::UntypedVarInfo, spl::Sampler)
     # TODO: Change to a lazy iterator over `vns`
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
+            dist = getinitdist(vi, vn)
             # TODO: Use inplace versions to avoid allocations
             setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
             settrans!(vi, true, vn)
@@ -693,7 +693,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
     end
 end
 function link!(vi::TypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     return _link!(vi.metadata, vi, vns, Val(getspace(spl)))
 end
 @generated function _link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
@@ -705,7 +705,7 @@ end
                 if ~istrans(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
-                        dist = getdist(vi, vn)
+                        dist = getinitdist(vi, vn)
                         setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, true, vn)
                     end
@@ -727,10 +727,10 @@ Euclidean space back to the support of their distributions and sets their corres
 `"trans"` flag values to `false`.
 """
 function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
+            dist = getinitdist(vi, vn)
             setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
             settrans!(vi, false, vn)
         end
@@ -739,7 +739,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     end
 end
 function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     return _invlink!(vi.metadata, vi, vns, Val(getspace(spl)))
 end
 @generated function _invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
@@ -751,7 +751,7 @@ end
                 if istrans(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
-                        dist = getdist(vi, vn)
+                        dist = getinitdist(vi, vn)
                         setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, false, vn)
                     end
@@ -776,11 +776,11 @@ Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
 function islinked(vi::UntypedVarInfo, spl::Sampler)
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     return istrans(vi, vns[1])
 end
 function islinked(vi::TypedVarInfo, spl::Sampler)
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     return _islinked(vi, vns)
 end
 @generated function _islinked(vi, vns::NamedTuple{names}) where {names}
@@ -805,14 +805,14 @@ If the value(s) is (are) transformed to the Euclidean space, it is
 """
 function getindex(vi::AbstractVarInfo, vn::VarName)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vn)
+    dist = getinitdist(vi, vn)
     return istrans(vi, vn) ?
         Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn))) :
         reconstruct(dist, getval(vi, vn))
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vns[1])
+    dist = getinitdist(vi, vns[1])
     return istrans(vi, vns[1]) ?
         Bijectors.invlink(dist, reconstruct(dist, getval(vi, vns), length(vns))) :
         reconstruct(dist, getval(vi, vns), length(vns))

@@ -5,7 +5,7 @@ using ..Core: logZ
 using ..Utilities
 using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, 
     islinked, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
-    settrans!, _getvns, getdist, set_namedtuple!, CACHERESET, AbstractSampler,
+    settrans!, getvns, getinitdist, set_namedtuple!, CACHERESET, AbstractSampler,
     Model, Sampler, SampleFromPrior, SampleFromUniform,
     Selector, AbstractSamplerState, DefaultContext, PriorContext,
     LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!, NamedDist, NoDist,
@@ -26,7 +26,7 @@ import AdvancedHMC; const AHMC = AdvancedHMC
 import AdvancedMH; const AMH = AdvancedMH
 import ..Core: getchunksize, getADbackend
 import DynamicPPL: get_matching_type,
-    VarName, _getranges, _getindex, getval, _getvns
+    VarName, getranges, _getindex, getval, getvns
 import EllipticalSliceSampling
 import Random
 import MCMCChains

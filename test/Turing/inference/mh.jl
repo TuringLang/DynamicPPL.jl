@@ -137,7 +137,7 @@ The second `NamedTuple` has model symbols as keys and their stored values as val
 """
 function dist_val_tuple(spl::Sampler{<:MH})
     vi = spl.state.vi
-    vns = _getvns(vi, spl)
+    vns = getvns(vi, spl)
     dt = _dist_tuple(spl.alg.proposals, vi, vns)
     vt = _val_tuple(vi, vns)
     return dt, vt
@@ -150,7 +150,7 @@ end
     isempty(names) === 0 && return :(NamedTuple())
     expr = Expr(:tuple)
     expr.args = Any[
-        :($name = reconstruct(unvectorize(DynamicPPL.getdist.(Ref(vi), vns.$name)),
+        :($name = reconstruct(unvectorize(DynamicPPL.getinitdist.(Ref(vi), vns.$name)),
                               DynamicPPL.getval(vi, vns.$name)))
         for name in names]
     return expr
@@ -169,7 +169,7 @@ end
             :($name = props.$name)
         else
             # Otherwise, use the default proposal.
-            :($name = AMH.StaticProposal(unvectorize(DynamicPPL.getdist.(Ref(vi), vns.$name))))
+            :($name = AMH.StaticProposal(unvectorize(DynamicPPL.getinitdist.(Ref(vi), vns.$name))))
         end for name in names]
     return expr
 end

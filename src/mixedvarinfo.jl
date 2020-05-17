@@ -27,7 +27,7 @@ function TypedVarInfo(vi::MixedVarInfo)
     )
 end
 
-_getvns(vi::MixedVarInfo, s::Selector, space) = _getvns(vi.tvi, s, space)
+getvns(vi::MixedVarInfo, s::Selector, space) = getvns(vi.tvi, s, space)
 
 function getmetadata(vi::MixedVarInfo, vn::VarName)
     if haskey(vi.tvi, vn)
