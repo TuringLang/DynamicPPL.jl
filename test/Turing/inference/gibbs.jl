@@ -42,12 +42,12 @@ function Gibbs(algs::GibbsComponent...)
 end
 
 """
-    GibbsState{V<:VarInfo, S<:Tuple{Vararg{Sampler}}}
+    GibbsState{V<:AbstractVarInfo, S<:Tuple{Vararg{Sampler}}}
 
 Stores a `VarInfo` for use in sampling, and a `Tuple` of `Samplers` that
 the `Gibbs` sampler iterates through for each `step!`.
 """
-mutable struct GibbsState{V<:VarInfo, S<:Tuple{Vararg{Sampler}}} <: AbstractSamplerState
+mutable struct GibbsState{V<:AbstractVarInfo, S<:Tuple{Vararg{Sampler}}} <: AbstractSamplerState
     vi::V
     samplers::S
 end
@@ -81,21 +81,23 @@ function Sampler(alg::Gibbs, model::Model, s::Selector)
 
     # add Gibbs to gids for all variables
     vi = spl.state.vi
-    for sym in keys(vi.metadata)
-        vns = getfield(vi.metadata, sym).vns
-
-        for vn in vns
-            # update the gid for the Gibbs sampler
-            DynamicPPL.updategid!(vi, vn, spl)
-
-            # try to store each subsampler's gid in the VarInfo
-            for local_spl in samplers
-                DynamicPPL.updategid!(vi, vn, local_spl)
-            end
-        end
-    end
+    DynamicPPL.updategid!(vi, (spl, samplers...))
 
     return spl
+end
+
+"""
+    GibbsTransition
+
+Fields:
+- `θ`: The parameters for any given sample.
+- `lp`: The log pdf for the sample's parameters.
+- `transitions`: The transitions of the samplers.
+"""
+struct GibbsTransition{T,F,S<:AbstractVector}
+    θ::T
+    lp::F
+    transitions::S
 end
 
 """

@@ -55,7 +55,7 @@ alg_str(::Sampler{<:MH}) = "MH"
 #####################
 
 """
-    set_namedtuple!(vi::VarInfo, nt::NamedTuple)
+    MHLogDensityFunction
 
 Places the values of a `NamedTuple` into the relevant places of a `VarInfo`.
 """
@@ -91,6 +91,7 @@ function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
     end
 end
 
+This variant uses the  `set_namedtuple!` function to update the variables.
 """
     MHLogDensityFunction
 

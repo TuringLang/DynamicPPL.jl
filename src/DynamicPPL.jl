@@ -28,6 +28,7 @@ import Base: Symbol,
 export  AbstractVarInfo,
         VarInfo,
         UntypedVarInfo,
+        MixedVarInfo,
         getlogp,
         setlogp!,
         acclogp!,
@@ -118,6 +119,7 @@ include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
 include("threadsafe.jl")
+include("mixedvarinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
