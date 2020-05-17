@@ -94,9 +94,10 @@ function build_model_info(input_expr)
             arg
         elseif arg == Expr(:kw, IsEqual(x->true), IsEqual(x->true))
             sym, default = arg.args
-            # TODO support x::Type{T}
             # @model demo(::Type{T}=Float64) where {T}
             if !isnothing(get_type(sym))
+                # TODO support t::Type{T}
+                !Meta.isexpr(sym, :(::), 2) || throw(ArgumentError("The syntax `t::Type{T}` is currently unsupported please use `::Type{T}` instead."))
                 get_type(sym)
             # @model demo(x::Int = 1)
             elseif sym == Expr(:(::), IsEqual(issymbol), IsEqual(issymbol))

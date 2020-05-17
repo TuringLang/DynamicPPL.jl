@@ -64,31 +64,34 @@ end
     end
 
     @testset "default arg type" begin
-        #TODO support x::Type{T}
-        expr = :(model(::Type{T}=Float64) where {T <: Float64} = begin
+        expr1 = :(model(::Type{T}=Float64) where {T <: Float64} = begin
             T
         end)
 
-        result = build_model_info(expr)
-        @test result[:args] == [:($(Expr(:kw, :(T::Type{<:Float64}), :Float64)))]
-        @test result[:arg_syms] == [:T]
-    end
+        result1 = build_model_info(expr1)
+        @test result1[:args] == [:($(Expr(:kw, :(T::Type{<:Float64}), :Float64)))]
+        @test result1[:arg_syms] == [:T]
 
-    @testset "default type any" begin
-        expr = :(model(::Type{T}=Float64) where {T} = begin
+        expr2 = :(model(::Type{T}=Float64) where {T} = begin
             T
         end)
 
-        result = build_model_info(expr)
-        @test result[:args] == [:($(Expr(:kw, :(T::Type{<:Any}), :Float64)))]
-        @test result[:arg_syms] == [:T]
-    end
+        result2 = build_model_info(expr2)
+        @test result2[:args] == [:($(Expr(:kw, :(T::Type{<:Any}), :Float64)))]
+        @test result2[:arg_syms] == [:T]
 
-    @testset "invalid type argument" begin
-        expr = :(model(::Type{T}=Float64) where {X} = begin
+        #TODO support t::Type{T}
+        expr3 = :(model(t::Type{T}=Float64) where {T <: Float64} = begin
             T
         end)
-        @test_throws ArgumentError build_model_info(expr)
+
+        @test_throws ArgumentError build_model_info(expr3)
+
+        #Invalid expression
+        expr4 = :(model(::Type{T}=Float64) where {X} = begin
+            T
+        end)
+        @test_throws ArgumentError build_model_info(expr4)
     end
 end
 
