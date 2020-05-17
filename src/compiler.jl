@@ -92,7 +92,7 @@ function build_model_info(input_expr)
         # @model demo(x)
         if arg isa Symbol
             arg
-        elseif arg isa Expr && arg.head == :kw
+        elseif arg == Expr(:kw, IsEqual(x->true), IsEqual(x->true))
             sym, default = arg.args
             # TODO support x::Type{T}
             # @model demo(::Type{T}=Float64) where {T}
@@ -130,7 +130,7 @@ function build_model_info(input_expr)
             for x in modeldef[:whereparams]
                 if x == T 
                     S = :Any
-                elseif x isa Expr && x.args[1] == T
+                elseif x == Expr(:<:, T, IsEqual(x->true))
                     S = x.args[2]
                 end
             end
