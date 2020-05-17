@@ -11,7 +11,7 @@ module Turing
 using Requires, Reexport, ForwardDiff
 using DistributionsAD, Bijectors, StatsFuns, SpecialFunctions
 using Statistics, LinearAlgebra
-using Markdown, Libtask, MacroTools
+using Markdown, Libtask
 @reexport using Distributions, MCMCChains, Libtask
 using Tracker: Tracker
 

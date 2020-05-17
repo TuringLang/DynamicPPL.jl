@@ -1,7 +1,5 @@
 using DynamicPPL
-using DynamicPPL: getargs_dottilde, getargs_tilde
-
-using Test
+using DynamicPPL: getargs_dottilde, getargs_tilde, get_type
 
 @testset "getargs_dottilde" begin
     # Some things that are not expressions.
@@ -31,4 +29,10 @@ end
     @test getargs_tilde(:(@. x ~ Normal(μ, σ))) === nothing
     @test getargs_tilde(:(@. x ~ Normal(μ, $(Expr(:$, :(sqrt(v))))))) === nothing
     @test getargs_tilde(:(@~ Normal.(μ, σ))) === nothing
+end
+
+@testset "get_type" begin
+    @test get_type(:(::Type{T})) == :T
+    @test get_type(:(a::Type{A})) == :A
+    @test get_type(:(::Type{T < Float64})) === nothing
 end

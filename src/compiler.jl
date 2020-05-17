@@ -81,25 +81,32 @@ Builds the `model_info` dictionary from the model's expression.
 """
 function build_model_info(input_expr)
     # Extract model name (:name), arguments (:args), (:kwargs) and definition (:body)
-    modeldef = MacroTools.splitdef(input_expr)
+    modeldef = ExprTools.splitdef(input_expr)
+    modeldef[:whereparams] = get(modeldef,:whereparams, [])
+    modeldef[:args] = get(modeldef,:args, [])
     # Function body of the model is empty
     warn_empty(modeldef[:body])
-    # Construct model_info dictionary
 
     # Extracting the argument symbols from the model definition
     arg_syms = map(modeldef[:args]) do arg
         # @model demo(x)
-        if (arg isa Symbol)
+        if arg isa Symbol
             arg
-        # @model demo(::Type{T}) where {T}
-        elseif MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            T
-        # @model demo(x::T = 1)
-        elseif MacroTools.@capture(arg, x_::T_ = val_)
-            x
-        # @model demo(x = 1)
-        elseif MacroTools.@capture(arg, x_ = val_)
-            x
+        elseif arg isa Expr && arg.head == :kw
+            sym, default = arg.args
+            # TODO support x::Type{T}
+            # @model demo(::Type{T}=Float64) where {T}
+            if !isnothing(get_type(sym))
+                get_type(sym)
+            # @model demo(x::Int = 1)
+            elseif sym == Expr(:(::), IsEqual(issymbol), IsEqual(issymbol))
+                sym.args[1]
+            # @model demo(x = 1)
+            elseif sym isa Symbol
+                sym
+            else
+                throw(ArgumentError("Unsupported default argument $arg to the `@model` macro."))
+            end
         else
             throw(ArgumentError("Unsupported argument $arg to the `@model` macro."))
         end
@@ -113,18 +120,21 @@ function build_model_info(input_expr)
         )
         args_nt = Expr(:call, :($namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
-    args = map(modeldef[:args]) do arg
+    args = map(get(modeldef, :args, [])) do arg
         if (arg isa Symbol)
             arg
-        elseif MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            if in(T, modeldef[:whereparams])
-                S = :Any
-            else
-                ind = findfirst(modeldef[:whereparams]) do x
-                    MacroTools.@capture(x, T1_ <: S_) && T1 == T
+        elseif !isnothing(get_type(arg.args[1]))
+            Texpr, Tval = arg.args
+            T = get_type(Texpr)
+            S = nothing
+            for x in modeldef[:whereparams]
+                if x == T 
+                    S = :Any
+                elseif x isa Expr && x.args[1] == T
+                    S = x.args[2]
                 end
-                ind !== nothing || throw(ArgumentError("Please make sure type parameters are properly used. Every `Type{T}` argument need to have `T` in the a `where` clause"))
             end
+            !isnothing(S) || throw(ArgumentError("Please make sure type parameters are properly used. Every `Type{T}` argument need to have `T` in the a `where` clause"))
             Expr(:kw, :($T::Type{<:$S}), Tval)
         else
             arg
@@ -134,18 +144,19 @@ function build_model_info(input_expr)
 
     default_syms = []
     default_vals = [] 
-    foreach(modeldef[:args]) do arg
-        # @model demo(::Type{T}) where {T}
-        if MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            push!(default_syms, T)
-            push!(default_vals, Tval)
-        # @model demo(x::T = 1)
-        elseif MacroTools.@capture(arg, x_::T_ = val_)
-            push!(default_syms, x)
-            push!(default_vals, val)
-        # @model demo(x = 1)
-        elseif MacroTools.@capture(arg, x_ = val_)
-            push!(default_syms, x)
+    foreach(get(modeldef, :args, [])) do arg
+        if arg == Expr(:kw, IsEqual(x->true), IsEqual(x->true))
+            var, val = arg.args
+            sym = if var isa Symbol
+                var
+            elseif var == Expr(:(::), IsEqual(issymbol), IsEqual(issymbol))
+                var.args[1]
+            elseif !isnothing(get_type(var))
+                get_type(var)
+            else
+                error("Unsupported keyword argument given $arg")
+            end
+            push!(default_syms, sym)
             push!(default_vals, val)
         end
     end
@@ -163,6 +174,8 @@ function build_model_info(input_expr)
 
     return model_info
 end
+
+
 
 """
     generate_mainbody(expr, args, warn)

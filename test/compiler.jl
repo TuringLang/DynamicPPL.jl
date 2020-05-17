@@ -1,5 +1,5 @@
-using .Turing, Random, MacroTools, Distributions, Test
-using DynamicPPL: DynamicPPL, vsym, vinds, @varname, VarInfo, VarName
+using .Turing, Random, ExprTools, Distributions, Test
+using DynamicPPL: DynamicPPL, vsym, vinds, @varname, VarInfo, VarName, build_model_info, namedtuple, build_model_info
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/test_utils/AllUtils.jl")
@@ -15,6 +15,83 @@ macro custom(expr)
         $(esc(expr.args[2])) = 0.0
     end
 end
+
+@testset "build_model_info" begin
+    @testset "single arg" begin
+        expr = :(model(obs) = begin
+            obs
+        end)
+
+        result = build_model_info(expr)
+        @test result[:args] == [:obs]
+        @test result[:arg_syms] == [:obs]
+        @test result[:name] == :model
+        result
+    end
+
+    @testset "default arg missing" begin
+        expr = :(model(x = missing) = begin
+            x
+        end)
+
+        result = build_model_info(expr)
+
+        @test result[:args] == [:($(Expr(:kw, :x, :missing)))]
+        @test result[:arg_syms] == [:x]
+        args_nt = result[:args_nt] 
+        @test args_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(x)}})
+        @test args_nt.args[3] ==  :((x,))
+        defaults_nt = result[:defaults_nt]
+        @test defaults_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(missing)}})
+        @test defaults_nt.args[3] ==  :((missing,))
+    end
+
+    @testset "default arg with type annotation" begin
+        expr = :(model(x::Int = 2) = begin
+            x
+        end)
+
+        result = build_model_info(expr)
+
+        @test result[:args] == [:($(Expr(:kw, :(x::Int), 2)))]
+        @test result[:arg_syms] == [:x]
+        args_nt = result[:args_nt] 
+        @test args_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(x)}})
+        @test args_nt.args[3] ==  :((x,))
+        defaults_nt = result[:defaults_nt]
+        @test defaults_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(2)}})
+        @test defaults_nt.args[3] ==  :((2,))
+    end
+
+    @testset "default arg type" begin
+        #TODO support x::Type{T}
+        expr = :(model(::Type{T}=Float64) where {T <: Float64} = begin
+            T
+        end)
+
+        result = build_model_info(expr)
+        @test result[:args] == [:($(Expr(:kw, :(T::Type{<:Float64}), :Float64)))]
+        @test result[:arg_syms] == [:T]
+    end
+
+    @testset "default type any" begin
+        expr = :(model(::Type{T}=Float64) where {T} = begin
+            T
+        end)
+
+        result = build_model_info(expr)
+        @test result[:args] == [:($(Expr(:kw, :(T::Type{<:Any}), :Float64)))]
+        @test result[:arg_syms] == [:T]
+    end
+
+    @testset "invalid type argument" begin
+        expr = :(model(::Type{T}=Float64) where {X} = begin
+            T
+        end)
+        @test_throws ArgumentError build_model_info(expr)
+    end
+end
+
 
 @testset "compiler.jl" begin
     @testset "assume" begin

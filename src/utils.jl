@@ -1,23 +1,51 @@
+import Base: ==
+
+"""
+    IsEqual(fn)
+
+Takes a funciton of the form fn(x)::Bool
+"""
+struct IsEqual
+    fn::Function
+end
+
+(==)(x::IsEqual, y) = x.fn(y)
+(==)(y , x::IsEqual) = x == y
+
+issymbol(x) = x isa Symbol
+
+"""
+    get_type(x)
+
+Return `T` if an expresion is of the form :(x::Type{T}) or :(::Type{T}) when T is a symbol otherwise returns `nothing`
+"""
+function get_type(expr)
+    if expr == Expr(:(::), Expr(:curly, :Type, IsEqual(issymbol)))
+        expr.args[1].args[2]
+    elseif expr == Expr(:(::), IsEqual(issymbol) , Expr(:curly, :Type, IsEqual(issymbol)))
+        expr.args[2].args[2]
+    else
+        nothing
+    end
+end
+
 """
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
 `(~).(L, R)`, or `nothing` otherwise.
 """
-getargs_dottilde(x) = nothing
-function getargs_dottilde(expr::Expr)
+function getargs_dottilde(expr)
+    any_arg = IsEqual(x->true)
     # Check if the expression is of the form `L .~ R`.
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :.~
-        return expr.args[2], expr.args[3]
-    end
-
+    if expr == Expr(:call, :.~, any_arg, any_arg)
+         expr.args[2], expr.args[3]
     # Check if the expression is of the form `(~).(L, R)`.
-    if Meta.isexpr(expr, :., 2) && expr.args[1] === :~ &&
-        Meta.isexpr(expr.args[2], :tuple, 2)
-        return expr.args[2].args[1], expr.args[2].args[2]
+    elseif expr == Expr(:., :~, Expr(:tuple, any_arg, any_arg))
+        expr.args[2].args[1], expr.args[2].args[2]
+    else 
+        nothing
     end
-
-    return
 end
 
 """
@@ -26,12 +54,13 @@ end
 Return the arguments `L` and `R`, if `x` is an expression of the form `L ~ R`, or `nothing`
 otherwise.
 """
-getargs_tilde(x) = nothing
-function getargs_tilde(expr::Expr)
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :~
-        return expr.args[2], expr.args[3]
+function getargs_tilde(expr)
+    any_arg = IsEqual(x->true)
+    if expr == Expr(:call, :~, any_arg, any_arg)
+         expr.args[2], expr.args[3]
+    else
+        nothing
     end
-    return
 end
 
 ############################################
