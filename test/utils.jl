@@ -1,5 +1,5 @@
 using DynamicPPL
-using DynamicPPL: getargs_dottilde, getargs_tilde, get_type
+using DynamicPPL: getargs_dottilde, getargs_tilde, get_type, get_symbol
 
 @testset "getargs_dottilde" begin
     # Some things that are not expressions.
@@ -35,4 +35,11 @@ end
     @test get_type(:(::Type{T})) == :T
     @test get_type(:(a::Type{A})) == :A
     @test get_type(:(::Type{T < Float64})) === nothing
+end
+
+@testset "get_symbol" begin
+    @test get_symbol(:(x::Int)) == :x
+    @test get_symbol(:(a::Type{A})) == :a
+    @test get_symbol(:(::Type{A})) === nothing
+    @test get_symbol(:(y::Vector{Int})) == :y
 end

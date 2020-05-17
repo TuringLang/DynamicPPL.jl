@@ -47,20 +47,27 @@ end
     end
 
     @testset "default arg with type annotation" begin
-        expr = :(model(x::Int = 2) = begin
+        expr1 = :(model(x::Int = 2) = begin
             x
         end)
 
-        result = build_model_info(expr)
+        result1 = build_model_info(expr1)
 
-        @test result[:args] == [:($(Expr(:kw, :(x::Int), 2)))]
-        @test result[:arg_syms] == [:x]
-        args_nt = result[:args_nt] 
+        @test result1[:args] == [:($(Expr(:kw, :(x::Int), 2)))]
+        @test result1[:arg_syms] == [:x]
+        args_nt = result1[:args_nt] 
         @test args_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(x)}})
         @test args_nt.args[3] ==  :((x,))
-        defaults_nt = result[:defaults_nt]
+        defaults_nt = result1[:defaults_nt]
         @test defaults_nt.args[2] ==  :(NamedTuple{(:x,), Tuple{Core.Typeof(2)}})
         @test defaults_nt.args[3] ==  :((2,))
+
+        expr2 = :(model(x::Vector{Float64} = [1,2,3]) = begin
+            x
+        end)
+
+        result2 = build_model_info(expr2)
+        @test result2[:arg_syms] == [:x]
     end
 
     @testset "default arg type" begin

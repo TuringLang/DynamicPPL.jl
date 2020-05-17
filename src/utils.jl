@@ -3,7 +3,7 @@ import Base: ==
 """
     IsEqual(fn)
 
-Takes a funciton of the form fn(x)::Bool
+Takes a funciton of the form `fn(x)::Bool`
 """
 struct IsEqual
     fn::Function
@@ -15,9 +15,22 @@ end
 issymbol(x) = x isa Symbol
 
 """
+    get_symbol(expr)
+
+Return `x` for expressions of form `x::Type` otherwise return nothing
+"""
+function get_symbol(expr)
+    if expr == Expr(:(::), IsEqual(issymbol), IsEqual(x->true))
+        expr.args[1]
+    else
+        nothing
+    end
+end
+
+"""
     get_type(x)
 
-Return `T` if an expresion is of the form :(x::Type{T}) or :(::Type{T}) when T is a symbol otherwise returns `nothing`
+Return `T` if an expresion is of the form `:(x::Type{T})` or `:(::Type{T})` when `T` is a symbol otherwise returns `nothing`
 """
 function get_type(expr)
     if expr == Expr(:(::), Expr(:curly, :Type, IsEqual(issymbol)))

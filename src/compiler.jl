@@ -93,18 +93,18 @@ function build_model_info(input_expr)
         if arg isa Symbol
             arg
         elseif arg == Expr(:kw, IsEqual(x->true), IsEqual(x->true))
-            sym, default = arg.args
+            expr, default = arg.args
             # @model demo(::Type{T}=Float64) where {T}
-            if !isnothing(get_type(sym))
+            if !isnothing(get_type(expr))
                 # TODO support t::Type{T}
-                !Meta.isexpr(sym, :(::), 2) || throw(ArgumentError("The syntax `t::Type{T}` is currently unsupported please use `::Type{T}` instead."))
-                get_type(sym)
-            # @model demo(x::Int = 1)
-            elseif sym == Expr(:(::), IsEqual(issymbol), IsEqual(issymbol))
-                sym.args[1]
-            # @model demo(x = 1)
-            elseif sym isa Symbol
-                sym
+                !Meta.isexpr(expr, :(::), 2) || throw(ArgumentError("The syntax `t::Type{T}` is currently unsupported please use `::Type{T}` instead."))
+                get_type(expr)
+            # @model demo(x::Int = 1) or demo(x::Vector{Int} = [1,2,3])
+            elseif !isnothing(get_symbol(expr))
+                get_symbol(expr)
+            # @model demo(x = 1) 
+            elseif expr isa Symbol
+                expr
             else
                 throw(ArgumentError("Unsupported default argument $arg to the `@model` macro."))
             end
@@ -150,7 +150,7 @@ function build_model_info(input_expr)
             var, val = arg.args
             sym = if var isa Symbol
                 var
-            elseif var == Expr(:(::), IsEqual(issymbol), IsEqual(issymbol))
+            elseif var == Expr(:(::), IsEqual(issymbol), IsEqual(x->true))
                 var.args[1]
             elseif !isnothing(get_type(var))
                 get_type(var)
