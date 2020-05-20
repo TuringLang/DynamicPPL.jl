@@ -162,7 +162,7 @@ end
 
 Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
 
-With the wrapper, Julia's multithreading can be used for assume statements in the `model`
+With the wrapper, Julia's multithreading can be used for observe statements in the `model`
 but parallel sampling will lead to undefined behaviour.
 This method is not exposed and supposed to be used only internally in DynamicPPL.
 

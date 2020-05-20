@@ -59,7 +59,7 @@
         println("  default:")
         @time wthreads(x)(vi)
 
-        # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded assume statements.
+        # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
         DynamicPPL.evaluate_threadsafe(Random.GLOBAL_RNG, wthreads(x), vi,
                                        SampleFromPrior(), DefaultContext())
         @test getlogp(vi) ≈ lp_w_threads
