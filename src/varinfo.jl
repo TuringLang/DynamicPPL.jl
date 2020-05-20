@@ -965,7 +965,7 @@ function _show_varnames(io::IO, vi)
     print(io, length(groups), length(groups) == 1 ? " variable " : " variables ", "(")
     join(io, Iterators.take(keys(groups), _MAX_VARS_SHOWN), ", ")
     length(groups) > _MAX_VARS_SHOWN && print(io, ", ...")
-    print(io, "), dimension ", sum(prod(size(md.vals[md.ranges[md.idcs[vn]]])) for vn in vns))
+    print(io, "), dimension ", length(md.vals))
 end
 
 function Base.show(io::IO, vi::UntypedVarInfo)
