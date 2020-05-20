@@ -956,16 +956,21 @@ function _show_varnames(io::IO, vi)
     md = vi.metadata
     vns = md.vns
 
-    groups = Dict{Symbol, Vector{VarName}}()
+    vns_by_name = Dict{Symbol, Vector{VarName}}()
     for vn in vns
-        group = get!(() -> Vector{VarName}(), groups, getsym(vn))
+        group = get!(() -> Vector{VarName}(), vns_by_name, getsym(vn))
         push!(group, vn)
     end
 
-    print(io, length(groups), length(groups) == 1 ? " variable " : " variables ", "(")
-    join(io, Iterators.take(keys(groups), _MAX_VARS_SHOWN), ", ")
-    length(groups) > _MAX_VARS_SHOWN && print(io, ", ...")
-    print(io, "), dimension ", length(md.vals))
+    L = length(vns_by_name)
+    if L == 0
+        print(io, "0 variables, dimension 0")
+    else
+        (L == 1) ? print(io, "1 variable (") : print(io, L, " variables (")
+        join(io, Iterators.take(keys(vns_by_name), _MAX_VARS_SHOWN), ", ")
+        (L > _MAX_VARS_SHOWN) && print(io, ", ...")
+        print(io, "), dimension ", length(md.vals))
+    end
 end
 
 function Base.show(io::IO, vi::UntypedVarInfo)
