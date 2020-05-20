@@ -2,7 +2,7 @@ using .Turing, Random
 using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     SampleFromPrior, Sampler, SampleFromUniform,
-    _getidcs, set_retained_vns_del_by_spl!, is_flagged,
+    getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
     setorder!, updategid!
@@ -82,7 +82,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
             @test vi[vn] == r
             @test vi[SampleFromPrior()][1] == r
-            vi[vn] = [2*r]
+            vi[vn] = 2*r
             @test vi[vn] == 2*r
             @test vi[SampleFromPrior()][1] == 2*r
             vi[SampleFromPrior()] = [3*r]
@@ -172,9 +172,9 @@ include(dir*"/test/test_utils/AllUtils.jl")
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
-        link!(vi, spl)
+        link!(vi, spl, model)
         @test all(x -> istrans(vi, x), meta.vns)
-        invlink!(vi, spl)
+        invlink!(vi, spl, model)
         @test all(x -> !istrans(vi, x), meta.vns)
         @test meta.vals == v
 
@@ -186,10 +186,10 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test all(x -> !istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
-        link!(vi, spl)
+        link!(vi, spl, model)
         @test all(x -> istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
-        invlink!(vi, spl)
+        invlink!(vi, spl, model)
         @test all(x -> ~istrans(vi, x), meta.s.vns)
         @test all(x -> ~istrans(vi, x), meta.m.vns)
         @test meta.s.vals == v_s
@@ -416,7 +416,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
                 @test sum(val - r) <= 1e-9
             end
 
-            idcs = _getidcs(vi, spl1)
+            idcs = getidcs(vi, spl1)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 3
             else
@@ -424,7 +424,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
             end
             @test length(vi[spl1]) == 7
 
-            idcs = _getidcs(vi, spl2)
+            idcs = getidcs(vi, spl2)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 1
             else
@@ -435,7 +435,7 @@ include(dir*"/test/test_utils/AllUtils.jl")
             vn_u = @varname u
             randr(vi, vn_u, dists[1], spl2, true)
 
-            idcs = _getidcs(vi, spl2)
+            idcs = getidcs(vi, spl2)
             if idcs isa NamedTuple
                 @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 2
             else

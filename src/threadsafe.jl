@@ -55,8 +55,8 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
-invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
+link!(vi::ThreadSafeVarInfo, spl::AbstractSampler, model) = link!(vi.varinfo, spl, model)
+invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler, model) = invlink!(vi.varinfo, spl, model)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)

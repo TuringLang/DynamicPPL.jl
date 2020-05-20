@@ -125,7 +125,7 @@ function AbstractMCMC.sample_init!(
     initialize_parameters!(spl; verbose=verbose, kwargs...)
     if init_theta !== nothing
         # Doesn't support dynamic models
-        link!(spl.state.vi, spl)
+        link!(spl.state.vi, spl, model)
         model(spl.state.vi, spl)
         theta = spl.state.vi[spl]
         update_hamiltonian!(spl, model, length(theta))
@@ -134,14 +134,14 @@ function AbstractMCMC.sample_init!(
     else
         # Samples new values and sets trans to true, then computes the logp
         model(empty!(spl.state.vi), SampleFromUniform())
-        link!(spl.state.vi, spl)
+        link!(spl.state.vi, spl, model)
         theta = spl.state.vi[spl]
         update_hamiltonian!(spl, model, length(theta))
         # Refresh the internal cache phase point z's hamiltonian energy.
         spl.state.z = AHMC.phasepoint(rng, theta, spl.state.h)
         while !isfinite(spl.state.z.ℓπ.value) || !isfinite(spl.state.z.ℓπ.gradient)
             model(empty!(spl.state.vi), SampleFromUniform())
-            link!(spl.state.vi, spl)
+            link!(spl.state.vi, spl, model)
             theta = spl.state.vi[spl]
             update_hamiltonian!(spl, model, length(theta))
             # Refresh the internal cache phase point z's hamiltonian energy.
@@ -170,10 +170,10 @@ function AbstractMCMC.sample_init!(
     # Convert to transformed space if we're using
     # non-Gibbs sampling.
     if !islinked(spl.state.vi, spl) && spl.selector.tag == :default
-        link!(spl.state.vi, spl)
+        link!(spl.state.vi, spl, model)
         model(spl.state.vi, spl)
     elseif islinked(spl.state.vi, spl) && spl.selector.tag != :default
-        invlink!(spl.state.vi, spl)
+        invlink!(spl.state.vi, spl, model)
         model(spl.state.vi, spl)        
     end
 end
@@ -416,7 +416,7 @@ function AbstractMCMC.step!(
     if spl.selector.tag != :default
         # Transform the space
         Turing.DEBUG && @debug "X-> R..."
-        link!(spl.state.vi, spl)
+        link!(spl.state.vi, spl, model)
         model(spl.state.vi, spl)
     end
     # Get position and log density before transition
@@ -453,7 +453,7 @@ function AbstractMCMC.step!(
     # Gibbs component specified cares
     # Transform the space back
     Turing.DEBUG && @debug "R -> X..."
-    spl.selector.tag != :default && invlink!(spl.state.vi, spl)
+    spl.selector.tag != :default && invlink!(spl.state.vi, spl, model)
 
     return HamiltonianTransition(spl, t)
 end
@@ -606,7 +606,7 @@ function HMCState(
     vi = spl.state.vi
 
     # Link everything if needed.
-    !islinked(vi, spl) && link!(vi, spl)
+    !islinked(vi, spl) && link!(vi, spl, model)
 
     # Get the initial log pdf and gradient functions.
     ∂logπ∂θ = gen_∂logπ∂θ(vi, spl, model)
@@ -635,7 +635,7 @@ function HMCState(
     h, t = AHMC.sample_init(rng, h, θ_init) # this also ensure AHMC has the same dim as θ.
 
     # Unlink everything.
-    invlink!(vi, spl)
+    invlink!(vi, spl, model)
 
     return HMCState(vi, 0, 0, traj, h, AHMCAdaptor(spl.alg, metric; ϵ=ϵ), t.z)
 end

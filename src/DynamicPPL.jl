@@ -4,6 +4,7 @@ using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
 using MacroTools
+using Requires
 
 import AbstractMCMC
 import ZygoteRules
@@ -117,7 +118,7 @@ include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
-include("varinfo.jl")
+include("varinfo/varinfo.jl")
 include("threadsafe.jl")
 include("mixedvarinfo.jl")
 include("context_implementations.jl")

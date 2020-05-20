@@ -20,14 +20,44 @@ function VarInfo(old_vi::MixedVarInfo, spl, x::AbstractVector)
     return MixedVarInfo(new_tvi, old_vi.uvi, old_vi.is_uvi_empty)
 end
 function TypedVarInfo(vi::MixedVarInfo)
-    return VarInfo(
-        merge(vi.tvi.metadata, TypedVarInfo(vi.uvi).metadata),
-        Ref(getlogp(vi.tvi)),
-        Ref(get_num_produce(vi.tvi)),
-    )
+    @assert getmode(vi.tvi) === getmode(vi.uvi)
+    mode = getmode(vi.tvi)
+    fixed_support = has_fixed_support(vi.tvi) && has_fixed_support(vi.uvi)
+    synced = issynced(vi.tvi) && issynced(vi.uvi)
+    if vi.is_uvi_empty[]
+        return vi.tvi
+    else
+        return VarInfo(
+            merge(vi.tvi.metadata, TypedVarInfo(vi.uvi).metadata),
+            Ref(getlogp(vi.tvi)),
+            Ref(get_num_produce(vi.tvi)),
+            mode,
+            Ref(fixed_support),
+            Ref(synced),
+        )
+    end
 end
 
-getvns(vi::MixedVarInfo, s::Selector, space) = getvns(vi.tvi, s, space)
+function Base.merge(t1::MixedVarInfo, t2::MixedVarInfo)
+    return MixedVarInfo(merge(TypedVarInfo(t1), TypedVarInfo(t2)), VarInfo(), Ref(true))
+end
+function Base.merge(t1::TypedVarInfo, t2::MixedVarInfo)
+    return MixedVarInfo(merge(t1, TypedVarInfo(t2)), VarInfo(), Ref(true))
+end
+Base.merge(t1::MixedVarInfo, t2::TypedVarInfo) = merge(t2, t1)
+function Base.merge(t1::UntypedVarInfo, t2::MixedVarInfo)
+    return MixedVarInfo(merge(TypedVarInfo(t1), TypedVarInfo(t2)), VarInfo(), Ref(true))
+end
+Base.merge(t1::MixedVarInfo, t2::UntypedVarInfo) = merge(t2, t1)
+
+function getvns(vi::MixedVarInfo, s::Selector, ::Val{space}) where {space}
+    if space !== () && all(haskey.(Ref(vi.tvi.metadata), space))
+        return getvns(vi.tvi, s, Val(space))
+    else
+        return getvns(TypedVarInfo(vi), s, Val(space))
+    end
+end
+getmode(vi::MixedVarInfo) = getmode(vi.tvi)
 
 function getmetadata(vi::MixedVarInfo, vn::VarName)
     if haskey(vi.tvi, vn)
@@ -74,21 +104,50 @@ function haskey(vi::MixedVarInfo, vn::VarName)
     return hassymbol(vi.tvi, vn) ? haskey(vi.tvi, vn) : haskey(vi.uvi, vn)
 end
 
-function link!(vi::MixedVarInfo, spl::AbstractSampler)
-    if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
-        link!(vi.tvi, spl)
+Bijectors.link(vi::MixedVarInfo) = MixedVarInfo(link(vi.tvi), link(vi.uvi), vi.is_uvi_empty)
+Bijectors.invlink(vi::MixedVarInfo) = MixedVarInfo(invlink(vi.tvi), invlink(vi.uvi), vi.is_uvi_empty)
+initlink(vi::MixedVarInfo) = MixedVarInfo(initlink(vi.tvi), initlink(vi.uvi), vi.is_uvi_empty)
+has_fixed_support(vi::MixedVarInfo) = has_fixed_support(vi.tvi) && has_fixed_support(vi.uvi)
+function set_fixed_support!(vi::MixedVarInfo, b::Bool)
+    set_fixed_support!(vi.tvi, b)
+    return vi
+end
+
+issynced(vi::MixedVarInfo) = issynced(vi.tvi) && issynced(vi.uvi)
+function setsynced!(vi::MixedVarInfo, b::Bool)
+    setsynced!(vi.tvi, b)
+    setsynced!(vi.uvi, b)
+    return vi
+end
+
+function removedel!(vi::MixedVarInfo)
+    if vi.is_uvi_empty[]
+        return MixedVarInfo(removedel!(vi.tvi), vi.uvi, vi.is_uvi_empty)
     else
-        link!(vi.tvi, spl)
-        link!(vi.uvi, spl)
+        removedel!(vi.uvi)
+        if isempty(vi.uvi)
+            return MixedVarInfo(removedel!(vi.tvi), vi.uvi, Ref(true))
+        else
+            return MixedVarInfo(removedel!(vi.tvi), vi.uvi, Ref(false))
+        end
+    end
+end
+
+function link!(vi::MixedVarInfo, spl::AbstractSampler, model)
+    if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
+        link!(vi.tvi, spl, model)
+    else
+        link!(vi.tvi, spl, model)
+        link!(vi.uvi, spl, model)
     end
     return vi
 end
-function invlink!(vi::MixedVarInfo, spl::AbstractSampler)
+function invlink!(vi::MixedVarInfo, spl::AbstractSampler, model)
     if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
-        invlink!(vi.tvi, spl)
+        invlink!(vi.tvi, spl, model)
     else
-        invlink!(vi.tvi, spl)
-        invlink!(vi.uvi, spl)
+        invlink!(vi.tvi, spl, model)
+        invlink!(vi.uvi, spl, model)
     end
     return vi
 end
@@ -135,7 +194,7 @@ for splT in (:SampleFromPrior, :SampleFromUniform, :AbstractSampler)
 end
 
 function getall(vi::MixedVarInfo)
-    if vi.is_empty_uvi[]
+    if vi.is_uvi_empty[]
         return getall(vi.tvi)
     else
         return vcat(getall(vi.tvi), getall(vi.uvi))
@@ -188,19 +247,20 @@ function is_flagged(vi::MixedVarInfo, vn::VarName, flag::String)
     end
 end
 
-function updategid!(vi::MixedVarInfo, spls::Tuple{Vararg{AbstractSampler}})
-    foreach(spls) do spl
-        if fullyinspace(spl, vi.tvi) || vi.is_empty_uvi[]
-            updategid!(vi.tvi, spls)
-        else
-            updategid!(vi.uvi, spls)
-        end
+function updategid!(vi::MixedVarInfo, spl::AbstractSampler)
+    if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
+        updategid!(vi.tvi, spl)
+    else
+        updategid!(vi.uvi, spl)
     end
     return vi
 end
 
 function tonamedtuple(vi::MixedVarInfo)
-    t1 = tonamedtuple(vi.tvi)
-    return vi.is_uvi_empty[] ? t1 : merge(t1, tonamedtuple(vi.uvi))
+    if vi.is_uvi_empty[]
+        return tonamedtuple(vi.tvi)
+    else
+        return tonamedtuple(TypedVarInfo(vi))
+    end
 end
 set_namedtuple!(vi::MixedVarInfo, nt::NamedTuple) = set_namedtuple!(vi.tvi, nt)

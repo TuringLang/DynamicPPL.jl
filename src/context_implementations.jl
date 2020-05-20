@@ -24,14 +24,14 @@ function tilde(ctx::DefaultContext, sampler, right, vn::VarName, _, vi)
 end
 function tilde(ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars !== nothing
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
+        vi[vn, right] = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         settrans!(vi, false, vn)
     end
     return _tilde(sampler, right, vn, vi)
 end
 function tilde(ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars !== nothing
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
+        vi[vn, right] = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         settrans!(vi, false, vn)
     end
     return _tilde(sampler, NoDist(right), vn, vi)
@@ -127,11 +127,11 @@ function assume(
         if spl isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(dist, spl)
-            vi[vn] = vectorize(dist, r)
+            vi[vn, dist] = r
             settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
-            r = vi[vn]
+            r = vi[vn, dist]
         end
     else
         r = init(dist, spl)
@@ -297,12 +297,12 @@ function get_and_set_val!(
             r = init(dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                vi[vn] = vectorize(dist, r[:, i])
+                vi[vn, dist] = r[:, i]
                 settrans!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = vi[vns]
+            r = vi[vns, dist]
         end
     else
         r = init(dist, spl, n)
@@ -330,12 +330,12 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, r[i])
+                vi[vn, dist] = r[i]
                 settrans!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = reshape(vi[vec(vns)], size(vns))
+            r = vi[vns, dists]
         end
     else
         f = (vn, dist) -> init(dist, spl)
@@ -354,7 +354,7 @@ function set_val!(
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
-        vi[vn] = val[:,i]
+        vi[vn, dist] = val[:,i]
     end
     return val
 end
@@ -367,7 +367,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        vi[vns[ind]] = vectorize(dist, val[ind])
+        vi[vns[ind], dist] = val[ind]
     end
     return val
 end

@@ -61,13 +61,13 @@ function step(
     is_first::Val{true};
     kwargs...
 )
-    spl.selector.tag != :default && link!(vi, spl)
+    spl.selector.tag != :default && link!(vi, spl, model)
 
     # Initialize velocity
     v = zeros(Float64, size(vi[spl]))
     spl.info[:v] = v
 
-    spl.selector.tag != :default && invlink!(vi, spl)
+    spl.selector.tag != :default && invlink!(vi, spl, model)
     return vi, true
 end
 
@@ -84,7 +84,7 @@ function step(
 
     Turing.DEBUG && @debug "X-> R..."
     if spl.selector.tag != :default
-        link!(vi, spl)
+        link!(vi, spl, model)
         model(vi, spl)
     end
 
@@ -102,7 +102,7 @@ function step(
     vi[spl] = θ
 
     Turing.DEBUG && @debug "R -> X..."
-    spl.selector.tag != :default && invlink!(vi, spl)
+    spl.selector.tag != :default && invlink!(vi, spl, model)
 
     Turing.DEBUG && @debug "always accept..."
     return vi, true
@@ -169,12 +169,12 @@ function step(
     is_first::Val{true};
     kwargs...
 )
-    spl.selector.tag != :default && link!(vi, spl)
+    spl.selector.tag != :default && link!(vi, spl, model)
 
     mssa = AHMC.Adaptation.ManualSSAdaptor(AHMC.Adaptation.MSSState(spl.alg.ϵ))
     spl.info[:adaptor] = AHMC.NaiveHMCAdaptor(AHMC.UnitMassMatrix(), mssa)
 
-    spl.selector.tag != :default && invlink!(vi, spl)
+    spl.selector.tag != :default && invlink!(vi, spl, model)
     return vi, true
 end
 
@@ -197,7 +197,7 @@ function step(
 
     Turing.DEBUG && @debug "X-> R..."
     if spl.selector.tag != :default
-        link!(vi, spl)
+        link!(vi, spl, model)
         model(vi, spl)
     end
 
@@ -213,7 +213,7 @@ function step(
     vi[spl] = θ
 
     Turing.DEBUG && @debug "R -> X..."
-    spl.selector.tag != :default && invlink!(vi, spl)
+    spl.selector.tag != :default && invlink!(vi, spl, model)
 
     return vi, true
 end
