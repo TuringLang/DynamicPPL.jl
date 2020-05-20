@@ -133,13 +133,23 @@ function (model::Model)(
     context::AbstractContext = DefaultContext()
 )
     if Threads.nthreads() == 1
-        return evaluate_singlethreaded(rng, model, varinfo, sampler, context)
+        return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     else
-        return evaluate_multithreaded(rng, model, varinfo, sampler, context)
+        return evaluate_threadsafe(rng, model, varinfo, sampler, context)
     end
 end
 
-function evaluate_singlethreaded(rng, model, varinfo, sampler, context)
+"""
+    evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+
+Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
+
+If the `model` makes use of Julia's multithreading this will lead to undefined behaviour.
+This method is not exposed and supposed to be used only internally in DynamicPPL.
+
+See also: [`evaluate_threadsafe`](@ref)
+"""
+function evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     resetlogp!(varinfo)
     if has_eval_num(sampler)
         sampler.state.eval_num += 1
@@ -147,7 +157,18 @@ function evaluate_singlethreaded(rng, model, varinfo, sampler, context)
     return model.f(rng, model, varinfo, sampler, context)
 end
 
-function evaluate_multithreaded(rng, model, varinfo, sampler, context)
+"""
+    evaluate_threadsafe(rng, model, varinfo, sampler, context)
+
+Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
+
+With the wrapper, Julia's multithreading can be used for assume statements in the `model`
+but parallel sampling will lead to undefined behaviour.
+This method is not exposed and supposed to be used only internally in DynamicPPL.
+
+See also: [`evaluate_threadunsafe`](@ref)
+"""
+function evaluate_threadsafe(rng, model, varinfo, sampler, context)
     resetlogp!(varinfo)
     if has_eval_num(sampler)
         sampler.state.eval_num += 1
