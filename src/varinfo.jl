@@ -766,7 +766,7 @@ end
 
 
 """
-    islinked(vi::VarInfo, spl::Sampler)
+    islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
 
 Check whether `vi` is in the transformed space for a particular sampler `spl`.
 
@@ -775,11 +775,11 @@ Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 (for example, one bounded to the space `[0, 1]`) from its constrained space to the set of 
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
-function islinked(vi::UntypedVarInfo, spl::Sampler)
+function islinked(vi::UntypedVarInfo, spl::Union{Sampler, SampleFromPrior})
     vns = _getvns(vi, spl)
     return istrans(vi, vns[1])
 end
-function islinked(vi::TypedVarInfo, spl::Sampler)
+function islinked(vi::TypedVarInfo, spl::Union{Sampler, SampleFromPrior})
     vns = _getvns(vi, spl)
     return _islinked(vi, vns)
 end
