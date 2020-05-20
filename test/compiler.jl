@@ -215,6 +215,7 @@ end
             global sampler_ = _sampler
             global model_ = _model
             global context_ = _context
+            global rng_ = _rng
             global lp = getlogp(_varinfo)
             return x
         end
@@ -226,6 +227,7 @@ end
         @test model_ === model
         @test sampler_ === SampleFromPrior()
         @test context_ === DefaultContext()
+        @test rng_ isa Random.AbstractRNG
 
         # disable warnings
         @model testmodel(x) = begin
@@ -234,6 +236,7 @@ end
             global sampler_ = _sampler
             global model_ = _model
             global context_ = _context
+            global rng_ = _rng
             global lp = getlogp(_varinfo)
             return x
         end false
