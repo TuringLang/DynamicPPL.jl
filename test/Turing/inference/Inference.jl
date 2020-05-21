@@ -3,9 +3,9 @@ module Inference
 using ..Core
 using ..Core: logZ
 using ..Utilities
-using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, 
-    islinked, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
-    settrans!, getvns, getinitdist, set_namedtuple!, CACHERESET, AbstractSampler,
+using DynamicPPL: Metadata, _tail, VarInfo, TypedVarInfo, set_namedtuple!,
+    islinked_and_trans, invlink!, getlogp, tonamedtuple, VarName, getsym, vectorize, 
+    settrans!, getvns, getinitdist, CACHERESET, AbstractSampler,
     Model, Sampler, SampleFromPrior, SampleFromUniform,
     Selector, AbstractSamplerState, DefaultContext, PriorContext,
     LikelihoodContext, MiniBatchContext, set_flag!, unset_flag!, NamedDist, NoDist,
@@ -20,13 +20,14 @@ using DynamicPPL
 using AbstractMCMC: AbstractModel, AbstractSampler
 using Bijectors: _debug
 using DocStringExtensions: TYPEDEF, TYPEDFIELDS
+import BangBang
 
 import AbstractMCMC
 import AdvancedHMC; const AHMC = AdvancedHMC
 import AdvancedMH; const AMH = AdvancedMH
 import ..Core: getchunksize, getADbackend
 import DynamicPPL: get_matching_type,
-    VarName, getranges, _getindex, getval, getvns
+    VarName, getval, getvns
 import EllipticalSliceSampling
 import Random
 import MCMCChains
@@ -74,6 +75,12 @@ getADbackend(::Hamiltonian{AD}) where AD = AD()
 # Algorithm for sampling from the prior
 struct Prior <: InferenceAlgorithm end
 
+getindex(vi::MixedVarInfo, spl::Sampler{<:Hamiltonian}) = vi.tvi[spl]
+function setindex!(vi::MixedVarInfo, val, spl::Sampler{<:Hamiltonian})
+    vi.tvi[spl] = val
+    return vi
+end
+
 """
     mh_accept(logp_current::Real, logp_proposal::Real, log_proposal_ratio::Real)
 
@@ -99,6 +106,22 @@ end
 struct Transition{T, F<:AbstractFloat}
     θ  :: T
     lp :: F
+end
+
+function Base.promote_type(
+    ::Type{Transition{T1, F1}},
+    ::Type{Transition{T2, F2}},
+) where {T1, F1, T2, F2}
+    return Transition{
+        Union{T1, T2},
+        promote_type(F1, F2),
+    }
+end
+function Base.convert(
+    ::Type{Transition{T, F}},
+    t::Transition,
+) where {T, F}
+    return Transition{T, F}(convert(T, t.θ), convert(F, t.lp))
 end
 
 function Transition(spl::Sampler, nt::NamedTuple=NamedTuple())
@@ -328,7 +351,8 @@ function flatten_namedtuple(nt::NamedTuple)
         if length(v) == 1
             return [(string(k), v)]
         else
-            return mapreduce(vcat, zip(v[1], v[2])) do (vnval, vn)
+            init = Tuple{String, eltype(v[1])}[]
+            return mapreduce(vcat, zip(v[1], v[2]); init = init) do (vnval, vn)
                 return collect(FlattenIterator(vn, vnval))
             end
         end
@@ -522,6 +546,9 @@ A blank `AbstractSamplerState` that contains only `VarInfo` information.
 mutable struct SamplerState{VIType<:AbstractVarInfo} <: AbstractSamplerState
     vi :: VIType
 end
+function replace_varinfo(::SamplerState, vi::AbstractVarInfo)
+    return SamplerState(vi)
+end
 
 #######################################
 # Concrete algorithm implementations. #
@@ -565,7 +592,7 @@ function get_matching_type(
 end
 function get_matching_type(
     spl::AbstractSampler,
-    vi,
+    vi, 
     ::Type{<:AbstractFloat},
 )
     return floatof(eltype(vi, spl))
