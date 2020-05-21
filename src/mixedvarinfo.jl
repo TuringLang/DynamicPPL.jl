@@ -87,8 +87,8 @@ set_num_produce!(vi::MixedVarInfo, n::Int) = set_num_produce!(vi.tvi, n)
 
 syms(vi::MixedVarInfo) = (syms(vi.tvi)..., syms(vi.uvi)...)
 
-function setgid!(vi::MixedVarInfo, gid::Selector, vn::VarName)
-    hassymbol(vi.tvi, vn) ? setgid!(vi.tvi, gid, vn) : setgid!(vi.uvi, gid, vn)
+function setgid!(vi::MixedVarInfo, gid::Selector, vn::VarName; overwrite=false)
+    hassymbol(vi.tvi, vn) ? setgid!(vi.tvi, gid, vn; overwrite=overwrite) : setgid!(vi.uvi, gid, vn; overwrite=overwrite)
     return vi
 end
 function setorder!(vi::MixedVarInfo, vn::VarName, index::Int)
@@ -247,11 +247,11 @@ function is_flagged(vi::MixedVarInfo, vn::VarName, flag::String)
     end
 end
 
-function updategid!(vi::MixedVarInfo, spl::AbstractSampler)
+function updategid!(vi::MixedVarInfo, spl::AbstractSampler; overwrite=false)
     if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
-        updategid!(vi.tvi, spl)
+        updategid!(vi.tvi, spl; overwrite=overwrite)
     else
-        updategid!(vi.uvi, spl)
+        updategid!(vi.uvi, spl; overwrite=overwrite)
     end
     return vi
 end

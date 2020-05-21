@@ -5,7 +5,7 @@ using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     getidcs, set_retained_vns_del_by_spl!, is_flagged,
     set_flag!, unset_flag!, VarInfo, TypedVarInfo,
     getlogp, setlogp!, resetlogp!, acclogp!, vectorize,
-    setorder!, updategid!
+    setorder!, updategid!, islinked_and_trans, link
 using DynamicPPL, LinearAlgebra
 using Distributions
 using ForwardDiff: Dual
@@ -168,30 +168,48 @@ include(dir*"/test/test_utils/AllUtils.jl")
 
         model(vi, SampleFromUniform())
         @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.vns)
+        @test all(x -> !islinked_and_trans(link(vi), x), meta.vns)
 
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
         v = copy(meta.vals)
         link!(vi, spl, model)
         @test all(x -> istrans(vi, x), meta.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.vns)
         invlink!(vi, spl, model)
-        @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> istrans(vi, x), meta.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.vns)
         @test meta.vals == v
 
         vi = TypedVarInfo(vi)
         meta = vi.metadata
         alg = HMC(0.1, 5)
         spl = Sampler(alg, model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.s.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.s.vns)
+        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.m.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
         link!(vi, spl, model)
         @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.s.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.m.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.m.vns)
         invlink!(vi, spl, model)
-        @test all(x -> ~istrans(vi, x), meta.s.vns)
-        @test all(x -> ~istrans(vi, x), meta.m.vns)
+        @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.s.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.s.vns)
+        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> !islinked_and_trans(vi, x), meta.m.vns)
+        @test all(x -> islinked_and_trans(link(vi), x), meta.m.vns)
         @test meta.s.vals == v_s
         @test meta.m.vals == v_m
     end
@@ -225,12 +243,12 @@ include(dir*"/test/test_utils/AllUtils.jl")
             elseif is_flagged(vi, vn, "del")
                 unset_flag!(vi, vn, "del")
                 r = rand(dist)
-                vi[vn] = vectorize(dist, r)
+                vi[vn, dist] = r
                 setorder!(vi, vn, get_num_produce(vi))
                 r
             else
                 updategid!(vi, vn, spl)
-                vi[vn]
+                vi[vn, dist]
             end
         end
 
@@ -468,12 +486,17 @@ include(dir*"/test/test_utils/AllUtils.jl")
         g_demo_f(vi, SampleFromPrior())
         step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
         vi1 = pg.state.vi
+        vi1.tvi.metadata.x.gids[1]
+        vi1.tvi.metadata.y.gids[1]
+        vi1.tvi.metadata.z.gids[1]
+        vi1.tvi.metadata.w.gids[1]
+        vi1.tvi.metadata.u.gids[1]
         @test mapreduce(x -> x.gids, vcat, vi1.tvi.metadata) ==
-            [Set([pg.selector]), Set([pg.selector]), Set([pg.selector]), Set{Selector}(), Set{Selector}()]
+            [Set([g.selector, pg.selector]), Set([g.selector, pg.selector]), Set([g.selector, pg.selector]), Set([g.selector, hmc.selector]), Set([g.selector, hmc.selector])]
 
         @inferred g_demo_f(vi1, hmc)
         @test mapreduce(x -> x.gids, vcat, vi1.tvi.metadata) ==
-            [Set([pg.selector]), Set([pg.selector]), Set([pg.selector]), Set([hmc.selector]), Set([hmc.selector])]
+            [Set([g.selector, pg.selector]), Set([g.selector, pg.selector]), Set([g.selector, pg.selector]), Set([g.selector, hmc.selector]), Set([g.selector, hmc.selector])]
 
         g = Sampler(Gibbs(PG(10, :x, :y, :z), HMC(0.4, 8, :w, :u)), g_demo_f)
         pg, hmc = g.state.samplers

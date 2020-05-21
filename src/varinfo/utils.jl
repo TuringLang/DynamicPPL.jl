@@ -260,8 +260,10 @@ keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-function setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName)
-    push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
+function setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName; overwrite=false)
+    gids = getmetadata(vi, vn).gids[getidx(vi, vn)]
+    overwrite && empty!(gids)
+    push!(gids, gid)
     return vi
 end
 
@@ -501,14 +503,14 @@ end
 end
 
 """
-    updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
+    updategid!(vi::VarInfo, vn::VarName, spl::Sampler; overwrite=false)
 
 Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
 and `vn`'s symbol is in the space of `spl`.
 """
-function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
+function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler; overwrite=false)
     if inspace(vn, getspace(spl))
-        setgid!(vi, spl.selector, vn)
+        setgid!(vi, spl.selector, vn; overwrite=overwrite)
     end
 end
 
@@ -546,27 +548,27 @@ function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
     end
 end
 
-function updategid!(vi::AbstractVarInfo, spls::Tuple{Vararg{AbstractSampler}})
+function updategid!(vi::AbstractVarInfo, spls::Tuple{Vararg{AbstractSampler}}; overwrite=false)
     foreach(spls) do spl
-        updategid!(vi, spl)
+        updategid!(vi, spl; overwrite=overwrite)
     end
     return vi
 end
-function updategid!(vi::UntypedVarInfo, spl::AbstractSampler)
+function updategid!(vi::UntypedVarInfo, spl::AbstractSampler; overwrite=false)
     vns = vi.metadata.vns
     if inspace(vns[1], getspace(spl))
         for vn in vns
-            updategid!(vi, vn, spl)
+            updategid!(vi, vn, spl; overwrite=overwrite)
         end
     end
     return vi
 end
-function updategid!(vi::TypedVarInfo, spl::AbstractSampler)
+function updategid!(vi::TypedVarInfo, spl::AbstractSampler; overwrite=false)
     foreach(keys(vi.metadata)) do k
         vns = vi.metadata[k].vns
         if inspace(vns[1], getspace(spl))
             for vn in vns
-                updategid!(vi, vn, spl)
+                updategid!(vi, vn, spl; overwrite=overwrite)
             end
         end
     end    

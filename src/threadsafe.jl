@@ -46,8 +46,8 @@ set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n
 
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
-function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
-    setgid!(vi.varinfo, gid, vn)
+function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName; overwrite=false)
+    setgid!(vi.varinfo, gid, vn; overwrite=overwrite)
 end
 setorder!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = setorder!(vi.varinfo, vn, index)
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
