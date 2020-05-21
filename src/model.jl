@@ -110,50 +110,71 @@ function Model{missings}(
 end
 
 """
-    (model::Model)([spl = SampleFromPrior(), ctx = DefaultContext()])
+    (model::Model)([rng, varinfo, sampler, context])
 
-Sample from `model` using the sampler `spl`.
+Sample from the `model` using the `sampler` with random number generator `rng` and the
+`context`, and store the sample and log joint probability in `varinfo`.
+
+The method resets the log joint probability of `varinfo` and increases the evaluation
+number of `sampler`.
 """
-function (model::Model)(
-    spl::AbstractSampler=SampleFromPrior(),
-    ctx::AbstractContext=DefaultContext()
-)
-    return model(VarInfo(), spl, ctx)
+function (model::Model)(args...)
+    return model(VarInfo(), args...)
 end
 
-"""
-    (model::Model)(vi::AbstractVarInfo[, spl = SampleFromPrior(), ctx = DefaultContext()])
+function (model::Model)(varinfo::AbstractVarInfo, args...)
+    return model(Random.GLOBAL_RNG, varinfo, args...)
+end
 
-Sample from `model` using the sampler `spl` storing the sample and log joint probability in `vi`.
-Resets the `vi` and increases `spl`s `state.eval_num`.
-"""
 function (model::Model)(
-    vi::AbstractVarInfo,
-    spl::AbstractSampler=SampleFromPrior(),
-    ctx::AbstractContext=DefaultContext()
+    rng::Random.AbstractRNG,
+    varinfo::AbstractVarInfo,
+    sampler::AbstractSampler = SampleFromPrior(),
+    context::AbstractContext = DefaultContext()
 )
     if Threads.nthreads() == 1
-        return evaluate_singlethreaded(model, vi, spl, ctx)
+        return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     else
-        return evaluate_multithreaded(model, vi, spl, ctx)
+        return evaluate_threadsafe(rng, model, varinfo, sampler, context)
     end
 end
 
-function evaluate_singlethreaded(model, varinfo, sampler, context)
+"""
+    evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+
+Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
+
+If the `model` makes use of Julia's multithreading this will lead to undefined behaviour.
+This method is not exposed and supposed to be used only internally in DynamicPPL.
+
+See also: [`evaluate_threadsafe`](@ref)
+"""
+function evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     resetlogp!(varinfo)
     if has_eval_num(sampler)
         sampler.state.eval_num += 1
     end
-    return model.f(model, varinfo, sampler, context)
+    return model.f(rng, model, varinfo, sampler, context)
 end
 
-function evaluate_multithreaded(model, varinfo, sampler, context)
+"""
+    evaluate_threadsafe(rng, model, varinfo, sampler, context)
+
+Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
+
+With the wrapper, Julia's multithreading can be used for observe statements in the `model`
+but parallel sampling will lead to undefined behaviour.
+This method is not exposed and supposed to be used only internally in DynamicPPL.
+
+See also: [`evaluate_threadunsafe`](@ref)
+"""
+function evaluate_threadsafe(rng, model, varinfo, sampler, context)
     resetlogp!(varinfo)
     if has_eval_num(sampler)
         sampler.state.eval_num += 1
     end
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = model.f(model, wrapper, sampler, context)
+    result = model.f(rng, model, wrapper, sampler, context)
     setlogp!(varinfo, getlogp(wrapper))
     return result
 end

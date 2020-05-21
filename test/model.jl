@@ -26,4 +26,22 @@ Random.seed!(1234)
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
     end
+
+    @testset "rng" begin
+        model = gdemo_default
+
+        for sampler in (SampleFromPrior(), SampleFromUniform())
+            for i in 1:10
+                Random.seed!(100 + i)
+                vi = VarInfo()
+                model(Random.GLOBAL_RNG, vi, sampler)
+                vals = DynamicPPL.getall(vi)
+
+                Random.seed!(100 + i)
+                vi = VarInfo()
+                model(Random.GLOBAL_RNG, vi, sampler)
+                @test DynamicPPL.getall(vi) == vals
+            end
+        end
+    end
 end

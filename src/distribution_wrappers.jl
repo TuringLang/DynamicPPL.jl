@@ -30,7 +30,7 @@ struct NoDist{
 end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
 
-Distributions.rand(d::NoDist) = rand(d.dist)
+Distributions.rand(rng::Random.AbstractRNG, d::NoDist) = rand(rng, d.dist)
 Distributions.logpdf(d::NoDist{<:Univariate}, ::Real) = 0
 Distributions.logpdf(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
 function Distributions.logpdf(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
