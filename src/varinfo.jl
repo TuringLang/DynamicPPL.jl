@@ -766,7 +766,7 @@ end
 
 
 """
-    islinked(vi::VarInfo, spl::Sampler)
+    islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
 
 Check whether `vi` is in the transformed space for a particular sampler `spl`.
 
@@ -775,11 +775,11 @@ Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 (for example, one bounded to the space `[0, 1]`) from its constrained space to the set of 
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
-function islinked(vi::UntypedVarInfo, spl::Sampler)
+function islinked(vi::UntypedVarInfo, spl::Union{Sampler, SampleFromPrior})
     vns = _getvns(vi, spl)
     return istrans(vi, vns[1])
 end
-function islinked(vi::TypedVarInfo, spl::Sampler)
+function islinked(vi::TypedVarInfo, spl::Union{Sampler, SampleFromPrior})
     vns = _getvns(vi, spl)
     return _islinked(vi, vns)
 end
@@ -956,16 +956,21 @@ function _show_varnames(io::IO, vi)
     md = vi.metadata
     vns = md.vns
 
-    groups = Dict{Symbol, Vector{VarName}}()
+    vns_by_name = Dict{Symbol, Vector{VarName}}()
     for vn in vns
-        group = get!(() -> Vector{VarName}(), groups, getsym(vn))
+        group = get!(() -> Vector{VarName}(), vns_by_name, getsym(vn))
         push!(group, vn)
     end
 
-    print(io, length(groups), length(groups) == 1 ? " variable " : " variables ", "(")
-    join(io, Iterators.take(keys(groups), _MAX_VARS_SHOWN), ", ")
-    length(groups) > _MAX_VARS_SHOWN && print(io, ", ...")
-    print(io, "), dimension ", sum(prod(size(md.vals[md.ranges[md.idcs[vn]]])) for vn in vns))
+    L = length(vns_by_name)
+    if L == 0
+        print(io, "0 variables, dimension 0")
+    else
+        (L == 1) ? print(io, "1 variable (") : print(io, L, " variables (")
+        join(io, Iterators.take(keys(vns_by_name), _MAX_VARS_SHOWN), ", ")
+        (L > _MAX_VARS_SHOWN) && print(io, ", ...")
+        print(io, "), dimension ", length(md.vals))
+    end
 end
 
 function Base.show(io::IO, vi::UntypedVarInfo)
