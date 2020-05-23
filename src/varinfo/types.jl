@@ -172,6 +172,13 @@ function TypedVarInfo(model::Model, ctx = DefaultContext())
     model(vi, SampleFromPrior(), ctx)
     return TypedVarInfo(vi)
 end
+function TypedVarInfo(model::Model, n::Integer, ctx = DefaultContext())
+    return mapreduce(merge, 1:n) do _
+        vi = VarInfo()
+        model(vi, SampleFromPrior(), ctx)
+        TypedVarInfo(vi)
+    end
+end
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)
     new_vi[spl] = x

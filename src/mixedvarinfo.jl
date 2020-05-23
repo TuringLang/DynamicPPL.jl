@@ -15,6 +15,9 @@ function VarInfo(model::Model, ctx = DefaultContext())
     model(vi, SampleFromPrior(), ctx)
     return MixedVarInfo(TypedVarInfo(vi))
 end
+function VarInfo(model::Model, n::Integer, ctx = DefaultContext())
+    return MixedVarInfo(TypedVarInfo(model, n, ctx))
+end
 function VarInfo(old_vi::MixedVarInfo, spl, x::AbstractVector)
     new_tvi = VarInfo(old_vi.tvi, spl, x)
     return MixedVarInfo(new_tvi, old_vi.uvi, old_vi.is_uvi_empty)

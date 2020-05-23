@@ -50,8 +50,8 @@ mutable struct Sampler{T, S<:AbstractSamplerState} <: AbstractSampler
     state    ::  S
 end
 Sampler(alg) = Sampler(alg, Selector())
-Sampler(alg, model::Model) = Sampler(alg, model, Selector())
-Sampler(alg, model::Model, s::Selector) = Sampler(alg, model, s)
+Sampler(alg, model::Model; specialize_after=1) = Sampler(alg, model, Selector(); specialize_after=specialize_after)
+Sampler(alg, model::Model, s::Selector; specialize_after=1) = Sampler(alg, model, s; specialize_after=specialize_after)
 
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 
