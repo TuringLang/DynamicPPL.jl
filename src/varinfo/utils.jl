@@ -372,7 +372,10 @@ variables `x` would return
 (x = ([1.5, 2.0], [3.0, 1.0], ["x[1]", "x[2]"]), )
 ```
 """
-function tonamedtuple(vi::VarInfo)
+function tonamedtuple(vi::UntypedVarInfo)
+    return tonamedtuple(TypedVarInfo(vi))
+end
+function tonamedtuple(vi::TypedVarInfo)
     return tonamedtuple(vi.metadata, vi)
 end
 @generated function tonamedtuple(metadata::NamedTuple{names}, vi::VarInfo) where {names}
