@@ -574,6 +574,7 @@ for alg in (:HMC, :HMCDA, :NUTS, :SGLD, :SGHMC)
 end
 
 floatof(::Type{T}) where {T <: Real} = typeof(one(T)/one(T))
+floatof(::Type{Real}) = Real
 floatof(::Type) = Real # fallback if type inference failed
 
 function get_matching_type(
@@ -594,7 +595,7 @@ function get_matching_type(
     spl::AbstractSampler,
     vi, 
     ::Type{<:AbstractFloat},
-)
+) where {T}
     return floatof(eltype(vi, spl))
 end
 function get_matching_type(

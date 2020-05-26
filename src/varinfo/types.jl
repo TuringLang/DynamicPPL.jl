@@ -238,7 +238,7 @@ end
     return :($(exprs...),)
 end
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0), StandardMode(), Ref(true), Ref(false))
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Real}(0.0), Ref(0), StandardMode(), Ref(true), Ref(false))
 
 """
     TypedVarInfo(vi::UntypedVarInfo)
@@ -266,8 +266,6 @@ function TypedVarInfo(vi::UntypedVarInfo)
         sym_dists = getindex.((meta.dists,), inds)
         # New gids, can make a resizeable FillArray
         sym_gids = getindex.((meta.gids,), inds)
-        @assert length(sym_gids) <= 1 ||
-            all(x -> x == sym_gids[1], @view sym_gids[2:end])
         # New orders
         sym_orders = getindex.((meta.orders,), inds)
         # New flags

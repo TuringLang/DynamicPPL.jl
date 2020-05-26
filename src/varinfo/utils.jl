@@ -28,6 +28,7 @@ function Base.merge(t1::TypedVarInfo, t2::TypedVarInfo)
 end
 Base.merge(t1::UntypedVarInfo, t2::TypedVarInfo) = merge(TypedVarInfo(t1), t2)
 Base.merge(t1::TypedVarInfo, t2::UntypedVarInfo) = merge(t2, t1)
+Base.merge(t1::UntypedVarInfo, ::UntypedVarInfo) = t1
 
 """
     empty!(meta::Metadata)
