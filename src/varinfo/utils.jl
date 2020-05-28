@@ -526,28 +526,13 @@ Places the values of a `NamedTuple` into the relevant places of a `VarInfo`.
 function set_namedtuple!(vi::VarInfo, nt::NamedTuple)
     @assert !islinked(vi)
     for (n, vals) in pairs(nt)
-        vns = vi.metadata[n].vns
-
-        n_vns = length(vns)
-        n_vals = length(vals)
-        v_isarr = vals isa AbstractArray
-        
-        if v_isarr && n_vals == 1 && n_vns > 1
-            for (vn, val) in zip(vns, vals[1])
-                vi[vn] = val
-            end
-        elseif v_isarr && n_vals > 1 && n_vns == 1
-            vi[vns[1]] = vals
-        elseif v_isarr && n_vals == n_vns > 1
-            for (vn, val) in zip(vns, vals)
-                vi[vn] = val
-            end
-        elseif v_isarr && n_vals == 1 && n_vns == 1
-            vi[vns[1]] = vals[1]
-        elseif !(v_isarr)
-            vi[vns[1]] = vals
+        if vi isa TypedVarInfo
+            vns = vi.metadata[n].vns
         else
-            error("Cannot assign `NamedTuple` to `VarInfo`")
+            vns = vi.metadata.vns
+        end
+        for vn in vns
+            vi[vn] = _getindex(vals, vn.indexing)
         end
     end
 end

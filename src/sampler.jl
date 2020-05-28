@@ -1,8 +1,21 @@
 """
 Robust initialization method for model parameters in Hamiltonian samplers.
 """
-struct SampleFromUniform <: AbstractSampler end
-struct SampleFromPrior <: AbstractSampler end
+struct SampleFromUniform{Tvi <: AbstractVarInfo} <: AbstractSampler
+    vi::Tvi
+end
+function SampleFromUniform(model::AbstractModel; specialize_after=1)
+    return SampleFromUniform(VarInfo(model; specialize_after=specialize_after))
+end
+SampleFromUniform() = SampleFromUniform(VarInfo())
+
+struct SampleFromPrior{Tvi <: AbstractVarInfo} <: AbstractSampler
+    vi::Tvi
+end
+function SampleFromPrior(model::AbstractModel; specialize_after=1)
+    return SampleFromPrior(VarInfo(model; specialize_after=specialize_after))
+end
+SampleFromPrior() = SampleFromPrior(VarInfo())
 
 getspace(::Union{SampleFromPrior, SampleFromUniform}) = ()
 
@@ -51,7 +64,6 @@ mutable struct Sampler{T, S<:AbstractSamplerState} <: AbstractSampler
 end
 Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model; specialize_after=1) = Sampler(alg, model, Selector(); specialize_after=specialize_after)
-Sampler(alg, model::Model, s::Selector; specialize_after=1) = Sampler(alg, model, s; specialize_after=specialize_after)
 
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 
@@ -63,7 +75,7 @@ function AbstractMCMC.step!(
     transition;
     kwargs...
 )
-    vi = VarInfo()
-    model(vi, sampler)
-    return vi
+    empty!(sampler.vi)
+    model(sampler.vi, sampler)
+    return sampler.vi
 end
