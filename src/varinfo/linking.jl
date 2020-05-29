@@ -177,16 +177,16 @@ function settrans!(vi::UntypedVarInfo, spl::Sampler)
 end
 function settrans!(vi::TypedVarInfo, spl::AbstractSampler)
     vns = getvns(vi, spl)
-    _settrans!(vi.metadata, vi, vns, Val(getspace(spl)))
+    _settrans!(vi, vns, Val(getspace(spl)))
     return vi
 end
-@generated function _settrans!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
+@generated function _settrans!(vi, ::NamedTuple{names}, ::Val{space}) where {names, space}
     expr = Expr(:block)
     for f in names
         if inspace(f, space) || length(space) == 0
             push!(expr.args, quote
                 f_vns = vi.metadata.$f.vns
-                if ~istrans(vi, f_vns[1])
+                if length(f_vns) > 0 && ~istrans(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
                         settrans!(vi, true, vn)

@@ -555,7 +555,7 @@ end
 function updategid!(vi::TypedVarInfo, spl::AbstractSampler; overwrite=false)
     foreach(keys(vi.metadata)) do k
         vns = vi.metadata[k].vns
-        if inspace(vns[1], getspace(spl))
+        if length(vns) > 0 && inspace(vns[1], getspace(spl))
             for vn in vns
                 updategid!(vi, vn, spl; overwrite=overwrite)
             end
