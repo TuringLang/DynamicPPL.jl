@@ -183,7 +183,7 @@ for splT in (:SampleFromPrior, :SampleFromUniform, :AbstractSampler)
             if fullyinspace(spl, vi.tvi) || vi.is_uvi_empty[]
                 return vi.tvi[spl]
             else
-                return vcat(vi.tvi[spl], vi.uvi[spl])
+                return vcat(vi.tvi[spl], copy.(vi.uvi[spl]))
             end
         end
 
@@ -207,7 +207,7 @@ function getall(vi::MixedVarInfo)
     if vi.is_uvi_empty[]
         return getall(vi.tvi)
     else
-        return vcat(getall(vi.tvi), getall(vi.uvi))
+        return vcat(getall(vi.tvi), copy.(getall(vi.uvi)))
     end
 end
 

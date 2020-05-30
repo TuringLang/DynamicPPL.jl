@@ -191,7 +191,10 @@ end
 # Get all vns of variables belonging to spl
 getvns(vi::AbstractVarInfo, spl::Sampler) = getvns(vi, spl.selector, Val(getspace(spl)))
 getvns(vi::AbstractVarInfo, spl::Union{SampleFromPrior, SampleFromUniform}) = getvns(vi, Selector(), Val(()))
-getvns(vi::UntypedVarInfo, s::Selector, space::Val) = view(vi.metadata.vns, getidcs(vi, s, space))
+function getvns(vi::UntypedVarInfo, s::Selector, space::Val)
+    idcs = getidcs(vi, s, space)
+    return vi.metadata.vns[idcs][.!(vi.metadata.flags["del"][idcs])]
+end
 function getvns(vi::TypedVarInfo, s::Selector, space::Val)
     return getvns(vi.metadata, getidcs(vi, s, space))
 end
@@ -199,7 +202,7 @@ end
 @generated function getvns(metadata, idcs::NamedTuple{names}) where {names}
     exprs = []
     for f in names
-        push!(exprs, :($f = metadata.$f.vns[idcs.$f]))
+        push!(exprs, :($f = metadata.$f.vns[idcs.$f][.!(metadata.$f.flags["del"][idcs.$f])]))
     end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
