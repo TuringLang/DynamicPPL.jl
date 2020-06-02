@@ -48,6 +48,8 @@ function TypedVarInfo(vi::MixedVarInfo)
     end
 end
 
+getinferred(vi::MixedVarInfo) = getinferred(vi.tvi)
+
 function Base.merge(t1::MixedVarInfo, t2::MixedVarInfo)
     return MixedVarInfo(merge(TypedVarInfo(t1), TypedVarInfo(t2)), VarInfo(), Ref(true))
 end

@@ -79,3 +79,5 @@ function AbstractMCMC.step!(
     model(sampler.vi, sampler)
     return sampler.vi
 end
+getinferred(spl::Sampler) = getinferred(spl.state.vi)
+Base.empty!(spl::Sampler) = empty!(spl.state.vi)

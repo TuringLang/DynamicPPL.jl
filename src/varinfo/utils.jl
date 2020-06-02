@@ -7,6 +7,8 @@ getmode(vi::VarInfo) = vi.mode
 issynced(vi::VarInfo) = vi.synced[]
 setsynced!(vi::VarInfo, b::Bool) = vi.synced[] = b
 value(x) = x
+getinferred(vi::TypedVarInfo) = keys(vi.metadata)
+getinferred(::UntypedVarInfo) = ()
 
 Base.merge(t::AbstractVarInfo) = t
 function Base.merge(

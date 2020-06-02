@@ -45,6 +45,7 @@ reset_num_produce!(vi::ThreadSafeVarInfo) = reset_num_produce!(vi.varinfo)
 set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n)
 
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
+getinferred(vi::ThreadSafeVarInfo) = getinferred(vi.varinfo)
 
 function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName; overwrite=false)
     setgid!(vi.varinfo, gid, vn; overwrite=overwrite)
