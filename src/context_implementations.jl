@@ -392,7 +392,7 @@ function dot_tilde(ctx::LikelihoodContext, sampler, right, left, vi)
     return _dot_tilde(sampler, right, left, vi)
 end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, left, vi)
+    return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
 end
 
 """
