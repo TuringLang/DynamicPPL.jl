@@ -46,6 +46,22 @@ include(dir*"/test/test_utils/AllUtils.jl")
                 @test all(meta.vals[range] .== fmeta.vals[trange])
             end
         end
+
+        contexts = [
+            DynamicPPL.DefaultContext(),
+            DynamicPPL.MiniBatchContext(DynamicPPL.DefaultContext(), 1.),
+            DynamicPPL.LikelihoodContext(),
+            DynamicPPL.PriorContext()
+        ]
+        vis = map(contexts) do ctx
+            VarInfo(model, ctx)
+        end
+
+        vns = fieldnames(typeof(first(vis).metadata)) # default context
+        for (vi, ctx) in zip(vis, contexts)
+            vns_ctx = fieldnames(typeof(vi.metadata))
+            @test vns_ctx == vns
+        end
     end
     @testset "Base" begin
         # Test Base functions:
