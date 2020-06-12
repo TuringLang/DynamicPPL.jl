@@ -1,112 +1,70 @@
 """
-    struct ModelGen{G, defaultnames, Tdefaults}
-        generator::G
-        defaults::Tdefaults
-    end
-
-A `ModelGen` struct with model generator function of type `G`, and default arguments `defaultnames`
-with values `Tdefaults`.
-"""
-struct ModelGen{G, argnames, defaultnames, Tdefaults}
-    generator::G
-    defaults::NamedTuple{defaultnames, Tdefaults}
-
-    function ModelGen{argnames}(
-        generator::G,
-        defaults::NamedTuple{defaultnames, Tdefaults}
-    ) where {G, argnames, defaultnames, Tdefaults}
-        return new{G, argnames, defaultnames, Tdefaults}(generator, defaults)
-    end
-end
-
-(m::ModelGen)(args...; kwargs...) = m.generator(args...; kwargs...)
-
-
-"""
-    getdefaults(modelgen::ModelGen)
-
-Get a named tuple of the default argument values defined for a model defined by a generating function.
-"""
-getdefaults(modelgen::ModelGen) = modelgen.defaults
-
-"""
-    getargnames(modelgen::ModelGen)
-
-Get a tuple of the argument names of the `modelgen`.
-"""
-getargnames(model::ModelGen{_G, argnames}) where {argnames, _G} = argnames
-
-
-
-"""
-    struct Model{F, argnames, Targs, missings}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
         f::F
-        args::NamedTuple{argnames, Targs}
-        modelgen::Tgen
+        args::NamedTuple{argnames,Targs}
+        defaults::NamedTuple{defaultnames,Tdefaults}
     end
 
-A `Model` struct with model evaluation function of type `F`, arguments names `argnames`, arguments
-types `Targs`, missing arguments `missings`, and corresponding model generator. `argnames` and
-`missings` are tuples of symbols, e.g. `(:a, :b)`.  An argument with a type of `Missing` will be in
-`missings` by default.  However, in non-traditional use-cases `missings` can be defined differently.
-All variables in `missings` are treated as random variables rather than observations.
+A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
+types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, and missing
+arguments `missings`.
 
-# Example
+Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
+
+An argument with a type of `Missing` will be in `missings` by default. However, in
+non-traditional use-cases `missings` can be defined differently. All variables in `missings`
+are treated as random variables rather than observations.
+
+The default arguments are used internally when constructing instances of the same model with
+different arguments.
+
+# Examples
 
 ```julia
 julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(),(:x, :y),Tuple{Float64,Float64}}((x = 1.0, y = 2.0))
+Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
 
-julia> Model{(:y,)}(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:y,),(:x, :y),Tuple{Float64,Float64}}((x = 1.0, y = 2.0))
+julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
+Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+
+julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,))
+Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F, argnames, Targs, missings, Tgen} <: AbstractModel
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
     f::F
-    args::NamedTuple{argnames, Targs}
-    modelgen::Tgen
+    args::NamedTuple{argnames,Targs}
+    defaults::NamedTuple{defaultnames,Tdefaults}
 
     """
-        Model{missings}(f, args::NamedTuple, modelgen::ModelGen)
+        Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
 
-    Create a model with evalutation function `f` and missing arguments overwritten by `missings`.
+    Create a model with evaluation function `f` and missing arguments overwritten by `missings`.
     """
     function Model{missings}(
         f::F,
-        args::NamedTuple{argnames, Targs},
-        modelgen::Tgen
-    ) where {missings, F, argnames, Targs, Tgen<:ModelGen}
-        return new{F, argnames, Targs, missings, Tgen}(f, args, modelgen)
+        args::NamedTuple{argnames,Targs},
+        defaults::NamedTuple{defaultnames,Tdefaults},
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(f, args, defaults)
     end
 end
 
 """
-    Model(f, args::NamedTuple, modelgen::ModelGen)
+    Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-    Create a model with evalutation function `f` and missing arguments deduced from `args`.
+Create a model with evaluation function `f` and missing arguments deduced from `args`.
+
+Default arguments `defaults` are used internally when constructing instances of the same
+model with different arguments.
 """
 @generated function Model(
     f::F,
-    args::NamedTuple{argnames, Targs},
-    modelgen::ModelGen{_G, argnames}
-) where {F, argnames, Targs, _G}
+    args::NamedTuple{argnames,Targs},
+    defaults::NamedTuple = NamedTuple(),
+) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(f, args, modelgen))
-end
-
-
-"""
-    Model{missings}(modelgen::ModelGen, args::NamedTuple)
-
-Create a copy of the model described by `modelgen(args...)`, with missing arguments 
-overwritten by `missings`.
-"""
-function Model{missings}(
-    modelgen::ModelGen,
-    args::NamedTuple{argnames, Targs}
-) where {missings, argnames, Targs}
-    model = modelgen(args...)
-    return Model{missings}(model.f, args, modelgen)
+    return :(Model{$missings}(f, args, defaults))
 end
 
 """
@@ -184,7 +142,7 @@ end
 
 Get a tuple of the argument names of the `model`.
 """
-getargnames(model::Model{_F, argnames}) where {argnames, _F} = argnames
+getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
 
 
 """
@@ -192,18 +150,10 @@ getargnames(model::Model{_F, argnames}) where {argnames, _F} = argnames
 
 Get a tuple of the names of the missing arguments of the `model`.
 """
-getmissings(model::Model{_F, _a, _T, missings}) where {missings, _F, _a, _T} = missings
+getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
 getmissing(model::Model) = getmissings(model)
 @deprecate getmissing(model) getmissings(model)
-
-
-"""
-    getgenerator(model::Model)
-
-Get the model generator associated with `model`.
-"""
-getgenerator(model::Model) = model.modelgen
 
 """
     logjoint(model::Model, varinfo::AbstractVarInfo)

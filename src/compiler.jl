@@ -330,7 +330,7 @@ function build_output(model_info)
     # Where parameters
     whereparams = model_info[:whereparams]
     # Model generator name
-    model_gen = model_info[:name]
+    model = model_info[:name]
     # Main body of the model
     main_body = model_info[:main_body]
 
@@ -340,26 +340,26 @@ function build_output(model_info)
               :($var = $(DynamicPPL.matchingvalue)(_sampler, _varinfo, _model.args.$var)))
     end
 
-    @gensym(evaluator, generator)
-    generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
-    model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
+    model_kwform = isempty(args) ? () : (:($model(;$(args...)) = $model($(arg_syms...))),)
+    @gensym(evaluator)
 
     return quote
-        function $evaluator(
-            _rng::$(Random.AbstractRNG),
-            _model::$(DynamicPPL.Model),
-            _varinfo::$(DynamicPPL.AbstractVarInfo),
-            _sampler::$(DynamicPPL.AbstractSampler),
-            _context::$(DynamicPPL.AbstractContext),
-        )
-            $unwrap_data_expr
-            $main_body
+        $(Base).@__doc__ function $model($(args...))
+            $evaluator = let
+                function (
+                    _rng::$(Random.AbstractRNG),
+                    _model::$(DynamicPPL.Model),
+                    _varinfo::$(DynamicPPL.AbstractVarInfo),
+                    _sampler::$(DynamicPPL.AbstractSampler),
+                    _context::$(DynamicPPL.AbstractContext),
+                )
+                    $unwrap_data_expr
+                    $main_body
+                end
+            end
+            return $(DynamicPPL.Model)($evaluator, $args_nt, $defaults_nt)
         end
-
-        $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
-        $(generator_kw_form...)
-
-        $(Base).@__doc__ $model_gen = $model_gen_constructor
+        $(model_kwform...)
     end
 end
 
