@@ -177,7 +177,7 @@ function dot_tilde(
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(rng, sampler, NoDist(dist), left, vns, vi)
+    return _dot_tilde(rng, sampler, NoDist.(dist), left, vns, vi)
 end
 function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
     return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
@@ -392,7 +392,7 @@ function dot_tilde(ctx::LikelihoodContext, sampler, right, left, vi)
     return _dot_tilde(sampler, right, left, vi)
 end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, left, vi)
+    return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
 end
 
 """
