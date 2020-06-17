@@ -164,7 +164,7 @@ See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     model(varinfo, SampleFromPrior(), DefaultContext())
-	  return getlogp(varinfo)
+    return getlogp(varinfo)
 end
 
 """
@@ -176,7 +176,7 @@ See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
     model(varinfo, SampleFromPrior(), PriorContext())
-	  return getlogp(varinfo)
+    return getlogp(varinfo)
 end
 
 """
@@ -188,5 +188,5 @@ See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     model(varinfo, SampleFromPrior(), LikelihoodContext())
-	  return getlogp(varinfo)
+    return getlogp(varinfo)
 end
