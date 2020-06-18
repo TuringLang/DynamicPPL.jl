@@ -34,8 +34,8 @@ end
         check_numerical(res2, [:y], [0.5], atol=0.1)
 
         # Check that all xs are 1.
-        @test all(isone, res1[:x].value)
-        @test all(isone, res2[:x].value)
+        @test all(isone, res1[:x])
+        @test all(isone, res2[:x])
     end
     @testset "beta binomial" begin
         prior = Beta(2,2)
@@ -345,13 +345,13 @@ end
         res_smc = sample(test(), smc, 1000)
         res_pg = sample(test(), pg, 100)
 
-        @test all(isone, res_is[:x].value)
+        @test all(isone, res_is[:x])
         @test res_is.logevidence ≈ 2 * log(0.5)
 
-        @test all(isone, res_smc[:x].value)
+        @test all(isone, res_smc[:x])
         @test res_smc.logevidence ≈ 2 * log(0.5)
 
-        @test all(isone, res_pg[:x].value)
+        @test all(isone, res_pg[:x])
     end
     @testset "sample" begin
         alg = Gibbs(HMC(0.2, 3, :m), PG(10, :s))
