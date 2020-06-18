@@ -112,7 +112,7 @@ function evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     if has_eval_num(sampler)
         sampler.state.eval_num += 1
     end
-    return model.f(rng, model, varinfo, sampler, context)
+    return _evaluate(rng, model, varinfo, sampler, context)
 end
 
 """
@@ -132,9 +132,19 @@ function evaluate_threadsafe(rng, model, varinfo, sampler, context)
         sampler.state.eval_num += 1
     end
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = model.f(rng, model, wrapper, sampler, context)
+    result = _evaluate(rng, model, wrapper, sampler, context)
     setlogp!(varinfo, getlogp(wrapper))
     return result
+end
+
+"""
+    _evaluate(rng, model::Model, varinfo, sampler, context)
+
+Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
+"""
+@generated function _evaluate(rng, model::Model{_F,argnames}, varinfo, sampler, context) where {_F,argnames}
+    unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
+    return :(model.f(rng, model, varinfo, sampler, context, $(unwrap_args...)))
 end
 
 """

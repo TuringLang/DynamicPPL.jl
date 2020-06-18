@@ -80,11 +80,27 @@ end
 Builds the `model_info` dictionary from the model's expression.
 """
 function build_model_info(input_expr)
-    # Extract model name (:name), arguments (:args), (:kwargs) and definition (:body)
-    modeldef = MacroTools.splitdef(input_expr)
-    # Function body of the model is empty
+    # Break up the model definition and extract its name, arguments, and function body
+    modeldef = ExprTools.splitdef(input_expr)
+
+    # Print a warning if function body of the model is empty
     warn_empty(modeldef[:body])
-    # Construct model_info dictionary
+
+    ## Construct model_info dictionary
+
+    # Shortcut if the model does not have any arguments
+    if !haskey(modeldef, :args)
+        modelinfo = Dict(
+            :name => modeldef[:name],
+            :main_body => modeldef[:body],
+            :arg_syms => [],
+            :args_nt => NamedTuple(),
+            :defaults_nt => NamedTuple(),
+            :args => [],
+            :modeldef => modeldef,
+        )
+        return modelinfo
+    end
 
     # Extracting the argument symbols from the model definition
     arg_syms = map(modeldef[:args]) do arg
@@ -158,7 +174,7 @@ function build_model_info(input_expr)
         :args_nt => args_nt,
         :defaults_nt => defaults_nt,
         :args => args,
-        :whereparams => modeldef[:whereparams]
+        :modeldef => modeldef,
     )
 
     return model_info
@@ -318,45 +334,60 @@ hasmissing(T::Type) = false
 Builds the output expression.
 """
 function build_output(model_info)
-    # Arguments with default values
-    args = model_info[:args]
-    # Argument symbols without default values
-    arg_syms = model_info[:arg_syms]
-    # Arguments namedtuple
-    args_nt = model_info[:args_nt]
-    # Default values of the arguments
-    # Arguments namedtuple
-    defaults_nt = model_info[:defaults_nt]
-    # Where parameters
-    whereparams = model_info[:whereparams]
-    # Model generator name
-    model = model_info[:name]
-    # Main body of the model
-    main_body = model_info[:main_body]
+    ## Build the anonymous evaluator from the user-provided model definition
 
-    unwrap_data_expr = Expr(:block)
-    for var in arg_syms
-        push!(unwrap_data_expr.args,
-              :($var = $(DynamicPPL.matchingvalue)(_sampler, _varinfo, _model.args.$var)))
+    # Remove the name and use `function (....)` syntax
+    modeldef = model_info[:modeldef]
+    delete!(modeldef, :name)
+    modeldef[:head] = :function
+
+    # Define the input arguments (positional + keyword arguments), without default values
+    origargs = map(vcat(get(modeldef, :args, Any[]), get(modeldef, :kwargs, Any[]))) do arg
+        Meta.isexpr(arg, :kw) && length(arg.args) >= 1 ? arg.args[1] : arg
     end
 
-    model_kwform = isempty(args) ? () : (:($model(;$(args...)) = $model($(arg_syms...))),)
-    @gensym(evaluator)
+    # Add our own arguments
+    newargs = Any[:(_rng::$(Random.AbstractRNG)),
+                  :(_model::$(DynamicPPL.Model)),
+                  :(_varinfo::$(DynamicPPL.AbstractVarInfo)),
+                  :(_sampler::$(DynamicPPL.AbstractSampler)),
+                  :(_context::$(DynamicPPL.AbstractContext))]
+    combinedargs = vcat(newargs, origargs)
 
+    # Delete keyword arguments and update positional arguments
+    delete!(modeldef, :kwargs)
+    modeldef[:args] = combinedargs
+
+    # Replace function body
+    modeldef[:body] = model_info[:main_body]
+
+    ## Extract other relevant information
+
+    # All arguments with default values (if existent)
+    args = model_info[:args]
+    # Named tuple of all arguments
+    args_nt = model_info[:args_nt]
+
+    # Named tuple of the default values of the arguments
+    defaults_nt = model_info[:defaults_nt]
+
+    # Model name
+    model = model_info[:name]
+
+    # Define model definition with only keyword arguments
+    if isempty(args)
+        model_kwform = ()
+    else
+        # All arguments without default values (i.e., only symbols)
+        arg_syms = model_info[:arg_syms]
+
+        model_kwform = (:($model(; $(args...)) = $model($(arg_syms...))),)
+    end
+
+    @gensym(evaluator)
     return quote
         $(Base).@__doc__ function $model($(args...))
-            $evaluator = let
-                function (
-                    _rng::$(Random.AbstractRNG),
-                    _model::$(DynamicPPL.Model),
-                    _varinfo::$(DynamicPPL.AbstractVarInfo),
-                    _sampler::$(DynamicPPL.AbstractSampler),
-                    _context::$(DynamicPPL.AbstractContext),
-                )
-                    $unwrap_data_expr
-                    $main_body
-                end
-            end
+            $evaluator = $(ExprTools.combinedef(modeldef))
             return $(DynamicPPL.Model)($evaluator, $args_nt, $defaults_nt)
         end
         $(model_kwform...)

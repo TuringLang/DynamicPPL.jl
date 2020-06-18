@@ -6,6 +6,7 @@ using Bijectors
 using MacroTools
 
 import AbstractMCMC
+import ExprTools
 import ZygoteRules
 
 import Random
