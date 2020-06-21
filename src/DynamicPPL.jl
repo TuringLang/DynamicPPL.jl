@@ -93,7 +93,9 @@ export  AbstractVarInfo,
         @logprob_str,
 # Convenience functions
         logprior,
-        logjoint
+        logjoint,
+# Convenience macros
+        @addlogprob!
 
 # Reexport
 using Distributions: loglikelihood
