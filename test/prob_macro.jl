@@ -37,7 +37,7 @@ Random.seed!(129)
 
         chain = sample(demo(xval), IS(), iters; save_state = true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
-        lps = logpdf.(Normal.(vec(chain["m"].value), 1), xval)
+        lps = logpdf.(Normal.(vec(chain["m"]), 1), xval)
         @test logprob"x = xval | chain = chain" == lps
         @test logprob"x = xval | chain = chain2, model = demo" == lps
         varinfo = VarInfo(demo(xval))
@@ -72,7 +72,11 @@ Random.seed!(129)
 
         chain = sample(demo(xval), HMC(0.5, 1), iters; save_state = true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
-        lps = like.([[chain["m[$i]"].value[j] for i in 1:n] for j in 1:iters], Ref(xval))
+
+        names = namesingroup(chain, "m")
+        lps = map(1:iters) do iter
+            like([chain[iter, name, 1] for name in names], xval)
+        end
         @test logprob"x = xval | chain = chain" == lps
         @test logprob"x = xval | chain = chain2, model = demo" == lps
         @test logprob"x = xval | chain = chain, varinfo = varinfo" == lps

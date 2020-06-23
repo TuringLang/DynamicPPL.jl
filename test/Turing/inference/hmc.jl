@@ -78,6 +78,7 @@ mutable struct HMC{AD, space, metricT <: AHMC.AbstractMetric} <: StaticHamiltoni
 end
 
 alg_str(::Sampler{<:Hamiltonian}) = "HMC"
+isgibbscomponent(::Hamiltonian) = true
 
 HMC(args...; kwargs...) = HMC{ADBackend()}(args...; kwargs...)
 function HMC{AD}(ϵ::Float64, n_leapfrog::Int, ::Type{metricT}, space::Tuple) where {AD, metricT <: AHMC.AbstractMetric}
@@ -122,7 +123,7 @@ function AbstractMCMC.sample_init!(
     set_resume!(spl; resume_from=resume_from, kwargs...)
 
     # Get `init_theta`
-    initialize_parameters!(spl; verbose=verbose, kwargs...)
+    initialize_parameters!(spl; init_theta=init_theta, verbose=verbose, kwargs...)
     if init_theta !== nothing
         # Doesn't support dynamic models
         link!(spl.state.vi, spl)
@@ -482,7 +483,7 @@ end
 Generate a function that takes `θ` and returns logpdf at `θ` for the model specified by
 `(vi, spl, model)`.
 """
-function gen_logπ(vi, spl::Sampler, model)
+function gen_logπ(vi, spl::AbstractSampler, model)
     function logπ(x)::Float64
         x_old, lj_old = vi[spl], getlogp(vi)
         vi[spl] = x
