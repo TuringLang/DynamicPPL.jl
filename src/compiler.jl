@@ -69,7 +69,7 @@ function model(expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
-    modelinfo[:main_body] = generate_mainbody(modelinfo[:main_body], modelinfo[:args], warn)
+    modelinfo[:modelbody] = generate_mainbody(modelinfo[:body], modelinfo[:modelargs], warn)
 
     return build_output(modelinfo)
 end
@@ -87,7 +87,8 @@ function build_model_info(input_expr)
     # Construct model_info dictionary
 
     # Extracting the argument symbols from the model definition
-    arg_syms = map(modeldef[:args]) do arg
+    combinedargs = vcat(modeldef[:args], modeldef[:kwargs])
+    arg_syms = map(combinedargs) do arg
         # @model demo(x)
         if (arg isa Symbol)
             arg
@@ -113,7 +114,7 @@ function build_model_info(input_expr)
         )
         args_nt = Expr(:call, :($namedtuple), nt_type, Expr(:tuple, arg_syms...))
     end
-    args = map(modeldef[:args]) do arg
+    args = map(combinedargs) do arg
         if (arg isa Symbol)
             arg
         elseif MacroTools.@capture(arg, ::Type{T_} = Tval_)
@@ -134,7 +135,7 @@ function build_model_info(input_expr)
 
     default_syms = []
     default_vals = [] 
-    foreach(modeldef[:args]) do arg
+    foreach(combinedargs) do arg
         # @model demo(::Type{T}) where {T}
         if MacroTools.@capture(arg, ::Type{T_} = Tval_)
             push!(default_syms, T)
@@ -151,15 +152,13 @@ function build_model_info(input_expr)
     end
     defaults_nt = to_namedtuple_expr(default_syms, default_vals)
 
-    model_info = Dict(
-        :name => modeldef[:name],
-        :main_body => modeldef[:body],
-        :arg_syms => arg_syms,
-        :args_nt => args_nt,
-        :defaults_nt => defaults_nt,
-        :args => args,
-        :whereparams => modeldef[:whereparams]
+    modelderiv = Dict(
+        :modelargs => args,
+        :modelargsyms => arg_syms,
+        :modelargsnt => args_nt,
+        :modeldefaultsnt => defaults_nt,
     )
+    model_info = merge(modeldef, modelderiv)
 
     return model_info
 end
@@ -319,20 +318,18 @@ Builds the output expression.
 """
 function build_output(model_info)
     # Arguments with default values
-    args = model_info[:args]
+    args = model_info[:modelargs]
     # Argument symbols without default values
-    arg_syms = model_info[:arg_syms]
+    arg_syms = model_info[:modelargsyms]
     # Arguments namedtuple
-    args_nt = model_info[:args_nt]
+    args_nt = model_info[:modelargsnt]
     # Default values of the arguments
     # Arguments namedtuple
-    defaults_nt = model_info[:defaults_nt]
-    # Where parameters
-    whereparams = model_info[:whereparams]
+    defaults_nt = model_info[:modeldefaultsnt]
     # Model generator name
     model_gen = model_info[:name]
     # Main body of the model
-    main_body = model_info[:main_body]
+    main_body = model_info[:modelbody]
 
     unwrap_data_expr = Expr(:block)
     for var in arg_syms
@@ -341,8 +338,12 @@ function build_output(model_info)
     end
 
     @gensym(evaluator, generator)
-    generator_kw_form = isempty(args) ? () : (:($generator(;$(args...)) = $generator($(arg_syms...))),)
     model_gen_constructor = :($(DynamicPPL.ModelGen){$(Tuple(arg_syms))}($generator, $defaults_nt))
+
+    # construct the user-facing model generator
+    model_info[:name] = generator
+    model_info[:body] = :(return $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor))
+    generator_expr = MacroTools.combinedef(model_info)
 
     return quote
         function $evaluator(
@@ -356,8 +357,7 @@ function build_output(model_info)
             $main_body
         end
 
-        $generator($(args...)) = $(DynamicPPL.Model)($evaluator, $args_nt, $model_gen_constructor)
-        $(generator_kw_form...)
+        $(generator_expr)
 
         $(Base).@__doc__ $model_gen = $model_gen_constructor
     end
