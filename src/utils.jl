@@ -10,18 +10,11 @@ Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` o
 """
 getargs_dottilde(x) = nothing
 function getargs_dottilde(expr::Expr)
-    # Check if the expression is of the form `L .~ R`.
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :.~
-        return expr.args[2], expr.args[3]
+    return MacroTools.@match expr begin
+        (.~)(L_, R_) => (L, R)
+        (~).(L_, R_) => (L, R)
+        x_ => nothing
     end
-
-    # Check if the expression is of the form `(~).(L, R)`.
-    if Meta.isexpr(expr, :., 2) && expr.args[1] === :~ &&
-        Meta.isexpr(expr.args[2], :tuple, 2)
-        return expr.args[2].args[1], expr.args[2].args[2]
-    end
-
-    return
 end
 
 """
@@ -32,10 +25,10 @@ otherwise.
 """
 getargs_tilde(x) = nothing
 function getargs_tilde(expr::Expr)
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :~
-        return expr.args[2], expr.args[3]
+    return MacroTools.@match expr begin
+        (~)(L_, R_) => (L, R)
+        x_ => nothing
     end
-    return
 end
 
 ############################################
