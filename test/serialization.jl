@@ -3,10 +3,12 @@
 
     @testset "saving and loading" begin
         # Save model.
-        serialize("gdemo_default.jls", gdemo_default)
+        open("gdemo_default.jls", "w") do io
+            serialize(io, gdemo_default)
+        end
 
         # Sample from deserialized model.
-        gdemo_default_copy = deserialize("gdemo_default.jls")
+        gdemo_default_copy = open(deserialize, "gdemo_default.jls", "r")
         samples = [gdemo_default_copy() for _ in 1:1_000]
         samples_s = first.(samples)
         samples_m = last.(samples)
