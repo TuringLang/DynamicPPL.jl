@@ -3,14 +3,12 @@ name: DynamicPPL-CI
 on:
   push:
     branches:
-      - master
-      - dev
       # This is where pull requests from "bors r+" are built.
       - staging
       # This is where pull requests from "bors try" are built.
       - trying
-  # Enable building pull requests.
-  pull_request:
+      # Build the master branch.
+      - master
 
 jobs:
   test:
