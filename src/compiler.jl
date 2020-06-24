@@ -306,12 +306,11 @@ hasmissing(T::Type) = false
 Builds the output expression.
 """
 function build_output(modelinfo)
-    ## Build the evaluator from the user-provided model definition
+    ## Build the anonymous evaluator from the user-provided model definition.
 
-    # Use a name that does not conflict with other variable names.
-    @gensym evaluator
+    # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
-    evaluatordef[:name] = evaluator
+    delete!(evaluatordef, :name)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -325,30 +324,30 @@ function build_output(modelinfo)
         modelinfo[:allargs_exprs],
     )
 
-    # Delete keyword arguments.
+    # Delete the keyword arguments.
     evaluatordef[:kwargs] = []
 
-    # Replace function body.
+    # Replace the user-provided function body with the version created by DynamicPPL.
     evaluatordef[:body] = modelinfo[:body]
 
     ## Build the model function.
 
-    # Named tuple expression of all arguments.
+    # Extract the named tuple expression of all arguments and the default values.
     allargs_namedtuple = modelinfo[:allargs_namedtuple]
-
-    # Named tuple expression of the default values of the arguments.
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
     # Update the function body of the user-specified model.
+    # We use a name for the anonymous evaluator that does not conflict with other variables.
     modeldef = modelinfo[:modeldef]
+    @gensym evaluator
     modeldef[:body] = quote
-        $(MacroTools.combinedef(evaluatordef))
-        return $(DynamicPPL.Model)($evaluator, $allargs_namedtuple, $defaults_namedtuple)
+        $evaluator = $(combinedef_anonymous(evaluatordef))
+        return $(DynamicPPL.Model)(
+            $evaluator, $allargs_namedtuple, $defaults_namedtuple
+        )
     end
 
-    return quote
-        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
-    end
+    return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
 end
 
 
