@@ -3,10 +3,9 @@ module DynamicPPL
 using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
-using MacroTools
 
 import AbstractMCMC
-import ExprTools
+import MacroTools
 import ZygoteRules
 
 import Random

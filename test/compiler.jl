@@ -135,7 +135,22 @@ end
         end
         f1_mm = testmodel1(1., 10.)
         @test f1_mm() == (1, 10)
-        f1_mm = testmodel1(x1=1., x2=10.)
+
+        # alternatives with keyword arguments
+        testmodel1kw(; x1, x2) = testmodel1(x1, x2)
+        f1_mm = testmodel1kw(x1 = 1., x2 = 10.)
+        @test f1_mm() == (1, 10)
+
+        @model function testmodel2(; x1, x2)
+            s ~ InverseGamma(2,3)
+            m ~ Normal(0,sqrt(s))
+
+            x1 ~ Normal(m, sqrt(s))
+            x2 ~ Normal(m, sqrt(s))
+
+            return x1, x2
+        end
+        f1_mm = testmodel2(x1=1., x2=10.)
         @test f1_mm() == (1, 10)
 
         @info "Testing the compiler's ability to catch bad models..."
@@ -199,7 +214,7 @@ end
             x ~ Bernoulli(0.5)
             return x
         end
-        @test_throws UndefKeywordError testmodel()
+        @test_throws MethodError testmodel()
 
         # Test missing initialization for vector observation turned parameter
         @model testmodel(x) = begin
@@ -285,7 +300,7 @@ end
         chain = sample(gauss(x), PG(10), 10)
         chain = sample(gauss(x), SMC(), 10)
 
-        @model gauss2(x, ::Type{TV}=Vector{Float64}) where {TV} = begin
+        @model function gauss2(::Type{TV} = Vector{Float64}; x) where {TV}
             priors = TV(undef, 2)
             priors[1] ~ InverseGamma(2,3)         # s
             priors[2] ~ Normal(0, sqrt(priors[1])) # m
@@ -295,10 +310,11 @@ end
             priors
         end
 
-        chain = sample(gauss2(x), PG(10), 10)
-        chain = sample(gauss2(x=x, TV=Vector{Float64}), PG(10), 10)
-        chain = sample(gauss2(x), SMC(), 10)
-        chain = sample(gauss2(x=x, TV=Vector{Float64}), SMC(), 10)
+        chain = sample(gauss2(x = x), PG(10), 10)
+        chain = sample(gauss2(x = x), SMC(), 10)
+
+        chain = sample(gauss2(Vector{Float64}; x = x), PG(10), 10)
+        chain = sample(gauss2(Vector{Float64}; x = x), SMC(), 10)
     end
     @testset "new interface" begin
         obs = [0, 1, 0, 1, 1, 1, 1, 1, 1, 1]
@@ -513,7 +529,7 @@ end
         setchunksize(N)
         alg = HMC(0.01, 5)
         x = randn(1000)
-        @model vdemo1(::Type{T}=Float64) where {T} = begin
+        @model function vdemo1(::Type{T}=Float64) where {T}
             x = Vector{T}(undef, N)
             for i = 1:N
                 x[i] ~ Normal(0, sqrt(4))
@@ -522,7 +538,9 @@ end
 
         t_loop = @elapsed res = sample(vdemo1(), alg, 250)
         t_loop = @elapsed res = sample(vdemo1(Float64), alg, 250)
-        t_loop = @elapsed res = sample(vdemo1(T=Float64), alg, 250)
+
+        vdemo1kw(; T) = vdemo1(T)
+        t_loop = @elapsed res = sample(vdemo1kw(T = Float64), alg, 250)
 
         @model vdemo2(::Type{T}=Float64) where {T <: Real} = begin
             x = Vector{T}(undef, N)
@@ -531,7 +549,9 @@ end
 
         t_vec = @elapsed res = sample(vdemo2(), alg, 250)
         t_vec = @elapsed res = sample(vdemo2(Float64), alg, 250)
-        t_vec = @elapsed res = sample(vdemo2(T=Float64), alg, 250)
+
+        vdemo2kw(; T) = vdemo2(T)
+        t_vec = @elapsed res = sample(vdemo2kw(T = Float64), alg, 250)
 
         @model vdemo3(::Type{TV}=Vector{Float64}) where {TV <: AbstractVector} = begin
             x = TV(undef, N)
@@ -540,7 +560,9 @@ end
 
         sample(vdemo3(), alg, 250)
         sample(vdemo3(Vector{Float64}), alg, 250)
-        sample(vdemo3(TV=Vector{Float64}), alg, 250)
+
+        vdemo3kw(; T) = vdemo3(T)
+        sample(vdemo3kw(T = Vector{Float64}), alg, 250)
     end
     @testset "var name splitting" begin
         var_expr = :(x)

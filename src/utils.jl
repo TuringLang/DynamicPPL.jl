@@ -1,3 +1,7 @@
+# singleton for indicating if no default arguments are present
+struct NoDefault end
+const NO_DEFAULT = NoDefault()
+
 """
     getargs_dottilde(x)
 

@@ -49,17 +49,17 @@ Macro to specify a probabilistic model.
 If `warn` is `true`, a warning is displayed if internal variable names are used in the model
 definition.
 
-# Example
+# Examples
 
 Model definition:
 
 ```julia
-@model function model_generator(x = default_x, y)
+@model function model(x, y = 42)
     ...
 end
 ```
 
-To generate a `Model`, call `model_generator(x_value)`.
+To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 """
 macro model(expr, warn=true)
     esc(model(expr, warn))
@@ -69,7 +69,9 @@ function model(expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
-    modelinfo[:main_body] = generate_mainbody(modelinfo[:main_body], modelinfo[:args], warn)
+    modelinfo[:body] = generate_mainbody(
+        modelinfo[:modeldef][:body], modelinfo[:allargs_exprs], warn
+    )
 
     return build_output(modelinfo)
 end
@@ -81,7 +83,7 @@ Builds the `model_info` dictionary from the model's expression.
 """
 function build_model_info(input_expr)
     # Break up the model definition and extract its name, arguments, and function body
-    modeldef = ExprTools.splitdef(input_expr)
+    modeldef = MacroTools.splitdef(input_expr)
 
     # Print a warning if function body of the model is empty
     warn_empty(modeldef[:body])
@@ -89,95 +91,65 @@ function build_model_info(input_expr)
     ## Construct model_info dictionary
 
     # Shortcut if the model does not have any arguments
-    if !haskey(modeldef, :args)
+    if !haskey(modeldef, :args) && !haskey(modeldef, :kwargs)
         modelinfo = Dict(
-            :name => modeldef[:name],
-            :main_body => modeldef[:body],
-            :arg_syms => [],
-            :args_nt => NamedTuple(),
-            :defaults_nt => NamedTuple(),
-            :args => [],
+            :allargs_exprs => [],
+            :allargs_syms => [],
+            :allargs_namedtuple => NamedTuple(),
+            :defaults_namedtuple => NamedTuple(),
             :modeldef => modeldef,
         )
         return modelinfo
     end
 
-    # Extracting the argument symbols from the model definition
-    arg_syms = map(modeldef[:args]) do arg
-        # @model demo(x)
-        if (arg isa Symbol)
-            arg
-        # @model demo(::Type{T}) where {T}
-        elseif MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            T
-        # @model demo(x::T = 1)
-        elseif MacroTools.@capture(arg, x_::T_ = val_)
-            x
-        # @model demo(x = 1)
-        elseif MacroTools.@capture(arg, x_ = val_)
-            x
-        else
-            throw(ArgumentError("Unsupported argument $arg to the `@model` macro."))
-        end
-    end
-    if length(arg_syms) == 0
-        args_nt = :(NamedTuple())
-    else
-        nt_type = Expr(:curly, :NamedTuple, 
-            Expr(:tuple, QuoteNode.(arg_syms)...), 
-            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in arg_syms]...)
-        )
-        args_nt = Expr(:call, :($namedtuple), nt_type, Expr(:tuple, arg_syms...))
-    end
-    args = map(modeldef[:args]) do arg
-        if (arg isa Symbol)
-            arg
-        elseif MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            if in(T, modeldef[:whereparams])
-                S = :Any
-            else
-                ind = findfirst(modeldef[:whereparams]) do x
-                    MacroTools.@capture(x, T1_ <: S_) && T1 == T
-                end
-                ind !== nothing || throw(ArgumentError("Please make sure type parameters are properly used. Every `Type{T}` argument need to have `T` in the a `where` clause"))
-            end
-            Expr(:kw, :($T::Type{<:$S}), Tval)
-        else
-            arg
-        end
-    end
-    args_nt = to_namedtuple_expr(arg_syms)
+    # Extract the positional and keyword arguments from the model definition.
+    allargs = vcat(modeldef[:args], modeldef[:kwargs])
 
+    # Split the argument expressions and the default values.
+    allargs_exprs_defaults = map(allargs) do arg
+        MacroTools.@match arg begin
+            (x_ = val_) => (x, val)
+            x_ => (x, NO_DEFAULT)
+        end
+    end
+
+    # Extract the expressions of the arguments, without default values.
+    allargs_exprs = first.(allargs_exprs_defaults)
+
+    # Extract the names of the arguments.
+    allargs_syms = map(allargs_exprs_defaults) do (arg, _)
+        MacroTools.@match arg begin
+            (::Type{T_}) | (name_::Type{T_}) => T
+            name_::T_ => name
+            x_ => x
+        end
+    end
+
+    # Build named tuple expression of the argument symbols and variables of the same name.
+    allargs_namedtuple = to_namedtuple_expr(allargs_syms)
+
+    # Extract default values of the positional and keyword arguments.
     default_syms = []
-    default_vals = [] 
-    foreach(modeldef[:args]) do arg
-        # @model demo(::Type{T}) where {T}
-        if MacroTools.@capture(arg, ::Type{T_} = Tval_)
-            push!(default_syms, T)
-            push!(default_vals, Tval)
-        # @model demo(x::T = 1)
-        elseif MacroTools.@capture(arg, x_::T_ = val_)
-            push!(default_syms, x)
-            push!(default_vals, val)
-        # @model demo(x = 1)
-        elseif MacroTools.@capture(arg, x_ = val_)
-            push!(default_syms, x)
+    default_vals = []
+    for (sym, (expr, val)) in zip(allargs_syms, allargs_exprs_defaults)
+        if val !== NO_DEFAULT
+            push!(default_syms, sym)
             push!(default_vals, val)
         end
     end
-    defaults_nt = to_namedtuple_expr(default_syms, default_vals)
 
-    model_info = Dict(
-        :name => modeldef[:name],
-        :main_body => modeldef[:body],
-        :arg_syms => arg_syms,
-        :args_nt => args_nt,
-        :defaults_nt => defaults_nt,
-        :args => args,
+    # Build named tuple expression of the argument symbols with default values.
+    defaults_namedtuple = to_namedtuple_expr(default_syms, default_vals)
+
+    modelinfo = Dict(
+        :allargs_exprs => allargs_exprs,
+        :allargs_syms => allargs_syms,
+        :allargs_namedtuple => allargs_namedtuple,
+        :defaults_namedtuple => defaults_namedtuple,
         :modeldef => modeldef,
     )
 
-    return model_info
+    return modelinfo
 end
 
 """
@@ -329,68 +301,53 @@ hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
 """
-    build_output(model_info)
+    build_output(modelinfo)
 
 Builds the output expression.
 """
-function build_output(model_info)
-    ## Build the anonymous evaluator from the user-provided model definition
+function build_output(modelinfo)
+    ## Build the evaluator from the user-provided model definition
 
-    # Remove the name and use `function (....)` syntax
-    modeldef = model_info[:modeldef]
-    delete!(modeldef, :name)
-    modeldef[:head] = :function
+    # Use a name that does not conflict with other variable names.
+    @gensym evaluator
+    evaluatordef = deepcopy(modelinfo[:modeldef])
+    evaluatordef[:name] = evaluator
 
-    # Define the input arguments (positional + keyword arguments), without default values
-    origargs = map(vcat(get(modeldef, :args, Any[]), get(modeldef, :kwargs, Any[]))) do arg
-        Meta.isexpr(arg, :kw) && length(arg.args) >= 1 ? arg.args[1] : arg
+    # Add the internal arguments to the user-specified arguments (positional + keywords).
+    evaluatordef[:args] = vcat(
+        [
+            :(_rng::$(Random.AbstractRNG)),
+            :(_model::$(DynamicPPL.Model)),
+            :(_varinfo::$(DynamicPPL.AbstractVarInfo)),
+            :(_sampler::$(DynamicPPL.AbstractSampler)),
+            :(_context::$(DynamicPPL.AbstractContext)),
+        ],
+        modelinfo[:allargs_exprs],
+    )
+
+    # Delete keyword arguments.
+    evaluatordef[:kwargs] = []
+
+    # Replace function body.
+    evaluatordef[:body] = modelinfo[:body]
+
+    ## Build the model function.
+
+    # Named tuple expression of all arguments.
+    allargs_namedtuple = modelinfo[:allargs_namedtuple]
+
+    # Named tuple expression of the default values of the arguments.
+    defaults_namedtuple = modelinfo[:defaults_namedtuple]
+
+    # Update the function body of the user-specified model.
+    modeldef = modelinfo[:modeldef]
+    modeldef[:body] = quote
+        $(MacroTools.combinedef(evaluatordef))
+        return $(DynamicPPL.Model)($evaluator, $allargs_namedtuple, $defaults_namedtuple)
     end
 
-    # Add our own arguments
-    newargs = Any[:(_rng::$(Random.AbstractRNG)),
-                  :(_model::$(DynamicPPL.Model)),
-                  :(_varinfo::$(DynamicPPL.AbstractVarInfo)),
-                  :(_sampler::$(DynamicPPL.AbstractSampler)),
-                  :(_context::$(DynamicPPL.AbstractContext))]
-    combinedargs = vcat(newargs, origargs)
-
-    # Delete keyword arguments and update positional arguments
-    delete!(modeldef, :kwargs)
-    modeldef[:args] = combinedargs
-
-    # Replace function body
-    modeldef[:body] = model_info[:main_body]
-
-    ## Extract other relevant information
-
-    # All arguments with default values (if existent)
-    args = model_info[:args]
-    # Named tuple of all arguments
-    args_nt = model_info[:args_nt]
-
-    # Named tuple of the default values of the arguments
-    defaults_nt = model_info[:defaults_nt]
-
-    # Model name
-    model = model_info[:name]
-
-    # Define model definition with only keyword arguments
-    if isempty(args)
-        model_kwform = ()
-    else
-        # All arguments without default values (i.e., only symbols)
-        arg_syms = model_info[:arg_syms]
-
-        model_kwform = (:($model(; $(args...)) = $model($(arg_syms...))),)
-    end
-
-    @gensym(evaluator)
     return quote
-        $(Base).@__doc__ function $model($(args...))
-            $evaluator = $(ExprTools.combinedef(modeldef))
-            return $(DynamicPPL.Model)($evaluator, $args_nt, $defaults_nt)
-        end
-        $(model_kwform...)
+        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
 end
 
