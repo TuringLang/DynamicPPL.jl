@@ -187,12 +187,13 @@ function Distributions.loglikelihood(
         # Element-wise likelihood for each value in chain
         chain = right.chain
         ctx = LikelihoodContext()
-        return map(1:length(chain)) do i
-            c = chain[i]
-            _setval!(vi, c)
+        iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+        logps = map(iters) do (isample, ichain)
+            setval!(vi, chain, isample, ichain)
             model(vi, SampleFromPrior(), ctx)
             return getlogp(vi)
         end
+        return reshape(logps, size(chain, 1), size(chain, 3))
     else
         # Likelihood without chain
         # Rhs values are used in the context
@@ -226,17 +227,4 @@ end
     # `args` is inserted as properly typed NamedTuple expression; 
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return :(Model{$(Tuple(missings))}(modelgen, $(to_namedtuple_expr(argnames, argvals))))
-end
-
-_setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
-@generated function _setval!(md::NamedTuple{names}, vi, c) where {names}
-    return Expr(:block, map(names) do n
-        quote
-            for vn in md.$n.vns
-                val = vec(c[Symbol(vn)])
-                setval!(vi, val, vn)
-                settrans!(vi, false, vn)
-            end
-        end
-    end...)
 end

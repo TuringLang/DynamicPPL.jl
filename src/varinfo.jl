@@ -279,7 +279,7 @@ Set the value(s) of `vn` in the metadata of `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-setval!(vi::VarInfo, val, vn::VarName) = getmetadata(vi, vn).vals[getrange(vi, vn)] = val
+setval!(vi::VarInfo, val, vn::VarName) = getmetadata(vi, vn).vals[getrange(vi, vn)] = [val;]
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
@@ -1142,5 +1142,51 @@ and `vn`'s symbol is in the space of `spl`.
 function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
+    end
+end
+
+setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
+function setval!(vi::AbstractVarInfo, chains::AbstractChains, isample::Int, ichain::Int)
+    return _setval!(vi, chains.value[isample, :, ichain], keys(chains))
+end
+
+function _setval!(vi::AbstractVarInfo, values, keys)
+    for vn in Base.keys(vi)
+        _setval_kernel!(vi, vn, values, keys)
+    end
+    vi
+end
+_setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, values, keys)
+@generated function _typed_setval!(
+    vi::TypedVarInfo,
+    metadata::NamedTuple{names},
+    values,
+    keys
+) where {names}
+    updates = map(names) do n
+        quote
+            for vn in metadata.$n.vns
+                _setval_kernel!(vi, vn, values, keys)
+            end
+        end
+    end
+    
+    return quote
+        $(updates...)
+        return vi
+    end
+end
+
+function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+    sym = Symbol(vn)
+    regex = Regex("^$sym\$|^$sym\\[")
+    indices = findall(x -> match(regex, string(x)) !== nothing, keys)
+    if !isempty(indices)
+        sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
+        val = mapreduce(vcat, sorted_indices) do i
+            values[i]
+        end
+        setval!(vi, val, vn)
+        settrans!(vi, false, vn)
     end
 end
