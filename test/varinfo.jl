@@ -505,4 +505,49 @@ include(dir*"/test/test_utils/AllUtils.jl")
         @test vi.metadata.w.gids[1] == Set([hmc.selector])
         @test vi.metadata.u.gids[1] == Set([hmc.selector])
     end
+
+    @testset "setval!" begin
+        @model function testmodel(x)
+            n = length(x)
+            s ~ truncated(Normal(), 0, Inf)
+            m ~ MvNormal(n, 1.0)
+            x ~ MvNormal(m, s)
+        end
+
+        x = randn(5)
+        model = testmodel(x)
+
+        # UntypedVarInfo
+        vi = VarInfo()
+        model(vi, SampleFromPrior())
+
+        vicopy = deepcopy(vi)
+        DynamicPPL.setval!(vicopy, (m = zeros(5),))
+        @test vicopy[@varname(m)] == zeros(5)
+        @test vicopy[@varname(s)] == vi[@varname(s)]
+
+        DynamicPPL.setval!(vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...))
+        @test vicopy[@varname(m)] == 1:5
+        @test vicopy[@varname(s)] == vi[@varname(s)]
+
+        DynamicPPL.setval!(vicopy, (s = 42,))
+        @test vicopy[@varname(m)] == 1:5
+        @test vicopy[@varname(s)] == 42
+
+        # TypedVarInfo
+        vi = VarInfo(model)
+
+        vicopy = deepcopy(vi)
+        DynamicPPL.setval!(vicopy, (m = zeros(5),))
+        @test vicopy[@varname(m)] == zeros(5)
+        @test vicopy[@varname(s)] == vi[@varname(s)]
+
+        DynamicPPL.setval!(vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...))
+        @test vicopy[@varname(m)] == 1:5
+        @test vicopy[@varname(s)] == vi[@varname(s)]
+
+        DynamicPPL.setval!(vicopy, (s = 42,))
+        @test vicopy[@varname(m)] == 1:5
+        @test vicopy[@varname(s)] == 42
+    end
 end
