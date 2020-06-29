@@ -23,26 +23,27 @@ Random.seed!(129)
         loglike = logpdf(Normal(mval, 1), xval)
         logjoint = logprior + loglike
 
-        @test logprob"m = mval | model = demo" == logprior
-        @test logprob"m = mval | x = xval, model = demo" == logprior
-        @test logprob"x = xval | m = mval, model = demo" == loglike
-        @test logprob"x = xval, m = mval | model = demo" == logjoint
+        model = demo(xval)
+        @test logprob"m = mval | model = model" == logprior
+        @test logprob"m = mval | x = xval, model = model" == logprior
+        @test logprob"x = xval | m = mval, model = model" == loglike
+        @test logprob"x = xval, m = mval | model = model" == logjoint
 
         varinfo = VarInfo(demo(xval))
-        @test logprob"m = mval | model = demo, varinfo = varinfo" == logprior
-        @test logprob"m = mval | x = xval, model = demo, varinfo = varinfo" == logprior
-        @test logprob"x = xval | m = mval, model = demo, varinfo = varinfo" == loglike
+        @test logprob"m = mval | model = model, varinfo = varinfo" == logprior
+        @test logprob"m = mval | x = xval, model = model, varinfo = varinfo" == logprior
+        @test logprob"x = xval | m = mval, model = model, varinfo = varinfo" == loglike
         varinfo = VarInfo(demo(missing))
-        @test logprob"x = xval, m = mval | model = demo, varinfo = varinfo" == logjoint
+        @test logprob"x = xval, m = mval | model = model, varinfo = varinfo" == logjoint
 
         chain = sample(demo(xval), IS(), iters; save_state = true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = logpdf.(Normal.(vec(chain["m"]), 1), xval)
         @test logprob"x = xval | chain = chain" == lps
-        @test logprob"x = xval | chain = chain2, model = demo" == lps
+        @test logprob"x = xval | chain = chain2, model = model" == lps
         varinfo = VarInfo(demo(xval))
         @test logprob"x = xval | chain = chain, varinfo = varinfo" == lps
-        @test logprob"x = xval | chain = chain2, model = demo, varinfo = varinfo" == lps
+        @test logprob"x = xval | chain = chain2, model = model, varinfo = varinfo" == lps
     end
 
     @testset "vector" begin
@@ -61,13 +62,14 @@ Random.seed!(129)
         loglike = like(mval, xval)
         logjoint = logprior + loglike
 
-        @test logprob"m = mval | model = demo" == logprior
-        @test logprob"x = xval | m = mval, model = demo" == loglike
-        @test logprob"x = xval, m = mval | model = demo" == logjoint
+        model = demo(xval)
+        @test logprob"m = mval | model = model" == logprior
+        @test logprob"x = xval | m = mval, model = model" == loglike
+        @test logprob"x = xval, m = mval | model = model" == logjoint
 
         varinfo = VarInfo(demo(xval))
-        @test logprob"m = mval | model = demo, varinfo = varinfo" == logprior
-        @test logprob"x = xval | m = mval, model = demo, varinfo = varinfo" == loglike
+        @test logprob"m = mval | model = model, varinfo = varinfo" == logprior
+        @test logprob"x = xval | m = mval, model = model, varinfo = varinfo" == loglike
         # Currently, we cannot easily pre-allocate `VarInfo` for vector data
 
         chain = sample(demo(xval), HMC(0.5, 1), iters; save_state = true)
@@ -78,8 +80,8 @@ Random.seed!(129)
             like([chain[iter, name, 1] for name in names], xval)
         end
         @test logprob"x = xval | chain = chain" == lps
-        @test logprob"x = xval | chain = chain2, model = demo" == lps
+        @test logprob"x = xval | chain = chain2, model = model" == lps
         @test logprob"x = xval | chain = chain, varinfo = varinfo" == lps
-        @test logprob"x = xval | chain = chain2, model = demo, varinfo = varinfo" == lps
+        @test logprob"x = xval | chain = chain2, model = model, varinfo = varinfo" == lps
     end
 end

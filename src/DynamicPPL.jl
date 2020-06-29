@@ -3,9 +3,9 @@ module DynamicPPL
 using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
 using Distributions
 using Bijectors
-using MacroTools
 
 import AbstractMCMC
+import MacroTools
 import ZygoteRules
 
 import Random
@@ -51,7 +51,6 @@ export  AbstractVarInfo,
         inspace,
         subsumes,
 # Compiler
-        ModelGen,
         @model,
         @varname,
 # Utilities
@@ -59,17 +58,13 @@ export  AbstractVarInfo,
         reconstruct,
         reconstruct!,
         Sample,
-        Chain,
         init,
         vectorize,
         set_resume!,
 # Model
-        ModelGen,
         Model,
         getmissings,
         getargnames,
-        getdefaults,
-        getgenerator,
 # Samplers
         Sampler,
         SampleFromPrior,
