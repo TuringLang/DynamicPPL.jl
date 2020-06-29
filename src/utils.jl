@@ -1,4 +1,15 @@
 """
+    @addlogprob!(ex)
+
+Add the result of the evaluation of `ex` to the joint log probability.
+"""
+macro addlogprob!(ex)
+    return quote
+        acclogp!($(esc(:(_varinfo))), $(esc(ex)))
+    end
+end
+
+"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
