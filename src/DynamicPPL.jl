@@ -96,8 +96,6 @@ export  AbstractVarInfo,
 using Distributions: loglikelihood
 export loglikelihood
 
-const DEBUG = Bool(parse(Int, get(ENV, "DEBUG_DYNAMICPPL", "0")))
-
 # Used here and overloaded in Turing
 function getspace end
 
