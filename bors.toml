@@ -12,8 +12,10 @@ status = [
   "test (1, windows-latest, x64)"
 ]
 delete_merged_branches = true
-# Uncomment this to require at least on approval of a project member.
-#required_approvals = 1
+# Require at least on approval of a project member.
+required_approvals = 1
+# Squash commits before merging.
+use_squash_merge = true
 # Uncomment this to use a two hour timeout.
 # The default is one hour.
 #timeout_sec = 7200

@@ -3,6 +3,20 @@ using DynamicPPL: getargs_dottilde, getargs_tilde
 
 using Test
 
+@testset "addlogprob!" begin
+    @model function testmodel()
+        global lp_before = getlogp(_varinfo)
+        @addlogprob!(42)
+        global lp_after = getlogp(_varinfo)
+    end
+
+    model = testmodel()
+    varinfo = DynamicPPL.VarInfo(model)
+    model(varinfo)
+    @test iszero(lp_before)
+    @test getlogp(varinfo) == lp_after == 42
+end
+
 @testset "getargs_dottilde" begin
     # Some things that are not expressions.
     @test getargs_dottilde(:x) === nothing
