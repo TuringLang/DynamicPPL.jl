@@ -1,5 +1,4 @@
 using .Turing, Random
-using AbstractMCMC: step!
 using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
     SampleFromPrior, Sampler, SampleFromUniform,
     _getidcs, set_retained_vns_del_by_spl!, is_flagged,
@@ -9,6 +8,9 @@ using DynamicPPL: Selector, reconstruct, invlink, CACHERESET,
 using DynamicPPL, LinearAlgebra
 using Distributions
 using ForwardDiff: Dual
+
+import AbstractMCMC
+
 using Test
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
@@ -45,22 +47,6 @@ include(dir*"/test/test_utils/AllUtils.jl")
                 trange = fmeta.ranges[tind]
                 @test all(meta.vals[range] .== fmeta.vals[trange])
             end
-        end
-
-        contexts = [
-            DynamicPPL.DefaultContext(),
-            DynamicPPL.MiniBatchContext(DynamicPPL.DefaultContext(), 1.),
-            DynamicPPL.LikelihoodContext(),
-            DynamicPPL.PriorContext()
-        ]
-        vis = map(contexts) do ctx
-            VarInfo(model, ctx)
-        end
-
-        vns = fieldnames(typeof(first(vis).metadata)) # default context
-        for (vi, ctx) in zip(vis, contexts)
-            vns_ctx = fieldnames(typeof(vi.metadata))
-            @test vns_ctx == vns
         end
     end
     @testset "Base" begin
@@ -129,20 +115,6 @@ include(dir*"/test/test_utils/AllUtils.jl")
         vi = VarInfo()
         test_base!(vi)
         test_base!(empty!(TypedVarInfo(vi)))
-    end
-    @testset "in-place" begin
-        # Test that eval_num is incremented when running the model
-        @model testmodel() = begin
-            x ~ Normal()
-        end
-        alg = HMC(0.1, 5)
-        spl = Sampler(alg, testmodel())
-        m = testmodel()
-        vi = VarInfo(m)
-        m(vi, spl)
-        @test spl.state.eval_num == 1
-        m(vi, spl)
-        @test spl.state.eval_num == 2
     end
     @testset "flags" begin
         # Test flag setting:
@@ -482,8 +454,8 @@ include(dir*"/test/test_utils/AllUtils.jl")
         pg, hmc = g.state.samplers
         vi = VarInfo()
         g_demo_f(vi, SampleFromPrior())
-        step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
-        vi1 = pg.state.vi
+        _, state = AbstractMCMC.step(Random.GLOBAL_RNG, g_demo_f, pg)
+        vi1 = state.vi
         @test mapreduce(x -> x.gids, vcat, vi1.metadata) ==
             [Set([pg.selector]), Set([pg.selector]), Set([pg.selector]), Set{Selector}(), Set{Selector}()]
 

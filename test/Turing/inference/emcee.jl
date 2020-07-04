@@ -2,7 +2,7 @@
 ### Sampler states
 ###
 
-struct Emcee{space, E<:AMH.Ensemble} <: InferenceAlgorithm 
+struct Emcee{space, E<:AMH.Ensemble} <: InferenceAlgorithm
     ensemble::E
 end
 
@@ -15,118 +15,92 @@ function Emcee(n_walkers::Int, stretch_length=2.0)
     return Emcee{(), typeof(ensemble)}(ensemble)
 end
 
-function Sampler(
-    alg::Emcee,
-    model::Model,
-    s::Selector=Selector()
-)
-    # Set up info dict.
-    info = Dict{Symbol, Any}()
+alg_str(::Sampler{<:Emcee}) = "Emcee"
 
-    # Set up state struct.
-    state = SamplerState(VarInfo(model))
-
-    # Generate a sampler.
-    return Sampler(alg, info, s, state)
+struct EmceeState{V<:AbstractVarInfo,S}
+    vi::V
+    states::S
 end
 
-function AbstractMCMC.sample_init!(
-    rng::AbstractRNG,
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG,
     model::Model,
-    spl::Sampler{<:Emcee},
-    N::Integer;
-    verbose::Bool=true,
-    resume_from=nothing,
+    spl::Sampler{<:Emcee};
+    resume_from = nothing,
     kwargs...
 )
-    # Resume the sampler.
-    set_resume!(spl; resume_from=resume_from, kwargs...)
+    if resume_from !== nothing
+        state = loadstate(resume_from)
+        return AbstractMCMC.step(rng, model, spl, state; kwargs...)
+    end
 
-    # Get `init_theta`
-    initialize_parameters!(spl; verbose=verbose, kwargs...)
+    # Sample from the prior
+    n = spl.alg.ensemble.n_walkers
+    vis = [VarInfo(rng, model) for _ in 1:n]
 
-    # Link everything before sampling.
-    link!(spl.state.vi, spl)
+    # Update the parameters if provided.
+    if haskey(kwargs, :init_params)
+        for vi in vis
+            initialize_parameters!(vi, kwargs[:init_params], spl)
+        end
+    end
+
+    # Update log probability and transform to unconstrained space.
+    for vi in vis
+        model(rng, vi, spl)
+        DynamicPPL.link!(vi, spl)
+    end
+
+    # Compute initial transition and states.
+    transition = map(vis) do vi
+        Transition(vi)
+    end
+    state = EmceeState(
+        vis[1], map(vis) do vi
+        AMH.Transition(vi[spl], getlogp(vi))
+        end
+    )
+
+    return transition, state
 end
 
-function AbstractMCMC.sample_end!(
+function AbstractMCMC.step(
     rng::AbstractRNG,
     model::Model,
     spl::Sampler{<:Emcee},
-    N::Integer,
-    transitions;
-    kwargs...
-)
-    # Invlink everything after sampling.
-    invlink!(spl.state.vi, spl)
-end
-
-function _typed_draw(model, vi::VarInfo)
-    spl = SampleFromPrior()
-    empty!(vi)
-    model(vi, spl)
-    DynamicPPL.link!(vi, spl)
-    params = vi[spl]
-    return AMH.Transition(params, getlogp(vi))
-end
-
-function AbstractMCMC.step!(
-    rng::AbstractRNG,
-    model::Model,
-    spl::Sampler{<:Emcee},
-    N::Integer,
-    transition::Nothing;
+    state::EmceeState;
     kwargs...
 )
     # Generate a log joint function.
-    densitymodel = AMH.DensityModel(gen_logπ(spl.state.vi, DynamicPPL.SampleFromPrior(), model))
+    vi = state.vi
+    densitymodel = AMH.DensityModel(gen_logπ(vi, DynamicPPL.SampleFromPrior(), model))
 
-    # Make the first transition.
-    walkers = map(x -> _typed_draw(model, spl.state.vi), 1:spl.alg.ensemble.n_walkers)
-    
-    return walkers
-end
+    # Compute the next states.
+    states = last(AbstractMCMC.step(rng, densitymodel, spl.alg.ensemble, state.states))
 
-function AbstractMCMC.step!(
-    rng::AbstractRNG,
-    model::Model,
-    spl::Sampler{<:Emcee},
-    N::Integer,
-    transition;
-    kwargs...
-)
-    # Generate a log joint function.
-    densitymodel = AMH.DensityModel(gen_logπ(spl.state.vi, DynamicPPL.SampleFromPrior(), model))
+    # Compute the next transition and state.
+    transition = map(states) do _state
+        DynamicPPL.link!(vi, spl)
+        vi[spl] = _state.params
+        DynamicPPL.invlink!(vi, spl)
+        return Transition(tonamedtuple(vi), _state.lp)
+    end
+    newstate = EmceeState(vi, states)
 
-    # Make the first transition.
-    new_transitions = AbstractMCMC.step!(rng, densitymodel, spl.alg.ensemble, 1, transition)
-    return new_transitions
-end
-
-function transform_transition(spl::Sampler{<:Emcee}, ts::Vector{<:Vector}, w::Int, i::Int; linked=true)
-    trans = ts[i][w]
-    linked && DynamicPPL.link!(spl.state.vi, spl)
-    spl.state.vi[spl] = trans.params
-    linked && DynamicPPL.invlink!(spl.state.vi, spl)
-    setlogp!(spl.state.vi, trans.lp)
-
-    return Transition(spl)
+    return transition, newstate
 end
 
 function AbstractMCMC.bundle_samples(
+    ts::Vector{<:Vector},
     rng::AbstractRNG,
     model::AbstractModel,
     spl::Sampler{<:Emcee},
-    N::Integer,
-    ts::Vector{<:Vector},
+    state::EmceeState,
     chain_type::Type{MCMCChains.Chains};
     save_state = false,
     kwargs...
 )
-    # Transform the transitions by linking them to the constrained space.
-    ts_transform = [map(i -> transform_transition(spl, ts, w, i), 1:N) for w in 1:spl.alg.ensemble.n_walkers]
-
-     # Convert transitions to array format.
+    # Convert transitions to array format.
     # Also retrieve the variable names.
     params_vec = map(_params_to_array, ts_transform)
 
@@ -147,11 +121,11 @@ function AbstractMCMC.bundle_samples(
     parray = cat(parray..., dims=3)
 
     # Get the average or final log evidence, if it exists.
-    le = getlogevidence(spl)
+    le = getlogevidence(ts, state, spl)
 
     # Set up the info tuple.
     if save_state
-        info = (range = rng, model = model, spl = spl)
+        info = (range = rng, model = model, spl = spl, samplerstate = state)
     else
         info = NamedTuple()
     end
@@ -163,7 +137,7 @@ function AbstractMCMC.bundle_samples(
     return MCMCChains.Chains(
         parray,
         nms,
-        deepcopy(TURING_INTERNAL_VARS);
+        extra_params;
         evidence=le,
         info=info,
     ) |> sort

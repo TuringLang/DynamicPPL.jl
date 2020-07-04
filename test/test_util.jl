@@ -1,12 +1,11 @@
 function test_model_ad(model, logp_manual)
     vi = VarInfo(model)
-    model(vi, SampleFromPrior())
     x = DynamicPPL.getall(vi)
 
     # Log probabilities using the model.
     function logp_model(x)
         new_vi = VarInfo(vi, SampleFromPrior(), x)
-        model(new_vi, SampleFromPrior())
+        model(new_vi)
         return getlogp(new_vi)
     end
 

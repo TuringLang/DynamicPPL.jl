@@ -105,21 +105,30 @@ end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 
-function VarInfo(model::Model, ctx = DefaultContext())
-    vi = VarInfo()
-    model(vi, SampleFromPrior(), ctx)
-    return TypedVarInfo(vi)
-end
-
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)
     new_vi[spl] = x
     return new_vi
 end
+
 function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
     VarInfo(md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi)))
 end
+
+VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
+
+function VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler = SampleFromPrior(),
+    context::AbstractContext = DefaultContext(),
+)
+    varinfo = VarInfo()
+    model(rng, varinfo, sampler, context)
+    return TypedVarInfo(varinfo)
+end
+
 @generated function newmetadata(metadata::NamedTuple{names}, ::Val{space}, x) where {names, space}
     exprs = []
     offset = :(0)
@@ -1000,7 +1009,6 @@ from a distribution `dist` to `VarInfo` `vi`.
 The sampler is passed here to invalidate its cache where defined.
 """
 function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
-    spl.info[:cache_updated] = CACHERESET
     return push!(vi, vn, r, dist, spl.selector)
 end
 function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
