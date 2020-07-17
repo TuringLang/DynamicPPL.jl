@@ -233,7 +233,7 @@ _setval!(vi::TypedVarInfo, c::AbstractChains) = _setval!(vi.metadata, vi, c)
     return Expr(:block, map(names) do n
         quote
             for vn in md.$n.vns
-                val = vec(c[Symbol(vn)])
+                val = copy(vec(c[MCMCChains.namesingroup(c, Symbol(vn)].value))
                 setval!(vi, val, vn)
                 settrans!(vi, false, vn)
             end
