@@ -191,8 +191,8 @@ function Distributions.loglikelihood(
         chain = right.chain
         ctx = LikelihoodContext()
         iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-        logps = map(iters) do (isample, ichain)
-            setval!(vi, chain, isample, ichain)
+        logps = map(iters) do (sample_idx, chain_idx)
+            setval!(vi, chain, sample_idx, chain_idx)
             model(vi, SampleFromPrior(), ctx)
             return getlogp(vi)
         end

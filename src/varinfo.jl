@@ -1146,15 +1146,15 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
 end
 
 setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
-function setval!(vi::AbstractVarInfo, chains::AbstractChains, isample::Int, ichain::Int)
-    return _setval!(vi, chains.value[isample, :, ichain], keys(chains))
+function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+    return _setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
 function _setval!(vi::AbstractVarInfo, values, keys)
     for vn in Base.keys(vi)
         _setval_kernel!(vi, vn, values, keys)
     end
-    vi
+    return vi
 end
 _setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, values, keys)
 @generated function _typed_setval!(
