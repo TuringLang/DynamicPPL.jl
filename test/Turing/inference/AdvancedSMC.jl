@@ -240,12 +240,7 @@ end
 
 DynamicPPL.getlogp(t::PGTransition) = t.lp
 
-struct PGState{V<:AbstractVarInfo}
-    "Reference particle."
-    vi::V
-end
-
-function getlogevidence(samples, sampler::Sampler{<:PG}, state::PGState)
+function getlogevidence(samples, sampler::Sampler{<:PG}, vi::AbstractVarInfo)
     return mean(x.logevidence for x in samples)
 end
 
@@ -278,18 +273,17 @@ function DynamicPPL.initialstep(
     _vi = reference.vi
     transition = PGTransition(_vi, logevidence)
 
-    return transition, PGState(_vi)
+    return transition, _vi
 end
 
 function AbstractMCMC.step(
     ::AbstractRNG,
     model::AbstractModel,
     spl::Sampler{<:PG},
-    state::PGState;
+    vi::AbstractVarInfo;
     kwargs...
 )
     # Reset the VarInfo before new sweep.
-    vi = state.vi
     reset_num_produce!(vi)
     set_retained_vns_del_by_spl!(vi, spl)
     resetlogp!(vi)
@@ -317,7 +311,7 @@ function AbstractMCMC.step(
     _vi = newreference.vi
     transition = PGTransition(_vi, logevidence)
 
-    return transition, PGState(_vi)
+    return transition, _vi
 end
 
 function DynamicPPL.assume(

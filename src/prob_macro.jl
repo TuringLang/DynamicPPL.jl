@@ -136,7 +136,7 @@ function logprior(
 
     # When all of model args are on the lhs of |, this is also equal to the logjoint.
     model = make_prior_model(left, right, _model)
-    vi = _vi === nothing ? VarInfo(deepcopy(model), PriorContext()) : _vi
+    vi = _vi === nothing ? VarInfo(deepcopy(model), SampleFromPrior(), PriorContext()) : _vi
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
     end

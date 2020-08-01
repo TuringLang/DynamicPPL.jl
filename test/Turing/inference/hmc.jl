@@ -17,6 +17,11 @@ struct HMCState{
     adaptor::TAdapt
 end
 
+# TODO: Include recompute Hamiltonian here?
+function gibbs_update_state(state::HMCState, varinfo::AbstractVarInfo)
+    return HMCState(varinfo, state.i, state.traj, state.hamiltonian, state.z, state.adaptor)
+end
+
 ##########################
 # Hamiltonian Transition #
 ##########################
@@ -179,6 +184,9 @@ function DynamicPPL.initialstep(
         end
     end
 
+    # Cache current log density.
+    log_density_old = getlogp(vi)
+
     # Find good eps if not provided one
     if iszero(spl.alg.ϵ)
         ϵ = AHMC.find_good_stepsize(hamiltonian, theta)
@@ -191,9 +199,29 @@ function DynamicPPL.initialstep(
     traj = gen_traj(spl.alg, ϵ)
 
     # Create initial transition and state.
-    transition = HMCTransition(vi, AHMC.Transition(z, NamedTuple()))
-    state = HMCState(vi, 1, traj, hamiltonian, z,
-                     AHMCAdaptor(spl.alg, hamiltonian.metric; ϵ=ϵ))
+    # Already perform one step since otherwise we don't get any statistics.
+    t = AHMC.step(rng, hamiltonian, traj, z)
+
+    # Adaptation
+    adaptor = AHMCAdaptor(spl.alg, hamiltonian.metric; ϵ=ϵ)
+    if spl.alg isa AdaptiveHamiltonian
+        hamiltonian, traj, _ =
+            AHMC.adapt!(hamiltonian, traj, adaptor,
+                        1, nadapts, t.z.θ, t.stat.acceptance_rate)
+    end
+
+    # Update `vi` based on acceptance
+    Turing.DEBUG && @debug "decide whether to accept..."
+    if t.stat.is_accept
+        vi[spl] = t.z.θ
+        setlogp!(vi, t.stat.log_density)
+    else
+        vi[spl] = theta
+        setlogp!(vi, log_density_old)
+    end
+
+    transition = HMCTransition(vi, t)
+    state = HMCState(vi, 1, traj, hamiltonian, t.z, adaptor)
 
     # If a Gibbs component, transform the values back to the constrained space.
     if spl.selector.tag !== :default

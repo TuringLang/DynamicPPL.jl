@@ -84,6 +84,13 @@ end
 
 DynamicPPL.getlogp(t::GibbsTransition) = t.lp
 
+# extract varinfo object from state
+getvarinfo(state) = state.vi
+getvarinfo(state::AbstractVarInfo) = state
+
+# update state with new varinfo object
+gibbs_update_state(state::AbstractVarInfo, varinfo::AbstractVarInfo) = varinfo
+
 # Initialize the Gibbs sampler.
 function DynamicPPL.initialstep(
     rng::AbstractRNG,
@@ -107,13 +114,6 @@ function DynamicPPL.initialstep(
         Sampler(alg, model, selector)
     end
 
-    # create a state variable
-    #state = GibbsState(model, samplers)
-
-    # create the sampler
-    #info = Dict{Symbol, Any}()
-    #spl = Sampler(alg, info, s, state)
-
     # Add Gibbs to gids for all variables.
     for sym in keys(vi.metadata)
         vns = getfield(vi.metadata, sym).vns
@@ -131,7 +131,12 @@ function DynamicPPL.initialstep(
 
     # Compute initial states of the local samplers.
     states = map(samplers) do local_spl
-        last(DynamicPPL.initialstep(rng, model, local_spl, vi; kwargs...))
+        state = last(DynamicPPL.initialstep(rng, model, local_spl, vi; kwargs...))
+
+        # update VarInfo object
+        vi = getvarinfo(state)
+
+        return state
     end
 
     # Compute initial transition and state.
@@ -141,7 +146,7 @@ function DynamicPPL.initialstep(
     return transition, state
 end
 
-# Steps 2
+# Subsequent steps
 function AbstractMCMC.step(
     rng::AbstractRNG,
     model::Model,
@@ -157,8 +162,16 @@ function AbstractMCMC.step(
     states = map(samplers, state.states) do _sampler, _state
         Turing.DEBUG && @debug "$(typeof(_sampler)) stepping..."
 
+        # Update state of current sampler with updated `VarInfo` object.
+        current_state = gibbs_update_state(_state, vi)
+
         # Step through the local sampler.
-        last(AbstractMCMC.step(rng, model, _sampler, _state; kwargs...))
+        newstate = last(AbstractMCMC.step(rng, model, _sampler, current_state; kwargs...))
+
+        # Update `VarInfo` object.
+        vi = getvarinfo(newstate)
+
+        return newstate
     end
 
     return GibbsTransition(vi), GibbsState(vi, samplers, states)
