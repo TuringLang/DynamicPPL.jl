@@ -5,6 +5,7 @@ using Distributions
 using Bijectors
 
 import AbstractMCMC
+import NaturalSort
 import MacroTools
 import ZygoteRules
 
