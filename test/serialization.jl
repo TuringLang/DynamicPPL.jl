@@ -24,6 +24,9 @@
 
         # Load packages on all processes.
         @everywhere begin
+            using Pkg
+            Pkg.activate(@__DIR__)
+            Pkg.instantiate()
             using DynamicPPL
             using Distributions
         end
