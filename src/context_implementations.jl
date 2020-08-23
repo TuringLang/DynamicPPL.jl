@@ -444,8 +444,8 @@ function dot_observe(
     vi,
 )
     increment_num_produce!(vi)
-    DynamicPPL.DEBUG && @debug "dist = $dist"
-    DynamicPPL.DEBUG && @debug "value = $value"
+    @debug "dist = $dist"
+    @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
 end
 function dot_observe(
@@ -455,8 +455,8 @@ function dot_observe(
     vi,
 )
     increment_num_produce!(vi)
-    DynamicPPL.DEBUG && @debug "dists = $dists"
-    DynamicPPL.DEBUG && @debug "value = $value"
+    @debug "dists = $dists"
+    @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
 end
 function dot_observe(
@@ -466,8 +466,8 @@ function dot_observe(
     vi,
 )
     increment_num_produce!(vi)
-    DynamicPPL.DEBUG && @debug "dists = $dists"
-    DynamicPPL.DEBUG && @debug "value = $value"
+    @debug "dists = $dists"
+    @debug "value = $value"
     return sum(zip(dists, value)) do (d, v)
         Distributions.loglikelihood(d, v)
     end
