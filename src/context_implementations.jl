@@ -444,8 +444,7 @@ function dot_observe(
     vi,
 )
     increment_num_produce!(vi)
-    DynamicPPL.DEBUG && @debug "dist = $dist"
-    DynamicPPL.DEBUG && @debug "value = $value"
+    @debug "dot_observe" dist value
     return sum(Distributions.logpdf(dist, value))
 end
 function dot_observe(
@@ -455,8 +454,7 @@ function dot_observe(
     vi,
 )
     increment_num_produce!(vi)
-    DynamicPPL.DEBUG && @debug "dists = $dists"
-    DynamicPPL.DEBUG && @debug "value = $value"
+    @debug "dot_observe" dists value
     return sum(Distributions.logpdf.(dists, value))
 end
 function dot_observe(

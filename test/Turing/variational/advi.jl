@@ -131,7 +131,7 @@ function vi(model::Model, alg::ADVI; optimizer = TruncatedADAGrad())
 end
 
 function vi(model, alg::ADVI, q::TransformedDistribution{<:TuringDiagMvNormal}; optimizer = TruncatedADAGrad())
-    Turing.DEBUG && @debug "Optimizing ADVI..."
+    @debug "Optimizing ADVI..."
     # Initial parameters for mean-field approx
     μ, σs = params(q)
     θ = vcat(μ, invsoftplus.(σs))
@@ -144,7 +144,7 @@ function vi(model, alg::ADVI, q::TransformedDistribution{<:TuringDiagMvNormal}; 
 end
 
 function vi(model, alg::ADVI, q, θ_init; optimizer = TruncatedADAGrad())
-    Turing.DEBUG && @debug "Optimizing ADVI..."
+    @debug "Optimizing ADVI..."
     θ = copy(θ_init)
     optimize!(elbo, alg, q, model, θ; optimizer = optimizer)
 
