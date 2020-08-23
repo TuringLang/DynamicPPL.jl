@@ -6,8 +6,6 @@ status = [
   "test (1, ubuntu-latest, x64)",
   "test (1.%, macOS-latest, x64)",
   "test (1, macOS-latest, x64)",
-  "test (1.%, windows-latest, x86)",
-  "test (1, windows-latest, x86)",
   "test (1.%, windows-latest, x64)",
   "test (1, windows-latest, x64)"
 ]
