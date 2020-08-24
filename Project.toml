@@ -1,6 +1,5 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-authors = ["mohamed82008 <mohamed82008@gmail.com>"]
 version = "0.9.0"
 
 [deps]
