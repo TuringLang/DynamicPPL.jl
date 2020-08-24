@@ -1,6 +1,7 @@
 # DynamicPPL.jl
 
 [![Build Status](https://travis-ci.com/TuringLang/DynamicPPL.jl.svg?branch=master)](https://travis-ci.com/TuringLang/DynamicPPL.jl)
+[![Build Status](https://github.com/TuringLang/DynamicPPL.jl/workflows/DynamicPPL-CI/badge.svg)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ADynamicPPL-CI+branch%3Amaster)
 [![Codecov](https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/TuringLang/DynamicPPL.jl)
 [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://colprac.sciml.ai/)
 [![Bors enabled](https://bors.tech/images/badge_small.svg)](https://app.bors.tech/repositories/24589)
