@@ -4,7 +4,9 @@ using ForwardDiff
 using Tracker
 using Zygote
 
+using Distributed
 using Random
+using Serialization
 using Test
 
 dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
@@ -28,6 +30,8 @@ include("test_util.jl")
     include("context_implementations.jl")
 
     include("threadsafe.jl")
+
+    include("serialization.jl")
 
     @testset "compat" begin
         include(joinpath("compat", "ad.jl"))

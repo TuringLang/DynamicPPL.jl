@@ -1,3 +1,46 @@
+# singleton for indicating if no default arguments are present
+struct NoDefault end
+const NO_DEFAULT = NoDefault()
+
+# FIXME: This is copied from MacroTools and should be removed when a MacroTools release with
+# support for anonymous functions is available (> 0.5.5).
+function combinedef_anonymous(dict::Dict)
+    rtype = get(dict, :rtype, nothing)
+    params = get(dict, :params, [])
+    wparams = get(dict, :whereparams, [])
+    body = MacroTools.block(dict[:body])
+
+    if isempty(dict[:kwargs])
+        arg = :($(dict[:args]...),)
+    else
+        arg = Expr(:tuple, Expr(:parameters, dict[:kwargs]...), dict[:args]...)
+    end
+    if isempty(wparams)
+        if rtype==nothing
+            MacroTools.@q($arg -> $body)
+        else
+            MacroTools.@q(($arg::$rtype) -> $body)
+        end
+    else
+        if rtype === nothing
+            MacroTools.@q(($arg where {$(wparams...)}) -> $body)
+        else
+            MacroTools.@q(($arg::$rtype where {$(wparams...)}) -> $body)
+        end
+    end
+end
+
+"""
+    @addlogprob!(ex)
+
+Add the result of the evaluation of `ex` to the joint log probability.
+"""
+macro addlogprob!(ex)
+    return quote
+        acclogp!($(esc(:(_varinfo))), $(esc(ex)))
+    end
+end
+
 """
     getargs_dottilde(x)
 
@@ -6,18 +49,11 @@ Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` o
 """
 getargs_dottilde(x) = nothing
 function getargs_dottilde(expr::Expr)
-    # Check if the expression is of the form `L .~ R`.
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :.~
-        return expr.args[2], expr.args[3]
+    return MacroTools.@match expr begin
+        (.~)(L_, R_) => (L, R)
+        (~).(L_, R_) => (L, R)
+        x_ => nothing
     end
-
-    # Check if the expression is of the form `(~).(L, R)`.
-    if Meta.isexpr(expr, :., 2) && expr.args[1] === :~ &&
-        Meta.isexpr(expr.args[2], :tuple, 2)
-        return expr.args[2].args[1], expr.args[2].args[2]
-    end
-
-    return
 end
 
 """
@@ -28,10 +64,10 @@ otherwise.
 """
 getargs_tilde(x) = nothing
 function getargs_tilde(expr::Expr)
-    if Meta.isexpr(expr, :call, 3) && expr.args[1] === :~
-        return expr.args[2], expr.args[3]
+    return MacroTools.@match expr begin
+        (~)(L_, R_) => (L, R)
+        x_ => nothing
     end
-    return
 end
 
 ############################################
