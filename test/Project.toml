@@ -32,7 +32,7 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-AbstractMCMC = "1.0.1"
+AbstractMCMC = "1.0.1, 2.1"
 AdvancedHMC = "0.2.25"
 AdvancedMH = "0.5.1"
 Bijectors = "0.8.2"
