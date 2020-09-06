@@ -26,5 +26,3 @@ function gradient_logp(
 
     return l, ∂l∂θ
 end
-
-Zygote.@nograd DynamicPPL.updategid!
