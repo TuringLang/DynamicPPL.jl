@@ -5,9 +5,9 @@ using Distributions
 using Bijectors
 
 import AbstractMCMC
+import ChainRulesCore
 import NaturalSort
 import MacroTools
-import ZygoteRules
 
 import Random
 
