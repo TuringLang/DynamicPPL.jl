@@ -121,7 +121,7 @@ function AbstractMCMC.step(
     end
 
     # Sample initial values.
-    _spl = initialsampler(spl)
+    _spl = DynamicPPL.initialsampler(spl)
     vi = VarInfo(rng, model, _spl)
 
     # Update the parameters if provided.
