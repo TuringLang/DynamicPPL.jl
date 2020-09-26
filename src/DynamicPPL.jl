@@ -118,5 +118,6 @@ include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
+include("loglikelihoods.jl")
 
 end # module
