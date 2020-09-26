@@ -62,18 +62,16 @@ end
 function loglikelihoods(model::Model, chain)
     # Get the data by executing the model once
     spl = LikelihoodSampler()
-    vi = Turing.VarInfo(model)
+    ctx = LikelihoodContext()
+    vi = VarInfo(model, ctx)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
-        # Clear previous values
-        empty!(vi)
-
         # Update the values
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, spl)
+        model(vi, spl, ctx)
     end
     return spl.loglikelihoods
 end
