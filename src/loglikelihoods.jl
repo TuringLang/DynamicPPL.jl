@@ -11,7 +11,9 @@ function ElementwiseLikelihoodContext(
     return ElementwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
 end
 
-function Base.push!(ctx::ElementwiseLikelihoodContext, vn::VarName, logp)
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{<:Dict{VarName}}, vn::VarName, logp
+)
     lookup = ctx.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
     push!(ℓ, logp)
@@ -96,8 +98,8 @@ Dict{String,Array{Float64,1}} with 4 entries:
 """
 function elementwise_loglikelihoods(model::Model, chain)
     # Get the data by executing the model once
-    ctx = DynamicPPL.ElementwiseLikelihoodContext()
-    spl = DynamicPPL.SampleFromPrior()
+    ctx = ElementwiseLikelihoodContext()
+    spl = SampleFromPrior()
     vi = VarInfo(model)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
