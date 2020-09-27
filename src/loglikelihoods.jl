@@ -12,12 +12,23 @@ function ElementwiseLikelihoodContext(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{<:Dict{VarName}}, vn::VarName, logp
+    ctx::ElementwiseLikelihoodContext{Dict{VarName, Vector{Float64}}},
+    vn::VarName,
+    logp::Real
 )
     lookup = ctx.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
     push!(ℓ, logp)
 end
+
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{Dict{VarName, Float64}},
+    vn::VarName,
+    logp::Real
+)
+    ctx.loglikelihoods[vn] = logp
+end
+
 
 function tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
@@ -114,7 +125,7 @@ function elementwise_loglikelihoods(model::Model, chain)
 end
 
 function elementwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    ctx = ElementwiseLikelihoodContext()
+    ctx = ElementwiseLikelihoodContext(Dict{VarName, Float64}())
     model(varinfo, SampleFromPrior(), ctx)
     return ctx.loglikelihoods
 end
