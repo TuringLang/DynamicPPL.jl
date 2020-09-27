@@ -6,11 +6,11 @@ struct TrackedLikelihoodContext{A, Ctx, Tvars} <: AbstractContext
 end
 
 function TrackedLikelihoodContext(
-    likelihoods = Dict{String,Vector{Float64}}(),
+    likelihoods = Dict{String, Vector{Float64}}(),
     ctx::AbstractContext = LikelihoodContext(),
     vars = nothing,
 )
-    return TrackedLikelihoodContext{typeof(likelihoods},typeof(ctx),typeof(vars)}(likelihoods, ctx, vars)
+    return TrackedLikelihoodContext{typeof(likelihoods),typeof(ctx),typeof(vars)}(likelihoods, ctx, vars)
 end
 
 function tilde_assume(rng, ctx::TrackedLikelihoodContext, sampler, right, vn, inds, vi)
