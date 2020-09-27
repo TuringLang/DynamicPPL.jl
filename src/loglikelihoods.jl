@@ -54,7 +54,7 @@ end
 
 
 """
-    loglikelihoods(model::Model, chain::Chains)
+    get_loglikelihoods(model::Model, chain::Chains)
 
 Runs `model` on each sample in `chain` returning an array of arrays with
 the i-th element inner arrays corresponding to the the likelihood of the i-th
@@ -62,7 +62,8 @@ observation for that particular sample in `chain`.
 
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
-both being `<:Real`. Then the observe statements can be implemented in two ways:
+both being `<:Real`. Then the *observe* (i.e. when the left-hand side is an
+*observation*) statements can be implemented in two ways:
 ```julia
 for i in eachindex(y)
     y[i] ~ Normal(μ, σ)
