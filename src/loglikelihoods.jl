@@ -1,63 +1,57 @@
-# Improved implementation
-struct LikelihoodSampler{T} <: AbstractSampler
-    loglikelihoods::T
+# Context version
+struct TrackedLikelihoodContext{A, Ctx, Tvars} <: AbstractContext
+    loglikelihoods::A
+    ctx::Ctx
+    vars::Tvars
 end
 
-LikelihoodSampler() = LikelihoodSampler(Dict{String, Vector{Float64}}())
-getspace(::LikelihoodSampler) = ()
-has_eval_num(::LikelihoodSampler) = false
+function TrackedLikelihoodContext(likelihoods, ctx::AbstractContext)
+    TrackedLikelihoodContext(likelihoods, ctx, nothing)
+end
+function TrackedLikelihoodContext(likelihoods)
+    return TrackedLikelihoodContext(likelihoods, LikelihoodContext())
+end
+TrackedLikelihoodContext() = TrackedLikelihoodContext(Dict{String, Vector{Float64}}())
 
-init(rng, dist, ::LikelihoodSampler) = rand(rng, dist)
-init(rng, dist, ::LikelihoodSampler, n::Int) = rand(rng, dist, n)
-
-function getindex(vi::VarInfo, spl::LikelihoodSampler)
-    return getindex(vi, SampleFromPrior())
+function tilde_assume(rng, ctx::TrackedLikelihoodContext, sampler, right, vn, inds, vi)
+    return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-function assume(
-    rng,
-    spl::LikelihoodSampler,
-    dist::Distribution,
-    vn::VarName,
-    vi
-)
-    return assume(rng, SampleFromPrior(), dist, vn, vi)
+function dot_tilde_assume(rng, ctx::TrackedLikelihoodContext, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
+    acclogp!(vi, logp)
+    return value
 end
 
-function dot_assume(
-    rng,
-    spl::LikelihoodSampler,
-    dists::Any,
-    vns::AbstractArray{<:VarName},
-    var::Any,
-    vi::Any,
-)
-    return dot_assume(rng, SampleFromPrior(), dists, vns, var, vi)
-end
 
-function tilde_observe(
-    ctx, sampler::LikelihoodSampler, right, left, vname, vinds, vi
-)
-    logp = tilde(ctx, SampleFromPrior(), right, left, vi)
+function tilde_observe(ctx::TrackedLikelihoodContext, sampler, right, left, vname, vinds, vi)
+    # This is slightly unfortunate since it is not completely generic...
+    # Ideally we would call `tilde_observe` recursively but then we don't get the
+    # loglikelihood value.
+    logp = tilde(ctx.ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
 
-    # Add `logp` to the corresponding entry in `likelihoods`
-    parent_name = string(getsym(vname))
-    name = string(vname)
-
-    # lookup = if isempty(getindexing(vname))
-    #     # No "parent" variable
-    #     sampler.loglikelihoods
-    # else
-    #     parent_name = string(getsym(vname))
-    #     get!(sampler.loglikelihoods, parent_name, Dict{String, Vector{Float64}}())
-    # end
-    lookup = sampler.loglikelihoods
+    # track loglikelihood value
+    lookup = ctx.loglikelihoods
     ℓ = get!(lookup, string(vname), Float64[])
     push!(ℓ, logp)
-    
+
     return left
 end
+
+function tilde_observe(ctx::TrackedLikelihoodContext, sampler, right, left, vi)
+    # Do the usual thing
+    logp = tilde(ctx.ctx, sampler, right, left, vi)
+    acclogp!(vi, logp)
+
+    # track loglikelihood value
+    lookup = ctx.loglikelihoods
+    ℓ = get!(lookup, string(vname), Float64[])
+    push!(ℓ, logp)
+
+    return left
+end
+
 
 """
     loglikelihoods(model::Model, chain::Chains)
@@ -102,7 +96,7 @@ julia> model = demo(randn(3), randn());
 
 julia> chain = sample(model, MH(), 10);
 
-julia> DynamicPPL.loglikelihoods(model, chain)
+julia> DynamicPPL.get_loglikelihoods(model, chain)
 Dict{String,Array{Float64,1}} with 4 entries:
   "xs[3]" => [-1.02616, -1.26931, -1.05003, -5.05458, -1.33825, -1.02904, -1.23761, -1.30128, -1.04872, -2.03716]
   "xs[1]" => [-2.08205, -2.51387, -3.03175, -2.5981, -2.31322, -2.62284, -2.70874, -1.18617, -1.36281, -4.39839]
@@ -110,11 +104,11 @@ Dict{String,Array{Float64,1}} with 4 entries:
   "y"     => [-1.36627, -1.21964, -1.03342, -7.46617, -1.3234, -1.14536, -1.14781, -2.48912, -2.23705, -1.26267]
 ```
 """
-function loglikelihoods(model::Model, chain)
+function get_loglikelihoods(model::Model, chain)
     # Get the data by executing the model once
-    spl = LikelihoodSampler()
-    ctx = LikelihoodContext()
-    vi = VarInfo(model, ctx)
+    ctx = DynamicPPL.TrackedLikelihoodContext()
+    spl = DynamicPPL.SampleFromPrior()
+    vi = VarInfo(model)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -124,5 +118,5 @@ function loglikelihoods(model::Model, chain)
         # Execute model
         model(vi, spl, ctx)
     end
-    return spl.loglikelihoods
+    return ctx.loglikelihoods
 end
