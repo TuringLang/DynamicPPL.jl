@@ -17,7 +17,8 @@ using Test
     y = randn();
     model = demo(xs, y);
     chain = sample(model, MH(), 100);
-    var_to_likelihoods = DynamicPPL.elementwise_loglikelihoods(model, chain)
+    results = DynamicPPL.elementwise_loglikelihoods(model, chain)
+    var_to_likelihoods = Dict(string(varname) => logliks for (varname, logliks) in results)
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
     @test haskey(var_to_likelihoods, "xs[3]")

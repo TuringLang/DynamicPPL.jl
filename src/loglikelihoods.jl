@@ -5,10 +5,16 @@ struct ElementwiseLikelihoodContext{A, Ctx} <: AbstractContext
 end
 
 function ElementwiseLikelihoodContext(
-    likelihoods = Dict{String, Vector{Float64}}(),
+    likelihoods = Dict{VarName, Vector{Float64}}(),
     ctx::AbstractContext = LikelihoodContext()
 )
     return ElementwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
+end
+
+function Base.push!(ctx::ElementwiseLikelihoodContext, vn::VarName, logp)
+    lookup = ctx.loglikelihoods
+    ℓ = get!(lookup, vn, Float64[])
+    push!(ℓ, logp)
 end
 
 function tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, vn, inds, vi)
@@ -30,22 +36,7 @@ function tilde_observe(ctx::ElementwiseLikelihoodContext, sampler, right, left, 
     acclogp!(vi, logp)
 
     # track loglikelihood value
-    lookup = ctx.loglikelihoods
-    ℓ = get!(lookup, string(vname), Float64[])
-    push!(ℓ, logp)
-
-    return left
-end
-
-function tilde_observe(ctx::ElementwiseLikelihoodContext, sampler, right, left, vi)
-    # Do the usual thing
-    logp = tilde(ctx.ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
-
-    # track loglikelihood value
-    lookup = ctx.loglikelihoods
-    ℓ = get!(lookup, string(vname), Float64[])
-    push!(ℓ, logp)
+    push!(ctx, vname, logp)
 
     return left
 end
