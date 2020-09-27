@@ -1,30 +1,28 @@
 # Context version
-struct TrackedLikelihoodContext{A, Ctx, Tvars} <: AbstractContext
+struct ElementwiseLikelihoodContext{A, Ctx} <: AbstractContext
     loglikelihoods::A
     ctx::Ctx
-    vars::Tvars
 end
 
-function TrackedLikelihoodContext(
+function ElementwiseLikelihoodContext(
     likelihoods = Dict{String, Vector{Float64}}(),
-    ctx::AbstractContext = LikelihoodContext(),
-    vars = nothing,
+    ctx::AbstractContext = LikelihoodContext()
 )
-    return TrackedLikelihoodContext{typeof(likelihoods),typeof(ctx),typeof(vars)}(likelihoods, ctx, vars)
+    return ElementwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
 end
 
-function tilde_assume(rng, ctx::TrackedLikelihoodContext, sampler, right, vn, inds, vi)
+function tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-function dot_tilde_assume(rng, ctx::TrackedLikelihoodContext, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, left, vn, inds, vi)
     value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
 
-function tilde_observe(ctx::TrackedLikelihoodContext, sampler, right, left, vname, vinds, vi)
+function tilde_observe(ctx::ElementwiseLikelihoodContext, sampler, right, left, vname, vinds, vi)
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
@@ -39,7 +37,7 @@ function tilde_observe(ctx::TrackedLikelihoodContext, sampler, right, left, vnam
     return left
 end
 
-function tilde_observe(ctx::TrackedLikelihoodContext, sampler, right, left, vi)
+function tilde_observe(ctx::ElementwiseLikelihoodContext, sampler, right, left, vi)
     # Do the usual thing
     logp = tilde(ctx.ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
@@ -54,7 +52,7 @@ end
 
 
 """
-    get_loglikelihoods(model::Model, chain::Chains)
+    elementwise_loglikelihoods(model::Model, chain::Chains)
 
 Runs `model` on each sample in `chain` returning an array of arrays with
 the i-th element inner arrays corresponding to the the likelihood of the i-th
@@ -97,7 +95,7 @@ julia> model = demo(randn(3), randn());
 
 julia> chain = sample(model, MH(), 10);
 
-julia> DynamicPPL.get_loglikelihoods(model, chain)
+julia> DynamicPPL.elementwise_loglikelihoods(model, chain)
 Dict{String,Array{Float64,1}} with 4 entries:
   "xs[3]" => [-1.02616, -1.26931, -1.05003, -5.05458, -1.33825, -1.02904, -1.23761, -1.30128, -1.04872, -2.03716]
   "xs[1]" => [-2.08205, -2.51387, -3.03175, -2.5981, -2.31322, -2.62284, -2.70874, -1.18617, -1.36281, -4.39839]
@@ -105,9 +103,9 @@ Dict{String,Array{Float64,1}} with 4 entries:
   "y"     => [-1.36627, -1.21964, -1.03342, -7.46617, -1.3234, -1.14536, -1.14781, -2.48912, -2.23705, -1.26267]
 ```
 """
-function get_loglikelihoods(model::Model, chain)
+function elementwise_loglikelihoods(model::Model, chain)
     # Get the data by executing the model once
-    ctx = DynamicPPL.TrackedLikelihoodContext()
+    ctx = DynamicPPL.ElementwiseLikelihoodContext()
     spl = DynamicPPL.SampleFromPrior()
     vi = VarInfo(model)
 
@@ -119,5 +117,11 @@ function get_loglikelihoods(model::Model, chain)
         # Execute model
         model(vi, spl, ctx)
     end
+    return ctx.loglikelihoods
+end
+
+function elementwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
+    ctx = ElementwiseLikelihoodContext()
+    model(varinfo, SampleFromPrior(), ctx)
     return ctx.loglikelihoods
 end
