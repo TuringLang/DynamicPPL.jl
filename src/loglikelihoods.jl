@@ -126,12 +126,15 @@ function elementwise_loglikelihoods(model::Model, chain)
     end
 
     K = keytype(loglikelihoods[1])
-    T = valtype(loglikelihoods[1])
-    res = Dict{K, Vector{T}}()
+    T = eltype(valtype(loglikelihoods[1]))
+    res = Dict{K, Matrix{T}}()
     for ℓ in loglikelihoods
         for (k, v) in ℓ
-            container = get!(res, k, T[])
-            push!(container, v)
+            if haskey(res, k)
+                res[k] = vcat(res[k], reshape(v, 1, :))
+            else
+                res[k] = reshape(v, 1, :)
+            end
         end
     end
 
