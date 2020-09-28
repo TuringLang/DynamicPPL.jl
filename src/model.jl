@@ -91,7 +91,7 @@ end
 
 # without VarInfo
 function (model::Model)(
-    rng::AbstractRNG,
+    rng::Random.AbstractRNG,
     sampler::AbstractSampler,
     context::AbstractContext = DefaultContext(),
 )
@@ -105,7 +105,7 @@ function (model::Model)(
 end
 
 # without VarInfo and without AbstractSampler
-function (model::Model)(rng::AbstractRNG, context::AbstractContext)
+function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
     return model(rng, VarInfo(), SampleFromPrior(), context)
 end
 function (model::Model)(context::AbstractContext)
