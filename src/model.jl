@@ -89,23 +89,27 @@ function (model::Model)(
     end
 end
 
+# without VarInfo
 function (model::Model)(
-    varinfo::AbstractVarInfo,
-    sampler::AbstractSampler = SampleFromPrior(),
+    rng::AbstractRNG,
+    sampler::AbstractSampler,
     context::AbstractContext = DefaultContext(),
 )
-    return model(Random.GLOBAL_RNG, varinfo, sampler, context)
+    return model(rng, VarInfo(), sampler, context)
 end
-
 function (model::Model)(
     sampler::AbstractSampler,
     context::AbstractContext = DefaultContext(),
 )
-    return model(Random.GLOBAL_RNG, VarInfo(), sampler, context)
+    return model(Random.GLOBAL_RNG, sampler, context)
 end
 
+# without VarInfo and without AbstractSampler
+function (model::Model)(rng::AbstractRNG, context::AbstractContext)
+    return model(rng, VarInfo(), SampleFromPrior(), context)
+end
 function (model::Model)(context::AbstractContext)
-    return model(Random.GLOBAL_RNG, VarInfo(), SampleFromPrior(), context)
+    return model(Random.GLOBAL_RNG, context)
 end
 
 """
