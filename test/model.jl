@@ -1,7 +1,5 @@
 Random.seed!(1234)
 
-using Test
-
 """
     test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
 
