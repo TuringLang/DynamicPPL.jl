@@ -1178,9 +1178,12 @@ _setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, value
 end
 
 function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    sym = Symbol(vn)
-    regex = Regex("^$sym\$|^$sym\\[")
-    indices = findall(x -> match(regex, string(x)) !== nothing, keys)
+    string_vn = string(vn)
+    string_vn_indexing = string_vn * "["
+    indices = findall(keys) do x
+        string_x = string(x)
+        return string_x == string_vn || startswith(string_x, string_vn_indexing)
+    end
     if !isempty(indices)
         sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
         val = mapreduce(vcat, sorted_indices) do i
