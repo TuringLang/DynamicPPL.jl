@@ -90,6 +90,7 @@ export  AbstractVarInfo,
 # Convenience functions
         logprior,
         logjoint,
+        elementwise_loglikelihoods,
 # Convenience macros
         @addlogprob!
 

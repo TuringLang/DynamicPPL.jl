@@ -1,6 +1,4 @@
-using DynamicPPL
-using Turing
-using Test
+using .Turing
 
 @testset "loglikelihoods" begin
     @model function demo(xs, y)
@@ -17,7 +15,7 @@ using Test
     y = randn();
     model = demo(xs, y);
     chain = sample(model, MH(), 100);
-    results = DynamicPPL.elementwise_loglikelihoods(model, chain)
+    results = elementwise_loglikelihoods(model, chain)
     var_to_likelihoods = Dict(string(varname) => logliks for (varname, logliks) in results)
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
