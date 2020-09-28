@@ -15,10 +15,7 @@ using .Turing
     y = randn();
     model = demo(xs, y);
     chain = sample(model, MH(), MCMCThreads(), 100, 2);
-    results = elementwise_loglikelihoods(model, chain)
-    var_to_likelihoods = Dict(
-        string(varname) => logliks for (varname, logliks) in results
-    )
+    var_to_likelihoods = elementwise_loglikelihoods(model, chain)
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
     @test haskey(var_to_likelihoods, "xs[3]")
@@ -27,10 +24,10 @@ using .Turing
     for chain_idx in MCMCChains.chains(chain)
 
         for (i, (s, m)) in enumerate(zip(chain[:s], chain[:m]))
-            @test logpdf(Normal(m, √s), xs[1]) == var_to_likelihoods["xs[1]"][chain_idx, i]
-            @test logpdf(Normal(m, √s), xs[2]) == var_to_likelihoods["xs[2]"][chain_idx, i]
-            @test logpdf(Normal(m, √s), xs[3]) == var_to_likelihoods["xs[3]"][chain_idx, i]
-            @test logpdf(Normal(m, √s), y) == var_to_likelihoods["y"][chain_idx, i]
+            @test logpdf(Normal(m, √s), xs[1]) == var_to_likelihoods["xs[1]"][i, chain_idx]
+            @test logpdf(Normal(m, √s), xs[2]) == var_to_likelihoods["xs[2]"][i, chain_idx]
+            @test logpdf(Normal(m, √s), xs[3]) == var_to_likelihoods["xs[3]"][i, chain_idx]
+            @test logpdf(Normal(m, √s), y) == var_to_likelihoods["y"][i, chain_idx]
         end
     end
 

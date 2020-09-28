@@ -29,6 +29,42 @@ function Base.push!(
     ctx.loglikelihoods[vn] = logp
 end
 
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{Dict{String, Vector{Float64}}},
+    vn::VarName,
+    logp::Real
+)
+    lookup = ctx.loglikelihoods
+    ℓ = get!(lookup, string(vn), Float64[])
+    push!(ℓ, logp)
+end
+
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{Dict{String, Float64}},
+    vn::VarName,
+    logp::Real
+)
+    ctx.loglikelihoods[string(vn)] = logp
+end
+
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{Dict{String, Vector{Float64}}},
+    vn::String,
+    logp::Real
+)
+    lookup = ctx.loglikelihoods
+    ℓ = get!(lookup, vn, Float64[])
+    push!(ℓ, logp)
+end
+
+function Base.push!(
+    ctx::ElementwiseLikelihoodContext{Dict{String, Float64}},
+    vn::String,
+    logp::Real
+)
+    ctx.loglikelihoods[vn] = logp
+end
+
 
 function tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
@@ -58,9 +94,9 @@ end
 """
     elementwise_loglikelihoods(model::Model, chain::Chains)
 
-Runs `model` on each sample in `chain` returning an array of arrays with
-the i-th element inner arrays corresponding to the the likelihood of the i-th
-observation for that particular sample in `chain`.
+Runs `model` on each sample in `chain` returning a `Dict{String, Matrix{Float64}}`
+with keys corresponding to symbols of the observations, and values being matrices
+of shape `(num_chains, num_samples)`.
 
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
@@ -107,38 +143,32 @@ Dict{String,Array{Float64,1}} with 4 entries:
   "y"     => [-1.36627, -1.21964, -1.03342, -7.46617, -1.3234, -1.14536, -1.14781, -2.48912, -2.23705, -1.26267]
 ```
 """
-function elementwise_loglikelihoods(model::Model, chain)
+function elementwise_loglikelihoods(
+    model::Model,
+    chain,
+    keytype::Type{T} = String
+) where {T}
     # Get the data by executing the model once
     spl = SampleFromPrior()
     vi = VarInfo(model)
+    ctx = ElementwiseLikelihoodContext(Dict{T, Vector{Float64}}())
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    loglikelihoods = map(1:size(chain, 3)) do chain_idx
-        ctx = ElementwiseLikelihoodContext()
-        for sample_idx = 1:size(chain, 1)
-            # Update the values
-            setval!(vi, chain, sample_idx, chain_idx)
+    for (sample_idx, chain_idx) in iters
+        # Update the values
+        setval!(vi, chain, sample_idx, chain_idx)
 
-            # Execute model
-            model(vi, spl, ctx)
-        end
-        return ctx.loglikelihoods
+        # Execute model
+        model(vi, spl, ctx)
     end
 
-    K = keytype(loglikelihoods[1])
-    T = eltype(valtype(loglikelihoods[1]))
-    res = Dict{K, Matrix{T}}()
-    for ℓ in loglikelihoods
-        for (k, v) in ℓ
-            if haskey(res, k)
-                res[k] = vcat(res[k], reshape(v, 1, :))
-            else
-                res[k] = reshape(v, 1, :)
-            end
-        end
-    end
-
-    return res
+    niters = size(chain, 1)
+    nchains = size(chain, 3)
+    loglikelihoods = Dict(
+        varname => reshape(logliks, niters, nchains)
+        for (varname, logliks) in ctx.loglikelihoods
+    )
+    return loglikelihoods
 end
 
 function elementwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
