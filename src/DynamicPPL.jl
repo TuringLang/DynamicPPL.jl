@@ -66,6 +66,7 @@ export  AbstractVarInfo,
         Model,
         getmissings,
         getargnames,
+        generated_quantities,
 # Samplers
         Sampler,
         SampleFromPrior,
