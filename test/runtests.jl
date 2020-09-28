@@ -28,6 +28,7 @@ include("test_util.jl")
     include("independence.jl")
     include("distribution_wrappers.jl")
     include("context_implementations.jl")
+    include("loglikelihoods.jl")
 
     include("threadsafe.jl")
 
