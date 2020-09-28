@@ -88,28 +88,22 @@ function (model::Model)(
         return evaluate_threadsafe(rng, model, varinfo, sampler, context)
     end
 end
+function (model::Model)(args...)
+    return model(Random.GLOBAL_RNG, args...)
+end
 
 # without VarInfo
 function (model::Model)(
     rng::Random.AbstractRNG,
     sampler::AbstractSampler,
-    context::AbstractContext = DefaultContext(),
+    args...,
 )
-    return model(rng, VarInfo(), sampler, context)
-end
-function (model::Model)(
-    sampler::AbstractSampler,
-    context::AbstractContext = DefaultContext(),
-)
-    return model(Random.GLOBAL_RNG, sampler, context)
+    return model(rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
 function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
     return model(rng, VarInfo(), SampleFromPrior(), context)
-end
-function (model::Model)(context::AbstractContext)
-    return model(Random.GLOBAL_RNG, context)
 end
 
 """
