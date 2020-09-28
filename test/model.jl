@@ -11,8 +11,8 @@ Worth noting that this only supports models containing symbols of the forms
 `m`, `m[1]`, `m[1, 2]`, not `m[1][1]`, etc.
 """
 function test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
-    var_info = DynamicPPL.VarInfo(model)
-    spl = DynamicPPL.SampleFromPrior()
+    var_info = VarInfo(model)
+    spl = SampleFromPrior()
     θ_old = var_info[spl]
     DynamicPPL.setval!(var_info, chain, sample_idx, chain_idx)
     θ_new = var_info[spl]
@@ -20,7 +20,7 @@ function test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
     nt = DynamicPPL.tonamedtuple(var_info)
     for (k, (vals, names)) in pairs(nt)
         for (n, v) in zip(names, vals)
-            chain_val = if Symbol(n) ∉ MCMCChains.keys(chain)
+            chain_val = if Symbol(n) ∉ keys(chain)
                 # Assume it's a group
                 vec(MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx])
             else

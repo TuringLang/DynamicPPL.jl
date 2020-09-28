@@ -202,9 +202,9 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-    generated_quantities(model::Turing.Model, chain::AbstractChains)
+    generated_quantities(model::Model, chain::AbstractChains)
 
-Executes `model` for each of the samples in `chain` and returns an array of the values
+Execute `model` for each of the samples in `chain` and return an array of the values
 returned by the `model` for each sample.
 
 # Examples
@@ -262,10 +262,9 @@ julia> generated_quantities(model, chain)
 """
 function generated_quantities(model::Model, chain::AbstractChains)
     varinfo = VarInfo(model)
-    spl = SampleFromPrior()
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
         setval!(varinfo, chain, sample_idx, chain_idx)
-        model(varinfo, spl)
+        model(varinfo)
     end
 end
