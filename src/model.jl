@@ -76,25 +76,34 @@ Sample from the `model` using the `sampler` with random number generator `rng` a
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function (model::Model)(args...)
-    return model(VarInfo(), args...)
-end
-
-function (model::Model)(varinfo::AbstractVarInfo, args...)
-    return model(Random.GLOBAL_RNG, varinfo, args...)
-end
-
 function (model::Model)(
     rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo,
+    varinfo::AbstractVarInfo = VarInfo(),
     sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext()
+    context::AbstractContext = DefaultContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
     else
         return evaluate_threadsafe(rng, model, varinfo, sampler, context)
     end
+end
+function (model::Model)(args...)
+    return model(Random.GLOBAL_RNG, args...)
+end
+
+# without VarInfo
+function (model::Model)(
+    rng::Random.AbstractRNG,
+    sampler::AbstractSampler,
+    args...,
+)
+    return model(rng, VarInfo(), sampler, args...)
+end
+
+# without VarInfo and without AbstractSampler
+function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
+    return model(rng, VarInfo(), SampleFromPrior(), context)
 end
 
 """

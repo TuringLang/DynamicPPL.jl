@@ -45,6 +45,16 @@ Random.seed!(1234)
         end
     end
 
+    @testset "defaults without VarInfo, Sampler, and Context" begin
+        model = gdemo_default
+
+        Random.seed!(100)
+        s, m = model()
+
+        Random.seed!(100)
+        @test model(Random.GLOBAL_RNG) == (s, m)
+    end
+
     @testset "setval! & generated_quantities" begin
         @model function demo1(xs, ::Type{TV} = Vector{Float64}) where {TV}
             m = TV(undef, 2)
