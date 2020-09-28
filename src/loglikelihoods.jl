@@ -109,19 +109,33 @@ Dict{String,Array{Float64,1}} with 4 entries:
 """
 function elementwise_loglikelihoods(model::Model, chain)
     # Get the data by executing the model once
-    ctx = ElementwiseLikelihoodContext()
     spl = SampleFromPrior()
     vi = VarInfo(model)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    for (sample_idx, chain_idx) in iters
-        # Update the values
-        setval!(vi, chain, sample_idx, chain_idx)
+    loglikelihoods = map(1:size(chain, 3)) do chain_idx
+        ctx = ElementwiseLikelihoodContext()
+        for sample_idx = 1:size(chain, 1)
+            # Update the values
+            setval!(vi, chain, sample_idx, chain_idx)
 
-        # Execute model
-        model(vi, spl, ctx)
+            # Execute model
+            model(vi, spl, ctx)
+        end
+        return ctx.loglikelihoods
     end
-    return ctx.loglikelihoods
+
+    K = keytype(loglikelihoods[1])
+    T = valtype(loglikelihoods[1])
+    res = Dict{K, Vector{T}}()
+    for ℓ in loglikelihoods
+        for (k, v) in ℓ
+            container = get!(res, k, T[])
+            push!(container, v)
+        end
+    end
+
+    return res
 end
 
 function elementwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
