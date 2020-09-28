@@ -22,8 +22,7 @@ using .Turing
     @test haskey(var_to_likelihoods, "y")
 
     for chain_idx in MCMCChains.chains(chain)
-
-        for (i, (s, m)) in enumerate(zip(chain[:s], chain[:m]))
+        for (i, (s, m)) in enumerate(zip(chain[:, :s, chain_idx], chain[:, :m, chain_idx]))
             @test logpdf(Normal(m, √s), xs[1]) == var_to_likelihoods["xs[1]"][i, chain_idx]
             @test logpdf(Normal(m, √s), xs[2]) == var_to_likelihoods["xs[2]"][i, chain_idx]
             @test logpdf(Normal(m, √s), xs[3]) == var_to_likelihoods["xs[3]"][i, chain_idx]
