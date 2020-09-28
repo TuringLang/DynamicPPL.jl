@@ -77,10 +77,10 @@ The method resets the log joint probability of `varinfo` and increases the evalu
 number of `sampler`.
 """
 function (model::Model)(
-    rng::Random.AbstractRNG,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
     varinfo::AbstractVarInfo = VarInfo(),
     sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext()
+    context::AbstractContext = DefaultContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
@@ -89,7 +89,24 @@ function (model::Model)(
     end
 end
 
-(model::Model)(args...) = model(Random.GLOBAL_RNG, args...)
+function (model::Model)(
+    varinfo::AbstractVarInfo,
+    sampler::AbstractSampler = SampleFromPrior(),
+    context::AbstractContext = DefaultContext(),
+)
+    return model(Random.GLOBAL_RNG, varinfo, sampler, context)
+end
+
+function (model::Model)(
+    sampler::AbstractSampler,
+    context::AbstractContext = DefaultContext(),
+)
+    return model(Random.GLOBAL_RNG, VarInfo(), sampler, context)
+end
+
+function (model::Model)(context::AbstractContext)
+    return model(Random.GLOBAL_RNG, VarInfo(), SampleFromPrior(), context)
+end
 
 """
     evaluate_threadunsafe(rng, model, varinfo, sampler, context)
