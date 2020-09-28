@@ -77,7 +77,7 @@ The method resets the log joint probability of `varinfo` and increases the evalu
 number of `sampler`.
 """
 function (model::Model)(
-    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo = VarInfo(),
     sampler::AbstractSampler = SampleFromPrior(),
     context::AbstractContext = DefaultContext(),
