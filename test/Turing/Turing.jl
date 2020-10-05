@@ -15,12 +15,14 @@ using Libtask
 @reexport using Distributions, MCMCChains, Libtask, AbstractMCMC, Bijectors
 using Tracker: Tracker
 
+import AdvancedVI
 import DynamicPPL: getspace, NoDist, NamedDist
 
 const PROGRESS = Ref(true)
 function turnprogress(switch::Bool)
     @info "[Turing]: progress logging is $(switch ? "enabled" : "disabled") globally"
     PROGRESS[] = switch
+    AdvancedVI.turnprogress(switch)
 end
 
 # Random probability measures.
@@ -64,6 +66,9 @@ end
 ###########
 # Exports #
 ###########
+# `using` statements for stuff to re-export
+using DynamicPPL: elementwise_loglikelihoods, generated_quantities, logprior, logjoint
+using StatsBase: predict
 
 # Turing essentials - modelling macros and inference algorithms
 export  @model,                 # modelling
@@ -114,5 +119,11 @@ export  @model,                 # modelling
         LogPoisson,
         NamedDist,
         filldist,
-        arraydist
+        arraydist,
+
+        predict,
+        elementwise_loglikelihoods,
+        genereated_quantities,
+        logprior,
+        logjoint
 end
