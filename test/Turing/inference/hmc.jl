@@ -180,7 +180,6 @@ function DynamicPPL.initialstep(
 
             hamiltonian = AHMC.Hamiltonian(metric, logπ, ∂logπ∂θ)
             z = AHMC.phasepoint(rng, theta, hamiltonian)
->>>>>>> 64b7f2c... Update to AbstractMCMC 2
         end
     end
 
