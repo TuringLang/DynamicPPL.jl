@@ -108,41 +108,36 @@ end
 DynamicPPL.initialsampler(::Sampler{<:Hamiltonian}) = SampleFromUniform()
 
 # Handle resetting `n_adapts`
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    spl::Sampler{<:AdaptiveHamiltonian};
-    resume_from = nothing,
+function AbstractMCMC.sample(
+    rng::AbstractRNG,
+    model::AbstractModel,
+    sampler::Sampler{<:AdaptiveHamiltonian},
+    N::Integer;
+    chain_type=MCMCChains.Chains,
+    resume_from=nothing,
+    progress=PROGRESS[],
+    nadapts=sampler.alg.n_adapts,
     kwargs...
 )
-    if resume_from !== nothing
-        state = loadstate(resume_from)
-        return AbstractMCMC.step(rng, model, spl, state; nadapts=0, kwargs...)
+    if resume_from === nothing
+        # If `nadapts` is `-1`, then the user called a convenience
+        # constructor like `NUTS()` or `NUTS(0.65)`, and we should set a default for them.
+        if nadapts == -1
+            _nadapts = min(1000, N ÷ 2)
+        elseif nadapts > N
+            throw(ArgumentError("number of adaptation steps $nadapts is greater than the " *
+                                "total number of samples $N."))
+        else
+            _nadapts = nadapts
+        end
+
+        return AbstractMCMC.mcmcsample(rng, model, sampler, N;
+                                       chain_type=chain_type, progress=progress,
+                                       nadapts=_nadapts, kwargs...)
+    else
+        return resume(resume_from, N; chain_type=chain_type, progress=progress,
+                      nadapts=0, kwargs...)
     end
-
-    # Sample initial values.
-    _spl = DynamicPPL.initialsampler(spl)
-    vi = VarInfo(rng, model, _spl)
-
-    # Update the parameters if provided.
-    if haskey(kwargs, :init_params)
-        initialize_parameters!(vi, kwargs[:init_params], spl)
-
-        # Update joint log probability.
-        model(rng, vi, _spl)
-    end
-
-    # If `n_adapts` is -1, then the user called a convenience
-    # constructor like NUTS() or NUTS(0.65), and we should set a default for them.
-    if spl.alg.n_adapts == -1
-        nadapts = min(1000, N ÷ 2)
-    elseif spl.alg.n_adapts > N
-        # Verify that n_adapts is not greater than the number of samples to draw.
-        throw(ArgumentError("n_adapt of $(spl.alg.n_adapts) is greater than total samples of $N."))
-        nadapts = spl.alg.n_adapts
-    end
-
-    return initialstep(rng, model, spl, vi; nadapts=nadapts, kwargs...)
 end
 
 function DynamicPPL.initialstep(
@@ -206,7 +201,7 @@ function DynamicPPL.initialstep(
     if spl.alg isa AdaptiveHamiltonian
         hamiltonian, traj, _ =
             AHMC.adapt!(hamiltonian, traj, adaptor,
-                        1, nadapts, t.z.θ, t.stat.acceptance_rate)
+                        1, kwargs[:nadapts], t.z.θ, t.stat.acceptance_rate)
     end
 
     # Update `vi` based on acceptance
@@ -236,7 +231,6 @@ function AbstractMCMC.step(
     model::Model,
     spl::Sampler{<:Hamiltonian},
     state::HMCState;
-    nadapts=0,
     kwargs...
 )
     # Get step size
@@ -274,7 +268,7 @@ function AbstractMCMC.step(
     if spl.alg isa AdaptiveHamiltonian
         hamiltonian, traj, _ =
             AHMC.adapt!(hamiltonian, state.traj, state.adaptor,
-                        i, nadapts, t.z.θ, t.stat.acceptance_rate)
+                        i, kwargs[:nadapts], t.z.θ, t.stat.acceptance_rate)
     else
         traj = state.traj
     end
