@@ -252,7 +252,6 @@ end
 function (f::MHLogDensityFunction)(x)
     sampler = f.sampler
     vi = f.vi
-    rng = f.rng
 
     x_old, lj_old = vi[sampler], getlogp(vi)
     set_namedtuple!(vi, x)
@@ -357,7 +356,7 @@ function propose!(
     prev_trans = AMH.Transition(vt, getlogp(vi))
 
     # Make a new transition.
-    densitymodel = AMH.DensityModel(MHLogDensityFunction(model, spl))
+    densitymodel = AMH.DensityModel(MHLogDensityFunction(model, spl, vi))
     trans, _ = AbstractMCMC.step(rng, densitymodel, mh_sampler, prev_trans)
 
     # Update the values in the VarInfo.
