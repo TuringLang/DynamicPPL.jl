@@ -61,14 +61,13 @@ HMC(0.05, 10)
 
 Tips:
 
-- If you are receiving gradient errors when using `HMC`, try reducing the
-`step_size` parameter, e.g.
+- If you are receiving gradient errors when using `HMC`, try reducing the leapfrog step size `ϵ`, e.g.
 
 ```julia
-# Original step_size
+# Original step size
 sample(gdemo([1.5, 2]), HMC(0.1, 10), 1000)
 
-# Reduced step_size.
+# Reduced step size
 sample(gdemo([1.5, 2]), HMC(0.01, 10), 1000)
 ```
 """
@@ -77,7 +76,7 @@ mutable struct HMC{AD, space, metricT <: AHMC.AbstractMetric} <: StaticHamiltoni
     n_leapfrog  ::  Int       # leapfrog step number
 end
 
-alg_str(::Sampler{<:Hamiltonian}) = "HMC"
+DynamicPPL.alg_str(::Sampler{<:Hamiltonian}) = "HMC"
 isgibbscomponent(::Hamiltonian) = true
 
 HMC(args...; kwargs...) = HMC{ADBackend()}(args...; kwargs...)
@@ -127,21 +126,21 @@ function AbstractMCMC.sample_init!(
     if init_theta !== nothing
         # Doesn't support dynamic models
         link!(spl.state.vi, spl)
-        model(spl.state.vi, spl)
+        model(rng, spl.state.vi, spl)
         theta = spl.state.vi[spl]
         update_hamiltonian!(spl, model, length(theta))
         # Refresh the internal cache phase point z's hamiltonian energy.
         spl.state.z = AHMC.phasepoint(rng, theta, spl.state.h)
     else
         # Samples new values and sets trans to true, then computes the logp
-        model(empty!(spl.state.vi), SampleFromUniform())
+        model(rng, empty!(spl.state.vi), SampleFromUniform())
         link!(spl.state.vi, spl)
         theta = spl.state.vi[spl]
         update_hamiltonian!(spl, model, length(theta))
         # Refresh the internal cache phase point z's hamiltonian energy.
         spl.state.z = AHMC.phasepoint(rng, theta, spl.state.h)
         while !isfinite(spl.state.z.ℓπ.value) || !isfinite(spl.state.z.ℓπ.gradient)
-            model(empty!(spl.state.vi), SampleFromUniform())
+            model(rng, empty!(spl.state.vi), SampleFromUniform())
             link!(spl.state.vi, spl)
             theta = spl.state.vi[spl]
             update_hamiltonian!(spl, model, length(theta))
@@ -172,10 +171,10 @@ function AbstractMCMC.sample_init!(
     # non-Gibbs sampling.
     if !islinked(spl.state.vi, spl) && spl.selector.tag == :default
         link!(spl.state.vi, spl)
-        model(spl.state.vi, spl)
+        model(rng, spl.state.vi, spl)
     elseif islinked(spl.state.vi, spl) && spl.selector.tag != :default
         invlink!(spl.state.vi, spl)
-        model(spl.state.vi, spl)        
+        model(rng, spl.state.vi, spl)        
     end
 end
 
@@ -298,7 +297,7 @@ Arguments:
 
 - `n_adapts::Int` : The number of samples to use with adaptation.
 - `δ::Float64` : Target acceptance rate for dual averaging.
-- `max_depth::Float64` : Maximum doubling tree depth.
+- `max_depth::Int` : Maximum doubling tree depth.
 - `Δ_max::Float64` : Maximum divergence during doubling tree.
 - `ϵ::Float64` : Inital step size; 0 means automatically searching using a heuristic procedure.
 
@@ -418,7 +417,7 @@ function AbstractMCMC.step!(
         # Transform the space
         @debug "X-> R..."
         link!(spl.state.vi, spl)
-        model(spl.state.vi, spl)
+        model(rng, spl.state.vi, spl)
     end
     # Get position and log density before transition
     θ_old, log_density_old = spl.state.vi[spl], getlogp(spl.state.vi)
