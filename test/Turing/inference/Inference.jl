@@ -117,31 +117,6 @@ end
 
 DynamicPPL.getlogp(t::Transition) = t.lp
 
-##########################################
-# Internal variable names for MCMCChains #
-##########################################
-
-const TURING_INTERNAL_VARS = (internals = [
-    "elapsed",
-    "eval_num",
-    "lf_eps",
-    "lp",
-    "weight",
-    "le",
-    "acceptance_rate",
-    "hamiltonian_energy",
-    "hamiltonian_energy_error",
-    "max_hamiltonian_energy_error",
-    "is_accept",
-    "log_density",
-    "n_steps",
-    "numerical_error",
-    "step_size",
-    "nom_step_size",
-    "tree_depth",
-    "is_adapt"
-],)
-
 #########################################
 # Default definitions for the interface #
 #########################################
@@ -388,7 +363,7 @@ function AbstractMCMC.bundle_samples(
     return MCMCChains.Chains(
         parray,
         nms,
-        deepcopy(TURING_INTERNAL_VARS);
+        (internals = extra_params,);
         evidence=le,
         info=info,
     ) |> sort
@@ -404,10 +379,8 @@ function AbstractMCMC.bundle_samples(
     kwargs...
 )
     return map(ts) do t
-        params = getparams(t)
-        k = Iterators.flatten((keys(params), :lp))
-        v = Iterators.flatten((values(params), getlogp(t)))
-        return (; zip(k, v)...)
+        params = map(first, getparams(t))
+        return merge(params, (lp = getlogp(t),))
     end
 end
 
@@ -594,11 +567,10 @@ function predict(rng::AbstractRNG, model::Model, chain::MCMCChains.Chains; inclu
     chain_result = reduce(
         MCMCChains.chainscat, [
             AbstractMCMC.bundle_samples(
-                rng,
+                transitions[chn_idx],
                 model,
                 spl,
-                length(chain),
-                transitions[chn_idx],
+                nothing,
                 MCMCChains.Chains
             ) for chn_idx = 1:size(chain, 3)
         ]
