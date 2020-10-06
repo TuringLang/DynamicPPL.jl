@@ -131,7 +131,7 @@ function DynamicPPL.initialstep(
 
     # Compute initial states of the local samplers.
     states = map(samplers) do local_spl
-        state = last(DynamicPPL.initialstep(rng, model, local_spl, vi; kwargs...))
+        _, state = DynamicPPL.initialstep(rng, model, local_spl, vi; kwargs...)
 
         # update VarInfo object
         vi = getvarinfo(state)
