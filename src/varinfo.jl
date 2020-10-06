@@ -116,8 +116,6 @@ function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
     VarInfo(md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi)))
 end
 
-VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
-
 function VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -127,6 +125,16 @@ function VarInfo(
     varinfo = VarInfo()
     model(rng, varinfo, sampler, context)
     return TypedVarInfo(varinfo)
+end
+VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
+
+# without AbstractSampler
+function VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    context::AbstractContext,
+)
+    return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
 @generated function newmetadata(metadata::NamedTuple{names}, ::Val{space}, x) where {names, space}

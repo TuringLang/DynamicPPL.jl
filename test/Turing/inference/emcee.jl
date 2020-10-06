@@ -36,19 +36,16 @@ function AbstractMCMC.step(
 
     # Sample from the prior
     n = spl.alg.ensemble.n_walkers
-    vis = [VarInfo(rng, model) for _ in 1:n]
+    vis = [VarInfo(rng, model, SampleFromPrior()) for _ in 1:n]
 
     # Update the parameters if provided.
     if haskey(kwargs, :init_params)
         for vi in vis
             initialize_parameters!(vi, kwargs[:init_params], spl)
-        end
-    end
 
-    # Update log probability and transform to unconstrained space.
-    for vi in vis
-        model(rng, vi, spl)
-        DynamicPPL.link!(vi, spl)
+            # Update log joint probability.
+            model(rng, vi, SampleFromPrior())
+        end
     end
 
     # Compute initial transition and states.
@@ -56,8 +53,11 @@ function AbstractMCMC.step(
         Transition(vi)
     end
     state = EmceeState(
-        vis[1], map(vis) do vi
-        AMH.Transition(vi[spl], getlogp(vi))
+        vis[1],
+        map(vis) do vi
+            # Transform to unconstrained space.
+            DynamicPPL.link!(vi, spl)
+            AMH.Transition(vi[spl], getlogp(vi))
         end
     )
 
@@ -73,17 +73,18 @@ function AbstractMCMC.step(
 )
     # Generate a log joint function.
     vi = state.vi
-    densitymodel = AMH.DensityModel(gen_logπ(vi, DynamicPPL.SampleFromPrior(), model))
+    densitymodel = AMH.DensityModel(gen_logπ(vi, SampleFromPrior(), model))
 
     # Compute the next states.
     states = last(AbstractMCMC.step(rng, densitymodel, spl.alg.ensemble, state.states))
 
     # Compute the next transition and state.
     transition = map(states) do _state
-        DynamicPPL.link!(vi, spl)
         vi[spl] = _state.params
         DynamicPPL.invlink!(vi, spl)
-        return Transition(tonamedtuple(vi), _state.lp)
+        t = Transition(tonamedtuple(vi), _state.lp)
+        DynamicPPL.link!(vi, spl)
+        return t
     end
     newstate = EmceeState(vi, states)
 
@@ -91,8 +92,7 @@ function AbstractMCMC.step(
 end
 
 function AbstractMCMC.bundle_samples(
-    ts::Vector{<:Vector},
-    rng::AbstractRNG,
+    samples::Vector{<:Vector},
     model::AbstractModel,
     spl::Sampler{<:Emcee},
     state::EmceeState,
@@ -102,17 +102,17 @@ function AbstractMCMC.bundle_samples(
 )
     # Convert transitions to array format.
     # Also retrieve the variable names.
-    params_vec = map(_params_to_array, ts_transform)
+    params_vec = map(_params_to_array, samples)
 
     # Extract names and values separately.
     nms = params_vec[1][1]
     vals_vec = [p[2] for p in params_vec]
 
     # Get the values of the extra parameters in each transition.
-    extra_vec = map(get_transition_extras, ts_transform)
+    extra_vec = map(get_transition_extras, samples)
 
     # Get the extra parameter names & values.
-    extra_params = extra_vec[1][1]
+    extra_params = (internals = extra_vec[1][1],)
     extra_values_vec = [e[2] for e in extra_vec]
 
     # Extract names & construct param array.
@@ -125,7 +125,7 @@ function AbstractMCMC.bundle_samples(
 
     # Set up the info tuple.
     if save_state
-        info = (range = rng, model = model, spl = spl, samplerstate = state)
+        info = (range = rng, model = model, sampler = spl, samplerstate = state)
     else
         info = NamedTuple()
     end
