@@ -56,6 +56,7 @@ function DynamicPPL.initialstep(
     model::Model,
     spl::Sampler{<:DynamicNUTS},
     vi::AbstractVarInfo;
+    N::Int,
     kwargs...
 )
     # Set up lp function.
@@ -95,7 +96,7 @@ function DynamicPPL.initialstep(
     return transition, state
 end
 
-function AbstractMCMC.step!(
+function AbstractMCMC.step(
     rng::AbstractRNG,
     model::Model,
     spl::Sampler{<:DynamicNUTS},
@@ -131,9 +132,9 @@ function AbstractMCMC.sample(
     end
     if resume_from === nothing
         return AbstractMCMC.sample(rng, model, Sampler(alg, model), N;
-                                   chain_type=chain_type, progress=false, kwargs...)
+                                   chain_type=chain_type, progress=false, N=N, kwargs...)
     else
-        return resume(resume_from, N; chain_type=chain_type, progress=false, kwargs...)
+        return resume(resume_from, N; chain_type=chain_type, progress=false, N=N, kwargs...)
     end
 end
 
@@ -152,5 +153,5 @@ function AbstractMCMC.sample(
         @warn "[HMC] Progress logging in Turing is disabled since DynamicHMC provides its own progress meter"
     end
     return AbstractMCMC.sample(rng, model, Sampler(alg, model), parallel, N, n_chains;
-                               chain_type=chain_type, progress=false, kwargs...)
+                               chain_type=chain_type, progress=false, N=N, kwargs...)
 end
