@@ -166,7 +166,7 @@ function AbstractMCMC.step(
         current_state = gibbs_update_state(_state, vi)
 
         # Step through the local sampler.
-        newstate = last(AbstractMCMC.step(rng, model, _sampler, current_state; kwargs...))
+        _, newstate = AbstractMCMC.step(rng, model, _sampler, current_state; kwargs...)
 
         # Update `VarInfo` object.
         vi = getvarinfo(newstate)
