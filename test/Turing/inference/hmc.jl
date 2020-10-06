@@ -107,7 +107,7 @@ end
 
 DynamicPPL.initialsampler(::Sampler{<:Hamiltonian}) = SampleFromUniform()
 
-# Handle resetting `n_adapts`
+# Handle setting `nadapts` and `discard_initial`
 function AbstractMCMC.sample(
     rng::AbstractRNG,
     model::AbstractModel,
@@ -117,26 +117,34 @@ function AbstractMCMC.sample(
     resume_from=nothing,
     progress=PROGRESS[],
     nadapts=sampler.alg.n_adapts,
+    discard_adapt=true,
+    discard_initial=-1,
     kwargs...
 )
     if resume_from === nothing
         # If `nadapts` is `-1`, then the user called a convenience
-        # constructor like `NUTS()` or `NUTS(0.65)`, and we should set a default for them.
+        # constructor like `NUTS()` or `NUTS(0.65)`,
+        # and we should set a default for them.
         if nadapts == -1
             _nadapts = min(1000, N ÷ 2)
-        elseif nadapts > N
-            throw(ArgumentError("number of adaptation steps $nadapts is greater than the " *
-                                "total number of samples $N."))
         else
             _nadapts = nadapts
         end
 
+        # If `discard_initial` is `-1`, then users did not specify the keyword argument.
+        if discard_initial == -1
+            _discard_initial = discard_adapt ? _nadapts : 0
+        else
+            _discard_initial = discard_initial
+        end
+
         return AbstractMCMC.mcmcsample(rng, model, sampler, N;
                                        chain_type=chain_type, progress=progress,
-                                       nadapts=_nadapts, kwargs...)
+                                       nadapts=_nadapts, discard_initial=_discard_initial,
+                                       kwargs...)
     else
         return resume(resume_from, N; chain_type=chain_type, progress=progress,
-                      nadapts=0, kwargs...)
+                      nadapts=0, discard_adapt=false, discard_initial=0, kwargs...)
     end
 end
 
@@ -146,6 +154,7 @@ function DynamicPPL.initialstep(
     spl::Sampler{<:Hamiltonian},
     vi::AbstractVarInfo;
     init_params=nothing,
+    nadapts=0,
     kwargs...
 )
     # Transform the samples to unconstrained space and compute the joint log probability.
@@ -201,7 +210,7 @@ function DynamicPPL.initialstep(
     if spl.alg isa AdaptiveHamiltonian
         hamiltonian, traj, _ =
             AHMC.adapt!(hamiltonian, traj, adaptor,
-                        1, kwargs[:nadapts], t.z.θ, t.stat.acceptance_rate)
+                        1, nadapts, t.z.θ, t.stat.acceptance_rate)
     end
 
     # Update `vi` based on acceptance
@@ -231,6 +240,7 @@ function AbstractMCMC.step(
     model::Model,
     spl::Sampler{<:Hamiltonian},
     state::HMCState;
+    nadapts=0,
     kwargs...
 )
     # Get step size
@@ -268,7 +278,7 @@ function AbstractMCMC.step(
     if spl.alg isa AdaptiveHamiltonian
         hamiltonian, traj, _ =
             AHMC.adapt!(hamiltonian, state.traj, state.adaptor,
-                        i, kwargs[:nadapts], t.z.θ, t.stat.acceptance_rate)
+                        i, nadapts, t.z.θ, t.stat.acceptance_rate)
     else
         traj = state.traj
     end
@@ -294,31 +304,6 @@ function AbstractMCMC.step(
     end
 
     return transition, newstate
-end
-
-function AbstractMCMC.save!!(
-    transitions::Vector,
-    transition,
-    iteration::Integer,
-    ::Model,
-    sampler::Sampler{<:AdaptiveHamiltonian},
-    N::Integer = 0;
-    nadapts::Int,
-    discard_adapt = true,
-    kwargs...
-)
-    if discard_adapt
-        if iteration <= sampler.alg.n_adapts
-            return transitions
-        end
-        ndiscard = sampler.alg.n_adapts
-    else
-        ndiscard = 0
-    end
-
-    s = BangBang.push!!(transitions, transition)
-    s !== transitions && N > 0 && sizehint!(s, N - ndiscard)
-    return s
 end
 
 function get_hamiltonian(model, spl, vi, state, n)
@@ -517,7 +502,7 @@ end
 
 gen_metric(dim::Int, spl::Sampler{<:Hamiltonian}, state) = AHMC.UnitEuclideanMetric(dim)
 function gen_metric(dim::Int, spl::Sampler{<:AdaptiveHamiltonian}, state)
-    return AHMC.renew(state.h.metric, AHMC.getM⁻¹(state.adaptor.pc))
+    return AHMC.renew(state.hamiltonian.metric, AHMC.getM⁻¹(state.adaptor.pc))
 end
 
 gen_traj(alg::HMC, ϵ) = AHMC.StaticTrajectory(AHMC.Leapfrog(ϵ), alg.n_leapfrog)
