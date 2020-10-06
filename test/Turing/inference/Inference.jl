@@ -376,7 +376,7 @@ function AbstractMCMC.bundle_samples(
 
     # Set up the info tuple.
     if save_state
-        info = (model = model, spl = spl, samplerstate = state)
+        info = (model = model, sampler = spl, samplerstate = state)
     else
         info = NamedTuple()
     end
@@ -412,7 +412,7 @@ function AbstractMCMC.bundle_samples(
 end
 
 function save(c::MCMCChains.Chains, spl::Sampler, model, vi, samples)
-    nt = NamedTuple{(:spl, :model, :vi, :samples)}((spl, model, deepcopy(vi), samples))
+    nt = NamedTuple{(:sampler, :model, :vi, :samples)}((spl, model, deepcopy(vi), samples))
     return setinfo(c, merge(nt, c.info))
 end
 
@@ -420,22 +420,24 @@ function resume(chain::MCMCChains.Chains, args...; kwargs...)
     return resume(Random.GLOBAL_RNG, chain, args...; kwargs...)
 end
 
-function resume(rng::Random.AbstractRNG, chain::MCMCChains.Chains, args...; kwargs...)
+function resume(rng::Random.AbstractRNG, chain::MCMCChains.Chains, args...;
+                progress=PROGRESS[], kwargs...)
     isempty(chain.info) && error("[Turing] cannot resume from a chain without state info")
 
     # Sample a new chain.
-    return AbstractMCMC.sample(
+    return AbstractMCMC.mcmcsample(
         rng,
         chain.info[:model],
         chain.info[:sampler],
         args...;
         resume_from = chain,
         chain_type = MCMCChains.Chains,
+        progress = progress,
         kwargs...
     )
 end
 
-loadstate(chain::MCMCChains.Chains) = chain.info[:samplerstate]
+DynamicPPL.loadstate(chain::MCMCChains.Chains) = chain.info[:samplerstate]
 
 #######################################
 # Concrete algorithm implementations. #
