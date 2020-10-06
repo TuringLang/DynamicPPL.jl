@@ -100,10 +100,8 @@ function DynamicPPL.initialstep(
     kwargs...
 )
     # Create tuple of samplers
-    i = 0
     algs = spl.alg.algs
-    samplers = map(algs) do alg
-        i += 1
+    samplers = map(enumerate(algs)) do (i, alg)
         if i == 1
             prev_alg = algs[end]
         else
