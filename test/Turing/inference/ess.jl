@@ -36,8 +36,7 @@ function DynamicPPL.initialstep(
     kwargs...
 )
     # Sanity check
-    space = getspace(spl.alg)
-    vns = _getvns(vi, s, Val(space))
+    vns = _getvns(vi, spl)
     length(vns) == 1 ||
         error("[ESS] does only support one variable ($(length(vns)) variables specified)")
     for vn in vns[1]
@@ -65,12 +64,11 @@ function AbstractMCMC.step(
     end
 
     # define previous sampler state
-    oldstate = EllipticalSliceSampling.EllipticalSliceSamplerState(f, getlogp(vi))
+    oldstate = EllipticalSliceSampling.ESSState(f, getlogp(vi))
 
     # compute next state
-    _, state = AbstractMCMC.step(rng, ESSModel(model, spl),
-                                 EllipticalSliceSampling.EllipticalSliceSampler(), 1, oldstate;
-                                 progress = false)
+    _, state = AbstractMCMC.step(rng, ESSModel(model, spl, vi),
+                                 EllipticalSliceSampling.ESS(), oldstate)
 
     # update sample and log-likelihood
     vi[spl] = state.sample
