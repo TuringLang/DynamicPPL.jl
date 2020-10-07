@@ -343,7 +343,10 @@ function build_output(modelinfo)
     modeldef[:body] = quote
         $evaluator = $(combinedef_anonymous(evaluatordef))
         return $(DynamicPPL.Model)(
-            $evaluator, $allargs_namedtuple, $defaults_namedtuple
+            $(QuoteNode(modeldef[:name])),
+            $evaluator,
+            $allargs_namedtuple,
+            $defaults_namedtuple,
         )
     end
 
