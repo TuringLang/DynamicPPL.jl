@@ -91,7 +91,7 @@ export  AbstractVarInfo,
 # Convenience functions
         logprior,
         logjoint,
-        elementwise_loglikelihoods,
+        pointwise_loglikelihoods,
 # Convenience macros
         @addlogprob!
 
@@ -121,5 +121,7 @@ include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
+
+include("deprecations.jl")
 
 end # module
