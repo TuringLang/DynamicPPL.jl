@@ -82,12 +82,6 @@ inspace(vn, space::Tuple) = vn in space
 inspace(vn::VarName, space::Tuple{}) = true
 inspace(vn::VarName, space::Tuple) = any(_in(vn, s) for s in space)
 
-@noinline function Base.in(vn::VarName, space::Tuple)
-    Base.depwarn("`Base.in(vn::VarName, space::Tuple)` is deprecated, use `inspace(vn, space)` instead.",
-                 nameof(Base.in))
-    return inspace(vn, space)
-end
-
 _in(vn::VarName, s::Symbol) = getsym(vn) == s
 _in(vn::VarName, s::VarName) = subsumes(s, vn)
 

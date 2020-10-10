@@ -1,18 +1,18 @@
 # Context version
-struct ElementwiseLikelihoodContext{A, Ctx} <: AbstractContext
+struct PointwiseLikelihoodContext{A, Ctx} <: AbstractContext
     loglikelihoods::A
     ctx::Ctx
 end
 
-function ElementwiseLikelihoodContext(
+function PointwiseLikelihoodContext(
     likelihoods = Dict{VarName, Vector{Float64}}(),
     ctx::AbstractContext = LikelihoodContext()
 )
-    return ElementwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
+    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{VarName, Vector{Float64}}},
+    ctx::PointwiseLikelihoodContext{Dict{VarName, Vector{Float64}}},
     vn::VarName,
     logp::Real
 )
@@ -22,7 +22,7 @@ function Base.push!(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{VarName, Float64}},
+    ctx::PointwiseLikelihoodContext{Dict{VarName, Float64}},
     vn::VarName,
     logp::Real
 )
@@ -30,7 +30,7 @@ function Base.push!(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{String, Vector{Float64}}},
+    ctx::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}},
     vn::VarName,
     logp::Real
 )
@@ -40,7 +40,7 @@ function Base.push!(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{String, Float64}},
+    ctx::PointwiseLikelihoodContext{Dict{String, Float64}},
     vn::VarName,
     logp::Real
 )
@@ -48,7 +48,7 @@ function Base.push!(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{String, Vector{Float64}}},
+    ctx::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}},
     vn::String,
     logp::Real
 )
@@ -58,7 +58,7 @@ function Base.push!(
 end
 
 function Base.push!(
-    ctx::ElementwiseLikelihoodContext{Dict{String, Float64}},
+    ctx::PointwiseLikelihoodContext{Dict{String, Float64}},
     vn::String,
     logp::Real
 )
@@ -66,18 +66,18 @@ function Base.push!(
 end
 
 
-function tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, vn, inds, vi)
+function tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-function dot_tilde_assume(rng, ctx::ElementwiseLikelihoodContext, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi)
     value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
 
-function tilde_observe(ctx::ElementwiseLikelihoodContext, sampler, right, left, vname, vinds, vi)
+function tilde_observe(ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi)
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
@@ -92,7 +92,7 @@ end
 
 
 """
-    elementwise_loglikelihoods(model::Model, chain::Chains, keytype = String)
+    pointwise_loglikelihoods(model::Model, chain::Chains, keytype = String)
 
 Runs `model` on each sample in `chain` returning a `Dict{String, Matrix{Float64}}`
 with keys corresponding to symbols of the observations, and values being matrices
@@ -138,21 +138,21 @@ julia> model = demo(randn(3), randn());
 
 julia> chain = sample(model, MH(), 10);
 
-julia> elementwise_loglikelihoods(model, chain)
+julia> pointwise_loglikelihoods(model, chain)
 Dict{String,Array{Float64,2}} with 4 entries:
   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
-julia> elementwise_loglikelihoods(model, chain, String)
+julia> pointwise_loglikelihoods(model, chain, String)
 Dict{String,Array{Float64,2}} with 4 entries:
   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
-julia> elementwise_loglikelihoods(model, chain, VarName)
+julia> pointwise_loglikelihoods(model, chain, VarName)
 Dict{VarName,Array{Float64,2}} with 4 entries:
   xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   y     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
@@ -160,7 +160,7 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
 ```
 """
-function elementwise_loglikelihoods(
+function pointwise_loglikelihoods(
     model::Model,
     chain,
     keytype::Type{T} = String
@@ -168,7 +168,7 @@ function elementwise_loglikelihoods(
     # Get the data by executing the model once
     spl = SampleFromPrior()
     vi = VarInfo(model)
-    ctx = ElementwiseLikelihoodContext(Dict{T, Vector{Float64}}())
+    ctx = PointwiseLikelihoodContext(Dict{T, Vector{Float64}}())
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -188,8 +188,8 @@ function elementwise_loglikelihoods(
     return loglikelihoods
 end
 
-function elementwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    ctx = ElementwiseLikelihoodContext(Dict{VarName, Float64}())
+function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
+    ctx = PointwiseLikelihoodContext(Dict{VarName, Float64}())
     model(varinfo, SampleFromPrior(), ctx)
     return ctx.loglikelihoods
 end
