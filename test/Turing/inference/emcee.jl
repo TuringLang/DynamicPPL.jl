@@ -125,7 +125,7 @@ function AbstractMCMC.bundle_samples(
 
     # Set up the info tuple.
     if save_state
-        info = (range = rng, model = model, sampler = spl, samplerstate = state)
+        info = (model = model, sampler = spl, samplerstate = state)
     else
         info = NamedTuple()
     end
