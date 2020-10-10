@@ -22,12 +22,21 @@ end
 """
     Sampler{T}
 
-Generic sampler type for inference algorithms in DynamicPPL.
+Generic sampler type for inference algorithms of type `T` in DynamicPPL.
+
+`Sampler` should implement the AbstractMCMC interface, and in particular
+[`AbstractMCMC.step`](@ref). A default implementation of the initial sampling step is
+provided that supports resuming sampling from a previous state and setting initial
+parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
+for loading previous states and actually performing the initial sampling step,
+respectively. Additionally, sometimes one might want to implement [`initialsampler`](@ref)
+that specifies how the initial parameter values are sampled if they are not provided.
+By default, values are sampled from the prior.
 """
 struct Sampler{T} <: AbstractSampler
     alg::T
-    # TODO: remove selector & add space
-    selector::Selector
+    selector::Selector # Can we remove it?
+    # TODO: add space such that we can integrate existing external samplers in DynamicPPL
 end
 Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model) = Sampler(alg, model, Selector())
@@ -74,11 +83,22 @@ function AbstractMCMC.step(
     return initialstep(rng, model, spl, vi; kwargs...)
 end
 
+"""
+    loadstate(data)
+
+Load sampler state from `data`.
+"""
 function loadstate end
 
-initialsampler(spl::Sampler) = SampleFromPrior()
+"""
+    initialsampler(sampler::Sampler)
 
-function initialstep end
+Return the sampler that is used for generating the initial parameters when sampling with
+`sampler`.
+
+By default, it returns an instance of [`SampleFromPrior`](@ref).
+"""
+initialsampler(spl::Sampler) = SampleFromPrior()
 
 function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     @debug "Using passed-in initial variable values" init_params
@@ -109,3 +129,13 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
 
     return
 end
+
+"""
+    initialstep(rng, model, sampler, varinfo; kwargs...)
+
+Perform the initial sampling step of the `sampler` for the `model`.
+
+The `varinfo` contains the initial samples, which can be provided by the user or
+sampled randomly.
+"""
+function initialstep end
