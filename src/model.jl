@@ -185,6 +185,13 @@ Get the name of the `model` as `Symbol`.
 Base.nameof(model::Model) = model.name
 
 """
+    nameof(model::Model)
+
+Get the name of the `model` as `Symbol`.
+"""
+Base.nameof(model::Model) = model.name
+
+"""
     logjoint(model::Model, varinfo::AbstractVarInfo)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
