@@ -15,8 +15,6 @@ function Emcee(n_walkers::Int, stretch_length=2.0)
     return Emcee{(), typeof(ensemble)}(ensemble)
 end
 
-alg_str(::Sampler{<:Emcee}) = "Emcee"
-
 struct EmceeState{V<:AbstractVarInfo,S}
     vi::V
     states::S

@@ -1,5 +1,6 @@
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+        name::Symbol
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -32,39 +33,44 @@ Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x 
 ```
 """
 struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
+    name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
 
     """
-        Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
+        Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
 
-    Create a model with evaluation function `f` and missing arguments overwritten by `missings`.
+    Create a model of name `name` with evaluation function `f` and missing arguments
+    overwritten by `missings`.
     """
     function Model{missings}(
+        name::Symbol,
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(f, args, defaults)
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(name, f, args, defaults)
     end
 end
 
 """
-    Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
+    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-Create a model with evaluation function `f` and missing arguments deduced from `args`.
+Create a model of name `name` with evaluation function `f` and missing arguments deduced
+from `args`.
 
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
 @generated function Model(
+    name::Symbol,
     f::F,
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple = NamedTuple(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(f, args, defaults))
+    return :(Model{$missings}(name, f, args, defaults))
 end
 
 """
@@ -165,8 +171,12 @@ Get a tuple of the names of the missing arguments of the `model`.
 """
 getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
-getmissing(model::Model) = getmissings(model)
-@deprecate getmissing(model) getmissings(model)
+"""
+    nameof(model::Model)
+
+Get the name of the `model` as `Symbol`.
+"""
+Base.nameof(model::Model) = model.name
 
 """
     logjoint(model::Model, varinfo::AbstractVarInfo)

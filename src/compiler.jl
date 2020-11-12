@@ -70,7 +70,7 @@ function model(expr, warn)
 
     # Generate main body
     modelinfo[:body] = generate_mainbody(
-        modelinfo[:modeldef][:body], modelinfo[:allargs_exprs], warn
+        modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn
     )
 
     return build_output(modelinfo)
@@ -117,7 +117,7 @@ function build_model_info(input_expr)
     allargs_exprs = first.(allargs_exprs_defaults)
 
     # Extract the names of the arguments.
-    allargs_syms = map(allargs_exprs_defaults) do (arg, _)
+    allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
             (::Type{T_}) | (name_::Type{T_}) => T
             name_::T_ => name
@@ -343,7 +343,10 @@ function build_output(modelinfo)
     modeldef[:body] = quote
         $evaluator = $(combinedef_anonymous(evaluatordef))
         return $(DynamicPPL.Model)(
-            $evaluator, $allargs_namedtuple, $defaults_namedtuple
+            $(QuoteNode(modeldef[:name])),
+            $evaluator,
+            $allargs_namedtuple,
+            $defaults_namedtuple,
         )
     end
 
@@ -366,7 +369,7 @@ Convert the `value` to the correct type for the `sampler` and the `vi` object.
 function matchingvalue(sampler, vi, value)
     T = typeof(value)
     if hasmissing(T)
-        return get_matching_type(sampler, vi, T)(value)
+        return convert(get_matching_type(sampler, vi, T), value)
     else
         return value
     end

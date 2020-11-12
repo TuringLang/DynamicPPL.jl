@@ -15,7 +15,7 @@ using .Turing
     y = randn();
     model = demo(xs, y);
     chain = sample(model, MH(), MCMCThreads(), 100, 2);
-    var_to_likelihoods = elementwise_loglikelihoods(model, chain)
+    var_to_likelihoods = pointwise_loglikelihoods(model, chain)
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
     @test haskey(var_to_likelihoods, "xs[3]")
@@ -31,7 +31,7 @@ using .Turing
     end
 
     var_info = VarInfo(model)
-    results = DynamicPPL.elementwise_loglikelihoods(model, var_info)
+    results = pointwise_loglikelihoods(model, var_info)
     var_to_likelihoods = Dict(string(vn) => ℓ for (vn, ℓ) in results)
     s, m = var_info[SampleFromPrior()]
     @test logpdf(Normal(m, √s), xs[1]) == var_to_likelihoods["xs[1]"]

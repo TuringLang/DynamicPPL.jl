@@ -147,4 +147,18 @@ Random.seed!(1234)
         # Ensure that they're not all the same (some can be, because rejected samples)
         @test any(res34[1:end - 1] .!= res34[2:end])
     end
+
+    @testset "nameof" begin
+        @model function test1(x)
+            m ~ Normal(0, 1)
+            x ~ Normal(m, 1)
+        end
+        @model test2(x) = begin
+            m ~ Normal(0, 1)
+            x ~ Normal(m, 1)
+        end
+
+        @test nameof(test1(rand())) == :test1
+        @test nameof(test2(rand())) == :test2
+    end
 end

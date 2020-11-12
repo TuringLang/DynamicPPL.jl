@@ -171,8 +171,9 @@ end
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        Model{$(Tuple(missings))}(model.f, $(to_namedtuple_expr(argnames, argvals)),
-                                  model.defaults)
+        Model{$(Tuple(missings))}(
+            model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults,
+        )
     end
 end
 
@@ -229,6 +230,7 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression;
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :(Model{$(Tuple(missings))}(model.f, $(to_namedtuple_expr(argnames, argvals)),
-                                       model.defaults))
+    return :(Model{$(Tuple(missings))}(
+        model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults,
+    ))
 end
