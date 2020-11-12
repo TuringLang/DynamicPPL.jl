@@ -70,7 +70,7 @@ function model(expr, warn)
 
     # Generate main body
     modelinfo[:body] = generate_mainbody(
-        modelinfo[:modeldef][:body], modelinfo[:allargs_exprs], warn
+        modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn
     )
 
     return build_output(modelinfo)
@@ -117,7 +117,7 @@ function build_model_info(input_expr)
     allargs_exprs = first.(allargs_exprs_defaults)
 
     # Extract the names of the arguments.
-    allargs_syms = map(allargs_exprs_defaults) do (arg, _)
+    allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
             (::Type{T_}) | (name_::Type{T_}) => T
             name_::T_ => name

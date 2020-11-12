@@ -635,4 +635,15 @@ end
         m = demo(0.)
         @test m() isa Float64
     end
+    @testset "type annotations" begin
+        @model function demo_without(x)
+            x ~ Normal()
+        end
+        @test isempty(VarInfo(demo_without(0.0)))
+
+        @model function demo_with(x::Real)
+            x ~ Normal()
+        end
+        @test isempty(VarInfo(demo_with(0.0)))
+    end
 end
