@@ -78,9 +78,7 @@ function GibbsTransition(vi::AbstractVarInfo)
     return GibbsTransition(theta, lp)
 end
 
-function additional_parameters(::Type{<:GibbsTransition})
-    return [:lp]
-end
+metadata(t::GibbsTransition) = (lp = t.lp,)
 
 DynamicPPL.getlogp(t::GibbsTransition) = t.lp
 
@@ -101,7 +99,9 @@ function DynamicPPL.initialstep(
 )
     # Create tuple of samplers
     algs = spl.alg.algs
-    samplers = map(enumerate(algs)) do (i, alg)
+    i = 0
+    samplers = map(algs) do alg
+        i += 1
         if i == 1
             prev_alg = algs[end]
         else
