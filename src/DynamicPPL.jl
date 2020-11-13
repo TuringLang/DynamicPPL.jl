@@ -121,6 +121,4 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 
-include("deprecations.jl")
-
 end # module
