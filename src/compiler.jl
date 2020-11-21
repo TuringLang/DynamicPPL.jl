@@ -369,7 +369,7 @@ Convert the `value` to the correct type for the `sampler` and the `vi` object.
 function matchingvalue(sampler, vi, value)
     T = typeof(value)
     if hasmissing(T)
-        return convert(get_matching_type(sampler, vi, T), value)
+        return convert(get_matching_type(sampler, vi, T), deepcopy(value))
     else
         return value
     end
