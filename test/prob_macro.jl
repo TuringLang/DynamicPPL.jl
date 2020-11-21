@@ -138,11 +138,13 @@ Random.seed!(129)
                 y[i] ~ Normal(x[i], sqrt(s))
             end
         end
+        c = Chains(rand(10, 2), [:m, :s])
         model_gdemo = gdemo([1.0, 0.0], [1.5, 0.0])
-        c2 = sample(model_gdemo, NUTS(0.65), 100)
-        result1 = prob"y = [1.5] | chain=c2, model = model_gdemo, x = [1.0]"
-        result2 = map(c2[:s]) do s
-            pdf(Normal(1, sqrt(s)), 1.5)
+        r1 = prob"y = [1.5] | chain=c, model = model_gdemo, x = [1.0]"
+        r2 = map(c[:s]) do s
+            # exp(logpdf(..)) not pdf because this is exactly what the prob"" macro does, so we test r1 == r2
+            exp(logpdf(Normal(1, sqrt(s)), 1.5))
         end
+        @test r1 == r2
     end
 end
