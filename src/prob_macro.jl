@@ -190,7 +190,7 @@ function Distributions.loglikelihood(
     if isdefined(right, :chain)
         # Element-wise likelihood for each value in chain
         chain = right.chain
-        ctx = LikelihoodContext()
+        ctx = LikelihoodContext(right)
         iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
         logps = map(iters) do (sample_idx, chain_idx)
             setval!(vi, chain, sample_idx, chain_idx)

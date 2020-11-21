@@ -128,4 +128,21 @@ Random.seed!(129)
         chain2 = sample(model2(y, group, n_groups), NUTS(0.65), 2_000; save_state=true)
         logprob"y = y[[1]] | group = group[[1]], n_groups = n_groups, chain = chain2"
     end
+
+    @testset "issue190" begin
+        @model function gdemo(x, y)
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
+            x ~ filldist(Normal(m, sqrt(s)), length(y))
+            for i in 1:length(y)
+                y[i] ~ Normal(x[i], sqrt(s))
+            end
+        end
+        model_gdemo = gdemo([1.0, 0.0], [1.5, 0.0])
+        c2 = sample(model_gdemo, NUTS(0.65), 100)
+        result1 = prob"y = [1.5] | chain=c2, model = model_gdemo, x = [1.0]"
+        result2 = map(c2[:s]) do s
+            exp(logpdf(Normal(1.0, sqrt(s)), 1.5))
+        end
+    end
 end
