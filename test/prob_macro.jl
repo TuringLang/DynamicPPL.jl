@@ -142,7 +142,7 @@ Random.seed!(129)
         c2 = sample(model_gdemo, NUTS(0.65), 100)
         result1 = prob"y = [1.5] | chain=c2, model = model_gdemo, x = [1.0]"
         result2 = map(c2[:s]) do s
-            exp(logpdf(Normal(1.0, sqrt(s)), 1.5))
+            pdf(Normal(1, sqrt(s)), 1.5)
         end
     end
 end
