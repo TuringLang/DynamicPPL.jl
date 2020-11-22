@@ -128,4 +128,23 @@ Random.seed!(129)
         chain2 = sample(model2(y, group, n_groups), NUTS(0.65), 2_000; save_state=true)
         logprob"y = y[[1]] | group = group[[1]], n_groups = n_groups, chain = chain2"
     end
+
+    @testset "issue190" begin
+        @model function gdemo(x, y)
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
+            x ~ filldist(Normal(m, sqrt(s)), length(y))
+            for i in 1:length(y)
+                y[i] ~ Normal(x[i], sqrt(s))
+            end
+        end
+        c = Chains(rand(10, 2), [:m, :s])
+        model_gdemo = gdemo([1.0, 0.0], [1.5, 0.0])
+        r1 = prob"y = [1.5] | chain=c, model = model_gdemo, x = [1.0]"
+        r2 = map(c[:s]) do s
+            # exp(logpdf(..)) not pdf because this is exactly what the prob"" macro does, so we test r1 == r2
+            exp(logpdf(Normal(1, sqrt(s)), 1.5))
+        end
+        @test r1 == r2
+    end
 end
