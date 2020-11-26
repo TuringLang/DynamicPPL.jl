@@ -11,8 +11,7 @@ using Test
     end
 
     model = testmodel()
-    varinfo = DynamicPPL.VarInfo(model)
-    model(varinfo)
+    varinfo = VarInfo(model)
     @test iszero(lp_before)
     @test getlogp(varinfo) == lp_after == 42
 end

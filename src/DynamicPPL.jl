@@ -61,7 +61,6 @@ export  AbstractVarInfo,
         Sample,
         init,
         vectorize,
-        set_resume!,
 # Model
         Model,
         getmissings,
@@ -121,7 +120,5 @@ include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
-
-include("deprecations.jl")
 
 end # module

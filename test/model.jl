@@ -6,7 +6,6 @@ Random.seed!(1234)
 
         # sample from model and extract variables
         vi = VarInfo(model)
-        model(vi, SampleFromPrior())
         s = vi[@varname(s)]
         m = vi[@varname(m)]
 

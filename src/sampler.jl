@@ -1,3 +1,5 @@
+# TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
+# That would let us use all defaults for Sampler, combine it with other samplers etc.
 """
 Robust initialization method for model parameters in Hamiltonian samplers.
 """
@@ -18,54 +20,122 @@ function init(rng, dist, ::SampleFromUniform, n::Int)
 end
 
 """
-    has_eval_num(spl::AbstractSampler)
-
-Check whether `spl` has a field called `eval_num` in its state variables or not.
-"""
-has_eval_num(spl::SampleFromUniform) = false
-has_eval_num(spl::SampleFromPrior) = false
-has_eval_num(spl::AbstractSampler) = :eval_num in fieldnames(typeof(spl.state))
-
-"""
-An abstract type that mutable sampler state structs inherit from.
-"""
-abstract type AbstractSamplerState end
-
-"""
     Sampler{T}
 
-Generic interface for implementing inference algorithms.
-An implementation of an algorithm should include the following:
+Generic sampler type for inference algorithms of type `T` in DynamicPPL.
 
-1. A type specifying the algorithm and its parameters, derived from InferenceAlgorithm
-2. A method of `sample` function that produces results of inference, which is where actual inference happens.
-
-DynamicPPL translates models to chunks that call the modelling functions at specified points.
-The dispatch is based on the value of a `sampler` variable.
-To include a new inference algorithm implements the requirements mentioned above in a separate file,
-then include that file at the end of this one.
+`Sampler` should implement the AbstractMCMC interface, and in particular
+[`AbstractMCMC.step`](@ref). A default implementation of the initial sampling step is
+provided that supports resuming sampling from a previous state and setting initial
+parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
+for loading previous states and actually performing the initial sampling step,
+respectively. Additionally, sometimes one might want to implement [`initialsampler`](@ref)
+that specifies how the initial parameter values are sampled if they are not provided.
+By default, values are sampled from the prior.
 """
-mutable struct Sampler{T, S<:AbstractSamplerState} <: AbstractSampler
-    alg      ::  T
-    info     ::  Dict{Symbol, Any} # sampler infomation
-    selector ::  Selector
-    state    ::  S
+struct Sampler{T} <: AbstractSampler
+    alg::T
+    selector::Selector # Can we remove it?
+    # TODO: add space such that we can integrate existing external samplers in DynamicPPL
 end
 Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model) = Sampler(alg, model, Selector())
-Sampler(alg, model::Model, s::Selector) = Sampler(alg, model, s)
+Sampler(alg, model::Model, s::Selector) = Sampler(alg, s)
 
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
-
-function AbstractMCMC.step!(
+function AbstractMCMC.step(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::Union{SampleFromUniform,SampleFromPrior},
-    ::Integer,
-    transition;
+    state = nothing;
     kwargs...
 )
     vi = VarInfo()
-    model(vi, sampler)
-    return vi
+    model(rng, vi, sampler)
+    return vi, nothing
 end
+
+# initial step: general interface for resuming and
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Sampler;
+    resume_from = nothing,
+    kwargs...
+)
+    if resume_from !== nothing
+        state = loadstate(resume_from)
+        return AbstractMCMC.step(rng, model, spl, state; kwargs...)
+    end
+
+    # Sample initial values.
+    _spl = initialsampler(spl)
+    vi = VarInfo(rng, model, _spl)
+
+    # Update the parameters if provided.
+    if haskey(kwargs, :init_params)
+        initialize_parameters!(vi, kwargs[:init_params], spl)
+
+        # Update joint log probability.
+        model(rng, vi, _spl)
+    end
+
+    return initialstep(rng, model, spl, vi; kwargs...)
+end
+
+"""
+    loadstate(data)
+
+Load sampler state from `data`.
+"""
+function loadstate end
+
+"""
+    initialsampler(sampler::Sampler)
+
+Return the sampler that is used for generating the initial parameters when sampling with
+`sampler`.
+
+By default, it returns an instance of [`SampleFromPrior`](@ref).
+"""
+initialsampler(spl::Sampler) = SampleFromPrior()
+
+function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
+    @debug "Using passed-in initial variable values" init_params
+
+    # Flatten parameters.
+    init_theta = mapreduce(vcat, init_params) do x
+        vec([x;])
+    end
+
+    # Get all values.
+    linked = islinked(vi, spl)
+    linked && invlink!(vi, spl)
+    theta = vi[spl]
+    length(theta) == length(init_theta_flat) ||
+        error("Provided initial value doesn't match the dimension of the model")
+
+    # Update values that are provided.
+    for i in 1:length(init_theta)
+        x = init_theta[i]
+        if x !== missing
+            theta[i] = x
+        end
+    end
+
+    # Update in `vi`.
+    vi[spl] = theta
+    linked && link!(vi, spl)
+
+    return
+end
+
+"""
+    initialstep(rng, model, sampler, varinfo; kwargs...)
+
+Perform the initial sampling step of the `sampler` for the `model`.
+
+The `varinfo` contains the initial samples, which can be provided by the user or
+sampled randomly.
+"""
+function initialstep end

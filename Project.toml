@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.9.8"
+version = "0.10.0"
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -12,7 +12,7 @@ NaturalSort = "c020b1a1-e9b0-503a-9c33-f039bfc54a85"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [compat]
-AbstractMCMC = "1"
+AbstractMCMC = "2"
 Bijectors = "0.5.2, 0.6, 0.7, 0.8"
 ChainRulesCore = "0.9.7"
 Distributions = "0.23.8"

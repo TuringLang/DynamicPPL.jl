@@ -235,8 +235,7 @@ end
             return x
         end
         model = testmodel([1.0])
-        varinfo = DynamicPPL.VarInfo(model)
-        model(varinfo)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
@@ -257,8 +256,7 @@ end
         end false
         lpold = lp
         model = testmodel([1.0])
-        varinfo = DynamicPPL.VarInfo(model)
-        model(varinfo)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp == lpold
 
         # test DPPL#61
@@ -280,8 +278,7 @@ end
             return testmodel
         end
         model = makemodel(0.5)([1.0])
-        varinfo = DynamicPPL.VarInfo(model)
-        model(varinfo)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
     end
     @testset "new grammar" begin
