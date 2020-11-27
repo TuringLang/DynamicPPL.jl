@@ -14,9 +14,7 @@ status = [
   "test (1.%, windows-latest, x64, 1)",
   "test (1.%, windows-latest, x64, 2)",
   "test (1, windows-latest, x64, 1)",
-  "test (1, windows-latest, x64, 2)",
-  "test (1.%, windows-latest, x64, 1)",
-  "test (1.%, windows-latest, x64, 2)"
+  "test (1, windows-latest, x64, 2)"
 ]
 delete_merged_branches = true
 # Require at least on approval of a project member.
