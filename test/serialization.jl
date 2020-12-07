@@ -51,7 +51,7 @@
             for samples in (samples1, samples2)
                 @test samples isa Vector{Float64}
                 @test length(samples) == n
-                @test mean(samples) ≈ 0 atol=0.1
+                @test mean(samples) ≈ 0 atol=0.15
                 @test std(samples) ≈ 1 atol=0.1
             end
         end
