@@ -267,6 +267,24 @@ end
         end
         model = testmodel(rand(10))
         @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
+
+        # test Turing#1464
+        @model function gdemo(x)
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
+            for i in eachindex(x)
+                x[i] ~ Normal(m, sqrt(s))
+            end
+        end
+        x = [1.0, missing]
+        VarInfo(gdemo(x))
+        @test ismissing(x[2])
+
+        # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
+        vi = VarInfo(gdemo(x))
+        @test haskey(vi.metadata, :x)
+        vi = VarInfo(gdemo(x))
+        @test haskey(vi.metadata, :x)
     end
     @testset "nested model" begin
         function makemodel(p)
