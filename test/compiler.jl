@@ -279,6 +279,12 @@ end
         x = [1.0, missing]
         VarInfo(gdemo(x))
         @test ismissing(x[2])
+
+        # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
+        vi = VarInfo(gdemo(x))
+        @test haskey(vi.metadata, :x)
+        vi = VarInfo(gdemo(x))
+        @test haskey(vi.metadata, :x)
     end
     @testset "nested model" begin
         function makemodel(p)
