@@ -13,7 +13,7 @@ dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
 include(dir*"/test/Turing/Turing.jl")
 using .Turing
 
-turnprogress(false)
+setprogress!(false)
 
 include("test_utils/AllUtils.jl")
 include("test_util.jl")
