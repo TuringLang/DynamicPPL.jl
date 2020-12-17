@@ -17,12 +17,20 @@ using Tracker: Tracker
 
 import AdvancedVI
 import DynamicPPL: getspace, NoDist, NamedDist
+import Random
 
 const PROGRESS = Ref(true)
-function turnprogress(switch::Bool)
-    @info "[Turing]: progress logging is $(switch ? "enabled" : "disabled") globally"
-    PROGRESS[] = switch
-    AdvancedVI.turnprogress(switch)
+
+"""
+    setprogress!(progress::Bool)
+
+Enable progress logging in Turing if `progress` is `true`, and disable it otherwise.
+"""
+function setprogress!(progress::Bool)
+    @info "[Turing]: progress logging is $(progress ? "enabled" : "disabled") globally"
+    PROGRESS[] = progress
+    AdvancedVI.turnprogress(progress)
+    return progress
 end
 
 # Random probability measures.
@@ -82,6 +90,7 @@ export  @model,                 # modelling
         Emcee,
         ESS,
         Gibbs,
+        GibbsConditional,
 
         HMC,                    # Hamiltonian-like sampling
         SGLD,
@@ -109,7 +118,7 @@ export  @model,                 # modelling
         setadbackend,
         setadsafe,
 
-        turnprogress,           # debugging
+        setprogress!,           # debugging
 
         Flat,
         FlatPos,
@@ -123,7 +132,8 @@ export  @model,                 # modelling
 
         predict,
         pointwise_loglikelihoods,
-        genereated_quantities,
+        elementwise_loglikelihoods,
+        generated_quantities,
         logprior,
         logjoint
 end
