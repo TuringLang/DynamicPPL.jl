@@ -700,6 +700,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
+            @debug "X -> ℝ for $(vn)..."
             dist = getdist(vi, vn)
             # TODO: Use inplace versions to avoid allocations
             setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
@@ -722,6 +723,7 @@ end
                 if ~istrans(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
+                        @debug "X -> R for $(vn)..."
                         dist = getdist(vi, vn)
                         setval!(vi, vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, true, vn)
@@ -747,6 +749,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
+            @debug "ℝ -> X for $(vn)..."
             dist = getdist(vi, vn)
             setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
             settrans!(vi, false, vn)
@@ -768,6 +771,7 @@ end
                 if istrans(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
+                        @debug "ℝ -> X for $(vn)..."
                         dist = getdist(vi, vn)
                         setval!(vi, vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))), vn)
                         settrans!(vi, false, vn)
