@@ -1,15 +1,5 @@
-using DynamicPPL
-using Distributions
-using AbstractMCMC: sample
-
-using Random
-using Statistics
-using Test
-
-Random.seed!(100)
-
-@testset "AbstractMCMC interface" begin
-    @model gdemo(x, y) = begin
+@testset "sampler.jl" begin
+    @model function gdemo(x, y)
         s ~ InverseGamma(2, 3)
         m ~ Normal(2.0, sqrt(s))
         x ~ Normal(m, sqrt(s))

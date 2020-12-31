@@ -1,6 +1,4 @@
-using .Turing
-
-@testset "loglikelihoods" begin
+@testset "loglikelihoods.jl" begin
     @model function demo(xs, y)
         s ~ InverseGamma(2, 3)
         m ~ Normal(0, √s)
@@ -11,10 +9,10 @@ using .Turing
         y ~ Normal(m, √s)
     end
 
-    xs = randn(3);
-    y = randn();
-    model = demo(xs, y);
-    chain = sample(model, MH(), MCMCThreads(), 100, 2);
+    xs = randn(3)
+    y = randn()
+    model = demo(xs, y)
+    chain = sample(model, MH(), MCMCThreads(), 100, 2)
     var_to_likelihoods = pointwise_loglikelihoods(model, chain)
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
