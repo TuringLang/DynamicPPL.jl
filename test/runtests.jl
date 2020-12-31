@@ -33,7 +33,7 @@ include("test_util.jl")
 
     include("threadsafe.jl")
 
-    include("serialization.jl")
+    #include("serialization.jl")
 
     @testset "compat" begin
         include(joinpath("compat", "ad.jl"))
