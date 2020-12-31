@@ -1,5 +1,4 @@
 [deps]
-AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -15,7 +14,6 @@ Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-AbstractMCMC = "2.1"
 Bijectors = "0.8.2"
 Distributions = "0.24"
 DistributionsAD = "0.6.3"
