@@ -40,3 +40,68 @@ Random.seed!(100)
     @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
 end
 
+@testset "Initial parameters" begin
+    # dummy algorithm that just returns initial value and does not perform any sampling
+    struct OnlyInitAlg end
+    function DynamicPPL.initialstep(
+        rng::Random.AbstractRNG,
+        model::Model,
+        ::Sampler{OnlyInitAlg},
+        vi::AbstractVarInfo;
+        kwargs...,
+    )
+        return vi, nothing
+    end
+    DynamicPPL.getspace(::OnlyInitAlg) = ()
+
+    # model with one variable: initialization p = 0.2
+    @model function coinflip()
+        p ~ Beta(1, 1)
+        10 ~ Binomial(25, p)
+    end
+    model = coinflip()
+    sampler = Sampler(OnlyInitAlg())
+    lptrue = logpdf(Binomial(25, 0.2), 10)
+    chain = sample(model, sampler, 1; init_params = 0.2)
+    @test chain[1].metadata.p.vals == [0.2]
+    @test getlogp(chain[1]) == lptrue
+
+    # parallel sampling
+    chains = sample(model, sampler, MCMCThreads(), 1, 10; init_params = 0.2)
+    for c in chains
+        @test c[1].metadata.p.vals == [0.2]
+        @test getlogp(c[1]) == lptrue
+    end
+
+    # model with two variables: initialization s = 4, m = -1
+    @model function twovars()
+        s ~ InverseGamma(2, 3)
+        m ~ Normal(0, sqrt(s))
+    end
+    model = twovars()
+    lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
+    chain = sample(model, sampler, 1; init_params = [4, -1])
+    @test chain[1].metadata.s.vals == [4]
+    @test chain[1].metadata.m.vals == [-1]
+    @test getlogp(chain[1]) == lptrue
+
+    # parallel sampling
+    chains = sample(model, sampler, MCMCThreads(), 1, 10; init_params = [4, -1])
+    for c in chains
+        @test c[1].metadata.s.vals == [4]
+        @test c[1].metadata.m.vals == [-1]
+        @test getlogp(c[1]) == lptrue
+    end
+
+    # set only m = -1
+    chain = sample(model, sampler, 1; init_params = [missing, -1])
+    @test !ismissing(chain[1].metadata.s.vals[1])
+    @test chain[1].metadata.m.vals == [-1]
+
+    # parallel sampling
+    chains = sample(model, sampler, MCMCThreads(), 1, 10; init_params = [missing, -1])
+    for c in chains
+        @test !ismissing(c[1].metadata.s.vals[1])
+        @test c[1].metadata.m.vals == [-1]
+    end
+end
