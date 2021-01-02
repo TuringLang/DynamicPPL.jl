@@ -1,3 +1,13 @@
+# default model
+@model function gdemo_d()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+    return s, m
+end
+const gdemo_default = gdemo_d()
+
 function test_model_ad(model, logp_manual)
     vi = VarInfo(model)
     x = DynamicPPL.getall(vi)
