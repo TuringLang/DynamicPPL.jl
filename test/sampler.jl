@@ -42,7 +42,7 @@
             )
             return vi, nothing
         end
-        DynamicPPL.getspace(::OnlyInitAlg) = ()
+        DynamicPPL.getspace(::Sampler{OnlyInitAlg}) = ()
 
         # model with one variable: initialization p = 0.2
         @model function coinflip()
