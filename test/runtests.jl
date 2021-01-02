@@ -1,4 +1,5 @@
 using DynamicPPL
+using AbstractMCMC
 using Bijectors
 using Distributions
 using DistributionsAD
