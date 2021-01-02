@@ -16,6 +16,9 @@ using Test
 
 using DynamicPPL: vsym, vinds, getargs_dottilde, getargs_tilde, Selector
 
+const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
+const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
+
 Random.seed!(100)
 
 include("test_util.jl")
@@ -33,16 +36,24 @@ include("test_util.jl")
 
     include("threadsafe.jl")
 
-    #include("serialization.jl")
+    include("serialization.jl")
 
     @testset "compat" begin
         include(joinpath("compat", "ad.jl"))
     end
 
     @testset "turing" begin
-        Pkg.activate("turing")
-        Pkg.develop(PackageSpec(path=dirname(@__DIR__)))
+        # activate separate test environment
+        Pkg.activate(DIRECTORY_Turing_tests)
+        Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
         Pkg.instantiate()
+
+        # make sure that the new environment is considered `using` and `import` statements
+        # (not added automatically on Julia 1.3, see e.g. PR #209)
+        if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
+            pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
+        end
+
         include(joinpath("turing", "runtests.jl"))
     end
 end

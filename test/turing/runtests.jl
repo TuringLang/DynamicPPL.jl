@@ -1,4 +1,3 @@
-module TuringTests
 using DynamicPPL
 using Turing
 
@@ -18,5 +17,4 @@ include(joinpath(pathof(Turing), "..", "..", "test", "test_utils", "numerical_te
     include("model.jl")
     include("prob_macro.jl")
     include("varinfo.jl")
-end
 end
