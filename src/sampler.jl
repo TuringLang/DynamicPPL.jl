@@ -112,7 +112,7 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     linked = islinked(vi, spl)
     linked && invlink!(vi, spl)
     theta = vi[spl]
-    length(theta) == length(init_theta_flat) ||
+    length(theta) == length(init_theta) ||
         error("Provided initial value doesn't match the dimension of the model")
 
     # Update values that are provided.

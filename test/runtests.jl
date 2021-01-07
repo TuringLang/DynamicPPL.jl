@@ -1,21 +1,27 @@
 using DynamicPPL
+using AbstractMCMC
+using Bijectors
 using Distributions
+using DistributionsAD
 using ForwardDiff
+using MacroTools
+using MCMCChains
 using Tracker
 using Zygote
 
 using Distributed
+using Pkg
 using Random
 using Serialization
 using Test
 
-dir = splitdir(splitdir(pathof(DynamicPPL))[1])[1]
-include(dir*"/test/Turing/Turing.jl")
-using .Turing
+using DynamicPPL: vsym, vinds, getargs_dottilde, getargs_tilde, Selector
 
-setprogress!(false)
+const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
+const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
 
-include("test_utils/AllUtils.jl")
+Random.seed!(100)
+
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
@@ -28,7 +34,6 @@ include("test_util.jl")
     include("independence.jl")
     include("distribution_wrappers.jl")
     include("context_implementations.jl")
-    include("loglikelihoods.jl")
 
     include("threadsafe.jl")
 
@@ -36,5 +41,20 @@ include("test_util.jl")
 
     @testset "compat" begin
         include(joinpath("compat", "ad.jl"))
+    end
+
+    @testset "turing" begin
+        # activate separate test environment
+        Pkg.activate(DIRECTORY_Turing_tests)
+        Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
+        Pkg.instantiate()
+
+        # make sure that the new environment is considered `using` and `import` statements
+        # (not added automatically on Julia 1.3, see e.g. PR #209)
+        if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
+            pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
+        end
+
+        include(joinpath("turing", "runtests.jl"))
     end
 end

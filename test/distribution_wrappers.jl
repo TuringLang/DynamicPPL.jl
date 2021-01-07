@@ -1,7 +1,3 @@
-using DynamicPPL
-using Distributions
-using Bijectors
-
 @testset "distribution_wrappers.jl" begin
     d = Normal()
     nd = DynamicPPL.NoDist(d)

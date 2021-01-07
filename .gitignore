@@ -2,7 +2,4 @@
 *.jl.cov
 *.jl.mem
 .DS_Store
-/Manifest.toml
-/test/Manifest.toml
-/dev/
-/test/gdemo_default.jls
+Manifest.toml
