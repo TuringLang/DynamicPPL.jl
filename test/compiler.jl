@@ -20,15 +20,15 @@ end
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
-        @model function testmodel0(x = missing)
+        @model function testmodel01(x = missing)
             x ~ Normal()
             return x
         end
-        f0_mm = testmodel0()
+        f0_mm = testmodel01()
         @test mean(f0_mm() for _ in 1:1000) ≈ 0. atol=0.1
 
         # Test #544
-        @model function testmodel0(x = missing)
+        @model function testmodel02(x = missing)
             if x === missing
                 x = Vector{Float64}(undef, 2)
             end
@@ -36,14 +36,14 @@ end
             x[2] ~ Normal()
             return x
         end
-        f0_mm = testmodel0()
+        f0_mm = testmodel02()
         @test all(x -> isapprox(x, 0; atol = 0.1), mean(f0_mm() for _ in 1:1000))
 
-        @model function testmodel01(x = missing)
+        @model function testmodel03(x = missing)
             x ~ Bernoulli(0.5)
             return x
         end
-        f01_mm = testmodel01()
+        f01_mm = testmodel03()
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol=0.1
 
         # test if we get the correct return values
@@ -133,22 +133,22 @@ end
         @test_throws ArgumentError btest()
 
         # Test missing input arguments
-        @model function testmodel(x)
-            x ~ Bernoulli(0.5)
+        @model function testmodel_missing1(x)
+            x ~ Bernoulli(0.5)
             return x
         end
-        @test_throws MethodError testmodel()
+        @test_throws MethodError testmodel_missing1()
 
         # Test missing initialization for vector observation turned parameter
-        @model function testmodel(x)
-            x[1] ~ Bernoulli(0.5)
+        @model function testmodel_missing2(x)
+            x[1] ~ Bernoulli(0.5)
             return x
         end
-        @test_throws MethodError testmodel(missing)()
+        @test_throws MethodError testmodel_missing2(missing)()
 
         # Test use of internal names
-        @model function testmodel(x)
-            x[1] ~  Bernoulli(0.5)
+        @model function testmodel_missing3(x)
+            x[1] ~ Bernoulli(0.5)
             global varinfo_ = _varinfo
             global sampler_ = _sampler
             global model_ = _model
@@ -157,7 +157,7 @@ end
             global lp = getlogp(_varinfo)
             return x
         end
-        model = testmodel([1.0])
+        model = testmodel_missing3([1.0])
         varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
@@ -167,8 +167,8 @@ end
         @test rng_ isa Random.AbstractRNG
 
         # disable warnings
-        @model function testmodel(x)
-            x[1] ~  Bernoulli(0.5)
+        @model function testmodel_missing4(x)
+            x[1] ~ Bernoulli(0.5)
             global varinfo_ = _varinfo
             global sampler_ = _sampler
             global model_ = _model
@@ -178,17 +178,17 @@ end
             return x
         end false
         lpold = lp
-        model = testmodel([1.0])
+        model = testmodel_missing4([1.0])
         varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp == lpold
 
         # test DPPL#61
-        @model function testmodel(z)
+        @model function testmodel_missing5(z)
             m ~ Normal()
             z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
             return m
         end
-        model = testmodel(rand(10))
+        model = testmodel_missing5(rand(10))
         @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
 
         # test Turing#1464
