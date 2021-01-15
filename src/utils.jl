@@ -52,6 +52,8 @@ function getargs_dottilde(expr::Expr)
     return MacroTools.@match expr begin
         (.~)(L_, R_) => (L, R)
         (~).(L_, R_) => (L, R)
+        # Julia 1.6: see https://github.com/TuringLang/Turing.jl/issues/1525
+        (L_ .~ R_) => (L, R)
         x_ => nothing
     end
 end

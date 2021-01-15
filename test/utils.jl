@@ -22,6 +22,7 @@
         @test getargs_dottilde(:(x ~ Normal(μ, σ))) === nothing
         @test getargs_dottilde(:((.~)(x, Normal(μ, σ)))) == (:x, :(Normal(μ, σ)))
         @test getargs_dottilde(:((~).(x, Normal(μ, σ)))) == (:x, :(Normal(μ, σ)))
+        @test getargs_dottilde(:(x .~ Normal(μ, σ))) == (:x, :(Normal(μ, σ)))
         @test getargs_dottilde(:(@. x ~ Normal(μ, σ))) === nothing
         @test getargs_dottilde(:(@. x ~ Normal(μ, $(Expr(:$, :(sqrt(v))))))) === nothing
         @test getargs_dottilde(:(@~ Normal.(μ, σ))) === nothing
