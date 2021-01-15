@@ -43,7 +43,7 @@ include("test_util.jl")
         include(joinpath("compat", "ad.jl"))
     end
 
-    @static if VERSION <= v"1.5"
+    @static if VERSION <= v"1.5.3"
         @testset "turing" begin
             # activate separate test environment
             Pkg.activate(DIRECTORY_Turing_tests)
