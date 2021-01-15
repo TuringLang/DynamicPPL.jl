@@ -2,34 +2,6 @@
 struct NoDefault end
 const NO_DEFAULT = NoDefault()
 
-# FIXME: This is copied from MacroTools and should be removed when a MacroTools release with
-# support for anonymous functions is available (> 0.5.5).
-function combinedef_anonymous(dict::Dict)
-    rtype = get(dict, :rtype, nothing)
-    params = get(dict, :params, [])
-    wparams = get(dict, :whereparams, [])
-    body = MacroTools.block(dict[:body])
-
-    if isempty(dict[:kwargs])
-        arg = :($(dict[:args]...),)
-    else
-        arg = Expr(:tuple, Expr(:parameters, dict[:kwargs]...), dict[:args]...)
-    end
-    if isempty(wparams)
-        if rtype==nothing
-            MacroTools.@q($arg -> $body)
-        else
-            MacroTools.@q(($arg::$rtype) -> $body)
-        end
-    else
-        if rtype === nothing
-            MacroTools.@q(($arg where {$(wparams...)}) -> $body)
-        else
-            MacroTools.@q(($arg::$rtype where {$(wparams...)}) -> $body)
-        end
-    end
-end
-
 """
     @addlogprob!(ex)
 
@@ -52,6 +24,8 @@ function getargs_dottilde(expr::Expr)
     return MacroTools.@match expr begin
         (.~)(L_, R_) => (L, R)
         (~).(L_, R_) => (L, R)
+        # Julia 1.6: see https://github.com/TuringLang/Turing.jl/issues/1525
+        (L_ .~ R_) => (L, R)
         x_ => nothing
     end
 end

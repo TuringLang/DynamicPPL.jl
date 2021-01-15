@@ -62,10 +62,12 @@ end
 To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 """
 macro model(expr, warn=true)
-    esc(model(expr, warn))
+    # include `LineNumberNode` with information about the call site in the
+    # generated function for easier debugging and interpretation of error messages
+    esc(model(expr, __source__, warn))
 end
 
-function model(expr, warn)
+function model(expr, linenumbernode, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
@@ -73,7 +75,7 @@ function model(expr, warn)
         modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn
     )
 
-    return build_output(modelinfo)
+    return build_output(modelinfo, linenumbernode)
 end
 
 """
@@ -301,11 +303,11 @@ hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
 """
-    build_output(modelinfo)
+    build_output(modelinfo, linenumbernode)
 
 Builds the output expression.
 """
-function build_output(modelinfo)
+function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
 
     # Remove the name.
@@ -340,8 +342,12 @@ function build_output(modelinfo)
     # We use a name for the anonymous evaluator that does not conflict with other variables.
     modeldef = modelinfo[:modeldef]
     @gensym evaluator
-    modeldef[:body] = quote
-        $evaluator = $(combinedef_anonymous(evaluatordef))
+    # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
+    # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
+    # to the call site
+    modeldef[:body] = MacroTools.@q begin
+        $(linenumbernode)
+        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
             $evaluator,
