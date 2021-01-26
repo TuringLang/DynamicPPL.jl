@@ -8,16 +8,16 @@ end
 A variable identifier. Every variable has a symbol `sym` and indices `indexing` in the format
 returned by [`@vinds`](@ref).  The Julia variable in the model corresponding to `sym` can refer to a
 single value or to a hierarchical array structure of univariate, multivariate or matrix
-variables. `indexing` stores the indices that can access the random variable from the Julia
-variable.
+variables. The field `indexing` stores the indices requires to access the random variable from the
+Julia variable indicated by `sym` as a tuple of tuples.  Each element of the tuple thereby contains
+the indices of one indexing operation.
 
 Examples:
 
-- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "((1,))"`.
-- `x[:,1] ~ MvNormal(zeros(2))` will generate a `VarName` with `sym == :x` and
- `indexing == ((Colon(), 1))"`.
-- `x[:,1][2] ~ Normal()` will generate a `VarName` with `sym == :x` and
- `indexing == ((Colon(), 1), (2,))`.
+- `@varname x` will generate a `VarName{:x}` with `indexing == ()`.
+- `@varname x[1]` will generate a `VarName{:x}` with `indexing == ((1,),)`.
+- `@varname x[:,1]` will generate a `VarName{:x}` with `indexing == ((Colon(), 1),)`.
+- `@varname x[:,1][2] will generate a `VarName{:x}` with `indexing == ((Colon(), 1), (2,))`.
 """
 struct VarName{sym, T<:Tuple}
     indexing::T
