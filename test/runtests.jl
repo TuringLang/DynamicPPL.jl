@@ -3,6 +3,7 @@ using AbstractMCMC
 using Bijectors
 using Distributions
 using DistributionsAD
+using Documenter
 using ForwardDiff
 using MacroTools
 using MCMCChains
@@ -25,38 +26,50 @@ Random.seed!(100)
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
-    include("utils.jl")
-    include("compiler.jl")
-    include("varinfo.jl")
-    include("model.jl")
-    include("sampler.jl")
-    include("prob_macro.jl")
-    include("independence.jl")
-    include("distribution_wrappers.jl")
-    include("context_implementations.jl")
+    # include("utils.jl")
+    # include("compiler.jl")
+    # include("varinfo.jl")
+    # include("model.jl")
+    # include("sampler.jl")
+    # include("prob_macro.jl")
+    # include("independence.jl")
+    # include("distribution_wrappers.jl")
+    # include("context_implementations.jl")
 
-    include("threadsafe.jl")
+    # include("threadsafe.jl")
 
-    include("serialization.jl")
+    # include("serialization.jl")
 
-    @testset "compat" begin
-        include(joinpath("compat", "ad.jl"))
-    end
+    # @testset "compat" begin
+    #     include(joinpath("compat", "ad.jl"))
+    # end
 
-    @static if VERSION <= v"1.5.3"
-        @testset "turing" begin
-            # activate separate test environment
-            Pkg.activate(DIRECTORY_Turing_tests)
-            Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
-            Pkg.instantiate()
+    # @static if VERSION <= v"1.5.3"
+    #     @testset "turing" begin
+    #         # activate separate test environment
+    #         Pkg.activate(DIRECTORY_Turing_tests)
+    #         Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
+    #         Pkg.instantiate()
 
-            # make sure that the new environment is considered `using` and `import` statements
-            # (not added automatically on Julia 1.3, see e.g. PR #209)
-            if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
-                pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
-            end
+    #         # make sure that the new environment is considered `using` and `import` statements
+    #         # (not added automatically on Julia 1.3, see e.g. PR #209)
+    #         if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
+    #             pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
+    #         end
 
-            include(joinpath("turing", "runtests.jl"))
-        end
+    #         include(joinpath("turing", "runtests.jl"))
+    #     end
+    # end
+
+    @testset "doctests" begin
+        DocMeta.setdocmeta!(
+            DynamicPPL,
+            :DocTestSetup,
+            quote
+            using DynamicPPL
+            end;
+            recursive=true,
+        )
+        doctest(DynamicPPL, manual=false)
     end
 end
