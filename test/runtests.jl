@@ -3,6 +3,7 @@ using AbstractMCMC
 using Bijectors
 using Distributions
 using DistributionsAD
+using Documenter
 using ForwardDiff
 using MacroTools
 using MCMCChains
@@ -58,5 +59,17 @@ include("test_util.jl")
 
             include(joinpath("turing", "runtests.jl"))
         end
+    end
+
+    @testset "doctests" begin
+        DocMeta.setdocmeta!(
+            DynamicPPL,
+            :DocTestSetup,
+            quote
+            using DynamicPPL
+            end;
+            recursive=true,
+        )
+        doctest(DynamicPPL; manual=false)
     end
 end

@@ -1,23 +1,30 @@
 """
+    VarName(sym[, indexing=()])
+
+A variable identifier for a symbol `sym` and indices `indexing` in the format
+returned by [`@vinds`](@ref).
+
+The Julia variable in the model corresponding to `sym` can refer to a single value or to a
+hierarchical array structure of univariate, multivariate or matrix variables. The field `indexing`
+stores the indices requires to access the random variable from the Julia variable indicated by `sym`
+as a tuple of tuples. Each element of the tuple thereby contains the indices of one indexing
+operation.
+
+`VarName`s can be manually constructed using the `VarName(sym, indexing)` constructor, or from an
+indexing expression through the [`@varname`](@ref) convenience macro.
+
+# Examples
+
+```jldoctest
+julia> vn = VarName(:x, ((Colon(), 1), (2,)))
+x[Colon(),1][2]
+
+julia> vn.indexing
+((Colon(), 1), (2,))
+
+julia> VarName(DynamicPPL.@vsym(x[:, 1][1+1]), DynamicPPL.@vinds(x[:, 1][1+1]))
+x[Colon(),1][2]
 ```
-struct VarName{sym, T<:Tuple}
-    indexing::T
-end
-```
-
-A variable identifier. Every variable has a symbol `sym` and indices `indexing` in the format
-returned by [`@vinds`](@ref).  The Julia variable in the model corresponding to `sym` can refer to a
-single value or to a hierarchical array structure of univariate, multivariate or matrix
-variables. `indexing` stores the indices that can access the random variable from the Julia
-variable.
-
-Examples:
-
-- `x[1] ~ Normal()` will generate a `VarName` with `sym == :x` and `indexing == "((1,))"`.
-- `x[:,1] ~ MvNormal(zeros(2))` will generate a `VarName` with `sym == :x` and
- `indexing == ((Colon(), 1))"`.
-- `x[:,1][2] ~ Normal()` will generate a `VarName` with `sym == :x` and
- `indexing == ((Colon(), 1), (2,))`.
 """
 struct VarName{sym, T<:Tuple}
     indexing::T
@@ -26,7 +33,7 @@ end
 VarName(sym::Symbol, indexing::Tuple = ()) = VarName{sym, typeof(indexing)}(indexing)
 
 """
-    VarName(vn::VarName, indexing)
+    VarName(vn::VarName[, indexing=()])
 
 Return a copy of `vn` with a new index `indexing`.
 """
@@ -131,8 +138,29 @@ _issubrange(i::Colon, j::ConcreteIndex) = true
 """
     @varname(expr)
 
-A macro that returns an instance of `VarName` given the symbol or expression of a Julia variable, 
-e.g. `@varname x[1,2][1+5][45][3]` returns `VarName{:x}(((1, 2), (6,), (45,), (3,)))`.
+A macro that returns an instance of [`VarName`](@ref) given a symbol or indexing expression `expr`.
+
+The `sym` value is taken from the actual variable name, and the index values are put appropriately
+into the constructor (and resolved at runtime).
+
+# Examples
+
+```jldoctest
+julia> @varname(x).indexing
+()
+
+julia> @varname(x[1]).indexing
+((1,),)
+
+julia> @varname(x[:, 1]).indexing
+((Colon(), 1),)
+
+julia> @varname(x[:, 1][2]).indexing
+((Colon(), 1), (2,))
+
+julia> @varname(x[1,2][1+5][45][3]).indexing
+((1, 2), (6,), (45,), (3,))
+```
 
 !!! compat "Julia 1.5"
     Using `begin` in an indexing expression to refer to the first index requires at least
