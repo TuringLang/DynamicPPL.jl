@@ -2,7 +2,7 @@
     VarName(sym[, indexing=()])
 
 A variable identifier for a symbol `sym` and indices `indexing` in the format
-returned by [`@vinds`](@ref).  
+returned by [`@vinds`](@ref).
 
 The Julia variable in the model corresponding to `sym` can refer to a single value or to a
 hierarchical array structure of univariate, multivariate or matrix variables. The field `indexing`
@@ -16,7 +16,7 @@ indexing expression through the [`@varname`](@ref) convenience macro.
 # Examples
 
 ```jldoctest
-julia> vn = @varname(x[:, 1][1+1])
+julia> vn = VarName(:x, ((Colon(), 1), (2,)))
 x[Colon(),1][2]
 
 julia> vn.indexing
@@ -135,9 +135,10 @@ _issubrange(i::Colon, j::ConcreteIndex) = true
 """
     @varname(expr)
 
-A macro that returns an instance of `VarName` given a symbol or indexing expression.  The `sym`
-value is taken from the actual variable name, and the index values are put appropriately into the
-constructor (and resolved at runtime).
+A macro that returns an instance of [`VarName`](@ref) given a symbol or indexing expression `expr`.
+
+The `sym` value is taken from the actual variable name, and the index values are put appropriately
+into the constructor (and resolved at runtime).
 
 # Examples
 
