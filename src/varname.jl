@@ -21,6 +21,9 @@ x[Colon(),1][2]
 
 julia> vn.indexing
 ((Colon(), 1), (2,))
+
+julia> VarName(DynamicPPL.@vsym(x[:, 1][1+1]), DynamicPPL.@vinds(x[:, 1][1+1]))
+x[Colon(),1][2]
 ```
 """
 struct VarName{sym, T<:Tuple}
