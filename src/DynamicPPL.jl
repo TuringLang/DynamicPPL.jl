@@ -1,6 +1,7 @@
 module DynamicPPL
 
-using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
+using AbstractMCMC: AbstractSampler, AbstractChains
+using AbstractPPL
 using Distributions
 using Bijectors
 
@@ -49,10 +50,6 @@ export  AbstractVarInfo,
         link!,
         invlink!,
         tonamedtuple,
-#VarName
-        VarName,
-        inspace,
-        subsumes,
 # Compiler
         @model,
         @varname,
@@ -104,7 +101,7 @@ export loglikelihood
 function getspace end
 
 # Necessary forward declarations
-abstract type AbstractVarInfo end
+abstract type AbstractVarInfo <: AbstractModelTrace end
 abstract type AbstractContext end
 
 
@@ -112,7 +109,6 @@ include("utils.jl")
 include("selector.jl")
 include("model.jl")
 include("sampler.jl")
-include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
