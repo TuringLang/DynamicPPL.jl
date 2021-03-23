@@ -1211,5 +1211,9 @@ function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
         end
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
+    else
+        # Ensures that we'll resample the variable corresponding to `vn` if we run
+        # the model on `vi` again.
+        setflag!(vi, vn, "del")
     end
 end
