@@ -1,5 +1,3 @@
-using AbstractPPL: varname, vinds, vsym
-
 const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
     "Distributions."
 

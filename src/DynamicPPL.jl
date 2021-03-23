@@ -5,6 +5,7 @@ using AbstractPPL
 using Distributions
 using Bijectors
 
+
 import AbstractMCMC
 import ChainRulesCore
 import NaturalSort
@@ -50,9 +51,13 @@ export  AbstractVarInfo,
         link!,
         invlink!,
         tonamedtuple,
+# VarName (reexport from AbstractPPL)
+        VarName,
+        inspace,
+        subsumes,
+        @varname,
 # Compiler
         @model,
-        @varname,
 # Utilities
         vectorize,
         reconstruct,
