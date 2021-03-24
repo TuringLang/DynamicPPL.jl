@@ -163,14 +163,6 @@ Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
 
-"""
-    inargnames(varname, model)
-
-Statically check whether the `getsym(varname)` is among the model's argument names.
-"""
-@generated function inargnames(::VarName{s}, ::Model{_F, argnames}) where {s, argnames, _F}
-    return s in argnames
-end
 
 """
     getmissings(model::Model)
@@ -179,14 +171,6 @@ Get a tuple of the names of the missing arguments of the `model`.
 """
 getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
-"""
-    inmissings(varname, model)
-
-Statically check whether the `getsym(varname)` is among the model's missing variable names.
-"""
-@generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
-    return s in missings
-end
 
 """
     nameof(model::Model)
