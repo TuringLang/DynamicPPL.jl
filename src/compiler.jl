@@ -334,6 +334,12 @@ function generate_dot_tilde(left, right, args)
     end
 end
 
+"""
+    generate_tilde_with_reparam(left, right, args, reparam)
+
+Generate an `observe` expression for data variables and `assume` expression for parameter
+variables with reparameterization.
+"""
 function generate_tilde_with_reparam(left, right, args, reparam)
     @gensym tmpright
     top = [:($tmpright = $right),
@@ -395,9 +401,88 @@ function generate_tilde_with_reparam(left, right, args, reparam)
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        if $f isa $(Bijectors.AbstractBijector)
+            $left_intermediate = inv($f)($left)
+            $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left_intermediate, _varinfo)
+        else
+            throw(ArgumentError("cannot observe non-invertible reparameterization!!!"))
+        end
     end
 end
+
+"""
+    generate_dot_tilde_with_reparam(left, right, args, reparam)
+
+Generate the expression that replaces `@reparam f left .~ right` in the model body.
+"""
+function generate_dot_tilde_with_reparam(left, right, args, reparam)
+    @gensym tmpright
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
+
+    if left isa Symbol || left isa Expr
+        @gensym out vn inds left_intermediate
+        push!(top, :($vn = $(DynamicPPL.varname2intermediate)($(varname(left)))))
+        push!(top, :($inds = $(vinds(left))))
+
+        # `reparam` might be a `Bijectors.AbstractBijector` which we only really want to
+        # compute once per sampling statement, and so we "cache" the constructor.
+        @gensym f
+        push!(top, :($f = $reparam))
+
+        # It can only be an observation if the LHS is an argument of the model
+        if vsym(left) in args
+            @gensym isassumption
+            return quote
+                $(top...)
+                $isassumption = $(DynamicPPL.isassumption(left))
+                if $isassumption
+                    $left .= begin
+                        $left_intermediate = $(DynamicPPL.dot_tilde_assume)(
+                            _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo
+                        )
+
+                        $f.($left_intermediate)
+                    end
+                else
+                    if $f isa $(Bijectors.AbstractBijector)
+                        $left_intermediate = inv($f).($left)
+                        $(DynamicPPL.dot_tilde_observe)(
+                            _context, _sampler, $tmpright, $left_intermediate, $vn, $inds, _varinfo
+                        )
+                    else
+                        throw(ArgumentError("cannot observe non-invertible reparameterization!!!"))
+                    end
+                end
+            end
+        end
+
+        return quote
+            $(top...)
+            $left .= begin
+                $left_intermediate = $(DynamicPPL.dot_tilde_assume)(
+                    _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo
+                )
+
+                $f.($left_intermediate)
+            end
+
+        end
+    end
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        if $f isa $(Bijectors.AbstractBijector)
+            $left_intermediate = inv($f).($left)
+            $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left_intermediate, _varinfo)
+        else
+            throw(ArgumentError("cannot observe non-invertible reparameterization!!!"))
+        end
+    end
+end
+
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat, AbstractArray}}
 hasmissing(T::Type{<:AbstractArray{TA}}) where {TA <: AbstractArray} = hasmissing(TA)
