@@ -342,7 +342,7 @@ function generate_tilde_with_reparam(left, right, args, reparam)
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds left_intermediate
-        push!(top, :($vn = varname2intermediate($(varname(left)))))
+        push!(top, :($vn = $(DynamicPPL.varname2intermediate)($(varname(left)))))
         push!(top, :($inds = $(vinds(left))))
 
         # `reparam` might be a `Bijectors.AbstractBijector` which we only really want to
