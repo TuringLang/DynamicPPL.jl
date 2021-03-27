@@ -238,3 +238,14 @@ end
 @generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
     return s in missings
 end
+
+"""
+    varname2intermediate(vn::VarName)
+
+Converts `vn` into a `VarName` representing a "intermediate" variable used to obtain `vn`.
+
+Essentially just adds an underscore to the name, e.g. `x[:, 1]` becomes `x_[:, 1]`.
+"""
+function varname2intermediate(vn::VarName{sym}) where {sym}
+    DynamicPPL.VarName{Symbol(sym, "_"), typeof(vn.indexing)}(vn.indexing)
+end
