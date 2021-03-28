@@ -1171,6 +1171,46 @@ end
 
 Set the values in `vi` to the provided values and leave those which are not present in
 `x` or `chains` unchanged.
+
+## Example
+```jldoctest
+julia> using Distributions, Random
+
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia> rng = MersenneTwister(42);
+
+julia> m = demo([missing]);
+
+julia> var_info = DynamicPPL.VarInfo(rng, m);
+
+julia> var_info[@varname(m)]
+-0.5560268761463861
+
+julia> var_info[@varname(x[1])]
+-1.000410233256082
+
+julia> DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
+
+julia> var_info[@varname(m)] # [✓] changed
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] unchanged
+-1.000410233256082
+
+julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
+
+julia> var_info[@varname(m)] # [✓] unchanged
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] unchanged
+-1.000410233256082
+```
 """
 setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
 function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
@@ -1257,18 +1297,18 @@ julia> var_info[@varname(x[1])]
 
 julia> DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
 
-julia> var_info[@varname(m)] # changed
+julia> var_info[@varname(m)] # [✓] changed
 100.0
 
-julia> var_info[@varname(x[1])] # unchanged
+julia> var_info[@varname(x[1])] # [✓] unchanged
 -1.000410233256082
 
 julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
 
-julia> var_info[@varname(m)] # unchanged
+julia> var_info[@varname(m)] # [✓] unchanged
 100.0
 
-julia> var_info[@varname(x[1])] # changed
+julia> var_info[@varname(x[1])] # [✓] changed
 100.0271553380092
 ```
 """
