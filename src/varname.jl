@@ -121,6 +121,29 @@ function subsumes(t::Tuple, u::Tuple)  # does x[i]... subsume x[j]...?
     return _issubindex(first(t), first(u)) && subsumes(Base.tail(t), Base.tail(u))
 end
 
+"""
+    subsumes(u::String, v::String[, u_indexing])
+
+Check whether stringified variable name `v` describes a sub-range of stringified variable `u`.
+
+This is a very restricted version `subumes(u::VarName, v::VarName)` only really supporting:
+- Scalar: `x` subsumes `x[1, 2]`, `x[1, 2]` subsumes `x[1, 2][3]`, etc.
+
+## Note
+- To get same matching capabilities as `subumes(u::VarName, v::VarName)` for strings, one can always
+  do `eval(varname(Meta.parse(u))` to get `VarName` of `u`, and similarly to `v`. But this is slow.
+"""
+function subsumes(u::String, v::String, u_indexing = nothing)
+    if isnothing(u_indexing)
+        u_indexing = u * "["
+    end
+
+    return u == v || startswith(v, u_indexing)
+end
+
+# Makes it easy to "cache" `u_indexing`
+subsumes(u::String) = v -> subsumes(u, v, u * "[")
+
 const AnyIndex = Union{Int, AbstractVector{Int}, Colon} 
 _issubindex_(::Tuple{Vararg{AnyIndex}}, ::Tuple{Vararg{AnyIndex}}) = false
 function _issubindex(t::NTuple{N, AnyIndex}, u::NTuple{N, AnyIndex}) where {N}

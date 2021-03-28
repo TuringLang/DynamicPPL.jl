@@ -1165,6 +1165,37 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     end
 end
 
+# TODO: Maybe rename or something?
+function _apply!(kernel!::Function, vi::AbstractVarInfo, values, keys)
+    for vn in Base.keys(vi)
+        kernel!(vi, vn, values, keys)
+    end
+    return vi
+end
+_apply!(kernel!::Function, vi::TypedVarInfo, values, keys) = _typed_apply!(
+    kernel!, vi, vi.metadata, values, keys)
+
+@generated function _typed_apply!(
+    kernel!::Function,
+    vi::TypedVarInfo,
+    metadata::NamedTuple{names},
+    values,
+    keys
+) where {names}
+    updates = map(names) do n
+        quote
+            for vn in metadata.$n.vns
+                kernel!(vi, vn, values, keys)
+            end
+        end
+    end
+
+    return quote
+        $(updates...)
+        return vi
+    end
+end
+
 """
     setval!(vi::AbstractVarInfo, x)
     setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
@@ -1212,50 +1243,16 @@ julia> var_info[@varname(x[1])] # [✓] unchanged
 -1.000410233256082
 ```
 """
-setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
+setval!(vi::AbstractVarInfo, x) = _apply!(_setval_kernel!, vi, values(x), keys(x))
 function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
-    return _setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
-end
-
-function _setval!(vi::AbstractVarInfo, values, keys)
-    for vn in Base.keys(vi)
-        _setval_kernel!(vi, vn, values, keys)
-    end
-    return vi
-end
-_setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, values, keys)
-@generated function _typed_setval!(
-    vi::TypedVarInfo,
-    metadata::NamedTuple{names},
-    values,
-    keys
-) where {names}
-    updates = map(names) do n
-        quote
-            for vn in metadata.$n.vns
-                _setval_kernel!(vi, vn, values, keys)
-            end
-        end
-    end
-    
-    return quote
-        $(updates...)
-        return vi
-    end
+    return _apply!(_setval_kernel!, vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
 function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    string_vn = string(vn)
-    string_vn_indexing = string_vn * "["
-    indices = findall(keys) do x
-        string_x = string(x)
-        return string_x == string_vn || startswith(string_x, string_vn_indexing)
-    end
+    indices = findall(subsumes(string(vn)), map(string, keys))
     if !isempty(indices)
         sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
-        val = mapreduce(vcat, sorted_indices) do i
-            values[i]
-        end
+        val = reduce(vcat, values[sorted_indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     end
@@ -1312,50 +1309,16 @@ julia> var_info[@varname(x[1])] # [✓] changed
 100.0271553380092
 ```
 """
-setval_and_resample!(vi::AbstractVarInfo, x) = _setval_and_resample!(vi, values(x), keys(x))
+setval_and_resample!(vi::AbstractVarInfo, x) = _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
 function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
-    return _setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
-end
-
-function _setval_and_resample!(vi::AbstractVarInfo, values, keys)
-    for vn in Base.keys(vi)
-        _setval_and_resample_kernel!(vi, vn, values, keys)
-    end
-    return vi
-end
-_setval_and_resample!(vi::TypedVarInfo, values, keys) = _typed_setval_and_resample!(vi, vi.metadata, values, keys)
-@generated function _typed_setval_and_resample!(
-    vi::TypedVarInfo,
-    metadata::NamedTuple{names},
-    values,
-    keys
-) where {names}
-    updates = map(names) do n
-        quote
-            for vn in metadata.$n.vns
-                _setval_and_resample_kernel!(vi, vn, values, keys)
-            end
-        end
-    end
-    
-    return quote
-        $(updates...)
-        return vi
-    end
+    return _apply!(_setval_and_resample_kernel!, vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
 function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    string_vn = string(vn)
-    string_vn_indexing = string_vn * "["
-    indices = findall(keys) do x
-        string_x = string(x)
-        return string_x == string_vn || startswith(string_x, string_vn_indexing)
-    end
+    indices = findall(subsumes(string(vn)), map(string, keys))
     if !isempty(indices)
         sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
-        val = mapreduce(vcat, sorted_indices) do i
-            values[i]
-        end
+        val = reduce(vcat, values[sorted_indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     else
