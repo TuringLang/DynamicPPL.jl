@@ -1165,6 +1165,13 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     end
 end
 
+"""
+    setval!(vi::AbstractVarInfo, x)
+    setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+
+Set the values in `vi` to the provided values and leave those which are not present in
+`x` or `chains` unchanged.
+"""
 setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
 function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
     return _setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
@@ -1211,9 +1218,110 @@ function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
         end
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
+    end
+end
+
+"""
+    setval_and_resample!(vi::AbstractVarInfo, x)
+    setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx, chain_idx)
+
+Set the values in `vi` to the provided values and those which are not present
+in `x` or `chains` to *be* resampled.
+
+Note that this does *not* resample the values not provided! It will call `setflag!(vi, vn, "del")`
+for `vn` which there are no provided values, which means that the next time we call `model(vi)` these
+variables will be resampled.
+
+## Example
+```jldoctest
+julia> using Distributions, Random
+
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia> rng = MersenneTwister(42);
+
+julia> m = demo([missing]);
+
+julia> var_info = DynamicPPL.VarInfo(rng, m);
+
+julia> var_info[@varname(m)]
+-0.5560268761463861
+
+julia> var_info[@varname(x[1])]
+-1.000410233256082
+
+julia> DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
+
+julia> var_info[@varname(m)] # changed
+100.0
+
+julia> var_info[@varname(x[1])] # unchanged
+-1.000410233256082
+
+julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
+
+julia> var_info[@varname(m)] # unchanged
+100.0
+
+julia> var_info[@varname(x[1])] # changed
+100.0271553380092
+```
+"""
+setval_and_resample!(vi::AbstractVarInfo, x) = _setval_and_resample!(vi, values(x), keys(x))
+function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+    return _setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+end
+
+function _setval_and_resample!(vi::AbstractVarInfo, values, keys)
+    for vn in Base.keys(vi)
+        _setval_and_resample_kernel!(vi, vn, values, keys)
+    end
+    return vi
+end
+_setval_and_resample!(vi::TypedVarInfo, values, keys) = _typed_setval_and_resample!(vi, vi.metadata, values, keys)
+@generated function _typed_setval_and_resample!(
+    vi::TypedVarInfo,
+    metadata::NamedTuple{names},
+    values,
+    keys
+) where {names}
+    updates = map(names) do n
+        quote
+            for vn in metadata.$n.vns
+                _setval_and_resample_kernel!(vi, vn, values, keys)
+            end
+        end
+    end
+    
+    return quote
+        $(updates...)
+        return vi
+    end
+end
+
+function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+    string_vn = string(vn)
+    string_vn_indexing = string_vn * "["
+    indices = findall(keys) do x
+        string_x = string(x)
+        return string_x == string_vn || startswith(string_x, string_vn_indexing)
+    end
+    if !isempty(indices)
+        sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
+        val = mapreduce(vcat, sorted_indices) do i
+            values[i]
+        end
+        setval!(vi, val, vn)
+        settrans!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.
-        setflag!(vi, vn, "del")
+        set_flag!(vi, vn, "del")
     end
 end
+
