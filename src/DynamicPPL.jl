@@ -5,7 +5,6 @@ using AbstractPPL
 using Distributions
 using Bijectors
 
-
 import AbstractMCMC
 import ChainRulesCore
 import NaturalSort
@@ -114,6 +113,7 @@ include("utils.jl")
 include("selector.jl")
 include("model.jl")
 include("sampler.jl")
+include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")

@@ -171,7 +171,6 @@ Get a tuple of the names of the missing arguments of the `model`.
 """
 getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
-
 """
     nameof(model::Model)
 
