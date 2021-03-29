@@ -1,5 +1,6 @@
 using DynamicPPL
 using AbstractMCMC
+using AbstractPPL
 using Bijectors
 using Distributions
 using DistributionsAD
@@ -16,7 +17,7 @@ using Random
 using Serialization
 using Test
 
-using DynamicPPL: vsym, vinds, getargs_dottilde, getargs_tilde, Selector
+using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
