@@ -177,15 +177,9 @@ function generate_mainbody!(found, expr::Expr, args, warn, mod)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
-    # Don't touch input of macros, unless it's dot.
+    # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
-        # Apply the `@.` macro first.
-        if length(expr.args) > 1 &&
-            expr.args[1] === Symbol("@__dot__")
-            return generate_mainbody!(found, Base.Broadcast.__dot__(expr.args[end]), args, warn, mod)
-        else
-            return generate_mainbody!(found, macroexpand(mod, expr; recursive=true), args, warn, mod)
-        end
+        return generate_mainbody!(found, macroexpand(mod, expr; recursive=true), args, warn, mod)
     end
 
     # Modify dotted tilde operators.
