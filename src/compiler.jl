@@ -219,29 +219,20 @@ function generate_tilde(left, right, args)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds
+        @gensym out vn inds isassumption
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
-        # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in args
-            @gensym isassumption
-            return quote
-                $(top...)
-                $isassumption = $(DynamicPPL.isassumption(left))
-                if $isassumption
-                    $left = $(DynamicPPL.tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
-                else
-                    $(DynamicPPL.tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                end
-            end
-        end
 
         return quote
             $(top...)
-            $left = $(DynamicPPL.tilde_assume)(_rng, _context, _sampler, $tmpright, $vn,
-                                               $inds, _varinfo)
+            $isassumption = $(DynamicPPL.isassumption(left))
+            $left = if $isassumption
+                $(DynamicPPL.tilde_assume)(
+                    _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
+            else
+                $(DynamicPPL.tilde_observe)(
+                    _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                $left
+            end
         end
     end
 
@@ -264,29 +255,19 @@ function generate_dot_tilde(left, right, args)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds
+        @gensym out vn inds isassumption
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
-        # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in args
-            @gensym isassumption
-            return quote
-                $(top...)
-                $isassumption = $(DynamicPPL.isassumption(left))
-                if $isassumption
-                    $left .= $(DynamicPPL.dot_tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                else
-                    $(DynamicPPL.dot_tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                end
-            end
-        end
 
         return quote
             $(top...)
-            $left .= $(DynamicPPL.dot_tilde_assume)(
-                _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+            $isassumption = $(DynamicPPL.isassumption(left))
+            if $isassumption
+                $left .= $(DynamicPPL.dot_tilde_assume)(
+                    _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+            else
+                $(DynamicPPL.dot_tilde_observe)(
+                    _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+            end
         end
     end
 
