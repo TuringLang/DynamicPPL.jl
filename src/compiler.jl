@@ -177,7 +177,7 @@ function generate_mainbody!(found, expr::Expr, args, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
-    # Don't touch input of macros, unless it's dot
+    # Don't touch input of macros, unless it's dot.
     if Meta.isexpr(expr, :macrocall)
         # Apply the `@.` macro first.
         if length(expr.args) > 1 &&
