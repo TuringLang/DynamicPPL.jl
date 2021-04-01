@@ -227,13 +227,12 @@ function generate_tilde(left, right)
         return quote
             $(top...)
             $isassumption = $(DynamicPPL.isassumption(left))
-            $left = if $isassumption
-                $(DynamicPPL.tilde_assume)(
+            if $isassumption
+                $left = $(DynamicPPL.tilde_assume)(
                     _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
             else
                 $(DynamicPPL.tilde_observe)(
                     _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                $left
             end
         end
     end
