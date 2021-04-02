@@ -1167,8 +1167,15 @@ end
 
 # TODO: Maybe rename or something?
 function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
+    indices_seen = Set(1:length(keys))
     for vn in Base.keys(vi)
-        kernel!(vi, vn, values, keys)
+        indices_found = kernel!(vi, vn, values, keys)
+        if !isnothing(indices_found)
+            setdiff!(indices_seen, indices_found)
+        end
+    end
+    if !isempty(indices_seen)
+        @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(keys[sort(collect(indices_seen))])"
     end
     return vi
 end
@@ -1185,13 +1192,22 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
     updates = map(names) do n
         quote
             for vn in metadata.$n.vns
-                kernel!(vi, vn, values, keys)
+                indices_found = kernel!(vi, vn, values, keys)
+                if !isnothing(indices_found)
+                    setdiff!(indices_seen, indices_found)
+                end
             end
         end
     end
 
     return quote
+        indices_seen = Set(1:length(keys))
         $(updates...)
+
+        if !isempty(indices_seen)
+            @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(keys[sort(collect(indices_seen))])"
+        end
+
         return vi
     end
 end
@@ -1256,6 +1272,8 @@ function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     end
+
+    return indices
 end
 
 """
@@ -1326,4 +1344,6 @@ function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, 
         # the model on `vi` again.
         set_flag!(vi, vn, "del")
     end
+
+    return indices
 end
