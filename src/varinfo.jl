@@ -1207,8 +1207,6 @@ Set the values in `vi` to the provided values and leave those which are not pres
 ```jldoctest
 julia> using DynamicPPL, Distributions, StableRNGs
 
-julia> using Distributions, StableRNGs
-
 julia> @model function demo(x)
            m ~ Normal()
            for i in eachindex(x)
