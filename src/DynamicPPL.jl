@@ -1,6 +1,7 @@
 module DynamicPPL
 
-using AbstractMCMC: AbstractSampler, AbstractChains, AbstractModel
+using AbstractMCMC: AbstractSampler, AbstractChains
+using AbstractPPL
 using Distributions
 using Bijectors
 
@@ -49,13 +50,13 @@ export  AbstractVarInfo,
         link!,
         invlink!,
         tonamedtuple,
-#VarName
+# VarName (reexport from AbstractPPL)
         VarName,
         inspace,
         subsumes,
+        @varname,
 # Compiler
         @model,
-        @varname,
 # Utilities
         vectorize,
         reconstruct,
@@ -104,7 +105,7 @@ export loglikelihood
 function getspace end
 
 # Necessary forward declarations
-abstract type AbstractVarInfo end
+abstract type AbstractVarInfo <: AbstractModelTrace end
 abstract type AbstractContext end
 
 

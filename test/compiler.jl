@@ -222,35 +222,6 @@ end
         varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
     end
-    @testset "var name splitting" begin
-        var_expr = :(x)
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(())
-
-        var_expr = :(x[1,1][2,3])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(((1, 1), (2, 3)))
-
-        var_expr = :(x[:,1][2,:])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(((:, 1), (2, :)))
-
-        var_expr = :(x[2:3,1][2,1:2])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(((2:3, 1), (2, 1:2)))
-
-        var_expr = :(x[2:3,2:3][[1,2],[1,2]])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(((2:3, 2:3), ([1, 2], [1, 2])))
-
-        var_expr = :(x[end])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :((($lastindex(x),),))
-
-        var_expr = :(x[1, end])
-        @test vsym(var_expr) == :x
-        @test vinds(var_expr) == :(((1, $lastindex(x, 2)),))
-    end
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
         @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:,1]))
