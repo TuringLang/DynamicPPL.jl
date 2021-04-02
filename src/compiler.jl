@@ -18,13 +18,13 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
 function isassumption(expr::Union{Symbol, Expr})
-    sym = gensym(:sym)
+    vn = gensym(:vn)
 
     return quote
-        let $sym = $(QuoteNode(vsym(expr)))
+        let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)(Val($sym), _model) || $(DynamicPPL.inmissings)(Val($sym), _model)
+            if !$(DynamicPPL.inargnames)($vn, _model) || $(DynamicPPL.inmissings)($vn, _model)
                 true
             else
                 # Evaluate the LHS
