@@ -1166,6 +1166,11 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
 end
 
 # TODO: Maybe rename or something?
+"""
+    _apply!(kernel!, vi::AbstractVarInfo, values, keys)
+
+Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
+"""
 function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
     indices_seen = Set(1:length(keys))
     for vn in Base.keys(vi)
@@ -1218,6 +1223,15 @@ end
 
 Set the values in `vi` to the provided values and leave those which are not present in
 `x` or `chains` unchanged.
+
+## Notes
+This is rather limited for two reasons:
+1. It uses `subsumes_string(string(vn), map(string, keys))` under the hood,
+   and therefore suffers from the same limitations as [`subsumes_string`](@ref).
+2. It will set every `vn` present in `keys`. It will NOT however
+   set every `k` present in `keys`. This means that if `vn == [m[1], m[2]]`,
+   representing some variable `m`, calling `setval!(vi, (m = [1.0, 2.0]))` will
+   be a no-op since it will try to find `m[1]` and `m[2]` in `keys((m = [1.0, 2.0]))`.
 
 ## Example
 ```jldoctest
@@ -1287,6 +1301,9 @@ Note that this does *not* resample the values not provided! It will call `setfla
 for variables `vn` for which no values are provided, which means that the next time we call `model(vi)` these
 variables will be resampled.
 
+## Note
+- This suffers from the same limitations as [`setval!`](@ref). See `setval!` for more info.
+
 ## Example
 ```jldoctest
 julia> using DynamicPPL, Distributions, StableRNGs
@@ -1325,6 +1342,9 @@ julia> var_info[@varname(m)] # [✓] unchanged
 
 julia> var_info[@varname(x[1])] # [✓] changed
 101.37363069798343
+
+## See also
+- [`setval!`](@ref)
 ```
 """
 setval_and_resample!(vi::AbstractVarInfo, x) = _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))

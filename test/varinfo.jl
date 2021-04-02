@@ -182,7 +182,8 @@
 
                 ### `setval` ###
                 DynamicPPL.setval!(vicopy, (m = zeros(5),))
-                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
+                # Setting `m` fails for univariate due to limitations of `setval!`
+                # and `setval_and_resample!`. See docstring of `setval!` for more info.
                 if model == model_uv
                     @test_broken vicopy[m_vns] == zeros(5)
                 else
