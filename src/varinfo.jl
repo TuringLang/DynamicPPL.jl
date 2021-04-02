@@ -1251,7 +1251,7 @@ function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, c
 end
 
 function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    indices = findall(subsumes_string(string(vn)), map(string, keys))
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), map(string, keys))
     if !isempty(indices)
         sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
         val = reduce(vcat, values[sorted_indices])
@@ -1317,7 +1317,7 @@ function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sampl
 end
 
 function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    indices = findall(subsumes_string(string(vn)), map(string, keys))
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), map(string, keys))
     if !isempty(indices)
         sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
         val = reduce(vcat, values[sorted_indices])
