@@ -1172,9 +1172,10 @@ end
 Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
 function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
+    keys_strings = map(string, keys)
     indices_seen = Set(1:length(keys))
     for vn in Base.keys(vi)
-        indices_found = kernel!(vi, vn, values, keys)
+        indices_found = kernel!(vi, vn, values, keys_strings)
         if indices_found !== nothing
             setdiff!(indices_seen, indices_found)
         end
@@ -1197,7 +1198,7 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
     updates = map(names) do n
         quote
             for vn in metadata.$n.vns
-                indices_found = kernel!(vi, vn, values, keys)
+                indices_found = kernel!(vi, vn, values, keys_strings)
                 if indices_found !== nothing
                     setdiff!(indices_seen, indices_found)
                 end
@@ -1206,6 +1207,7 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
     end
 
     return quote
+        keys_strings = map(string, keys)
         indices_seen = Set(1:length(keys))
         $(updates...)
 
@@ -1279,9 +1281,9 @@ function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, c
 end
 
 function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    indices = findall(Base.Fix1(subsumes_string, string(vn)), map(string, keys))
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
-        sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
+        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
         val = reduce(vcat, values[sorted_indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
@@ -1353,9 +1355,9 @@ function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sampl
 end
 
 function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    indices = findall(Base.Fix1(subsumes_string, string(vn)), map(string, keys))
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
-        sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
+        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
         val = reduce(vcat, values[sorted_indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
