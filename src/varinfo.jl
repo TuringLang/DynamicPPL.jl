@@ -1175,7 +1175,7 @@ function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
     indices_seen = Set(1:length(keys))
     for vn in Base.keys(vi)
         indices_found = kernel!(vi, vn, values, keys)
-        if !isnothing(indices_found)
+        if indices_found !== nothing
             setdiff!(indices_seen, indices_found)
         end
     end
