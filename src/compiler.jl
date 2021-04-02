@@ -37,6 +37,14 @@ end
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
 
+function isassumption(vn::VarName, model::Model)
+    !inargnames(vn, model) || inmissings(vn, model)
+end
+
+function isassumption(vn::Val, model::Model)
+    !inargnames(vn, model) || inmissings(vn, model)
+end
+
 #################
 # Main Compiler #
 #################
@@ -221,12 +229,12 @@ function generate_tilde(left, right)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+        @gensym out vn sym inds isassumption
+        push!(top, :($vn = $(varname(left))), :($sym = $(QuoteNode(vsym(left)))), :($inds = $(vinds(left))))
 
         return quote
             $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left))
+            $isassumption = $(DynamicPPL.isassumption)(Val($sym), _model) || $left === missing
             if $isassumption
                 $left = $(DynamicPPL.tilde_assume)(
                     _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
@@ -256,12 +264,12 @@ function generate_dot_tilde(left, right)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+        @gensym out vn sym inds isassumption
+        push!(top, :($vn = $(varname(left))), :($sym = $(QuoteNode(vsym(left)))), :($inds = $(vinds(left))))
 
         return quote
             $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left))
+            $isassumption = $(DynamicPPL.isassumption)(Val($sym), _model) || $left === missing
             if $isassumption
                 $left .= $(DynamicPPL.dot_tilde_assume)(
                     _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)

@@ -9,6 +9,10 @@ Possibly existing indices of `varname` are neglected.
     return s in argnames
 end
 
+@generated function inargnames(::Val{s}, ::Model{_F, argnames}) where {s, argnames, _F}
+    return s in argnames
+end
+
 
 """
     inmissings(varname::VarName, model::Model)
@@ -19,5 +23,9 @@ of the `model`.
 Possibly existing indices of `varname` are neglected.
 """
 @generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
+    return s in missings
+end
+
+@generated function inmissings(::Val{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
     return s in missings
 end
