@@ -14,9 +14,6 @@ function subsumes_string(u::String, v::String, u_indexing=u * "[")
     return u == v || startswith(v, u_indexing)
 end
 
-# Makes it easy to "cache" `u_indexing`
-subsumes_string(u::String) = v -> subsumes_string(u, v, u * "[")
-
 """
     inargnames(varname::VarName, model::Model)
 
