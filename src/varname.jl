@@ -10,11 +10,7 @@ This is a very restricted version `subumes(u::VarName, v::VarName)` only really 
 - To get same matching capabilities as `subumes(u::VarName, v::VarName)` for strings, one can always
   do `eval(varname(Meta.parse(u))` to get `VarName` of `u`, and similarly to `v`. But this is slow.
 """
-function subsumes_string(u::String, v::String, u_indexing = nothing)
-    if isnothing(u_indexing)
-        u_indexing = u * "["
-    end
-
+function subsumes_string(u::String, v::String, u_indexing=u * "[")
     return u == v || startswith(v, u_indexing)
 end
 
