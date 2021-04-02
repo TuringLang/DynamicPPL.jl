@@ -1228,7 +1228,7 @@ julia> var_info[@varname(m)]
 julia> var_info[@varname(x[1])]
 -0.22312984965118443
 
-julia> DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
+julia> DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and and keep `x[1]`
 
 julia> var_info[@varname(m)] # [✓] changed
 100.0
@@ -1236,7 +1236,7 @@ julia> var_info[@varname(m)] # [✓] changed
 julia> var_info[@varname(x[1])] # [✓] unchanged
 -0.22312984965118443
 
-julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
+julia> m(rng, var_info); # rerun model
 
 julia> var_info[@varname(m)] # [✓] unchanged
 100.0
@@ -1268,7 +1268,7 @@ Set the values in `vi` to the provided values and those which are not present
 in `x` or `chains` to *be* resampled.
 
 Note that this does *not* resample the values not provided! It will call `setflag!(vi, vn, "del")`
-for `vn` which there are no provided values, which means that the next time we call `model(vi)` these
+for variables `vn` for which no values are provided, which means that the next time we call `model(vi)` these
 variables will be resampled.
 
 ## Example
@@ -1329,4 +1329,3 @@ function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, 
         set_flag!(vi, vn, "del")
     end
 end
-
