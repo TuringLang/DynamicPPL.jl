@@ -11,6 +11,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 NaturalSort = "c020b1a1-e9b0-503a-9c33-f039bfc54a85"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 
 [compat]
 AbstractMCMC = "2"

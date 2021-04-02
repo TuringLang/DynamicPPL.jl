@@ -1205,7 +1205,9 @@ Set the values in `vi` to the provided values and leave those which are not pres
 
 ## Example
 ```jldoctest
-julia> using Distributions, Random
+julia> using DynamicPPL, Distributions, StableRNGs
+
+julia> using Distributions, StableRNGs
 
 julia> @model function demo(x)
            m ~ Normal()
@@ -1214,17 +1216,17 @@ julia> @model function demo(x)
            end
        end;
 
-julia> rng = MersenneTwister(42);
+julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
 julia> var_info = DynamicPPL.VarInfo(rng, m);
 
 julia> var_info[@varname(m)]
--0.5560268761463861
+-0.6702516921145671
 
 julia> var_info[@varname(x[1])]
--1.000410233256082
+-0.22312984965118443
 
 julia> DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
 
@@ -1232,7 +1234,7 @@ julia> var_info[@varname(m)] # [✓] changed
 100.0
 
 julia> var_info[@varname(x[1])] # [✓] unchanged
--1.000410233256082
+-0.22312984965118443
 
 julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
 
@@ -1240,7 +1242,7 @@ julia> var_info[@varname(m)] # [✓] unchanged
 100.0
 
 julia> var_info[@varname(x[1])] # [✓] unchanged
--1.000410233256082
+-0.22312984965118443
 ```
 """
 setval!(vi::AbstractVarInfo, x) = _apply!(_setval_kernel!, vi, values(x), keys(x))
@@ -1271,7 +1273,7 @@ variables will be resampled.
 
 ## Example
 ```jldoctest
-julia> using Distributions, Random
+julia> using DynamicPPL, Distributions, StableRNGs
 
 julia> @model function demo(x)
            m ~ Normal()
@@ -1280,17 +1282,17 @@ julia> @model function demo(x)
            end
        end;
 
-julia> rng = MersenneTwister(42);
+julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
 julia> var_info = DynamicPPL.VarInfo(rng, m);
 
 julia> var_info[@varname(m)]
--0.5560268761463861
+-0.6702516921145671
 
 julia> var_info[@varname(x[1])]
--1.000410233256082
+-0.22312984965118443
 
 julia> DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
 
@@ -1298,7 +1300,7 @@ julia> var_info[@varname(m)] # [✓] changed
 100.0
 
 julia> var_info[@varname(x[1])] # [✓] unchanged
--1.000410233256082
+-0.22312984965118443
 
 julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
 
@@ -1306,7 +1308,7 @@ julia> var_info[@varname(m)] # [✓] unchanged
 100.0
 
 julia> var_info[@varname(x[1])] # [✓] changed
-100.0271553380092
+101.37363069798343
 ```
 """
 setval_and_resample!(vi::AbstractVarInfo, x) = _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
