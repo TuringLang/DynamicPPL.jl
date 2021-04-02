@@ -1166,17 +1166,17 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
 end
 
 # TODO: Maybe rename or something?
-function _apply!(kernel!::Function, vi::AbstractVarInfo, values, keys)
+function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
     for vn in Base.keys(vi)
         kernel!(vi, vn, values, keys)
     end
     return vi
 end
-_apply!(kernel!::Function, vi::TypedVarInfo, values, keys) = _typed_apply!(
+_apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
     kernel!, vi, vi.metadata, values, keys)
 
 @generated function _typed_apply!(
-    kernel!::Function,
+    kernel!,
     vi::TypedVarInfo,
     metadata::NamedTuple{names},
     values,
