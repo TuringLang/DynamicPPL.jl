@@ -1198,7 +1198,7 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
         quote
             for vn in metadata.$n.vns
                 indices_found = kernel!(vi, vn, values, keys)
-                if !isnothing(indices_found)
+                if indices_found !== nothing
                     setdiff!(indices_seen, indices_found)
                 end
             end
