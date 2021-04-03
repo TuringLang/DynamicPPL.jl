@@ -173,7 +173,7 @@ function pointwise_loglikelihoods(
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
         # Update the values
-        setval!(vi, chain, sample_idx, chain_idx)
+        setval_and_resample!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
         model(vi, spl, ctx)
