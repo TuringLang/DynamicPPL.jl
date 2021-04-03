@@ -57,9 +57,11 @@
 
             @test isempty(vi)
             @test ~haskey(vi, vn)
+            @test !(vn in keys(vi))
             push!(vi, vn, r, dist, gid)
             @test ~isempty(vi)
             @test haskey(vi, vn)
+            @test vn in keys(vi)
 
             @test length(vi[vn]) == 1
             @test length(vi[SampleFromPrior()]) == 1

@@ -1183,7 +1183,7 @@ end
 Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
 function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
-    keys_strings = map(string, keys)
+    keys_strings = map(string, collectmaybe(keys))
     num_indices_seen = 0
 
     for vn in Base.keys(vi)
@@ -1203,8 +1203,9 @@ function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
 
     return vi
 end
+
 _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
-    kernel!, vi, vi.metadata, values, keys)
+    kernel!, vi, vi.metadata, values, collectmaybe(keys))
 
 @generated function _typed_apply!(
     kernel!,
@@ -1243,7 +1244,7 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
 end
 
 function _find_missing_keys(vi::AbstractVarInfo, keys)
-    string_vns = map(string, Base.keys(vi))
+    string_vns = map(string, collectmaybe(Base.keys(vi)))
     # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
     missing_keys = filter(keys) do key
         !any(Base.Fix2(subsumes_string, key), string_vns)
@@ -1377,10 +1378,10 @@ julia> var_info[@varname(m)] # [✓] unchanged
 
 julia> var_info[@varname(x[1])] # [✓] changed
 101.37363069798343
+```
 
 ## See also
 - [`setval!`](@ref)
-```
 """
 setval_and_resample!(vi::AbstractVarInfo, x) = _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
 function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
