@@ -269,4 +269,29 @@ end
         end
         @test isempty(VarInfo(demo_with(0.0)))
     end
+
+    @testset "macros within model" begin
+        # Macro expansion
+        macro mymodel()
+            return esc(:(x ~ Normal()))
+        end
+
+        @model function demo()
+            @mymodel()
+        end
+
+        @test haskey(VarInfo(demo()), @varname(x))
+
+        # Interpolation
+        macro mymodel()
+            return esc(:(return 42))
+        end
+
+        @model function demo()
+            x ~ Normal()
+            $(@mymodel())
+        end
+
+        @test demo()() == 42
+    end
 end
