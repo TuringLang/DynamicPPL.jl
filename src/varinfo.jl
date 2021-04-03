@@ -584,11 +584,22 @@ end
 
 # Functions defined only for UntypedVarInfo
 """
-    keys(vi::UntypedVarInfo)
+    keys(vi::AbstractVarInfo)
 
 Return an iterator over all `vns` in `vi`.
 """
-keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
+Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
+
+@generated function Base.keys(vi::TypedVarInfo{<:NamedTuple{names}}) where {names}
+    expr = Expr(:call)
+    push!(expr.args, :vcat)
+
+    for n in names
+        push!(expr.args, :(vi.metadata.$n.vns))
+    end
+
+    return expr
+end
 
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
@@ -1165,19 +1176,39 @@ function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     end
 end
 
-setval!(vi::AbstractVarInfo, x) = _setval!(vi, values(x), keys(x))
-function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
-    return _setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
-end
+# TODO: Maybe rename or something?
+"""
+    _apply!(kernel!, vi::AbstractVarInfo, values, keys)
 
-function _setval!(vi::AbstractVarInfo, values, keys)
+Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
+"""
+function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
+    keys_strings = map(string, collectmaybe(keys))
+    num_indices_seen = 0
+
     for vn in Base.keys(vi)
-        _setval_kernel!(vi, vn, values, keys)
+        indices_found = kernel!(vi, vn, values, keys_strings)
+        if indices_found !== nothing
+            num_indices_seen += length(indices_found)
+        end
     end
+
+    if length(keys) > num_indices_seen
+        # Some keys have not been seen, i.e. attempted to set variables which
+        # we were not able to locate in `vi`.
+        # Find the ones we missed so we can warn the user.
+        unused_keys = _find_missing_keys(vi, keys_strings)
+        @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
+    end
+
     return vi
 end
-_setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, values, keys)
-@generated function _typed_setval!(
+
+_apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
+    kernel!, vi, vi.metadata, values, collectmaybe(keys))
+
+@generated function _typed_apply!(
+    kernel!,
     vi::TypedVarInfo,
     metadata::NamedTuple{names},
     values,
@@ -1186,30 +1217,189 @@ _setval!(vi::TypedVarInfo, values, keys) = _typed_setval!(vi, vi.metadata, value
     updates = map(names) do n
         quote
             for vn in metadata.$n.vns
-                _setval_kernel!(vi, vn, values, keys)
+                indices_found = kernel!(vi, vn, values, keys_strings)
+                if indices_found !== nothing
+                    num_indices_seen += length(indices_found)
+                end
             end
         end
     end
-    
+
     return quote
+        keys_strings = map(string, keys)
+        num_indices_seen = 0
+
         $(updates...)
+
+        if length(keys) > num_indices_seen
+            # Some keys have not been seen, i.e. attempted to set variables which
+            # we were not able to locate in `vi`.
+            # Find the ones we missed so we can warn the user.
+            unused_keys = _find_missing_keys(vi, keys_strings)
+            @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
+        end
+
         return vi
     end
 end
 
-function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
-    string_vn = string(vn)
-    string_vn_indexing = string_vn * "["
-    indices = findall(keys) do x
-        string_x = string(x)
-        return string_x == string_vn || startswith(string_x, string_vn_indexing)
+function _find_missing_keys(vi::AbstractVarInfo, keys)
+    string_vns = map(string, collectmaybe(Base.keys(vi)))
+    # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
+    missing_keys = filter(keys) do key
+        !any(Base.Fix2(subsumes_string, key), string_vns)
     end
+
+    return missing_keys
+end
+
+"""
+    setval!(vi::AbstractVarInfo, x)
+    setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+
+Set the values in `vi` to the provided values and leave those which are not present in
+`x` or `chains` unchanged.
+
+## Notes
+This is rather limited for two reasons:
+1. It uses `subsumes_string(string(vn), map(string, keys))` under the hood,
+   and therefore suffers from the same limitations as [`subsumes_string`](@ref).
+2. It will set every `vn` present in `keys`. It will NOT however
+   set every `k` present in `keys`. This means that if `vn == [m[1], m[2]]`,
+   representing some variable `m`, calling `setval!(vi, (m = [1.0, 2.0]))` will
+   be a no-op since it will try to find `m[1]` and `m[2]` in `keys((m = [1.0, 2.0]))`.
+
+## Example
+```jldoctest
+julia> using DynamicPPL, Distributions, StableRNGs
+
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia> rng = StableRNG(42);
+
+julia> m = demo([missing]);
+
+julia> var_info = DynamicPPL.VarInfo(rng, m);
+
+julia> var_info[@varname(m)]
+-0.6702516921145671
+
+julia> var_info[@varname(x[1])]
+-0.22312984965118443
+
+julia> DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and and keep `x[1]`
+
+julia> var_info[@varname(m)] # [✓] changed
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443
+
+julia> m(rng, var_info); # rerun model
+
+julia> var_info[@varname(m)] # [✓] unchanged
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443
+```
+"""
+setval!(vi::AbstractVarInfo, x) = _apply!(_setval_kernel!, vi, values(x), keys(x))
+function setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+    return _apply!(_setval_kernel!, vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+end
+
+function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
-        sorted_indices = sort!(indices; by=i -> string(keys[i]), lt=NaturalSort.natural)
-        val = mapreduce(vcat, sorted_indices) do i
-            values[i]
-        end
+        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
+        val = reduce(vcat, values[sorted_indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     end
+
+    return indices
+end
+
+"""
+    setval_and_resample!(vi::AbstractVarInfo, x)
+    setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx, chain_idx)
+
+Set the values in `vi` to the provided values and those which are not present
+in `x` or `chains` to *be* resampled.
+
+Note that this does *not* resample the values not provided! It will call `setflag!(vi, vn, "del")`
+for variables `vn` for which no values are provided, which means that the next time we call `model(vi)` these
+variables will be resampled.
+
+## Note
+- This suffers from the same limitations as [`setval!`](@ref). See `setval!` for more info.
+
+## Example
+```jldoctest
+julia> using DynamicPPL, Distributions, StableRNGs
+
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia> rng = StableRNG(42);
+
+julia> m = demo([missing]);
+
+julia> var_info = DynamicPPL.VarInfo(rng, m);
+
+julia> var_info[@varname(m)]
+-0.6702516921145671
+
+julia> var_info[@varname(x[1])]
+-0.22312984965118443
+
+julia> DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
+
+julia> var_info[@varname(m)] # [✓] changed
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443
+
+julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
+
+julia> var_info[@varname(m)] # [✓] unchanged
+100.0
+
+julia> var_info[@varname(x[1])] # [✓] changed
+101.37363069798343
+```
+
+## See also
+- [`setval!`](@ref)
+"""
+setval_and_resample!(vi::AbstractVarInfo, x) = _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
+function setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
+    return _apply!(_setval_and_resample_kernel!, vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+end
+
+function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+    indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
+    if !isempty(indices)
+        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
+        val = reduce(vcat, values[sorted_indices])
+        setval!(vi, val, vn)
+        settrans!(vi, false, vn)
+    else
+        # Ensures that we'll resample the variable corresponding to `vn` if we run
+        # the model on `vi` again.
+        set_flag!(vi, vn, "del")
+    end
+
+    return indices
 end
