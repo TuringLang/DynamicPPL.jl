@@ -1184,16 +1184,23 @@ Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
 function _apply!(kernel!, vi::AbstractVarInfo, values, keys)
     keys_strings = map(string, keys)
-    indices_seen = Set(1:length(keys))
+    num_indices_seen = 0
+
     for vn in Base.keys(vi)
         indices_found = kernel!(vi, vn, values, keys_strings)
         if indices_found !== nothing
-            setdiff!(indices_seen, indices_found)
+            num_indices_seen += length(indices_found)
         end
     end
-    if !isempty(indices_seen)
-        @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(keys[sort(collect(indices_seen))])"
+
+    if length(keys) > num_indices_seen
+        # Some keys have not been seen, i.e. attempted to set variables which
+        # we were not able to locate in `vi`.
+        # Find the ones we missed so we can warn the user.
+        unused_keys = _find_missing_keys(vi, keys_strings)
+        @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
     end
+
     return vi
 end
 _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
@@ -1211,7 +1218,7 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
             for vn in metadata.$n.vns
                 indices_found = kernel!(vi, vn, values, keys_strings)
                 if indices_found !== nothing
-                    setdiff!(indices_seen, indices_found)
+                    num_indices_seen += length(indices_found)
                 end
             end
         end
@@ -1219,15 +1226,30 @@ _apply!(kernel!, vi::TypedVarInfo, values, keys) = _typed_apply!(
 
     return quote
         keys_strings = map(string, keys)
-        indices_seen = Set(1:length(keys))
+        num_indices_seen = 0
+
         $(updates...)
 
-        if !isempty(indices_seen)
-            @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(keys[sort(collect(indices_seen))])"
+        if length(keys) > num_indices_seen
+            # Some keys have not been seen, i.e. attempted to set variables which
+            # we were not able to locate in `vi`.
+            # Find the ones we missed so we can warn the user.
+            unused_keys = _find_missing_keys(vi, keys_strings)
+            @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
         end
 
         return vi
     end
+end
+
+function _find_missing_keys(vi::AbstractVarInfo, keys)
+    string_vns = map(string, Base.keys(vi))
+    # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
+    missing_keys = filter(keys) do key
+        !any(Base.Fix2(subsumes_string, key), string_vns)
+    end
+
+    return missing_keys
 end
 
 """
