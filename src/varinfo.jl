@@ -584,11 +584,22 @@ end
 
 # Functions defined only for UntypedVarInfo
 """
-    keys(vi::UntypedVarInfo)
+    keys(vi::AbstractVarInfo)
 
 Return an iterator over all `vns` in `vi`.
 """
-keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
+Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
+
+@generated function Base.keys(vi::TypedVarInfo{<:NamedTuple{names}}) where {names}
+    expr = Expr(:call)
+    push!(expr.args, :vcat)
+
+    for n in names
+        push!(expr.args, :(vi.metadata.$n.vns))
+    end
+
+    return expr
+end
 
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
