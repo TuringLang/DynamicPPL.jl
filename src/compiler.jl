@@ -64,15 +64,15 @@ To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 macro model(expr, warn=true)
     # include `LineNumberNode` with information about the call site in the
     # generated function for easier debugging and interpretation of error messages
-    esc(model(expr, __source__, warn, __module__))
+    esc(model(__module__, __source__, expr, warn))
 end
 
-function model(expr, linenumbernode, warn, mod)
+function model(mod, linenumbernode, expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
     modelinfo[:body] = generate_mainbody(
-        modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn, mod
+        mod, modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn
     )
 
     return build_output(modelinfo, linenumbernode)
@@ -155,7 +155,7 @@ function build_model_info(input_expr)
 end
 
 """
-    generate_mainbody(expr, args, warn)
+    generate_mainbody(mod, expr, args, warn)
 
 Generate the body of the main evaluation function from expression `expr` and arguments
 `args`.
@@ -163,31 +163,31 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(expr, args, warn, mod) = generate_mainbody!(Symbol[], expr, args, warn, mod)
+generate_mainbody(mod, expr, args, warn) = generate_mainbody!(mod, Symbol[], expr, args, warn)
 
-generate_mainbody!(found, x, args, warn, mod) = x
-function generate_mainbody!(found, sym::Symbol, args, warn, mod)
+generate_mainbody!(mod, found, x, args, warn) = x
+function generate_mainbody!(mod, found, sym::Symbol, args, warn)
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$(sym)`"
         push!(found, sym)
     end
     return sym
 end
-function generate_mainbody!(found, expr::Expr, args, warn, mod)
+function generate_mainbody!(mod, found, expr::Expr, args, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
-        return generate_mainbody!(found, macroexpand(mod, expr; recursive=true), args, warn, mod)
+        return generate_mainbody!(mod, found, macroexpand(mod, expr; recursive=true), args, warn)
     end
 
     # Modify dotted tilde operators.
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return generate_dot_tilde(generate_mainbody!(found, L, args, warn, mod),
-                                  generate_mainbody!(found, R, args, warn, mod),
+        return generate_dot_tilde(generate_mainbody!(mod, found, L, args, warn),
+                                  generate_mainbody!(mod, found, R, args, warn),
                                   args) |> Base.remove_linenums!
     end
 
@@ -195,12 +195,12 @@ function generate_mainbody!(found, expr::Expr, args, warn, mod)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        return generate_tilde(generate_mainbody!(found, L, args, warn, mod),
-                              generate_mainbody!(found, R, args, warn, mod),
+        return generate_tilde(generate_mainbody!(mod, found, L, args, warn),
+                              generate_mainbody!(mod, found, R, args, warn),
                               args) |> Base.remove_linenums!
     end
 
-    return Expr(expr.head, map(x -> generate_mainbody!(found, x, args, warn, mod), expr.args)...)
+    return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, args, warn), expr.args)...)
 end
 
 
