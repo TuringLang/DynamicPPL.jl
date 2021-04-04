@@ -272,12 +272,17 @@ end
 
     @testset "macros within model" begin
         # Macro expansion
-        macro mymodel()
-            return esc(:(x ~ Normal()))
+        macro mymodel(ex)
+            # check if expression was modified by the DynamicPPL "compiler"
+            if ex == :(y ~ Uniform())
+	            return esc(:(x ~ Normal()))
+	        else
+	            return esc(:(z ~ Exponential()))
+	        end
         end
 
         @model function demo()
-            @mymodel()
+            @mymodel(y ~ Uniform())
         end
 
         @test haskey(VarInfo(demo()), @varname(x))
