@@ -6,6 +6,29 @@ macro custom(expr)
     end
 end
 
+macro mymodel1(ex)
+    # check if expression was modified by the DynamicPPL "compiler"
+    if ex == :(y ~ Uniform())
+        return esc(:(x ~ Normal()))
+    else
+        return esc(:(z ~ Exponential()))
+    end
+end
+
+struct MyModelStruct{T}
+    x::T
+end
+Base.:~(x, y::MyModelStruct) = y.x
+macro mymodel2(ex)
+    # check if expression was modified by the DynamicPPL "compiler"
+    if ex == :(y ~ Uniform())
+        # Just returns 42
+        return :(4 ~ MyModelStruct(42))
+    else
+        return :(return -1)
+    end
+end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
@@ -272,17 +295,8 @@ end
 
     @testset "macros within model" begin
         # Macro expansion
-        macro mymodel(ex)
-            # check if expression was modified by the DynamicPPL "compiler"
-            if ex == :(y ~ Uniform())
-                return esc(:(x ~ Normal()))
-            else
-                return esc(:(z ~ Exponential()))
-            end
-        end
-
         @model function demo()
-            @mymodel(y ~ Uniform())
+            @mymodel1(y ~ Uniform())
         end
 
         @test haskey(VarInfo(demo()), @varname(x))
@@ -294,21 +308,8 @@ end
         # 2. `@mymodel` is expanded before entire `@model` has been
         #    expanded => errors since `MyModelStruct` is not a distribution,
         #    and hence `tilde_observe` errors.
-        struct MyModelStruct{T}
-            x::T
-        end
-        Base.:~(x, y::MyModelStruct) = y.x
-        macro mymodel(ex)
-            # check if expression was modified by the DynamicPPL "compiler"
-            if ex == :(y ~ Uniform())
-                # Just returns 42
-                return :(4 ~ MyModelStruct(42))
-            else
-                return :(return -1)
-            end
-        end
         @model function demo()
-            $(@mymodel(y ~ Uniform()))
+            $(@mymodel2(y ~ Uniform()))
         end
         @test demo()() == 42
     end
