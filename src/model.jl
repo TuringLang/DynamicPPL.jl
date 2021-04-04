@@ -277,7 +277,7 @@ function generated_quantities(model::Model, chain::AbstractChains)
     varinfo = VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
-        setval!(varinfo, chain, sample_idx, chain_idx)
+        setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
         model(varinfo)
     end
 end

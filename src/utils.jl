@@ -153,3 +153,10 @@ end
 function inittrans(rng, dist::MatrixDistribution, n::Int)
     return invlink(dist, [randrealuni(rng, size(dist)...) for _ in 1:n])
 end
+
+
+#######################
+# Convenience methods #
+#######################
+collectmaybe(x) = x
+collectmaybe(x::Base.AbstractSet) = collect(x)
