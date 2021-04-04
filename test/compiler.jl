@@ -275,10 +275,10 @@ end
         macro mymodel(ex)
             # check if expression was modified by the DynamicPPL "compiler"
             if ex == :(y ~ Uniform())
-	        return esc(:(x ~ Normal()))
-	    else
-	        return esc(:(z ~ Exponential()))
-	    end
+                return esc(:(x ~ Normal()))
+            else
+                return esc(:(z ~ Exponential()))
+            end
         end
 
         @model function demo()
