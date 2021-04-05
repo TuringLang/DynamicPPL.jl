@@ -1,7 +1,8 @@
 const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
     "Distributions."
 
-const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
+const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
     isassumption(expr)
@@ -24,7 +25,7 @@ function isassumption(expr::Union{Symbol, Expr})
         let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, _model) || $(DynamicPPL.inmissings)($vn, _model)
+            if !$(DynamicPPL.inargnames)($vn, __model__) || $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
                 # Evaluate the LHS
@@ -167,10 +168,20 @@ generate_mainbody(mod, expr, args, warn) = generate_mainbody!(mod, Symbol[], exp
 
 generate_mainbody!(mod, found, x, args, warn) = x
 function generate_mainbody!(mod, found, sym::Symbol, args, warn)
+    if sym in DEPRECATED_INTERNALNAMES
+        newsym = Symbol(:_, sym, :__)
+        Base.depwarn(
+            "internal variable `$sym` is deprecated, use `$newsym` instead.",
+            :generate_mainbody!,
+        )
+        return generate_mainbody!(mod, found, newsym, args, warn)
+    end
+
     if warn && sym in INTERNALNAMES && sym ∉ found
-        @warn "you are using the internal variable `$(sym)`"
+        @warn "you are using the internal variable `$sym`"
         push!(found, sym)
     end
+
     return sym
 end
 function generate_mainbody!(mod, found, expr::Expr, args, warn)
@@ -229,25 +240,28 @@ function generate_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left = $(DynamicPPL.tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
+                        __rng__, __context__, __sampler__, $tmpright, $vn, $inds, __varinfo__
+                    )
                 else
                     $(DynamicPPL.tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
+                    )
                 end
             end
         end
 
         return quote
             $(top...)
-            $left = $(DynamicPPL.tilde_assume)(_rng, _context, _sampler, $tmpright, $vn,
-                                               $inds, _varinfo)
+            $left = $(DynamicPPL.tilde_assume)(
+                __rng__, __context__, __sampler__, $tmpright, $vn, $inds, __varinfo__
+            )
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $(DynamicPPL.tilde_observe)(__context__, __sampler__, $tmpright, $left, __varinfo__)
     end
 end
 
@@ -274,10 +288,12 @@ function generate_dot_tilde(left, right, args)
                 $isassumption = $(DynamicPPL.isassumption(left))
                 if $isassumption
                     $left .= $(DynamicPPL.dot_tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
+                    )
                 else
                     $(DynamicPPL.dot_tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                        __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
+                    )
                 end
             end
         end
@@ -285,14 +301,15 @@ function generate_dot_tilde(left, right, args)
         return quote
             $(top...)
             $left .= $(DynamicPPL.dot_tilde_assume)(
-                _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+                __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
+            )
         end
     end
 
     # If the LHS is a literal, it is always an observation
     return quote
         $(top...)
-        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $(DynamicPPL.dot_tilde_observe)(__context__, __sampler__, $tmpright, $left, __varinfo__)
     end
 end
 
@@ -316,11 +333,11 @@ function build_output(modelinfo, linenumbernode)
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
         [
-            :(_rng::$(Random.AbstractRNG)),
-            :(_model::$(DynamicPPL.Model)),
-            :(_varinfo::$(DynamicPPL.AbstractVarInfo)),
-            :(_sampler::$(DynamicPPL.AbstractSampler)),
-            :(_context::$(DynamicPPL.AbstractContext)),
+            :(__rng__::$(Random.AbstractRNG)),
+            :(__model__::$(DynamicPPL.Model)),
+            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
+            :(__sampler__::$(DynamicPPL.AbstractSampler)),
+            :(__context__::$(DynamicPPL.AbstractContext)),
         ],
         modelinfo[:allargs_exprs],
     )
