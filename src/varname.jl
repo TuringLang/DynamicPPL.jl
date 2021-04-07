@@ -38,7 +38,3 @@ Possibly existing indices of `varname` are neglected.
 @generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
     return s in missings
 end
-
-@generated function inmissings(::Val{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
-    return s in missings
-end
