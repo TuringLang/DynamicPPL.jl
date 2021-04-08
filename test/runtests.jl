@@ -45,30 +45,26 @@ include("test_util.jl")
         include(joinpath("compat", "ad.jl"))
     end
 
-    @static if VERSION <= v"1.5.3"
-        @testset "turing" begin
-            # activate separate test environment
-            Pkg.activate(DIRECTORY_Turing_tests)
-            Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
-            Pkg.instantiate()
+    @testset "turing" begin
+        # activate separate test environment
+        Pkg.activate(DIRECTORY_Turing_tests)
+        Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
+        Pkg.instantiate()
 
-            # make sure that the new environment is considered `using` and `import` statements
-            # (not added automatically on Julia 1.3, see e.g. PR #209)
-            if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
-                pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
-            end
-
-            include(joinpath("turing", "runtests.jl"))
+        # make sure that the new environment is considered `using` and `import` statements
+        # (not added automatically on Julia 1.3, see e.g. PR #209)
+        if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
+            pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
         end
+
+        include(joinpath("turing", "runtests.jl"))
     end
 
     @testset "doctests" begin
         DocMeta.setdocmeta!(
             DynamicPPL,
             :DocTestSetup,
-            quote
-            using DynamicPPL
-            end;
+            :(using DynamicPPL);
             recursive=true,
         )
         doctest(DynamicPPL; manual=false)
