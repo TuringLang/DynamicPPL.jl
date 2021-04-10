@@ -9,7 +9,7 @@ Add the result of the evaluation of `ex` to the joint log probability.
 """
 macro addlogprob!(ex)
     return quote
-        acclogp!($(esc(:(_varinfo))), $(esc(ex)))
+        acclogp!($(esc(:(__varinfo__))), $(esc(ex)))
     end
 end
 
