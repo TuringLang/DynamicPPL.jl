@@ -722,8 +722,11 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
     end
 end
 function link!(vi::TypedVarInfo, spl::AbstractSampler)
+    return link!(vi, spl, Val(getspace(spl)))
+end
+function link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
-    return _link!(vi.metadata, vi, vns, Val(getspace(spl)))
+    return _link!(vi.metadata, vi, vns, spaceval)
 end
 @generated function _link!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
@@ -770,8 +773,11 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     end
 end
 function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
+    return invlink!(vi, spl, Val(getspace(spl)))
+end
+function invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
-    return _invlink!(vi.metadata, vi, vns, Val(getspace(spl)))
+    return _invlink!(vi.metadata, vi, vns, spaceval)
 end
 @generated function _invlink!(metadata::NamedTuple{names}, vi, vns, ::Val{space}) where {names, space}
     expr = Expr(:block)
