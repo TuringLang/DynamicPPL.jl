@@ -39,7 +39,7 @@
         x = rand(10_000)
 
         @model function wthreads(x)
-            global vi_ = _varinfo
+            global vi_ = __varinfo__
             x[1] ~ Normal(0, 1)
             Threads.@threads for i in 2:length(x)
                 x[i] ~ Normal(x[i-1], 1)
@@ -70,7 +70,7 @@
                                              SampleFromPrior(), DefaultContext())
 
         @model function wothreads(x)
-            global vi_ = _varinfo
+            global vi_ = __varinfo__
             x[1] ~ Normal(0, 1)
             for i in 2:length(x)
                 x[i] ~ Normal(x[i-1], 1)

@@ -172,12 +172,12 @@ end
         # Test use of internal names
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
-            global varinfo_ = _varinfo
-            global sampler_ = _sampler
-            global model_ = _model
-            global context_ = _context
-            global rng_ = _rng
-            global lp = getlogp(_varinfo)
+            global varinfo_ = __varinfo__
+            global sampler_ = __sampler__
+            global model_ = __model__
+            global context_ = __context__
+            global rng_ = __rng__
+            global lp = getlogp(__varinfo__)
             return x
         end
         model = testmodel_missing3([1.0])
@@ -192,12 +192,12 @@ end
         # disable warnings
         @model function testmodel_missing4(x)
             x[1] ~ Bernoulli(0.5)
-            global varinfo_ = _varinfo
-            global sampler_ = _sampler
-            global model_ = _model
-            global context_ = _context
-            global rng_ = _rng
-            global lp = getlogp(_varinfo)
+            global varinfo_ = __varinfo__
+            global sampler_ = __sampler__
+            global model_ = __model__
+            global context_ = __context__
+            global rng_ = __rng__
+            global lp = getlogp(__varinfo__)
             return x
         end false
         lpold = lp
@@ -236,7 +236,7 @@ end
         function makemodel(p)
             @model function testmodel(x)
                 x[1] ~ Bernoulli(p)
-                global lp = getlogp(_varinfo)
+                global lp = getlogp(__varinfo__)
                 return x
             end
             return testmodel
@@ -295,11 +295,11 @@ end
 
     @testset "macros within model" begin
         # Macro expansion
-        @model function demo()
+        @model function demo1()
             @mymodel1(y ~ Uniform())
         end
 
-        @test haskey(VarInfo(demo()), @varname(x))
+        @test haskey(VarInfo(demo1()), @varname(x))
 
         # Interpolation
         # Will fail if:
@@ -308,9 +308,9 @@ end
         # 2. `@mymodel` is expanded before entire `@model` has been
         #    expanded => errors since `MyModelStruct` is not a distribution,
         #    and hence `tilde_observe` errors.
-        @model function demo()
+        @model function demo2()
             $(@mymodel2(y ~ Uniform()))
         end
-        @test demo()() == 42
+        @test demo2()() == 42
     end
 end
