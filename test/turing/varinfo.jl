@@ -67,6 +67,16 @@
         @test all(x -> !istrans(vi, x), meta.m.vns)
         @test meta.s.vals == v_s
         @test meta.m.vals == v_m
+
+        # Transforming only a subset of the variables
+        link!(vi, spl, Val((:m, )))
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> istrans(vi, x), meta.m.vns)
+        invlink!(vi, spl, Val((:m, )))
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test meta.s.vals == v_s
+        @test meta.m.vals == v_m
     end
     @testset "orders" begin
         csym = gensym() # unique per model
