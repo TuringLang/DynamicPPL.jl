@@ -21,31 +21,46 @@ using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
+const GROUP = get(ENV, "GROUP", "All")
 
 Random.seed!(100)
 
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
-    include("utils.jl")
-    include("compiler.jl")
-    include("varinfo.jl")
-    include("model.jl")
-    include("sampler.jl")
-    include("prob_macro.jl")
-    include("independence.jl")
-    include("distribution_wrappers.jl")
-    include("context_implementations.jl")
+    if GROUP == "All" || GROUP == "DynamicPPL"
+        @testset "interface" begin
+            include("utils.jl")
+            include("compiler.jl")
+            include("varinfo.jl")
+            include("model.jl")
+            include("sampler.jl")
+            include("prob_macro.jl")
+            include("independence.jl")
+            include("distribution_wrappers.jl")
+            include("context_implementations.jl")
 
-    include("threadsafe.jl")
+            include("threadsafe.jl")
 
-    include("serialization.jl")
+            include("serialization.jl")
+        end
 
-    @testset "compat" begin
-        include(joinpath("compat", "ad.jl"))
+        @testset "compat" begin
+            include(joinpath("compat", "ad.jl"))
+        end
+
+        @testset "doctests" begin
+            DocMeta.setdocmeta!(
+                DynamicPPL,
+                :DocTestSetup,
+                :(using DynamicPPL);
+                recursive=true,
+            )
+            doctest(DynamicPPL; manual=false)
+        end
     end
 
-    @static if VERSION <= v"1.5.3"
+    if GROUP == "All" || GROUP == "Downstream"
         @testset "turing" begin
             # activate separate test environment
             Pkg.activate(DIRECTORY_Turing_tests)
@@ -60,17 +75,5 @@ include("test_util.jl")
 
             include(joinpath("turing", "runtests.jl"))
         end
-    end
-
-    @testset "doctests" begin
-        DocMeta.setdocmeta!(
-            DynamicPPL,
-            :DocTestSetup,
-            quote
-            using DynamicPPL
-            end;
-            recursive=true,
-        )
-        doctest(DynamicPPL; manual=false)
     end
 end
