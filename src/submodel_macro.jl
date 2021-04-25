@@ -17,7 +17,7 @@ macro submodel(prefix, expr)
             $(esc(expr)),
             $(esc(:__varinfo__)),
             $(esc(:__sampler__)),
-            PrefixContext{$(Meta.quot(prefix))}($(esc(:__context__)))
+            PrefixContext{$(esc(Meta.quot(prefix)))}($(esc(:__context__)))
         )
     end
 end
