@@ -54,17 +54,17 @@ function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
 end
 
 
-struct PrefixContext{Prefix,C} <: AbstractContext
+struct PrefixContext{Prefix, C} <: AbstractContext
     ctx::C
 end
-PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{typeof(ctx), Prefix}(ctx)
+PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{Prefix, typeof(ctx)}(ctx)
 
 @generated function PrefixContext{PrefixInner}(
-    ctx::PrefixContext{<:Any, PrefixOuter}
+    ctx::PrefixContext{PrefixOuter}
 ) where {PrefixInner, PrefixOuter}
     :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, ":", PrefixInner)))}(ctx.ctx))
 end
 
-@generated function prefix(::PrefixContext{<:Any, Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
+@generated function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
     return :(VarName{$(QuoteNode(Symbol(Prefix, Symbol(":"), Sym)))}(vn.indexing))
 end
