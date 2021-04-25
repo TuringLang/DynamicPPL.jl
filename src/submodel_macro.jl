@@ -1,11 +1,11 @@
 macro submodel(expr)
     return quote
         $(DynamicPPL)._evaluate(
-            $(esc(:_rng)),
+            $(esc(:__rng__)),
             $(esc(expr)),
-            $(esc(:_varinfo)),
-            $(esc(:_sampler)),
-            $(esc(:_context))
+            $(esc(:__varinfo__)),
+            $(esc(:__sampler__)),
+            $(esc(:__context__))
         )
     end
 end
