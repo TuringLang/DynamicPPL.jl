@@ -52,3 +52,13 @@ end
 function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
     return MiniBatchContext(ctx, npoints/batch_size)
 end
+
+
+struct PrefixContext{C, Prefix} <: AbstractContext
+    ctx::C
+end
+PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{typeof(ctx), Prefix}(ctx)
+
+@generated function prefix(::PrefixContext{<:Any, Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
+    return :(VarName{$(QuoteNode(Symbol(Prefix, Symbol(":"), Sym)))}(vn.indexing))
+end
