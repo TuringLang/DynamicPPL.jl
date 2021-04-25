@@ -59,6 +59,12 @@ struct PrefixContext{C, Prefix} <: AbstractContext
 end
 PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{typeof(ctx), Prefix}(ctx)
 
+@generated function PrefixContext{PrefixInner}(
+    ctx::PrefixContext{<:Any, PrefixOuter}
+) where {PrefixInner, PrefixOuter}
+    :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, ":", PrefixInner)))}(ctx.ctx))
+end
+
 @generated function prefix(::PrefixContext{<:Any, Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
     return :(VarName{$(QuoteNode(Symbol(Prefix, Symbol(":"), Sym)))}(vn.indexing))
 end
