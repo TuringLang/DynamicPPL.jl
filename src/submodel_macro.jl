@@ -1,6 +1,6 @@
 macro submodel(expr)
     return quote
-        $(DynamicPPL)._evaluate(
+        _evaluate(
             $(esc(:__rng__)),
             $(esc(expr)),
             $(esc(:__varinfo__)),
@@ -12,12 +12,12 @@ end
 
 macro submodel(prefix, expr)
     return quote
-        $(DynamicPPL)._evaluate(
+        _evaluate(
             $(esc(:__rng__)),
             $(esc(expr)),
             $(esc(:__varinfo__)),
             $(esc(:__sampler__)),
-            $(DynamicPPL).PrefixContext{$(QuoteNode(prefix))}($(esc(:__context__)))
+            PrefixContext{$(QuoteNode(prefix))}($(esc(:__context__)))
         )
     end
 end
