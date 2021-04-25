@@ -17,7 +17,7 @@ macro submodel(prefix, expr)
             $(esc(expr)),
             $(esc(:_varinfo)),
             $(esc(:_sampler)),
-            $(PrefixContext){$(esc(prefix))}($(esc(:_context)))
+            $(DynamicPPL).PrefixContext{$(QuoteNode(prefix))}($(esc(:_context)))
         )
     end
 end
