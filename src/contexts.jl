@@ -54,7 +54,7 @@ function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
 end
 
 
-struct PrefixContext{C, Prefix} <: AbstractContext
+struct PrefixContext{Prefix,C} <: AbstractContext
     ctx::C
 end
 PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{typeof(ctx), Prefix}(ctx)
