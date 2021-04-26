@@ -59,7 +59,7 @@ struct PrefixContext{Prefix, C} <: AbstractContext
 end
 PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{Prefix, typeof(ctx)}(ctx)
 
-const _prefix_seperator = Symbol(".")
+const PREFIX_SEPARATOR = Symbol(".")
 
 function PrefixContext{PrefixInner}(
     ctx::PrefixContext{PrefixOuter}
