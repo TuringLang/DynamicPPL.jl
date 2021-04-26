@@ -226,9 +226,7 @@ variables.
 """
 function generate_tilde(left, right)
     @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
+    top = [:($tmpright = $right),]
 
     if left isa Symbol || left isa Expr
         @gensym out vn inds isassumption
