@@ -59,12 +59,22 @@ struct PrefixContext{Prefix, C} <: AbstractContext
 end
 PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{Prefix, typeof(ctx)}(ctx)
 
-@generated function PrefixContext{PrefixInner}(
+const _prefix_seperator = Symbol(".")
+
+function PrefixContext{PrefixInner}(
     ctx::PrefixContext{PrefixOuter}
 ) where {PrefixInner, PrefixOuter}
-    :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, ":", PrefixInner)))}(ctx.ctx))
+    if @generated
+        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(ctx.ctx))
+    else
+        PrefixContext{Symbol(PrefixOuter, _prefix_separator, PrefixInner)}(ctx.ctx)
+    end
 end
 
-@generated function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
-    return :(VarName{$(QuoteNode(Symbol(Prefix, Symbol(":"), Sym)))}(vn.indexing))
+function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
+    if @generated
+        return :(VarName{$(QuoteNode(Symbol(Prefix, _prefix_seperator, Sym)))}(vn.indexing))
+    else
+        VarName{Symbol(Prefix, _prefix_seperator, Sym)}(vn.indexing)
+    end
 end
