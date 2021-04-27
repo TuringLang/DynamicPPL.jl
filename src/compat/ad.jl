@@ -26,4 +26,3 @@ ZygoteRules.@adjoint function dot_observe(
     end
     return ZygoteRules.pullback(__context__, dot_observe_fallback, spl, dists, value, vi)
 end
-
