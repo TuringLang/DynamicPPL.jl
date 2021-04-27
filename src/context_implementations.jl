@@ -119,7 +119,7 @@ end
 function assume(
     rng,
     spl::Union{SampleFromPrior,SampleFromUniform},
-    dist::Distribution,
+    dist,
     vn::VarName,
     vi,
 )
@@ -144,12 +144,12 @@ end
 
 function observe(
     spl::Union{SampleFromPrior, SampleFromUniform},
-    dist::Distribution,
+    dist,
     value,
     vi,
 )
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dist, value)
+    return sum(Distributions.logpdf(dist, value))
 end
 
 # .~ functions

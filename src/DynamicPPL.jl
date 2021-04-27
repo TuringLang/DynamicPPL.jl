@@ -95,7 +95,9 @@ export  AbstractVarInfo,
         logjoint,
         pointwise_loglikelihoods,
 # Convenience macros
-        @addlogprob!
+        @addlogprob!,
+# Symbolics
+        Symbolic
 
 # Reexport
 using Distributions: loglikelihood
@@ -123,5 +125,6 @@ include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
+include("symbolic/Symbolic.jl")
 
 end # module
