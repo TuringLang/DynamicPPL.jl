@@ -11,6 +11,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 NaturalSort = "c020b1a1-e9b0-503a-9c33-f039bfc54a85"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [compat]
 AbstractMCMC = "2, 3.0"
@@ -20,4 +21,5 @@ ChainRulesCore = "0.9.7"
 Distributions = "0.23.8, 0.24"
 MacroTools = "0.5.6"
 NaturalSort = "1"
+ZygoteRules = "0.2"
 julia = "1.3"
