@@ -12,6 +12,7 @@ islogpdf(x) = false
 # HACK: Apparently this is needed for disambiguiation.
 # TODO: Open issue.
 Symbolics.:<ₑ(a::Real, b::Symbolics.Num) = Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
+Symbolics.:<ₑ(a::Symbolics.Num, b::Real) = Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
 
 #############
 ### Rules ###
@@ -57,6 +58,7 @@ const analytic_rule = @rule (~f::islogpdf)((~d::isdist)(~~args), ~x) => getlogpd
 #################
 ### Rewriters ###
 #################
+# TODO: these should probably be instantiated when needed, rather than here.
 const analytic_rw = Rewriters.Postwalk(
     Rewriters.Chain((
         rmnum_rule,             # 0. Remove `Num` so we're only working stuff from `SymbolicUtils.jl`.
