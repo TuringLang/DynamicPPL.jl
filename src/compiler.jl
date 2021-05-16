@@ -70,13 +70,19 @@ end
 
 function model(mod, linenumbernode, expr, warn)
     modelinfo = build_model_info(expr)
+    modelinfo_logπ = deepcopy(modelinfo)
 
     # Generate main body
     modelinfo[:body] = generate_mainbody(
         mod, modelinfo[:modeldef][:body], warn
     )
 
-    return build_output(modelinfo, linenumbernode)
+    # Generate logπ
+    modelinfo_logπ[:body] = generate_mainbody_logdensity(
+        mod, modelinfo_logπ[:modeldef][:body], warn
+    )
+
+    return build_output(modelinfo, modelinfo_logπ, linenumbernode)
 end
 
 """
@@ -298,14 +304,7 @@ hasmissing(T::Type{<:AbstractArray{TA}}) where {TA <: AbstractArray} = hasmissin
 hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
-"""
-    build_output(modelinfo, linenumbernode)
-
-Builds the output expression.
-"""
-function build_output(modelinfo, linenumbernode)
-    ## Build the anonymous evaluator from the user-provided model definition.
-
+function build_evaluator(modelinfo)
     # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
     delete!(evaluatordef, :name)
@@ -328,6 +327,53 @@ function build_output(modelinfo, linenumbernode)
     # Replace the user-provided function body with the version created by DynamicPPL.
     evaluatordef[:body] = modelinfo[:body]
 
+    return evaluatordef
+end
+
+function build_logπ(modelinfo)
+    # Remove the name.
+    def = deepcopy(modelinfo[:modeldef])
+    def[:name] = :logπ
+
+    # Add the internal arguments to the user-specified arguments (positional + keywords).
+    @gensym T
+    def[:args] = vcat(
+        [
+            :(__model__::$(DynamicPPL.Model)),
+            :(__sampler__::$(DynamicPPL.AbstractSampler)),
+            :(__context__::$(DynamicPPL.AbstractContext)),
+            :(__variables__),
+            T
+        ],
+        modelinfo[:allargs_exprs],
+    )
+
+    # Delete the keyword arguments.
+    def[:kwargs] = []
+
+    # Replace the user-provided function body with the version created by DynamicPPL.
+    
+    def[:body] = quote
+        __lp__ = zero($T)
+        $(modelinfo[:body])
+        return __lp__
+    end
+
+    return def
+end
+
+"""
+    build_output(modelinfo, linenumbernode)
+
+Builds the output expression.
+"""
+function build_output(modelinfo, modelinfo_logπ, linenumbernode)
+    ## Build logπ.
+    logπdef = build_logπ(modelinfo_logπ)
+
+    ## Build the anonymous evaluator from the user-provided model definition.
+    evaluatordef = build_evaluator(modelinfo)
+
     ## Build the model function.
 
     # Extract the named tuple expression of all arguments and the default values.
@@ -337,18 +383,20 @@ function build_output(modelinfo, linenumbernode)
     # Update the function body of the user-specified model.
     # We use a name for the anonymous evaluator that does not conflict with other variables.
     modeldef = modelinfo[:modeldef]
-    @gensym evaluator
+    @gensym evaluator logπ
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         $evaluator = $(MacroTools.combinedef(evaluatordef))
+        $logπ = $(MacroTools.combinedef(logπdef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
             $defaults_namedtuple,
+            $logπ
         )
     end
 
@@ -415,3 +463,126 @@ end
 
 floatof(::Type{T}) where {T <: Real} = typeof(one(T)/one(T))
 floatof(::Type) = Real # fallback if type inference failed
+
+
+#####################
+###  `logdensity` ###
+#####################
+generate_mainbody_logdensity(mod, expr, warn) = generate_mainbody_logdensity!(mod, Symbol[], expr, warn)
+
+generate_mainbody_logdensity!(mod, found, x, warn) = x
+function generate_mainbody_logdensity!(mod, found, sym::Symbol, warn)
+    if sym in DEPRECATED_INTERNALNAMES
+        newsym = Symbol(:_, sym, :__)
+        Base.depwarn(
+            "internal variable `$sym` is deprecated, use `$newsym` instead.",
+            :generate_mainbody_logdensity!,
+        )
+        return generate_mainbody_logdensity!(mod, found, newsym, warn)
+    end
+
+    if warn && sym in INTERNALNAMES && sym ∉ found
+        @warn "you are using the internal variable `$sym`"
+        push!(found, sym)
+    end
+
+    return sym
+end
+function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
+    # Do not touch interpolated expressions
+    expr.head === :$ && return expr.args[1]
+
+    # If it's a macro, we expand it
+    if Meta.isexpr(expr, :macrocall)
+        return generate_mainbody_logdensity!(mod, found, macroexpand(mod, expr; recursive=true), warn)
+    end
+
+    # If it's a return, we instead return `__lp__`.
+    if Meta.isexpr(expr, :return)
+        returnbody = Expr(:block, map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...)
+        return :($(returnbody); return __lp__)
+    end
+
+    # Modify dotted tilde operators.
+    args_dottilde = getargs_dottilde(expr)
+    if args_dottilde !== nothing
+        L, R = args_dottilde
+        left = generate_mainbody_logdensity!(mod, found, L, warn)
+        return generate_dot_tilde_logdensity(
+            left,
+            generate_mainbody_logdensity!(mod, found, R, warn),
+        ) |> Base.remove_linenums!
+    end
+
+    # Modify tilde operators.
+    args_tilde = getargs_tilde(expr)
+    if args_tilde !== nothing
+        L, R = args_tilde
+        left = generate_mainbody_logdensity!(mod, found, L, warn)
+        return generate_tilde_logdensity(
+            left,
+            generate_mainbody_logdensity!(mod, found, R, warn),
+        ) |> Base.remove_linenums!
+    end
+
+    return Expr(expr.head, map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...)
+end
+
+function generate_tilde_logdensity(left, right)
+    @gensym tmpright
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
+
+    if left isa Symbol || left isa Expr
+        @gensym vn inds isassumption
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        # If it's not present in args of the model, we need to extract it from `__variables__`.
+        return quote
+            $(top...)
+            $isassumption = $(DynamicPPL.isassumption(left))
+            if $isassumption
+                $(vsym(left)) = __variables__.$(vsym(left))
+            end
+            __lp__ += $(DynamicPPL.tilde_observe)(
+                __context__, __sampler__, $tmpright, $left, $vn, $inds, nothing
+            )
+        end
+    end
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        __lp__ += $(DynamicPPL.tilde_observe)(__context__, __sampler__, $tmpright, $left, nothing)
+    end
+end
+
+function generate_dot_tilde_logdensity(left, right)
+    @gensym tmpright
+    top = [:($tmpright = $right),
+           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
+             || throw(ArgumentError($DISTMSG)))]
+
+    if left isa Symbol || left isa Expr
+        @gensym vn inds isassumption
+        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
+
+        return quote
+            $(top...)
+            $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
+            if $isassumption
+                $(vsym(left)) = __variables__.$(vsym(left))
+            end
+            __lp__ += $(DynamicPPL.dot_tilde_observe)(
+                __context__, __sampler__, $tmpright, $left, $vn, $inds, nothing
+            )
+        end
+    end
+
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(top...)
+        $(DynamicPPL.dot_tilde_observe)(__context__, __sampler__, $tmpright, $left, nothing)
+    end
+end

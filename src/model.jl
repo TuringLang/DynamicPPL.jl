@@ -32,11 +32,12 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractProbabilisticProgram
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults, Π} <: AbstractProbabilisticProgram
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
+    logπ::Π
 
     """
         Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
@@ -49,8 +50,9 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractProbab
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(name, f, args, defaults)
+        logπ::Π = identity
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Π}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Π}(name, f, args, defaults, logπ)
     end
 end
 
@@ -68,9 +70,10 @@ model with different arguments.
     f::F,
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple = NamedTuple(),
+    logπ = identity
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+    return :(Model{$missings}(name, f, args, defaults, logπ))
 end
 
 """

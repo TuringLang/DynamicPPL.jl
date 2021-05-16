@@ -87,8 +87,12 @@ and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
     logp = tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    if vi === nothing
+        return logp
+    else
+        acclogp!(vi, logp)
+        return left
+    end
 end
 
 """
@@ -101,8 +105,12 @@ Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
 function tilde_observe(ctx, sampler, right, left, vi)
     logp = tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    if vi === nothing
+        return logp
+    else
+        acclogp!(vi, logp)
+        return left
+    end
 end
 
 
@@ -148,7 +156,7 @@ function observe(
     value,
     vi,
 )
-    increment_num_produce!(vi)
+    vi === nothing || increment_num_produce!(vi)
     return Distributions.loglikelihood(dist, value)
 end
 
@@ -406,8 +414,12 @@ name and indices; if needed, these can be accessed through this function, though
 """
 function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    if vi === nothing
+        return logp
+    else
+        acclogp!(vi, logp)
+        return left
+    end
 end
 
 """
@@ -420,8 +432,12 @@ Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
 """
 function dot_tilde_observe(ctx, sampler, right, left, vi)
     logp = dot_tilde(ctx, sampler, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    if vi === nothing
+        return logp
+    else
+        acclogp!(vi, logp)
+        return left
+    end
 end
 
 function _dot_tilde(sampler, right, left::AbstractArray, vi)
@@ -443,7 +459,7 @@ function dot_observe(
     value::AbstractMatrix,
     vi,
 )
-    increment_num_produce!(vi)
+    vi == nothing || increment_num_produce!(vi)
     @debug "dist = $dist"
     @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
@@ -454,7 +470,7 @@ function dot_observe(
     value::AbstractArray,
     vi,
 )
-    increment_num_produce!(vi)
+    vi == nothing || increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
@@ -465,7 +481,7 @@ function dot_observe(
     value::AbstractArray,
     vi,
 )
-    increment_num_produce!(vi)
+    vi == nothing || increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
     return sum(zip(dists, value)) do (d, v)
