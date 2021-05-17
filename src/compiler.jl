@@ -4,39 +4,6 @@ const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vec
 const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
-"""
-    isassumption(expr)
-
-Return an expression that can be evaluated to check if `expr` is an assumption in the
-model.
-
-Let `expr` be `:(x[1])`. It is an assumption in the following cases:
-    1. `x` is not among the input data to the model,
-    2. `x` is among the input data to the model but with a value `missing`, or
-    3. `x` is among the input data to the model with a value other than missing,
-       but `x[1] === missing`.
-
-When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
-"""
-function isassumption(expr::Union{Symbol, Expr})
-    vn = gensym(:vn)
-
-    return quote
-        let $vn = $(varname(expr))
-            # This branch should compile nicely in all cases except for partial missing data
-            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) || $(DynamicPPL.inmissings)($vn, __model__)
-                true
-            else
-                # Evaluate the LHS
-                $expr === missing
-            end
-        end
-    end
-end
-
-# failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
 
 #################
 # Main Compiler #
@@ -231,20 +198,20 @@ function generate_tilde(left, right)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
+        @gensym out vn inds isobservation
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
         return quote
             $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left))
-            if $isassumption
-                $left = $(DynamicPPL.tilde_assume)(
-                    __rng__, __context__, __sampler__, $tmpright, $vn, $inds, __varinfo__
-                )
-            else
+            $isobservation = $(DynamicPPL.isobservation)($vn, __model__)
+            if $isobservation
                 $(DynamicPPL.tilde_observe)(
                     __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
                 )
+            else
+               $left = $(DynamicPPL.tilde_assume)(
+                    __rng__, __context__, __sampler__, $tmpright, $vn, $inds, __varinfo__
+                ) 
             end
         end
     end
@@ -268,19 +235,19 @@ function generate_dot_tilde(left, right)
              || throw(ArgumentError($DISTMSG)))]
 
     if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
+        @gensym out vn inds isobservation
         push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
 
         return quote
             $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
-            if $isassumption
-                $left .= $(DynamicPPL.dot_tilde_assume)(
-                    __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
-                )
-            else
+            $isobservation = $(DynamicPPL.isobservation)($vn, __model__)
+            if $isobservation
                 $(DynamicPPL.dot_tilde_observe)(
                     __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
+                )
+            else
+                $left .= $(DynamicPPL.dot_tilde_assume)(
+                    __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
                 )
             end
         end
@@ -348,7 +315,7 @@ function build_output(modelinfo, linenumbernode)
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
-            $defaults_namedtuple,
+            (;)
         )
     end
 

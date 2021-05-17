@@ -1,77 +1,91 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+    struct Model{F, parameternames, observationnames, Tparams, Tobs} <: AbstractProbabilisticProgram
         name::Symbol
-        f::F
-        args::NamedTuple{argnames,Targs}
-        defaults::NamedTuple{defaultnames,Tdefaults}
+        evaluator::F
+        parameters::NamedTuple{parameternames,Tparams}
+        observations::NamedTuple{observationnames,Tobs}
     end
 
-A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, and missing
-arguments `missings`.
+A `Model` struct with model evaluation function of type `F`, parameters of names `parameternames` 
+and types `Tparams`, and observations of names `observatonnames` and types `Tobs`.
 
-Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
-
-An argument with a type of `Missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in `missings`
-are treated as random variables rather than observations.
-
-The default arguments are used internally when constructing instances of the same model with
-different arguments.
+`parameternames` and `observationnames` are tuples of symbols, e.g. `(:a, :b)`.
 
 # Examples
 
 ```julia
-julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
-
-julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
-Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-
-julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
-Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+TODO
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractProbabilisticProgram
+struct Model{F, parameternames, observationnames, Tparams, Tobs} <: AbstractProbabilisticProgram
     name::Symbol
-    f::F
-    args::NamedTuple{argnames,Targs}
-    defaults::NamedTuple{defaultnames,Tdefaults}
+    # code::Expr
+    evaluator::F
+    parameters::NamedTuple{parameternames,Tparams}
+    observations::NamedTuple{observationnames,Tobs}
+end
 
-    """
-        Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
 
-    Create a model of name `name` with evaluation function `f` and missing arguments
-    overwritten by `missings`.
-    """
-    function Model{missings}(
-        name::Symbol,
-        f::F,
-        args::NamedTuple{argnames,Targs},
-        defaults::NamedTuple{defaultnames,Tdefaults},
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(name, f, args, defaults)
-    end
+
+"""
+    @ConditionedModel{; obs1::Type1, obs2::Type2, ...}
+    @ConditionedModel{f, parameternames, Tparams; obs1::Type1, obs2::Type2, ...}
+
+Macro with more convenient syntax for declaring `Model` types with observations (similar to the
+`Base.@NamedTuple` macro).  The observations to the parameters part of the braces:
+`@ConditionedModel{; x::Int, y}`.  Type annotations can be omitted, in which case the type is
+defaulted to `Any`.
+
+The non-parameters part can be used to match the other type arguments of `Model`: the evaluator
+function type `F`, and the `parameternames` and their type tuple `Tparams`.
+"""
+macro ConditionedModel(ex)
+    # Code adapted from Base.@NamedTuple macro; parameter lists in `:braces` expressions do work:
+    # julia> :(@bla{f; x, y}).args
+    # 3-element Array{Any,1}:
+    #  Symbol("@bla")
+    #  :(#= REPL[55]:1 =#)
+    #  :({$(Expr(:parameters, :x, :y)), f})
+
+    Meta.isexpr(ex, :braces) || throw(ArgumentError("@ConditionedModel expects {;...}"))
+    decls = filter(e -> !(e isa LineNumberNode), ex.args)
+    Meta.isexpr(decls[1], :parameters) || throw(ArgumentError("@ConditionedModel expects {;...}"))
+    cond_part = decls[1].args
+    types_part = decls[2:end]
+    all(e -> e isa Symbol || Meta.isexpr(e, :(::)), cond_part) ||
+        throw(ArgumentError("@ConditionedModel must contain a sequence of name or name::type expressions"))
+    obsvars = [QuoteNode(e isa Symbol ? e : e.args[1]) for e in cond_part]
+    obstypes = [esc(e isa Symbol ? :Any : e.args[2]) for e in cond_part]
+    _f = esc(get(types_part, 1, :Any))
+    _parameternames = esc(get(types_part, 2, :Any))
+    _tparams = esc(get(types_part, 3, :Any))
+    
+    return :($(DynamicPPL.Model){
+        $_f,
+        $_parameternames,
+        ($(obsvars...),),
+        $_tparams,
+        Tuple{$(obstypes...)}
+    })
 end
 
 """
-    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
+    GenerativeModel{F, parameters, TParams}
 
-Create a model of name `name` with evaluation function `f` and missing arguments deduced
-from `args`.
-
-Default arguments `defaults` are used internally when constructing instances of the same
-model with different arguments.
+Type alias for models without observations.
 """
-@generated function Model(
-    name::Symbol,
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple = NamedTuple(),
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+const GenerativeModel{F, parameternames, Tparams} = @ConditionedModel{F, parameternames, Tparams;}
+
+function Base.show(io::IO, model::Model)
+    println(io, "Model ", model.name, " given")
+    print(io, "    parameters    ")
+    join(io, getparameternames(model), ", ")
+    println()
+    print(io, "    observations ")
+    join(io, getobservationnames(model), ", ")
+    # println(_pretty(model.code))
 end
+
 
 """
     (model::Model)([rng, varinfo, sampler, context])
@@ -94,17 +108,17 @@ function (model::Model)(
         return evaluate_threadsafe(rng, model, varinfo, sampler, context)
     end
 end
-function (model::Model)(args...)
-    return model(Random.GLOBAL_RNG, args...)
+function (model::Model)(arguments...)
+    return model(Random.GLOBAL_RNG, arguments...)
 end
 
 # without VarInfo
 function (model::Model)(
     rng::Random.AbstractRNG,
     sampler::AbstractSampler,
-    args...,
+    arguments...,
 )
-    return model(rng, VarInfo(), sampler, args...)
+    return model(rng, VarInfo(), sampler, arguments...)
 end
 
 # without VarInfo and without AbstractSampler
@@ -151,25 +165,36 @@ end
 
 Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
 """
-@generated function _evaluate(rng, model::Model{_F,argnames}, varinfo, sampler, context) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(rng, model, varinfo, sampler, context, $(unwrap_args...)))
+function _evaluate(rng, model::Model, varinfo, sampler, context)
+    unwrapped_observations = map(obs -> matchingvalue(sampler, varinfo, obs), model.observations)
+    return model.evaluator(
+        rng,
+        model,
+        varinfo,
+        sampler,
+        context,
+        model.parameters,
+        unwrapped_observations
+    )
 end
 
 """
-    getargnames(model::Model)
+    getparameternames(model::Model)
 
 Get a tuple of the argument names of the `model`.
 """
-getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
+getparameternames(model::Model{_F,parameternames}) where {_F,parameternames} = parameternames
 
 """
-    getmissings(model::Model)
+    getparameternames(model::Model)
 
-Get a tuple of the names of the missing arguments of the `model`.
+Get a tuple of the observation names of the `model`.
 """
-getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
+function getobservationnames(
+    model::Model{_F,_parameternames,observationnames}
+) where {_F,_parameternames,observationnames}
+    return observationnames
+end
 
 """
     nameof(model::Model)
@@ -179,40 +204,49 @@ Get the name of the `model` as `Symbol`.
 Base.nameof(model::Model) = model.name
 
 """
-    logjoint(model::Model, varinfo::AbstractVarInfo)
+    logdensity(model::Model, varinfo::AbstractVarInfo)
 
-Return the log joint probability of variables `varinfo` for the probabilistic `model`.
+Return the log joint probability of variables in `varinfo` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
-function logjoint(model::Model, varinfo::AbstractVarInfo)
+function AbstractPPL.logdensity(model::Model, varinfo::AbstractVarInfo)
     model(varinfo, SampleFromPrior(), DefaultContext())
     return getlogp(varinfo)
 end
 
-"""
-    logprior(model::Model, varinfo::AbstractVarInfo)
-
-Return the log prior probability of variables `varinfo` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
-"""
-function logprior(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), PriorContext())
-    return getlogp(varinfo)
+function AbstractPPL.decondition(model::Model, name = Symbol(model.name, "_joint"))
+    return Model(name, model.evaluator, model.parameters, (;))
 end
 
-"""
-    loglikelihood(model::Model, varinfo::AbstractVarInfo)
-
-Return the log likelihood of variables `varinfo` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`logprior`](@ref).
-"""
-function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), LikelihoodContext())
-    return getlogp(varinfo)
+function AbstractPPL.condition(model::Model, observations, name = Symbol(model.name, "_cond"))
+    return Model(name, model.evaluator, model.parameters, merge(model.observations, observations))
 end
+
+
+# """
+#     logprior(model::Model, varinfo::AbstractVarInfo)
+
+# Return the log prior probability of variables `varinfo` for the probabilistic `model`.
+
+# See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+# """
+# function logprior(model::Model, varinfo::AbstractVarInfo)
+#     model(varinfo, SampleFromPrior(), PriorContext())
+#     return getlogp(varinfo)
+# end
+
+# """
+#     loglikelihood(model::Model, varinfo::AbstractVarInfo)
+
+# Return the log likelihood of variables `varinfo` for the probabilistic `model`.
+
+# See also [`logjoint`](@ref) and [`logprior`](@ref).
+# """
+# function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
+#     model(varinfo, SampleFromPrior(), LikelihoodContext())
+#     return getlogp(varinfo)
+# # end
 
 """
     generated_quantities(model::Model, chain::AbstractChains)

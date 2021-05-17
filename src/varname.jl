@@ -16,25 +16,15 @@ function subsumes_string(u::String, v::String, u_indexing=u * "[")
 end
 
 """
-    inargnames(varname::VarName, model::Model)
+    isobservation(vn, model)
 
-Statically check whether the variable of name `varname` is an argument of the `model`.
+Check whether the value of the expression `vn` is a real observation in the `model`.
 
-Possibly existing indices of `varname` are neglected.
+A variable is an observations if it is among the observation data of the model, an the corresponding
+observation value is not `missing` (e.g., it could happen that the observation data contain `x =
+[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
 """
-@generated function inargnames(::VarName{s}, ::Model{_F, argnames}) where {s, argnames, _F}
-    return s in argnames
-end
+isobservation(vn::VarName{s}, model::@ConditionedModel{; s}) where {s} =
+    value[vn.indexing] !== missing
+isobservation(::VarName, ::Model) = false
 
-
-"""
-    inmissings(varname::VarName, model::Model)
-
-Statically check whether the variable of name `varname` is a statically declared unobserved variable
-of the `model`.
-
-Possibly existing indices of `varname` are neglected.
-"""
-@generated function inmissings(::VarName{s}, ::Model{_F, _a, _T, missings}) where {s, missings, _F, _a, _T}
-    return s in missings
-end
