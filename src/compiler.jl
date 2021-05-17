@@ -273,7 +273,7 @@ function generate_dot_tilde(left, right)
 
         return quote
             $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
+            $isassumption = $(DynamicPPL.isassumption(left))
             if $isassumption
                 $left .= $(DynamicPPL.dot_tilde_assume)(
                     __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
