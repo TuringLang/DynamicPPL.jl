@@ -468,9 +468,7 @@ function dot_observe(
     increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
-    return sum(zip(dists, value)) do (d, v)
-        Distributions.loglikelihood(d, v)
-    end
+    return sum(Distributions.loglikelihood.(dists, value))
 end
 function dot_observe(
     spl::Sampler,
