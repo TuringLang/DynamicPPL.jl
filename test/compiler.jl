@@ -313,4 +313,14 @@ end
         end
         @test demo2()() == 42
     end
+
+    @testset "check_tilde_rhs" begin
+        @test_throws ArgumentError DynamicPPL.check_tilde_rhs(randn())
+
+        x = Normal()
+        @test DynamicPPL.check_tilde_rhs(x) === x
+
+        x = [Laplace(), Normal(), MvNormal(3, 1.0)]
+        @test DynamicPPL.check_tilde_rhs(x) === x
+    end
 end
