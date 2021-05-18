@@ -1,6 +1,3 @@
-const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
-    "Distributions."
-
 const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
@@ -37,6 +34,20 @@ end
 
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
+
+"""
+    check_tilde_rhs(x)
+
+Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
+`Distributions`, then return `x`.
+"""
+function check_tilde_rhs(@nospecialize(x))
+    return throw(ArgumentError(
+        "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s"
+    ))
+end
+check_tilde_rhs(x::Distribution) = x
+check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 
 #################
 # Main Compiler #
@@ -225,34 +236,47 @@ Generate an `observe` expression for data variables and `assume` expression for 
 variables.
 """
 function generate_tilde(left, right)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left))
-            if $isassumption
-                $left = $(DynamicPPL.tilde_assume)(
-                    __rng__, __context__, __sampler__, $tmpright, $vn, $inds, __varinfo__
-                )
-            else
-                $(DynamicPPL.tilde_observe)(
-                    __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
-                )
-            end
+            $(DynamicPPL.tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
+            )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    # Otherwise it is determined by the model or its value,
+    # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        $(top...)
-        $(DynamicPPL.tilde_observe)(__context__, __sampler__, $tmpright, $left, __varinfo__)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left))
+        if $isassumption
+            $left = $(DynamicPPL.tilde_assume)(
+                __rng__,
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        else
+            $(DynamicPPL.tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        end
     end
 end
 
@@ -262,34 +286,48 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym out vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
-            if $isassumption
-                $left .= $(DynamicPPL.dot_tilde_assume)(
-                    __rng__, __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
-                )
-            else
-                $(DynamicPPL.dot_tilde_observe)(
-                    __context__, __sampler__, $tmpright, $left, $vn, $inds, __varinfo__
-                )
-            end
+            $(DynamicPPL.dot_tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
+            )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    # Otherwise it is determined by the model or its value,
+    # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        $(top...)
-        $(DynamicPPL.dot_tilde_observe)(__context__, __sampler__, $tmpright, $left, __varinfo__)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left))
+        if $isassumption
+            $left .= $(DynamicPPL.dot_tilde_assume)(
+                __rng__,
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        else
+            $(DynamicPPL.dot_tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        end
     end
 end
 
