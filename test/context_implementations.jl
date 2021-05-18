@@ -31,7 +31,7 @@
                     ntuple(i -> randn(ysize[1:i]), length(ysize))...,
                     # singleton dimensions
                     ntuple(
-                        i -> randn(ysize[1:(i-1)]..., 1, ysize[(i+1):end]...),
+                        i -> randn(ysize[1:(i - 1)]..., 1, ysize[(i + 1):end]...),
                         length(ysize),
                     )...,
                 )
@@ -48,7 +48,7 @@
 
         @testset "observe" begin
             @model function test(x, y)
-                y .~ Normal.(x)
+                return y .~ Normal.(x)
             end
 
             for ysize in ((2,), (2, 3), (2, 3, 4))
@@ -59,7 +59,7 @@
                     ntuple(i -> randn(ysize[1:i]), length(ysize))...,
                     # singleton dimensions
                     ntuple(
-                        i -> randn(ysize[1:(i-1)]..., 1, ysize[(i+1):end]...),
+                        i -> randn(ysize[1:(i - 1)]..., 1, ysize[(i + 1):end]...),
                         length(ysize),
                     )...,
                 )
