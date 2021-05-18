@@ -314,6 +314,107 @@ end
         @test demo2()() == 42
     end
 
+    @testset "submodel" begin
+        # No prefix, 1 level.
+        @model function demo1(x)
+            x ~ Normal()
+        end;
+        @model function demo2(x, y)
+            @submodel demo1(x)
+            y ~ Uniform()
+        end;
+        # No observation.
+        m = demo2(missing, missing);
+        vi = VarInfo(m);
+        ks = keys(vi)
+        @test VarName(:x) ∈ ks
+        @test VarName(:y) ∈ ks
+
+        # Observation in top-level.
+        m = demo2(missing, 1.0);
+        vi = VarInfo(m);
+        ks = keys(vi)
+        @test VarName(:x) ∈ ks
+        @test VarName(:y) ∉ ks
+
+        # Observation in nested model.
+        m = demo2(1000.0, missing);
+        vi = VarInfo(m);
+        ks = keys(vi)
+        @test VarName(:x) ∉ ks
+        @test VarName(:y) ∈ ks
+
+        # Observe all.
+        m = demo2(1000.0, 0.5);
+        vi = VarInfo(m);
+        ks = keys(vi)
+        @test isempty(ks)
+
+        # Check values makes sense.
+        @model function demo2(x, y)
+            @submodel demo1(x)
+            y ~ Normal(x)
+        end;
+        m = demo2(1000.0, missing);
+        # Mean of `y` should be close to 1000.
+        @test abs(mean([VarInfo(m)[VarName(:y)] for i = 1:10]) - 1000) ≤ 10;
+
+        # Prefixed submodels and usage of submodel return values.
+        @model function demo_return(x)
+            x ~ Normal()
+            return x
+        end;
+
+        @model function demo_useval(x, y)
+            x1 = @submodel sub1 demo_return(x)
+            x2 = @submodel sub2 demo_return(y)
+
+            z ~ Normal(x1 + x2 + 100, 1.0)
+        end;
+        m = demo_useval(missing, missing)
+        vi = VarInfo(m);
+        ks = keys(vi)
+        @test VarName(Symbol("sub1.x")) ∈ ks
+        @test VarName(Symbol("sub2.x")) ∈ ks
+        @test VarName(:z) ∈ ks
+        @test abs(mean([VarInfo(m)[VarName(:z)] for i = 1:10]) - 100) ≤ 10
+
+        # AR1 model. Dynamic prefixing.
+        @model function AR1(num_steps, α, μ, σ, ::Type{TV} = Vector{Float64}) where {TV}
+            η ~ MvNormal(num_steps, 1.0)
+            δ = sqrt(1 - α^2)
+
+            x = TV(undef, num_steps)
+            x[1] = η[1]
+            @inbounds for t = 2:num_steps
+                x[t] = @. α * x[t - 1] + δ * η[t]
+            end
+
+            return @. μ + σ * x
+        end
+
+        @model function demo(y)
+            α ~ Uniform()
+            μ ~ Normal()
+            σ ~ truncated(Normal(), 0, Inf)
+
+            num_steps = length(y[1])
+            num_obs = length(y)
+            @inbounds for i = 1:num_obs
+                x = @submodel $(Symbol("ar1_$i")) AR1(num_steps, α, μ, σ)
+                y[i] ~ MvNormal(x, 0.1)
+            end
+        end;
+
+        ys = [randn(10), randn(10)];
+        m = demo(ys);
+        vi = VarInfo(m);
+
+        for k in [:α, :μ, :σ, Symbol("ar1_1.η"), Symbol("ar1_2.η")]
+            @test VarName(k) ∈ keys(vi)
+        end
+    end
+
     @testset "check_tilde_rhs" begin
         @test_throws ArgumentError DynamicPPL.check_tilde_rhs(randn())
 

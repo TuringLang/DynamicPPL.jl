@@ -79,6 +79,7 @@ export  AbstractVarInfo,
         LikelihoodContext,
         PriorContext,
         MiniBatchContext,
+        PrefixContext,
         assume,
         dot_assume,
         observer,
@@ -96,7 +97,9 @@ export  AbstractVarInfo,
         logjoint,
         pointwise_loglikelihoods,
 # Convenience macros
-        @addlogprob!
+        @addlogprob!,
+        @submodel
+
 
 # Reexport
 using Distributions: loglikelihood
@@ -124,5 +127,6 @@ include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
+include("submodel_macro.jl")
 
 end # module
