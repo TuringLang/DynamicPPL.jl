@@ -39,6 +39,9 @@ end
 function tilde(rng, ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
     return tilde(rng, ctx.ctx, sampler, right, left, inds, vi)
 end
+function tilde(rng, ctx::PrefixContext, sampler, right, vn::VarName, inds, vi)
+    return tilde(rng, ctx.ctx, sampler, right, prefix(ctx, vn), inds, vi)
+end
 
 """
     tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
@@ -74,6 +77,9 @@ function tilde(ctx::LikelihoodContext, sampler, right, left, vi)
 end
 function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
+end
+function tilde(ctx::PrefixContext, sampler, right, left, vi)
+    return tilde(ctx.ctx, sampler, right, left, vi)
 end
 
 """
