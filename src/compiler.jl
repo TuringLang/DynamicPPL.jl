@@ -57,7 +57,7 @@ check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 #################
 
 """
-    @model(expr[, warn = true])
+    @model(expr[, warn = false])
 
 Macro to specify a probabilistic model.
 
@@ -76,7 +76,7 @@ end
 
 To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 """
-macro model(expr, warn=true)
+macro model(expr, warn=false)
     # include `LineNumberNode` with information about the call site in the
     # generated function for easier debugging and interpretation of error messages
     return esc(model(__module__, __source__, expr, warn))

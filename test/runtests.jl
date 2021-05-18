@@ -12,6 +12,7 @@ using Tracker
 using Zygote
 
 using Distributed
+using LinearAlgebra
 using Pkg
 using Random
 using Serialization
