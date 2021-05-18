@@ -1,6 +1,5 @@
 macro custom(expr)
-    (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) ||
-        error("incorrect macro usage")
+    (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
     quote
         $(esc(expr.args[2])) = 0.0
     end
@@ -32,92 +31,92 @@ end
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
-            x ~ Normal(m, sqrt(s))
-            y ~ Normal(m, sqrt(s))
+            x ~ Normal(m, sqrt(s))
+            y ~ Normal(m, sqrt(s))
 
             return x, y
         end
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
-        @model function testmodel01(x = missing)
-            x ~ Normal()
+        @model function testmodel01(x=missing)
+            x ~ Normal()
             return x
         end
         f0_mm = testmodel01()
-        @test mean(f0_mm() for _ in 1:1000) ≈ 0. atol=0.1
+        @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
         # Test #544
-        @model function testmodel02(x = missing)
+        @model function testmodel02(x=missing)
             if x === missing
                 x = Vector{Float64}(undef, 2)
             end
-            x[1] ~ Normal()
-            x[2] ~ Normal()
+            x[1] ~ Normal()
+            x[2] ~ Normal()
             return x
         end
         f0_mm = testmodel02()
-        @test all(x -> isapprox(x, 0; atol = 0.1), mean(f0_mm() for _ in 1:1000))
+        @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
-        @model function testmodel03(x = missing)
-            x ~ Bernoulli(0.5)
+        @model function testmodel03(x=missing)
+            x ~ Bernoulli(0.5)
             return x
         end
         f01_mm = testmodel03()
-        @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol=0.1
+        @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
         @model function testmodel1(x1, x2)
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
-            x1 ~ Normal(m, sqrt(s))
-            x2 ~ Normal(m, sqrt(s))
+            x1 ~ Normal(m, sqrt(s))
+            x2 ~ Normal(m, sqrt(s))
 
             return x1, x2
         end
-        f1_mm = testmodel1(1., 10.)
+        f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
         # alternatives with keyword arguments
         testmodel1kw(; x1, x2) = testmodel1(x1, x2)
-        f1_mm = testmodel1kw(x1 = 1., x2 = 10.)
+        f1_mm = testmodel1kw(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
         @model function testmodel2(; x1, x2)
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
-            x1 ~ Normal(m, sqrt(s))
-            x2 ~ Normal(m, sqrt(s))
+            x1 ~ Normal(m, sqrt(s))
+            x2 ~ Normal(m, sqrt(s))
 
             return x1, x2
         end
-        f1_mm = testmodel2(x1=1., x2=10.)
+        f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
         @info "Testing the compiler's ability to catch bad models..."
 
         # Test for assertions in observe statements.
         @model function brokentestmodel_observe1(x1, x2)
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
-            x1 ~ Normal(m, sqrt(s))
-            x2 ~ x1 + 2
+            x1 ~ Normal(m, sqrt(s))
+            x2 ~ x1 + 2
 
             return x1, x2
         end
 
-        btest = brokentestmodel_observe1(1., 2.)
+        btest = brokentestmodel_observe1(1.0, 2.0)
         @test_throws ArgumentError btest()
 
         @model function brokentestmodel_observe2(x)
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
             x = Vector{Float64}(undef, 2)
             x ~ [Normal(m, sqrt(s)), 2.0]
@@ -125,16 +124,16 @@ end
             return x
         end
 
-        btest = brokentestmodel_observe2([1., 2.])
+        btest = brokentestmodel_observe2([1.0, 2.0])
         @test_throws ArgumentError btest()
 
         # Test for assertions in assume statements.
         @model function brokentestmodel_assume1()
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
-            x1 ~ Normal(m, sqrt(s))
-            x2 ~ x1 + 2
+            x1 ~ Normal(m, sqrt(s))
+            x2 ~ x1 + 2
 
             return x1, x2
         end
@@ -143,8 +142,8 @@ end
         @test_throws ArgumentError btest()
 
         @model function brokentestmodel_assume2()
-            s ~ InverseGamma(2,3)
-            m ~ Normal(0,sqrt(s))
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
 
             x = Vector{Float64}(undef, 2)
             x ~ [Normal(m, sqrt(s)), 2.0]
@@ -212,7 +211,7 @@ end
             return m
         end
         model = testmodel_missing5(rand(10))
-        @test all(z -> isapprox(z, 0; atol = 0.2), mean(model() for _ in 1:1000))
+        @test all(z -> isapprox(z, 0; atol=0.2), mean(model() for _ in 1:1000))
 
         # test Turing#1464
         @model function gdemo(x)
@@ -235,7 +234,7 @@ end
     @testset "nested model" begin
         function makemodel(p)
             @model function testmodel(x)
-                x[1] ~ Bernoulli(p)
+                x[1] ~ Bernoulli(p)
                 global lp = getlogp(__varinfo__)
                 return x
             end
@@ -247,7 +246,7 @@ end
     end
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
-        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:,1]))
+        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:, 1]))
         @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
@@ -271,24 +270,24 @@ end
         "This is a test"
         @model function demo(x)
             m ~ Normal()
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
 
         s = @doc(demo)
         @test string(s) == "This is a test\n"
 
         # Verify that adding docstring didn't completely break execution of model
-        m = demo(0.)
+        m = demo(0.0)
         @test m() isa Float64
     end
     @testset "type annotations" begin
         @model function demo_without(x)
-            x ~ Normal()
+            return x ~ Normal()
         end
         @test isempty(VarInfo(demo_without(0.0)))
 
         @model function demo_with(x::Real)
-            x ~ Normal()
+            return x ~ Normal()
         end
         @test isempty(VarInfo(demo_with(0.0)))
     end
@@ -309,7 +308,7 @@ end
         #    expanded => errors since `MyModelStruct` is not a distribution,
         #    and hence `tilde_observe` errors.
         @model function demo2()
-            $(@mymodel2(y ~ Uniform()))
+            return $(@mymodel2(y ~ Uniform()))
         end
         @test demo2()() == 42
     end

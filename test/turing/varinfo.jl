@@ -1,13 +1,11 @@
 @testset "varinfo.jl" begin
     # Declare empty model to make the Sampler constructor work.
-    @model empty_model() = begin x = 1; end
+    @model empty_model() = begin
+        x = 1
+    end
 
     function randr(
-        vi::VarInfo,
-        vn::VarName,
-        dist::Distribution,
-        spl::Sampler,
-        count::Bool = false,
+        vi::VarInfo, vn::VarName, dist::Distribution, spl::Sampler, count::Bool=false
     )
         if !haskey(vi, vn)
             r = rand(dist)
@@ -30,7 +28,7 @@
         # Test linking spl and vi:
         #    link!, invlink!, istrans
         @model gdemo(x, y) = begin
-            s ~ InverseGamma(2,3)
+            s ~ InverseGamma(2, 3)
             m ~ Uniform(0, 2)
             x ~ Normal(m, sqrt(s))
             y ~ Normal(m, sqrt(s))
@@ -69,10 +67,10 @@
         @test meta.m.vals == v_m
 
         # Transforming only a subset of the variables
-        link!(vi, spl, Val((:m, )))
+        link!(vi, spl, Val((:m,)))
         @test all(x -> !istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
-        invlink!(vi, spl, Val((:m, )))
+        invlink!(vi, spl, Val((:m,)))
         @test all(x -> !istrans(vi, x), meta.s.vns)
         @test all(x -> !istrans(vi, x), meta.m.vns)
         @test meta.s.vals == v_s
@@ -170,14 +168,16 @@
         xs = rand(Normal(0.5, 1), 100)
 
         # Define model
-        @model priorsinarray(xs, ::Type{T}=Float64) where {T} = begin
-            priors = Vector{T}(undef, 2)
-            priors[1] ~ InverseGamma(2, 3)
-            priors[2] ~ Normal(0, sqrt(priors[1]))
-            for i = 1:length(xs)
-                xs[i] ~ Normal(priors[2], sqrt(priors[1]))
+        @model function priorsinarray(xs, ::Type{T}=Float64) where {T}
+            begin
+                priors = Vector{T}(undef, 2)
+                priors[1] ~ InverseGamma(2, 3)
+                priors[2] ~ Normal(0, sqrt(priors[1]))
+                for i in 1:length(xs)
+                    xs[i] ~ Normal(priors[2], sqrt(priors[1]))
+                end
+                priors
             end
-            priors
         end
 
         # Sampling
@@ -198,24 +198,24 @@
         @test v_arr.indexing == ((1,),)
 
         # Matrix
-        v_mat = @varname x[i,j]
+        v_mat = @varname x[i, j]
         @test v_mat.indexing == ((1, 2),)
 
-        v_mat = @varname x[i,j,k]
-        @test v_mat.indexing == ((1,2,3),)
+        v_mat = @varname x[i, j, k]
+        @test v_mat.indexing == ((1, 2, 3),)
 
-        v_mat = @varname x[1,2][1+5][45][3][i]
-        @test v_mat.indexing == ((1,2), (6,), (45,), (3,), (1,))
+        v_mat = @varname x[1, 2][1 + 5][45][3][i]
+        @test v_mat.indexing == ((1, 2), (6,), (45,), (3,), (1,))
 
         @model function mat_name_test()
             p = Array{Any}(undef, 2, 2)
             for i in 1:2, j in 1:2
-                p[i,j] ~ Normal(0, 1)
+                p[i, j] ~ Normal(0, 1)
             end
-            p
+            return p
         end
         chain = sample(mat_name_test(), HMC(0.2, 4), 1000)
-        check_numerical(chain, ["p[1,1]"], [0], atol = 0.25)
+        check_numerical(chain, ["p[1,1]"], [0]; atol=0.25)
 
         # Multi array
         v_arrarr = @varname x[i][j]
@@ -228,11 +228,11 @@
             for i in 1:2, j in 1:2
                 p[i][j] ~ Normal(0, 1)
             end
-            p
+            return p
         end
 
         chain = sample(marr_name_test(), HMC(0.2, 4), 1000)
-        check_numerical(chain, ["p[1][1]"], [0], atol = 0.25)
+        check_numerical(chain, ["p[1][1]"], [0]; atol=0.25)
     end
     @testset "varinfo" begin
         dists = [Normal(0, 1), MvNormal([0; 0], [1.0 0; 0 1.0]), Wishart(7, [1 0.5; 0.5 1])]
@@ -255,7 +255,7 @@
             vns = [vn_x, vn_y, vn_z]
 
             spl1 = Sampler(PG(5, :x, :y, :z), empty_model())
-            for i = 1:3
+            for i in 1:3
                 r = randr(vi, vns[i], dists[i], spl1, false)
                 val = vi[vns[i]]
                 @test sum(val - r) <= 1e-9
@@ -293,16 +293,15 @@
         test_varinfo!(empty!(TypedVarInfo(vi)))
 
         @model igtest() = begin
-            x ~ InverseGamma(2,3)
-            y ~ InverseGamma(2,3)
-            z ~ InverseGamma(2,3)
-            w ~ InverseGamma(2,3)
-            u ~ InverseGamma(2,3)
+            x ~ InverseGamma(2, 3)
+            y ~ InverseGamma(2, 3)
+            z ~ InverseGamma(2, 3)
+            w ~ InverseGamma(2, 3)
+            u ~ InverseGamma(2, 3)
         end
 
         # Test the update of group IDs
         g_demo_f = igtest()
-
 
         # This test section no longer seems as applicable, considering the
         # user will never end up using an UntypedVarInfo. The `VarInfo`

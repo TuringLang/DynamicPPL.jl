@@ -45,10 +45,10 @@ The `MiniBatchContext` enables the computation of
 This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
-struct MiniBatchContext{Tctx, T} <: AbstractContext
+struct MiniBatchContext{Tctx,T} <: AbstractContext
     ctx::Tctx
     loglike_scalar::T
 end
-function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(ctx, npoints/batch_size)
+function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
+    return MiniBatchContext(ctx, npoints / batch_size)
 end

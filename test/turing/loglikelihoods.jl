@@ -6,7 +6,7 @@
             xs[i] ~ Normal(m, √s)
         end
 
-        y ~ Normal(m, √s)
+        return y ~ Normal(m, √s)
     end
 
     xs = randn(3)

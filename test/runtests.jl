@@ -51,10 +51,7 @@ include("test_util.jl")
 
         @testset "doctests" begin
             DocMeta.setdocmeta!(
-                DynamicPPL,
-                :DocTestSetup,
-                :(using DynamicPPL);
-                recursive=true,
+                DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
             )
             doctest(DynamicPPL; manual=false)
         end
@@ -64,7 +61,7 @@ include("test_util.jl")
         @testset "turing" begin
             # activate separate test environment
             Pkg.activate(DIRECTORY_Turing_tests)
-            Pkg.develop(PackageSpec(path=DIRECTORY_DynamicPPL))
+            Pkg.develop(PackageSpec(; path=DIRECTORY_DynamicPPL))
             Pkg.instantiate()
 
             # make sure that the new environment is considered `using` and `import` statements

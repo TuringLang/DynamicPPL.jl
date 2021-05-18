@@ -4,13 +4,13 @@
             s ~ InverseGamma(2, 3)
             m ~ Normal(2.0, sqrt(s))
             x ~ Normal(m, sqrt(s))
-            y ~ Normal(m, sqrt(s))
+            return y ~ Normal(m, sqrt(s))
         end
 
         model = gdemo(1.0, 2.0)
         N = 1_000
 
-        chains = sample(model, SampleFromPrior(), N; progress = false)
+        chains = sample(model, SampleFromPrior(), N; progress=false)
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
@@ -20,7 +20,7 @@
         # Expected value of ``X`` where ``X ~ IG(2, 3)`` is 3.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.1
 
-        chains = sample(model, SampleFromUniform(), N; progress = false)
+        chains = sample(model, SampleFromUniform(), N; progress=false)
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
@@ -41,7 +41,7 @@
             ::Sampler{<:OnlyInitAlg},
             vi::AbstractVarInfo;
             kwargs...,
-            )
+        )
             return vi, nothing
         end
         DynamicPPL.getspace(::Sampler{<:OnlyInitAlg}) = ()
@@ -54,19 +54,18 @@
             # model with one variable: initialization p = 0.2
             @model function coinflip()
                 p ~ Beta(1, 1)
-                10 ~ Binomial(25, p)
+                return 10 ~ Binomial(25, p)
             end
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            chain = sample(model, sampler, 1; init_params = 0.2, progress = false)
+            chain = sample(model, sampler, 1; init_params=0.2, progress=false)
             @test chain[1].metadata.p.vals == [0.2]
             @test getlogp(chain[1]) == lptrue
 
             # parallel sampling
             chains = sample(
-                model, sampler, MCMCThreads(), 1, 10;
-                init_params = 0.2, progress = false,
+                model, sampler, MCMCThreads(), 1, 10; init_params=0.2, progress=false
             )
             for c in chains
                 @test c[1].metadata.p.vals == [0.2]
@@ -76,19 +75,18 @@
             # model with two variables: initialization s = 4, m = -1
             @model function twovars()
                 s ~ InverseGamma(2, 3)
-                m ~ Normal(0, sqrt(s))
+                return m ~ Normal(0, sqrt(s))
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            chain = sample(model, sampler, 1; init_params = [4, -1], progress = false)
+            chain = sample(model, sampler, 1; init_params=[4, -1], progress=false)
             @test chain[1].metadata.s.vals == [4]
             @test chain[1].metadata.m.vals == [-1]
             @test getlogp(chain[1]) == lptrue
 
             # parallel sampling
             chains = sample(
-                model, sampler, MCMCThreads(), 1, 10;
-                init_params = [4, -1], progress = false,
+                model, sampler, MCMCThreads(), 1, 10; init_params=[4, -1], progress=false
             )
             for c in chains
                 @test c[1].metadata.s.vals == [4]
@@ -97,14 +95,19 @@
             end
 
             # set only m = -1
-            chain = sample(model, sampler, 1; init_params = [missing, -1], progress = false)
+            chain = sample(model, sampler, 1; init_params=[missing, -1], progress=false)
             @test !ismissing(chain[1].metadata.s.vals[1])
             @test chain[1].metadata.m.vals == [-1]
 
             # parallel sampling
             chains = sample(
-                model, sampler, MCMCThreads(), 1, 10;
-                init_params = [missing, -1], progress = false,
+                model,
+                sampler,
+                MCMCThreads(),
+                1,
+                10;
+                init_params=[missing, -1],
+                progress=false,
             )
             for c in chains
                 @test !ismissing(c[1].metadata.s.vals[1])

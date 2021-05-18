@@ -1,9 +1,8 @@
-using Distributions: UnivariateDistribution,
-                     MultivariateDistribution,
-                     MatrixDistribution,
-                     Distribution
+using Distributions:
+    UnivariateDistribution, MultivariateDistribution, MatrixDistribution, Distribution
 
-const AMBIGUITY_MSG = "Ambiguous `LHS .~ RHS` or `@. LHS ~ RHS` syntax. The broadcasting " *
+const AMBIGUITY_MSG =
+    "Ambiguous `LHS .~ RHS` or `@. LHS ~ RHS` syntax. The broadcasting " *
     "can either be column-wise following the convention of Distributions.jl or " *
     "element-wise following Julia's general broadcasting semantics. Please make sure " *
     "that the element type of `LHS` is not a supertype of the support type of " *
@@ -53,7 +52,6 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
-
 
 function _tilde(rng, sampler, right, vn::VarName, vi)
     return assume(rng, sampler, right, vn, vi)
@@ -105,23 +103,18 @@ function tilde_observe(ctx, sampler, right, left, vi)
     return left
 end
 
-
 _tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
 function assume(rng, spl::Sampler, dist)
-    error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
+    return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 function observe(spl::Sampler, weight)
-    error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
+    return error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 function assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dist::Distribution,
-    vn::VarName,
-    vi,
+    rng, spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, vn::VarName, vi
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
@@ -143,10 +136,7 @@ function assume(
 end
 
 function observe(
-    spl::Union{SampleFromPrior, SampleFromUniform},
-    dist::Distribution,
-    value,
-    vi,
+    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, value, vi
 )
     increment_num_produce!(vi)
     return Distributions.loglikelihood(dist, value)
@@ -159,16 +149,7 @@ function dot_tilde(rng, ctx::DefaultContext, sampler, right, left, vn::VarName, 
     vns, dist = get_vns_and_dist(right, left, vn)
     return _dot_tilde(rng, sampler, dist, left, vns, vi)
 end
-function dot_tilde(
-    rng,
-    ctx::LikelihoodContext,
-    sampler,
-    right,
-    left,
-    vn::VarName,
-    inds,
-    vi,
-)
+function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         vns, dist = get_vns_and_dist(right, var, vn)
@@ -182,16 +163,7 @@ end
 function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
     return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
 end
-function dot_tilde(
-    rng,
-    ctx::PriorContext,
-    sampler,
-    right,
-    left,
-    vn::VarName,
-    inds,
-    vi,
-)
+function dot_tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars !== nothing
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         vns, dist = get_vns_and_dist(right, var, vn)
@@ -217,19 +189,15 @@ function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
     return value
 end
 
-
 function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
     return get_vns_and_dist(dist.dist, var, dist.name)
 end
 function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
     getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))
     return getvn.(1:size(var, 2)), dist
-    
 end
 function get_vns_and_dist(
-    dist::Union{Distribution, AbstractArray{<:Distribution}}, 
-    var::AbstractArray, 
-    vn::VarName
+    dist::Union{Distribution,AbstractArray{<:Distribution}}, var::AbstractArray, vn::VarName
 )
     getvn = ind -> VarName(vn, (vn.indexing..., Tuple(ind)))
     return getvn.(CartesianIndices(var)), dist
@@ -243,17 +211,17 @@ end
 function _dot_tilde(
     rng,
     sampler::AbstractSampler,
-    right::Union{MultivariateDistribution, AbstractVector{<:MultivariateDistribution}},
+    right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
     vn::AbstractVector{<:VarName},
     vi,
 )
-    throw(DimensionMismatch(AMBIGUITY_MSG))
+    return throw(DimensionMismatch(AMBIGUITY_MSG))
 end
 
 function dot_assume(
     rng,
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
     var::AbstractMatrix,
@@ -267,8 +235,8 @@ function dot_assume(
 end
 function dot_assume(
     rng,
-    spl::Union{SampleFromPrior, SampleFromUniform},
-    dists::Union{Distribution, AbstractArray{<:Distribution}},
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
     vi,
@@ -279,15 +247,10 @@ function dot_assume(
     var .= r
     return var, lp
 end
-function dot_assume(
-    rng,
-    spl::Sampler,
-    ::Any,
-    ::AbstractArray{<:VarName},
-    ::Any,
-    ::Any,
-)
-    error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing assume statement")
+function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
+    return error(
+        "[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing assume statement"
+    )
 end
 
 function get_and_set_val!(
@@ -316,7 +279,7 @@ function get_and_set_val!(
         r = init(rng, dist, spl, n)
         for i in 1:n
             vn = vns[i]
-            push!(vi, vn, r[:,i], dist, spl)
+            push!(vi, vn, r[:, i], dist, spl)
             settrans!(vi, false, vn)
         end
     end
@@ -327,7 +290,7 @@ function get_and_set_val!(
     rng,
     vi,
     vns::AbstractArray{<:VarName},
-    dists::Union{Distribution, AbstractArray{<:Distribution}},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
 )
     if haskey(vi, vns[1])
@@ -356,21 +319,18 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi,
-    vns::AbstractVector{<:VarName},
-    dist::MultivariateDistribution,
-    val::AbstractMatrix,
+    vi, vns::AbstractVector{<:VarName}, dist::MultivariateDistribution, val::AbstractMatrix
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
-        vi[vn] = val[:,i]
+        vi[vn] = val[:, i]
     end
     return val
 end
 function set_val!(
     vi,
     vns::AbstractArray{<:VarName},
-    dists::Union{Distribution, AbstractArray{<:Distribution}},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
     val::AbstractArray,
 )
     @assert size(val) == size(vns)
@@ -430,15 +390,15 @@ end
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
 function _dot_tilde(
     sampler::AbstractSampler,
-    right::Union{MultivariateDistribution, AbstractVector{<:MultivariateDistribution}},
+    right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
     vi,
 )
-    throw(DimensionMismatch(AMBIGUITY_MSG))
+    return throw(DimensionMismatch(AMBIGUITY_MSG))
 end
 
 function dot_observe(
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     value::AbstractMatrix,
     vi,
@@ -449,7 +409,7 @@ function dot_observe(
     return Distributions.loglikelihood(dist, value)
 end
 function dot_observe(
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::Union{SampleFromPrior,SampleFromUniform},
     dists::Distribution,
     value::AbstractArray,
     vi,
@@ -460,7 +420,7 @@ function dot_observe(
     return Distributions.loglikelihood(dists, value)
 end
 function dot_observe(
-    spl::Union{SampleFromPrior, SampleFromUniform},
+    spl::Union{SampleFromPrior,SampleFromUniform},
     dists::AbstractArray{<:Distribution},
     value::AbstractArray,
     vi,
@@ -470,11 +430,8 @@ function dot_observe(
     @debug "value = $value"
     return sum(Distributions.loglikelihood.(dists, value))
 end
-function dot_observe(
-    spl::Sampler,
-    ::Any,
-    ::Any,
-    ::Any,
-)
-    error("[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing observe statement")
+function dot_observe(spl::Sampler, ::Any, ::Any, ::Any)
+    return error(
+        "[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing observe statement"
+    )
 end

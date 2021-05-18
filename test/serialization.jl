@@ -10,8 +10,8 @@
         samples_s = first.(samples)
         samples_m = last.(samples)
 
-        @test mean(samples_s) ≈ 3 atol=0.1
-        @test mean(samples_m) ≈ 0 atol=0.1
+        @test mean(samples_s) ≈ 3 atol = 0.1
+        @test mean(samples_m) ≈ 0 atol = 0.1
     end
     @testset "pmap" begin
         # Add worker processes.
@@ -26,7 +26,7 @@
 
         # Define model on all proceses.
         @everywhere @model function model()
-            m ~ Normal(0, 1)
+            return m ~ Normal(0, 1)
         end
 
         # Generate `Model` objects on all processes.
@@ -43,8 +43,8 @@
         for samples in (samples1, samples2)
             @test samples isa Vector{Float64}
             @test length(samples) == n
-            @test mean(samples) ≈ 0 atol=0.15
-            @test std(samples) ≈ 1 atol=0.1
+            @test mean(samples) ≈ 0 atol = 0.15
+            @test std(samples) ≈ 1 atol = 0.1
         end
 
         # Remove processes

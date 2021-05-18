@@ -15,14 +15,15 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol, Expr})
+function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
         let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) || $(DynamicPPL.inmissings)($vn, __model__)
+            if !$(DynamicPPL.inargnames)($vn, __model__) ||
+               $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
                 # Evaluate the LHS
@@ -42,9 +43,11 @@ Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
 `Distributions`, then return `x`.
 """
 function check_tilde_rhs(@nospecialize(x))
-    return throw(ArgumentError(
-        "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s"
-    ))
+    return throw(
+        ArgumentError(
+            "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
+        ),
+    )
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
@@ -76,16 +79,14 @@ To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 macro model(expr, warn=true)
     # include `LineNumberNode` with information about the call site in the
     # generated function for easier debugging and interpretation of error messages
-    esc(model(__module__, __source__, expr, warn))
+    return esc(model(__module__, __source__, expr, warn))
 end
 
 function model(mod, linenumbernode, expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
-    modelinfo[:body] = generate_mainbody(
-        mod, modelinfo[:modeldef][:body], warn
-    )
+    modelinfo[:body] = generate_mainbody(mod, modelinfo[:modeldef][:body], warn)
 
     return build_output(modelinfo, linenumbernode)
 end
@@ -208,26 +209,28 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return generate_dot_tilde(
-            generate_mainbody!(mod, found, L, warn),
-            generate_mainbody!(mod, found, R, warn),
-        ) |> Base.remove_linenums!
+        return Base.remove_linenums!(
+            generate_dot_tilde(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
     end
 
     # Modify tilde operators.
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        return generate_tilde(
-            generate_mainbody!(mod, found, L, warn),
-            generate_mainbody!(mod, found, R, warn),
-        ) |> Base.remove_linenums!
+        return Base.remove_linenums!(
+            generate_tilde(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
     end
 
     return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
 end
-
-
 
 """
     generate_tilde(left, right)
@@ -331,8 +334,8 @@ function generate_dot_tilde(left, right)
     end
 end
 
-const FloatOrArrayType = Type{<:Union{AbstractFloat, AbstractArray}}
-hasmissing(T::Type{<:AbstractArray{TA}}) where {TA <: AbstractArray} = hasmissing(TA)
+const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
+hasmissing(T::Type{<:AbstractArray{TA}}) where {TA<:AbstractArray} = hasmissing(TA)
 hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
@@ -393,12 +396,11 @@ function build_output(modelinfo, linenumbernode)
     return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
 end
 
-
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
         @warn("Model definition seems empty, still continue.")
     end
-    return
+    return nothing
 end
 
 """
@@ -430,26 +432,18 @@ For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
 `eltype(vi[spl])`.
 """
 get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T} = T
-function get_matching_type(
-    spl::AbstractSampler, 
-    vi, 
-    ::Type{<:Union{Missing, AbstractFloat}},
-)
-    return Union{Missing, floatof(eltype(vi, spl))}
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Union{Missing,AbstractFloat}})
+    return Union{Missing,floatof(eltype(vi, spl))}
 end
-function get_matching_type(
-    spl::AbstractSampler,
-    vi,
-    ::Type{<:AbstractFloat},
-)
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:AbstractFloat})
     return floatof(eltype(vi, spl))
 end
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(spl, vi, T), N}
+    return Array{get_matching_type(spl, vi, T),N}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where T
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where {T}
     return Array{get_matching_type(spl, vi, T)}
 end
 
-floatof(::Type{T}) where {T <: Real} = typeof(one(T)/one(T))
+floatof(::Type{T}) where {T<:Real} = typeof(one(T) / one(T))
 floatof(::Type) = Real # fallback if type inference failed

@@ -2,7 +2,7 @@
     @testset "scalar" begin
         @model function demo(x)
             m ~ Normal()
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
 
         mval = 3
@@ -29,9 +29,9 @@
     end
     @testset "vector" begin
         n = 5
-        @model function demo(x, n = n)
+        @model function demo(x, n=n)
             m ~ MvNormal(n, 1.0)
-            x ~ MvNormal(m, 1.0)
+            return x ~ MvNormal(m, 1.0)
         end
         mval = rand(n)
         xval = rand(n)

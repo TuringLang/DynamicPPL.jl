@@ -2,7 +2,7 @@
     @testset "scalar" begin
         @model function demo(x)
             m ~ Normal()
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
 
         mval = 3
@@ -11,7 +11,7 @@
 
         model = demo(xval)
         varinfo = VarInfo(model)
-        chain = sample(model, IS(), iters; save_state = true)
+        chain = sample(model, IS(), iters; save_state=true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = logpdf.(Normal.(chain["m"], 1), xval)
         @test logprob"x = xval | chain = chain" == lps
@@ -30,9 +30,9 @@
     end
     @testset "vector" begin
         n = 5
-        @model function demo(x, n = n)
+        @model function demo(x, n=n)
             m ~ MvNormal(n, 1.0)
-            x ~ MvNormal(m, 1.0)
+            return x ~ MvNormal(m, 1.0)
         end
         mval = rand(n)
         xval = rand(n)
@@ -40,13 +40,13 @@
 
         model = demo(xval)
         varinfo = VarInfo(model)
-        chain = sample(model, HMC(0.5, 1), iters; save_state = true)
+        chain = sample(model, HMC(0.5, 1), iters; save_state=true)
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
 
         names = namesingroup(chain, "m")
         lps = [
-            logpdf(MvNormal(chain.value[i, names, j], 1.0), xval)
-            for i in 1:size(chain, 1), j in 1:size(chain, 3)
+            logpdf(MvNormal(chain.value[i, names, j], 1.0), xval) for i in 1:size(chain, 1),
+            j in 1:size(chain, 3)
         ]
         @test logprob"x = xval | chain = chain" == lps
         @test logprob"x = xval | chain = chain2, model = model" == lps
@@ -67,7 +67,7 @@
             σ ~ truncated(Cauchy(0, 1), 0, Inf)
             α ~ filldist(Normal(0, 10), n_groups)
             μ = α[group]
-            y ~ MvNormal(μ, σ)
+            return y ~ MvNormal(μ, σ)
         end
 
         y = randn(100)
