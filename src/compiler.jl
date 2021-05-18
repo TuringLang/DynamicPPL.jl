@@ -251,7 +251,7 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym out vn inds isassumption
+    @gensym vn inds isassumption
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
@@ -301,7 +301,7 @@ function generate_dot_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym out vn inds isassumption
+    @gensym vn inds isassumption
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
