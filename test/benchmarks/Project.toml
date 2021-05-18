@@ -1,0 +1,6 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+DiffUtils = "8294860b-85a6-42f8-8c35-d911f667b5f6"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
