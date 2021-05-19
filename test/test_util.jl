@@ -46,7 +46,6 @@ function test_model_ad(model, logp_manual)
     @test back(1)[1] ≈ grad
 end
 
-
 """
     test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
 
@@ -55,7 +54,7 @@ Test `setval!` on `model` and `chain`.
 Worth noting that this only supports models containing symbols of the forms
 `m`, `m[1]`, `m[1, 2]`, not `m[1][1]`, etc.
 """
-function test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
+function test_setval!(model, chain; sample_idx=1, chain_idx=1)
     var_info = VarInfo(model)
     spl = SampleFromPrior()
     θ_old = var_info[spl]

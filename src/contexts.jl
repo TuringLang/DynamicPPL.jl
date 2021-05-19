@@ -45,33 +45,36 @@ The `MiniBatchContext` enables the computation of
 This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
-struct MiniBatchContext{Tctx, T} <: AbstractContext
+struct MiniBatchContext{Tctx,T} <: AbstractContext
     ctx::Tctx
     loglike_scalar::T
 end
-function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(ctx, npoints/batch_size)
+function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
+    return MiniBatchContext(ctx, npoints / batch_size)
 end
 
-
-struct PrefixContext{Prefix, C} <: AbstractContext
+struct PrefixContext{Prefix,C} <: AbstractContext
     ctx::C
 end
-PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix} = PrefixContext{Prefix, typeof(ctx)}(ctx)
+function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
+    return PrefixContext{Prefix,typeof(ctx)}(ctx)
+end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
 function PrefixContext{PrefixInner}(
     ctx::PrefixContext{PrefixOuter}
-) where {PrefixInner, PrefixOuter}
+) where {PrefixInner,PrefixOuter}
     if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(ctx.ctx))
+        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(
+            ctx.ctx
+        ))
     else
         PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(ctx.ctx)
     end
 end
 
-function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix, Sym}
+function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
         return :(VarName{$(QuoteNode(Symbol(Prefix, _prefix_seperator, Sym)))}(vn.indexing))
     else

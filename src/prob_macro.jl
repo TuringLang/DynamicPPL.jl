@@ -8,7 +8,7 @@ macro prob_str(str)
 end
 
 function get_exprs(str::String)
-    substrings = split(str, '|'; limit = 2)
+    substrings = split(str, '|'; limit=2)
     length(substrings) == 2 || error("Invalid expression.")
     str1, str2 = substrings
 
@@ -30,14 +30,16 @@ function logprob(ex1, ex2)
     end
 end
 
-function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {namesl, namesr}
+function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {namesl,namesr}
     if :chain in namesr
         if isdefined(ntr.chain.info, :model)
             model = ntr.chain.info.model
         elseif isdefined(ntr, :model)
             model = ntr.model
         else
-            throw("The model is not defined. Please make sure the model is either saved in the chain or passed on the RHS of |.")
+            throw(
+                "The model is not defined. Please make sure the model is either saved in the chain or passed on the RHS of |.",
+            )
         end
         @assert model isa Model
         if isdefined(ntr.chain.info, :vi)
@@ -53,7 +55,8 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         end
         defaults = model.defaults
         @assert all(getargnames(model)) do arg
-            isdefined(ntl, arg) || isdefined(ntr, arg) ||
+            isdefined(ntl, arg) ||
+                isdefined(ntr, arg) ||
                 isdefined(defaults, arg) && getfield(defaults, arg) !== missing
         end
         return Val(:likelihood), model, vi
@@ -75,11 +78,13 @@ end
 function probtype(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    model::Model{_F,argnames,defaultnames}
+    model::Model{_F,argnames,defaultnames},
 ) where {leftnames,rightnames,argnames,defaultnames,_F}
     defaults = model.defaults
-    prior_rhs = all(n -> n in (:model, :varinfo) ||
-        n in argnames && getfield(right, n) !== missing, rightnames)
+    prior_rhs = all(
+        n -> n in (:model, :varinfo) || n in argnames && getfield(right, n) !== missing,
+        rightnames,
+    )
     function get_arg(arg)
         if arg in leftnames
             return getfield(left, arg)
@@ -101,8 +106,8 @@ function probtype(
     # If no default value exists, use `nothing`.
     if prior_rhs
         return Val(:prior)
-    # Uses the default values for model arguments not provided.
-    # If no default value exists or the default value is missing, then error.
+        # Uses the default values for model arguments not provided.
+        # If no default value exists or the default value is missing, then error.
     elseif valid_args
         return Val(:likelihood)
     else
@@ -114,14 +119,15 @@ function probtype(
     end
 end
 
-missing_arg_error_msg(arg, ::Missing) = """Variable $arg has a value of `missing`, or is not defined and its default value is `missing`. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
-missing_arg_error_msg(arg, ::Nothing) = """Variable $arg is not defined and has no default value. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
+function missing_arg_error_msg(arg, ::Missing)
+    return """Variable $arg has a value of `missing`, or is not defined and its default value is `missing`. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
+end
+function missing_arg_error_msg(arg, ::Nothing)
+    return """Variable $arg is not defined and has no default value. Please make sure all the variables are either defined with a value other than `missing` or have a default value other than `missing`."""
+end
 
 function logprior(
-    left::NamedTuple,
-    right::NamedTuple,
-    _model::Model,
-    _vi::Union{Nothing, VarInfo}
+    left::NamedTuple, right::NamedTuple, _model::Model, _vi::Union{Nothing,VarInfo}
 )
     # For model args on the LHS of |, use their passed value but add the symbol to 
     # model.missings. This will lead to an `assume`/`dot_assume` call for those variables.
@@ -147,7 +153,7 @@ end
 @generated function make_prior_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    model::Model{_F,argnames,defaultnames}
+    model::Model{_F,argnames,defaultnames},
 ) where {leftnames,rightnames,argnames,defaultnames,_F}
     argvals = []
     missings = []
@@ -172,7 +178,7 @@ end
     return quote
         $(warnings...)
         Model{$(Tuple(missings))}(
-            model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults,
+            model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
         )
     end
 end
@@ -180,10 +186,7 @@ end
 warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
 
 function Distributions.loglikelihood(
-    left::NamedTuple,
-    right::NamedTuple,
-    _model::Model,
-    _vi::Union{Nothing, VarInfo},
+    left::NamedTuple, right::NamedTuple, _model::Model, _vi::Union{Nothing,VarInfo}
 )
     model = make_likelihood_model(left, right, _model)
     vi = _vi === nothing ? VarInfo(deepcopy(model)) : _vi
@@ -224,13 +227,15 @@ end
         elseif argname in defaultnames
             push!(argvals, :(model.defaults.$argname))
         else
-            throw("This point should not be reached. Please open an issue in the DynamicPPL.jl repository.")
+            throw(
+                "This point should not be reached. Please open an issue in the DynamicPPL.jl repository.",
+            )
         end
     end
 
     # `args` is inserted as properly typed NamedTuple expression;
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return :(Model{$(Tuple(missings))}(
-        model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults,
+        model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
     ))
 end
