@@ -54,9 +54,19 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
-function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi)
-    value = _getindex(getfield(ctx.θ, getsym(vn)), inds)
-    tilde_observe(ctx, sampler, right, value, inds, vi)
+function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi::SimpleVarInfo)
+    value = _getindex(getfield(vi.θ, getsym(vn)), inds)
+
+    # Contexts which have different behavior between `assume` and `observe` we need
+    # to replace with `DefaultContext` here, otherwise the observation-only
+    # behavior will be applied to `assume`.
+    # FIXME: The below doesn't necessarily work for nested contexts, e.g. if `ctx.ctx.ctx isa PriorContext`.
+    #        This is a broader issue though, which should probably be fixed by introducing a `WrapperContext`.
+    if ctx.ctx isa Union{PriorContext, LikelihoodContext}
+        tilde_observe(DefaultContext(), sampler, right, value, vn, inds, vi)
+    else
+        tilde_observe(ctx, sampler, right, value, vn, inds, vi)
+    end
     return value
 end
 
@@ -81,6 +91,10 @@ end
 function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
 end
+function tilde(ctx::EvaluationContext, sampler, right, left, vi)
+    return tilde(ctx.ctx, sampler, right, left, vi)
+end
+
 
 """
     tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
@@ -101,12 +115,6 @@ function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
     end
 end
 
-function tilde_observe(ctx::EvaluationContext, sampler, right, left, vname, vinds, vi)
-    logp = tilde(ctx.ctx, sampler, right, left, vi)
-    acclogp!(ctx, logp)
-    return left
-end
-
 """
     tilde_observe(ctx, sampler, right, left, vi)
 
@@ -123,12 +131,6 @@ function tilde_observe(ctx, sampler, right, left, vi)
         acclogp!(vi, logp)
         return left
     end
-end
-
-function tilde_observe(ctx::EvaluationContext, sampler, right, left, vname, vi)
-    logp = tilde(ctx.ctx, sampler, right, left, vi)
-    acclogp!(ctx, logp)
-    return left
 end
 
 
