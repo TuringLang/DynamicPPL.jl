@@ -64,8 +64,11 @@ function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi:
     # behavior will be applied to `assume`.
     # FIXME: The below doesn't necessarily work for nested contexts, e.g. if `ctx.ctx.ctx isa PriorContext`.
     #        This is a broader issue though, which should probably be fixed by introducing a `WrapperContext`.
-    if ctx.ctx isa Union{PriorContext, LikelihoodContext}
-        tilde_observe(DefaultContext(), sampler, right, value, vn, inds, vi)
+    if ctx.ctx isa PriorContext
+        tilde_observe(LikelihoodContext(), sampler, right, value, vn, inds, vi)
+    elseif ctx.ctx isa LikelihoodContext
+        # Need to make it so that this isn't computed.
+        tilde_observe(PriorContext(), sampler, right, value, vn, inds, vi)
     else
         tilde_observe(ctx, sampler, right, value, vn, inds, vi)
     end
@@ -220,6 +223,25 @@ Falls back to `dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)`.
 function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
     value, logp = dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
+    return value
+end
+
+function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left, vn, inds, vi::SimpleVarInfo{<:NamedTuple})
+    value = _getindex(getfield(vi.θ, getsym(vn)), inds)
+
+    # Contexts which have different behavior between `assume` and `observe` we need
+    # to replace with `DefaultContext` here, otherwise the observation-only
+    # behavior will be applied to `assume`.
+    # FIXME: The below doesn't necessarily work for nested contexts, e.g. if `ctx.ctx.ctx isa PriorContext`.
+    #        This is a broader issue though, which should probably be fixed by introducing a `WrapperContext`.
+    if ctx.ctx isa PriorContext
+        dot_tilde_observe(LikelihoodContext(), sampler, right, value, vn, inds, vi)
+    elseif ctx.ctx isa LikelihoodContext
+        # Need to make it so that this isn't computed.
+        dot_tilde_observe(PriorContext(), sampler, right, value, vn, inds, vi)
+    else
+        dot_tilde_observe(ctx.ctx, sampler, right, value, vn, inds, vi)
+    end
     return value
 end
 
@@ -388,6 +410,9 @@ end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
 end
+function dot_tilde(ctx::EvaluationContext, sampler, right, left, vi)
+    return dot_tilde(ctx.ctx, sampler, right, left, vi)
+end
 
 """
     dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
@@ -445,7 +470,7 @@ function dot_observe(
     value::AbstractMatrix,
     vi,
 )
-    vi == nothing || increment_num_produce!(vi)
+    vi isa VarInfo && increment_num_produce!(vi)
     @debug "dist = $dist"
     @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
@@ -456,7 +481,7 @@ function dot_observe(
     value::AbstractArray,
     vi,
 )
-    vi == nothing || increment_num_produce!(vi)
+    vi isa VarInfo && increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
@@ -467,7 +492,7 @@ function dot_observe(
     value::AbstractArray,
     vi,
 )
-    vi == nothing || increment_num_produce!(vi)
+    vi isa VarInfo && increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
     return sum(Distributions.loglikelihood.(dists, value))
