@@ -1,8 +1,3 @@
-"""
-    bijector(varinfo::DynamicPPL.VarInfo)
-
-Returns a `NamedBijector` which can transform different variants of `varinfo`.
-"""
 @generated function _bijector(md::NamedTuple{names}; tuplify = false) where {names}
     expr = Expr(:tuple)
     for n in names
@@ -23,5 +18,13 @@ Returns a `NamedBijector` which can transform different variants of `varinfo`.
         return $(Bijectors).NamedBijector(bs)
     end
 end
+
+"""
+    bijector(varinfo::DynamicPPL.VarInfo; tuplify = false)
+
+Returns a `NamedBijector` which can transform different variants of `varinfo`.
+
+If `tuplify` is true, then a type-stable bijector will be returned.
+"""
 
 Bijectors.bijector(vi::TypedVarInfo; kwargs...) = _bijector(vi.metadata; kwargs...)
