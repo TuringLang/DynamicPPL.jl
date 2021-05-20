@@ -36,7 +36,7 @@ LikelihoodContext() = LikelihoodContext(nothing)
 ########################
 ### Wrapped contexts ###
 ########################
-abstract type WrappedContext{Ctx} <: AbstractContext end
+abstract type WrappedContext{LeafCtx} <: AbstractContext end
 
 """
     childcontext(ctx)
@@ -83,16 +83,16 @@ The `MiniBatchContext` enables the computation of
 This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
-struct MiniBatchContext{T, Ctx,LeafCtx} <: WrappedContext{LeafCtx}
+struct MiniBatchContext{T,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglike_scalar::T
     ctx::Ctx
 
     function MiniBatchContext(loglike_scalar, ctx::AbstractContext)
-        new{typeof(loglike_scalar), typeof(ctx), typeof(ctx)}(loglike_scalar, ctx)
+        return new{typeof(loglike_scalar),typeof(ctx),typeof(ctx)}(loglike_scalar, ctx)
     end
 
     function MiniBatchContext(loglike_scalar, ctx::WrappedContext{LeafCtx}) where {LeafCtx}
-        new{typeof(loglike_scalar), typeof(ctx), LeafCtx}(loglike_scalar, ctx)
+        return new{typeof(loglike_scalar),typeof(ctx),LeafCtx}(loglike_scalar, ctx)
     end
 end
 function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
@@ -103,15 +103,14 @@ function rewrap(parent::MiniBatchContext, leaf::AbstractContext)
     return MiniBatchContext(parent.loglike_scalar, rewrap(childcontext(parent), leaf))
 end
 
-
 struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
     ctx::C
 
     function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-        return new{Prefix, typeof(ctx), typeof(ctx)}(ctx)
+        return new{Prefix,typeof(ctx),typeof(ctx)}(ctx)
     end
-    function PrefixContext{Prefix}(ctx::WrappedContext{LeafCtx}) where {Prefix, LeafCtx}
-        return new{Prefix, typeof(ctx), LeafCtx}(ctx)
+    function PrefixContext{Prefix}(ctx::WrappedContext{LeafCtx}) where {Prefix,LeafCtx}
+        return new{Prefix,typeof(ctx),LeafCtx}(ctx)
     end
 end
 PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(DefaultContext())
@@ -119,7 +118,6 @@ PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(DefaultContext())
 function rewrap(parent::PrefixContext{Prefix}, leaf::AbstractContext) where {Prefix}
     return PrefixContext{Prefix}(rewrap(childcontext(parent), leaf))
 end
-
 
 const PREFIX_SEPARATOR = Symbol(".")
 
@@ -142,4 +140,3 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
 end
-
