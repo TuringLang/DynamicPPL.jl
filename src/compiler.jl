@@ -84,17 +84,17 @@ end
 
 function model(mod, linenumbernode, expr, warn)
     modelinfo = build_model_info(expr)
-    modelinfo_logπ = deepcopy(modelinfo)
+    modelinfo_logjoint = deepcopy(modelinfo)
 
     # Generate main body
     modelinfo[:body] = generate_mainbody(mod, modelinfo[:modeldef][:body], warn)
 
-    # Generate logπ
-    modelinfo_logπ[:body] = generate_mainbody_logdensity(
-        mod, modelinfo_logπ[:modeldef][:body], warn
+    # Generate logjoint
+    modelinfo_logjoint[:body] = generate_mainbody_logdensity(
+        mod, modelinfo_logjoint[:modeldef][:body], warn
     )
 
-    return build_output(modelinfo, modelinfo_logπ, linenumbernode)
+    return build_output(modelinfo, modelinfo_logjoint, linenumbernode)
 end
 
 """
@@ -371,10 +371,10 @@ function build_evaluator(modelinfo)
     return evaluatordef
 end
 
-function build_logπ(modelinfo)
+function build_logjoint(modelinfo)
     # Remove the name.
     def = deepcopy(modelinfo[:modeldef])
-    def[:name] = :logπ
+    def[:name] = :logjoint
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     @gensym T
@@ -408,9 +408,9 @@ end
 
 Builds the output expression.
 """
-function build_output(modelinfo, modelinfo_logπ, linenumbernode)
-    ## Build logπ.
-    logπdef = build_logπ(modelinfo_logπ)
+function build_output(modelinfo, modelinfo_logjoint, linenumbernode)
+    ## Build logjoint.
+    logjointdef = build_logjoint(modelinfo_logjoint)
 
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = build_evaluator(modelinfo)
@@ -424,20 +424,20 @@ function build_output(modelinfo, modelinfo_logπ, linenumbernode)
     # Update the function body of the user-specified model.
     # We use a name for the anonymous evaluator that does not conflict with other variables.
     modeldef = modelinfo[:modeldef]
-    @gensym evaluator logπ
+    @gensym evaluator logjoint
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         $evaluator = $(MacroTools.combinedef(evaluatordef))
-        $logπ = $(MacroTools.combinedef(logπdef))
+        $logjoint = $(MacroTools.combinedef(logjointdef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
             $defaults_namedtuple,
-            $logπ
+            $logjoint
         )
     end
 
