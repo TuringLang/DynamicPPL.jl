@@ -1,11 +1,14 @@
-@generated function _bijector(md::NamedTuple{names}; tuplify = false) where {names}
+@generated function _bijector(md::NamedTuple{names}; tuplify=false) where {names}
     expr = Expr(:tuple)
     for n in names
         e = quote
-            if length(md.$n.dists) == 1 && md.$n.dists[1] isa $(Distributions.UnivariateDistribution)
+            if length(md.$n.dists) == 1 &&
+               md.$n.dists[1] isa $(Distributions.UnivariateDistribution)
                 $(Bijectors).bijector(md.$n.dists[1])
             elseif tuplify
-                $(Bijectors.Stacked)(map($(Bijectors).bijector, tuple(md.$n.dists...)), md.$n.ranges)
+                $(Bijectors.Stacked)(
+                    map($(Bijectors).bijector, tuple(md.$n.dists...)), md.$n.ranges
+                )
             else
                 $(Bijectors.Stacked)(map($(Bijectors).bijector, md.$n.dists), md.$n.ranges)
             end

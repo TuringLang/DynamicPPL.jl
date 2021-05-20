@@ -384,7 +384,7 @@ function build_logjoint(modelinfo)
             :(__sampler__::$(DynamicPPL.AbstractSampler)),
             :(__context__::$(DynamicPPL.AbstractContext)),
             :(__variables__),
-            T
+            T,
         ],
         modelinfo[:allargs_exprs],
     )
@@ -393,7 +393,6 @@ function build_logjoint(modelinfo)
     def[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    
     def[:body] = quote
         __lp__ = zero($T)
         $(modelinfo[:body])
@@ -496,11 +495,12 @@ end
 floatof(::Type{T}) where {T<:Real} = typeof(one(T) / one(T))
 floatof(::Type) = Real # fallback if type inference failed
 
-
 #####################
 ###  `logdensity` ###
 #####################
-generate_mainbody_logdensity(mod, expr, warn) = generate_mainbody_logdensity!(mod, Symbol[], expr, warn)
+function generate_mainbody_logdensity(mod, expr, warn)
+    return generate_mainbody_logdensity!(mod, Symbol[], expr, warn)
+end
 
 generate_mainbody_logdensity!(mod, found, x, warn) = x
 function generate_mainbody_logdensity!(mod, found, sym::Symbol, warn)
@@ -526,12 +526,17 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
-        return generate_mainbody_logdensity!(mod, found, macroexpand(mod, expr; recursive=true), warn)
+        return generate_mainbody_logdensity!(
+            mod, found, macroexpand(mod, expr; recursive=true), warn
+        )
     end
 
     # If it's a return, we instead return `__lp__`.
     if Meta.isexpr(expr, :return)
-        returnbody = Expr(:block, map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...)
+        returnbody = Expr(
+            :block,
+            map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...,
+        )
         return :($(returnbody); return __lp__)
     end
 
@@ -540,10 +545,9 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
     if args_dottilde !== nothing
         L, R = args_dottilde
         left = generate_mainbody_logdensity!(mod, found, L, warn)
-        return generate_dot_tilde_logdensity(
-            left,
-            generate_mainbody_logdensity!(mod, found, R, warn),
-        ) |> Base.remove_linenums!
+        return Base.remove_linenums!(generate_dot_tilde_logdensity(
+            left, generate_mainbody_logdensity!(mod, found, R, warn)
+        ))
     end
 
     # Modify tilde operators.
@@ -551,13 +555,15 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
     if args_tilde !== nothing
         L, R = args_tilde
         left = generate_mainbody_logdensity!(mod, found, L, warn)
-        return generate_tilde_logdensity(
-            left,
-            generate_mainbody_logdensity!(mod, found, R, warn),
-        ) |> Base.remove_linenums!
+        return Base.remove_linenums!(generate_tilde_logdensity(
+            left, generate_mainbody_logdensity!(mod, found, R, warn)
+        ))
     end
 
-    return Expr(expr.head, map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...)
+    return Expr(
+        expr.head,
+        map(x -> generate_mainbody_logdensity!(mod, found, x, warn), expr.args)...,
+    )
 end
 
 function generate_tilde_logdensity(left, right)
@@ -591,7 +597,7 @@ function generate_tilde_logdensity(left, right)
             $left,
             $vn,
             $inds,
-            nothing
+            nothing,
         )
     end
 end
@@ -627,7 +633,7 @@ function generate_dot_tilde_logdensity(left, right)
             $left,
             $vn,
             $inds,
-            nothing
+            nothing,
         )
     end
 end

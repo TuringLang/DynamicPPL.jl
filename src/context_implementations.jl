@@ -56,7 +56,9 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
-function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi::SimpleVarInfo{<:NamedTuple})
+function tilde_assume(
+    rng, ctx::EvaluationContext, sampler, right, vn, inds, vi::SimpleVarInfo{<:NamedTuple}
+)
     value = _getindex(getfield(vi.θ, getsym(vn)), inds)
 
     # Contexts which have different behavior between `assume` and `observe` we need
@@ -74,7 +76,6 @@ function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi:
     end
     return value
 end
-
 
 function _tilde(rng, sampler, right, vn::VarName, vi)
     return assume(rng, sampler, right, vn, vi)
@@ -226,7 +227,16 @@ function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
     return value
 end
 
-function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left, vn, inds, vi::SimpleVarInfo{<:NamedTuple})
+function dot_tilde_assume(
+    rng,
+    ctx::EvaluationContext,
+    sampler,
+    right,
+    left,
+    vn,
+    inds,
+    vi::SimpleVarInfo{<:NamedTuple},
+)
     value = _getindex(getfield(vi.θ, getsym(vn)), inds)
 
     # Contexts which have different behavior between `assume` and `observe` we need
