@@ -561,60 +561,73 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
 end
 
 function generate_tilde_logdensity(left, right)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
-        # If it's not present in args of the model, we need to extract it from `__variables__`.
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left))
-            if $isassumption
-                $(vsym(left)) = __variables__.$(vsym(left))
-            end
             __lp__ += $(DynamicPPL.tilde_observe)(
-                __context__, __sampler__, $tmpright, $left, $vn, $inds, nothing
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
             )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    @gensym vn inds isassumption
+
+    # If it's not present in args of the model, we need to extract it from `__variables__`.
     return quote
-        $(top...)
-        __lp__ += $(DynamicPPL.tilde_observe)(__context__, __sampler__, $tmpright, $left, nothing)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left))
+        if $isassumption
+            $(vsym(left)) = __variables__.$(vsym(left))
+        end
+        __lp__ += $(DynamicPPL.tilde_observe)(
+            __context__,
+            __sampler__,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $left,
+            $vn,
+            $inds,
+            nothing
+        )
     end
 end
 
 function generate_dot_tilde_logdensity(left, right)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym vn inds isassumption
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
-            if $isassumption
-                $(vsym(left)) = __variables__.$(vsym(left))
-            end
             __lp__ += $(DynamicPPL.dot_tilde_observe)(
-                __context__, __sampler__, $tmpright, $left, $vn, $inds, nothing
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
             )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    # Otherwise it is determined by the model or its value,
+    # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        $(top...)
-        $(DynamicPPL.dot_tilde_observe)(__context__, __sampler__, $tmpright, $left, nothing)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left)) || $left === missing
+        if $isassumption
+            $(vsym(left)) = __variables__.$(vsym(left))
+        end
+        __lp__ += $(DynamicPPL.dot_tilde_observe)(
+            __context__,
+            __sampler__,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $left,
+            $vn,
+            $inds,
+            nothing
+        )
     end
 end
