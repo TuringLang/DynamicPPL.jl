@@ -193,6 +193,13 @@ function logjoint(model::Model, varinfo::AbstractVarInfo)
     return getlogp(varinfo)
 end
 
+function logjoint(model::Model, θ)
+    ctx = EvaluationContext(DefaultContext())
+    vi = SimpleVarInfo(θ)
+    model(vi, SampleFromPrior(), ctx)
+    return getlogp(vi)
+end
+
 """
     logprior(model::Model, varinfo::AbstractVarInfo)
 
@@ -205,6 +212,13 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
     return getlogp(varinfo)
 end
 
+function logprior(model::Model, θ)
+    ctx = EvaluationContext(PriorContext())
+    vi = SimpleVarInfo(θ)
+    model(vi, SampleFromPrior(), ctx)
+    return getlogp(vi)
+end
+
 """
     loglikelihood(model::Model, varinfo::AbstractVarInfo)
 
@@ -215,6 +229,13 @@ See also [`logjoint`](@ref) and [`logprior`](@ref).
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     model(varinfo, SampleFromPrior(), LikelihoodContext())
     return getlogp(varinfo)
+end
+
+function Distributions.loglikelihood(model::Model, θ)
+    ctx = EvaluationContext(LikelihoodContext())
+    vi = SimpleVarInfo(θ)
+    model(vi, SampleFromPrior(), ctx)
+    return getlogp(vi)
 end
 
 """
