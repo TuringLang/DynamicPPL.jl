@@ -23,11 +23,10 @@
 end
 
 """
-    bijector(varinfo::DynamicPPL.VarInfo; tuplify = false)
+    bijector(varinfo::VarInfo; tuplify=false)
 
 Returns a `NamedBijector` which can transform different variants of `varinfo`.
 
 If `tuplify` is true, then a type-stable bijector will be returned.
 """
-
 Bijectors.bijector(vi::TypedVarInfo; kwargs...) = _bijector(vi.metadata; kwargs...)
