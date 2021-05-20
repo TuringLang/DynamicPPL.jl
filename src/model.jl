@@ -87,9 +87,9 @@ number of `sampler`.
 """
 function (model::Model)(
     rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo = VarInfo(),
-    sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext(),
+    varinfo::AbstractVarInfo=VarInfo(),
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
@@ -102,11 +102,7 @@ function (model::Model)(args...)
 end
 
 # without VarInfo
-function (model::Model)(
-    rng::Random.AbstractRNG,
-    sampler::AbstractSampler,
-    args...,
-)
+function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
     return model(rng, VarInfo(), sampler, args...)
 end
 
@@ -154,7 +150,9 @@ end
 
 Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
 """
-@generated function _evaluate(rng, model::Model{_F,argnames}, varinfo, sampler, context) where {_F,argnames}
+@generated function _evaluate(
+    rng, model::Model{_F,argnames}, varinfo, sampler, context
+) where {_F,argnames}
     unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
     return :(model.f(rng, model, varinfo, sampler, context, $(unwrap_args...)))
 end
@@ -165,7 +163,6 @@ end
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
 
 """
     getmissings(model::Model)
