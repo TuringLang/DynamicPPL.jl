@@ -548,9 +548,11 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
     if args_dottilde !== nothing
         L, R = args_dottilde
         left = generate_mainbody_logdensity!(mod, found, L, warn)
-        return Base.remove_linenums!(generate_dot_tilde_logdensity(
-            left, generate_mainbody_logdensity!(mod, found, R, warn)
-        ))
+        return Base.remove_linenums!(
+            generate_dot_tilde_logdensity(
+                left, generate_mainbody_logdensity!(mod, found, R, warn)
+            ),
+        )
     end
 
     # Modify tilde operators.
@@ -558,9 +560,11 @@ function generate_mainbody_logdensity!(mod, found, expr::Expr, warn)
     if args_tilde !== nothing
         L, R = args_tilde
         left = generate_mainbody_logdensity!(mod, found, L, warn)
-        return Base.remove_linenums!(generate_tilde_logdensity(
-            left, generate_mainbody_logdensity!(mod, found, R, warn)
-        ))
+        return Base.remove_linenums!(
+            generate_tilde_logdensity(
+                left, generate_mainbody_logdensity!(mod, found, R, warn)
+            ),
+        )
     end
 
     return Expr(
