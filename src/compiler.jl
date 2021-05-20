@@ -384,10 +384,13 @@ function build_logjoint(modelinfo)
             :(__sampler__::$(DynamicPPL.AbstractSampler)),
             :(__context__::$(DynamicPPL.AbstractContext)),
             :(__variables__),
-            T,
         ],
         modelinfo[:allargs_exprs],
+        [Expr(:kw, :(::Type{$T}), :Float64), ]
     )
+
+    # Add the type-parameter.
+    def[:whereparams] = (def[:whereparams]..., T)
 
     # Delete the keyword arguments.
     def[:kwargs] = []
