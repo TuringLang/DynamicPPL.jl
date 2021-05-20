@@ -436,7 +436,7 @@ function build_output(modelinfo, modelinfo_logjoint, linenumbernode)
             $evaluator,
             $allargs_namedtuple,
             $defaults_namedtuple,
-            $logjoint
+            $logjoint,
         )
     end
 
