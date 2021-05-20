@@ -52,3 +52,18 @@ end
 function MiniBatchContext(ctx = DefaultContext(); batch_size, npoints)
     return MiniBatchContext(ctx, npoints/batch_size)
 end
+
+struct EvaluationContext{NT, T, Ctx} <: AbstractContext
+    θ::NT
+    logp::Base.RefValue{T}
+    ctx::Ctx
+end
+EvaluationContext{T}(θ, ctx = DefaultContext()) where {T<:Real} = EvaluationContext{typeof(θ), T, typeof(ctx)}(θ, Ref(zero(T)), ctx)
+EvaluationContext(θ, ctx = DefaultContext()) = EvaluationContext{Float64}(θ, ctx)
+
+function acclogp!(ctx::EvaluationContext, logp)
+    ctx.logp[] += logp
+    return ctx
+end
+
+getlogp(ctx::EvaluationContext) = ctx.logp[]

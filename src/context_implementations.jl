@@ -54,6 +54,12 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
+function tilde_assume(rng, ctx::EvaluationContext, sampler, right, vn, inds, vi)
+    value = _getindex(getfield(ctx.θ, getsym(vn)), inds)
+    tilde_observe(ctx, sampler, right, value, inds, vi)
+    return value
+end
+
 
 function _tilde(rng, sampler, right, vn::VarName, vi)
     return assume(rng, sampler, right, vn, vi)
@@ -95,6 +101,12 @@ function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
     end
 end
 
+function tilde_observe(ctx::EvaluationContext, sampler, right, left, vname, vinds, vi)
+    logp = tilde(ctx.ctx, sampler, right, left, vi)
+    acclogp!(ctx, logp)
+    return left
+end
+
 """
     tilde_observe(ctx, sampler, right, left, vi)
 
@@ -111,6 +123,12 @@ function tilde_observe(ctx, sampler, right, left, vi)
         acclogp!(vi, logp)
         return left
     end
+end
+
+function tilde_observe(ctx::EvaluationContext, sampler, right, left, vname, vi)
+    logp = tilde(ctx.ctx, sampler, right, left, vi)
+    acclogp!(ctx, logp)
+    return left
 end
 
 
@@ -156,7 +174,7 @@ function observe(
     value,
     vi,
 )
-    vi === nothing || increment_num_produce!(vi)
+    (vi isa VarInfo) && increment_num_produce!(vi)
     return Distributions.loglikelihood(dist, value)
 end
 
