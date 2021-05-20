@@ -33,6 +33,44 @@ struct LikelihoodContext{Tvars} <: AbstractContext
 end
 LikelihoodContext() = LikelihoodContext(nothing)
 
+########################
+### Wrapped contexts ###
+########################
+abstract type WrappedContext{Ctx} <: AbstractContext end
+
+"""
+    childcontext(ctx)
+
+Returns the child-context of `ctx`.
+
+Returns `nothing` if `ctx` is not a `WrappedContext`.
+"""
+childcontext(ctx::WrappedContext) = ctx.ctx
+childcontext(ctx::AbstractContext) = nothing
+
+"""
+    unwrap(ctx::AbstractContext)
+
+Returns the unwrapped context from `ctx`.
+"""
+unwrap(ctx::WrappedContext) = unwrap(ctx.ctx)
+unwrap(ctx::AbstractContext) = ctx
+
+"""
+    unwrappedtype(ctx::AbstractContext)
+
+Returns the type of the unwrapped context from `ctx`.
+"""
+unwrappedtype(ctx::AbstractContext) = typeof(ctx)
+unwrappedtype(ctx::WrappedContext{LeafCtx}) where {LeafCtx} = LeafCtx
+
+"""
+    rewrap(parent::WrappedContext, leaf::AbstractContext)
+
+Rewraps `leaf` in `parent`. Supports nested `WrappedContext`.
+"""
+rewrap(::AbstractContext, leaf::AbstractContext) = leaf
+
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
         ctx::Tctx
@@ -45,20 +83,43 @@ The `MiniBatchContext` enables the computation of
 This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
-struct MiniBatchContext{Tctx,T} <: AbstractContext
-    ctx::Tctx
+struct MiniBatchContext{T, Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglike_scalar::T
+    ctx::Ctx
+
+    function MiniBatchContext(loglike_scalar, ctx::AbstractContext)
+        new{typeof(loglike_scalar), typeof(ctx), typeof(ctx)}(loglike_scalar, ctx)
+    end
+
+    function MiniBatchContext(loglike_scalar, ctx::WrappedContext{LeafCtx}) where {LeafCtx}
+        new{typeof(loglike_scalar), typeof(ctx), LeafCtx}(loglike_scalar, ctx)
+    end
 end
 function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(ctx, npoints / batch_size)
+    return MiniBatchContext(npoints / batch_size, ctx)
 end
 
-struct PrefixContext{Prefix,C} <: AbstractContext
+function rewrap(parent::MiniBatchContext, leaf::AbstractContext)
+    return MiniBatchContext(parent.loglike_scalar, rewrap(childcontext(parent), leaf))
+end
+
+
+struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
     ctx::C
+
+    function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
+        return new{Prefix, typeof(ctx), typeof(ctx)}(ctx)
+    end
+    function PrefixContext{Prefix}(ctx::WrappedContext{LeafCtx}) where {Prefix, LeafCtx}
+        return new{Prefix, typeof(ctx), LeafCtx}(ctx)
+    end
 end
-function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(ctx)}(ctx)
+PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(DefaultContext())
+
+function rewrap(parent::PrefixContext{Prefix}, leaf::AbstractContext) where {Prefix}
+    return PrefixContext{Prefix}(rewrap(childcontext(parent), leaf))
 end
+
 
 const PREFIX_SEPARATOR = Symbol(".")
 
@@ -81,3 +142,4 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
 end
+
