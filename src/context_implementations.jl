@@ -314,18 +314,12 @@ function get_and_set_val!(
 )
     n = length(vns)
     if haskey(vi, vns[1])
-        # Always overwrite the parameters with new ones for `SampleFromUniform`.
-        if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
-            r = init(rng, dist, spl, n)
-            for i in 1:n
-                vn = vns[i]
-                vi[vn] = vectorize(dist, r[:, i])
-                settrans!(vi, false, vn)
-                setorder!(vi, vn, get_num_produce(vi))
-            end
-        else
-            r = vi[vns]
+        r = init(rng, dist, spl, n)
+        for i in 1:n
+            vn = vns[i]
+            vi[vn] = vectorize(dist, r[:, i])
+            settrans!(vi, false, vn)
+            setorder!(vi, vn, get_num_produce(vi))
         end
     else
         r = init(rng, dist, spl, n)
@@ -346,20 +340,14 @@ function get_and_set_val!(
     spl::Union{SampleFromPrior,SampleFromUniform},
 )
     if haskey(vi, vns[1])
-        # Always overwrite the parameters with new ones for `SampleFromUniform`.
-        if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
-            f = (vn, dist) -> init(rng, dist, spl)
-            r = f.(vns, dists)
-            for i in eachindex(vns)
-                vn = vns[i]
-                dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, r[i])
-                settrans!(vi, false, vn)
-                setorder!(vi, vn, get_num_produce(vi))
-            end
-        else
-            r = reshape(vi[vec(vns)], size(vns))
+        f = (vn, dist) -> init(rng, dist, spl)
+        r = f.(vns, dists)
+        for i in eachindex(vns)
+            vn = vns[i]
+            dist = dists isa AbstractArray ? dists[i] : dists
+            vi[vn] = vectorize(dist, r[i])
+            settrans!(vi, false, vn)
+            setorder!(vi, vn, get_num_produce(vi))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
