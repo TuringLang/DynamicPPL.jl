@@ -160,7 +160,7 @@ function dot_tilde(
     rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
 )
     vns, dist = get_vns_and_dist(right, left, vn)
-    return _dot_tilde(rng, sampler, dist, left, vns, vi)
+    return _dot_tilde(rng, ctx, sampler, dist, left, vns, vi)
 end
 function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
@@ -286,7 +286,6 @@ function dot_assume(
 end
 
 function dot_assume(
-    rng,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
