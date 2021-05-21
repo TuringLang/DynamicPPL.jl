@@ -183,7 +183,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), SampleContext())
+    model(varinfo, SampleFromPrior(), EvaluateContext())
     return getlogp(varinfo)
 end
 

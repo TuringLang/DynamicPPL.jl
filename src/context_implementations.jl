@@ -28,14 +28,14 @@ function tilde(rng, ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(rng, sampler, right, vn, vi)
+    return _tilde(rng, childcontext(ctx), sampler, right, vn, vi)
 end
 function tilde(rng, ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(rng, sampler, NoDist(right), vn, vi)
+    return _tilde(rng, childcontext(ctx), sampler, NoDist(right), vn, vi)
 end
 function tilde(rng, ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
     return tilde(rng, ctx.ctx, sampler, right, left, inds, vi)
@@ -171,7 +171,7 @@ function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarNam
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(rng, sampler, NoDist.(dist), left, vns, vi)
+    return _dot_tilde(rng, childcontext(ctx), sampler, NoDist.(dist), left, vns, vi)
 end
 function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
     return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
@@ -185,7 +185,7 @@ function dot_tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, in
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(rng, sampler, dist, left, vns, vi)
+    return _dot_tilde(rng, childcontext(ctx), sampler, dist, left, vns, vi)
 end
 
 """
