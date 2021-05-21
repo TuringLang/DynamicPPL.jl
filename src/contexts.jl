@@ -125,7 +125,7 @@ function PrefixContext{PrefixInner}(
     ctx::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
     if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(
+        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
             ctx.ctx
         ))
     else
@@ -135,8 +135,11 @@ end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, _prefix_seperator, Sym)))}(vn.indexing))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(vn.indexing))
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
 end
+
+struct EvaluateContext <: AbstractContext end
+struct SampleContext <: AbstractContext end

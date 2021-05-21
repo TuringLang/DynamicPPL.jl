@@ -18,8 +18,10 @@ _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
 # assume
-function tilde(rng, ctx::DefaultContext, sampler, right, vn::VarName, _, vi)
-    return _tilde(rng, sampler, right, vn, vi)
+function tilde(
+    rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, vn::VarName, _, vi
+)
+    return _tilde(rng, ctx, sampler, right, vn, vi)
 end
 function tilde(rng, ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
     if ctx.vars !== nothing
@@ -56,15 +58,19 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
-function _tilde(rng, sampler, right, vn::VarName, vi)
+function _tilde(rng, ctx::SampleContext, sampler, right, vn::VarName, vi)
     return assume(rng, sampler, right, vn, vi)
 end
-function _tilde(rng, sampler, right::NamedDist, vn::VarName, vi)
-    return _tilde(rng, sampler, right.dist, right.name, vi)
+function _tilde(rng, ctx::EvaluateContext, sampler, right, vn::VarName, vi)
+    return assume(sampler, right, vn, vi)
+end
+
+function _tilde(rng, ctx, sampler, right::NamedDist, vn::VarName, vi)
+    return _tilde(rng, ctx, sampler, right.dist, right.name, vi)
 end
 
 # observe
-function tilde(ctx::DefaultContext, sampler, right, left, vi)
+function tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
     return _tilde(sampler, right, left, vi)
 end
 function tilde(ctx::PriorContext, sampler, right, left, vi)
@@ -122,22 +128,21 @@ end
 function assume(
     rng, spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, vn::VarName, vi
 )
+    r = init(rng, dist, spl)
     if haskey(vi, vn)
-        # Always overwrite the parameters with new ones for `SampleFromUniform`.
-        if spl isa SampleFromUniform || is_flagged(vi, vn, "del")
-            unset_flag!(vi, vn, "del")
-            r = init(rng, dist, spl)
-            vi[vn] = vectorize(dist, r)
-            settrans!(vi, false, vn)
-            setorder!(vi, vn, get_num_produce(vi))
-        else
-            r = vi[vn]
-        end
+        vi[vn] = vectorize(dist, r)
+        setorder!(vi, vn, get_num_produce(vi))
     else
-        r = init(rng, dist, spl)
         push!(vi, vn, r, dist, spl)
-        settrans!(vi, false, vn)
     end
+    settrans!(vi, false, vn)
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+end
+
+function assume(
+    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, vn::VarName, vi
+)
+    r = vi[vn]
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
@@ -151,7 +156,9 @@ end
 # .~ functions
 
 # assume
-function dot_tilde(rng, ctx::DefaultContext, sampler, right, left, vn::VarName, _, vi)
+function dot_tilde(
+    rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
+)
     vns, dist = get_vns_and_dist(right, left, vn)
     return _dot_tilde(rng, sampler, dist, left, vns, vi)
 end
@@ -209,13 +216,22 @@ function get_vns_and_dist(
     return getvn.(CartesianIndices(var)), dist
 end
 
-function _dot_tilde(rng, sampler, right, left, vns::AbstractArray{<:VarName}, vi)
+function _dot_tilde(
+    rng, ctx::SampleContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
+)
     return dot_assume(rng, sampler, right, vns, left, vi)
+end
+
+function _dot_tilde(
+    rng, ctx::EvaluateContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
+)
+    return dot_assume(sampler, right, vns, left, vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
 function _dot_tilde(
     rng,
+    ctx,
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
@@ -239,6 +255,21 @@ function dot_assume(
     var .= r
     return var, lp
 end
+
+function dot_assume(
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    vns::AbstractVector{<:VarName},
+    var::AbstractMatrix,
+    vi,
+)
+    @assert length(dist) == size(var, 1)
+    r = vi[vns]
+    lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
+    var .= r
+    return var, lp
+end
+
 function dot_assume(
     rng,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -253,6 +284,22 @@ function dot_assume(
     var .= r
     return var, lp
 end
+
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    vns::AbstractArray{<:VarName},
+    var::AbstractArray,
+    vi,
+)
+    r = vi[vns]
+    # Make sure `r` is not a matrix for multivariate distributions
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    var .= r
+    return var, lp
+end
+
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
     return error(
         "[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing assume statement"
@@ -348,7 +395,7 @@ function set_val!(
 end
 
 # observe
-function dot_tilde(ctx::DefaultContext, sampler, right, left, vi)
+function dot_tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
     return _dot_tilde(sampler, right, left, vi)
 end
 function dot_tilde(ctx::PriorContext, sampler, right, left, vi)

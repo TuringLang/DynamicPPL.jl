@@ -86,7 +86,7 @@ function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::AbstractContext=SampleContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
@@ -183,7 +183,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), DefaultContext())
+    model(varinfo, SampleFromPrior(), SampleContext())
     return getlogp(varinfo)
 end
 
