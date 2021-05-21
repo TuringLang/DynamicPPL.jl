@@ -19,29 +19,37 @@ _getindex(x, inds::Tuple{}) = x
 
 # assume
 function tilde(
-    rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, vn::VarName, _, vi
+    rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
 )
-    return _tilde(rng, ctx, sampler, right, vn, vi)
+    return _tilde(rng, ctx, sampler, right, left, vn, vi)
 end
-function tilde(rng, ctx::PriorContext, sampler, right, vn::VarName, inds, vi)
+function tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars !== nothing
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(rng, childcontext(ctx), sampler, right, vn, vi)
+    return _tilde(rng, childcontext(ctx), sampler, right, left, vn, vi)
 end
-function tilde(rng, ctx::LikelihoodContext, sampler, right, vn::VarName, inds, vi)
+function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(rng, childcontext(ctx), sampler, NoDist(right), vn, vi)
+    return _tilde(
+        rng,
+        rewrap(childcontext(ctx), EvaluateContext()),
+        sampler,
+        NoDist(right),
+        left,
+        vn,
+        vi,
+    )
 end
-function tilde(rng, ctx::MiniBatchContext, sampler, right, left::VarName, inds, vi)
-    return tilde(rng, ctx.ctx, sampler, right, left, inds, vi)
+function tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
+    return tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
 end
-function tilde(rng, ctx::PrefixContext, sampler, right, vn::VarName, inds, vi)
-    return tilde(rng, ctx.ctx, sampler, right, prefix(ctx, vn), inds, vi)
+function tilde(rng, ctx::PrefixContext, sampler, right, left, vn::VarName, inds, vi)
+    return tilde(rng, ctx.ctx, sampler, right, left, prefix(ctx, vn), inds, vi)
 end
 
 """
@@ -53,20 +61,23 @@ accumulate the log probability, and return the sampled value.
 Falls back to `tilde(rng, ctx, sampler, right, vn, inds, vi)`.
 """
 function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
-    value, logp = tilde(rng, ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde(rng, ctx, sampler, right, nothing, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
-function _tilde(rng, ctx::SampleContext, sampler, right, vn::VarName, vi)
-    return assume(rng, sampler, right, vn, vi)
+function _tilde(rng, ctx::SampleContext, sampler, right, left, vn::VarName, vi)
+    return assume(rng, sampler, right, nothing, vn, vi)
 end
-function _tilde(rng, ctx::EvaluateContext, sampler, right, vn::VarName, vi)
-    return assume(sampler, right, vn, vi)
+function _tilde(rng, ctx::EvaluateContext, sampler, right, left::Nothing, vn::VarName, vi)
+    return assume(sampler, right, vi[vn], vn, vi)
+end
+function _tilde(rng, ctx::EvaluateContext, sampler, right, left, vn::VarName, vi)
+    return assume(sampler, right, left, vn, vi)
 end
 
-function _tilde(rng, ctx, sampler, right::NamedDist, vn::VarName, vi)
-    return _tilde(rng, ctx, sampler, right.dist, right.name, vi)
+function _tilde(rng, ctx, sampler, right::NamedDist, left, vn::VarName, vi)
+    return _tilde(rng, ctx, sampler, right.dist, left, right.name, vi)
 end
 
 # observe
@@ -126,7 +137,12 @@ function observe(spl::Sampler, weight)
 end
 
 function assume(
-    rng, spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, vn::VarName, vi
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::Distribution,
+    left::Nothing,
+    vn::VarName,
+    vi,
 )
     r = init(rng, dist, spl)
     if haskey(vi, vn)
@@ -140,17 +156,16 @@ function assume(
 end
 
 function assume(
-    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, vn::VarName, vi
+    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, left, vn::VarName, vi
 )
-    r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return left, Bijectors.logpdf_with_trans(dist, left, istrans(vi, vn))
 end
 
 function observe(
-    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, value, vi
+    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, left, vi
 )
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dist, value)
+    return Distributions.loglikelihood(dist, left)
 end
 
 # .~ functions
@@ -171,7 +186,15 @@ function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarNam
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(rng, childcontext(ctx), sampler, NoDist.(dist), left, vns, vi)
+    return _dot_tilde(
+        rng,
+        rewrap(childcontext(ctx), EvaluateContext()),
+        sampler,
+        NoDist.(dist),
+        left,
+        vns,
+        vi,
+    )
 end
 function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
     return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)

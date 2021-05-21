@@ -56,11 +56,12 @@ rewrap(::AbstractContext, leaf::AbstractContext) = leaf
 The `PriorContext` enables the computation of the log prior of the parameters `vars` when 
 running the model.
 """
-struct PriorContext{Tvars, LeafCtx} <: WrappedContext{LeafCtx}
+struct PriorContext{Tvars,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
 PriorContext(vars=nothing) = PriorContext(vars, EvaluateContext())
+PriorContext(ctx::AbstractContext) = PriorContext(nothing, ctx)
 
 """
     struct LikelihoodContext{Tvars} <: AbstractContext
@@ -71,11 +72,12 @@ The `LikelihoodContext` enables the computation of the log likelihood of the par
 running the model. `vars` can be used to evaluate the log likelihood for specific values 
 of the model's parameters. If `vars` is `nothing`, the parameter values inside the `VarInfo` will be used by default.
 """
-struct LikelihoodContext{Tvars, LeafCtx} <: WrappedContext{LeafCtx}
+struct LikelihoodContext{Tvars,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
 LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluateContext())
+LikelihoodContext(ctx::AbstractContext) = LikelihoodContext(nothing, ctx)
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
