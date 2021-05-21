@@ -60,7 +60,7 @@ struct PriorContext{Tvars, LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
-PriorContext(vars=nothing, ctx=EvaluateContext()) = PriorContext{typeof(vars), typeof(ctx)}(vars, ctx)
+PriorContext(vars=nothing) = PriorContext(vars, EvaluateContext())
 
 """
     struct LikelihoodContext{Tvars} <: AbstractContext
@@ -75,7 +75,7 @@ struct LikelihoodContext{Tvars, LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
-LikelihoodContext(vars=nothing, ctx=EvaluateContext()) = LikelihoodContext{typeof(vars), typeof(ctx)}(vars, ctx)
+LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluateContext())
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
