@@ -315,8 +315,7 @@ function build_output(modelinfo, linenumbernode)
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
-            (;)
-        )
+            NamedTuple()
     end
 
     return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))

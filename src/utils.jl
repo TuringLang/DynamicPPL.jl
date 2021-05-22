@@ -160,3 +160,6 @@ end
 #######################
 collectmaybe(x) = x
 collectmaybe(x::Base.AbstractSet) = collect(x)
+
+_getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
+_getindex(x, inds::Tuple{}) = x

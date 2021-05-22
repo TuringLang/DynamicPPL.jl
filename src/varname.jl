@@ -24,7 +24,14 @@ A variable is an observations if it is among the observation data of the model, 
 observation value is not `missing` (e.g., it could happen that the observation data contain `x =
 [missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
 """
-isobservation(vn::VarName{s}, model::@ConditionedModel{; s}) where {s} =
-    value[vn.indexing] !== missing
-isobservation(::VarName, ::Model) = false
+@generated function isobservation(
+    vn::VarName{s},
+    model::Model{_F, _p, observationnames}
+) where {s, _F, _p, observationnames}
+    if s in observationnames
+        return :(!ismissing(_getindex(model.observations, vn.indexing)))
+    else
+        return :(false)
+    end
+end
 
