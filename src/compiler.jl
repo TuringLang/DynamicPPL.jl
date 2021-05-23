@@ -358,7 +358,7 @@ function generate_dot_tilde(left, right)
                 __rng__,
                 __context__,
                 __sampler__,
-                $(DynamicPPL.unwrap_right_left_vn)(
+                $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
                 )...,
                 $inds,
