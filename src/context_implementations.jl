@@ -17,6 +17,11 @@ require_particles(spl::Sampler) = false
 _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
+function _getvalue(nt::NamedTuple, sym::Symbol, inds = ())
+    value = getfield(nt, sym)
+    return _getindex(value, inds)
+end
+
 # assume
 function tilde(
     rng,

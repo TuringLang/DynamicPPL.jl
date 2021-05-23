@@ -1,14 +1,15 @@
 function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+    var = if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
+        _getvalue(ctx.vars, getsym(vn), inds)
+    else
+        vi[vn]
     end
     return tilde_primitive(
         rng,
         rewrap(childcontext(ctx), EvaluationContext()),
         sampler,
         NoDist(right),
-        left,
+        var,
         vn,
         vi,
     )
@@ -29,7 +30,7 @@ function dot_tilde(
     vi,
 ) where {sym}
     var = if ctx.vars isa NamedTuple && haskey(ctx.vars, sym)
-        _getindex(getfield(ctx.vars, sym), inds)
+        _getvalue(ctx.vars, sym, inds)
     else
         vi[vns]
     end
