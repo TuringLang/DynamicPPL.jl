@@ -17,11 +17,6 @@ require_particles(spl::Sampler) = false
 _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
-include("context_implementations/prior.jl")
-include("context_implementations/likelihood.jl")
-include("context_implementations/minibatch.jl")
-include("context_implementations/prefix.jl")
-
 # assume
 function tilde(
     rng,
@@ -407,3 +402,9 @@ function dot_observe(spl::Sampler, ::Any, ::Any, ::Any)
         "[DynamicPPL] $(alg_str(spl)) doesn't support vectorizing observe statement"
     )
 end
+
+# includes
+include("context_implementations/prior.jl")
+include("context_implementations/likelihood.jl")
+include("context_implementations/minibatch.jl")
+include("context_implementations/prefix.jl")
