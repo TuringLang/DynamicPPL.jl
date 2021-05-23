@@ -86,7 +86,7 @@ function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=SampleContext(),
+    context::AbstractContext=SamplingContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
@@ -183,7 +183,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), EvaluateContext())
+    model(varinfo, SampleFromPrior(), EvaluationContext())
     return getlogp(varinfo)
 end
 
@@ -195,7 +195,7 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), PriorContext(nothing, EvaluateContext()))
+    model(varinfo, SampleFromPrior(), PriorContext(nothing, EvaluationContext()))
     return getlogp(varinfo)
 end
 
@@ -207,7 +207,7 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), LikelihoodContext(nothing, EvaluateContext()))
+    model(varinfo, SampleFromPrior(), LikelihoodContext(nothing, EvaluationContext()))
     return getlogp(varinfo)
 end
 

@@ -4,11 +4,9 @@
 The `DefaultContext` is used by default to compute log the joint probability of the data 
 and parameters when running the model.
 """
-struct DefaultContext <: AbstractContext end
-
 abstract type PrimitiveContext <: AbstractContext end
-struct EvaluateContext <: PrimitiveContext end
-struct SampleContext <: PrimitiveContext end
+struct EvaluationContext <: PrimitiveContext end
+struct SamplingContext <: PrimitiveContext end
 
 ########################
 ### Wrapped contexts ###
@@ -42,11 +40,11 @@ unwrappedtype(ctx::AbstractContext) = typeof(ctx)
 unwrappedtype(ctx::WrappedContext{LeafCtx}) where {LeafCtx} = LeafCtx
 
 """
-    rewrap(parent::WrappedContext, leaf::AbstractContext)
+    rewrap(parent::WrappedContext, leaf::PrimitiveContext)
 
 Rewraps `leaf` in `parent`. Supports nested `WrappedContext`.
 """
-rewrap(::AbstractContext, leaf::AbstractContext) = leaf
+rewrap(::AbstractContext, leaf::PrimitiveContext) = leaf
 
 """
     struct PriorContext{Tvars} <: AbstractContext
@@ -60,7 +58,7 @@ struct PriorContext{Tvars,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
-PriorContext(vars=nothing) = PriorContext(vars, EvaluateContext())
+PriorContext(vars=nothing) = PriorContext(vars, EvaluationContext())
 PriorContext(ctx::AbstractContext) = PriorContext(nothing, ctx)
 
 """
@@ -76,7 +74,7 @@ struct LikelihoodContext{Tvars,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     ctx::LeafCtx
 end
-LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluateContext())
+LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluationContext())
 LikelihoodContext(ctx::AbstractContext) = LikelihoodContext(nothing, ctx)
 
 """
@@ -103,11 +101,11 @@ struct MiniBatchContext{T,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
         return new{typeof(loglike_scalar),typeof(ctx),LeafCtx}(loglike_scalar, ctx)
     end
 end
-function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
+function MiniBatchContext(ctx=EvaluationContext(); batch_size, npoints)
     return MiniBatchContext(npoints / batch_size, ctx)
 end
 
-function rewrap(parent::MiniBatchContext, leaf::AbstractContext)
+function rewrap(parent::MiniBatchContext, leaf::PrimitiveContext)
     return MiniBatchContext(parent.loglike_scalar, rewrap(childcontext(parent), leaf))
 end
 
@@ -121,9 +119,9 @@ struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
         return new{Prefix,typeof(ctx),LeafCtx}(ctx)
     end
 end
-PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(DefaultContext())
+PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(EvaluationContext())
 
-function rewrap(parent::PrefixContext{Prefix}, leaf::AbstractContext) where {Prefix}
+function rewrap(parent::PrefixContext{Prefix}, leaf::PrimitiveContext) where {Prefix}
     return PrefixContext{Prefix}(rewrap(childcontext(parent), leaf))
 end
 
