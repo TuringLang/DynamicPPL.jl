@@ -21,21 +21,21 @@ _getindex(x, inds::Tuple{}) = x
 function tilde(
     rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
 )
-    return _tilde(rng, ctx, sampler, right, left, vn, vi)
+    return tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
 end
 function tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars !== nothing
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(rng, childcontext(ctx), sampler, right, left, vn, vi)
+    return tilde_primitive(rng, childcontext(ctx), sampler, right, left, vn, vi)
 end
 function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return _tilde(
+    return tilde_primitive(
         rng,
         rewrap(childcontext(ctx), EvaluateContext()),
         sampler,
@@ -66,29 +66,29 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
-function _tilde(rng, ctx::SampleContext, sampler, right, left, vn::VarName, vi)
+function tilde_primitive(rng, ctx::SampleContext, sampler, right, left, vn::VarName, vi)
     return assume(rng, sampler, right, nothing, vn, vi)
 end
-function _tilde(rng, ctx::EvaluateContext, sampler, right, left::Nothing, vn::VarName, vi)
+function tilde_primitive(rng, ctx::EvaluateContext, sampler, right, left::Nothing, vn::VarName, vi)
     return assume(sampler, right, vi[vn], vn, vi)
 end
-function _tilde(rng, ctx::EvaluateContext, sampler, right, left, vn::VarName, vi)
+function tilde_primitive(rng, ctx::EvaluateContext, sampler, right, left, vn::VarName, vi)
     return assume(sampler, right, left, vn, vi)
 end
 
-function _tilde(rng, ctx, sampler, right::NamedDist, left, vn::VarName, vi)
-    return _tilde(rng, ctx, sampler, right.dist, left, right.name, vi)
+function tilde_primitive(rng, ctx, sampler, right::NamedDist, left, vn::VarName, vi)
+    return tilde_primitive(rng, ctx, sampler, right.dist, left, right.name, vi)
 end
 
 # observe
 function tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
-    return _tilde(sampler, right, left, vi)
+    return tilde_primitive(sampler, right, left, vi)
 end
 function tilde(ctx::PriorContext, sampler, right, left, vi)
     return 0
 end
 function tilde(ctx::LikelihoodContext, sampler, right, left, vi)
-    return _tilde(sampler, right, left, vi)
+    return tilde_primitive(sampler, right, left, vi)
 end
 function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
@@ -126,7 +126,7 @@ function tilde_observe(ctx, sampler, right, left, vi)
     return left
 end
 
-_tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
+tilde_primitive(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
 function assume(rng, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
@@ -175,7 +175,7 @@ function dot_tilde(
     rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
 )
     vns, dist = get_vns_and_dist(right, left, vn)
-    return _dot_tilde(rng, ctx, sampler, dist, left, vns, vi)
+    return dot_tilde_primitive(rng, ctx, sampler, dist, left, vns, vi)
 end
 function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
     if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
@@ -186,7 +186,7 @@ function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarNam
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(
+    return dot_tilde_primitive(
         rng,
         rewrap(childcontext(ctx), EvaluateContext()),
         sampler,
@@ -208,7 +208,7 @@ function dot_tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, in
     else
         vns, dist = get_vns_and_dist(right, left, vn)
     end
-    return _dot_tilde(rng, childcontext(ctx), sampler, dist, left, vns, vi)
+    return dot_tilde_primitive(rng, childcontext(ctx), sampler, dist, left, vns, vi)
 end
 
 """
@@ -239,20 +239,20 @@ function get_vns_and_dist(
     return getvn.(CartesianIndices(var)), dist
 end
 
-function _dot_tilde(
+function dot_tilde_primitive(
     rng, ctx::SampleContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
 )
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
-function _dot_tilde(
+function dot_tilde_primitive(
     rng, ctx::EvaluateContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
 )
     return dot_assume(sampler, right, vns, left, vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function _dot_tilde(
+function dot_tilde_primitive(
     rng,
     ctx,
     sampler::AbstractSampler,
@@ -402,13 +402,13 @@ end
 
 # observe
 function dot_tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
-    return _dot_tilde(sampler, right, left, vi)
+    return dot_tilde_primitive(sampler, right, left, vi)
 end
 function dot_tilde(ctx::PriorContext, sampler, right, left, vi)
     return 0
 end
 function dot_tilde(ctx::LikelihoodContext, sampler, right, left, vi)
-    return _dot_tilde(sampler, right, left, vi)
+    return dot_tilde_primitive(sampler, right, left, vi)
 end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
@@ -443,11 +443,11 @@ function dot_tilde_observe(ctx, sampler, right, left, vi)
     return left
 end
 
-function _dot_tilde(sampler, right, left::AbstractArray, vi)
+function dot_tilde_primitive(sampler, right, left::AbstractArray, vi)
     return dot_observe(sampler, right, left, vi)
 end
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function _dot_tilde(
+function dot_tilde_primitive(
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
