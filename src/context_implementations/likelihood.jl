@@ -18,21 +18,27 @@ function tilde(ctx::LikelihoodContext, sampler, right, left, vi)
     return tilde_primitive(sampler, right, left, vi)
 end
 
-function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
-        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
-        vns, dist = get_vns_and_dist(right, var, vn)
-        set_val!(vi, vns, dist, var)
-        settrans!.(Ref(vi), false, vns)
+function dot_tilde(
+    rng,
+    ctx::LikelihoodContext,
+    sampler,
+    right,
+    left,
+    vns::AbstractArray{<:VarName{sym}},
+    inds,
+    vi,
+) where {sym}
+    var = if ctx.vars isa NamedTuple && haskey(ctx.vars, sym)
+        _getindex(getfield(ctx.vars, sym), inds)
     else
-        vns, dist = get_vns_and_dist(right, left, vn)
+        vi[vns]
     end
     return dot_tilde_primitive(
         rng,
         rewrap(childcontext(ctx), EvaluationContext()),
         sampler,
-        NoDist.(dist),
-        left,
+        NoDist.(right),
+        var,
         vns,
         vi,
     )
