@@ -2,7 +2,7 @@ function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, i
     var = if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         _getvalue(ctx.vars, getsym(vn), inds)
     else
-        vi[vn]
+        left
     end
     return tilde_primitive(
         rng,
@@ -32,7 +32,7 @@ function dot_tilde(
     var = if ctx.vars isa NamedTuple && haskey(ctx.vars, sym)
         _getvalue(ctx.vars, sym, inds)
     else
-        vi[vns]
+        left
     end
     return dot_tilde_primitive(
         rng,
