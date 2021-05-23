@@ -53,10 +53,6 @@ function tilde_primitive(rng, ctx::EvaluateContext, sampler, right, left, vn::Va
     return assume(sampler, right, left, vn, vi)
 end
 
-function tilde_primitive(rng, ctx, sampler, right::NamedDist, left, vn::VarName, vi)
-    return tilde_primitive(rng, ctx, sampler, right.dist, left, right.name, vi)
-end
-
 # observe
 function tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
     return tilde_primitive(sampler, right, left, vi)
