@@ -51,7 +51,7 @@ function AbstractMCMC.step(
     kwargs...,
 )
     vi = VarInfo()
-    model(rng, vi, sampler)
+    model(rng, vi, sampler, SamplingContext())
     return vi, nothing
 end
 
@@ -78,9 +78,9 @@ function AbstractMCMC.step(
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
         if _spl isa SampleFromUniform
-            model(rng, vi, SampleFromPrior())
+            model(rng, vi, SampleFromPrior(), EvaluationContext())
         else
-            model(rng, vi, _spl)
+            model(rng, vi, _spl, EvaluationContext())
         end
     end
 
