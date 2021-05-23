@@ -1,7 +1,5 @@
-const DISTMSG = "Right-hand side of a ~ must be subtype of Distribution or a vector of " *
-    "Distributions."
-
-const INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
+const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
     isassumption(expr)
@@ -17,14 +15,15 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol, Expr})
+function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
         let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, _model) || $(DynamicPPL.inmissings)($vn, _model)
+            if !$(DynamicPPL.inargnames)($vn, __model__) ||
+               $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
                 # Evaluate the LHS
@@ -37,12 +36,28 @@ end
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
 
+"""
+    check_tilde_rhs(x)
+
+Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
+`Distributions`, then return `x`.
+"""
+function check_tilde_rhs(@nospecialize(x))
+    return throw(
+        ArgumentError(
+            "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
+        ),
+    )
+end
+check_tilde_rhs(x::Distribution) = x
+check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
+
 #################
 # Main Compiler #
 #################
 
 """
-    @model(expr[, warn = true])
+    @model(expr[, warn = false])
 
 Macro to specify a probabilistic model.
 
@@ -61,19 +76,17 @@ end
 
 To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 """
-macro model(expr, warn=true)
+macro model(expr, warn=false)
     # include `LineNumberNode` with information about the call site in the
     # generated function for easier debugging and interpretation of error messages
-    esc(model(expr, __source__, warn))
+    return esc(model(__module__, __source__, expr, warn))
 end
 
-function model(expr, linenumbernode, warn)
+function model(mod, linenumbernode, expr, warn)
     modelinfo = build_model_info(expr)
 
     # Generate main body
-    modelinfo[:body] = generate_mainbody(
-        modelinfo[:modeldef][:body], modelinfo[:allargs_syms], warn
-    )
+    modelinfo[:body] = generate_mainbody(mod, modelinfo[:modeldef][:body], warn)
 
     return build_output(modelinfo, linenumbernode)
 end
@@ -155,7 +168,7 @@ function build_model_info(input_expr)
 end
 
 """
-    generate_mainbody(expr, args, warn)
+    generate_mainbody(mod, expr, warn)
 
 Generate the body of the main evaluation function from expression `expr` and arguments
 `args`.
@@ -163,142 +176,166 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(expr, args, warn) = generate_mainbody!(Symbol[], expr, args, warn)
+generate_mainbody(mod, expr, warn) = generate_mainbody!(mod, Symbol[], expr, warn)
 
-generate_mainbody!(found, x, args, warn) = x
-function generate_mainbody!(found, sym::Symbol, args, warn)
+generate_mainbody!(mod, found, x, warn) = x
+function generate_mainbody!(mod, found, sym::Symbol, warn)
+    if sym in DEPRECATED_INTERNALNAMES
+        newsym = Symbol(:_, sym, :__)
+        Base.depwarn(
+            "internal variable `$sym` is deprecated, use `$newsym` instead.",
+            :generate_mainbody!,
+        )
+        return generate_mainbody!(mod, found, newsym, warn)
+    end
+
     if warn && sym in INTERNALNAMES && sym ∉ found
-        @warn "you are using the internal variable `$(sym)`"
+        @warn "you are using the internal variable `$sym`"
         push!(found, sym)
     end
+
     return sym
 end
-function generate_mainbody!(found, expr::Expr, args, warn)
+function generate_mainbody!(mod, found, expr::Expr, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
-    # Apply the `@.` macro first.
-    if Meta.isexpr(expr, :macrocall) && length(expr.args) > 1 &&
-        expr.args[1] === Symbol("@__dot__")
-        return generate_mainbody!(found, Base.Broadcast.__dot__(expr.args[end]), args, warn)
+    # If it's a macro, we expand it
+    if Meta.isexpr(expr, :macrocall)
+        return generate_mainbody!(mod, found, macroexpand(mod, expr; recursive=true), warn)
     end
 
     # Modify dotted tilde operators.
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return generate_dot_tilde(generate_mainbody!(found, L, args, warn),
-                                  generate_mainbody!(found, R, args, warn),
-                                  args) |> Base.remove_linenums!
+        return Base.remove_linenums!(
+            generate_dot_tilde(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
     end
 
     # Modify tilde operators.
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        return generate_tilde(generate_mainbody!(found, L, args, warn),
-                              generate_mainbody!(found, R, args, warn),
-                              args) |> Base.remove_linenums!
+        return Base.remove_linenums!(
+            generate_tilde(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
     end
 
-    return Expr(expr.head, map(x -> generate_mainbody!(found, x, args, warn), expr.args)...)
+    return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
 end
 
-
-
 """
-    generate_tilde(left, right, args)
+    generate_tilde(left, right)
 
 Generate an `observe` expression for data variables and `assume` expression for parameter
 variables.
 """
-function generate_tilde(left, right, args)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym out vn inds
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
-        # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in args
-            @gensym isassumption
-            return quote
-                $(top...)
-                $isassumption = $(DynamicPPL.isassumption(left))
-                if $isassumption
-                    $left = $(DynamicPPL.tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $vn, $inds, _varinfo)
-                else
-                    $(DynamicPPL.tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                end
-            end
-        end
-
+function generate_tilde(left, right)
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $left = $(DynamicPPL.tilde_assume)(_rng, _context, _sampler, $tmpright, $vn,
-                                               $inds, _varinfo)
+            $(DynamicPPL.tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
+            )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    # Otherwise it is determined by the model or its value,
+    # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        $(top...)
-        $(DynamicPPL.tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left))
+        if $isassumption
+            $left = $(DynamicPPL.tilde_assume)(
+                __rng__,
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        else
+            $(DynamicPPL.tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        end
     end
 end
 
 """
-    generate_dot_tilde(left, right, args)
+    generate_dot_tilde(left, right)
 
 Generate the expression that replaces `left .~ right` in the model body.
 """
-function generate_dot_tilde(left, right, args)
-    @gensym tmpright
-    top = [:($tmpright = $right),
-           :($tmpright isa Union{$Distribution,AbstractVector{<:$Distribution}}
-             || throw(ArgumentError($DISTMSG)))]
-
-    if left isa Symbol || left isa Expr
-        @gensym out vn inds
-        push!(top, :($vn = $(varname(left))), :($inds = $(vinds(left))))
-
-        # It can only be an observation if the LHS is an argument of the model
-        if vsym(left) in args
-            @gensym isassumption
-            return quote
-                $(top...)
-                $isassumption = $(DynamicPPL.isassumption(left))
-                if $isassumption
-                    $left .= $(DynamicPPL.dot_tilde_assume)(
-                        _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                else
-                    $(DynamicPPL.dot_tilde_observe)(
-                        _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
-                end
-            end
-        end
-
+function generate_dot_tilde(left, right)
+    # If the LHS is a literal, it is always an observation
+    if !(left isa Symbol || left isa Expr)
         return quote
-            $(top...)
-            $left .= $(DynamicPPL.dot_tilde_assume)(
-                _rng, _context, _sampler, $tmpright, $left, $vn, $inds, _varinfo)
+            $(DynamicPPL.dot_tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                __varinfo__,
+            )
         end
     end
 
-    # If the LHS is a literal, it is always an observation
+    # Otherwise it is determined by the model or its value,
+    # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        $(top...)
-        $(DynamicPPL.dot_tilde_observe)(_context, _sampler, $tmpright, $left, _varinfo)
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left))
+        if $isassumption
+            $left .= $(DynamicPPL.dot_tilde_assume)(
+                __rng__,
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        else
+            $(DynamicPPL.dot_tilde_observe)(
+                __context__,
+                __sampler__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $left,
+                $vn,
+                $inds,
+                __varinfo__,
+            )
+        end
     end
 end
 
-const FloatOrArrayType = Type{<:Union{AbstractFloat, AbstractArray}}
-hasmissing(T::Type{<:AbstractArray{TA}}) where {TA <: AbstractArray} = hasmissing(TA)
+const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
+hasmissing(T::Type{<:AbstractArray{TA}}) where {TA<:AbstractArray} = hasmissing(TA)
 hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
 hasmissing(T::Type) = false
 
@@ -317,11 +354,11 @@ function build_output(modelinfo, linenumbernode)
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
         [
-            :(_rng::$(Random.AbstractRNG)),
-            :(_model::$(DynamicPPL.Model)),
-            :(_varinfo::$(DynamicPPL.AbstractVarInfo)),
-            :(_sampler::$(DynamicPPL.AbstractSampler)),
-            :(_context::$(DynamicPPL.AbstractContext)),
+            :(__rng__::$(Random.AbstractRNG)),
+            :(__model__::$(DynamicPPL.Model)),
+            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
+            :(__sampler__::$(DynamicPPL.AbstractSampler)),
+            :(__context__::$(DynamicPPL.AbstractContext)),
         ],
         modelinfo[:allargs_exprs],
     )
@@ -359,12 +396,11 @@ function build_output(modelinfo, linenumbernode)
     return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
 end
 
-
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
         @warn("Model definition seems empty, still continue.")
     end
-    return
+    return nothing
 end
 
 """
@@ -396,26 +432,18 @@ For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
 `eltype(vi[spl])`.
 """
 get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T} = T
-function get_matching_type(
-    spl::AbstractSampler, 
-    vi, 
-    ::Type{<:Union{Missing, AbstractFloat}},
-)
-    return Union{Missing, floatof(eltype(vi, spl))}
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Union{Missing,AbstractFloat}})
+    return Union{Missing,floatof(eltype(vi, spl))}
 end
-function get_matching_type(
-    spl::AbstractSampler,
-    vi,
-    ::Type{<:AbstractFloat},
-)
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:AbstractFloat})
     return floatof(eltype(vi, spl))
 end
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(spl, vi, T), N}
+    return Array{get_matching_type(spl, vi, T),N}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where T
+function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where {T}
     return Array{get_matching_type(spl, vi, T)}
 end
 
-floatof(::Type{T}) where {T <: Real} = typeof(one(T)/one(T))
+floatof(::Type{T}) where {T<:Real} = typeof(one(T) / one(T))
 floatof(::Type) = Real # fallback if type inference failed

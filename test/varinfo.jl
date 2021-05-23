@@ -1,7 +1,7 @@
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
-            s ~ InverseGamma(2,3)
+            s ~ InverseGamma(2, 3)
             m ~ truncated(Normal(0.0, sqrt(s)), 0.0, 2.0)
             x ~ Normal(m, sqrt(s))
             y ~ Normal(m, sqrt(s))
@@ -57,21 +57,23 @@
 
             @test isempty(vi)
             @test ~haskey(vi, vn)
+            @test !(vn in keys(vi))
             push!(vi, vn, r, dist, gid)
             @test ~isempty(vi)
             @test haskey(vi, vn)
+            @test vn in keys(vi)
 
             @test length(vi[vn]) == 1
             @test length(vi[SampleFromPrior()]) == 1
 
             @test vi[vn] == r
             @test vi[SampleFromPrior()][1] == r
-            vi[vn] = [2*r]
-            @test vi[vn] == 2*r
-            @test vi[SampleFromPrior()][1] == 2*r
-            vi[SampleFromPrior()] = [3*r]
-            @test vi[vn] == 3*r
-            @test vi[SampleFromPrior()][1] == 3*r
+            vi[vn] = [2 * r]
+            @test vi[vn] == 2 * r
+            @test vi[SampleFromPrior()][1] == 2 * r
+            vi[SampleFromPrior()] = [3 * r]
+            @test vi[vn] == 3 * r
+            @test vi[SampleFromPrior()][1] == 3 * r
 
             empty!(vi)
             @test isempty(vi)
@@ -86,13 +88,13 @@
                 @test inspace(@varname(z[1][1]), space)
                 @test inspace(@varname(z[1][:]), space)
                 @test inspace(@varname(z[1][2:3:10]), space)
-                @test inspace(@varname(M[[2,3], 1]), space)
+                @test inspace(@varname(M[[2, 3], 1]), space)
                 @test inspace(@varname(M[:, 1:4]), space)
                 @test inspace(@varname(M[1, [2, 4, 6]]), space)
                 @test !inspace(@varname(z[2]), space)
                 @test !inspace(@varname(z), space)
             end
-            test_inspace()
+            return test_inspace()
         end
         vi = VarInfo()
         test_base!(vi)
@@ -143,48 +145,95 @@
         setgid!(vi, gid2, vn)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1, gid2])
     end
-    @testset "setval!" begin
+    @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
             s ~ truncated(Normal(), 0, Inf)
             m ~ MvNormal(n, 1.0)
-            x ~ MvNormal(m, s)
+            return x ~ MvNormal(m, s)
+        end
+
+        @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
+            n = length(x)
+            s ~ truncated(Normal(), 0, Inf)
+
+            m = TV(undef, n)
+            for i in eachindex(m)
+                m[i] ~ Normal()
+            end
+
+            for i in eachindex(x)
+                x[i] ~ Normal(m[i], s)
+            end
         end
 
         x = randn(5)
-        model = testmodel(x)
+        model_mv = testmodel(x)
+        model_uv = testmodel_univariate(x)
 
-        # UntypedVarInfo
-        vi = VarInfo()
-        model(vi, SampleFromPrior())
+        for model in [model_uv, model_mv]
+            m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
+            s_vns = @varname(s)
 
-        vicopy = deepcopy(vi)
-        DynamicPPL.setval!(vicopy, (m = zeros(5),))
-        @test vicopy[@varname(m)] == zeros(5)
-        @test vicopy[@varname(s)] == vi[@varname(s)]
+            vi_typed = VarInfo(model)
+            vi_untyped = VarInfo()
+            model(vi_untyped, SampleFromPrior())
 
-        DynamicPPL.setval!(vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...))
-        @test vicopy[@varname(m)] == 1:5
-        @test vicopy[@varname(s)] == vi[@varname(s)]
+            for vi in [vi_untyped, vi_typed]
+                vicopy = deepcopy(vi)
 
-        DynamicPPL.setval!(vicopy, (s = 42,))
-        @test vicopy[@varname(m)] == 1:5
-        @test vicopy[@varname(s)] == 42
+                ### `setval` ###
+                DynamicPPL.setval!(vicopy, (m=zeros(5),))
+                # Setting `m` fails for univariate due to limitations of `setval!`
+                # and `setval_and_resample!`. See docstring of `setval!` for more info.
+                if model == model_uv
+                    @test_broken vicopy[m_vns] == zeros(5)
+                else
+                    @test vicopy[m_vns] == zeros(5)
+                end
+                @test vicopy[s_vns] == vi[s_vns]
 
-        # TypedVarInfo
-        vi = VarInfo(model)
+                DynamicPPL.setval!(
+                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
+                )
+                @test vicopy[m_vns] == 1:5
+                @test vicopy[s_vns] == vi[s_vns]
 
-        vicopy = deepcopy(vi)
-        DynamicPPL.setval!(vicopy, (m = zeros(5),))
-        @test vicopy[@varname(m)] == zeros(5)
-        @test vicopy[@varname(s)] == vi[@varname(s)]
+                DynamicPPL.setval!(vicopy, (s=42,))
+                @test vicopy[m_vns] == 1:5
+                @test vicopy[s_vns] == 42
 
-        DynamicPPL.setval!(vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...))
-        @test vicopy[@varname(m)] == 1:5
-        @test vicopy[@varname(s)] == vi[@varname(s)]
+                ### `setval_and_resample!` ###
+                if model == model_mv && vi == vi_untyped
+                    # Trying to re-run model with `MvNormal` on `vi_untyped` will call
+                    # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
+                    # so we skip this particular case.
+                    continue
+                end
 
-        DynamicPPL.setval!(vicopy, (s = 42,))
-        @test vicopy[@varname(m)] == 1:5
-        @test vicopy[@varname(s)] == 42
+                vicopy = deepcopy(vi)
+                DynamicPPL.setval_and_resample!(vicopy, (m=zeros(5),))
+                model(vicopy)
+                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
+                if model == model_uv
+                    @test_broken vicopy[m_vns] == zeros(5)
+                else
+                    @test vicopy[m_vns] == zeros(5)
+                end
+                @test vicopy[s_vns] != vi[s_vns]
+
+                DynamicPPL.setval_and_resample!(
+                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
+                )
+                model(vicopy)
+                @test vicopy[m_vns] == 1:5
+                @test vicopy[s_vns] != vi[s_vns]
+
+                DynamicPPL.setval_and_resample!(vicopy, (s=42,))
+                model(vicopy)
+                @test vicopy[m_vns] != 1:5
+                @test vicopy[s_vns] == 42
+            end
+        end
     end
 end

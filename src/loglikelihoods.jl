@@ -1,83 +1,72 @@
 # Context version
-struct PointwiseLikelihoodContext{A, Ctx} <: AbstractContext
+struct PointwiseLikelihoodContext{A,Ctx} <: AbstractContext
     loglikelihoods::A
     ctx::Ctx
 end
 
 function PointwiseLikelihoodContext(
-    likelihoods = Dict{VarName, Vector{Float64}}(),
-    ctx::AbstractContext = LikelihoodContext()
+    likelihoods=Dict{VarName,Vector{Float64}}(), ctx::AbstractContext=LikelihoodContext()
 )
     return PointwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{VarName, Vector{Float64}}},
-    vn::VarName,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}}, vn::VarName, logp::Real
 )
     lookup = ctx.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
-    push!(ℓ, logp)
+    return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{VarName, Float64}},
-    vn::VarName,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{VarName,Float64}}, vn::VarName, logp::Real
 )
-    ctx.loglikelihoods[vn] = logp
+    return ctx.loglikelihoods[vn] = logp
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}},
-    vn::VarName,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}}, vn::VarName, logp::Real
 )
     lookup = ctx.loglikelihoods
     ℓ = get!(lookup, string(vn), Float64[])
-    push!(ℓ, logp)
+    return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String, Float64}},
-    vn::VarName,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::VarName, logp::Real
 )
-    ctx.loglikelihoods[string(vn)] = logp
+    return ctx.loglikelihoods[string(vn)] = logp
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}},
-    vn::String,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}}, vn::String, logp::Real
 )
     lookup = ctx.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
-    push!(ℓ, logp)
+    return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String, Float64}},
-    vn::String,
-    logp::Real
+    ctx::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::String, logp::Real
 )
-    ctx.loglikelihoods[vn] = logp
+    return ctx.loglikelihoods[vn] = logp
 end
-
 
 function tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-function dot_tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(
+    rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
+)
     value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
-
-function tilde_observe(ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi)
+function tilde_observe(
+    ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi
+)
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
@@ -89,7 +78,6 @@ function tilde_observe(ctx::PointwiseLikelihoodContext, sampler, right, left, vn
 
     return left
 end
-
 
 """
     pointwise_loglikelihoods(model::Model, chain::Chains, keytype = String)
@@ -160,20 +148,16 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
 ```
 """
-function pointwise_loglikelihoods(
-    model::Model,
-    chain,
-    keytype::Type{T} = String
-) where {T}
+function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
     # Get the data by executing the model once
     spl = SampleFromPrior()
     vi = VarInfo(model)
-    ctx = PointwiseLikelihoodContext(Dict{T, Vector{Float64}}())
+    ctx = PointwiseLikelihoodContext(Dict{T,Vector{Float64}}())
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
         # Update the values
-        setval!(vi, chain, sample_idx, chain_idx)
+        setval_and_resample!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
         model(vi, spl, ctx)
@@ -182,14 +166,14 @@ function pointwise_loglikelihoods(
     niters = size(chain, 1)
     nchains = size(chain, 3)
     loglikelihoods = Dict(
-        varname => reshape(logliks, niters, nchains)
-        for (varname, logliks) in ctx.loglikelihoods
+        varname => reshape(logliks, niters, nchains) for
+        (varname, logliks) in ctx.loglikelihoods
     )
     return loglikelihoods
 end
 
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    ctx = PointwiseLikelihoodContext(Dict{VarName, Float64}())
+    ctx = PointwiseLikelihoodContext(Dict{VarName,Float64}())
     model(varinfo, SampleFromPrior(), ctx)
     return ctx.loglikelihoods
 end

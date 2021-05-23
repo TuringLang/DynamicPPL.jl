@@ -6,7 +6,7 @@ Robust initialization method for model parameters in Hamiltonian samplers.
 struct SampleFromUniform <: AbstractSampler end
 struct SampleFromPrior <: AbstractSampler end
 
-getspace(::Union{SampleFromPrior, SampleFromUniform}) = ()
+getspace(::Union{SampleFromPrior,SampleFromUniform}) = ()
 
 # Initializations.
 init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
@@ -47,8 +47,8 @@ function AbstractMCMC.step(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::Union{SampleFromUniform,SampleFromPrior},
-    state = nothing;
-    kwargs...
+    state=nothing;
+    kwargs...,
 )
     vi = VarInfo()
     model(rng, vi, sampler)
@@ -57,11 +57,7 @@ end
 
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    spl::Sampler;
-    resume_from = nothing,
-    kwargs...
+    rng::Random.AbstractRNG, model::Model, spl::Sampler; resume_from=nothing, kwargs...
 )
     if resume_from !== nothing
         state = loadstate(resume_from)
@@ -77,7 +73,15 @@ function AbstractMCMC.step(
         initialize_parameters!(vi, kwargs[:init_params], spl)
 
         # Update joint log probability.
-        model(rng, vi, _spl)
+        # TODO: fix properly by using sampler and evaluation contexts
+        # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
+        # and https://github.com/TuringLang/Turing.jl/issues/1563
+        # to avoid that existing variables are resampled
+        if _spl isa SampleFromUniform
+            model(rng, vi, SampleFromPrior())
+        else
+            model(rng, vi, _spl)
+        end
     end
 
     return initialstep(rng, model, spl, vi; kwargs...)
@@ -127,7 +131,7 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     vi[spl] = theta
     linked && link!(vi, spl)
 
-    return
+    return nothing
 end
 
 """

@@ -1,9 +1,9 @@
 @testset "utils.jl" begin
     @testset "addlogprob!" begin
         @model function testmodel()
-            global lp_before = getlogp(_varinfo)
+            global lp_before = getlogp(__varinfo__)
             @addlogprob!(42)
-            global lp_after = getlogp(_varinfo)
+            return global lp_after = getlogp(__varinfo__)
         end
 
         model = testmodel()

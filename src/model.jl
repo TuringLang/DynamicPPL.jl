@@ -32,7 +32,8 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <:
+       AbstractProbabilisticProgram
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
@@ -50,7 +51,9 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(name, f, args, defaults)
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(
+            name, f, args, defaults
+        )
     end
 end
 
@@ -64,10 +67,7 @@ Default arguments `defaults` are used internally when constructing instances of 
 model with different arguments.
 """
 @generated function Model(
-    name::Symbol,
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple = NamedTuple(),
+    name::Symbol, f::F, args::NamedTuple{argnames,Targs}, defaults::NamedTuple=NamedTuple()
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
     return :(Model{$missings}(name, f, args, defaults))
@@ -84,9 +84,9 @@ number of `sampler`.
 """
 function (model::Model)(
     rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo = VarInfo(),
-    sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext(),
+    varinfo::AbstractVarInfo=VarInfo(),
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
@@ -99,11 +99,7 @@ function (model::Model)(args...)
 end
 
 # without VarInfo
-function (model::Model)(
-    rng::Random.AbstractRNG,
-    sampler::AbstractSampler,
-    args...,
-)
+function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
     return model(rng, VarInfo(), sampler, args...)
 end
 
@@ -151,7 +147,9 @@ end
 
 Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
 """
-@generated function _evaluate(rng, model::Model{_F,argnames}, varinfo, sampler, context) where {_F,argnames}
+@generated function _evaluate(
+    rng, model::Model{_F,argnames}, varinfo, sampler, context
+) where {_F,argnames}
     unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
     return :(model.f(rng, model, varinfo, sampler, context, $(unwrap_args...)))
 end
@@ -162,7 +160,6 @@ end
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
 
 """
     getmissings(model::Model)
@@ -277,7 +274,7 @@ function generated_quantities(model::Model, chain::AbstractChains)
     varinfo = VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
-        setval!(varinfo, chain, sample_idx, chain_idx)
+        setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
         model(varinfo)
     end
 end
