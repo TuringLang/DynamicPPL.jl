@@ -193,14 +193,13 @@ function dot_assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
-    var::AbstractMatrix,
+    var::Nothing,
     vi,
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
-    var .= r
-    return var, lp
+    return r, lp
 end
 
 function dot_assume(
@@ -220,14 +219,13 @@ function dot_assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
-    var::AbstractArray,
+    var::Nothing,
     vi,
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    var .= r
-    return var, lp
+    return r, lp
 end
 
 function dot_assume(
