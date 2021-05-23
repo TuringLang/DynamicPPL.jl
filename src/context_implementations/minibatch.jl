@@ -13,4 +13,3 @@ end
 function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
 end
-

@@ -24,7 +24,14 @@ include("context_implementations/prefix.jl")
 
 # assume
 function tilde(
-    rng, ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vn::VarName, _, vi
+    rng,
+    ctx::Union{SamplingContext,EvaluationContext},
+    sampler,
+    right,
+    left,
+    vn::VarName,
+    _,
+    vi,
 )
     return tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
 end
@@ -46,7 +53,9 @@ end
 function tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vn::VarName, vi)
     return assume(rng, sampler, right, nothing, vn, vi)
 end
-function tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn::VarName, vi)
+function tilde_primitive(
+    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn::VarName, vi
+)
     return assume(sampler, right, vi[vn], vn, vi)
 end
 function tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vn::VarName, vi)
@@ -133,7 +142,14 @@ end
 
 # assume
 function dot_tilde(
-    rng, ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vn::VarName, _, vi
+    rng,
+    ctx::Union{SamplingContext,EvaluationContext},
+    sampler,
+    right,
+    left,
+    vn::VarName,
+    _,
+    vi,
 )
     vns, dist = get_vns_and_dist(right, left, vn)
     return dot_tilde_primitive(rng, ctx, sampler, dist, left, vns, vi)
