@@ -17,39 +17,16 @@ require_particles(spl::Sampler) = false
 _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
+include("context_implementations/prior.jl")
+include("context_implementations/likelihood.jl")
+include("context_implementations/minibatch.jl")
+include("context_implementations/prefix.jl")
+
 # assume
 function tilde(
     rng, ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vn::VarName, _, vi
 )
     return tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
-end
-function tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars !== nothing
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
-    end
-    return tilde_primitive(rng, childcontext(ctx), sampler, right, left, vn, vi)
-end
-function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
-    end
-    return tilde_primitive(
-        rng,
-        rewrap(childcontext(ctx), EvaluateContext()),
-        sampler,
-        NoDist(right),
-        left,
-        vn,
-        vi,
-    )
-end
-function tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
-    return tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
-end
-function tilde(rng, ctx::PrefixContext, sampler, right, left, vn::VarName, inds, vi)
-    return tilde(rng, ctx.ctx, sampler, right, left, prefix(ctx, vn), inds, vi)
 end
 
 """
@@ -83,18 +60,6 @@ end
 # observe
 function tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
     return tilde_primitive(sampler, right, left, vi)
-end
-function tilde(ctx::PriorContext, sampler, right, left, vi)
-    return 0
-end
-function tilde(ctx::LikelihoodContext, sampler, right, left, vi)
-    return tilde_primitive(sampler, right, left, vi)
-end
-function tilde(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * tilde(ctx.ctx, sampler, right, left, vi)
-end
-function tilde(ctx::PrefixContext, sampler, right, left, vi)
-    return tilde(ctx.ctx, sampler, right, left, vi)
 end
 
 """
@@ -176,39 +141,6 @@ function dot_tilde(
 )
     vns, dist = get_vns_and_dist(right, left, vn)
     return dot_tilde_primitive(rng, ctx, sampler, dist, left, vns, vi)
-end
-function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
-        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
-        vns, dist = get_vns_and_dist(right, var, vn)
-        set_val!(vi, vns, dist, var)
-        settrans!.(Ref(vi), false, vns)
-    else
-        vns, dist = get_vns_and_dist(right, left, vn)
-    end
-    return dot_tilde_primitive(
-        rng,
-        rewrap(childcontext(ctx), EvaluateContext()),
-        sampler,
-        NoDist.(dist),
-        left,
-        vns,
-        vi,
-    )
-end
-function dot_tilde(rng, ctx::MiniBatchContext, sampler, right, left, vn::VarName, inds, vi)
-    return dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
-end
-function dot_tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
-    if ctx.vars !== nothing
-        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
-        vns, dist = get_vns_and_dist(right, var, vn)
-        set_val!(vi, vns, dist, var)
-        settrans!.(Ref(vi), false, vns)
-    else
-        vns, dist = get_vns_and_dist(right, left, vn)
-    end
-    return dot_tilde_primitive(rng, childcontext(ctx), sampler, dist, left, vns, vi)
 end
 
 """
@@ -403,15 +335,6 @@ end
 # observe
 function dot_tilde(ctx::Union{SampleContext,EvaluateContext}, sampler, right, left, vi)
     return dot_tilde_primitive(sampler, right, left, vi)
-end
-function dot_tilde(ctx::PriorContext, sampler, right, left, vi)
-    return 0
-end
-function dot_tilde(ctx::LikelihoodContext, sampler, right, left, vi)
-    return dot_tilde_primitive(sampler, right, left, vi)
-end
-function dot_tilde(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * dot_tilde(ctx.ctx, sampler, right, left, vi)
 end
 
 """
