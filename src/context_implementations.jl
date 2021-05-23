@@ -51,7 +51,7 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
 end
 
 function tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vn::VarName, vi)
-    return assume(rng, sampler, right, nothing, vn, vi)
+    return assume(rng, sampler, right, left, vn, vi)
 end
 function tilde_primitive(
     rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn::VarName, vi
@@ -126,6 +126,26 @@ function assume(
 end
 
 function assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::Distribution,
+    left,
+    vn::VarName,
+    vi,
+)
+    r = left
+    if haskey(vi, vn)
+        vi[vn] = vectorize(dist, r)
+        setorder!(vi, vn, get_num_produce(vi))
+    else
+        push!(vi, vn, r, dist, spl)
+    end
+    settrans!(vi, false, vn)
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+end
+
+
+function assume(
     spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, left, vn::VarName, vi
 )
     return left, Bijectors.logpdf_with_trans(dist, left, istrans(vi, vn))
@@ -162,7 +182,7 @@ function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
 end
 
 function dot_tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vns, vi)
-    return dot_assume(rng, sampler, right, vns, nothing, vi)
+    return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
 function dot_tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vns, vi)
@@ -203,6 +223,20 @@ function dot_assume(
 end
 
 function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    vns::AbstractVector{<:VarName},
+    var,
+    vi,
+)
+    @assert length(dist) == size(var, 1)
+    r = set_val!(vi, vns, dist, var)
+    lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
+    return r, lp
+end
+
+function dot_assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
@@ -223,6 +257,20 @@ function dot_assume(
     vi,
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
+    # Make sure `r` is not a matrix for multivariate distributions
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    return r, lp
+end
+
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    vns::AbstractArray{<:VarName},
+    var,
+    vi,
+)
+    r = set_val!(vi, vns, dists, var)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     return r, lp
