@@ -14,11 +14,11 @@ struct MiniBatchContext{T,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglike_scalar::T
     ctx::Ctx
 
-    function MiniBatchContext(loglike_scalar, ctx::AbstractContext)
+    function MiniBatchContext(loglike_scalar, ctx::AbstractContext=EvaluationContext())
         return new{typeof(loglike_scalar),typeof(ctx),typeof(ctx)}(loglike_scalar, ctx)
     end
 
-    function MiniBatchContext(loglike_scalar, ctx::WrappedContext{LeafCtx}) where {LeafCtx}
+    function MiniBatchContext(loglike_scalar, ctx::WrappedContext{LeafCtx}=EvaluationContext()) where {LeafCtx}
         return new{typeof(loglike_scalar),typeof(ctx),LeafCtx}(loglike_scalar, ctx)
     end
 end
