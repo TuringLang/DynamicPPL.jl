@@ -108,6 +108,13 @@ function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
     return model(rng, VarInfo(), SampleFromPrior(), context)
 end
 
+# without VarInfo and without AbstractSampler
+function (model::Model)(
+    rng::Random.AbstractRNG, varinfo::AbstractVarInfo, context::AbstractContext
+)
+    return model(rng, varinfo, SampleFromPrior(), context)
+end
+
 """
     evaluate_threadunsafe(rng, model, varinfo, sampler, context)
 
