@@ -5,7 +5,7 @@ function tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarName, i
     end
     return tilde_primitive(
         rng,
-        rewrap(childcontext(ctx), EvaluateContext()),
+        rewrap(childcontext(ctx), EvaluationContext()),
         sampler,
         NoDist(right),
         left,
@@ -29,7 +29,7 @@ function dot_tilde(rng, ctx::LikelihoodContext, sampler, right, left, vn::VarNam
     end
     return dot_tilde_primitive(
         rng,
-        rewrap(childcontext(ctx), EvaluateContext()),
+        rewrap(childcontext(ctx), EvaluationContext()),
         sampler,
         NoDist.(dist),
         left,
