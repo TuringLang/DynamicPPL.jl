@@ -50,15 +50,15 @@ function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
     return value
 end
 
-function tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vn::VarName, vi)
+function tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vn, vi)
     return assume(rng, sampler, right, left, vn, vi)
 end
 function tilde_primitive(
-    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn::VarName, vi
+    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn, vi
 )
     return assume(sampler, right, vi[vn], vn, vi)
 end
-function tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vn::VarName, vi)
+function tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vn, vi)
     return assume(sampler, right, left, vn, vi)
 end
 
