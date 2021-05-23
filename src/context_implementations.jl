@@ -142,17 +142,9 @@ end
 
 # assume
 function dot_tilde(
-    rng,
-    ctx::Union{SamplingContext,EvaluationContext},
-    sampler,
-    right,
-    left,
-    vn::VarName,
-    _,
-    vi,
+    rng, ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vn, _, vi
 )
-    vns, dist = get_vns_and_dist(right, left, vn)
-    return dot_tilde_primitive(rng, ctx, sampler, dist, left, vns, vi)
+    return dot_tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
 end
 
 """
@@ -164,35 +156,23 @@ model inputs), accumulate the log probability, and return the sampled value.
 Falls back to `dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
-    value, logp = dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde(rng, ctx, sampler, right, nothing, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
-function get_vns_and_dist(dist::NamedDist, var, vn::VarName)
-    return get_vns_and_dist(dist.dist, var, dist.name)
-end
-function get_vns_and_dist(dist::MultivariateDistribution, var::AbstractMatrix, vn::VarName)
-    getvn = i -> VarName(vn, (vn.indexing..., (Colon(), i)))
-    return getvn.(1:size(var, 2)), dist
-end
-function get_vns_and_dist(
-    dist::Union{Distribution,AbstractArray{<:Distribution}}, var::AbstractArray, vn::VarName
-)
-    getvn = ind -> VarName(vn, (vn.indexing..., Tuple(ind)))
-    return getvn.(CartesianIndices(var)), dist
+function dot_tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vns, vi)
+    return dot_assume(rng, sampler, right, vns, nothing, vi)
 end
 
-function dot_tilde_primitive(
-    rng, ctx::SamplingContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
-)
-    return dot_assume(rng, sampler, right, vns, left, vi)
-end
-
-function dot_tilde_primitive(
-    rng, ctx::EvaluationContext, sampler, right, left, vns::AbstractArray{<:VarName}, vi
-)
+function dot_tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vns, vi)
     return dot_assume(sampler, right, vns, left, vi)
+end
+
+function dot_tilde_primitive(
+    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vns, vi
+)
+    return dot_assume(sampler, right, vns, vi[vns], vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
