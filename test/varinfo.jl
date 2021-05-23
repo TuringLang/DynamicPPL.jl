@@ -202,37 +202,6 @@
                 DynamicPPL.setval!(vicopy, (s=42,))
                 @test vicopy[m_vns] == 1:5
                 @test vicopy[s_vns] == 42
-
-                ### `setval_and_resample!` ###
-                if model == model_mv && vi == vi_untyped
-                    # Trying to re-run model with `MvNormal` on `vi_untyped` will call
-                    # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
-                    # so we skip this particular case.
-                    continue
-                end
-
-                vicopy = deepcopy(vi)
-                DynamicPPL.setval_and_resample!(vicopy, (m=zeros(5),))
-                model(vicopy)
-                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
-                if model == model_uv
-                    @test_broken vicopy[m_vns] == zeros(5)
-                else
-                    @test vicopy[m_vns] == zeros(5)
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
-                )
-                model(vicopy)
-                @test vicopy[m_vns] == 1:5
-                @test vicopy[s_vns] != vi[s_vns]
-
-                DynamicPPL.setval_and_resample!(vicopy, (s=42,))
-                model(vicopy)
-                @test vicopy[m_vns] != 1:5
-                @test vicopy[s_vns] == 42
             end
         end
     end
