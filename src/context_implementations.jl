@@ -171,7 +171,9 @@ function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left, vns
     return dot_assume(sampler, right, vns, left, vi)
 end
 
-function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left::Nothing, vns, inds, vi)
+function dot_tilde_assume(
+    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vns, inds, vi
+)
     return dot_assume(sampler, right, vns, vi[vns], vi)
 end
 
@@ -381,7 +383,9 @@ function dot_tilde_observe!(ctx, sampler, right, left, vi)
     return left
 end
 
-function dot_tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi)
+function dot_tilde_observe(
+    ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi
+)
     return dot_observe(sampler, right, left, vi)
 end
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
