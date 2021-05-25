@@ -19,7 +19,7 @@ function tilde_assume(
 end
 
 function tilde_observe(ctx::LikelihoodContext, sampler, right, left, vi)
-    return tilde_observe(sampler, right, left, vi)
+    return tilde_observe(childcontext(ctx), sampler, right, left, vi)
 end
 
 function dot_tilde_assume(
@@ -50,5 +50,5 @@ function dot_tilde_assume(
 end
 
 function dot_tilde_observe(ctx::LikelihoodContext, sampler, right, left, vi)
-    return dot_tilde_observe(sampler, right, left, vi)
+    return dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
 end

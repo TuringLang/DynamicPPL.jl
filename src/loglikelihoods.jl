@@ -1,5 +1,5 @@
 # Context version
-struct PointwiseLikelihoodContext{A,Ctx} <: AbstractContext
+struct PointwiseLikelihoodContext{A,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglikelihoods::A
     ctx::Ctx
 end
@@ -7,7 +7,9 @@ end
 function PointwiseLikelihoodContext(
     likelihoods=Dict{VarName,Vector{Float64}}(), ctx::AbstractContext=LikelihoodContext()
 )
-    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
+    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(ctx),unwrappedtype(ctx)}(
+        likelihoods, ctx
+    )
 end
 
 function Base.push!(
@@ -52,8 +54,20 @@ function Base.push!(
     return ctx.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
+# tilde_assume(
+#     ::Random._GLOBAL_RNG,
+#     ::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}, LikelihoodContext{Nothing, EvaluationContext}},
+#     ::SampleFromPrior,
+#     ::InverseGamma{Float64},
+#     ::Nothing,
+#     ::VarName{:s, Tuple{}},
+#     ::Tuple{},
+#     ::TypedVarInfo{NamedTuple{(:s, :m), Tuple{DynamicPPL.Metadata{Dict{VarName{:s, Tuple{}}, Int64}, Vector{InverseGamma{Float64}}, Vector{VarName{:s, Tuple{}}}, Vector{Float64}, Vector{Set{DynamicPPL.Selector}}}, DynamicPPL.Metadata{Dict{VarName{:m, Tuple{}}, Int64}, Vector{Normal{Float64}}, Vector{VarName{:m, Tuple{}}}, Vector{Float64}, Vector{Set{DynamicPPL.Selector}}}}}, Float64}
+# )
+function tilde_assume(
+    rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
+)
+    return tilde_assume(rng, childcontext(ctx), sampler, right, left, vn, inds, vi)
 end
 
 function dot_tilde_assume(
@@ -68,7 +82,22 @@ function tilde_observe!(
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
-    logp = tilde(ctx.ctx, sampler, right, left, vi)
+    logp = tilde_observe(childcontext(ctx), sampler, right, left, vi)
+    acclogp!(vi, logp)
+
+    # track loglikelihood value
+    push!(ctx, vname, logp)
+
+    return left
+end
+
+function dot_tilde_observe!(
+    ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi
+)
+    # This is slightly unfortunate since it is not completely generic...
+    # Ideally we would call `tilde_observe` recursively but then we don't get the
+    # loglikelihood value.
+    logp = tilde_observe(childcontext(ctx), sampler, right, left, vi)
     acclogp!(vi, logp)
 
     # track loglikelihood value
@@ -155,7 +184,7 @@ function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
         # Update the values
-        setval_and_resample!(vi, chain, sample_idx, chain_idx)
+        setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
         model(vi, spl, ctx)
