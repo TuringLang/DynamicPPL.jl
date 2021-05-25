@@ -1,18 +1,17 @@
-function tilde(rng, ctx::PrefixContext, sampler, right, left, vn::VarName, inds, vi)
-    return tilde(rng, childcontext(ctx), sampler, right, left, prefix(ctx, vn), inds, vi)
+function tilde_assume(rng, ctx::PrefixContext, sampler, right, left, vn, inds, vi)
+    return tilde_assume(
+        rng, childcontext(ctx), sampler, right, left, prefix(ctx, vn), inds, vi
+    )
 end
 
-function tilde(ctx::PrefixContext, sampler, right, left, vi)
-    return tilde(childcontext(ctx), sampler, right, left, vi)
+function tilde_observe(ctx::PrefixContext, sampler, right, left, vi)
+    return tilde_observe(childcontext(ctx), sampler, right, left, vi)
 end
 
-function dot_tilde(ctx::PrefixContext, sampler, right, left, vi)
-    return dot_tilde(childcontext(ctx), sampler, right, left, vi)
-end
-function dot_tilde(
+function dot_tilde_assume(
     rng::Random.AbstractRNG, ctx::PrefixContext, sampler, right, left, vn, inds, vi
 )
-    return dot_tilde(
+    return dot_tilde_assume(
         rng,
         childcontext(ctx),
         sampler,
@@ -22,4 +21,8 @@ function dot_tilde(
         inds,
         vi,
     )
+end
+
+function dot_tilde_observe(ctx::PrefixContext, sampler, right, left, vi)
+    return dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
 end

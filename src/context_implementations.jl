@@ -23,48 +23,37 @@ function _getvalue(nt::NamedTuple, sym::Symbol, inds=())
 end
 
 # assume
-function tilde(
-    rng,
-    ctx::Union{SamplingContext,EvaluationContext},
-    sampler,
-    right,
-    left,
-    vn::VarName,
-    _,
-    vi,
-)
-    return tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
-end
-
 """
-    tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
+    tilde_assume!(rng, ctx, sampler, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
 Falls back to `tilde(rng, ctx, sampler, right, vn, inds, vi)`.
 """
-function tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
-    value, logp = tilde(rng, ctx, sampler, right, nothing, vn, inds, vi)
+function tilde_assume!(rng, ctx, sampler, right, vn, inds, vi)
+    value, logp = tilde_assume(rng, ctx, sampler, right, nothing, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
-function tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vn, vi)
-    return assume(rng, sampler, right, left, vn, vi)
+function tilde_assume(rng, ctx::SamplingContext, sampler, right, left, vn, inds, vi)
+    return assume(rng, sampler, right, left, vn, inds, vi)
 end
-function tilde_primitive(
-    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn, vi
+function tilde_assume(
+    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vn, inds, vi
 )
-    return assume(sampler, right, vi[vn], vn, vi)
+    return assume(sampler, right, vi[vn], vn, inds, vi)
 end
-function tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vn, vi)
-    return assume(sampler, right, left, vn, vi)
+function tilde_assume(rng, ctx::EvaluationContext, sampler, right, left, vn, inds, vi)
+    return assume(sampler, right, left, vn, inds, vi)
 end
 
 # observe
-function tilde(ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi)
-    return tilde_primitive(sampler, right, left, vi)
+function tilde_observe(
+    ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi
+)
+    return observe(sampler, right, left, vi)
 end
 
 """
@@ -73,11 +62,11 @@ end
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde(ctx, sampler, right, left, vi)` ignoring the information about variable name
+Falls back to `_tilde_observe(ctx, sampler, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
-    logp = tilde(ctx, sampler, right, left, vi)
+function tilde_observe!(ctx, sampler, right, left, vname, vinds, vi)
+    logp = tilde_observe(ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
@@ -88,15 +77,13 @@ end
 Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
 return the observed value.
 
-Falls back to `tilde(ctx, sampler, right, left, vi)`.
+Falls back to `_tilde_observe(ctx, sampler, right, left, vi)`.
 """
-function tilde_observe(ctx, sampler, right, left, vi)
-    logp = tilde(ctx, sampler, right, left, vi)
+function tilde_observe!(ctx, sampler, right, left, vi)
+    logp = tilde_observe(ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
-
-tilde_primitive(sampler, right, left, vi) = observe(sampler, right, left, vi)
 
 function assume(rng, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
@@ -111,7 +98,8 @@ function assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     left::Nothing,
-    vn::VarName,
+    vn,
+    inds,
     vi,
 )
     r = init(rng, dist, spl)
@@ -130,7 +118,8 @@ function assume(
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     left,
-    vn::VarName,
+    vn,
+    inds,
     vi,
 )
     r = left
@@ -144,9 +133,8 @@ function assume(
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
-
 function assume(
-    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, left, vn::VarName, vi
+    spl::Union{SampleFromPrior,SampleFromUniform}, dist::Distribution, left, vn, inds, vi
 )
     return left, Bijectors.logpdf_with_trans(dist, left, istrans(vi, vn))
 end
@@ -161,48 +149,41 @@ end
 # .~ functions
 
 # assume
-function dot_tilde(
-    rng, ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vn, _, vi
-)
-    return dot_tilde_primitive(rng, ctx, sampler, right, left, vn, vi)
-end
-
 """
-    dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
+    dot_tilde_assume!(rng, ctx, sampler, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
-Falls back to `dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
-    value, logp = dot_tilde(rng, ctx, sampler, right, nothing, vn, inds, vi)
+function dot_tilde_assume!(rng, ctx, sampler, right, left, vn, inds, vi)
+    value, logp = dot_tilde_assume(rng, ctx, sampler, right, nothing, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
-function dot_tilde_primitive(rng, ctx::SamplingContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(rng, ctx::SamplingContext, sampler, right, left, vns, inds, vi)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
-function dot_tilde_primitive(rng, ctx::EvaluationContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left, vns, inds, vi)
     return dot_assume(sampler, right, vns, left, vi)
 end
 
-function dot_tilde_primitive(
-    rng, ctx::EvaluationContext, sampler, right, left::Nothing, vns, vi
-)
+function dot_tilde_assume(rng, ctx::EvaluationContext, sampler, right, left::Nothing, vns, inds, vi)
     return dot_assume(sampler, right, vns, vi[vns], vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function dot_tilde_primitive(
+function dot_tilde_assume(
     rng,
     ctx,
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},
     vn::AbstractVector{<:VarName},
+    inds,
     vi,
 )
     return throw(DimensionMismatch(AMBIGUITY_MSG))
@@ -371,44 +352,40 @@ function set_val!(
 end
 
 # observe
-function dot_tilde(ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi)
-    return dot_tilde_primitive(sampler, right, left, vi)
-end
-
 """
-    dot_tilde_observe(ctx, sampler, right, left, vname, vinds, vi)
+    dot_tilde_observe!(ctx, sampler, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde(ctx, sampler, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe(ctx, sampler, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vn, inds, vi)
-    logp = dot_tilde(ctx, sampler, right, left, vi)
+function dot_tilde_observe!(ctx, sampler, right, left, vn, inds, vi)
+    logp = dot_tilde_observe(ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
 """
-    dot_tilde_observe(ctx, sampler, right, left, vi)
+    dot_tilde_observe!(ctx, sampler, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value.
 
-Falls back to `dot_tilde(ctx, sampler, right, left, vi)`.
+Falls back to `dot_tilde_observe(ctx, sampler, right, left, vi)`.
 """
-function dot_tilde_observe(ctx, sampler, right, left, vi)
-    logp = dot_tilde(ctx, sampler, right, left, vi)
+function dot_tilde_observe!(ctx, sampler, right, left, vi)
+    logp = dot_tilde_observe(ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
-function dot_tilde_primitive(sampler, right, left::AbstractArray, vi)
+function dot_tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, sampler, right, left, vi)
     return dot_observe(sampler, right, left, vi)
 end
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function dot_tilde_primitive(
+function dot_observe(
     sampler::AbstractSampler,
     right::Union{MultivariateDistribution,AbstractVector{<:MultivariateDistribution}},
     left::AbstractMatrix{>:AbstractVector},

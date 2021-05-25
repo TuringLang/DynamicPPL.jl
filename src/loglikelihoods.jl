@@ -52,11 +52,11 @@ function Base.push!(
     return ctx.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
+function tilde_assume!(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
+    return tilde_assume!(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-function dot_tilde_assume(
+function dot_tilde_assume!(
     rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
 )
     value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)

@@ -1,17 +1,17 @@
-function tilde(rng, ctx::PriorContext, sampler, right, left, vn::VarName, inds, vi)
+function tilde_assume(rng, ctx::PriorContext, sampler, right, left, vn, inds, vi)
     var = if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
         _getvalue(ctx.vars, getsym(vn), inds)
     else
         left
     end
-    return tilde_primitive(rng, childcontext(ctx), sampler, right, var, vn, vi)
+    return tilde_assume(rng, childcontext(ctx), sampler, right, var, vn, inds, vi)
 end
 
-function tilde(ctx::PriorContext, sampler, right, left, vi)
+function tilde_observe(ctx::PriorContext, sampler, right, left, vi)
     return 0
 end
 
-function dot_tilde(
+function dot_tilde_assume(
     rng,
     ctx::PriorContext,
     sampler,
@@ -26,9 +26,9 @@ function dot_tilde(
     else
         left
     end
-    return dot_tilde_primitive(rng, childcontext(ctx), sampler, right, var, vns, vi)
+    return dot_tilde_assume(rng, childcontext(ctx), sampler, right, var, vns, inds, vi)
 end
 
-function dot_tilde(ctx::PriorContext, sampler, right, left, vi)
+function dot_tilde_observe(ctx::PriorContext, sampler, right, left, vi)
     return 0
 end
