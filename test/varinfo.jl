@@ -238,10 +238,10 @@
 
         # https://github.com/TuringLang/DynamicPPL.jl/issues/250
         @model function demo5()
-            x ~ filldist(MvNormal([1, 100], 1), 2)
-        end;
+            return x ~ filldist(MvNormal([1, 100], 1), 2)
+        end
 
-        vi = VarInfo(demo());
+        vi = VarInfo(demo())
         vals_prev = vi.metadata.x.vals
         ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
         DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
