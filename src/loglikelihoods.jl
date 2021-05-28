@@ -54,16 +54,6 @@ function Base.push!(
     return ctx.loglikelihoods[vn] = logp
 end
 
-# tilde_assume(
-#     ::Random._GLOBAL_RNG,
-#     ::PointwiseLikelihoodContext{Dict{String, Vector{Float64}}, LikelihoodContext{Nothing, EvaluationContext}},
-#     ::SampleFromPrior,
-#     ::InverseGamma{Float64},
-#     ::Nothing,
-#     ::VarName{:s, Tuple{}},
-#     ::Tuple{},
-#     ::TypedVarInfo{NamedTuple{(:s, :m), Tuple{DynamicPPL.Metadata{Dict{VarName{:s, Tuple{}}, Int64}, Vector{InverseGamma{Float64}}, Vector{VarName{:s, Tuple{}}}, Vector{Float64}, Vector{Set{DynamicPPL.Selector}}}, DynamicPPL.Metadata{Dict{VarName{:m, Tuple{}}, Int64}, Vector{Normal{Float64}}, Vector{VarName{:m, Tuple{}}}, Vector{Float64}, Vector{Set{DynamicPPL.Selector}}}}}, Float64}
-# )
 function tilde_assume(
     rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
 )
@@ -97,7 +87,7 @@ function dot_tilde_observe!(
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
-    logp = tilde_observe(childcontext(ctx), sampler, right, left, vi)
+    logp = dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
     acclogp!(vi, logp)
 
     # track loglikelihood value
