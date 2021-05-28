@@ -1461,7 +1461,7 @@ function setval_and_resample!(vi::AbstractVarInfo, x)
     return setval_and_resample!(vi, values(x), keys(x))
 end
 function setval_and_resample!(vi::AbstractVarInfo, values, keys)
-    return _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
+    return _apply!(_setval_and_resample_kernel!, vi, values, keys)
 end
 function setval_and_resample!(
     vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
