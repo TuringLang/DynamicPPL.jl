@@ -12,6 +12,12 @@ function PointwiseLikelihoodContext(
     )
 end
 
+function rewrap(parent::PointwiseLikelihoodContext, leaf::PrimitiveContext)
+    return PointwiseLikelihoodContext(
+        parent.loglikelihoods, rewrap(childcontext(parent), leaf)
+    )
+end
+
 function Base.push!(
     ctx::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}}, vn::VarName, logp::Real
 )

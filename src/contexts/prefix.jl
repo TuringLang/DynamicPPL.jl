@@ -2,10 +2,7 @@ struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
     ctx::C
 
     function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-        return new{Prefix,typeof(ctx),typeof(ctx)}(ctx)
-    end
-    function PrefixContext{Prefix}(ctx::WrappedContext{LeafCtx}) where {Prefix,LeafCtx}
-        return new{Prefix,typeof(ctx),LeafCtx}(ctx)
+        return new{Prefix,typeof(ctx),unwrappedtype(ctx)}(ctx)
     end
 end
 PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(EvaluationContext())
