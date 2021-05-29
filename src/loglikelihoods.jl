@@ -60,21 +60,15 @@ function Base.push!(
     return ctx.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(
-    ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi
-)
+function tilde_assume(ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     return tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
-function dot_tilde_assume(
-    ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi
-)
+function dot_tilde_assume(ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     return dot_tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
-function tilde_observe!(
-    ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi
-)
+function tilde_observe!(ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi)
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
@@ -87,9 +81,7 @@ function tilde_observe!(
     return left
 end
 
-function dot_tilde_observe!(
-    ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi
-)
+function dot_tilde_observe!(ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi)
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
