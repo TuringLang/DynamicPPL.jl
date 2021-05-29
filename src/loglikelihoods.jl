@@ -61,24 +61,24 @@ function Base.push!(
 end
 
 function tilde_assume(
-    rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
+    ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi
 )
-    return tilde_assume(rng, childcontext(ctx), sampler, right, left, vn, inds, vi)
+    return tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
 function dot_tilde_assume(
-    rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
+    ctx::PointwiseLikelihoodContext, right, left, vn, inds, vi
 )
-    return dot_tilde_assume(rng, childcontext(ctx), sampler, right, left, vn, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
 function tilde_observe!(
-    ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi
+    ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi
 )
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
-    logp = tilde_observe(childcontext(ctx), sampler, right, left, vi)
+    logp = tilde_observe(childcontext(ctx), right, left, vi)
     acclogp!(vi, logp)
 
     # track loglikelihood value
@@ -88,12 +88,12 @@ function tilde_observe!(
 end
 
 function dot_tilde_observe!(
-    ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi
+    ctx::PointwiseLikelihoodContext, right, left, vname, vinds, vi
 )
     # This is slightly unfortunate since it is not completely generic...
     # Ideally we would call `tilde_observe` recursively but then we don't get the
     # loglikelihood value.
-    logp = dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
+    logp = dot_tilde_observe(childcontext(ctx), right, left, vi)
     acclogp!(vi, logp)
 
     # track loglikelihood value
@@ -173,7 +173,6 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
 """
 function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
     # Get the data by executing the model once
-    spl = SampleFromPrior()
     vi = VarInfo(model)
     ctx = PointwiseLikelihoodContext(Dict{T,Vector{Float64}}())
 
@@ -183,7 +182,7 @@ function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) 
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, spl, ctx)
+        model(vi, ctx)
     end
 
     niters = size(chain, 1)
@@ -197,6 +196,6 @@ end
 
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
     ctx = PointwiseLikelihoodContext(Dict{VarName,Float64}())
-    model(varinfo, SampleFromPrior(), ctx)
+    model(varinfo, ctx)
     return ctx.loglikelihoods
 end

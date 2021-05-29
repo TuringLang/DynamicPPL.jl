@@ -1,16 +1,15 @@
-function tilde_assume(rng, ctx::MiniBatchContext, sampler, right, left, vn, inds, vi)
-    return tilde_assume(rng, childcontext(ctx), sampler, right, left, vn, inds, vi)
+function tilde_assume(ctx::MiniBatchContext, right, left, vn, inds, vi)
+    return tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
-function tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * tilde_observe(childcontext(ctx), sampler, right, left, vi)
+function tilde_observe(ctx::MiniBatchContext, right, left, vi)
+    return ctx.loglike_scalar * tilde_observe(childcontext(ctx), right, left, vi)
 end
 
-function dot_tilde_assume(rng, ctx::MiniBatchContext, sampler, right, left, vn, inds, vi)
-    return dot_tilde_assume(rng, childcontext(ctx), sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(ctx::MiniBatchContext, right, left, vn, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
 end
 
-function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar *
-           dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
+function dot_tilde_observe(ctx::MiniBatchContext, right, left, vi)
+    return ctx.loglike_scalar * dot_tilde_observe(childcontext(ctx), right, left, vi)
 end

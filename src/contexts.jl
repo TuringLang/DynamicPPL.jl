@@ -5,8 +5,17 @@ The `DefaultContext` is used by default to compute log the joint probability of 
 and parameters when running the model.
 """
 abstract type PrimitiveContext <: AbstractContext end
-struct EvaluationContext <: PrimitiveContext end
-struct SamplingContext <: PrimitiveContext end
+struct EvaluationContext{S<:AbstractSampler} <: PrimitiveContext
+    # TODO: do we even need the sampler these days?
+    sampler::S
+end
+EvaluationContext() = EvaluationContext(SampleFromPrior())
+
+struct SamplingContext{R<:Random.AbstractRNG,S<:AbstractSampler} <: PrimitiveContext
+    rng::R
+    sampler::S
+end
+SamplingContext(sampler=SampleFromPrior()) = SamplingContext(Random.GLOBAL_RNG, sampler)
 
 ########################
 ### Wrapped contexts ###

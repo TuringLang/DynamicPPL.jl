@@ -286,11 +286,7 @@ function generate_tilde(left, right)
     if !(left isa Symbol || left isa Expr)
         return quote
             $(DynamicPPL.tilde_observe!)(
-                __context__,
-                __sampler__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $left,
-                __varinfo__,
+                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
     end
@@ -304,9 +300,7 @@ function generate_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $left = $(DynamicPPL.tilde_assume!)(
-                __rng__,
                 __context__,
-                __sampler__,
                 $(DynamicPPL.unwrap_right_vn)(
                     $(DynamicPPL.check_tilde_rhs)($right), $vn
                 )...,
@@ -316,7 +310,6 @@ function generate_tilde(left, right)
         else
             $(DynamicPPL.tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 $vn,
@@ -337,11 +330,7 @@ function generate_dot_tilde(left, right)
     if !(left isa Symbol || left isa Expr)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
-                __context__,
-                __sampler__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $left,
-                __varinfo__,
+                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
     end
@@ -355,9 +344,7 @@ function generate_dot_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $left .= $(DynamicPPL.dot_tilde_assume!)(
-                __rng__,
                 __context__,
-                __sampler__,
                 $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
                 )...,
@@ -367,7 +354,6 @@ function generate_dot_tilde(left, right)
         else
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 $vn,
@@ -398,10 +384,8 @@ function build_output(modelinfo, linenumbernode)
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
         [
-            :(__rng__::$(Random.AbstractRNG)),
             :(__model__::$(DynamicPPL.Model)),
             :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
-            :(__sampler__::$(DynamicPPL.AbstractSampler)),
             :(__context__::$(DynamicPPL.AbstractContext)),
         ],
         modelinfo[:allargs_exprs],
@@ -411,7 +395,15 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    evaluatordef[:body] = quote
+        # in case someone accessed these
+        if __context__ isa $(DynamicPPL.SamplingContext)
+            __rng__ = __context__.rng
+            __sampler__ = __context__.sampler
+        end
+
+        $(modelinfo[:body])
+    end
 
     ## Build the model function.
 
