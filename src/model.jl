@@ -94,9 +94,9 @@ end
 (model::Model)(context::AbstractContext) = model(VarInfo(), context)
 function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
-        return evaluate_threadunsafe(model, varinfo, sampler, context)
+        return evaluate_threadunsafe(model, varinfo, context)
     else
-        return evaluate_threadsafe(model, varinfo, sampler, context)
+        return evaluate_threadsafe(model, varinfo, context)
     end
 end
 
@@ -151,7 +151,7 @@ end
 """
     _evaluate(model::Model, varinfo, context)
 
-Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
+Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
 @generated function _evaluate(
     model::Model{_F,argnames}, varinfo, context
