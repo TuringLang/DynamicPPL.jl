@@ -1,4 +1,40 @@
 """
+    unwrap_childcontext(context::AbstractContext)
+
+Return a tuple of the child context of a `context`, or `nothing` if the context does
+not wrap any other context, and a function `f(c::AbstractContext)` that constructs
+an instance of `context` in which the child context is replaced with `c`.
+
+Falls back to `(nothing, _ -> context)`.
+"""
+function unwrap_childcontext(context::AbstractContext)
+    reconstruct_context(@nospecialize(x)) = context
+    return nothing, reconstruct_context
+end
+
+"""
+    SamplingContext(rng, sampler, context)
+
+Create a context that allows you to sample parameters with the `sampler` when running the model.
+The `context` determines how the returned log density is computed when running the model.
+
+See also: [`JointContext`](@ref), [`LoglikelihoodContext`](@ref), [`PriorContext`](@ref)
+"""
+struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
+    rng::R
+    sampler::S
+    context::C
+end
+
+function unwrap_childcontext(context::SamplingContext)
+    child = context.context
+    function reconstruct_samplingcontext(c::AbstractContext)
+        return SamplingContext(context.rng, context.sampler, c)
+    end
+    return child, reconstruct_samplingcontext
+end
+
+"""
     struct DefaultContext <: AbstractContext end
 
 The `DefaultContext` is used by default to compute log the joint probability of the data 
@@ -53,6 +89,25 @@ function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
     return MiniBatchContext(ctx, npoints / batch_size)
 end
 
+function unwrap_childcontext(context::MiniBatchContext)
+    child = context.context
+    function reconstruct_minibatchcontext(c::AbstractContext)
+        return MiniBatchContext(c, context.loglike_scalar)
+    end
+    return child, reconstruct_minibatchcontext
+end
+
+"""
+    PrefixContext{Prefix}(context)
+
+Create a context that allows you to use the wrapped `context` when running the model and
+adds the `Prefix` to all parameters.
+
+This context is useful in nested models to ensure that the names of the parameters are
+unique.
+
+See also: [`@submodel`](@ref)
+"""
 struct PrefixContext{Prefix,C} <: AbstractContext
     ctx::C
 end
@@ -80,4 +135,12 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
+end
+
+function unwrap_childcontext(context::PrefixContext{P}) where {P}
+    child = context.context
+    function reconstruct_prefixcontext(c::AbstractContext)
+        return PrefixContext{P}(c)
+    end
+    return child, reconstruct_prefixcontext
 end
