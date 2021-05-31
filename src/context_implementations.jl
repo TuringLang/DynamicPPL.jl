@@ -97,7 +97,7 @@ return the observed value.
 Falls back to `tilde(ctx, sampler, right, left, vi)`.
 """
 function tilde_observe!(ctx, sampler, right, left, vi)
-    logp = tilde(ctx, sampler, right, left, vi)
+    logp = tilde_observe(ctx, sampler, right, left, vi)
     acclogp!(vi, logp)
     return left
 end

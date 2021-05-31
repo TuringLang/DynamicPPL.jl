@@ -62,7 +62,7 @@ unwrap_right_vn(right, vn) = right, vn
 unwrap_right_vn(right::NamedDist, vn) = unwrap_right_vn(right.dist, right.name)
 
 """
-    unwrap_right_left_vns(context, right, left, vns)
+    unwrap_right_left_vns(right, left, vns)
 Return the unwrapped distributions on the right-hand side and values and variable names on the
 left-hand side of a `.~` expression such as `x .~ Normal()`.
 This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
@@ -281,7 +281,7 @@ function generate_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if !(left isa Symbol || left isa Expr)
         return quote
-            $(DynamicPPL.tilde_observe)(
+            $(DynamicPPL.tilde_observe!)(
                 __context__,
                 __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -299,7 +299,7 @@ function generate_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left = $(DynamicPPL.tilde_assume)(
+            $left = $(DynamicPPL.tilde_assume!)(
                 __rng__,
                 __context__,
                 __sampler__,
@@ -310,7 +310,7 @@ function generate_tilde(left, right)
                 __varinfo__,
             )
         else
-            $(DynamicPPL.tilde_observe)(
+            $(DynamicPPL.tilde_observe!)(
                 __context__,
                 __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -332,7 +332,7 @@ function generate_dot_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if !(left isa Symbol || left isa Expr)
         return quote
-            $(DynamicPPL.dot_tilde_observe)(
+            $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -350,7 +350,7 @@ function generate_dot_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left .= $(DynamicPPL.dot_tilde_assume)(
+            $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __rng__,
                 __context__,
                 __sampler__,
@@ -361,7 +361,7 @@ function generate_dot_tilde(left, right)
                 __varinfo__,
             )
         else
-            $(DynamicPPL.dot_tilde_observe)(
+            $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
