@@ -40,6 +40,5 @@ Possibly existing indices of `varname` are neglected.
     return s in missings
 end
 
-
 # HACK: Type-piracy. Is this really the way to go?
 AbstractPPL.getsym(::AbstractVector{<:VarName{sym}}) where {sym} = sym
