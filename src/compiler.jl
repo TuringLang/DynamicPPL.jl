@@ -52,6 +52,45 @@ end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 
+"""
+    unwrap_right_vn(right, vn)
+Return the unwrapped distribution on the right-hand side and variable name on the left-hand
+side of a `~` expression such as `x ~ Normal()`.
+This is used mainly to unwrap `NamedDist` distributions.
+"""
+unwrap_right_vn(right, vn) = right, vn
+unwrap_right_vn(right::NamedDist, vn) = unwrap_right_vn(right.dist, right.name)
+
+"""
+    unwrap_right_left_vns(context, right, left, vns)
+Return the unwrapped distributions on the right-hand side and values and variable names on the
+left-hand side of a `.~` expression such as `x .~ Normal()`.
+This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
+variables.
+"""
+unwrap_right_left_vns(right, left, vns) = right, left, vns
+function unwrap_right_left_vns(right::NamedDist, left, vns)
+    return unwrap_right_left_vns(right.dist, left, right.name)
+end
+function unwrap_right_left_vns(
+    right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
+)
+    vns = map(axes(left, 2)) do i
+        return VarName(vn, (vn.indexing..., Tuple(i)))
+    end
+    return unwrap_right_left_vns(right, left, vns)
+end
+function unwrap_right_left_vns(
+    right::Union{Distribution,AbstractArray{<:Distribution}},
+    left::AbstractArray,
+    vn::VarName,
+)
+    vns = map(CartesianIndices(left)) do i
+        return VarName(vn, (vn.indexing..., Tuple(i)))
+    end
+    return unwrap_right_left_vns(right, left, vns)
+end
+
 #################
 # Main Compiler #
 #################
@@ -264,8 +303,9 @@ function generate_tilde(left, right)
                 __rng__,
                 __context__,
                 __sampler__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $vn,
+                $(DynamicPPL.unwrap_right_vn)(
+                    $(DynamicPPL.check_tilde_rhs)($right), $vn
+                )...,
                 $inds,
                 __varinfo__,
             )
@@ -314,9 +354,9 @@ function generate_dot_tilde(left, right)
                 __rng__,
                 __context__,
                 __sampler__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $left,
-                $vn,
+                $(DynamicPPL.unwrap_right_left_vns)(
+                    $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
+                )...,
                 $inds,
                 __varinfo__,
             )
