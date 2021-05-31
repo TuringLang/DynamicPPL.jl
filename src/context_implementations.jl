@@ -45,7 +45,9 @@ end
 
 # Leaf contexts
 tilde_assume(::DefaultContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
-function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, inds, vi)
+function tilde_assume(
+    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, inds, vi
+)
     return assume(rng, sampler, right, vn, inds, vi)
 end
 
@@ -184,14 +186,13 @@ function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.ctx, right, left, vi)
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
-    return context.loglike_scalar * tilde_observe(context.ctx, right, left, vname, vinds, vi)
+    return context.loglike_scalar *
+           tilde_observe(context.ctx, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
 function tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
-    return tilde_observe(
-        context.ctx, right, left, prefix(context, vname), vinds, vi
-    )
+    return tilde_observe(context.ctx, right, left, prefix(context, vname), vinds, vi)
 end
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.ctx, right, left, vi)
@@ -296,7 +297,9 @@ function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
     return if child_of_c === nothing
         dot_tilde_assume(context.rng, c, context.sampler, right, left, vn, inds, vi)
     else
-        dot_tilde_assume(reconstruct_c(reconstruct_context(child_of_c)), right, left, vn, inds, vi)
+        dot_tilde_assume(
+            reconstruct_c(reconstruct_context(child_of_c)), right, left, vn, inds, vi
+        )
     end
 end
 
@@ -590,14 +593,17 @@ end
 # Leaf contexts
 dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(right, left, vi)
 dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-dot_tilde_observe(ctx::LikelihoodContext, sampler, right, left, vi) = dot_observe(right, left, vi)
+function dot_tilde_observe(ctx::LikelihoodContext, sampler, right, left, vi)
+    return dot_observe(right, left, vi)
+end
 
 # `MiniBatchContext`
 function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
     return ctx.loglike_scalar * dot_tilde_observe(ctx.ctx, sampler, right, left, vi)
 end
 function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vname, vinds, vi)
-    return ctx.loglike_scalar * dot_tilde_observe(ctx.ctx, sampler, right, left, vname, vinds, vi)
+    return ctx.loglike_scalar *
+           dot_tilde_observe(ctx.ctx, sampler, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
@@ -656,4 +662,3 @@ function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray,
     @debug "value = $value"
     return sum(Distributions.loglikelihood.(dists, value))
 end
-
