@@ -88,7 +88,7 @@ function (model::Model)(
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
-    return model(SamplingContext(rng, sampler, context), varinfo)
+    return model(varinfo, SamplingContext(rng, sampler, context))
 end
 
 (model::Model)(context::AbstractContext) = model(VarInfo(), context)
@@ -115,7 +115,7 @@ function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
 end
 
 """
-    evaluate_threadunsafe(model, varinfo, sampler, context)
+    evaluate_threadunsafe(model, varinfo, context)
 
 Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
 
@@ -124,13 +124,13 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe`](@ref)
 """
-function evaluate_threadunsafe(model, varinfo, sampler, context)
+function evaluate_threadunsafe(model, varinfo, context)
     resetlogp!(varinfo)
-    return _evaluate(model, varinfo, sampler, context)
+    return _evaluate(model, varinfo, context)
 end
 
 """
-    evaluate_threadsafe(model, varinfo, sampler, context)
+    evaluate_threadsafe(model, varinfo, context)
 
 Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
 
@@ -140,24 +140,24 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadunsafe`](@ref)
 """
-function evaluate_threadsafe(model, varinfo, sampler, context)
+function evaluate_threadsafe(model, varinfo, context)
     resetlogp!(varinfo)
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = _evaluate(model, wrapper, sampler, context)
+    result = _evaluate(model, wrapper, context)
     setlogp!(varinfo, getlogp(wrapper))
     return result
 end
 
 """
-    _evaluate(model::Model, varinfo, sampler, context)
+    _evaluate(model::Model, varinfo, context)
 
 Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
 """
 @generated function _evaluate(
-    model::Model{_F,argnames}, varinfo, sampler, context
+    model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
     unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(model, varinfo, sampler, context, $(unwrap_args...)))
+    return :(model.f(model, varinfo, context, $(unwrap_args...)))
 end
 
 """
