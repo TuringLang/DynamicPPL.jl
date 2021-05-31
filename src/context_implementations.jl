@@ -145,7 +145,7 @@ end
 
 # assume
 function dot_tilde_assume(rng, ctx::DefaultContext, sampler, right, left, vns, _, vi)
-    return dot_assume(rng, sampler, right, left, vns, vi)
+    return dot_assume(rng, sampler, right, vns, left, vi)
 end
 function dot_tilde_assume(
     rng,
@@ -162,7 +162,7 @@ function dot_tilde_assume(
         set_val!(vi, vns, right, var)
         settrans!.(Ref(vi), false, vns)
     end
-    return dot_assume(rng, sampler, NoDist.(right), left, vns, vi)
+    return dot_assume(rng, sampler, NoDist.(right), vns, left, vi)
 end
 function dot_tilde_assume(rng, ctx::MiniBatchContext, sampler, right, left, vns, inds, vi)
     return dot_tilde_assume(rng, ctx.ctx, sampler, right, left, vns, inds, vi)
@@ -182,7 +182,7 @@ function dot_tilde_assume(
         set_val!(vi, vns, right, var)
         settrans!.(Ref(vi), false, vns)
     end
-    return dot_assume(rng, sampler, right, left, vns, vi)
+    return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
 """
