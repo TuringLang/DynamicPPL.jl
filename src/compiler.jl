@@ -394,10 +394,8 @@ function build_output(modelinfo, linenumbernode)
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
         [
-            :(__rng__::$(Random.AbstractRNG)),
             :(__model__::$(DynamicPPL.Model)),
             :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
-            :(__sampler__::$(DynamicPPL.AbstractSampler)),
             :(__context__::$(DynamicPPL.AbstractContext)),
         ],
         modelinfo[:allargs_exprs],
@@ -407,7 +405,15 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    evaluatordef[:body] = quote
+        # in case someone accessed these
+        if __context__ isa $(DynamicPPL.SamplingContext)
+            __rng__ = __context__.rng
+            __sampler__ = __context__.sampler
+        end
+
+        $(modelinfo[:body])
+    end
 
     ## Build the model function.
 
