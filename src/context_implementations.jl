@@ -147,7 +147,16 @@ end
 function dot_tilde_assume(rng, ctx::DefaultContext, sampler, right, left, vns, _, vi)
     return dot_assume(rng, sampler, right, left, vns, vi)
 end
-function dot_tilde_assume(rng, ctx::LikelihoodContext, sampler, right, left, vns::AbstractArray{<:VarName{sym}}, inds, vi) where {sym}
+function dot_tilde_assume(
+    rng,
+    ctx::LikelihoodContext,
+    sampler,
+    right,
+    left,
+    vns::AbstractArray{<:VarName{sym}},
+    inds,
+    vi,
+) where {sym}
     if ctx.vars isa NamedTuple && haskey(ctx.vars, sym)
         var = _getindex(getfield(ctx.vars, sym), inds)
         set_val!(vi, vns, right, var)
@@ -158,7 +167,16 @@ end
 function dot_tilde_assume(rng, ctx::MiniBatchContext, sampler, right, left, vns, inds, vi)
     return dot_tilde_assume(rng, ctx.ctx, sampler, right, left, vns, inds, vi)
 end
-function dot_tilde_assume(rng, ctx::PriorContext, sampler, right, left, vns::AbstractArray{<:VarName{sym}}, inds, vi) where {sym}
+function dot_tilde_assume(
+    rng,
+    ctx::PriorContext,
+    sampler,
+    right,
+    left,
+    vns::AbstractArray{<:VarName{sym}},
+    inds,
+    vi,
+) where {sym}
     if ctx.vars !== nothing
         var = _getindex(getfield(ctx.vars, sym), inds)
         set_val!(vi, vns, right, var)
