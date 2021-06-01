@@ -27,9 +27,9 @@ with a sampler.
 
 Falls back to
 ```julia
-tilde_assume(context.rng, context.ctx, context.sampler, right, vn, inds, vi)
+tilde_assume(context.rng, context.context, context.sampler, right, vn, inds, vi)
 ```
-if the context `context.ctx` does not call any other context, as indicated by
+if the context `context.context` does not call any other context, as indicated by
 [`unwrap_childcontext`](@ref). Otherwise, calls `tilde_assume(c, right, vn, inds, vi)`
 where `c` is a context in which the order of the sampling context and its child are swapped.
 """
@@ -112,11 +112,11 @@ function tilde_assume(
 end
 
 function tilde_assume(context::MiniBatchContext, right, vn, inds, vi)
-    return tilde_assume(context.ctx, right, vn, inds, vi)
+    return tilde_assume(context.context, right, vn, inds, vi)
 end
 
 function tilde_assume(context::PrefixContext, right, vn, inds, vi)
-    return tilde_assume(context.ctx, right, prefix(context, vn), inds, vi)
+    return tilde_assume(context.context, right, prefix(context, vn), inds, vi)
 end
 
 """
@@ -138,8 +138,8 @@ end
     tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
 
 Handle observed variables with a `context` associated with a sampler.
-Falls back to `tilde_observe(context.ctx, right, left, vname, vinds, vi)` ignoring
-the information about the sampler if the context `context.ctx` does not call any other
+Falls back to `tilde_observe(context.context, right, left, vname, vinds, vi)` ignoring
+the information about the sampler if the context `context.context` does not call any other
 context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
 `tilde_observe(c, right, left, vname, vinds, vi)` where `c` is a context in
 which the order of the sampling context and its child are swapped.
@@ -159,8 +159,8 @@ end
     tilde_observe(context::SamplingContext, right, left, vi)
 
 Handle observed constants with a `context` associated with a sampler.
-Falls back to `tilde_observe(context.ctx, right, left, vi)` ignoring
-the information about the sampler if the context `context.ctx` does not call any other
+Falls back to `tilde_observe(context.context, right, left, vi)` ignoring
+the information about the sampler if the context `context.context` does not call any other
 context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
 `tilde_observe(c, right, left, vi)` where `c` is a context in
 which the order of the sampling context and its child are swapped.
@@ -183,19 +183,19 @@ tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.ctx, right, left, vi)
+    return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
     return context.loglike_scalar *
-           tilde_observe(context.ctx, right, left, vname, vinds, vi)
+           tilde_observe(context.context, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
 function tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
-    return tilde_observe(context.ctx, right, left, prefix(context, vname), vinds, vi)
+    return tilde_observe(context.context, right, left, prefix(context, vname), vinds, vi)
 end
 function tilde_observe(context::PrefixContext, right, left, vi)
-    return tilde_observe(context.ctx, right, left, vi)
+    return tilde_observe(context.context, right, left, vi)
 end
 
 """
@@ -283,9 +283,9 @@ associated with a sampler.
 
 Falls back to
 ```julia
-dot_tilde_assume(context.rng, context.ctx, context.sampler, right, left, vn, inds, vi)
+dot_tilde_assume(context.rng, context.context, context.sampler, right, left, vn, inds, vi)
 ```
-if the context `context.ctx` does not call any other context, as indicated by
+if the context `context.context` does not call any other context, as indicated by
 [`unwrap_childcontext`](@ref). Otherwise, calls `dot_tilde_assume(c, right, left, vn, inds, vi)`
 where `c` is a context in which the order of the sampling context and its child are swapped.
 """
@@ -396,12 +396,12 @@ end
 
 # `MiniBatchContext`
 function dot_tilde_assume(context::MiniBatchContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.ctx, right, left, vn, inds, vi)
+    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.ctx, right, prefix.(Ref(context), vn), inds, vi)
+    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), inds, vi)
 end
 
 """
@@ -574,10 +574,10 @@ end
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value for a context associated with a sampler.
 
-Falls back to `dot_tilde_observe(context.ctx, right, left, vi) ignoring the sampler.
+Falls back to `dot_tilde_observe(context.context, right, left, vi) ignoring the sampler.
 """
 function dot_tilde_observe(context::SamplingContext, right, left, vi)
-    return dot_tilde_observe(context.ctx, right, left, vname, vinds, vi)
+    return dot_tilde_observe(context.context, right, left, vname, vinds, vi)
 end
 
 # Leaf contexts
@@ -589,21 +589,24 @@ end
 
 # `MiniBatchContext`
 function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar * dot_tilde_observe(context.ctx, sampler, right, left, vi)
+    return context.loglike_scalar *
+           dot_tilde_observe(context.context, sampler, right, left, vi)
 end
 function dot_tilde_observe(
     context::MiniBatchContext, sampler, right, left, vname, vinds, vi
 )
     return context.loglike_scalar *
-           dot_tilde_observe(context.ctx, sampler, right, left, vname, vinds, vi)
+           dot_tilde_observe(context.context, sampler, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
 function dot_tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
-    return dot_tilde_observe(context.ctx, right, left, prefix(context, vname), vinds, vi)
+    return dot_tilde_observe(
+        context.context, right, left, prefix(context, vname), vinds, vi
+    )
 end
 function dot_tilde_observe(context::PrefixContext, right, left, vi)
-    return dot_tilde_observe(context.ctx, right, left, vi)
+    return dot_tilde_observe(context.context, right, left, vi)
 end
 
 """
