@@ -157,7 +157,10 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
     model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
     unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(model, varinfo, context, $(unwrap_args...)))
+    return quote
+        sampler = context isa $(SamplingContext) ? context.sampler : SampleFromPrior()
+        model.f(model, varinfo, context, $(unwrap_args...))
+    end
 end
 
 """
