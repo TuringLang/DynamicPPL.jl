@@ -120,15 +120,15 @@ function tilde_assume(context::PrefixContext, right, vn, inds, vi)
 end
 
 """
-    tilde_assume!(ctx, right, vn, inds, vi)
+    tilde_assume!(context, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
-Falls back to `tilde_assume!(ctx, right, vn, inds, vi)`.
+Falls back to `tilde_assume!(context, right, vn, inds, vi)`.
 """
-function tilde_assume!(ctx, right, vn, inds, vi)
-    value, logp = tilde_assume(ctx, right, vn, inds, vi)
+function tilde_assume!(context, right, vn, inds, vi)
+    value, logp = tilde_assume(context, right, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -199,30 +199,30 @@ function tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    tilde_observe!(ctx, right, left, vname, vinds, vi)
+    tilde_observe!(context, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde_observe(ctx, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(ctx, right, left, vname, vinds, vi)
-    logp = tilde_observe(ctx, right, left, vi)
+function tilde_observe!(context, right, left, vname, vinds, vi)
+    logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
 """
-    tilde_observe(ctx, right, left, vi)
+    tilde_observe(context, right, left, vi)
 
 Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
 return the observed value.
 
-Falls back to `tilde(ctx, right, left, vi)`.
+Falls back to `tilde(context, right, left, vi)`.
 """
-function tilde_observe!(ctx, right, left, vi)
-    logp = tilde_observe(ctx, right, left, vi)
+function tilde_observe!(context, right, left, vi)
+    logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
@@ -302,11 +302,11 @@ function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
 end
 
 # `DefaultContext`
-function dot_tilde_assume(ctx::DefaultContext, sampler, right, left, vns, inds, vi)
+function dot_tilde_assume(::DefaultContext, sampler, right, left, vns, inds, vi)
     return dot_assume(right, vns, left, vi)
 end
 
-function dot_tilde_assume(rng, ctx::DefaultContext, sampler, right, left, vns, inds, vi)
+function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, inds, vi)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
@@ -405,15 +405,15 @@ function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
 end
 
 """
-    dot_tilde_assume!(ctx, right, left, vn, inds, vi)
+    dot_tilde_assume!(context, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
-Falls back to `dot_tilde_assume(ctx, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume!(ctx, right, left, vn, inds, vi)
-    value, logp = dot_tilde_assume(ctx, right, left, vn, inds, vi)
+function dot_tilde_assume!(context, right, left, vn, inds, vi)
+    value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -583,17 +583,17 @@ end
 # Leaf contexts
 dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(right, left, vi)
 dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-function dot_tilde_observe(ctx::LikelihoodContext, sampler, right, left, vi)
+function dot_tilde_observe(context::LikelihoodContext, sampler, right, left, vi)
     return dot_observe(right, left, vi)
 end
 
 # `MiniBatchContext`
-function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar * dot_tilde_observe(ctx.ctx, sampler, right, left, vi)
+function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
+    return context.loglike_scalar * dot_tilde_observe(context.ctx, sampler, right, left, vi)
 end
-function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vname, vinds, vi)
-    return ctx.loglike_scalar *
-           dot_tilde_observe(ctx.ctx, sampler, right, left, vname, vinds, vi)
+function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
+    return context.loglike_scalar *
+           dot_tilde_observe(context.ctx, sampler, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
@@ -605,30 +605,30 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(ctx, right, left, vname, vinds, vi)
+    dot_tilde_observe!(context, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde_observe(ctx, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(ctx, right, left, vn, inds, vi)
-    logp = dot_tilde_observe(ctx, right, left, vi)
+function dot_tilde_observe!(context, right, left, vn, inds, vi)
+    logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
 """
-    dot_tilde_observe!(ctx, right, left, vi)
+    dot_tilde_observe!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value.
 
-Falls back to `dot_tilde_observe(ctx, right, left, vi)`.
+Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
-function dot_tilde_observe!(ctx, right, left, vi)
-    logp = dot_tilde_observe(ctx, right, left, vi)
+function dot_tilde_observe!(context, right, left, vi)
+    logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
