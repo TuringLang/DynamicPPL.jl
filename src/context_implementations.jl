@@ -163,14 +163,7 @@ end
 function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
 end
-function dot_tilde_assume(
-    ctx::LikelihoodContext{<:NamedTuple},
-    right,
-    left,
-    vn,
-    inds,
-    vi,
-)
+function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vn, inds, vi)
     return if haskey(ctx.vars, getsym(vn))
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
