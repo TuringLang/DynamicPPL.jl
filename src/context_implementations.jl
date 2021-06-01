@@ -191,9 +191,7 @@ function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vn,
             LikelihoodContext(childcontext(ctx)), _right, _left, _vns, inds, vi
         )
     else
-        dot_tilde_assume(
-            LikelihoodContext(childcontext(ctx)), right, left, vn, inds, vi
-        )
+        dot_tilde_assume(LikelihoodContext(childcontext(ctx)), right, left, vn, inds, vi)
     end
 end
 
@@ -204,13 +202,9 @@ function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vn, inds
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(
-            PriorContext(childcontext(ctx)), _right, _left, _vns, inds, vi
-        )
+        dot_tilde_assume(PriorContext(childcontext(ctx)), _right, _left, _vns, inds, vi)
     else
-        dot_tilde_assume(
-            PriorContext(childcontext(ctx)), right, left, vn, inds, vi
-        )
+        dot_tilde_assume(PriorContext(childcontext(ctx)), right, left, vn, inds, vi)
     end
 end
 
