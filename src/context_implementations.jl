@@ -19,100 +19,100 @@ _getindex(x, inds::Tuple{}) = x
 
 # assume
 # Leaf contexts
-function tilde_assume(ctx::SamplingContext, right, vn, inds, vi)
-    return assume(ctx.rng, ctx.sampler, right, vn, inds, vi)
+function tilde_assume(context::SamplingContext, right, vn, inds, vi)
+    return assume(context.rng, context.sampler, right, vn, inds, vi)
 end
-tilde_assume(ctx::EvaluationContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
+tilde_assume(context::EvaluationContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
 
 # Default for `WrappedContext`
-function tilde_assume(ctx::WrappedContext, right, left, inds, vi)
-    return tilde_assume(childcontext(ctx), right, left, inds, vi)
+function tilde_assume(context::WrappedContext, right, left, inds, vi)
+    return tilde_assume(childcontext(context), right, left, inds, vi)
 end
 
 # `PriorContext`
-function tilde_assume(ctx::PriorContext{<:NamedTuple}, right, vn, inds, vi)
-    if haskey(ctx.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
+function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
+    if haskey(context.vars, getsym(vn))
+        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(PriorContext(childcontext(ctx)), right, vn, inds, vi)
+    return tilde_assume(PriorContext(childcontext(context)), right, vn, inds, vi)
 end
 
 # `LikelihoodContext`
-function tilde_assume(ctx::LikelihoodContext, right, vn, inds, vi)
-    return tilde_assume(childcontext(ctx), NoDist(right), vn, inds, vi)
+function tilde_assume(context::LikelihoodContext, right, vn, inds, vi)
+    return tilde_assume(childcontext(context), NoDist(right), vn, inds, vi)
 end
-function tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
-    if haskey(ctx.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
+function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
+    if haskey(context.vars, getsym(vn))
+        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(LikelihoodContext(childcontext(ctx)), right, vn, inds, vi)
+    return tilde_assume(LikelihoodContext(childcontext(context)), right, vn, inds, vi)
 end
 
 # `PrefixContext`
-function tilde_assume(ctx::PrefixContext, right, vn, inds, vi)
-    return tilde_assume(childcontext(ctx), right, prefix(ctx, vn), inds, vi)
+function tilde_assume(context::PrefixContext, right, vn, inds, vi)
+    return tilde_assume(childcontext(context), right, prefix(context, vn), inds, vi)
 end
 
 """
-    tilde_assume!(ctx, right, vn, inds, vi)
+    tilde_assume!(context, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
-Falls back to `tilde_assume!(ctx, right, vn, inds, vi)`.
+Falls back to `tilde_assume!(context, right, vn, inds, vi)`.
 """
-function tilde_assume!(ctx, right, vn, inds, vi)
-    value, logp = tilde_assume(ctx, right, vn, inds, vi)
+function tilde_assume!(context, right, vn, inds, vi)
+    value, logp = tilde_assume(context, right, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
 
 # observe
 # Leaf contexts
-function tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, right, left, vi)
+function tilde_observe(context::Union{SamplingContext,EvaluationContext}, right, left, vi)
     return observe(right, left, vi)
 end
 
 # Default for `WrappedContext`
-function tilde_observe(ctx::WrappedContext, right, left, vi)
-    return tilde_observe(childcontext(ctx), right, left, vi)
+function tilde_observe(context::WrappedContext, right, left, vi)
+    return tilde_observe(childcontext(context), right, left, vi)
 end
 
 # `PriorContext`
-tilde_observe(ctx::PriorContext, right, left, vi) = 0
+tilde_observe(context::PriorContext, right, left, vi) = 0
 
 # `MiniBatchContext`
-function tilde_observe(ctx::MiniBatchContext, right, left, vi)
-    return ctx.loglike_scalar * tilde_observe(childcontext(ctx), right, left, vi)
+function tilde_observe(context::MiniBatchContext, right, left, vi)
+    return context.loglike_scalar * tilde_observe(childcontext(context), right, left, vi)
 end
 
 """
-    tilde_observe!(ctx, right, left, vname, vinds, vi)
+    tilde_observe!(context, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde_observe(ctx, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(ctx, right, left, vname, vinds, vi)
-    logp = tilde_observe(ctx, right, left, vi)
+function tilde_observe!(context, right, left, vname, vinds, vi)
+    logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
 """
-    tilde_observe(ctx, right, left, vi)
+    tilde_observe(context, right, left, vi)
 
 Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
 return the observed value.
 
-Falls back to `tilde(ctx, right, left, vi)`.
+Falls back to `tilde(context, right, left, vi)`.
 """
-function tilde_observe!(ctx, right, left, vi)
-    logp = tilde_observe(ctx, right, left, vi)
+function tilde_observe!(context, right, left, vi)
+    logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
@@ -165,64 +165,70 @@ end
 
 # assume
 # Leaf contexts
-function dot_tilde_assume(ctx::SamplingContext, right, left, vns, _, vi)
-    return dot_assume(ctx.rng, ctx.sampler, right, vns, left, vi)
+function dot_tilde_assume(context::SamplingContext, right, left, vns, _, vi)
+    return dot_assume(context.rng, context.sampler, right, vns, left, vi)
 end
-function dot_tilde_assume(ctx::EvaluationContext, right, left, vns, inds, vi)
+function dot_tilde_assume(context::EvaluationContext, right, left, vns, inds, vi)
     return dot_assume(right, vns, left, inds, vi)
 end
 
 # Default for `WrappedContext`
-function dot_tilde_assume(ctx::WrappedContext, right, left, vns, inds, vi)
-    return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
+function dot_tilde_assume(context::WrappedContext, right, left, vns, inds, vi)
+    return dot_tilde_assume(childcontext(context), right, vns, left, vi)
 end
 
 # `LikelihoodContext`
-function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
-    return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
+function dot_tilde_assume(context::LikelihoodContext, right, left, vns, inds, vi)
+    return dot_tilde_assume(childcontext(context), NoDist.(right), vns, left, vi)
 end
-function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vn, inds, vi)
-    return if haskey(ctx.vars, getsym(vn))
-        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
+function dot_tilde_assume(
+    context::LikelihoodContext{<:NamedTuple}, right, left, vn, inds, vi
+)
+    return if haskey(context.vars, getsym(vn))
+        var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
         dot_tilde_assume(
-            LikelihoodContext(childcontext(ctx)), _right, _left, _vns, inds, vi
+            LikelihoodContext(childcontext(context)), _right, _left, _vns, inds, vi
         )
     else
-        dot_tilde_assume(LikelihoodContext(childcontext(ctx)), right, left, vn, inds, vi)
+        dot_tilde_assume(
+            LikelihoodContext(childcontext(context)), right, left, vn, inds, vi
+        )
     end
 end
 
 # `PriorContext`
-function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vn, inds, vi)
-    return if haskey(ctx.vars, getsym(vn))
-        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
+function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, inds, vi)
+    return if haskey(context.vars, getsym(vn))
+        var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(PriorContext(childcontext(ctx)), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(PriorContext(childcontext(context)), _right, _left, _vns, inds, vi)
     else
-        dot_tilde_assume(PriorContext(childcontext(ctx)), right, left, vn, inds, vi)
+        dot_tilde_assume(PriorContext(childcontext(context)), right, left, vn, inds, vi)
     end
 end
 
 # `PrefixContext`
-function dot_tilde_assume(ctx::PrefixContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(childcontext(ctx), right, prefix.(Ref(ctx), vn), inds, vi)
+function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
+    return dot_tilde_assume(
+        childcontext(context), right, prefix.(Ref(context), vn), inds, vi
+    )
 end
 
 """
-    dot_tilde_assume!(ctx, right, left, vn, inds, vi)
+    dot_tilde_assume!(context, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
-Falls back to `dot_tilde_assume(ctx, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume!(ctx, right, left, vn, inds, vi)
-    value, logp = dot_tilde_assume(ctx, right, left, vn, inds, vi)
+function dot_tilde_assume!(context, right, left, vn, inds, vi)
+    value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -377,68 +383,72 @@ function set_val!(
 end
 
 # observe
-function dot_tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, right, left, vi)
+function dot_tilde_observe(
+    context::Union{SamplingContext,EvaluationContext}, right, left, vi
+)
     return dot_observe(right, left, vi)
 end
 function dot_tilde_observe(
-    ctx::Union{SamplingContext,EvaluationContext}, right, left, vname, vinds, vi
+    context::Union{SamplingContext,EvaluationContext}, right, left, vname, vinds, vi
 )
     return dot_observe(right, left, vi)
 end
 # Default for `WrappedContext`
-function dot_tilde_observe(ctx::WrappedContext, right, left, vi)
-    return dot_tilde_observe(childcontext(ctx), right, left, vi)
+function dot_tilde_observe(context::WrappedContext, right, left, vi)
+    return dot_tilde_observe(childcontext(context), right, left, vi)
 end
-function dot_tilde_observe(ctx::WrappedContext, right, left, vname, vinds, vi)
-    return dot_tilde_observe(childcontext(ctx), right, left, vname, vinds, vi)
+function dot_tilde_observe(context::WrappedContext, right, left, vname, vinds, vi)
+    return dot_tilde_observe(childcontext(context), right, left, vname, vinds, vi)
 end
 
 # `PriorContext`
-dot_tilde_observe(ctx::PriorContext, right, left, vi) = 0
-dot_tilde_observe(ctx::PriorContext, right, left, vname, vinds, vi) = 0
+dot_tilde_observe(context::PriorContext, right, left, vi) = 0
+dot_tilde_observe(context::PriorContext, right, left, vname, vinds, vi) = 0
 
 # `MiniBatchContext`
-function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
-    return ctx.loglike_scalar *
-           dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
+function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
+    return context.loglike_scalar *
+           dot_tilde_observe(childcontext(context), sampler, right, left, vi)
 end
-function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vname, vinds, vi)
-    return ctx.loglike_scalar *
-           dot_tilde_observe(childcontext(ctx), sampler, right, left, vname, vinds, vi)
+function dot_tilde_observe(
+    context::MiniBatchContext, sampler, right, left, vname, vinds, vi
+)
+    return context.loglike_scalar *
+           dot_tilde_observe(childcontext(context), sampler, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`
-function dot_tilde_observe(ctx::PrefixContext, right, left, vname, vinds, vi)
+function dot_tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
     return dot_tilde_observe(
-        childcontext(ctx), right, left, prefix(context, vname), vinds, vi
+        childcontext(context), right, left, prefix(context, vname), vinds, vi
     )
 end
 
 """
-    dot_tilde_observe!(ctx, right, left, vname, vinds, vi)
+    dot_tilde_observe!(context, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde_observe(ctx, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(ctx, right, left, vn, inds, vi)
-    logp = dot_tilde_observe(ctx, right, left, vi)
+function dot_tilde_observe!(context, right, left, vn, inds, vi)
+    logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end
 
 """
-    dot_tilde_observe!(ctx, right, left, vi)
+    dot_tilde_observe!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value.
 
-Falls back to `dot_tilde_observe(ctx, right, left, vi)`.
+Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
-function dot_tilde_observe!(ctx, right, left, vi)
-    logp = dot_tilde_observe(ctx, right, left, vi)
+function dot_tilde_observe!(context, right, left, vi)
+    logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
 end

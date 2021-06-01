@@ -17,30 +17,30 @@ SamplingContext(sampler=SampleFromPrior()) = SamplingContext(Random.GLOBAL_RNG, 
 abstract type WrappedContext{LeafCtx<:PrimitiveContext} <: AbstractContext end
 
 """
-    childcontext(ctx)
+    childcontext(context)
 
-Returns the child-context of `ctx`.
+Returns the child-context of `context`.
 
-Returns `nothing` if `ctx` is not a `WrappedContext`.
+Returns `nothing` if `context` is not a `WrappedContext`.
 """
-childcontext(ctx::WrappedContext) = ctx.ctx
-childcontext(ctx::AbstractContext) = nothing
-
-"""
-    unwrap(ctx::AbstractContext)
-
-Returns the unwrapped context from `ctx`.
-"""
-unwrap(ctx::WrappedContext) = unwrap(ctx.ctx)
-unwrap(ctx::AbstractContext) = ctx
+childcontext(context::WrappedContext) = context.context
+childcontext(context::AbstractContext) = nothing
 
 """
-    unwrappedtype(ctx::AbstractContext)
+    unwrap(context::AbstractContext)
 
-Returns the type of the unwrapped context from `ctx`.
+Returns the unwrapped context from `context`.
 """
-unwrappedtype(ctx::AbstractContext) = typeof(ctx)
-unwrappedtype(ctx::WrappedContext{LeafCtx}) where {LeafCtx} = LeafCtx
+unwrap(context::WrappedContext) = unwrap(context.context)
+unwrap(context::AbstractContext) = context
+
+"""
+    unwrappedtype(context::AbstractContext)
+
+Returns the type of the unwrapped context from `context`.
+"""
+unwrappedtype(context::AbstractContext) = typeof(context)
+unwrappedtype(context::WrappedContext{LeafCtx}) where {LeafCtx} = LeafCtx
 
 """
     rewrap(parent::WrappedContext, leaf::PrimitiveContext)
@@ -59,12 +59,12 @@ running the model.
 """
 struct PriorContext{Tvars,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
-    ctx::Ctx
+    context::Ctx
 
-    PriorContext(vars, ctx) = new{typeof(vars),typeof(ctx),unwrappedtype(ctx)}(vars, ctx)
+    PriorContext(vars, context) = new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
 end
 PriorContext(vars=nothing) = PriorContext(vars, EvaluationContext())
-PriorContext(ctx::AbstractContext) = PriorContext(nothing, ctx)
+PriorContext(context::AbstractContext) = PriorContext(nothing, context)
 
 function rewrap(parent::PriorContext, leaf::PrimitiveContext)
     return PriorContext(parent.vars, rewrap(childcontext(parent), leaf))
@@ -81,14 +81,14 @@ of the model's parameters. If `vars` is `nothing`, the parameter values inside t
 """
 struct LikelihoodContext{Tvars,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
-    ctx::Ctx
+    context::Ctx
 
-    function LikelihoodContext(vars, ctx)
-        return new{typeof(vars),typeof(ctx),unwrappedtype(ctx)}(vars, ctx)
+    function LikelihoodContext(vars, context)
+        return new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
     end
 end
 LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluationContext())
-LikelihoodContext(ctx::AbstractContext) = LikelihoodContext(nothing, ctx)
+LikelihoodContext(context::AbstractContext) = LikelihoodContext(nothing, context)
 
 function rewrap(parent::LikelihoodContext, leaf::PrimitiveContext)
     return LikelihoodContext(parent.vars, rewrap(childcontext(parent), leaf))
@@ -96,7 +96,7 @@ end
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
-        ctx::Tctx
+        context::Tctx
         loglike_scalar::T
     end
 
@@ -108,18 +108,18 @@ This is useful in batch-based stochastic gradient descent algorithms to be optim
 """
 struct MiniBatchContext{T,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglike_scalar::T
-    ctx::Ctx
+    context::Ctx
 
-    function MiniBatchContext(loglike_scalar, ctx::AbstractContext)
-        return new{typeof(loglike_scalar),typeof(ctx),unwrappedtype(ctx)}(
-            loglike_scalar, ctx
+    function MiniBatchContext(loglike_scalar, context::AbstractContext)
+        return new{typeof(loglike_scalar),typeof(context),unwrappedtype(context)}(
+            loglike_scalar, context
         )
     end
 end
 
 MiniBatchContext(loglike_scalar) = MiniBatchContext(loglike_scalar, EvaluationContext())
-function MiniBatchContext(ctx::AbstractContext=EvaluationContext(); batch_size, npoints)
-    return MiniBatchContext(npoints / batch_size, ctx)
+function MiniBatchContext(context::AbstractContext=EvaluationContext(); batch_size, npoints)
+    return MiniBatchContext(npoints / batch_size, context)
 end
 
 function rewrap(parent::MiniBatchContext, leaf::PrimitiveContext)
@@ -138,10 +138,10 @@ unique.
 See also: [`@submodel`](@ref)
 """
 struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
-    ctx::C
+    context::C
 
-    function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-        return new{Prefix,typeof(ctx),unwrappedtype(ctx)}(ctx)
+    function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
+        return new{Prefix,typeof(context),unwrappedtype(context)}(context)
     end
 end
 PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(EvaluationContext())
@@ -153,14 +153,14 @@ end
 const PREFIX_SEPARATOR = Symbol(".")
 
 function PrefixContext{PrefixInner}(
-    ctx::PrefixContext{PrefixOuter}
+    context::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
     if @generated
         :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-            ctx.ctx
+            context.context
         ))
     else
-        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(ctx.ctx)
+        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(context.context)
     end
 end
 
