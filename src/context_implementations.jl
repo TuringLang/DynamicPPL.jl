@@ -35,7 +35,7 @@ function tilde_assume(ctx::PriorContext{<:NamedTuple}, right, vn, inds, vi)
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(PriorContext(nothing, childcontext(ctx)), right, vn, inds, vi)
+    return tilde_assume(PriorContext(childcontext(ctx)), right, vn, inds, vi)
 end
 
 # `LikelihoodContext`
@@ -47,7 +47,7 @@ function tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(LikelihoodContext(nothing, childcontext(ctx)), right, vn, inds, vi)
+    return tilde_assume(LikelihoodContext(childcontext(ctx)), right, vn, inds, vi)
 end
 
 # `PrefixContext`
@@ -188,11 +188,11 @@ function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vn,
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
         dot_tilde_assume(
-            LikelihoodContext(nothing, childcontext(ctx)), _right, _left, _vns, inds, vi
+            LikelihoodContext(childcontext(ctx)), _right, _left, _vns, inds, vi
         )
     else
         dot_tilde_assume(
-            LikelihoodContext(nothing, childcontext(ctx)), right, left, vn, inds, vi
+            LikelihoodContext(childcontext(ctx)), right, left, vn, inds, vi
         )
     end
 end
@@ -205,11 +205,11 @@ function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vn, inds
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
         dot_tilde_assume(
-            PriorContext(nothing, childcontext(ctx)), _right, _left, _vns, inds, vi
+            PriorContext(childcontext(ctx)), _right, _left, _vns, inds, vi
         )
     else
         dot_tilde_assume(
-            PriorContext(nothing, childcontext(ctx)), right, left, vn, inds, vi
+            PriorContext(childcontext(ctx)), right, left, vn, inds, vi
         )
     end
 end
