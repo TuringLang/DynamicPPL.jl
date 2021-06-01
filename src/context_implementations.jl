@@ -163,14 +163,23 @@ end
 function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
 end
-function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vns, inds, vi)
-    sym = getsym(vns)
-    if haskey(ctx.vars, sym)
-        var = _getindex(getfield(ctx.vars, sym), inds)
-        set_val!(vi, vns, right, var)
-        settrans!.(Ref(vi), false, vns)
+function dot_tilde_assume(
+    ctx::LikelihoodContext{<:NamedTuple},
+    right,
+    left,
+    vn,
+    inds,
+    vi,
+)
+    return if haskey(ctx.vars, getsym(vn))
+        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
+        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
+        set_val!(vi, _vns, _right, _left)
+        settrans!.(Ref(vi), false, _vns)
+        dot_tilde_assume(childcontext(ctx), NoDist.(_right), _left, _vns, inds, vi)
+    else
+        dot_tilde_assume(childcontext(ctx), NoDist.(right), left, vn, inds, vi)
     end
-    return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
 end
 function dot_tilde_assume(ctx::MiniBatchContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), right, left, vns, inds, vi)
@@ -178,14 +187,16 @@ end
 function dot_tilde_assume(ctx::PriorContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
 end
-function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vns, inds, vi)
-    sym = getsym(vns)
-    if haskey(ctx.vars, sym)
-        var = _getindex(getfield(ctx.vars, sym), inds)
-        set_val!(vi, vns, right, var)
-        settrans!.(Ref(vi), false, vns)
+function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vn, inds, vi)
+    return if haskey(ctx.vars, getsym(vn))
+        var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
+        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
+        set_val!(vi, _vns, _right, _left)
+        settrans!.(Ref(vi), false, _vns)
+        dot_tilde_assume(childcontext(ctx), _right, _left, _vns, inds, vi)
+    else
+        dot_tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
     end
-    return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
 end
 
 """
