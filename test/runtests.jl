@@ -78,7 +78,7 @@ include("test_util.jl")
                 # If we can't resolve that means this is incompatible by SemVer and this is fine
                 # It means we marked this as a breaking change, so we don't need to worry about
                 # Mistakenly introducing a breaking change, as we have intentionally made one
-                @info "Not compatible with this release. No problem." exception=err
+                @info "Not compatible with this release. No problem." exception = err
             end
         end
     end
