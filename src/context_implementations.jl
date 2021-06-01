@@ -18,20 +18,27 @@ _getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
 
 # assume
+# Leaf contexts
 function tilde_assume(ctx::SamplingContext, right, vn, inds, vi)
     return assume(ctx.rng, ctx.sampler, right, vn, inds, vi)
 end
 tilde_assume(ctx::EvaluationContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
-function tilde_assume(ctx::PriorContext, right, vn, inds, vi)
-    return tilde_assume(childcontext(ctx), right, vn, inds, vi)
+
+# Default for `WrappedContext`
+function tilde_assume(ctx::WrappedContext, right, left, inds, vi)
+    return tilde_assume(childcontext(ctx), right, left, inds, vi)
 end
+
+# `PriorContext`
 function tilde_assume(ctx::PriorContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(childcontext(ctx), right, vn, inds, vi)
+    return tilde_assume(PriorContext(nothing, childcontext(ctx)), right, vn, inds, vi)
 end
+
+# `LikelihoodContext`
 function tilde_assume(ctx::LikelihoodContext, right, vn, inds, vi)
     return tilde_assume(childcontext(ctx), NoDist(right), vn, inds, vi)
 end
@@ -40,11 +47,10 @@ function tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(childcontext(ctx), NoDist(right), vn, inds, vi)
+    return tilde_assume(LikelihoodContext(nothing, childcontext(ctx)), right, vn, inds, vi)
 end
-function tilde_assume(ctx::MiniBatchContext, right, left, inds, vi)
-    return tilde_assume(childcontext(ctx), right, left, inds, vi)
-end
+
+# `PrefixContext`
 function tilde_assume(ctx::PrefixContext, right, vn, inds, vi)
     return tilde_assume(childcontext(ctx), right, prefix(ctx, vn), inds, vi)
 end
@@ -64,18 +70,22 @@ function tilde_assume!(ctx, right, vn, inds, vi)
 end
 
 # observe
+# Leaf contexts
 function tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, right, left, vi)
     return observe(right, left, vi)
 end
-tilde_observe(ctx::PriorContext, right, left, vi) = 0
-function tilde_observe(ctx::LikelihoodContext, right, left, vi)
+
+# Default for `WrappedContext`
+function tilde_observe(ctx::WrappedContext, right, left, vi)
     return tilde_observe(childcontext(ctx), right, left, vi)
 end
+
+# `PriorContext`
+tilde_observe(ctx::PriorContext, right, left, vi) = 0
+
+# `MiniBatchContext`
 function tilde_observe(ctx::MiniBatchContext, right, left, vi)
     return ctx.loglike_scalar * tilde_observe(childcontext(ctx), right, left, vi)
-end
-function tilde_observe(ctx::PrefixContext, right, left, vi)
-    return tilde_observe(childcontext(ctx), right, left, vi)
 end
 
 """
@@ -154,12 +164,20 @@ end
 # .~ functions
 
 # assume
+# Leaf contexts
 function dot_tilde_assume(ctx::SamplingContext, right, left, vns, _, vi)
     return dot_assume(ctx.rng, ctx.sampler, right, vns, left, vi)
 end
 function dot_tilde_assume(ctx::EvaluationContext, right, left, vns, inds, vi)
     return dot_assume(right, vns, left, inds, vi)
 end
+
+# Default for `WrappedContext`
+function dot_tilde_assume(ctx::WrappedContext, right, left, vns, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
+end
+
+# `LikelihoodContext`
 function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
 end
@@ -169,27 +187,36 @@ function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vn,
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(childcontext(ctx), NoDist.(_right), _left, _vns, inds, vi)
+        dot_tilde_assume(
+            LikelihoodContext(nothing, childcontext(ctx)), _right, _left, _vns, inds, vi
+        )
     else
-        dot_tilde_assume(childcontext(ctx), NoDist.(right), left, vn, inds, vi)
+        dot_tilde_assume(
+            LikelihoodContext(nothing, childcontext(ctx)), right, left, vn, inds, vi
+        )
     end
 end
-function dot_tilde_assume(ctx::MiniBatchContext, right, left, vns, inds, vi)
-    return dot_tilde_assume(childcontext(ctx), right, left, vns, inds, vi)
-end
-function dot_tilde_assume(ctx::PriorContext, right, left, vns, inds, vi)
-    return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
-end
+
+# `PriorContext`
 function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vn, inds, vi)
     return if haskey(ctx.vars, getsym(vn))
         var = _getindex(getfield(ctx.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(childcontext(ctx), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(
+            PriorContext(nothing, childcontext(ctx)), _right, _left, _vns, inds, vi
+        )
     else
-        dot_tilde_assume(childcontext(ctx), right, left, vn, inds, vi)
+        dot_tilde_assume(
+            PriorContext(nothing, childcontext(ctx)), right, left, vn, inds, vi
+        )
     end
+end
+
+# `PrefixContext`
+function dot_tilde_assume(ctx::PrefixContext, right, left, vn, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), right, prefix.(Ref(ctx), vn), inds, vi)
 end
 
 """
@@ -359,12 +386,38 @@ end
 function dot_tilde_observe(ctx::Union{SamplingContext,EvaluationContext}, right, left, vi)
     return dot_observe(right, left, vi)
 end
-dot_tilde_observe(ctx::PriorContext, right, left, vi) = 0
-function dot_tilde_observe(ctx::LikelihoodContext, right, left, vi)
-    return dot_observe(childcontext(ctx), right, left, vi)
+function dot_tilde_observe(
+    ctx::Union{SamplingContext,EvaluationContext}, right, left, vname, vinds, vi
+)
+    return dot_observe(right, left, vi)
 end
-function dot_tilde_observe(ctx::MiniBatchContext, right, left, vi)
-    return ctx.loglike_scalar * dot_tilde_observe(childcontext(ctx), right, left, vi)
+# Default for `WrappedContext`
+function dot_tilde_observe(ctx::WrappedContext, right, left, vi)
+    return dot_tilde_observe(childcontext(ctx), right, left, vi)
+end
+function dot_tilde_observe(ctx::WrappedContext, right, left, vname, vinds, vi)
+    return dot_tilde_observe(childcontext(ctx), right, left, vname, vinds, vi)
+end
+
+# `PriorContext`
+dot_tilde_observe(ctx::PriorContext, right, left, vi) = 0
+dot_tilde_observe(ctx::PriorContext, right, left, vname, vinds, vi) = 0
+
+# `MiniBatchContext`
+function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vi)
+    return ctx.loglike_scalar *
+           dot_tilde_observe(childcontext(ctx), sampler, right, left, vi)
+end
+function dot_tilde_observe(ctx::MiniBatchContext, sampler, right, left, vname, vinds, vi)
+    return ctx.loglike_scalar *
+           dot_tilde_observe(childcontext(ctx), sampler, right, left, vname, vinds, vi)
+end
+
+# `PrefixContext`
+function dot_tilde_observe(ctx::PrefixContext, right, left, vname, vinds, vi)
+    return dot_tilde_observe(
+        childcontext(ctx), right, left, prefix(context, vname), vinds, vi
+    )
 end
 
 """
