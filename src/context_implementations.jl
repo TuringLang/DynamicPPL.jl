@@ -165,7 +165,7 @@ function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
 end
 function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vns, inds, vi)
     sym = getsym(vns)
-    if haskeyctx.vars, sym)
+    if haskey(ctx.vars, sym)
         var = _getindex(getfield(ctx.vars, sym), inds)
         set_val!(vi, vns, right, var)
         settrans!.(Ref(vi), false, vns)
