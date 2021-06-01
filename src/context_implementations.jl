@@ -227,8 +227,6 @@ function tilde_observe!(ctx, right, left, vi)
     return left
 end
 
-_tilde(sampler, right, left, vi) = observe(sampler, right, left, vi)
-
 function assume(rng, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
