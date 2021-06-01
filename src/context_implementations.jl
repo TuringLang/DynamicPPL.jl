@@ -591,7 +591,9 @@ end
 function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
     return context.loglike_scalar * dot_tilde_observe(context.ctx, sampler, right, left, vi)
 end
-function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
+function dot_tilde_observe(
+    context::MiniBatchContext, sampler, right, left, vname, vinds, vi
+)
     return context.loglike_scalar *
            dot_tilde_observe(context.ctx, sampler, right, left, vname, vinds, vi)
 end
