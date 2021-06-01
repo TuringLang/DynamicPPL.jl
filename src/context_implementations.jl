@@ -345,16 +345,12 @@ function dot_tilde_assume(
     end
 end
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, inds, vi)
-    value, logp = dot_assume(NoDist.(right), left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return dot_assume(NoDist.(right), left, vn, inds, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, inds, vi
 )
-    value, logp = dot_assume(rng, sampler, NoDist.(right), left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return dot_assume(rng, sampler, NoDist.(right), left, vn, inds, vi)
 end
 
 # `PriorContext`
@@ -390,16 +386,12 @@ function dot_tilde_assume(
     end
 end
 function dot_tilde_assume(context::PriorContext, right, left, vn, inds, vi)
-    value, logp = dot_assume(right, left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return dot_assume(right, left, vn, inds, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext, sampler, right, left, vn, inds, vi
 )
-    value, logp = dot_assume(rng, sampler, right, left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return dot_assume(rng, sampler, right, left, vn, inds, vi)
 end
 
 # `MiniBatchContext`
