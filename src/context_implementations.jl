@@ -23,14 +23,20 @@ function tilde_assume(ctx::SamplingContext, right, vn, inds, vi)
 end
 tilde_assume(ctx::EvaluationContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
 function tilde_assume(ctx::PriorContext, right, vn, inds, vi)
-    if ctx.vars !== nothing
+    return tilde_assume(childcontext(ctx), right, vn, inds, vi)
+end
+function tilde_assume(ctx::PriorContext{<:NamedTuple}, right, vn, inds, vi)
+    if haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
     return tilde_assume(childcontext(ctx), right, vn, inds, vi)
 end
 function tilde_assume(ctx::LikelihoodContext, right, vn, inds, vi)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, getsym(vn))
+    return tilde_assume(childcontext(ctx), NoDist(right), vn, inds, vi)
+end
+function tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
+    if haskey(ctx.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(ctx.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
@@ -155,8 +161,11 @@ function dot_tilde_assume(ctx::EvaluationContext, right, left, vns, inds, vi)
     return dot_assume(right, vns, left, inds, vi)
 end
 function dot_tilde_assume(ctx::LikelihoodContext, right, left, vns, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), NoDist.(right), vns, left, vi)
+end
+function dot_tilde_assume(ctx::LikelihoodContext{<:NamedTuple}, right, left, vns, inds, vi)
     sym = getsym(vns)
-    if ctx.vars isa NamedTuple && haskey(ctx.vars, sym)
+    if haskeyctx.vars, sym)
         var = _getindex(getfield(ctx.vars, sym), inds)
         set_val!(vi, vns, right, var)
         settrans!.(Ref(vi), false, vns)
@@ -167,8 +176,11 @@ function dot_tilde_assume(ctx::MiniBatchContext, right, left, vns, inds, vi)
     return dot_tilde_assume(childcontext(ctx), right, left, vns, inds, vi)
 end
 function dot_tilde_assume(ctx::PriorContext, right, left, vns, inds, vi)
+    return dot_tilde_assume(childcontext(ctx), right, vns, left, vi)
+end
+function dot_tilde_assume(ctx::PriorContext{<:NamedTuple}, right, left, vns, inds, vi)
     sym = getsym(vns)
-    if ctx.vars !== nothing
+    if haskey(ctx.vars, sym)
         var = _getindex(getfield(ctx.vars, sym), inds)
         set_val!(vi, vns, right, var)
         settrans!.(Ref(vi), false, vns)
