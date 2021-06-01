@@ -283,7 +283,6 @@ function generate_tilde(left, right)
         return quote
             $(DynamicPPL.tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 __varinfo__,
@@ -300,9 +299,7 @@ function generate_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $left = $(DynamicPPL.tilde_assume!)(
-                __rng__,
                 __context__,
-                __sampler__,
                 $(DynamicPPL.unwrap_right_vn)(
                     $(DynamicPPL.check_tilde_rhs)($right), $vn
                 )...,
@@ -312,7 +309,6 @@ function generate_tilde(left, right)
         else
             $(DynamicPPL.tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 $vn,
@@ -334,7 +330,6 @@ function generate_dot_tilde(left, right)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 __varinfo__,
@@ -351,9 +346,7 @@ function generate_dot_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $left .= $(DynamicPPL.dot_tilde_assume!)(
-                __rng__,
                 __context__,
-                __sampler__,
                 $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
                 )...,
@@ -363,7 +356,6 @@ function generate_dot_tilde(left, right)
         else
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
-                __sampler__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
                 $vn,
