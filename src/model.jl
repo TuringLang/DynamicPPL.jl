@@ -86,9 +86,12 @@ function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::AbstractContext=SamplingContext(rng, sampler),
 )
-    return model(varinfo, SamplingContext(rng, sampler, context))
+    # In case `context` is a `WrapperContext` of sorts, we need to `rewrap` to ensure
+    # that context has a `SamplingContext` as the leaf context.
+    context_new = rewrap(context, SamplingContext(rng, sampler))
+    return model(varinfo, context_new)
 end
 
 (model::Model)(context::AbstractContext) = model(VarInfo(), context)
