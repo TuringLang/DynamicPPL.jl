@@ -61,7 +61,9 @@ struct PriorContext{Tvars,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
     context::Ctx
 
-    PriorContext(vars, context) = new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
+    function PriorContext(vars, context)
+        return new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
+    end
 end
 PriorContext(vars=nothing) = PriorContext(vars, EvaluationContext())
 PriorContext(context::AbstractContext) = PriorContext(nothing, context)
