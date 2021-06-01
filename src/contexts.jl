@@ -71,7 +71,7 @@ LikelihoodContext() = LikelihoodContext(nothing)
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
-        ctx::Tctx
+        context::Tctx
         loglike_scalar::T
     end
 
@@ -82,11 +82,11 @@ This is useful in batch-based stochastic gradient descent algorithms to be optim
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
 struct MiniBatchContext{Tctx,T} <: AbstractContext
-    ctx::Tctx
+    context::Tctx
     loglike_scalar::T
 end
-function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(ctx, npoints / batch_size)
+function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
+    return MiniBatchContext(context, npoints / batch_size)
 end
 
 function unwrap_childcontext(context::MiniBatchContext)
@@ -109,23 +109,23 @@ unique.
 See also: [`@submodel`](@ref)
 """
 struct PrefixContext{Prefix,C} <: AbstractContext
-    ctx::C
+    context::C
 end
-function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(ctx)}(ctx)
+function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
+    return PrefixContext{Prefix,typeof(context)}(context)
 end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
 function PrefixContext{PrefixInner}(
-    ctx::PrefixContext{PrefixOuter}
+    context::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
     if @generated
         :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(
-            ctx.ctx
+            context.context
         ))
     else
-        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(ctx.ctx)
+        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(context.context)
     end
 end
 
