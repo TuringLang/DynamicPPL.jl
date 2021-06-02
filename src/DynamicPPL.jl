@@ -131,10 +131,16 @@ include("loglikelihoods.jl")
 include("submodel_macro.jl")
 
 # Deprecations.
-@deprecate tilde(rng, ctx, sampler, right, vn, inds, vi) tilde_assume(rng, ctx, sampler, right, vn, inds, vi)
+@deprecate tilde(rng, ctx, sampler, right, vn, inds, vi) tilde_assume(
+    rng, ctx, sampler, right, vn, inds, vi
+)
 @deprecate tilde(ctx, sampler, right, left, vi) tilde_observe(ctx, sampler, right, left, vi)
 
-@deprecate dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi) dot_tilde_assume(rng, ctx, sampler, right, left, vn, inds, vi)
-@deprecate dot_tilde(ctx, sampler, right, left, vi) dot_tilde_observe(ctx, sampler, right, left, vi)
+@deprecate dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi) dot_tilde_assume(
+    rng, ctx, sampler, right, left, vn, inds, vi
+)
+@deprecate dot_tilde(ctx, sampler, right, left, vi) dot_tilde_observe(
+    ctx, sampler, right, left, vi
+)
 
 end # module
