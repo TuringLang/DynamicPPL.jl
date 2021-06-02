@@ -200,7 +200,7 @@
                 if model == model_uv
                     @test vicopy[m_vns] == 1:5
                 else
-                    @test_broken vicopy[m_vns] == 1:5
+                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
                 end
                 @test vicopy[s_vns] == vi[s_vns]
 
@@ -238,7 +238,7 @@
                 if model == model_uv
                     @test vicopy[m_vns] == 1:5
                 else
-                    @test_broken vicopy[m_vns] == 1:5
+                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
                 end
                 @test vicopy[s_vns] != vi[s_vns]
 
