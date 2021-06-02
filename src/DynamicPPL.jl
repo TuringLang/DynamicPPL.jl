@@ -7,7 +7,6 @@ using Bijectors
 
 using AbstractMCMC: AbstractMCMC
 using ChainRulesCore: ChainRulesCore
-using NaturalSort: NaturalSort
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 
