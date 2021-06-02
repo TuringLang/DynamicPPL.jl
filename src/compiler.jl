@@ -392,12 +392,6 @@ function build_output(modelinfo, linenumbernode)
 
     # Replace the user-provided function body with the version created by DynamicPPL.
     evaluatordef[:body] = quote
-        # in case someone accessed these
-        if __context__ isa $(DynamicPPL.SamplingContext)
-            __rng__ = __context__.rng
-            __sampler__ = __context__.sampler
-        end
-
         $(modelinfo[:body])
     end
 
