@@ -39,6 +39,7 @@ include("test_util.jl")
             include("prob_macro.jl")
             include("independence.jl")
             include("distribution_wrappers.jl")
+            include("contexts.jl")
             include("context_implementations.jl")
 
             include("threadsafe.jl")
