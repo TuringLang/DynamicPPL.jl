@@ -138,6 +138,7 @@ end
     tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
 
 Handle observed variables with a `context` associated with a sampler.
+
 Falls back to `tilde_observe(context.context, right, left, vname, vinds, vi)` ignoring
 the information about the sampler if the context `context.context` does not call any other
 context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
