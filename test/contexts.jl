@@ -2,7 +2,11 @@
     @testset "PrefixContext" begin
         ctx = @inferred PrefixContext{:f}(
             PrefixContext{:e}(
-                PrefixContext{:d}(PrefixContext{:c}(PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))))
+                PrefixContext{:d}(
+                    PrefixContext{:c}(
+                        PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+                    ),
+                ),
             ),
         )
         vn = VarName{:x}()
