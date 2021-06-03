@@ -1,8 +1,8 @@
 @testset "contexts.jl" begin
     @testset "PrefixContext" begin
-        ctx = @inferred PrefixContext{:a}(
-            PrefixContext{:b}(
-                PrefixContext{:c}(PrefixContext{:d}(PrefixContext{:e}(PrefixContext{:f}())))
+        ctx = @inferred PrefixContext{:f}(
+            PrefixContext{:e}(
+                PrefixContext{:d}(PrefixContext{:c}(PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))))
             ),
         )
         vn = VarName{:x}()
