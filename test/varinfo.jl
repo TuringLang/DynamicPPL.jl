@@ -193,12 +193,20 @@
                 end
                 @test vicopy[s_vns] == vi[s_vns]
 
+                # Ordering is NOT preserved => fails for multivariate model.
                 DynamicPPL.setval!(
                     vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
                 )
-                @test vicopy[m_vns] == 1:5
+                if model == model_uv
+                    @test vicopy[m_vns] == 1:5
+                else
+                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
+                end
                 @test vicopy[s_vns] == vi[s_vns]
 
+                DynamicPPL.setval!(
+                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 2, 3, 4, 5))...)
+                )
                 DynamicPPL.setval!(vicopy, (s=42,))
                 @test vicopy[m_vns] == 1:5
                 @test vicopy[s_vns] == 42
@@ -222,8 +230,21 @@
                 end
                 @test vicopy[s_vns] != vi[s_vns]
 
+                # Ordering is NOT preserved.
                 DynamicPPL.setval_and_resample!(
                     vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
+                )
+                model(vicopy)
+                if model == model_uv
+                    @test vicopy[m_vns] == 1:5
+                else
+                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
+                end
+                @test vicopy[s_vns] != vi[s_vns]
+
+                # Correct ordering.
+                DynamicPPL.setval_and_resample!(
+                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 2, 3, 4, 5))...)
                 )
                 model(vicopy)
                 @test vicopy[m_vns] == 1:5
@@ -235,5 +256,19 @@
                 @test vicopy[s_vns] == 42
             end
         end
+
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/250
+        @model function demo()
+            return x ~ filldist(MvNormal([1, 100], 1), 2)
+        end
+
+        vi = VarInfo(demo())
+        vals_prev = vi.metadata.x.vals
+        ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
+        DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
+        @test vals_prev == vi.metadata.x.vals
+
+        DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
+        @test vals_prev == vi.metadata.x.vals
     end
 end
