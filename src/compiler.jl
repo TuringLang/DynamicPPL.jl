@@ -391,7 +391,15 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
+    @gensym leafctx
     evaluatordef[:body] = quote
+        # in case someone accessed these
+        $leafctx = DynamicPPL.unwrap(__context__)
+        if $leafctx isa $(DynamicPPL.SamplingContext)
+            __rng__ = $leafctx.rng
+            __sampler__ = $leafctx.sampler
+        end
+
         $(modelinfo[:body])
     end
 

@@ -86,9 +86,12 @@ function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::AbstractContext=SamplingContext(rng, sampler),
 )
-    return model(varinfo, SamplingContext(rng, sampler, context))
+    # In case `context` is a `WrapperContext` of sorts, we need to `rewrap` to ensure
+    # that context has a `SamplingContext` as the leaf context.
+    context_new = rewrap(context, SamplingContext(rng, sampler))
+    return model(varinfo, context_new)
 end
 
 (model::Model)(context::AbstractContext) = model(VarInfo(), context)
@@ -158,7 +161,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
 ) where {_F,argnames}
     unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
     return quote
-        sampler = context isa $(SamplingContext) ? context.sampler : SampleFromPrior()
+        sampler = unwrap(context).sampler
         model.f(model, varinfo, context, $(unwrap_args...))
     end
 end

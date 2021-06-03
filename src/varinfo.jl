@@ -126,7 +126,7 @@ function VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::AbstractContext=SamplingContext(rng, sampler),
 )
     varinfo = VarInfo()
     model(rng, varinfo, sampler, context)

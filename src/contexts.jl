@@ -1,46 +1,53 @@
-"""
-    unwrap_childcontext(context::AbstractContext)
-
-Return a tuple of the child context of a `context`, or `nothing` if the context does
-not wrap any other context, and a function `f(c::AbstractContext)` that constructs
-an instance of `context` in which the child context is replaced with `c`.
-
-Falls back to `(nothing, _ -> context)`.
-"""
-function unwrap_childcontext(context::AbstractContext)
-    reconstruct_context(@nospecialize(x)) = context
-    return nothing, reconstruct_context
+abstract type PrimitiveContext <: AbstractContext end
+struct EvaluationContext{S<:AbstractSampler} <: PrimitiveContext
+    # TODO: do we even need the sampler these days?
+    sampler::S
 end
+EvaluationContext() = EvaluationContext(SampleFromPrior())
 
-"""
-    SamplingContext(rng, sampler, context)
-
-Create a context that allows you to sample parameters with the `sampler` when running the model.
-The `context` determines how the returned log density is computed when running the model.
-
-See also: [`JointContext`](@ref), [`LoglikelihoodContext`](@ref), [`PriorContext`](@ref)
-"""
-struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
+struct SamplingContext{R<:Random.AbstractRNG,S<:AbstractSampler} <: PrimitiveContext
     rng::R
     sampler::S
-    context::C
 end
+SamplingContext(sampler=SampleFromPrior()) = SamplingContext(Random.GLOBAL_RNG, sampler)
 
-function unwrap_childcontext(context::SamplingContext)
-    child = context.context
-    function reconstruct_samplingcontext(c::AbstractContext)
-        return SamplingContext(context.rng, context.sampler, c)
-    end
-    return child, reconstruct_samplingcontext
-end
+########################
+### Wrapped contexts ###
+########################
+abstract type WrappedContext{LeafCtx<:PrimitiveContext} <: AbstractContext end
 
 """
-    struct DefaultContext <: AbstractContext end
+    childcontext(context)
 
-The `DefaultContext` is used by default to compute log the joint probability of the data 
-and parameters when running the model.
+Returns the child-context of `context`.
+
+Returns `nothing` if `context` is not a `WrappedContext`.
 """
-struct DefaultContext <: AbstractContext end
+childcontext(context::WrappedContext) = context.context
+childcontext(context::AbstractContext) = nothing
+
+"""
+    unwrap(context::AbstractContext)
+
+Returns the unwrapped context from `context`.
+"""
+unwrap(context::WrappedContext) = unwrap(context.context)
+unwrap(context::AbstractContext) = context
+
+"""
+    unwrappedtype(context::AbstractContext)
+
+Returns the type of the unwrapped context from `context`.
+"""
+unwrappedtype(context::AbstractContext) = typeof(context)
+unwrappedtype(context::WrappedContext{LeafCtx}) where {LeafCtx} = LeafCtx
+
+"""
+    rewrap(parent::WrappedContext, leaf::PrimitiveContext)
+
+Rewraps `leaf` in `parent`. Supports nested `WrappedContext`.
+"""
+rewrap(::AbstractContext, leaf::PrimitiveContext) = leaf
 
 """
     struct PriorContext{Tvars} <: AbstractContext
@@ -50,10 +57,20 @@ struct DefaultContext <: AbstractContext end
 The `PriorContext` enables the computation of the log prior of the parameters `vars` when 
 running the model.
 """
-struct PriorContext{Tvars} <: AbstractContext
+struct PriorContext{Tvars,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
+    context::Ctx
+
+    function PriorContext(vars, context)
+        return new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
+    end
 end
-PriorContext() = PriorContext(nothing)
+PriorContext(vars=nothing) = PriorContext(vars, EvaluationContext())
+PriorContext(context::AbstractContext) = PriorContext(nothing, context)
+
+function rewrap(parent::PriorContext, leaf::PrimitiveContext)
+    return PriorContext(parent.vars, rewrap(childcontext(parent), leaf))
+end
 
 """
     struct LikelihoodContext{Tvars} <: AbstractContext
@@ -64,10 +81,20 @@ The `LikelihoodContext` enables the computation of the log likelihood of the par
 running the model. `vars` can be used to evaluate the log likelihood for specific values 
 of the model's parameters. If `vars` is `nothing`, the parameter values inside the `VarInfo` will be used by default.
 """
-struct LikelihoodContext{Tvars} <: AbstractContext
+struct LikelihoodContext{Tvars,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     vars::Tvars
+    context::Ctx
+
+    function LikelihoodContext(vars, context)
+        return new{typeof(vars),typeof(context),unwrappedtype(context)}(vars, context)
+    end
 end
-LikelihoodContext() = LikelihoodContext(nothing)
+LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluationContext())
+LikelihoodContext(context::AbstractContext) = LikelihoodContext(nothing, context)
+
+function rewrap(parent::LikelihoodContext, leaf::PrimitiveContext)
+    return LikelihoodContext(parent.vars, rewrap(childcontext(parent), leaf))
+end
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
@@ -81,20 +108,24 @@ The `MiniBatchContext` enables the computation of
 This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
-struct MiniBatchContext{Tctx,T} <: AbstractContext
-    context::Tctx
+struct MiniBatchContext{T,Ctx,LeafCtx} <: WrappedContext{LeafCtx}
     loglike_scalar::T
-end
-function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(context, npoints / batch_size)
+    context::Ctx
+
+    function MiniBatchContext(loglike_scalar, context::AbstractContext)
+        return new{typeof(loglike_scalar),typeof(context),unwrappedtype(context)}(
+            loglike_scalar, context
+        )
+    end
 end
 
-function unwrap_childcontext(context::MiniBatchContext)
-    child = context.context
-    function reconstruct_minibatchcontext(c::AbstractContext)
-        return MiniBatchContext(c, context.loglike_scalar)
-    end
-    return child, reconstruct_minibatchcontext
+MiniBatchContext(loglike_scalar) = MiniBatchContext(loglike_scalar, EvaluationContext())
+function MiniBatchContext(context::AbstractContext=EvaluationContext(); batch_size, npoints)
+    return MiniBatchContext(npoints / batch_size, context)
+end
+
+function rewrap(parent::MiniBatchContext, leaf::PrimitiveContext)
+    return MiniBatchContext(parent.loglike_scalar, rewrap(childcontext(parent), leaf))
 end
 
 """
@@ -108,11 +139,17 @@ unique.
 
 See also: [`@submodel`](@ref)
 """
-struct PrefixContext{Prefix,C} <: AbstractContext
+struct PrefixContext{Prefix,C,LeafCtx} <: WrappedContext{LeafCtx}
     context::C
+
+    function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
+        return new{Prefix,typeof(context),unwrappedtype(context)}(context)
+    end
 end
-function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(context)}(context)
+PrefixContext{Prefix}() where {Prefix} = PrefixContext{Prefix}(EvaluationContext())
+
+function rewrap(parent::PrefixContext{Prefix}, leaf::PrimitiveContext) where {Prefix}
+    return PrefixContext{Prefix}(rewrap(childcontext(parent), leaf))
 end
 
 const PREFIX_SEPARATOR = Symbol(".")
@@ -121,7 +158,7 @@ function PrefixContext{PrefixInner}(
     context::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
     if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(
+        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
             context.context
         ))
     else
@@ -131,16 +168,8 @@ end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, _prefix_seperator, Sym)))}(vn.indexing))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(vn.indexing))
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
-end
-
-function unwrap_childcontext(context::PrefixContext{P}) where {P}
-    child = context.context
-    function reconstruct_prefixcontext(c::AbstractContext)
-        return PrefixContext{P}(c)
-    end
-    return child, reconstruct_prefixcontext
 end
