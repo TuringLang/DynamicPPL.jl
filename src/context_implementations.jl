@@ -209,8 +209,7 @@ function dot_assume(
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
-    var .= r
-    return var, lp
+    return r, lp
 end
 function dot_assume(
     rng,
@@ -223,8 +222,7 @@ function dot_assume(
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    var .= r
-    return var, lp
+    return r, lp
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
     return error(
