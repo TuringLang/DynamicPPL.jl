@@ -34,50 +34,32 @@ if the context `context.context` does not call any other context, as indicated b
 where `c` is a context in which the order of the sampling context and its child are swapped.
 """
 function tilde_assume(context::SamplingContext, right, vn, inds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        tilde_assume(context.rng, c, context.sampler, right, vn, inds, vi)
-    else
-        tilde_assume(reconstruct_c(reconstruct_context(child_of_c)), right, vn, inds, vi)
+    if context.context isa Nothing
+        return assume(context.rng, context.sampler, right, vn, inds, vi)
     end
+
+    return tilde_assume(propogate_context(context), right, vn, inds, vi)
+end
+
+function tilde_assume(context::EvaluationContext, right, vn, inds, vi)
+    if context.context isa Nothing
+        return assume(right, vn, inds, vi)
+    end
+
+    return tilde_assume(propogate_context(context), right, vn, inds, vi)
 end
 
 # Leaf contexts
-tilde_assume(::DefaultContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
-function tilde_assume(
-    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, inds, vi
-)
-    return assume(rng, sampler, right, vn, inds, vi)
-end
-
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(context.vars, getsym(vn))
         vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(PriorContext(), right, vn, inds, vi)
+    return tilde_assume(PriorContext(context.context), right, vn, inds, vi)
 end
-function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    inds,
-    vi,
-)
-    if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
-    end
-    return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
-end
-function tilde_assume(::PriorContext, right, vn, inds, vi)
-    return assume(right, vn, inds, vi)
-end
-function tilde_assume(rng::Random.AbstractRNG, ::PriorContext, sampler, right, vn, inds, vi)
-    return assume(rng, sampler, right, vn, inds, vi)
+
+function tilde_assume(context::PriorContext, right, vn, inds, vi)
+    return tilde_assume(context.context, right, vn, inds, vi)
 end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
@@ -85,30 +67,11 @@ function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds,
         vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(LikelihoodContext(), right, vn, inds, vi)
+    return tilde_assume(LikelihoodContext(context.context), right, vn, inds, vi)
 end
-function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    inds,
-    vi,
-)
-    if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
-    end
-    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, inds, vi)
-end
-function tilde_assume(::LikelihoodContext, right, vn, inds, vi)
-    return assume(NoDist(right), vn, inds, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, inds, vi
-)
-    return assume(rng, sampler, NoDist(right), vn, inds, vi)
+
+function tilde_assume(context::LikelihoodContext, right, vn, inds, vi)
+    return tilde_assume(context.context, NoDist(right), vn, inds, vi)
 end
 
 function tilde_assume(context::MiniBatchContext, right, vn, inds, vi)
@@ -146,14 +109,19 @@ context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
 which the order of the sampling context and its child are swapped.
 """
 function tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    fallback_context = if child_of_c !== nothing
-        reconstruct_c(reconstruct_context(child_of_c))
-    else
-        c
+    if context.context isa Nothing
+        return observe(right, left, vi)
     end
-    return tilde_observe(fallback_context, right, left, vname, vinds, vi)
+
+    return tilde_observe(propogate_context(context), right, left, vname, vinds, vi)
+end
+
+function tilde_observe(context::EvaluationContext, right, left, vname, vinds, vi)
+    if context.context isa Nothing
+        return observe(right, left, vi)
+    end
+
+    return tilde_observe(propogate_context(context), right, left, vname, vinds, vi)
 end
 
 """
@@ -168,26 +136,32 @@ context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
 which the order of the sampling context and its child are swapped.
 """
 function tilde_observe(context::SamplingContext, right, left, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    fallback_context = if child_of_c !== nothing
-        reconstruct_c(reconstruct_context(child_of_c))
-    else
-        c
+    if context.context isa Nothing
+        return observe(right, left, vi)
     end
-    return tilde_observe(fallback_context, right, left, vi)
+
+    return tilde_observe(propogate_context(context), right, left, vi)
+end
+
+function tilde_observe(context::EvaluationContext, right, left, vi)
+    if context.context isa Nothing
+        return observe(right, left, vi)
+    end
+
+    return tilde_observe(propogate_context(context), right, left, vi)
 end
 
 # Leaf contexts
-tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
 tilde_observe(::PriorContext, right, left, vi) = 0
-tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
+function tilde_observe(context::LikelihoodContext, right, left, vi)
+    return tilde_observe(context.context, right, left, vi)
+end
 
 # `MiniBatchContext`
-function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
+function tilde_observe(context::MiniBatchContext, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
-function tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
+function tilde_observe(context::MiniBatchContext, right, left, vname, vinds, vi)
     return context.loglike_scalar *
            tilde_observe(context.context, right, left, vname, vinds, vi)
 end
@@ -292,24 +266,19 @@ if the context `context.context` does not call any other context, as indicated b
 where `c` is a context in which the order of the sampling context and its child are swapped.
 """
 function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        dot_tilde_assume(context.rng, c, context.sampler, right, left, vn, inds, vi)
-    else
-        dot_tilde_assume(
-            reconstruct_c(reconstruct_context(child_of_c)), right, left, vn, inds, vi
-        )
+    if context.context isa Nothing
+        return dot_assume(context.rng, context.sampler, right, vn, left, vi)
     end
+
+    return dot_tilde_assume(propogate_context(context), right, left, vn, inds, vi)
 end
 
-# `DefaultContext`
-function dot_tilde_assume(::DefaultContext, sampler, right, left, vns, inds, vi)
-    return dot_assume(right, vns, left, vi)
-end
+function dot_tilde_assume(context::EvaluationContext, right, left, vn, inds, vi)
+    if context.context isa Nothing
+        return dot_assume(right, left, vn, inds, vi)
+    end
 
-function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, inds, vi)
-    return dot_assume(rng, sampler, right, vns, left, vi)
+    return dot_tilde_assume(propogate_context(context), right, left, vn, inds, vi)
 end
 
 # `LikelihoodContext`
@@ -321,38 +290,14 @@ function dot_tilde_assume(
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(LikelihoodContext(context.context), _right, _left, _vns, inds, vi)
     else
-        dot_tilde_assume(LikelihoodContext(), right, left, vn, inds, vi)
+        dot_tilde_assume(LikelihoodContext(context.context), right, left, vn, inds, vi)
     end
 end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    inds,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, inds, vi)
-    else
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, inds, vi)
-    end
-end
+
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, inds, vi)
-    return dot_assume(NoDist.(right), left, vn, inds, vi)
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, inds, vi
-)
-    return dot_assume(rng, sampler, NoDist.(right), left, vn, inds, vi)
+    return dot_tilde_assume(context.context, NoDist.(right), left, vn, inds, vi)
 end
 
 # `PriorContext`
@@ -362,38 +307,14 @@ function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, 
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(PriorContext(), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(PriorContext(context.context), _right, _left, _vns, inds, vi)
     else
-        dot_tilde_assume(PriorContext(), right, left, vn, inds, vi)
+        dot_tilde_assume(PriorContext(context.context), right, left, vn, inds, vi)
     end
 end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    inds,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, inds, vi)
-    else
-        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, inds, vi)
-    end
-end
+
 function dot_tilde_assume(context::PriorContext, right, left, vn, inds, vi)
-    return dot_assume(right, left, vn, inds, vi)
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::PriorContext, sampler, right, left, vn, inds, vi
-)
-    return dot_assume(rng, sampler, right, left, vn, inds, vi)
+    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
 # `MiniBatchContext`
@@ -403,7 +324,9 @@ end
 
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), inds, vi)
+    return dot_tilde_assume(
+        context.context, right, left, prefix.(Ref(context), vn), inds, vi
+    )
 end
 
 """
@@ -576,27 +499,29 @@ probability, and return the observed value for a context associated with a sampl
 
 Falls back to `dot_tilde_observe(context.context, right, left, vi) ignoring the sampler.
 """
-function dot_tilde_observe(context::SamplingContext, right, left, vi)
-    return dot_tilde_observe(context.context, right, left, vname, vinds, vi)
+function dot_tilde_observe(
+    context::Union{SamplingContext,EvaluationContext}, right, left, vi
+)
+    if context.context isa Nothing
+        return dot_observe(right, left, vi)
+    end
+
+    return dot_tilde_observe(propogate_context(context), right, left, vi)
 end
 
 # Leaf contexts
-dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(right, left, vi)
-dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-function dot_tilde_observe(context::LikelihoodContext, sampler, right, left, vi)
-    return dot_observe(right, left, vi)
+dot_tilde_observe(::PriorContext, right, left, vi) = 0
+function dot_tilde_observe(context::LikelihoodContext, right, left, vi)
+    return dot_tilde_observe(context.context, right, left, vi)
 end
 
 # `MiniBatchContext`
-function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar *
-           dot_tilde_observe(context.context, sampler, right, left, vi)
+function dot_tilde_observe(context::MiniBatchContext, right, left, vi)
+    return context.loglike_scalar * dot_tilde_observe(context.context, right, left, vi)
 end
-function dot_tilde_observe(
-    context::MiniBatchContext, sampler, right, left, vname, vinds, vi
-)
+function dot_tilde_observe(context::MiniBatchContext, right, left, vname, vinds, vi)
     return context.loglike_scalar *
-           dot_tilde_observe(context.context, sampler, right, left, vname, vinds, vi)
+           dot_tilde_observe(context.context, right, left, vname, vinds, vi)
 end
 
 # `PrefixContext`

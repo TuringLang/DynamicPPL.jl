@@ -76,7 +76,7 @@ export AbstractVarInfo,
     SampleFromUniform,
     # Contexts
     SamplingContext,
-    DefaultContext,
+    EvaluationContext,
     LikelihoodContext,
     PriorContext,
     MiniBatchContext,

@@ -13,61 +13,100 @@ function unwrap_childcontext(context::AbstractContext)
 end
 
 """
-    SamplingContext(rng, sampler, context)
+    propogate_context(context::AbstractContext)
+
+Wrap `context` in its child-context using [`unwrap_childcontext`](@ref), effectively
+swapping the order of the two contexts.
+"""
+function propogate_context(context::AbstractContext)
+    c, reconstruct_context = unwrap_childcontext(context)
+    child_of_c, reconstruct_c = unwrap_childcontext(c)
+    return reconstruct_c(reconstruct_context(child_of_c))
+end
+
+"""
+    SamplingContext(rng=Random.GLOBAL_RNG, sampler=SampleFromPrior(), context=nothing)
 
 Create a context that allows you to sample parameters with the `sampler` when running the model.
 The `context` determines how the returned log density is computed when running the model.
 
-See also: [`JointContext`](@ref), [`LoglikelihoodContext`](@ref), [`PriorContext`](@ref)
+See also: [`EvaluationContext.`](@ref)
 """
-struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
+struct SamplingContext{S<:AbstractSampler,C,R} <: AbstractContext
     rng::R
     sampler::S
     context::C
 end
 
+function SamplingContext(
+    rng::Random.AbstractRNG, sampler::AbstractSampler=SampleFromPrior()
+)
+    return SamplingContext(rng, sampler, nothing)
+end
+function SamplingContext(sampler::AbstractSampler=SampleFromPrior())
+    return SamplingContext(Random.GLOBAL_RNG, sampler)
+end
+
 function unwrap_childcontext(context::SamplingContext)
-    child = context.context
-    function reconstruct_samplingcontext(c::AbstractContext)
+    function reconstruct_samplingcontext(c::Union{AbstractContext,Nothing})
         return SamplingContext(context.rng, context.sampler, c)
     end
-    return child, reconstruct_samplingcontext
+    return context.context, reconstruct_samplingcontext
 end
 
 """
-    struct DefaultContext <: AbstractContext end
+    EvaluationContext(context=nothing)
 
-The `DefaultContext` is used by default to compute log the joint probability of the data 
-and parameters when running the model.
+Create a context that allows you to evaluate the model without performing any sampling.
+The `context` determines how the returned log density is computed when running the model.
+
+See also: [`SamplingContext`](@ref)
 """
-struct DefaultContext <: AbstractContext end
+struct EvaluationContext{Ctx} <: AbstractContext
+    context::Ctx
+end
+
+EvaluationContext() = EvaluationContext(nothing)
+
+function unwrap_childcontext(context::EvaluationContext)
+    function reconstruct_evaluationcontext(c::Union{AbstractContext,Nothing})
+        return EvaluationContext(c)
+    end
+    return context.context, reconstruct_evaluationcontext
+end
 
 """
-    struct PriorContext{Tvars} <: AbstractContext
+    struct PriorContext{Tvars,Ctx} <: AbstractContext
         vars::Tvars
+        context::Ctx
     end
 
 The `PriorContext` enables the computation of the log prior of the parameters `vars` when 
 running the model.
 """
-struct PriorContext{Tvars} <: AbstractContext
+struct PriorContext{Tvars,Ctx} <: AbstractContext
     vars::Tvars
+    context::Ctx
 end
-PriorContext() = PriorContext(nothing)
+PriorContext(vars=nothing) = PriorContext(vars, EvaluationContext())
+PriorContext(context::AbstractContext) = PriorContext(nothing, context)
 
 """
-    struct LikelihoodContext{Tvars} <: AbstractContext
+    struct LikelihoodContext{Tvars,Ctx} <: AbstractContext
         vars::Tvars
+        context::Ctx
     end
 
 The `LikelihoodContext` enables the computation of the log likelihood of the parameters when 
 running the model. `vars` can be used to evaluate the log likelihood for specific values 
 of the model's parameters. If `vars` is `nothing`, the parameter values inside the `VarInfo` will be used by default.
 """
-struct LikelihoodContext{Tvars} <: AbstractContext
+struct LikelihoodContext{Tvars,Ctx} <: AbstractContext
     vars::Tvars
+    context::Ctx
 end
-LikelihoodContext() = LikelihoodContext(nothing)
+LikelihoodContext(vars=nothing) = LikelihoodContext(vars, EvaluationContext())
+LikelihoodContext(context::AbstractContext) = LikelihoodContext(nothing, context)
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
@@ -85,16 +124,15 @@ struct MiniBatchContext{Tctx,T} <: AbstractContext
     context::Tctx
     loglike_scalar::T
 end
-function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
+function MiniBatchContext(context=EvaluationContext(); batch_size, npoints)
     return MiniBatchContext(context, npoints / batch_size)
 end
 
 function unwrap_childcontext(context::MiniBatchContext)
-    child = context.context
     function reconstruct_minibatchcontext(c::AbstractContext)
         return MiniBatchContext(c, context.loglike_scalar)
     end
-    return child, reconstruct_minibatchcontext
+    return context.context, reconstruct_minibatchcontext
 end
 
 """
@@ -138,9 +176,8 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
 end
 
 function unwrap_childcontext(context::PrefixContext{P}) where {P}
-    child = context.context
     function reconstruct_prefixcontext(c::AbstractContext)
         return PrefixContext{P}(c)
     end
-    return child, reconstruct_prefixcontext
+    return context.context, reconstruct_prefixcontext
 end

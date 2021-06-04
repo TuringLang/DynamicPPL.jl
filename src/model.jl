@@ -86,7 +86,7 @@ function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::Union{AbstractContext,Nothing}=nothing,
 )
     return model(varinfo, SamplingContext(rng, sampler, context))
 end
@@ -192,7 +192,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, DefaultContext())
+    model(varinfo, EvaluationContext())
     return getlogp(varinfo)
 end
 
