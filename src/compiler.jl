@@ -54,8 +54,10 @@ check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 
 """
     unwrap_right_vn(right, vn)
+
 Return the unwrapped distribution on the right-hand side and variable name on the left-hand
 side of a `~` expression such as `x ~ Normal()`.
+
 This is used mainly to unwrap `NamedDist` distributions.
 """
 unwrap_right_vn(right, vn) = right, vn
@@ -63,8 +65,10 @@ unwrap_right_vn(right::NamedDist, vn) = unwrap_right_vn(right.dist, right.name)
 
 """
     unwrap_right_left_vns(right, left, vns)
+
 Return the unwrapped distributions on the right-hand side and values and variable names on the
 left-hand side of a `.~` expression such as `x .~ Normal()`.
+
 This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
 variables.
 """
