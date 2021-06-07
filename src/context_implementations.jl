@@ -255,15 +255,23 @@ function assume(
     inds,
     vi,
 )
-    # Always overwrite the parameters with new ones.
-    r = init(rng, dist, sampler)
     if haskey(vi, vn)
-        vi[vn] = vectorize(dist, r)
-        setorder!(vi, vn, get_num_produce(vi))
+        # Always overwrite the parameters with new ones for `SampleFromUniform`.
+        if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
+            unset_flag!(vi, vn, "del")
+            r = init(rng, dist, sampler)
+            vi[vn] = vectorize(dist, r)
+            settrans!(vi, false, vn)
+            setorder!(vi, vn, get_num_produce(vi))
+        else
+            r = vi[vn]
+        end
     else
+        r = init(rng, dist, sampler)
         push!(vi, vn, r, dist, sampler)
+        settrans!(vi, false, vn)
     end
-    settrans!(vi, false, vn)
+
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
