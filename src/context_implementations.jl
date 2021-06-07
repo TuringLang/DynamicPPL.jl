@@ -44,11 +44,11 @@ function tilde_assume(context::SamplingContext, right, vn, inds, vi)
 end
 
 # Leaf contexts
-tilde_assume(::DefaultContext, right, vn, inds, vi) = assume(right, vn, inds, vi)
+tilde_assume(::DefaultContext, right, vn, inds, vi) = assume(right, vn, vi)
 function tilde_assume(
     rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, inds, vi
 )
-    return assume(rng, sampler, right, vn, inds, vi)
+    return assume(rng, sampler, right, vn, vi)
 end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
@@ -74,10 +74,10 @@ function tilde_assume(
     return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
 end
 function tilde_assume(::PriorContext, right, vn, inds, vi)
-    return assume(right, vn, inds, vi)
+    return assume(right, vn, vi)
 end
 function tilde_assume(rng::Random.AbstractRNG, ::PriorContext, sampler, right, vn, inds, vi)
-    return assume(rng, sampler, right, vn, inds, vi)
+    return assume(rng, sampler, right, vn, vi)
 end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
@@ -103,12 +103,12 @@ function tilde_assume(
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, inds, vi)
 end
 function tilde_assume(::LikelihoodContext, right, vn, inds, vi)
-    return assume(NoDist(right), vn, inds, vi)
+    return assume(NoDist(right), vn, vi)
 end
 function tilde_assume(
     rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, inds, vi
 )
-    return assume(rng, sampler, NoDist(right), vn, inds, vi)
+    return assume(rng, sampler, NoDist(right), vn, vi)
 end
 
 function tilde_assume(context::MiniBatchContext, right, vn, inds, vi)
@@ -238,7 +238,7 @@ function observe(spl::Sampler, weight)
 end
 
 # fallback without sampler
-function assume(dist::Distribution, vn::VarName, inds, vi)
+function assume(dist::Distribution, vn::VarName, vi)
     if !haskey(vi, vn)
         error("variable $vn does not exist")
     end
@@ -252,7 +252,6 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    inds,
     vi,
 )
     if haskey(vi, vn)
@@ -355,12 +354,12 @@ function dot_tilde_assume(
     end
 end
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, inds, vi)
-    return dot_assume(NoDist.(right), left, vn, inds, vi)
+    return dot_assume(NoDist.(right), left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, inds, vi
 )
-    return dot_assume(rng, sampler, NoDist.(right), left, vn, inds, vi)
+    return dot_assume(rng, sampler, NoDist.(right), left, vn, vi)
 end
 
 # `PriorContext`
@@ -396,12 +395,12 @@ function dot_tilde_assume(
     end
 end
 function dot_tilde_assume(context::PriorContext, right, left, vn, inds, vi)
-    return dot_assume(right, left, vn, inds, vi)
+    return dot_assume(right, left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext, sampler, right, left, vn, inds, vi
 )
-    return dot_assume(rng, sampler, right, left, vn, inds, vi)
+    return dot_assume(rng, sampler, right, left, vn, vi)
 end
 
 # `MiniBatchContext`
@@ -433,7 +432,6 @@ function dot_assume(
     dist::MultivariateDistribution,
     var::AbstractMatrix,
     vns::AbstractVector{<:VarName},
-    inds,
     vi,
 )
     @assert length(dist) == size(var, 1)
@@ -460,7 +458,6 @@ function dot_assume(
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
-    inds,
     vi,
 )
     # Make sure `var` is not a matrix for multivariate distributions
