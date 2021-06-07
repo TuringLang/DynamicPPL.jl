@@ -360,7 +360,7 @@ end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, inds, vi
 )
-    return dot_assume(rng, sampler, NoDist.(right), left, vn, vi)
+    return dot_assume(rng, sampler, NoDist.(right), vn, left, vi)
 end
 
 # `PriorContext`
@@ -401,7 +401,7 @@ end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext, sampler, right, left, vn, inds, vi
 )
-    return dot_assume(rng, sampler, right, left, vn, vi)
+    return dot_assume(rng, sampler, right, vn, left, vi)
 end
 
 # `MiniBatchContext`
