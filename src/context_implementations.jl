@@ -614,7 +614,7 @@ end
 """
     dot_tilde_observe!(context, right, left, vname, vinds, vi)
 
-Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur the model inputs),
+Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
 Falls back to `dot_tilde_observe(context, right, left, vi)` ignoring the information about variable
