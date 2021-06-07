@@ -170,18 +170,19 @@ which the order of the sampling context and its child are swapped.
 function tilde_observe(context::SamplingContext, right, left, vi)
     c, reconstruct_context = unwrap_childcontext(context)
     child_of_c, reconstruct_c = unwrap_childcontext(c)
-    fallback_context = if child_of_c !== nothing
-        reconstruct_c(reconstruct_context(child_of_c))
+    return if child_of_c === nothing
+        tilde_observe(c, context.sampler, right, left, vi)
     else
-        c
+        tilde_observe(
+            reconstruct_c(reconstruct_context(child_of_c)), right, left, vi
+        )
     end
-    return tilde_observe(fallback_context, right, left, vi)
 end
 
 # Leaf contexts
-tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::PriorContext, right, left, vi) = 0
-tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
+tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(right, left, vi)
+tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(right, left, vi)
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
