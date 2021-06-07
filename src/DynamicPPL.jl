@@ -83,10 +83,12 @@ export AbstractVarInfo,
     PrefixContext,
     assume,
     dot_assume,
-    observer,
+    observe,
     dot_observe,
-    tilde,
-    dot_tilde,
+    tilde_assume,
+    tilde_observe,
+    dot_tilde_assume,
+    dot_tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -127,5 +129,18 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
+
+# Deprecations.
+@deprecate tilde(rng, ctx, sampler, right, vn, inds, vi) tilde_assume(
+    rng, ctx, sampler, right, vn, inds, vi
+)
+@deprecate tilde(ctx, sampler, right, left, vi) tilde_observe(ctx, sampler, right, left, vi)
+
+@deprecate dot_tilde(rng, ctx, sampler, right, left, vn, inds, vi) dot_tilde_assume(
+    rng, ctx, sampler, right, left, vn, inds, vi
+)
+@deprecate dot_tilde(ctx, sampler, right, left, vi) dot_tilde_observe(
+    ctx, sampler, right, left, vi
+)
 
 end # module
