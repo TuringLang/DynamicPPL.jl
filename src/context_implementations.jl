@@ -429,10 +429,7 @@ end
 
 # `dot_assume`
 function dot_assume(
-    dist::MultivariateDistribution,
-    var::AbstractMatrix,
-    vns::AbstractVector{<:VarName},
-    vi,
+    dist::MultivariateDistribution, var::AbstractMatrix, vns::AbstractVector{<:VarName}, vi
 )
     @assert length(dist) == size(var, 1)
     lp = sum(zip(vns, eachcol(var))) do vn, ri
