@@ -173,9 +173,7 @@ function tilde_observe(context::SamplingContext, right, left, vi)
     return if child_of_c === nothing
         tilde_observe(c, context.sampler, right, left, vi)
     else
-        tilde_observe(
-            reconstruct_c(reconstruct_context(child_of_c)), right, left, vi
-        )
+        tilde_observe(reconstruct_c(reconstruct_context(child_of_c)), right, left, vi)
     end
 end
 
