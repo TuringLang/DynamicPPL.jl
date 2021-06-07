@@ -435,8 +435,12 @@ end
 
 """
     matchingvalue(sampler, vi, value)
+    matchingvalue(context::AbstractContext, vi, value)
 
-Convert the `value` to the correct type for the `sampler` and the `vi` object.
+Convert the `value` to the correct type for the `sampler` or `context` and the `vi` object.
+
+For a `context` that is _not_ a `SamplingContext`, we fall back to
+`matchingvalue(SampleFromPrior(), vi, value)`.
 """
 function matchingvalue(sampler, vi, value)
     T = typeof(value)
@@ -452,6 +456,13 @@ function matchingvalue(sampler, vi, value)
     end
 end
 matchingvalue(sampler, vi, value::FloatOrArrayType) = get_matching_type(sampler, vi, value)
+
+function matchingvalue(context::AbstractContext, vi, value)
+    return matchingvalue(SampleFromPrior(), vi, value)
+end
+function matchingvalue(context::SamplingContext, vi, value)
+    return matchingvalue(context.sampler, vi, value)
+end
 
 """
     get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T}
