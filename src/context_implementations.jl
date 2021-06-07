@@ -583,7 +583,7 @@ probability, and return the observed value for a context associated with a sampl
 Falls back to `dot_tilde_observe(context.context, right, left, vi) ignoring the sampler.
 """
 function dot_tilde_observe(context::SamplingContext, right, left, vi)
-    return dot_tilde_observe(context.context, right, left, vname, vinds, vi)
+    return dot_tilde_observe(context.context, context.sampler, right, left, vi)
 end
 
 # Leaf contexts
