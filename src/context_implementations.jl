@@ -148,12 +148,13 @@ which the order of the sampling context and its child are swapped.
 function tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
     c, reconstruct_context = unwrap_childcontext(context)
     child_of_c, reconstruct_c = unwrap_childcontext(c)
-    fallback_context = if child_of_c !== nothing
-        reconstruct_c(reconstruct_context(child_of_c))
+    return if child_of_c === nothing
+        tilde_observe(c, context.sampler, right, left, vname, vinds, vi)
     else
-        c
+        tilde_observe(
+            reconstruct_c(reconstruct_context(child_of_c)), right, left, vname, vinds, vi
+        )
     end
-    return tilde_observe(fallback_context, right, left, vname, vinds, vi)
 end
 
 """
