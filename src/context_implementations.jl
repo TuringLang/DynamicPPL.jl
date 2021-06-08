@@ -416,10 +416,17 @@ function dot_assume(
     dist::MultivariateDistribution, var::AbstractMatrix, vns::AbstractVector{<:VarName}, vi
 )
     @assert length(dist) == size(var, 1)
-    lp = sum(zip(vns, eachcol(var))) do vn, ri
+    # NOTE: We cannot work with `var` here because we might have a model of the form
+    #
+    #     m = Vector{Float64}(undef, n)
+    #     m .~ Normal()
+    #
+    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
+    r = get_and_set_val!(Random.GLOBAL_RNG, vi, vns, dist, SampleFromPrior())
+    lp = sum(zip(vns, eachcol(r))) do vn, ri
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
-    return var, lp
+    return r, lp
 end
 function dot_assume(
     rng,
@@ -441,9 +448,15 @@ function dot_assume(
     vns::AbstractArray{<:VarName},
     vi,
 )
-    # Make sure `var` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, var, istrans(vi, vns[1])))
-    return var, lp
+    # NOTE: We cannot work with `var` here because we might have a model of the form
+    #
+    #     m = Vector{Float64}(undef, n)
+    #     m .~ Normal()
+    #
+    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
+    r = get_and_set_val!(Random.GLOBAL_RNG, vi, vns, dists, SampleFromPrior())
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    return r, lp
 end
 
 function dot_assume(
