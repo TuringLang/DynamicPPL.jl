@@ -1,18 +1,4 @@
 """
-    unwrap_childcontext(context::AbstractContext)
-
-Return a tuple of the child context of a `context`, or `nothing` if the context does
-not wrap any other context, and a function `f(c::AbstractContext)` that constructs
-an instance of `context` in which the child context is replaced with `c`.
-
-Falls back to `(nothing, _ -> context)`.
-"""
-function unwrap_childcontext(context::AbstractContext)
-    reconstruct_context(@nospecialize(x)) = context
-    return nothing, reconstruct_context
-end
-
-"""
     SamplingContext(rng, sampler, context)
 
 Create a context that allows you to sample parameters with the `sampler` when running the model.
@@ -24,14 +10,6 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     rng::R
     sampler::S
     context::C
-end
-
-function unwrap_childcontext(context::SamplingContext)
-    child = context.context
-    function reconstruct_samplingcontext(c::AbstractContext)
-        return SamplingContext(context.rng, context.sampler, c)
-    end
-    return child, reconstruct_samplingcontext
 end
 
 """
@@ -89,14 +67,6 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
     return MiniBatchContext(context, npoints / batch_size)
 end
 
-function unwrap_childcontext(context::MiniBatchContext)
-    child = context.context
-    function reconstruct_minibatchcontext(c::AbstractContext)
-        return MiniBatchContext(c, context.loglike_scalar)
-    end
-    return child, reconstruct_minibatchcontext
-end
-
 """
     PrefixContext{Prefix}(context)
 
@@ -135,12 +105,4 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
-end
-
-function unwrap_childcontext(context::PrefixContext{P}) where {P}
-    child = context.context
-    function reconstruct_prefixcontext(c::AbstractContext)
-        return PrefixContext{P}(c)
-    end
-    return child, reconstruct_prefixcontext
 end

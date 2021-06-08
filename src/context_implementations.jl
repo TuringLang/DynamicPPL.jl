@@ -29,18 +29,9 @@ Falls back to
 ```julia
 tilde_assume(context.rng, context.context, context.sampler, right, vn, inds, vi)
 ```
-if the context `context.context` does not call any other context, as indicated by
-[`unwrap_childcontext`](@ref). Otherwise, calls `tilde_assume(c, right, vn, inds, vi)`
-where `c` is a context in which the order of the sampling context and its child are swapped.
 """
 function tilde_assume(context::SamplingContext, right, vn, inds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        tilde_assume(context.rng, c, context.sampler, right, vn, inds, vi)
-    else
-        tilde_assume(reconstruct_c(reconstruct_context(child_of_c)), right, vn, inds, vi)
-    end
+    return tilde_assume(context.rng, context.context, context.sampler, right, vn, inds, vi)
 end
 
 # Leaf contexts
@@ -115,8 +106,16 @@ function tilde_assume(context::MiniBatchContext, right, vn, inds, vi)
     return tilde_assume(context.context, right, vn, inds, vi)
 end
 
+function tilde_assume(rng, context::MiniBatchContext, sampler, right, vn, inds, vi)
+    return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
+end
+
 function tilde_assume(context::PrefixContext, right, vn, inds, vi)
     return tilde_assume(context.context, right, prefix(context, vn), inds, vi)
+end
+
+function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
+    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
 end
 
 """
@@ -139,22 +138,12 @@ end
 
 Handle observed variables with a `context` associated with a sampler.
 
-Falls back to `tilde_observe(context.context, right, left, vname, vinds, vi)` ignoring
-the information about the sampler if the context `context.context` does not call any other
-context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
-`tilde_observe(c, right, left, vname, vinds, vi)` where `c` is a context in
-which the order of the sampling context and its child are swapped.
+Falls back to `tilde_observe(context.context, right, left, vname, vinds, vi)`.
 """
 function tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        tilde_observe(c, context.sampler, right, left, vname, vinds, vi)
-    else
-        tilde_observe(
-            reconstruct_c(reconstruct_context(child_of_c)), right, left, vname, vinds, vi
-        )
-    end
+    return tilde_observe(
+        context.rng, context.context, context.sampler, right, left, vname, vinds, vi
+    )
 end
 
 """
@@ -162,39 +151,31 @@ end
 
 Handle observed constants with a `context` associated with a sampler.
 
-Falls back to `tilde_observe(context.context, right, left, vi)` ignoring
-the information about the sampler if the context `context.context` does not call any other
-context, as indicated by [`unwrap_childcontext`](@ref). Otherwise, calls
-`tilde_observe(c, right, left, vi)` where `c` is a context in
-which the order of the sampling context and its child are swapped.
+Falls back to `tilde_observe(context.context, right, left, vi)`.
 """
 function tilde_observe(context::SamplingContext, right, left, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        tilde_observe(c, context.sampler, right, left, vi)
-    else
-        tilde_observe(reconstruct_c(reconstruct_context(child_of_c)), right, left, vi)
-    end
+    return tilde_observe(context.context, context.sampler, right, left, vi)
 end
 
 # Leaf contexts
+tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
 tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(right, left, vi)
+tilde_observe(::PriorContext, right, left, vi) = 0
 tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
 tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(right, left, vi)
 
 # `MiniBatchContext`
-function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
+function tilde_observe(context::MiniBatchContext, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
-function tilde_observe(context::MiniBatchContext, sampler, right, left, vname, vinds, vi)
-    return context.loglike_scalar *
-           tilde_observe(context.context, right, left, vname, vinds, vi)
+function tilde_observe(context::MiniBatchContext, right, left, vname, vi)
+    return context.loglike_scalar * tilde_observe(context.context, right, left, vname, vi)
 end
 
 # `PrefixContext`
-function tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
-    return tilde_observe(context.context, right, left, prefix(context, vname), vinds, vi)
+function tilde_observe(context::PrefixContext, right, left, vname, vi)
+    return tilde_observe(context.context, right, left, prefix(context, vname), vi)
 end
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
@@ -294,25 +275,16 @@ Falls back to
 ```julia
 dot_tilde_assume(context.rng, context.context, context.sampler, right, left, vn, inds, vi)
 ```
-if the context `context.context` does not call any other context, as indicated by
-[`unwrap_childcontext`](@ref). Otherwise, calls `dot_tilde_assume(c, right, left, vn, inds, vi)`
-where `c` is a context in which the order of the sampling context and its child are swapped.
 """
 function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
-    c, reconstruct_context = unwrap_childcontext(context)
-    child_of_c, reconstruct_c = unwrap_childcontext(c)
-    return if child_of_c === nothing
-        dot_tilde_assume(context.rng, c, context.sampler, right, left, vn, inds, vi)
-    else
-        dot_tilde_assume(
-            reconstruct_c(reconstruct_context(child_of_c)), right, left, vn, inds, vi
-        )
-    end
+    return dot_tilde_assume(
+        context.rng, context.context, context.sampler, right, left, vn, inds, vi
+    )
 end
 
 # `DefaultContext`
-function dot_tilde_assume(::DefaultContext, sampler, right, left, vns, inds, vi)
-    return dot_assume(right, vns, left, vi)
+function dot_tilde_assume(::DefaultContext, right, left, vns, inds, vi)
+    return dot_assume(right, left, vns, vi)
 end
 
 function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, inds, vi)
@@ -408,9 +380,21 @@ function dot_tilde_assume(context::MiniBatchContext, right, left, vn, inds, vi)
     return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
+function dot_tilde_assume(
+    rng, context::MiniBatchContext, sampler, right, left, vn, inds, vi
+)
+    return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
+end
+
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
     return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), inds, vi)
+end
+
+function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, inds, vi)
+    return dot_tilde_assume(
+        rng, context.context, sampler, right, prefix.(Ref(context), vn), inds, vi
+    )
 end
 
 """
@@ -583,30 +567,23 @@ function dot_tilde_observe(context::SamplingContext, right, left, vi)
 end
 
 # Leaf contexts
-dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(right, left, vi)
+dot_tilde_observe(::DefaultContext, right, left, vi) = dot_observe(right, left, vi)
+dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(sampler, right, left, vi)
+dot_tilde_observe(::PriorContext, right, left, vi) = 0
 dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-function dot_tilde_observe(context::LikelihoodContext, sampler, right, left, vi)
+function dot_tilde_observe(context::LikelihoodContext, right, left, vi)
     return dot_observe(right, left, vi)
+end
+function dot_tilde_observe(context::LikelihoodContext, sampler, right, left, vi)
+    return dot_observe(sampler, right, left, vi)
 end
 
 # `MiniBatchContext`
-function dot_tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar *
-           dot_tilde_observe(context.context, sampler, right, left, vi)
-end
-function dot_tilde_observe(
-    context::MiniBatchContext, sampler, right, left, vname, vinds, vi
-)
-    return context.loglike_scalar *
-           dot_tilde_observe(context.context, sampler, right, left, vname, vinds, vi)
+function dot_tilde_observe(context::MiniBatchContext, right, left, vi)
+    return context.loglike_scalar * dot_tilde_observe(context.context, right, left, vi)
 end
 
 # `PrefixContext`
-function dot_tilde_observe(context::PrefixContext, right, left, vname, vinds, vi)
-    return dot_tilde_observe(
-        context.context, right, left, prefix(context, vname), vinds, vi
-    )
-end
 function dot_tilde_observe(context::PrefixContext, right, left, vi)
     return dot_tilde_observe(context.context, right, left, vi)
 end
@@ -641,17 +618,26 @@ function dot_tilde_observe!(context, right, left, vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
+function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dist::MultivariateDistribution, value::AbstractMatrix, vi)
+    return dot_observe(dist, value, vi)
+end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
     @debug "dist = $dist"
     @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
 end
+function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dists::Distribution, value::AbstractArray, vi)
+    return dot_observe(dists, value, vi)
+end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
     increment_num_produce!(vi)
     @debug "dists = $dists"
     @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
+end
+function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
+    return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
     increment_num_produce!(vi)
