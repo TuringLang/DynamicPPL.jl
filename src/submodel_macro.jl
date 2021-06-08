@@ -1,10 +1,6 @@
 macro submodel(expr)
     return quote
-        _evaluate(
-            $(esc(expr)),
-            $(esc(:__varinfo__)),
-            $(esc(:__context__)),
-        )
+        _evaluate($(esc(expr)), $(esc(:__varinfo__)), $(esc(:__context__)))
     end
 end
 
