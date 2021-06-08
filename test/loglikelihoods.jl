@@ -87,12 +87,12 @@ end
     @submodel _likelihood_dot_observe(m, x)
 end
 
-const mean_of_mean_models = (
+const gdemo_models = (
     gdemo1(), gdemo2(), gdemo3(), gdemo4(), gdemo5(), gdemo7(), gdemo9(), gdemo10()
 )
 
 @testset "loglikelihoods.jl" begin
-    for m in mean_of_mean_models
+    for m in gdemo_models
         vi = VarInfo(m)
 
         vns = vi.metadata.m.vns
