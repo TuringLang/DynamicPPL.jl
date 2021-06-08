@@ -1,28 +1,28 @@
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
-@model function gdemo1(x = 10 * ones(2), ::Type{TV} = Vector{Float64}) where {TV}
+@model function gdemo1(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
     m .~ Normal()
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5 * ones(length(x)))
 end
 
-@model function gdemo2(x = 10 * ones(2), ::Type{TV} = Vector{Float64}) where {TV}
+@model function gdemo2(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `assume` with indexing and `observe`
     m = TV(undef, length(x))
     for i in eachindex(m)
         m[i] ~ Normal()
     end
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5 * ones(length(x)))
 end
 
-@model function gdemo3(x = 10 * ones(2))
+@model function gdemo3(x=10 * ones(2))
     # Multivariate `assume` and `observe`
     m ~ MvNormal(length(x), 1.0)
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5 * ones(length(x)))
 end
 
-@model function gdemo4(x = 10 * ones(2), ::Type{TV} = Vector{Float64}) where {TV}
+@model function gdemo4(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and `observe` with indexing
     m = TV(undef, length(x))
     m .~ Normal()
@@ -33,10 +33,10 @@ end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
-@model function gdemo5(x = 10 * ones(1))
+@model function gdemo5(x=10 * ones(1))
     # `assume` and `dot_observe`
     m ~ Normal()
-    x .~ Normal(m, 0.5)
+    return x .~ Normal(m, 0.5)
 end
 
 # @model function gdemo6(::Type{TV} = Vector{Float64}) where {TV}
@@ -45,7 +45,7 @@ end
 #     [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
 # end
 
-@model function gdemo7(::Type{TV} = Vector{Float64}) where {TV}
+@model function gdemo7(::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and literal `observe` with indexing
     m = TV(undef, 2)
     m .~ Normal()
@@ -60,7 +60,7 @@ end
 #     [10.0, ] .~ Normal(m, 0.5)
 # end
 
-@model function _prior_dot_assume(::Type{TV} = Vector{Float64}) where {TV}
+@model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
     m = TV(undef, 2)
     m .~ Normal()
 
@@ -76,10 +76,10 @@ end
 end
 
 @model function _likelihood_dot_observe(m, x)
-    x ~ MvNormal(m, 0.5 * ones(length(m)))
+    return x ~ MvNormal(m, 0.5 * ones(length(m)))
 end
 
-@model function gdemo10(x = 10 * ones(2), ::Type{TV} = Vector{Float64}) where {TV}
+@model function gdemo10(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
 
@@ -87,8 +87,9 @@ end
     @submodel _likelihood_dot_observe(m, x)
 end
 
-const mean_of_mean_models = (gdemo1(), gdemo2(), gdemo3(), gdemo4(), gdemo5(), gdemo7(), gdemo9(), gdemo10())
-
+const mean_of_mean_models = (
+    gdemo1(), gdemo2(), gdemo3(), gdemo4(), gdemo5(), gdemo7(), gdemo9(), gdemo10()
+)
 
 @testset "loglikelihoods.jl" begin
     for m in mean_of_mean_models
@@ -97,7 +98,7 @@ const mean_of_mean_models = (gdemo1(), gdemo2(), gdemo3(), gdemo4(), gdemo5(), g
         vns = vi.metadata.m.vns
         if length(vns) == 1 && length(vi[vns[1]]) == 1
             # Only have one latent variable.
-            DynamicPPL.setval!(vi, [1.0, ], ["m", ])
+            DynamicPPL.setval!(vi, [1.0], ["m"])
         else
             DynamicPPL.setval!(vi, [1.0, 1.0], ["m[1]", "m[2]"])
         end

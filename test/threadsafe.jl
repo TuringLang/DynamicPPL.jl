@@ -61,14 +61,18 @@
 
         # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
         DynamicPPL.evaluate_threadsafe(
-            wthreads(x), vi, SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+            wthreads(x),
+            vi,
+            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
         )
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
 
         println("  evaluate_threadsafe:")
         @time DynamicPPL.evaluate_threadsafe(
-            wthreads(x), vi, SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+            wthreads(x),
+            vi,
+            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
         )
 
         @model function wothreads(x)
@@ -96,14 +100,18 @@
 
         # Ensure that we use `VarInfo`.
         DynamicPPL.evaluate_threadunsafe(
-            wothreads(x), vi, SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+            wothreads(x),
+            vi,
+            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
         )
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
 
         println("  evaluate_threadunsafe:")
         @time DynamicPPL.evaluate_threadunsafe(
-            wothreads(x), vi, SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+            wothreads(x),
+            vi,
+            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
         )
     end
 end
