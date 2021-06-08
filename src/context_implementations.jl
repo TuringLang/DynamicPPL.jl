@@ -581,7 +581,9 @@ end
 
 # Leaf contexts
 dot_tilde_observe(::DefaultContext, right, left, vi) = dot_observe(right, left, vi)
-dot_tilde_observe(::DefaultContext, sampler, right, left, vi) = dot_observe(sampler, right, left, vi)
+function dot_tilde_observe(::DefaultContext, sampler, right, left, vi)
+    return dot_observe(sampler, right, left, vi)
+end
 dot_tilde_observe(::PriorContext, right, left, vi) = 0
 dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
 function dot_tilde_observe(context::LikelihoodContext, right, left, vi)
@@ -631,7 +633,12 @@ function dot_tilde_observe!(context, right, left, vi)
 end
 
 # Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dist::MultivariateDistribution, value::AbstractMatrix, vi)
+function dot_observe(
+    ::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    value::AbstractMatrix,
+    vi,
+)
     return dot_observe(dist, value, vi)
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
@@ -640,7 +647,12 @@ function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
 end
-function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dists::Distribution, value::AbstractArray, vi)
+function dot_observe(
+    ::Union{SampleFromPrior,SampleFromUniform},
+    dists::Distribution,
+    value::AbstractArray,
+    vi,
+)
     return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
@@ -649,7 +661,12 @@ function dot_observe(dists::Distribution, value::AbstractArray, vi)
     @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
 end
-function dot_observe(::Union{SampleFromPrior,SampleFromUniform}, dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
+function dot_observe(
+    ::Union{SampleFromPrior,SampleFromUniform},
+    dists::AbstractArray{<:Distribution},
+    value::AbstractArray,
+    vi,
+)
     return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
