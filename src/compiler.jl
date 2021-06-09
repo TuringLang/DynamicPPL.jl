@@ -37,6 +37,15 @@ end
 isassumption(expr) = :(false)
 
 """
+    isliteral(expr)
+
+Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` otherwise.
+"""
+isliteral(e) = false
+isliteral(::Number) = true
+isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
+
+"""
     check_tilde_rhs(x)
 
 Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
@@ -283,7 +292,7 @@ variables.
 """
 function generate_tilde(left, right)
     # If the LHS is a literal, it is always an observation
-    if !(left isa Symbol || left isa Expr)
+    if isliteral(left)
         return quote
             $(DynamicPPL.tilde_observe!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
@@ -327,7 +336,7 @@ Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
     # If the LHS is a literal, it is always an observation
-    if !(left isa Symbol || left isa Expr)
+    if isliteral(left)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
