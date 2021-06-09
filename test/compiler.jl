@@ -423,4 +423,23 @@ end
         x = [Laplace(), Normal(), MvNormal(3, 1.0)]
         @test DynamicPPL.check_tilde_rhs(x) === x
     end
+
+    @testset "array literals" begin
+        # Verify that we indeed can parse this.
+        @test @model(
+            function array_literal_model()
+            # `assume` and literal `observe`
+            m ~ MvNormal(2, 1.0)
+            [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            end
+        ) isa Function
+
+        @model function array_literal_model()
+            # `assume` and literal `observe`
+            m ~ MvNormal(2, 1.0)
+            [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+        end
+
+        @test array_literal_model()() == [10.0, 10.0]
+    end
 end
