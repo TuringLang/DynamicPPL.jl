@@ -111,9 +111,8 @@ function build_model_info(input_expr)
 
     # Check that the function has a name
     # https://github.com/TuringLang/DynamicPPL.jl/issues/260
-    haskey(modeldef, :name) || throw(ArgumentError(
-        "anonymous functions without name are not supported"
-    ))
+    haskey(modeldef, :name) ||
+        throw(ArgumentError("anonymous functions without name are not supported"))
 
     # Print a warning if function body of the model is empty
     warn_empty(modeldef[:body])

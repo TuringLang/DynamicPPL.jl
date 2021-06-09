@@ -454,8 +454,8 @@ end
     @testset "anonymous function" begin
         error = ArgumentError("anonymous functions without name are not supported")
         @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
-            @model function(x)
-                x ~ Normal()
+            @model function (x)
+                return x ~ Normal()
             end
         end
         @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
