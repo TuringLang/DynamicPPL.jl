@@ -423,14 +423,13 @@ end
         x = [Laplace(), Normal(), MvNormal(3, 1.0)]
         @test DynamicPPL.check_tilde_rhs(x) === x
     end
-    
     @testset "isliteral" begin
-        @test DynamicPPL.isliteral(:([1.0, ]))
-        @test DynamicPPL.isliteral(:([[1.0,], 1.0]))
+        @test DynamicPPL.isliteral(:([1.0]))
+        @test DynamicPPL.isliteral(:([[1.0], 1.0]))
         @test !(DynamicPPL.isliteral(:((1.0, 1.0))))
 
-        @test !(DynamicPPL.isliteral(:([x, ])))
-        @test !(DynamicPPL.isliteral(:([[x,], 1.0])))
+        @test !(DynamicPPL.isliteral(:([x])))
+        @test !(DynamicPPL.isliteral(:([[x], 1.0])))
         @test !(DynamicPPL.isliteral(:((x, 1.0))))
     end
 
