@@ -240,7 +240,7 @@ variables.
 """
 function generate_tilde(left, right)
     # If the LHS is a literal, it is always an observation
-    if !(left isa Symbol || left isa Expr)
+    if !(left isa Symbol || left isa Expr) || Meta.isexpr(left, :vect)
         return quote
             $(DynamicPPL.tilde_observe)(
                 __context__,
@@ -290,7 +290,7 @@ Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
     # If the LHS is a literal, it is always an observation
-    if !(left isa Symbol || left isa Expr)
+    if !(left isa Symbol || left isa Expr) || Meta.isexpr(left, :vect)
         return quote
             $(DynamicPPL.dot_tilde_observe)(
                 __context__,
