@@ -395,9 +395,7 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = quote
-        $(modelinfo[:body])
-    end
+    evaluatordef[:body] = modelinfo[:body]
 
     ## Build the model function.
 

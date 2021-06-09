@@ -87,7 +87,7 @@ end
 
 function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
     # Defer literal `observe` to child-context.
-    return dot_tilde_observe(context.context, right, left, vi)
+    return dot_tilde_observe!(context.context, right, left, vi)
 end
 function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.

@@ -4,7 +4,7 @@
 Create a context that allows you to sample parameters with the `sampler` when running the model.
 The `context` determines how the returned log density is computed when running the model.
 
-See also: [`JointContext`](@ref), [`LoglikelihoodContext`](@ref), [`PriorContext`](@ref)
+See also: [`DefaultContext`](@ref), [`LikelihoodContext`](@ref), [`PriorContext`](@ref)
 """
 struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
     rng::R

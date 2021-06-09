@@ -124,7 +124,8 @@ end
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
-Falls back to `tilde_assume!(context, right, vn, inds, vi)`.
+By default, calls `tilde_assume(context, right, vn, inds, vi)` and accumulates the log
+probability of `vi` with the returned value.
 """
 function tilde_assume!(context, right, vn, inds, vi)
     value, logp = tilde_assume(context, right, vn, inds, vi)
@@ -138,7 +139,10 @@ end
 
 Handle observed variables with a `context` associated with a sampler.
 
-Falls back to `tilde_observe(context.context, right, left, vname, vinds, vi)`.
+Falls back to
+```julia
+tilde_observe(context.rng, context.context, context.sampler, right, left, vname, vinds, vi)
+```
 """
 function tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
     return tilde_observe(
@@ -151,7 +155,7 @@ end
 
 Handle observed constants with a `context` associated with a sampler.
 
-Falls back to `tilde_observe(context.context, right, left, vi)`.
+Falls back to `tilde_observe(context.context, context.sampler, right, left, vi)`.
 """
 function tilde_observe(context::SamplingContext, right, left, vi)
     return tilde_observe(context.context, context.sampler, right, left, vi)
@@ -187,13 +191,11 @@ end
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde_observe(context, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe!(context, right, left, vname, vinds, vi)
-    logp = tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return tilde_observe!(context, right, left, vi)
 end
 
 """
@@ -202,7 +204,8 @@ end
 Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
 return the observed value.
 
-Falls back to `tilde(context, right, left, vi)`.
+By default, calls `tilde_observe(context, right, left, vi)` and accumulates the log
+probability of `vi` with the returned value.
 """
 function tilde_observe!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
@@ -573,7 +576,7 @@ end
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value for a context associated with a sampler.
 
-Falls back to `dot_tilde_observe(context.context, right, left, vi) ignoring the sampler.
+Falls back to `dot_tilde_observe(context.context, context.sampler, right, left, vi)`.
 """
 function dot_tilde_observe(context::SamplingContext, right, left, vi)
     return dot_tilde_observe(context.context, context.sampler, right, left, vi)
@@ -609,13 +612,11 @@ end
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde_observe(context, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe!(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe!(context, right, left, vn, inds, vi)
-    logp = dot_tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return dot_tilde_observe!(context, right, left, vi)
 end
 
 """
