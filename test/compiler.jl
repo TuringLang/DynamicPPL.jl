@@ -426,18 +426,16 @@ end
 
     @testset "array literals" begin
         # Verify that we indeed can parse this.
-        @test @model(
-            function array_literal_model()
+        @test @model(function array_literal_model()
             # `assume` and literal `observe`
             m ~ MvNormal(2, 1.0)
-            [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
-            end
-        ) isa Function
+            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+        end) isa Function
 
         @model function array_literal_model()
             # `assume` and literal `observe`
             m ~ MvNormal(2, 1.0)
-            [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
         end
 
         @test array_literal_model()() == [10.0, 10.0]
