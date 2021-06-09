@@ -441,12 +441,25 @@ end
             return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
         end) isa Function
 
-        @model function array_literal_model()
+        @model function array_literal_model2()
             # `assume` and literal `observe`
             m ~ MvNormal(2, 1.0)
             return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
         end
 
-        @test array_literal_model()() == [10.0, 10.0]
+        @test array_literal_model2()() == [10.0, 10.0]
+    end
+
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/260
+    @testset "anonymous function" begin
+        error = ArgumentError("anonymous functions without name are not supported")
+        @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
+            @model function(x)
+                x ~ Normal()
+            end
+        end
+        @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
+            model = @model(x -> (x ~ Normal()))
+        end
     end
 end
