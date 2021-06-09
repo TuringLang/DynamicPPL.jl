@@ -75,6 +75,7 @@ export AbstractVarInfo,
     SampleFromPrior,
     SampleFromUniform,
     # Contexts
+    SamplingContext,
     DefaultContext,
     LikelihoodContext,
     PriorContext,
