@@ -43,7 +43,7 @@ Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` other
 """
 isliteral(e) = false
 isliteral(::Number) = true
-isliteral(e::Expr) = all(isliteral, e.args)
+isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
 
 """
     check_tilde_rhs(x)
