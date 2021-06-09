@@ -172,10 +172,10 @@ end
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __sampler__
+            global sampler_ = __context__.sampler
             global model_ = __model__
             global context_ = __context__
-            global rng_ = __rng__
+            global rng_ = __context__.rng
             global lp = getlogp(__varinfo__)
             return x
         end
@@ -184,18 +184,17 @@ end
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
-        @test sampler_ === SampleFromPrior()
-        @test context_ === DefaultContext()
+        @test context_ isa SamplingContext
         @test rng_ isa Random.AbstractRNG
 
         # disable warnings
         @model function testmodel_missing4(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __sampler__
+            global sampler_ = __context__.sampler
             global model_ = __model__
             global context_ = __context__
-            global rng_ = __rng__
+            global rng_ = __context__.rng
             global lp = getlogp(__varinfo__)
             return x
         end false

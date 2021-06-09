@@ -1,80 +1,102 @@
 # Context version
 struct PointwiseLikelihoodContext{A,Ctx} <: AbstractContext
     loglikelihoods::A
-    ctx::Ctx
+    context::Ctx
 end
 
 function PointwiseLikelihoodContext(
-    likelihoods=Dict{VarName,Vector{Float64}}(), ctx::AbstractContext=LikelihoodContext()
+    likelihoods=Dict{VarName,Vector{Float64}}(),
+    context::AbstractContext=LikelihoodContext(),
 )
-    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(ctx)}(likelihoods, ctx)
+    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(context)}(
+        likelihoods, context
+    )
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}},
+    vn::VarName,
+    logp::Real,
 )
-    lookup = ctx.loglikelihoods
+    lookup = context.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{VarName,Float64}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{Dict{VarName,Float64}}, vn::VarName, logp::Real
 )
-    return ctx.loglikelihoods[vn] = logp
+    return context.loglikelihoods[vn] = logp
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}},
+    vn::VarName,
+    logp::Real,
 )
-    lookup = ctx.loglikelihoods
+    lookup = context.loglikelihoods
     ℓ = get!(lookup, string(vn), Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::VarName, logp::Real
 )
-    return ctx.loglikelihoods[string(vn)] = logp
+    return context.loglikelihoods[string(vn)] = logp
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}}, vn::String, logp::Real
+    context::PointwiseLikelihoodContext{Dict{String,Vector{Float64}}},
+    vn::String,
+    logp::Real,
 )
-    lookup = ctx.loglikelihoods
+    lookup = context.loglikelihoods
     ℓ = get!(lookup, vn, Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    ctx::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::String, logp::Real
+    context::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::String, logp::Real
 )
-    return ctx.loglikelihoods[vn] = logp
+    return context.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(rng, ctx::PointwiseLikelihoodContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
+function tilde_assume(context::PointwiseLikelihoodContext, right, vn, inds, vi)
+    return tilde_assume(context.context, right, vn, inds, vi)
 end
 
-function dot_tilde_assume(
-    rng, ctx::PointwiseLikelihoodContext, sampler, right, left, vn, inds, vi
-)
-    value, logp = dot_tilde(rng, ctx.ctx, sampler, right, left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+function dot_tilde_assume(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
+    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
-function tilde_observe(
-    ctx::PointwiseLikelihoodContext, sampler, right, left, vname, vinds, vi
-)
-    # This is slightly unfortunate since it is not completely generic...
-    # Ideally we would call `tilde_observe` recursively but then we don't get the
-    # loglikelihood value.
-    logp = tilde(ctx.ctx, sampler, right, left, vi)
+function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
+    # Defer literal `observe` to child-context.
+    return tilde_observe!(context.context, right, left, vi)
+end
+function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vinds, vi)
+    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
+    # we have to intercept the call to `tilde_observe!`.
+    logp = tilde_observe(context.context, right, left, vi)
     acclogp!(vi, logp)
 
-    # track loglikelihood value
-    push!(ctx, vname, logp)
+    # Track loglikelihood value.
+    push!(context, vn, logp)
+
+    return left
+end
+
+function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
+    # Defer literal `observe` to child-context.
+    return dot_tilde_observe!(context.context, right, left, vi)
+end
+function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
+    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
+    # we have to intercept the call to `dot_tilde_observe!`.
+    logp = dot_tilde_observe(context.context, right, left, vi)
+    acclogp!(vi, logp)
+
+    # Track loglikelihood value.
+    push!(context, vn, logp)
 
     return left
 end
@@ -150,30 +172,29 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
 """
 function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
     # Get the data by executing the model once
-    spl = SampleFromPrior()
     vi = VarInfo(model)
-    ctx = PointwiseLikelihoodContext(Dict{T,Vector{Float64}}())
+    context = PointwiseLikelihoodContext(Dict{T,Vector{Float64}}())
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
         # Update the values
-        setval_and_resample!(vi, chain, sample_idx, chain_idx)
+        setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, spl, ctx)
+        model(vi, context)
     end
 
     niters = size(chain, 1)
     nchains = size(chain, 3)
     loglikelihoods = Dict(
         varname => reshape(logliks, niters, nchains) for
-        (varname, logliks) in ctx.loglikelihoods
+        (varname, logliks) in context.loglikelihoods
     )
     return loglikelihoods
 end
 
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    ctx = PointwiseLikelihoodContext(Dict{VarName,Float64}())
-    model(varinfo, SampleFromPrior(), ctx)
-    return ctx.loglikelihoods
+    context = PointwiseLikelihoodContext(Dict{VarName,Vector{Float64}}())
+    model(varinfo, context)
+    return context.loglikelihoods
 end
