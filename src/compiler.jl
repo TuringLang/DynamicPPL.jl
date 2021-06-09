@@ -455,7 +455,9 @@ function matchingvalue(sampler, vi, value)
         return value
     end
 end
-matchingvalue(sampler, vi, value::FloatOrArrayType) = get_matching_type(sampler, vi, value)
+function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
+    return get_matching_type(sampler, vi, value)
+end
 
 function matchingvalue(context::AbstractContext, vi, value)
     return matchingvalue(SampleFromPrior(), vi, value)
