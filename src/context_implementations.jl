@@ -634,38 +634,17 @@ function dot_tilde_observe!(context, right, left, vi)
     return left
 end
 
-# Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dist::MultivariateDistribution,
-    value::AbstractMatrix,
-    vi,
-)
+# Falls back to non-sampler definition.
+function dot_observe(::AbstractSampler, dist, value, vi)
     return dot_observe(dist, value, vi)
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
     return Distributions.loglikelihood(dist, value)
 end
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dists::Distribution,
-    value::AbstractArray,
-    vi,
-)
-    return dot_observe(dists, value, vi)
-end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
     increment_num_produce!(vi)
     return Distributions.loglikelihood(dists, value)
-end
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dists::AbstractArray{<:Distribution},
-    value::AbstractArray,
-    vi,
-)
-    return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
     increment_num_produce!(vi)
