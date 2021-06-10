@@ -163,11 +163,15 @@ end
 
 # Leaf contexts
 tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(right, left, vi)
+function tilde_observe(::DefaultContext, sampler, right, left, vi)
+    return observe(sampler, right, left, vi)
+end
 tilde_observe(::PriorContext, right, left, vi) = 0
 tilde_observe(::PriorContext, sampler, right, left, vi) = 0
 tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(right, left, vi)
+function tilde_observe(::LikelihoodContext, sampler, right, left, vi)
+    return observe(sampler, right, left, vi)
+end
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
@@ -259,6 +263,7 @@ function assume(
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
+observe(sampler::AbstractSampler, right, left, vi) = observe(right, left, vi)
 function observe(right::Distribution, left, vi)
     increment_num_produce!(vi)
     return Distributions.loglikelihood(right, left)
@@ -633,46 +638,19 @@ function dot_tilde_observe!(context, right, left, vi)
     return left
 end
 
-# Ambiguity error when not sure to use Distributions convention or Julia broadcasting semantics
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dist::MultivariateDistribution,
-    value::AbstractMatrix,
-    vi,
-)
+# Falls back to non-sampler definition.
+function dot_observe(::AbstractSampler, dist, value, vi)
     return dot_observe(dist, value, vi)
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
-    @debug "dist = $dist"
-    @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
-end
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dists::Distribution,
-    value::AbstractArray,
-    vi,
-)
-    return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    @debug "dists = $dists"
-    @debug "value = $value"
     return Distributions.loglikelihood(dists, value)
-end
-function dot_observe(
-    ::Union{SampleFromPrior,SampleFromUniform},
-    dists::AbstractArray{<:Distribution},
-    value::AbstractArray,
-    vi,
-)
-    return dot_observe(dists, value, vi)
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    @debug "dists = $dists"
-    @debug "value = $value"
     return sum(Distributions.loglikelihood.(dists, value))
 end
