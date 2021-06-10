@@ -107,23 +107,23 @@ const gdemo_models = (
     gdemo10(),
 )
 
-function test_sampler_gdemo(spl::AbstractMCMC.AbstractSampler, args...; kwargs...)
-    # Default for `MCMCChains.Chains`.
-    return test_sampler_gdemo(spl, args...; kwargs...) do chain
-        mean(Array(chain))
+function test_sampler_gdemo(meanf, spl::AbstractMCMC.AbstractSampler, args...; target = 8.0, atol=1e-1, rtol=1-1, kwargs...)
+    @testset "$(nameof(typeof(spl))) on $(m.name)" for m in gdemo_models
+        chain = AbstractMCMC.sample(m, spl, args...)
+        μ = meanf(chain)
+        @test μ ≈ target atol = atol rtol = rtol
     end
 end
 
-function test_sampler_gdemo(meanf, spl::AbstractMCMC.AbstractSampler, args...; kwargs...)
-    @testset "$(spl) on $(m.name)" for m in gdemo_models
-        chain = AbstractMCMC.sample(m, spl, args...)
-        μ = meanf(chain)
-        @test μ ≈ 8.0 atol = atol rtol = rtol
-    end
+function test_sampler_continuous(meanf, spl::AbstractMCMC.AbstractSampler, args...; kwargs...)
+    return test_sampler_gdemo(meanf, spl, args...; kwargs...)
 end
 
 function test_sampler_continuous(spl::AbstractMCMC.AbstractSampler, args...; kwargs...)
-    return test_sampler_gdemo(spl, args...; kwargs...)
+    # Default for `MCMCChains.Chains`.
+    return test_sampler_continuous(spl, args...; kwargs...) do chain
+        mean(Array(chain))
+    end
 end
 
 end
