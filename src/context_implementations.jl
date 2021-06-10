@@ -163,11 +163,11 @@ end
 
 # Leaf contexts
 tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(right, left, vi)
+tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(sampler, right, left, vi)
 tilde_observe(::PriorContext, right, left, vi) = 0
 tilde_observe(::PriorContext, sampler, right, left, vi) = 0
 tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(right, left, vi)
+tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(sampler, right, left, vi)
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
@@ -259,6 +259,7 @@ function assume(
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
+observe(sampler::AbstractSampler, right, left, vi) = observe(right, left, vi)
 function observe(right::Distribution, left, vi)
     increment_num_produce!(vi)
     return Distributions.loglikelihood(right, left)
