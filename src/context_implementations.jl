@@ -163,11 +163,15 @@ end
 
 # Leaf contexts
 tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::DefaultContext, sampler, right, left, vi) = observe(sampler, right, left, vi)
+function tilde_observe(::DefaultContext, sampler, right, left, vi)
+    return observe(sampler, right, left, vi)
+end
 tilde_observe(::PriorContext, right, left, vi) = 0
 tilde_observe(::PriorContext, sampler, right, left, vi) = 0
 tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
-tilde_observe(::LikelihoodContext, sampler, right, left, vi) = observe(sampler, right, left, vi)
+function tilde_observe(::LikelihoodContext, sampler, right, left, vi)
+    return observe(sampler, right, left, vi)
+end
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
