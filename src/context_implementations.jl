@@ -645,8 +645,6 @@ function dot_observe(
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
-    @debug "dist = $dist"
-    @debug "value = $value"
     return Distributions.loglikelihood(dist, value)
 end
 function dot_observe(
