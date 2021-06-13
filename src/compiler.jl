@@ -122,6 +122,11 @@ function build_model_info(input_expr)
     return modelinfo
 end
 
+get_variables(expr) = Symbol[]
+function get_variables(expr::Expr)
+    return 
+end
+
 """
     generate_mainbody(mod, expr, warn)
 
@@ -315,7 +320,7 @@ function build_output(modelinfo, linenumbernode)
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
-            NamedTuple()
+            NamedTuple())
     end
 
     return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))

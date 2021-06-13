@@ -216,7 +216,7 @@ function AbstractPPL.logdensity(model::Model, varinfo::AbstractVarInfo)
 end
 
 function AbstractPPL.decondition(model::Model, name = Symbol(model.name, "_joint"))
-    return Model(name, model.evaluator, model.parameters, (;))
+    return Model(name, model.evaluator, model.parameters, NamedTuple())
 end
 
 function AbstractPPL.condition(model::Model, observations, name = Symbol(model.name, "_cond"))
