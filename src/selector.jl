@@ -1,12 +1,12 @@
 struct Selector
-    gid :: UInt64
-    tag :: Symbol # :default, :invalid, :Gibbs, :HMC, etc.
-    rerun :: Bool
+    gid::UInt64
+    tag::Symbol # :default, :invalid, :Gibbs, :HMC, etc.
+    rerun::Bool
 end
-function Selector(tag::Symbol = :default, rerun = tag != :default)
+function Selector(tag::Symbol=:default, rerun=tag != :default)
     return Selector(time_ns(), tag, rerun)
 end
-function Selector(gid::Integer, tag::Symbol = :default)
+function Selector(gid::Integer, tag::Symbol=:default)
     return Selector(gid, tag, tag != :default)
 end
 hash(s::Selector) = hash(s.gid)

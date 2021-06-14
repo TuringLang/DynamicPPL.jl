@@ -6,14 +6,15 @@
             m = x[2]
             dist = Normal(m, sqrt(s))
 
-            return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m) +
-                logpdf(dist, 1.5) + logpdf(dist, 2.0)
+            return logpdf(InverseGamma(2, 3), s) +
+                   logpdf(Normal(0, sqrt(s)), m) +
+                   logpdf(dist, 1.5) + logpdf(dist, 2.0)
         end
 
         test_model_ad(gdemo_default, logp_gdemo_default)
 
         @model function wishart_ad()
-            v ~ Wishart(7, [1 0.5; 0.5 1])
+            return v ~ Wishart(7, [1 0.5; 0.5 1])
         end
 
         # Hand-written log probabilities for `x = [v]`.
@@ -28,7 +29,9 @@
     # https://github.com/TuringLang/Turing.jl/issues/1595
     @testset "dot_observe" begin
         function f_dot_observe(x)
-            return DynamicPPL.dot_observe(SampleFromPrior(), [Normal(), Normal(-1.0, 2.0)], x, VarInfo())
+            return DynamicPPL.dot_observe(
+                SampleFromPrior(), [Normal(), Normal(-1.0, 2.0)], x, VarInfo()
+            )
         end
         function f_dot_observe_manual(x)
             return logpdf(Normal(), x[1]) + logpdf(Normal(-1.0, 2.0), x[2])

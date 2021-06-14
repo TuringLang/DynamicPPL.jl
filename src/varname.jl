@@ -15,23 +15,5 @@ function subsumes_string(u::String, v::String, u_indexing=u * "[")
     return u == v || startswith(v, u_indexing)
 end
 
-"""
-    isobservation(vn, model)
-
-Check whether the value of the expression `vn` is a real observation in the `model`.
-
-A variable is an observations if it is among the observation data of the model, an the corresponding
-observation value is not `missing` (e.g., it could happen that the observation data contain `x =
-[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
-"""
-@generated function isobservation(
-    vn::VarName{s},
-    model::Model{_F, _p, observationnames}
-) where {s, _F, _p, observationnames}
-    if s in observationnames
-        return :(!ismissing(_getindex(model.observations, vn.indexing)))
-    else
-        return :(false)
-    end
-end
-
+# HACK: Type-piracy. Is this really the way to go?
+AbstractPPL.getsym(::AbstractVector{<:VarName{sym}}) where {sym} = sym

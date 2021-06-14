@@ -1,15 +1,42 @@
+abstract type Argument{T} end
+struct Observation{T} <: Argument{T}
+    value::T
+end
+struct Parameter{T} <: Argument{T}
+    value::T
+end
+
 """
-    struct Model{F, parameternames, observationnames, Tparams, Tobs} <: AbstractProbabilisticProgram
+    isobservation(vn, model)
+
+Check whether the value of the expression `vn` is a real observation in the `model`.
+
+A variable is an observations if it is among the observation data of the model, an the corresponding
+observation value is not `missing` (e.g., it could happen that the observation data contain `x =
+[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
+"""
+@generated function isobservation(
+    vn::VarName{s},
+    model::Model{_F, argnames}
+) where {s, _F, argnames}
+    if s in argnames
+        return :(isobservation(vn, getproperty(model.arguments, $s)))
+    else
+        return :(false)
+    end
+end
+isobservation(::VarName, ::Parameter) = false
+isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs, vn.indexing))
+
+
+"""
+    struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
         name::Symbol
         evaluator::F
-        parameters::NamedTuple{parameternames,Tparams}
-        observations::NamedTuple{observationnames,Tobs}
+        arguments::NamedTuple{argumentnames,Targs}
     end
 
-A `Model` struct with model evaluation function of type `F`, parameters of names `parameternames` 
-and types `Tparams`, and observations of names `observatonnames` and types `Tobs`.
-
-`parameternames` and `observationnames` are tuples of symbols, e.g. `(:a, :b)`.
+A `Model` struct with model evaluation function of type `F`, and arguments `arguments`.
 
 # Examples
 
@@ -17,64 +44,80 @@ and types `Tparams`, and observations of names `observatonnames` and types `Tobs
 TODO
 ```
 """
-struct Model{F, parameternames, observationnames, Tparams, Tobs} <: AbstractProbabilisticProgram
+struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
     name::Symbol
     # code::Expr
     evaluator::F
-    parameters::NamedTuple{parameternames,Tparams}
-    observations::NamedTuple{observationnames,Tobs}
+    arguments::NamedTuple{argumentnames,Targs}
 end
 
-
-
 """
-    @ConditionedModel{; obs1::Type1, obs2::Type2, ...}
-    @ConditionedModel{f, parameternames, Tparams; obs1::Type1, obs2::Type2, ...}
+    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-Macro with more convenient syntax for declaring `Model` types with observations (similar to the
-`Base.@NamedTuple` macro).  The observations to the parameters part of the braces:
-`@ConditionedModel{; x::Int, y}`.  Type annotations can be omitted, in which case the type is
-defaulted to `Any`.
+Create a model of name `name` with evaluation function `f` and missing arguments deduced
+from `args`.
 
-The non-parameters part can be used to match the other type arguments of `Model`: the evaluator
-function type `F`, and the `parameternames` and their type tuple `Tparams`.
+Default arguments `defaults` are used internally when constructing instances of the same
+model with different arguments.
 """
-macro ConditionedModel(ex)
-    # Code adapted from Base.@NamedTuple macro; parameter lists in `:braces` expressions do work:
-    # julia> :(@bla{f; x, y}).args
-    # 3-element Array{Any,1}:
-    #  Symbol("@bla")
-    #  :(#= REPL[55]:1 =#)
-    #  :({$(Expr(:parameters, :x, :y)), f})
+@generated function Model(
+    name::Symbol,
+    f::F,
+    args::NamedTuple{argnames,Targs},
+    defaults::NamedTuple = NamedTuple(),
+) where {F,argnames,Targs}
+    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
+    return :(Model{$missings}(name, f, args, defaults))
+end
 
-    Meta.isexpr(ex, :braces) || throw(ArgumentError("@ConditionedModel expects {;...}"))
-    decls = filter(e -> !(e isa LineNumberNode), ex.args)
-    Meta.isexpr(decls[1], :parameters) || throw(ArgumentError("@ConditionedModel expects {;...}"))
-    cond_part = decls[1].args
-    types_part = decls[2:end]
-    all(e -> e isa Symbol || Meta.isexpr(e, :(::)), cond_part) ||
-        throw(ArgumentError("@ConditionedModel must contain a sequence of name or name::type expressions"))
-    obsvars = [QuoteNode(e isa Symbol ? e : e.args[1]) for e in cond_part]
-    obstypes = [esc(e isa Symbol ? :Any : e.args[2]) for e in cond_part]
-    _f = esc(get(types_part, 1, :Any))
-    _parameternames = esc(get(types_part, 2, :Any))
-    _tparams = esc(get(types_part, 3, :Any))
+# """
+#     @ConditionedModel{; obs1::Type1, obs2::Type2, ...}
+#     @ConditionedModel{f, parameternames, Tparams; obs1::Type1, obs2::Type2, ...}
+
+# Macro with more convenient syntax for declaring `Model` types with observations (similar to the
+# `Base.@NamedTuple` macro).  The observations to the parameters part of the braces:
+# `@ConditionedModel{; x::Int, y}`.  Type annotations can be omitted, in which case the type is
+# defaulted to `Any`.
+
+# The non-parameters part can be used to match the other type arguments of `Model`: the evaluator
+# function type `F`, and the `parameternames` and their type tuple `Tparams`.
+# """
+# macro ConditionedModel(ex)
+#     # Code adapted from Base.@NamedTuple macro; parameter lists in `:braces` expressions do work:
+#     # julia> :(@bla{f; x, y}).args
+#     # 3-element Array{Any,1}:
+#     #  Symbol("@bla")
+#     #  :(#= REPL[55]:1 =#)
+#     #  :({$(Expr(:parameters, :x, :y)), f})
+
+#     Meta.isexpr(ex, :braces) || throw(ArgumentError("@ConditionedModel expects {;...}"))
+#     decls = filter(e -> !(e isa LineNumberNode), ex.args)
+#     Meta.isexpr(decls[1], :parameters) || throw(ArgumentError("@ConditionedModel expects {;...}"))
+#     cond_part = decls[1].args
+#     types_part = decls[2:end]
+#     all(e -> e isa Symbol || Meta.isexpr(e, :(::)), cond_part) ||
+#         throw(ArgumentError("@ConditionedModel must contain a sequence of name or name::type expressions"))
+#     obsvars = [QuoteNode(e isa Symbol ? e : e.args[1]) for e in cond_part]
+#     obstypes = [esc(e isa Symbol ? :Any : e.args[2]) for e in cond_part]
+#     _f = esc(get(types_part, 1, :Any))
+#     _parameternames = esc(get(types_part, 2, :Any))
+#     _tparams = esc(get(types_part, 3, :Any))
     
-    return :($(DynamicPPL.Model){
-        $_f,
-        $_parameternames,
-        ($(obsvars...),),
-        $_tparams,
-        Tuple{$(obstypes...)}
-    })
-end
+#     return :($(DynamicPPL.Model){
+#         $_f,
+#         $_parameternames,
+#         ($(obsvars...),),
+#         $_tparams,
+#         Tuple{$(obstypes...)}
+#     })
+# end
 
-"""
-    GenerativeModel{F, parameters, TParams}
+# """
+#     GenerativeModel{F, parameters, TParams}
 
-Type alias for models without observations.
-"""
-const GenerativeModel{F, parameternames, Tparams} = @ConditionedModel{F, parameternames, Tparams;}
+# Type alias for models without observations.
+# """
+# const GenerativeModel{F, parameternames, Tparams} = @ConditionedModel{F, parameternames, Tparams;}
 
 function Base.show(io::IO, model::Model)
     println(io, "Model ", model.name, " given")
@@ -98,27 +141,29 @@ number of `sampler`.
 """
 function (model::Model)(
     rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo = VarInfo(),
-    sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext(),
+    varinfo::AbstractVarInfo=VarInfo(),
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
+    return model(varinfo, SamplingContext(rng, sampler, context))
+end
+
+(model::Model)(context::AbstractContext) = model(VarInfo(), context)
+function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
-        return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+        return evaluate_threadunsafe(model, varinfo, context)
     else
-        return evaluate_threadsafe(rng, model, varinfo, sampler, context)
+        return evaluate_threadsafe(model, varinfo, context)
     end
 end
-function (model::Model)(arguments...)
-    return model(Random.GLOBAL_RNG, arguments...)
+
+function (model::Model)(args...)
+    return model(Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function (model::Model)(
-    rng::Random.AbstractRNG,
-    sampler::AbstractSampler,
-    arguments...,
-)
-    return model(rng, VarInfo(), sampler, arguments...)
+function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
+    return model(rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
@@ -127,7 +172,7 @@ function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
 end
 
 """
-    evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+    evaluate_threadunsafe(model, varinfo, context)
 
 Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
 
@@ -136,13 +181,13 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe`](@ref)
 """
-function evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+function evaluate_threadunsafe(model, varinfo, context)
     resetlogp!(varinfo)
-    return _evaluate(rng, model, varinfo, sampler, context)
+    return _evaluate(model, varinfo, context)
 end
 
 """
-    evaluate_threadsafe(rng, model, varinfo, sampler, context)
+    evaluate_threadsafe(model, varinfo, context)
 
 Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
 
@@ -152,10 +197,10 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadunsafe`](@ref)
 """
-function evaluate_threadsafe(rng, model, varinfo, sampler, context)
+function evaluate_threadsafe(model, varinfo, context)
     resetlogp!(varinfo)
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = _evaluate(rng, model, wrapper, sampler, context)
+    result = _evaluate(model, wrapper, context)
     setlogp!(varinfo, getlogp(wrapper))
     return result
 end
@@ -165,17 +210,11 @@ end
 
 Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
 """
-function _evaluate(rng, model::Model, varinfo, sampler, context)
-    unwrapped_observations = map(obs -> matchingvalue(sampler, varinfo, obs), model.observations)
-    return model.evaluator(
-        rng,
-        model,
-        varinfo,
-        sampler,
-        context,
-        model.parameters,
-        unwrapped_observations
-    )
+@generated function _evaluate(
+    model::Model{_F,argnames}, varinfo, context
+) where {_F,argnames}
+    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
+    return :(model.f(model, varinfo, context, $(unwrap_args...)))
 end
 
 """
@@ -183,17 +222,19 @@ end
 
 Get a tuple of the argument names of the `model`.
 """
-getparameternames(model::Model{_F,parameternames}) where {_F,parameternames} = parameternames
+@generated function getparameternames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    param_indices = filter(i -> Targs.parameters[i] <: Parameter, eachindex(Targs.parameters))
+    return argnames[param_indices]
+end
 
 """
     getparameternames(model::Model)
 
 Get a tuple of the observation names of the `model`.
 """
-function getobservationnames(
-    model::Model{_F,_parameternames,observationnames}
-) where {_F,_parameternames,observationnames}
-    return observationnames
+@generated function getobservationnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    obs_indices = filter(i -> Targs.parameters[i] <: Observation, eachindex(Targs.parameters))
+    return argnames[obs_indices]
 end
 
 """
@@ -247,6 +288,7 @@ end
 #     model(varinfo, SampleFromPrior(), LikelihoodContext())
 #     return getlogp(varinfo)
 # # end
+
 
 """
     generated_quantities(model::Model, chain::AbstractChains)
