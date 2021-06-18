@@ -18,7 +18,7 @@ struct SimpleVarInfo{NT,T} <: AbstractVarInfo
 end
 
 SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, Ref(zero(T)))
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
 
 function setlogp!(vi::SimpleVarInfo, logp)
     vi.logp[] = logp
@@ -103,3 +103,20 @@ end
 
 # HACK: Allows us to re-use the impleemntation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
+
+# Interaction with `VarInfo`
+SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
+function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real, names}
+    vals = map(names) do n
+        let md = getfield(vi.metadata, n)
+            x = map(enumerate(md.ranges)) do (i, r)
+                reconstruct(md.dists[i], md.vals[r])
+            end
+
+            # TODO: Doesn't support batches of `MultivariateDistribution`?
+            length(x) == 1 ? x[1] : x
+        end
+    end
+
+    return SimpleVarInfo{T}(NamedTuple{names}(vals))
+end
