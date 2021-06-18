@@ -51,9 +51,12 @@ istrans(::SimpleVarInfo, vn::VarName) = false
 
 getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.θ
 getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.θ
+# TODO: Should we do better?
 getindex(vi::SimpleVarInfo, spl::Sampler) = vi.θ
 getindex(vi::SimpleVarInfo, vn::VarName) = getval(vi, vn)
 getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = getval(vi, vns)
+# HACK: Need to disambiguiate.
+getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = getval(vi, vns)
 
 # Context implementations
 # Only evaluation makes sense for `SimpleVarInfo`, so we only implement this.
