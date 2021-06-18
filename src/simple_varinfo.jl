@@ -36,7 +36,9 @@ function _getvalue(nt::NamedTuple, ::Val{sym}, inds=()) where {sym}
     return _getindex(value, inds)
 end
 
-getval(vi::SimpleVarInfo, vn::VarName{sym}) where {sym} = _getvalue(vi.θ, Val{sym}(), vn.indexing)
+function getval(vi::SimpleVarInfo, vn::VarName{sym}) where {sym}
+    return _getvalue(vi.θ, Val{sym}(), vn.indexing)
+end
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
 getval(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = map(vn -> getval(vi, vn), vns)
@@ -106,7 +108,7 @@ increment_num_produce!(::SimpleVarInfo) = nothing
 
 # Interaction with `VarInfo`
 SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
-function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real, names}
+function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names}
     vals = map(names) do n
         let md = getfield(vi.metadata, n)
             x = map(enumerate(md.ranges)) do (i, r)
