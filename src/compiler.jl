@@ -398,7 +398,7 @@ function replace_returns(e::Expr)
         return :($(DynamicPPL.return_values)($retval_expr, __varinfo__))
     end
 
-    return Expr(e.head, map(x -> replace_returns(x), e.args)...)
+    return Expr(e.head, map(replace_returns, e.args)...)
 end
 
 return_values(retval, varinfo::AbstractVarInfo) = (retval, varinfo)
