@@ -20,9 +20,9 @@ end
 SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
 
-getlogp(vi::SimpleVarInfo{<:Any,<:Real}) = vi.logp
-setlogp!(vi::SimpleVarInfo{<:Any,<:Real}, logp) = SimpleVarInfo(vi.θ, logp)
-acclogp!(vi::SimpleVarInfo{<:Any,<:Real}, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
+getlogp(vi::SimpleVarInfo) = vi.logp
+setlogp!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
+acclogp!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
 
 function setlogp!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
