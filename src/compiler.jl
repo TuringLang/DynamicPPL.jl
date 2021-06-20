@@ -386,17 +386,33 @@ function replace_returns(e::Expr)
     end
 
     if Meta.isexpr(e, :return)
-        retval = if length(e.args) > 1
+        retval_expr = if length(e.args) > 1
             Expr(:tuple, e.args...)
         else
             e.args[1]
         end
+        # Use intermediate variable since this expression
+        # can be more complex than just a value, e.g. `return if ... end`.
+        @gensym retval
         return quote
+            $retval = $retval_expr
             return $retval, __varinfo__
         end
     end
 
     return Expr(e.head, map(x -> replace_returns(x), e.args)...)
+end
+
+# If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
+make_returns_explicit!(body) = Expr(:return, body)
+function make_returns_explicit!(body::Expr)
+    # If it's already a return-statement, we return immediately.
+    if Meta.isexpr(body, :return)
+        return body
+    end
+
+    body.args[end] = Expr(:return, body.args[end])
+    return body
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -430,7 +446,7 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = replace_returns(modelinfo[:body])
+    evaluatordef[:body] = replace_returns(make_returns_explicit!(modelinfo[:body]))
 
     ## Build the model function.
 
