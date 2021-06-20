@@ -17,7 +17,7 @@ macro submodel(prefix, expr)
     return submodel(expr, ctx)
 end
 
-function submodel(expr, ctx = esc(:__context__))
+function submodel(expr, ctx=esc(:__context__))
     args_tilde = getargs_tilde(expr)
     return if args_tilde === nothing
         # In this case we only want to get the `__varinfo__`.
