@@ -401,7 +401,7 @@ function replace_returns(e::Expr)
         # If the return-value is already of the form we want, we don't do anything.
         return quote
             $retval = $retval_expr
-            return if $retval isa Tuple{<:Any,<:$(DynamicPPL.AbstractVarInfo)}
+            return if $retval isa Tuple{Any,$(DynamicPPL.AbstractVarInfo)}
                 $retval
             else
                 $retval, __varinfo__
