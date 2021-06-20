@@ -82,17 +82,20 @@ Sample from the `model` using the `sampler` with random number generator `rng` a
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function (model::Model)(
-    rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo=VarInfo(),
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    return model(varinfo, SamplingContext(rng, sampler, context))
-end
+(model::Model)(args...) = (first ∘ evaluate)(model, args...)
 
-(model::Model)(context::AbstractContext) = model(VarInfo(), context)
-function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
+"""
+    evaluate(model::Model[, rng, varinfo, sampler, context])
+
+Sample from the `model` using the `sampler` with random number generator `rng` and the
+`context`, and store the sample and log joint probability in `varinfo`.
+
+Returns both the return-value of the original model, and the resulting varinfo.
+
+The method resets the log joint probability of `varinfo` and increases the evaluation
+number of `sampler`.
+"""
+function evaluate(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(model, varinfo, context)
     else
@@ -100,18 +103,30 @@ function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     end
 end
 
-function (model::Model)(args...)
-    return model(Random.GLOBAL_RNG, args...)
+function evaluate(
+    model::Model,
+    rng::Random.AbstractRNG,
+    varinfo::AbstractVarInfo=VarInfo(),
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return evaluate(model, varinfo, SamplingContext(rng, sampler, context))
+end
+
+evaluate(model::Model, context::AbstractContext) = evaluate(model, VarInfo(), context)
+
+function evaluate(model::Model, args...)
+    return evaluate(model, Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
-    return model(rng, VarInfo(), sampler, args...)
+function evaluate(model::Model, rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
+    return evaluate(model, rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
-function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
-    return model(rng, VarInfo(), SampleFromPrior(), context)
+function evaluate(model::Model, rng::Random.AbstractRNG, context::AbstractContext)
+    return evaluate(model, rng, VarInfo(), SampleFromPrior(), context)
 end
 
 """
@@ -154,19 +169,6 @@ end
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
 @generated function _evaluate(
-    model::Model{_F,argnames}, varinfo, context
-) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
-    return :((first ∘ model.f)(model, varinfo, context, $(unwrap_args...)))
-end
-
-"""
-    _evaluate_with_varinfo(model::Model, varinfo, context)
-
-Evaluate the `model` with the arguments matching the given `context` and `varinfo` object,
-also returning the resulting `varinfo`.
-"""
-@generated function _evaluate_with_varinfo(
     model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
     unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]

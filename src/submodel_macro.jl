@@ -22,7 +22,7 @@ function submodel(expr, ctx=esc(:__context__))
     return if args_tilde === nothing
         # In this case we only want to get the `__varinfo__`.
         quote
-            $(esc(:_)), $(esc(:__varinfo__)) = _evaluate_with_varinfo(
+            $(esc(:_)), $(esc(:__varinfo__)) = _evaluate(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
         end
@@ -30,7 +30,7 @@ function submodel(expr, ctx=esc(:__context__))
         # Here we also want the return-variable.
         L, R = args_tilde
         quote
-            $(esc(L)), $(esc(:__varinfo__)) = _evaluate_with_varinfo(
+            $(esc(L)), $(esc(:__varinfo__)) = _evaluate(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
         end
