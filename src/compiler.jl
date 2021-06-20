@@ -394,23 +394,15 @@ function replace_returns(e::Expr)
         else
             e.args[1]
         end
-        # Use intermediate variable since this expression
-        # can be more complex than just a value, e.g. `return if ... end`.
-        @gensym retval
 
-        # If the return-value is already of the form we want, we don't do anything.
-        return quote
-            $retval = $retval_expr
-            return if $retval isa Tuple{Any,$(DynamicPPL.AbstractVarInfo)}
-                $retval
-            else
-                $retval, __varinfo__
-            end
-        end
+        return :($(DynamicPPL.return_values)($retval_expr, __varinfo__))
     end
 
     return Expr(e.head, map(x -> replace_returns(x), e.args)...)
 end
+
+return_values(retval, varinfo::AbstractVarInfo) = (retval, varinfo)
+return_values(retval::Tuple{Any,AbstractVarInfo}, ::AbstractVarInfo) = retval
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
 make_returns_explicit!(body) = Expr(:return, body)
