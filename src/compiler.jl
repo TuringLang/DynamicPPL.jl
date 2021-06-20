@@ -406,8 +406,8 @@ end
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
 make_returns_explicit!(body) = Expr(:return, body)
 function make_returns_explicit!(body::Expr)
-    # If it's already a return-statement, we return immediately.
-    if Meta.isexpr(body, :return)
+    # If the last statement is a return-statement, we don't do anything.
+    if Meta.isexpr(body.args[end], :return)
         return body
     end
 
