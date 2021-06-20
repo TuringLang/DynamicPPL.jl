@@ -299,7 +299,7 @@ function generate_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if isliteral(left)
         return quote
-            _, __varinfo__ = $(DynamicPPL.tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
@@ -313,7 +313,7 @@ function generate_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left, __varinfo__ = $(DynamicPPL.tilde_assume!)(
+            $left, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
                     $(DynamicPPL.check_tilde_rhs)($right), $vn
@@ -322,7 +322,7 @@ function generate_tilde(left, right)
                 __varinfo__,
             )
         else
-            _, __varinfo__ = $(DynamicPPL.tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
@@ -343,7 +343,7 @@ function generate_dot_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if isliteral(left)
         return quote
-            _, __varinfo__ = $(DynamicPPL.dot_tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
@@ -357,7 +357,7 @@ function generate_dot_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            _, __varinfo__ = $(DynamicPPL.dot_tilde_assume!)(
+            _, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
@@ -366,7 +366,7 @@ function generate_dot_tilde(left, right)
                 __varinfo__,
             )
         else
-            _, __varinfo = $(DynamicPPL.dot_tilde_observe!)(
+            _, __varinfo = $(DynamicPPL.dot_tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,

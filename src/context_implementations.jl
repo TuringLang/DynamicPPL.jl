@@ -119,7 +119,7 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
 end
 
 """
-    tilde_assume!(context, right, vn, inds, vi)
+    tilde_assume!!(context, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
@@ -127,7 +127,7 @@ accumulate the log probability, and return the sampled value.
 By default, calls `tilde_assume(context, right, vn, inds, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_assume!(context, right, vn, inds, vi)
+function tilde_assume!!(context, right, vn, inds, vi)
     value, logp = tilde_assume(context, right, vn, inds, vi)
     return value, acclogp!(vi, logp)
 end
@@ -189,16 +189,16 @@ function tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    tilde_observe!(context, right, left, vname, vinds, vi)
+    tilde_observe!!(context, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde_observe!(context, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(context, right, left, vname, vinds, vi)
-    return tilde_observe!(context, right, left, vi)
+function tilde_observe!!(context, right, left, vname, vinds, vi)
+    return tilde_observe!!(context, right, left, vi)
 end
 
 """
@@ -210,7 +210,7 @@ return the observed value.
 By default, calls `tilde_observe(context, right, left, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_observe!(context, right, left, vi)
+function tilde_observe!!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
     return left, acclogp!(vi, logp)
 end
@@ -404,14 +404,14 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
 end
 
 """
-    dot_tilde_assume!(context, right, left, vn, inds, vi)
+    dot_tilde_assume!!(context, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume!(context, right, left, vn, inds, vi)
+function dot_tilde_assume!!(context, right, left, vn, inds, vi)
     value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
     left .= value
     return value, acclogp!(vi, logp)
@@ -610,27 +610,27 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vname, vinds, vi)
+    dot_tilde_observe!!(context, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde_observe!(context, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(context, right, left, vn, inds, vi)
-    return dot_tilde_observe!(context, right, left, vi)
+function dot_tilde_observe!!(context, right, left, vn, inds, vi)
+    return dot_tilde_observe!!(context, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vi)
+    dot_tilde_observe!!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value.
 
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
-function dot_tilde_observe!(context, right, left, vi)
+function dot_tilde_observe!!(context, right, left, vi)
     logp = dot_tilde_observe(context, right, left, vi)
     return left, acclogp!(vi, logp)
 end
