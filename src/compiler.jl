@@ -411,6 +411,7 @@ function make_returns_explicit!(body::Expr)
         return body
     end
 
+    # Otherwise we replace the last statement with a `return` statement.
     body.args[end] = Expr(:return, body.args[end])
     return body
 end
