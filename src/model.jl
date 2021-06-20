@@ -157,6 +157,19 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
     model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
     unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
+    return :((first ∘ model.f)(model, varinfo, context, $(unwrap_args...)))
+end
+
+"""
+    _evaluate_with_varinfo(model::Model, varinfo, context)
+
+Evaluate the `model` with the arguments matching the given `context` and `varinfo` object,
+also returning the resulting `varinfo`.
+"""
+@generated function _evaluate_with_varinfo(
+    model::Model{_F,argnames}, varinfo, context
+) where {_F,argnames}
+    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
     return :(model.f(model, varinfo, context, $(unwrap_args...)))
 end
 

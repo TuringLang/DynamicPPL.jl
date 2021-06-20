@@ -299,7 +299,7 @@ function generate_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if isliteral(left)
         return quote
-            $(DynamicPPL.tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.tilde_observe!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
@@ -313,7 +313,7 @@ function generate_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left = $(DynamicPPL.tilde_assume!)(
+            $left, __varinfo__ = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
                     $(DynamicPPL.check_tilde_rhs)($right), $vn
@@ -322,7 +322,7 @@ function generate_tilde(left, right)
                 __varinfo__,
             )
         else
-            $(DynamicPPL.tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
@@ -343,7 +343,7 @@ function generate_dot_tilde(left, right)
     # If the LHS is a literal, it is always an observation
     if isliteral(left)
         return quote
-            $(DynamicPPL.dot_tilde_observe!)(
+            _, __varinfo__ = $(DynamicPPL.dot_tilde_observe!)(
                 __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
@@ -357,7 +357,7 @@ function generate_dot_tilde(left, right)
         $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left .= $(DynamicPPL.dot_tilde_assume!)(
+            _, __varinfo__ = $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
@@ -366,7 +366,7 @@ function generate_dot_tilde(left, right)
                 __varinfo__,
             )
         else
-            $(DynamicPPL.dot_tilde_observe!)(
+            _, __varinfo = $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $left,
@@ -376,6 +376,27 @@ function generate_dot_tilde(left, right)
             )
         end
     end
+end
+
+replace_returns(e) = e
+replace_returns(e::Symbol) = e
+function replace_returns(e::Expr)
+    if Meta.isexpr(e, :function) || Meta.isexpr(e, :->)
+        return e
+    end
+
+    if Meta.isexpr(e, :return)
+        retval = if length(e.args) > 1
+            Expr(:tuple, e.args...)
+        else
+            e.args[1]
+        end
+        return quote
+            return $retval, __varinfo__
+        end
+    end
+
+    return Expr(e.head, map(x -> replace_returns(x), e.args)...)
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -409,7 +430,7 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    evaluatordef[:body] = replace_returns(modelinfo[:body])
 
     ## Build the model function.
 

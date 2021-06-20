@@ -129,8 +129,7 @@ probability of `vi` with the returned value.
 """
 function tilde_assume!(context, right, vn, inds, vi)
     value, logp = tilde_assume(context, right, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return value, acclogp!(vi, logp)
 end
 
 # observe
@@ -213,8 +212,7 @@ probability of `vi` with the returned value.
 """
 function tilde_observe!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return left, acclogp!(vi, logp)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -415,8 +413,8 @@ Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume!(context, right, left, vn, inds, vi)
     value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    left .= value
+    return value, acclogp!(vi, logp)
 end
 
 # `dot_assume`
@@ -634,8 +632,7 @@ Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!(context, right, left, vi)
     logp = dot_tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return left, acclogp!(vi, logp)
 end
 
 # Falls back to non-sampler definition.
