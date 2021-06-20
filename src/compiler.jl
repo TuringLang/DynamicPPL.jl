@@ -386,6 +386,9 @@ function replace_returns(e::Expr)
     end
 
     if Meta.isexpr(e, :return)
+        # NOTE: `return` always has an argument. In the case of
+        # `return`, the parsed expression will be `return nothing`.
+        # Hence we don't need any special handling for empty returns.
         retval_expr = if length(e.args) > 1
             Expr(:tuple, e.args...)
         else
@@ -394,9 +397,15 @@ function replace_returns(e::Expr)
         # Use intermediate variable since this expression
         # can be more complex than just a value, e.g. `return if ... end`.
         @gensym retval
+
+        # If the return-value is already of the form we want, we don't do anything.
         return quote
             $retval = $retval_expr
-            return $retval, __varinfo__
+            return if $retval isa Tuple{<:Any, $(DynamicPPL.AbstractVarInfo)}
+                $retval
+            else
+                $retval, __varinfo__
+            end
         end
     end
 
