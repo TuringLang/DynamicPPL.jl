@@ -224,7 +224,7 @@ function generate_mainbody!(mod, found_internals, varnames, expr::Expr, warn)
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        push!(varnames, vsym(L))
+        !isliteral(L) && push!(varnames, vsym(L))
         return Base.remove_linenums!(
             generate_dot_tilde(
                 generate_mainbody!(mod, found_internals, varnames, L, warn),
@@ -237,7 +237,7 @@ function generate_mainbody!(mod, found_internals, varnames, expr::Expr, warn)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        push!(varnames, vsym(L))
+        !isliteral(L) && push!(varnames, vsym(L))
         return Base.remove_linenums!(
             generate_tilde(
                 generate_mainbody!(mod, found_internals, varnames, L, warn),

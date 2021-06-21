@@ -1,23 +1,28 @@
+
+"""
+    abstract type Argument{T} end
+
+Parametric wrapper type for model arguments.
+"""
+abstract type Argument{T} end
+
+struct Observation{T} <: Argument{T}
+    value::T
+end
+
+struct Constant{T} <: Argument{T}
+    value::T
+end
+
+
 """
     struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
         name::Symbol
         evaluator::F
         arguments::NamedTuple{argumentnames,Targs}
     end
+
 A `Model` struct with model evaluation function of type `F`, and arguments `arguments`.
-
-# Examples
-
-```julia
-julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
-
-julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
-Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-
-julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
-Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-```
 """
 struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
     name::Symbol
@@ -26,14 +31,6 @@ struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
     arguments::NamedTuple{argumentnames,Targs}
 end
 
-
-abstract type Argument{T} end
-struct Observation{T} <: Argument{T}
-    value::T
-end
-struct Constant{T} <: Argument{T}
-    value::T
-end
 
 """
     isobservation(vn, model)
@@ -58,13 +55,18 @@ isobservation(::VarName, ::Constant) = false
 isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
 isobservation(vn::VarName, obs::Observation{Missing}) = false
 
-function Base.show(io::IO, model::Model)
+
+function Base.show(io::IO, ::MIME"text/plain", model::Model)
     println(io, "Model ", model.name, " given")
     print(io, "    constants    ")
     join(io, getconstantnames(model), ", ")
     println()
     print(io, "    observations ")
-    return join(io, getobservationnames(model), ", ")
+    join(io, getobservationnames(model), ", ")
+end
+
+function Base.show(io::IO, model::Model)
+    println(io, "$(model.name)$(getarguments(model))")
 end
 
 
@@ -148,20 +150,25 @@ end
 
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
-@generated function _evaluate(
-    model::Model{_F,argnames}, varinfo, context
-) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(model, varinfo, context, $(unwrap_args...)))
+function _evaluate(model::Model, varinfo, context)
+    unwrap_args = matchingvalue.((context,), (varinfo,), Tuple(getarguments(model)))
+    return model.evaluator(model, varinfo, context, unwrap_args...)
 end
 
 """
     getargumentnames(model::Model)
 
-Get a tuple of the argument names of the `model`.
+Return a tuple of the argument names of the `model`.
 """
 getargumentnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
 Base.@deprecate getargnames(model) getargumentnames(model)
+
+"""
+    getargumentnames(model::Model)
+
+Return the arguments passed to the model.
+"""
+getarguments(model::Model) = map(arg -> arg.value, model.arguments)
 
 function _filter_arguments(argnames, Targs, ::Type{T}) where {T}
     return filter(i -> Targs.parameters[i] <: T, eachindex(Targs.parameters))
@@ -169,24 +176,40 @@ end
 
 """
     getconstantnames(model::Model)
-Get a tuple of the argument names of the `model`.
+
+Return a tuple of the names of the observations passed to `model`.
 """
 @generated function getconstantnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
     return argnames[_filter_arguments(argnames, Targs, Constant)]
 end
 
+"""
+    getconstantnames(model::Model)
+
+Return a tuple of the names of the observations passed to `model`.
+"""
 @generated function getobservationnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
     return argnames[_filter_arguments(argnames, Targs, Observation)]
 end
 
+"""
+    getconstants(model::Model)
+
+Return a tuple of the constants passed to `model`.
+"""
 @generated function getconstants(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
     args = _filter_arguments(argnames, Targs, Constant)
-    return Expr(:tuple, (:(model.arguments.$arg) for arg in arguments)...)
+    return Expr(:tuple, (:(model.arguments.$arg.value) for arg in arguments)...)
 end
 
+"""
+    getobservationnames(model::Model)
+
+Return a tuple of the observations passed to `model`.
+"""
 @generated function getobservations(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
     args = _filter_arguments(argnames, Targs, Observation)
-    return Expr(:tuple, (:(model.arguments.$arg) for arg in arguments)...)
+    return Expr(:tuple, (:(model.arguments.$arg.value) for arg in arguments)...)
 end
     
 """
