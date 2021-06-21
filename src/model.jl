@@ -1,34 +1,3 @@
-abstract type Argument{T} end
-struct Observation{T} <: Argument{T}
-    value::T
-end
-struct Parameter{T} <: Argument{T}
-    value::T
-end
-
-"""
-    isobservation(vn, model)
-
-Check whether the value of the expression `vn` is a real observation in the `model`.
-
-A variable is an observations if it is among the observation data of the model, an the corresponding
-observation value is not `missing` (e.g., it could happen that the observation data contain `x =
-[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
-"""
-@generated function isobservation(
-    vn::VarName{s},
-    model::Model{_F, argnames}
-) where {s, _F, argnames}
-    if s in argnames
-        return :(isobservation(vn, getproperty(model.arguments, $s)))
-    else
-        return :(false)
-    end
-end
-isobservation(::VarName, ::Parameter) = false
-isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs, vn.indexing))
-
-
 """
     struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
         name::Symbol
@@ -60,15 +29,47 @@ from `args`.
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-@generated function Model(
-    name::Symbol,
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple = NamedTuple(),
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+# @generated function Model(
+#     name::Symbol,
+#     f::F,
+#     args::NamedTuple{argnames,Targs}
+# ) where {F,argnames,Targs}
+#     # missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
+#     return :(Modelngs}(name, f, args, defaults))
+# end
+
+
+abstract type Argument{T} end
+struct Observation{T} <: Argument{T}
+    value::T
 end
+struct Constant{T} <: Argument{T}
+    value::T
+end
+
+"""
+    isobservation(vn, model)
+
+Check whether the value of the expression `vn` is a real observation in the `model`.
+
+A variable is an observations if it is among the observation data of the model, an the corresponding
+observation value is not `missing` (e.g., it could happen that the observation data contain `x =
+[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
+"""
+@generated function isobservation(
+    vn::VarName{s},
+    model::Model{_F, argnames}
+) where {s, _F, argnames}
+    if s in argnames
+        return :(isobservation(vn, getproperty(model.arguments, $(Meta.quot(s)))))
+    else
+        return :(false)
+    end
+end
+isobservation(::VarName, ::Parameter) = false
+isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs, vn.indexing))
+isobservation(vn::VarName, obs::Observation{Missing}) = false
+
 
 # """
 #     @ConditionedModel{; obs1::Type1, obs2::Type2, ...}
