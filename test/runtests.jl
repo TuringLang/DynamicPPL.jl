@@ -22,8 +22,7 @@ using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
-# const GROUP = get(ENV, "GROUP", "All")
-const GROUP = "DynamicPPL"
+const GROUP = get(ENV, "GROUP", "All")
 
 Random.seed!(100)
 
