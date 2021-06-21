@@ -14,8 +14,6 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
-_getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
-_getindex(x, inds::Tuple{}) = x
 
 # assume
 """

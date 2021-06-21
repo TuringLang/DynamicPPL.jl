@@ -1,23 +1,10 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+    struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
         name::Symbol
-        f::F
-        args::NamedTuple{argnames,Targs}
-        defaults::NamedTuple{defaultnames,Tdefaults}
+        evaluator::F
+        arguments::NamedTuple{argumentnames,Targs}
     end
-
-A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, and missing
-arguments `missings`.
-
-Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
-
-An argument with a type of `Missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in `missings`
-are treated as random variables rather than observations.
-
-The default arguments are used internally when constructing instances of the same model with
-different arguments.
+A `Model` struct with model evaluation function of type `F`, and arguments `arguments`.
 
 # Examples
 
@@ -32,46 +19,54 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <:
-       AbstractProbabilisticProgram
+struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
     name::Symbol
-    f::F
-    args::NamedTuple{argnames,Targs}
-    defaults::NamedTuple{defaultnames,Tdefaults}
+    # code::Expr
+    evaluator::F
+    arguments::NamedTuple{argumentnames,Targs}
+end
 
-    """
-        Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
 
-    Create a model of name `name` with evaluation function `f` and missing arguments
-    overwritten by `missings`.
-    """
-    function Model{missings}(
-        name::Symbol,
-        f::F,
-        args::NamedTuple{argnames,Targs},
-        defaults::NamedTuple{defaultnames,Tdefaults},
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(
-            name, f, args, defaults
-        )
+abstract type Argument{T} end
+struct Observation{T} <: Argument{T}
+    value::T
+end
+struct Constant{T} <: Argument{T}
+    value::T
+end
+
+"""
+    isobservation(vn, model)
+
+Check whether the value of the expression `vn` is a real observation in the `model`.
+
+A variable is an observation if it is among the arguments data of the model, and the corresponding
+observation value is not `missing` (e.g., it could happen that the arguments contain `x =
+[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
+"""
+@generated function isobservation(
+    vn::VarName{s},
+    model::Model{_F, argnames}
+) where {s, _F, argnames}
+    if s in argnames
+        return :(isobservation(vn, model.arguments.$s))
+    else
+        return :(false)
     end
 end
+isobservation(::VarName, ::Constant) = false
+isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
+isobservation(vn::VarName, obs::Observation{Missing}) = false
 
-"""
-    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
-
-Create a model of name `name` with evaluation function `f` and missing arguments deduced
-from `args`.
-
-Default arguments `defaults` are used internally when constructing instances of the same
-model with different arguments.
-"""
-@generated function Model(
-    name::Symbol, f::F, args::NamedTuple{argnames,Targs}, defaults::NamedTuple=NamedTuple()
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+function Base.show(io::IO, model::Model)
+    println(io, "Model ", model.name, " given")
+    print(io, "    constants    ")
+    join(io, getconstantnames(model), ", ")
+    println()
+    print(io, "    observations ")
+    return join(io, getobservationnames(model), ", ")
 end
+
 
 """
     (model::Model)([rng, varinfo, sampler, context])
@@ -161,19 +156,39 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
 end
 
 """
-    getargnames(model::Model)
+    getargumentnames(model::Model)
 
 Get a tuple of the argument names of the `model`.
 """
-getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
+getargumentnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
+Base.@deprecate getargnames(model) getargumentnames(model)
+
+function _filter_arguments(argnames, Targs, ::Type{T}) where {T}
+    return filter(i -> Targs.parameters[i] <: T, eachindex(Targs.parameters))
+end
 
 """
-    getmissings(model::Model)
-
-Get a tuple of the names of the missing arguments of the `model`.
+    getconstantnames(model::Model)
+Get a tuple of the argument names of the `model`.
 """
-getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
+@generated function getconstantnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    return argnames[_filter_arguments(argnames, Targs, Constant)]
+end
 
+@generated function getobservationnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    return argnames[_filter_arguments(argnames, Targs, Observation)]
+end
+
+@generated function getconstants(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    args = _filter_arguments(argnames, Targs, Constant)
+    return Expr(:tuple, (:(model.arguments.$arg) for arg in arguments)...)
+end
+
+@generated function getobservations(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
+    args = _filter_arguments(argnames, Targs, Observation)
+    return Expr(:tuple, (:(model.arguments.$arg) for arg in arguments)...)
+end
+    
 """
     nameof(model::Model)
 
