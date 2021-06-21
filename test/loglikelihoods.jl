@@ -110,7 +110,8 @@ const gdemo_models = (
             continue
         end
 
-        loglikelihood = if length(keys(lls)) == 1 && length(m.args.x) == 1
+        args = getarguments(m)
+        loglikelihood = if length(keys(lls)) == 1 && length(args.x) == 1
             # Only have one observation, so we need to double it
             # for comparison with other models.
             2 * sum(lls[first(keys(lls))])
