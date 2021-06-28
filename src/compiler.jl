@@ -402,7 +402,7 @@ function replace_returns(e::Expr)
 end
 
 return_values(retval, varinfo::AbstractVarInfo) = (retval, varinfo)
-return_values(retval::Tuple{Any,AbstractVarInfo}, ::AbstractVarInfo) = retval
+return_values(retval::Tuple{<:Any,<:AbstractVarInfo}, ::AbstractVarInfo) = retval
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
 make_returns_explicit!(body) = Expr(:return, body)
