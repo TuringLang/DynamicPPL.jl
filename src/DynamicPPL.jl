@@ -68,13 +68,7 @@ export AbstractVarInfo,
     # Model
     Model,
     getargumentnames,
-    getarguments,
-    getconstantnames,
-    getconstants,
-    getobservationnames,
-    getobservations,
     generated_quantities,
-    isobservation,
     # Samplers
     Sampler,
     SampleFromPrior,

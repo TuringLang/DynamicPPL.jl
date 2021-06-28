@@ -41,21 +41,42 @@ A variable is an observation if it is among the arguments data of the model, and
 observation value is not `missing` (e.g., it could happen that the arguments contain `x =
 [missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
 """
-function isobservation(vn::VarName{s}, model::Model{<:Any, argnames}) where {s, argnames}
-    return (s in argnames) || isobservation(vn, getproperty(model.arguments, s))
+function isobservation(vn::VarName{s}, model::Model{<:Any,argnames}) where {s,argnames}
+    return (s in argnames) && isobservation(vn, getproperty(model.arguments, s))
 end
 isobservation(::VarName, ::Constant) = false
-isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
 isobservation(vn::VarName, obs::Observation{Missing}) = false
+isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
 
 
 function Base.show(io::IO, ::MIME"text/plain", model::Model)
+    constants, observations = VarName[VarName{c}() for c in getconstantnames(model)], VarName[]
+    for (obs, value) in pairs(getobservations(model))
+        if value isa AbstractArray
+            all_indices = CartesianIndices(value)
+            missing_indices = filter(ix -> ismissing(value[ix]), all_indices)
+            if isempty(missing_indices)
+                # all observations given -- full variable observed
+                push!(observations, VarName{obs}())
+            else
+                # mixed case -- indexed variables in both categories
+                observed_indices = setdiff(all_indices, missing_indices)
+                for ix in observed_indices
+                    push!(observations, VarName{obs}((Tuple(ix),)))
+                end
+            end
+        else
+            complete_name = VarName{obs}()
+            !ismissing(value) && push!(observations, complete_name)
+        end
+    end
+    
     println(io, "Model ", model.name, " given")
     print(io, "    constants    ")
-    join(io, getconstantnames(model), ", ")
+    join(io, constants, ", ")
     println()
     print(io, "    observations ")
-    join(io, getobservationnames(model), ", ")
+    join(io, observations, ", ")
 end
 
 function Base.show(io::IO, model::Model)
@@ -144,8 +165,8 @@ end
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
 function _evaluate(model::Model, varinfo, context)
-    unwrap_args = matchingvalue.((context,), (varinfo,), Tuple(getarguments(model)))
-    return model.evaluator(model, varinfo, context, unwrap_args...)
+    matched_args = map(arg -> matchingvalue(context, varinfo, arg), getarguments(model))
+    return model.evaluator(model, varinfo, context, matched_args...)
 end
 
 """
@@ -153,18 +174,18 @@ end
 
 Return a tuple of the argument names of the `model`.
 """
-getargumentnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
+getargumentnames(model::Model{<:Any,argnames}) where {argnames} = argnames
 Base.@deprecate getargnames(model) getargumentnames(model)
 
 """
-    getargumentnames(model::Model)
+    getarguments(model::Model)
 
-Return the arguments passed to the model.
+Return a `NamedTuple` of the arguments passed to the model.
 """
 getarguments(model::Model) = map(arg -> arg.value, model.arguments)
 
 function _filter_arguments(argnames, Targs, ::Type{T}) where {T}
-    return filter(i -> Targs.parameters[i] <: T, eachindex(Targs.parameters))
+    return [arg for (arg, Targ) in zip(argnames, Targs.parameters) if Targ <: T]
 end
 
 """
@@ -172,37 +193,39 @@ end
 
 Return a tuple of the names of the observations passed to `model`.
 """
-@generated function getconstantnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
-    return argnames[_filter_arguments(argnames, Targs, Constant)]
-end
-
-"""
-    getconstantnames(model::Model)
-
-Return a tuple of the names of the observations passed to `model`.
-"""
-@generated function getobservationnames(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
-    return argnames[_filter_arguments(argnames, Targs, Observation)]
-end
-
-"""
-    getconstants(model::Model)
-
-Return a tuple of the constants passed to `model`.
-"""
-@generated function getconstants(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
-    args = _filter_arguments(argnames, Targs, Constant)
-    return Expr(:tuple, (:(model.arguments.$arg.value) for arg in arguments)...)
+@generated function getconstantnames(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
+    return _filter_arguments(argnames, Targs, Constant)
 end
 
 """
     getobservationnames(model::Model)
 
-Return a tuple of the observations passed to `model`.
+Return a tuple of the names of the observations passed to `model`.
 """
-@generated function getobservations(model::Model{_F,argnames,Targs}) where {_F,argnames,Targs}
-    args = _filter_arguments(argnames, Targs, Observation)
-    return Expr(:tuple, (:(model.arguments.$arg.value) for arg in arguments)...)
+@generated function getobservationnames(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
+    return _filter_arguments(argnames, Targs, Observation)
+end
+
+"""
+    getconstants(model::Model)
+
+Return a `NamedTuple` of the constants passed to `model`.
+"""
+@generated function getconstants(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
+    args = Tuple(_filter_arguments(argnames, Targs, Constant))
+    values = [:(model.arguments.$arg.value) for arg in args]
+    return :(NamedTuple{$args}(($(values...),)))
+end
+
+"""
+    getobservations(model::Model)
+
+Return a `NamedTuple` of the observations passed to `model` (without respecting `missing`s).
+"""
+@generated function getobservations(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
+    args = Tuple(_filter_arguments(argnames, Targs, Observation))
+    values = [:(model.arguments.$arg.value) for arg in args]
+    return :(NamedTuple{$args}(($(values...),)))
 end
     
 """

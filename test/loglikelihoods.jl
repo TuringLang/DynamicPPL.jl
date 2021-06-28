@@ -110,7 +110,7 @@ const gdemo_models = (
             continue
         end
 
-        args = getarguments(m)
+        args = DynamicPPL.getarguments(m)
         loglikelihood = if length(keys(lls)) == 1 && length(args.x) == 1
             # Only have one observation, so we need to double it
             # for comparison with other models.

@@ -108,9 +108,8 @@ function model(mod, linenumbernode, expr, warn)
         mod, modelinfo[:modeldef][:body], warn
     )
 
-    # extract parameters and observations from that
-    modelinfo[:paramnames] = filter(x -> x ∉ modelinfo[:varnames], modelinfo[:allargs_syms])
-    modelinfo[:obsnames] = setdiff(modelinfo[:allargs_syms], modelinfo[:paramnames])
+    # extract observations from that
+    modelinfo[:obsnames] = modelinfo[:allargs_syms] ∩ modelinfo[:varnames]
 
     return build_output(modelinfo, linenumbernode)
 end
