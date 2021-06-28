@@ -41,15 +41,8 @@ A variable is an observation if it is among the arguments data of the model, and
 observation value is not `missing` (e.g., it could happen that the arguments contain `x =
 [missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
 """
-@generated function isobservation(
-    vn::VarName{s},
-    model::Model{_F, argnames}
-) where {s, _F, argnames}
-    if s in argnames
-        return :(isobservation(vn, model.arguments.$s))
-    else
-        return :(false)
-    end
+function isobservation(vn::VarName{s}, model::Model{<:Any, argnames}) where {s, argnames}
+    return (s in argnames) || isobservation(vn, getproperty(model.arguments, s))
 end
 isobservation(::VarName, ::Constant) = false
 isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
