@@ -204,8 +204,8 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, DefaultContext())
-    return getlogp(varinfo)
+    _, varinfo_new = evaluate(model, varinfo, DefaultContext())
+    return getlogp(varinfo_new)
 end
 
 """
@@ -216,8 +216,8 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, PriorContext())
-    return getlogp(varinfo)
+    _, varinfo_new = evaluate(model, varinfo, PriorContext())
+    return getlogp(varinfo_new)
 end
 
 """
@@ -228,8 +228,8 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, LikelihoodContext())
-    return getlogp(varinfo)
+    _, varinfo_new = evaluate(model, varinfo, LikelihoodContext())
+    return getlogp(varinfo_new)
 end
 
 """
