@@ -36,7 +36,6 @@ export AbstractVarInfo,
     VarInfo,
     UntypedVarInfo,
     TypedVarInfo,
-    SimpleVarInfo,
     push!!,
     empty!!,
     getlogp,
@@ -138,7 +137,6 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
-include("simple_varinfo.jl")
 include("threadsafe.jl")
 include("context_implementations.jl")
 include("compiler.jl")
