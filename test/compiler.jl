@@ -364,8 +364,8 @@ end
         end
 
         @model function demo_useval(x, y)
-            @submodel sub1 x1 ~ demo_return(x)
-            @submodel sub2 x2 ~ demo_return(y)
+            @submodel sub1 x1 = demo_return(x)
+            @submodel sub2 x2 = demo_return(y)
 
             return z ~ Normal(x1 + x2 + 100, 1.0)
         end
@@ -399,7 +399,7 @@ end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                @submodel $(Symbol("ar1_$i")) x ~ AR1(num_steps, α, μ, σ)
+                @submodel $(Symbol("ar1_$i")) x = AR1(num_steps, α, μ, σ)
                 y[i] ~ MvNormal(x, 0.1)
             end
         end
