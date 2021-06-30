@@ -27,9 +27,7 @@ import Base:
     keys,
     haskey
 
-import BangBang:
-    push!!,
-    empty!!
+import BangBang: push!!, empty!!
 
 # VarInfo
 export AbstractVarInfo,
@@ -147,10 +145,18 @@ include("submodel_macro.jl")
 
 # Deprecations
 @deprecate empty!(vi::VarInfo) empty!!(vi::VarInfo)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector}) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector})
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution) push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution
+)
+@deprecate push!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler
+) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector) push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
+)
+@deprecate push!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector}
+) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector})
 
 @deprecate setlogp!(vi, logp) setlogp!!(vi, logp)
 @deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
