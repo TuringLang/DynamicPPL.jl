@@ -335,14 +335,15 @@ getall(vi::TypedVarInfo) = vcat(_getall(vi.metadata)...)
 end
 
 """
-    setall!(vi::VarInfo, val)
+    setall!!(vi::VarInfo, val)
 
-Set the values of all the variables in `vi` to `val`.
+Set the values of all the variables in `vi` to `val`,
+mutating if it makese sense.
 
 The values may or may not be transformed to Euclidean space.
 """
-setall!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
-setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
+setall!!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
+setall!!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 @generated function _setall!(metadata::NamedTuple{names}, val, start=0) where {names}
     expr = Expr(:block)
     start = :(1)
@@ -363,12 +364,12 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
 
-Set the `trans` flag value of `vn` in `vi`.
+Set the `trans` flag value of `vn` in `vi`, mutating if it makes sense.
 """
-function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
+function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+    return trans ? set_flag!!(vi, vn, "trans") : unset_flag!!(vi, vn, "trans")
 end
 
 """
@@ -504,11 +505,11 @@ end
 end
 
 """
-    set_flag!(vi::VarInfo, vn::VarName, flag::String)
+    set_flag!!(vi::VarInfo, vn::VarName, flag::String)
 
 Set `vn`'s value for `flag` to `true` in `vi`.
 """
-function set_flag!(vi::VarInfo, vn::VarName, flag::String)
+function set_flag!!(vi::VarInfo, vn::VarName, flag::String)
     return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
 end
 
@@ -586,16 +587,16 @@ end
 TypedVarInfo(vi::TypedVarInfo) = vi
 
 """
-    empty!(vi::VarInfo)
+    empty!!(vi::VarInfo)
 
 Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
-zeros.
+zeros, mutating if it makes sense.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
-function empty!(vi::VarInfo)
+function empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    resetlogp!(vi)
+    resetlogp!!(vi)
     reset_num_produce!(vi)
     return vi
 end
@@ -628,11 +629,11 @@ Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
 end
 
 """
-    setgid!(vi::VarInfo, gid::Selector, vn::VarName)
+    setgid!!(vi::VarInfo, gid::Selector, vn::VarName)
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
+function setgid!!(vi::VarInfo, gid::Selector, vn::VarName)
     return push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
 end
 
@@ -653,34 +654,34 @@ Return the log of the joint probability of the observed data and parameters samp
 getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
-    setlogp!(vi::VarInfo, logp)
+    setlogp!!(vi::VarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
-`vi` to `logp`.
+`vi` to `logp`, mutating if it makes sense.
 """
-function setlogp!(vi::VarInfo, logp)
+function setlogp!!(vi::VarInfo, logp)
     vi.logp[] = logp
     return vi
 end
 
 """
-    acclogp!(vi::VarInfo, logp)
+    acclogp!!(vi::VarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
-parameters sampled in `vi`.
+parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!(vi::VarInfo, logp)
+function acclogp!!(vi::VarInfo, logp)
     vi.logp[] += logp
     return vi
 end
 
 """
-    resetlogp!(vi::AbstractVarInfo)
+    resetlogp!!(vi::AbstractVarInfo)
 
 Reset the value of the log of the joint probability of the observed data and parameters
-sampled in `vi` to 0.
+sampled in `vi` to 0, mutating if it makes sense.
 """
-resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, zero(getlogp(vi)))
+resetlogp!!(vi::AbstractVarInfo) = setlogp!!(vi, zero(getlogp(vi)))
 
 """
     get_num_produce(vi::VarInfo)
@@ -728,13 +729,13 @@ end
 
 # X -> R for all variables associated with given sampler
 """
-    link!(vi::VarInfo, spl::Sampler)
+    link!!(vi::VarInfo, spl::Sampler)
 
 Transform the values of the random variables sampled by `spl` in `vi` from the support
 of their distributions to the Euclidean space and set their corresponding `"trans"`
 flag values to `true`.
 """
-function link!(vi::UntypedVarInfo, spl::Sampler)
+function link!!(vi::UntypedVarInfo, spl::Sampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
@@ -747,16 +748,16 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
                 vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, true, vn)
+            settrans!!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
     end
 end
-function link!(vi::TypedVarInfo, spl::AbstractSampler)
-    return link!(vi, spl, Val(getspace(spl)))
+function link!!(vi::TypedVarInfo, spl::AbstractSampler)
+    return link!!(vi, spl, Val(getspace(spl)))
 end
-function link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function link!!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _link!(vi.metadata, vi, vns, spaceval)
 end
@@ -783,7 +784,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, true, vn)
+                            settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -797,13 +798,13 @@ end
 
 # R -> X for all variables associated with given sampler
 """
-    invlink!(vi::VarInfo, spl::AbstractSampler)
+    invlink!!(vi::VarInfo, spl::AbstractSampler)
 
 Transform the values of the random variables sampled by `spl` in `vi` from the
 Euclidean space back to the support of their distributions and sets their corresponding
 `"trans"` flag values to `false`.
 """
-function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
+function invlink!!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
@@ -814,16 +815,16 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
                 vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
     end
 end
-function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
-    return invlink!(vi, spl, Val(getspace(spl)))
+function invlink!!(vi::TypedVarInfo, spl::AbstractSampler)
+    return invlink!!(vi, spl, Val(getspace(spl)))
 end
-function invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function invlink!!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _invlink!(vi.metadata, vi, vns, spaceval)
 end
@@ -852,7 +853,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, false, vn)
+                            settrans!!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -962,7 +963,7 @@ Set the current value(s) of the random variables sampled by `spl` in `vi` to `va
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::AbstractVarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
+setindex!(vi::AbstractVarInfo, val, spl::SampleFromPrior) = setall!!(vi, val)
 setindex!(vi::UntypedVarInfo, val, spl::Sampler) = setval!(vi, val, _getranges(vi, spl))
 function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
@@ -1086,42 +1087,42 @@ function Base.show(io::IO, vi::UntypedVarInfo)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
 
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
-the `VarInfo` `vi`.
+the `VarInfo` `vi`, mutating if it makes sense.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-    return push!(vi, vn, r, dist, Set{Selector}([]))
+function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+    return push!!(vi, vn, r, dist, Set{Selector}([]))
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler `spl`
-from a distribution `dist` to `VarInfo` `vi`.
+from a distribution `dist` to `VarInfo` `vi`, if it makes sense.
 
 The sampler is passed here to invalidate its cache where defined.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
-    return push!(vi, vn, r, dist, spl.selector)
+function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
+    return push!!(vi, vn, r, dist, spl.selector)
 end
-function push!(
+function push!!(
     vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
 )
-    return push!(vi, vn, r, dist)
+    return push!!(vi, vn, r, dist)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
 selector `gid` from a distribution `dist` to `VarInfo` `vi`.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-    return push!(vi, vn, r, dist, Set([gid]))
+function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+    return push!!(vi, vn, r, dist, Set([gid]))
 end
-function push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
     if vi isa UntypedVarInfo
         @assert ~(vn in keys(vi)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
@@ -1174,11 +1175,11 @@ function is_flagged(vi::VarInfo, vn::VarName, flag::String)
 end
 
 """
-    unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+    unset_flag!!(vi::VarInfo, vn::VarName, flag::String)
 
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
-function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+function unset_flag!!(vi::VarInfo, vn::VarName, flag::String)
     return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
 end
 
@@ -1238,14 +1239,14 @@ end
 end
 
 """
-    updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
+    updategid!!(vi::VarInfo, vn::VarName, spl::Sampler)
 
 Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
 and `vn`'s symbol is in the space of `spl`.
 """
-function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
+function updategid!!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
-        setgid!(vi, spl.selector, vn)
+        setgid!!(vi, spl.selector, vn)
     end
 end
 
@@ -1393,7 +1394,7 @@ function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
 
     return indices
@@ -1474,11 +1475,11 @@ function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, 
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.
-        set_flag!(vi, vn, "del")
+        set_flag!!(vi, vn, "del")
     end
 
     return indices

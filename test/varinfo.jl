@@ -33,7 +33,7 @@
     end
     @testset "Base" begin
         # Test Base functions:
-        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!, empty!,
+        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
         csym = gensym()
         vn1 = @varname x[1][2]
@@ -46,7 +46,7 @@
         @test inspace(vn1, (:x,))
 
         function test_base!(vi)
-            empty!(vi)
+            empty!!(vi)
             @test getlogp(vi) == 0
             @test get_num_produce(vi) == 0
 
@@ -58,7 +58,7 @@
             @test isempty(vi)
             @test ~haskey(vi, vn)
             @test !(vn in keys(vi))
-            push!(vi, vn, r, dist, gid)
+            push!!(vi, vn, r, dist, gid)
             @test ~isempty(vi)
             @test haskey(vi, vn)
             @test vn in keys(vi)
@@ -75,9 +75,9 @@
             @test vi[vn] == 3 * r
             @test vi[SampleFromPrior()][1] == 3 * r
 
-            empty!(vi)
+            empty!!(vi)
             @test isempty(vi)
-            push!(vi, vn, r, dist, gid)
+            push!!(vi, vn, r, dist, gid)
 
             function test_inspace()
                 space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
@@ -98,7 +98,7 @@
         end
         vi = VarInfo()
         test_base!(vi)
-        test_base!(empty!(TypedVarInfo(vi)))
+        test_base!(empty!!(TypedVarInfo(vi)))
     end
     @testset "flags" begin
         # Test flag setting:
@@ -109,20 +109,20 @@
             r = rand(dist)
             gid = Selector()
 
-            push!(vi, vn_x, r, dist, gid)
+            push!!(vi, vn_x, r, dist, gid)
 
             # del is set by default
             @test !is_flagged(vi, vn_x, "del")
 
-            set_flag!(vi, vn_x, "del")
+            set_flag!!(vi, vn_x, "del")
             @test is_flagged(vi, vn_x, "del")
 
-            unset_flag!(vi, vn_x, "del")
+            unset_flag!!(vi, vn_x, "del")
             @test !is_flagged(vi, vn_x, "del")
         end
         vi = VarInfo()
         test_varinfo!(vi)
-        test_varinfo!(empty!(TypedVarInfo(vi)))
+        test_varinfo!(empty!!(TypedVarInfo(vi)))
     end
     @testset "setgid!" begin
         vi = VarInfo()
@@ -133,16 +133,16 @@
         gid1 = Selector()
         gid2 = Selector(2, :HMC)
 
-        push!(vi, vn, r, dist, gid1)
+        push!!(vi, vn, r, dist, gid1)
         @test meta.gids[meta.idcs[vn]] == Set([gid1])
-        setgid!(vi, gid2, vn)
+        setgid!!(vi, gid2, vn)
         @test meta.gids[meta.idcs[vn]] == Set([gid1, gid2])
 
-        vi = empty!(TypedVarInfo(vi))
+        vi = empty!!(TypedVarInfo(vi))
         meta = vi.metadata
-        push!(vi, vn, r, dist, gid1)
+        push!!(vi, vn, r, dist, gid1)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1])
-        setgid!(vi, gid2, vn)
+        setgid!!(vi, gid2, vn)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1, gid2])
     end
     @testset "setval! & setval_and_resample!" begin

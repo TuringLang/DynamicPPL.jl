@@ -27,16 +27,25 @@ import Base:
     keys,
     haskey
 
+import BangBang:
+    push!!,
+    empty!!
+
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
     UntypedVarInfo,
     TypedVarInfo,
     SimpleVarInfo,
+    push!!,
+    empty!!,
     getlogp,
     setlogp!,
     acclogp!,
     resetlogp!,
+    setlogp!!,
+    acclogp!!,
+    resetlogp!!,
     get_num_produce,
     set_num_produce!,
     reset_num_produce!,
@@ -45,12 +54,18 @@ export AbstractVarInfo,
     is_flagged,
     set_flag!,
     unset_flag!,
+    set_flag!!,
+    unset_flag!!,
     setgid!,
     updategid!,
+    setgid!!,
+    updategid!!,
     setorder!,
     istrans,
     link!,
     invlink!,
+    link!!,
+    invlink!!,
     tonamedtuple,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -123,7 +138,6 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
-include("simple_varinfo.jl")
 include("threadsafe.jl")
 include("context_implementations.jl")
 include("compiler.jl")
@@ -131,5 +145,25 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
+
+# Deprecations
+@deprecate empty!(vi::VarInfo) empty!!(vi::VarInfo)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector}) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector})
+
+@deprecate setlogp!(vi, logp) setlogp!!(vi, logp)
+@deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
+@deprecate resetlogp!(vi) resetlogp!!(vi)
+
+@deprecate link!(vi, spl) link!!(vi, spl)
+@deprecate invlink!(vi, spl) invlink!!(vi, spl)
+
+@deprecate set_flag!(vi, vn, flag) set_flag!!(vi, vn, flag)
+@deprecate unset_flag!(vi, vn, flag) unset_flag!!(vi, vn, flag)
+
+@deprecate setgid!(vi, gid, vn) setgid!!(vi, gid, vn)
+@deprecate updategid!(vi, vn, spl) updategid!!(vi, vn, spl)
 
 end # module
