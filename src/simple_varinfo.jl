@@ -21,15 +21,15 @@ SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
-acclogp!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
+setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
+acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
 
-function setlogp!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
+function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
     return vi
 end
 
-function acclogp!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
+function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] += logp
     return vi
 end
@@ -69,8 +69,8 @@ function assume(dist::Distribution, vn::VarName, vi::SimpleVarInfo{<:NamedTuple}
     return left, Distributions.loglikelihood(dist, left)
 end
 
-# function dot_tilde_assume!(context, right, left, vn, inds, vi::SimpleVarInfo)
-#     throw(MethodError(dot_tilde_assume!, (context, right, left, vn, inds, vi)))
+# function dot_tilde_assume!!(context, right, left, vn, inds, vi::SimpleVarInfo)
+#     throw(MethodError(dot_tilde_assume!!, (context, right, left, vn, inds, vi)))
 # end
 
 function dot_assume(
