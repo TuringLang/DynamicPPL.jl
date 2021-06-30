@@ -44,6 +44,21 @@ function getargs_tilde(expr::Expr)
     end
 end
 
+"""
+    getargs_assignment(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L = R`, or `nothing`
+otherwise.
+"""
+getargs_assignment(x) = nothing
+function getargs_assignment(expr::Expr)
+    return MacroTools.@match expr begin
+        (L_ = R_) => (L, R)
+        x_ => nothing
+    end
+end
+
+
 ############################################
 # Julia 1.2 temporary fix - Julia PR 33303 #
 ############################################

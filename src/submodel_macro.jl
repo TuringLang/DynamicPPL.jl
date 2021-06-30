@@ -1,6 +1,6 @@
 """
-    @submodel x ~ model(args...)
-    @submodel prefix x ~ model(args...)
+    @submodel x = model(args...)
+    @submodel prefix x = model(args...)
 
 Treats `model` as a distribution, where `x` is the return-value of `model`.
 
@@ -18,8 +18,8 @@ macro submodel(prefix, expr)
 end
 
 function submodel(expr, ctx=esc(:__context__))
-    args_tilde = getargs_tilde(expr)
-    return if args_tilde === nothing
+    args_assign = getargs_assignment(expr)
+    return if args_assign === nothing
         # In this case we only want to get the `__varinfo__`.
         quote
             $(esc(:_)), $(esc(:__varinfo__)) = _evaluate(
@@ -29,7 +29,7 @@ function submodel(expr, ctx=esc(:__context__))
     else
         # Here we also want the return-variable.
         # TODO: Should we prefix by `L` by default?
-        L, R = args_tilde
+        L, R = args_assign
         quote
             $(esc(L)), $(esc(:__varinfo__)) = _evaluate(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
