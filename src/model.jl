@@ -140,7 +140,7 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 See also: [`evaluate_threadsafe`](@ref)
 """
 function evaluate_threadunsafe(model, varinfo, context)
-    resetlogp!(varinfo)
+    resetlogp!!(varinfo)
     return _evaluate(model, varinfo, context)
 end
 
@@ -156,10 +156,10 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 See also: [`evaluate_threadunsafe`](@ref)
 """
 function evaluate_threadsafe(model, varinfo, context)
-    resetlogp!(varinfo)
+    resetlogp!!(varinfo)
     wrapper = ThreadSafeVarInfo(varinfo)
     result = _evaluate(model, wrapper, context)
-    setlogp!(varinfo, getlogp(wrapper))
+    setlogp!!(varinfo, getlogp(wrapper))
     return result
 end
 

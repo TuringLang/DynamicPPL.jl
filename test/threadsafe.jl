@@ -17,17 +17,17 @@
         lp = getlogp(vi)
         @test getlogp(threadsafe_vi) == lp
 
-        acclogp!(threadsafe_vi, 42)
+        acclogp!!(threadsafe_vi, 42)
         @test threadsafe_vi.logps[Threads.threadid()][] == 42
         @test getlogp(vi) == lp
         @test getlogp(threadsafe_vi) == lp + 42
 
-        resetlogp!(threadsafe_vi)
+        resetlogp!!(threadsafe_vi)
         @test iszero(getlogp(vi))
         @test iszero(getlogp(threadsafe_vi))
         @test all(iszero(x[]) for x in threadsafe_vi.logps)
 
-        setlogp!(threadsafe_vi, 42)
+        setlogp!!(threadsafe_vi, 42)
         @test getlogp(vi) == 42
         @test getlogp(threadsafe_vi) == 42
         @test all(iszero(x[]) for x in threadsafe_vi.logps)

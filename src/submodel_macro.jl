@@ -28,6 +28,7 @@ function submodel(expr, ctx=esc(:__context__))
         end
     else
         # Here we also want the return-variable.
+        # TODO: Should we prefix by `L` by default?
         L, R = args_tilde
         quote
             $(esc(L)), $(esc(:__varinfo__)) = _evaluate(
