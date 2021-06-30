@@ -162,6 +162,10 @@ include("submodel_macro.jl")
 @deprecate set_flag!(vi, vn, flag) set_flag!!(vi, vn, flag)
 @deprecate unset_flag!(vi, vn, flag) unset_flag!!(vi, vn, flag)
 
+@deprecate settrans!(vi, trans, vn) settrans!!(vi, trans, vn)
+
+@deprecate setall!(vi, val) setall!!(vi, val)
+
 @deprecate setgid!(vi, gid, vn) setgid!!(vi, gid, vn)
 @deprecate updategid!(vi, vn, spl) updategid!!(vi, vn, spl)
 
