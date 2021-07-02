@@ -62,6 +62,11 @@ getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = getval(vi, vns)
 # HACK: Need to disambiguiate.
 getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = getval(vi, vns)
 
+# Necessary for `matchingvalue` to work properly.
+function Base.eltype(vi::SimpleVarInfo{<:Any, T}, spl::Union{AbstractSampler,SampleFromPrior})
+    return T
+end
+
 # Context implementations
 # Only evaluation makes sense for `SimpleVarInfo`, so we only implement this.
 function assume(dist::Distribution, vn::VarName, vi::SimpleVarInfo{<:NamedTuple})
