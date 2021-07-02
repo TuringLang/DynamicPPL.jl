@@ -63,7 +63,9 @@ getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = getval(vi, vns)
 getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = getval(vi, vns)
 
 # Necessary for `matchingvalue` to work properly.
-function Base.eltype(vi::SimpleVarInfo{<:Any, T}, spl::Union{AbstractSampler,SampleFromPrior})
+function Base.eltype(
+    vi::SimpleVarInfo{<:Any,T}, spl::Union{AbstractSampler,SampleFromPrior}
+)
     return T
 end
 
