@@ -1,18 +1,24 @@
 
 """
-    abstract type Argument{T} end
+    abstract type Argument{T,isdefault} end
 
 Parametric wrapper type for model arguments.
 """
-abstract type Argument{T} end
+abstract type Argument{T,isdefault} end
 
-struct Observation{T} <: Argument{T}
+struct Variable{T,isdefault} <: Argument{T,isdefault}
     value::T
 end
 
-struct Constant{T} <: Argument{T}
+Variable{isdefault}(x) where {isdefault} = Variable{typeof(x), false}(x)
+Variable(x) = Variable{false}(x)
+
+struct Constant{T,isdefault} <: Argument{T,isdefault}
     value::T
 end
+
+Constant{isdefault}(x) where {isdefault} = Constant{typeof(x), false}(x)
+Constant(x) = Constant{false}(x)
 
 
 """
@@ -45,38 +51,39 @@ function isobservation(vn::VarName{s}, model::Model{<:Any,argnames}) where {s,ar
     return (s in argnames) && isobservation(vn, getproperty(model.arguments, s))
 end
 isobservation(::VarName, ::Constant) = false
-isobservation(vn::VarName, obs::Observation{Missing}) = false
-isobservation(vn::VarName, obs::Observation) = !ismissing(_getindex(obs.value, vn.indexing))
+isobservation(vn::VarName, obs::Variable{Missing}) = false
+isobservation(vn::VarName, obs::Variable) = !ismissing(_getindex(obs.value, vn.indexing))
 
 
 function Base.show(io::IO, ::MIME"text/plain", model::Model)
-    constants, observations = VarName[VarName{c}() for c in getconstantnames(model)], VarName[]
-    for (obs, value) in pairs(getobservations(model))
+    constants = VarName[VarName{c}() for c in getargumentnames(model, Constant)]
+    observed_variables = VarName[]
+    for (var, value) in pairs(getarguments(model, Variable))
         if value isa AbstractArray
             all_indices = CartesianIndices(value)
             missing_indices = filter(ix -> ismissing(value[ix]), all_indices)
             if isempty(missing_indices)
-                # all observations given -- full variable observed
-                push!(observations, VarName{obs}())
+                # all indexed given -- full variable observed
+                push!(observed_variables, VarName{var}())
             else
                 # mixed case -- indexed variables in both categories
                 observed_indices = setdiff(all_indices, missing_indices)
                 for ix in observed_indices
-                    push!(observations, VarName{obs}((Tuple(ix),)))
+                    push!(observed_variables, VarName{var}((Tuple(ix),)))
                 end
             end
         else
-            complete_name = VarName{obs}()
-            !ismissing(value) && push!(observations, complete_name)
+            complete_name = VarName{var}()
+            !ismissing(value) && push!(observed_variables, complete_name)
         end
     end
     
     println(io, "Model ", model.name, " given")
-    print(io, "    constants    ")
+    print(io, "    constants          ")
     join(io, constants, ", ")
-    println()
-    print(io, "    observations ")
-    join(io, observations, ", ")
+    println(io)
+    print(io, "    observed variables ")
+    join(io, observed_variables, ", ")
 end
 
 function Base.show(io::IO, model::Model)
@@ -170,64 +177,41 @@ function _evaluate(model::Model, varinfo, context)
 end
 
 """
-    getargumentnames(model::Model)
+    getargumentnames(model::Model, [::Type{T}])
 
-Return a tuple of the argument names of the `model`.
+Return a tuple of the argument names of the `model`.  The second argument can be used to filter
+the types of arguments (constant, variable, default) by passing an `Argument` subtype.
 """
 getargumentnames(model::Model{<:Any,argnames}) where {argnames} = argnames
+@generated function getargumentnames(
+    model::Model{<:Any,argnames,Targs},
+    ::Type{T}
+) where {argnames,Targs,T}
+    return _getargumentnames(argnames, Targs, T)
+end
+function _getargumentnames(argnames, Targs, ::Type{T}) where {T}
+    return Tuple([n for (n, Targ) in zip(argnames, Targs.parameters) if Targ <: T])
+end
+
 Base.@deprecate getargnames(model) getargumentnames(model)
 
 """
-    getarguments(model::Model)
+    getarguments(model::Model, [::Type{T}])
 
-Return a `NamedTuple` of the arguments passed to the model.
+Return a `NamedTuple` of the constants passed to `model`.  The second argument can be used to filter
+the types of arguments (constant, variable, default) by passing an `Argument` subtype.
 """
 getarguments(model::Model) = map(arg -> arg.value, model.arguments)
-
-function _filter_arguments(argnames, Targs, ::Type{T}) where {T}
-    return [arg for (arg, Targ) in zip(argnames, Targs.parameters) if Targ <: T]
+@generated function getarguments(
+    model::Model{<:Any,argnames,TArgs},
+    ::Type{T}
+) where {argnames,TArgs,T}
+    filtered_argnames = _getargumentnames(argnames, TArgs, T)
+    values = [:(model.arguments.$arg.value) for arg in filtered_argnames]
+    return :(NamedTuple{$filtered_argnames}(($(values...),)))
 end
 
-"""
-    getconstantnames(model::Model)
 
-Return a tuple of the names of the observations passed to `model`.
-"""
-@generated function getconstantnames(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
-    return _filter_arguments(argnames, Targs, Constant)
-end
-
-"""
-    getobservationnames(model::Model)
-
-Return a tuple of the names of the observations passed to `model`.
-"""
-@generated function getobservationnames(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
-    return _filter_arguments(argnames, Targs, Observation)
-end
-
-"""
-    getconstants(model::Model)
-
-Return a `NamedTuple` of the constants passed to `model`.
-"""
-@generated function getconstants(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
-    args = Tuple(_filter_arguments(argnames, Targs, Constant))
-    values = [:(model.arguments.$arg.value) for arg in args]
-    return :(NamedTuple{$args}(($(values...),)))
-end
-
-"""
-    getobservations(model::Model)
-
-Return a `NamedTuple` of the observations passed to `model` (without respecting `missing`s).
-"""
-@generated function getobservations(model::Model{<:Any,argnames,Targs}) where {argnames,Targs}
-    args = Tuple(_filter_arguments(argnames, Targs, Observation))
-    values = [:(model.arguments.$arg.value) for arg in args]
-    return :(NamedTuple{$args}(($(values...),)))
-end
-    
 """
     nameof(model::Model)
 

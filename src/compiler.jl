@@ -378,7 +378,7 @@ function build_output(modelinfo, linenumbernode)
     # Extract the named tuple expression of all arguments
     allargs_newnames = [gensym(x) for x in modelinfo[:allargs_syms]]
     allargs_wrapped = [
-        x ∈ modelinfo[:obsnames] ? :($(DynamicPPL.Observation)($x)) : :($(DynamicPPL.Constant)($x))
+        x ∈ modelinfo[:obsnames] ? :($(DynamicPPL.Variable)($x)) : :($(DynamicPPL.Constant)($x))
         for x in modelinfo[:allargs_syms]
     ]
     allargs_decls = [:($name = $val) for (name, val) in zip(allargs_newnames, allargs_wrapped)]
