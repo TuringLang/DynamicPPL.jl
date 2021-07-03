@@ -37,53 +37,13 @@ struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
     arguments::NamedTuple{argumentnames,Targs}
 end
 
-
-"""
-    isobservation(vn, model)
-
-Check whether the value of the expression `vn` is a real observation in the `model`.
-
-A variable is an observation if it is among the arguments data of the model, and the corresponding
-observation value is not `missing` (e.g., it could happen that the arguments contain `x =
-[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
-"""
-function isobservation(vn::VarName{s}, model::Model{<:Any,argnames}) where {s,argnames}
-    return (s in argnames) && isobservation(vn, getproperty(model.arguments, s))
-end
-isobservation(::VarName, ::Constant) = false
-isobservation(vn::VarName, obs::Variable{Missing}) = false
-isobservation(vn::VarName, obs::Variable) = !ismissing(_getindex(obs.value, vn.indexing))
-
-
 function Base.show(io::IO, ::MIME"text/plain", model::Model)
-    constants = VarName[VarName{c}() for c in getargumentnames(model, Constant)]
-    observed_variables = VarName[]
-    for (var, value) in pairs(getarguments(model, Variable))
-        if value isa AbstractArray
-            all_indices = CartesianIndices(value)
-            missing_indices = filter(ix -> ismissing(value[ix]), all_indices)
-            if isempty(missing_indices)
-                # all indexed given -- full variable observed
-                push!(observed_variables, VarName{var}())
-            else
-                # mixed case -- indexed variables in both categories
-                observed_indices = setdiff(all_indices, missing_indices)
-                for ix in observed_indices
-                    push!(observed_variables, VarName{var}((Tuple(ix),)))
-                end
-            end
-        else
-            complete_name = VarName{var}()
-            !ismissing(value) && push!(observed_variables, complete_name)
-        end
-    end
-    
     println(io, "Model ", model.name, " given")
     print(io, "    constants          ")
-    join(io, constants, ", ")
+    join(io, getconstants(model), ", ")
     println(io)
     print(io, "    observed variables ")
-    join(io, observed_variables, ", ")
+    join(io, getobservedvariables(model), ", ")
 end
 
 function Base.show(io::IO, model::Model)
@@ -176,6 +136,7 @@ function _evaluate(model::Model, varinfo, context)
     return model.evaluator(model, varinfo, context, matched_args...)
 end
 
+
 """
     getargumentnames(model::Model, [::Type{T}])
 
@@ -211,6 +172,47 @@ getarguments(model::Model) = map(arg -> arg.value, model.arguments)
     return :(NamedTuple{$filtered_argnames}(($(values...),)))
 end
 
+"""
+    isobservation(vn, model)
+
+Check whether the value of the expression `vn` is a real observation in the `model`.
+
+A variable is an observation if it is among the arguments data of the model, and the corresponding
+observation value is not `missing` (e.g., it could happen that the arguments contain `x =
+[missing, 42]` -- then `x[1]` is not an observation, but `x[2]` is.)
+"""
+function isobservation(vn::VarName{s}, model::Model{<:Any,argnames}) where {s,argnames}
+    return (s in argnames) && isobservation(vn, getproperty(model.arguments, s))
+end
+isobservation(::VarName, ::Constant) = false
+isobservation(vn::VarName, obs::Variable{Missing}) = false
+isobservation(vn::VarName, obs::Variable) = !ismissing(_getindex(obs.value, vn.indexing))
+
+function getobservedvariables(model::Model)
+    observed_variables = VarName[]
+    for (var, value) in pairs(getarguments(model, Variable))
+        if value isa AbstractArray
+            all_indices = CartesianIndices(value)
+            missing_indices = filter(ix -> ismissing(value[ix]), all_indices)
+            if isempty(missing_indices)
+                # all indexed given -- full variable observed
+                push!(observed_variables, VarName{var}())
+            else
+                # mixed case -- indexed variables in both categories
+                observed_indices = setdiff(all_indices, missing_indices)
+                for ix in observed_indices
+                    push!(observed_variables, VarName{var}((Tuple(ix),)))
+                end
+            end
+        else
+            complete_name = VarName{var}()
+            !ismissing(value) && push!(observed_variables, complete_name)
+        end
+    end
+    return observed_variables
+end
+
+getconstants(model::Model) = VarName[VarName{c}() for c in getargumentnames(model, Constant)]
 
 """
     nameof(model::Model)
