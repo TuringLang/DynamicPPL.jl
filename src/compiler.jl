@@ -147,8 +147,8 @@ function build_model_info(input_expr)
     # Extract the positional and keyword arguments from the model definition.
     allargs = vcat(modeldef[:args], modeldef[:kwargs])
 
-    # Split the argument expressions and the default values, by unzipping allargs, taking care of the
-    # empty case
+    # Split the argument expressions and the default values, by unzipping allargs, taking care of
+    # the empty case
     allargs_exprs, allargs_defaults = foldl(allargs, init=([], [])) do (ae, ad), arg
         (expr, default) = MacroTools.@match arg begin
             (x_ = val_) => (x, val)

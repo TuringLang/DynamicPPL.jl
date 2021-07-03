@@ -11,10 +11,14 @@ struct Variable{T,Tdefault} <: Argument{T,Tdefault}
     default::Tdefault
 end
 
+Variable(x) = Variable(x, NO_DEFAULT)
+
 struct Constant{T,Tdefault} <: Argument{T,Tdefault}
     value::T
     default::Tdefault
 end
+
+Constant(x) = Constant(x, NO_DEFAULT)
 
 
 """
@@ -168,8 +172,12 @@ getarguments(model::Model) = map(arg -> arg.value, model.arguments)
     return :(NamedTuple{$filtered_argnames}(($(values...),)))
 end
 
+hasargument(model::Model, argname::Symbol) = isdefined(model.arguments, argname)
+getargument(model::Model, argname::Symbol) = getproperty(model.arguments, argname).value
+
 hasdefault(model::Model, argname::Symbol) = getdefault(model, argname) !== NO_DEFAULT
 getdefault(model::Model, argname::Symbol) = getproperty(model.arguments, argname).default
+
 
 """
     isobservation(vn, model)

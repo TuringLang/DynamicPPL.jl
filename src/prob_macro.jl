@@ -1,3 +1,12 @@
+function _isdefault(argnames, TArgs, arg)
+    ix = findfirst(==(arg), argnames)
+    if !ismissing(ix)
+        return !(TArgs.parameters[ix] <: Argument{<:Any, NoDefault})
+    else
+        return false
+    end
+end
+
 macro logprob_str(str)
     expr1, expr2 = get_exprs(str)
     return :(logprob($(esc(expr1)), $(esc(expr2))))
@@ -53,11 +62,12 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
         else
             vi = nothing
         end
-        defaults = model.defaults
-        @assert all(getargnames(model)) do arg
+        @assert all(getargumentnames(model)) do arg
             isdefined(ntl, arg) ||
                 isdefined(ntr, arg) ||
-                isdefined(defaults, arg) && getfield(defaults, arg) !== missing
+                (hasargument(model, arg) &&
+                 hasdefault(model, arg) &&
+                 !ismissing(getdefault(model, arg)))
         end
         return Val(:likelihood), model, vi
     else
@@ -78,9 +88,8 @@ end
 function probtype(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    model::Model{_F,argnames,defaultnames},
-) where {leftnames,rightnames,argnames,defaultnames,_F}
-    defaults = model.defaults
+    model::Model{_F,argnames},
+) where {leftnames,rightnames,argnames,_F}
     prior_rhs = all(
         n -> n in (:model, :varinfo) || n in argnames && getfield(right, n) !== missing,
         rightnames,
@@ -90,8 +99,8 @@ function probtype(
             return getfield(left, arg)
         elseif arg in rightnames
             return getfield(right, arg)
-        elseif arg in defaultnames
-            return getfield(defaults, arg)
+        elseif hasargument(model, arg) && hasdefault(model, arg)
+            return getdefault(model, arg)
         else
             return nothing
         end
@@ -153,33 +162,28 @@ end
 @generated function make_prior_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    model::Model{_F,argnames,defaultnames},
-) where {leftnames,rightnames,argnames,defaultnames,_F}
+    model::Model{_F,argnames,TArgs},
+) where {leftnames,rightnames,argnames,TArgs,_F}
     argvals = []
-    missings = []
     warnings = []
 
     for argname in argnames
         if argname in leftnames
-            push!(argvals, :(deepcopy(left.$argname)))
-            push!(missings, argname)
+            push!(argvals, :(Constant(deepcopy(left.$argname))))
         elseif argname in rightnames
-            push!(argvals, :(right.$argname))
-        elseif argname in defaultnames
-            push!(argvals, :(model.defaults.$argname))
+            push!(argvals, :(Variable(right.$argname)))
+        elseif _isdefault(argnames, TArgs, argname)
+            push!(argvals, :(Variable(model.arguments.$argname.default)))
         else
             push!(warnings, :(@warn($(warn_msg(argname)))))
-            push!(argvals, :(nothing))
+            push!(argvals, :(Variable(nothing)))
         end
     end
 
     # `args` is inserted as properly typed NamedTuple expression;
-    # `missings` is splatted into a tuple at compile time and inserted as literal
     return quote
         $(warnings...)
-        Model{$(Tuple(missings))}(
-            model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
-        )
+        Model(model.name, model.evaluator, $(to_namedtuple_expr(argnames, argvals)))
     end
 end
 
@@ -213,19 +217,17 @@ end
 @generated function make_likelihood_model(
     left::NamedTuple{leftnames},
     right::NamedTuple{rightnames},
-    model::Model{_F,argnames,defaultnames},
-) where {leftnames,rightnames,argnames,defaultnames,_F}
+    model::Model{_F,argnames,TArgs},
+) where {leftnames,rightnames,argnames,TArgs,_F}
     argvals = []
-    missings = []
-
+    
     for argname in argnames
         if argname in leftnames
-            push!(argvals, :(left.$argname))
+            push!(argvals, :(Variable(left.$argname)))
         elseif argname in rightnames
-            push!(argvals, :(right.$argname))
-            push!(missings, argname)
-        elseif argname in defaultnames
-            push!(argvals, :(model.defaults.$argname))
+            push!(argvals, :(Constant(right.$argname)))
+        elseif _isdefault(argnames, TArgs, argname)
+            push!(argvals, :(Variable(model.arguments.$argname.default)))
         else
             throw(
                 "This point should not be reached. Please open an issue in the DynamicPPL.jl repository.",
@@ -235,7 +237,5 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression;
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :(Model{$(Tuple(missings))}(
-        model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
-    ))
+    return :(Model(model.name, model.evaluator, $(to_namedtuple_expr(argnames, argvals))))
 end
