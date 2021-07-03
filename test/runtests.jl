@@ -37,7 +37,6 @@ include("test_util.jl")
             include("model.jl")
             include("sampler.jl")
             # include("prob_macro.jl")
-            @warn "Prob macro tests turned off!!!!"
             include("independence.jl")
             include("distribution_wrappers.jl")
             include("contexts.jl")

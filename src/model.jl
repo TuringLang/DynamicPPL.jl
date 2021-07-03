@@ -1,24 +1,20 @@
 
 """
-    abstract type Argument{T,isdefault} end
+    abstract type Argument{T,Tdefault} end
 
 Parametric wrapper type for model arguments.
 """
-abstract type Argument{T,isdefault} end
+abstract type Argument{T,Tdefault} end
 
-struct Variable{T,isdefault} <: Argument{T,isdefault}
+struct Variable{T,Tdefault} <: Argument{T,Tdefault}
     value::T
+    default::Tdefault
 end
 
-Variable{isdefault}(x) where {isdefault} = Variable{typeof(x), false}(x)
-Variable(x) = Variable{false}(x)
-
-struct Constant{T,isdefault} <: Argument{T,isdefault}
+struct Constant{T,Tdefault} <: Argument{T,Tdefault}
     value::T
+    default::Tdefault
 end
-
-Constant{isdefault}(x) where {isdefault} = Constant{typeof(x), false}(x)
-Constant(x) = Constant{false}(x)
 
 
 """
@@ -171,6 +167,9 @@ getarguments(model::Model) = map(arg -> arg.value, model.arguments)
     values = [:(model.arguments.$arg.value) for arg in filtered_argnames]
     return :(NamedTuple{$filtered_argnames}(($(values...),)))
 end
+
+hasdefault(model::Model, argname::Symbol) = getdefault(model, argname) !== NO_DEFAULT
+getdefault(model::Model, argname::Symbol) = getproperty(model.arguments, argname).default
 
 """
     isobservation(vn, model)

@@ -138,6 +138,7 @@ function build_model_info(input_expr)
         modelinfo = Dict(
             :allargs_exprs => [],
             :allargs_syms => [],
+            :allargs_defaults => [],
             :modeldef => modeldef,
         )
         return modelinfo
@@ -146,17 +147,18 @@ function build_model_info(input_expr)
     # Extract the positional and keyword arguments from the model definition.
     allargs = vcat(modeldef[:args], modeldef[:kwargs])
 
-    # Split the argument expressions and the default values.
-    allargs_exprs_defaults = map(allargs) do arg
-        MacroTools.@match arg begin
+    # Split the argument expressions and the default values, by unzipping allargs, taking care of the
+    # empty case
+    allargs_exprs, allargs_defaults = foldl(allargs, init=([], [])) do (ae, ad), arg
+        (expr, default) = MacroTools.@match arg begin
             (x_ = val_) => (x, val)
             x_ => (x, NO_DEFAULT)
         end
+        push!(ae, expr)
+        push!(ad, default)
+        ae, ad
     end
-
-    # Extract the expressions of the arguments, without default values.
-    allargs_exprs = first.(allargs_exprs_defaults)
-
+    
     # Extract the names of the arguments.
     allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
@@ -169,6 +171,7 @@ function build_model_info(input_expr)
     modelinfo = Dict(
         :allargs_exprs => allargs_exprs,
         :allargs_syms => allargs_syms,
+        :allargs_defaults => allargs_defaults,
         :modeldef => modeldef,
     )
 
@@ -377,10 +380,13 @@ function build_output(modelinfo, linenumbernode)
 
     # Extract the named tuple expression of all arguments
     allargs_newnames = [gensym(x) for x in modelinfo[:allargs_syms]]
-    allargs_wrapped = [
-        x ∈ modelinfo[:obsnames] ? :($(DynamicPPL.Variable)($x)) : :($(DynamicPPL.Constant)($x))
-        for x in modelinfo[:allargs_syms]
-    ]
+    allargs_wrapped = map(modelinfo[:allargs_syms], modelinfo[:allargs_defaults]) do x, d
+        if x ∈ modelinfo[:obsnames]
+            :($(DynamicPPL.Variable)($x, $d))
+        else
+            :($(DynamicPPL.Constant)($x, $d))
+        end
+    end
     allargs_decls = [:($name = $val) for (name, val) in zip(allargs_newnames, allargs_wrapped)]
     allargs_namedtuple = to_namedtuple_expr(modelinfo[:allargs_syms], allargs_newnames)
     
