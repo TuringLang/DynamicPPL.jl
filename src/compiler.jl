@@ -110,6 +110,7 @@ function model(mod, linenumbernode, expr, warn)
 
     # extract observations from that
     modelinfo[:obsnames] = modelinfo[:allargs_syms] ∩ modelinfo[:varnames]
+    modelinfo[:latentnames] = setdiff(modelinfo[:varnames], modelinfo[:allargs_syms])
 
     return build_output(modelinfo, linenumbernode)
 end
@@ -389,6 +390,12 @@ function build_output(modelinfo, linenumbernode)
     end
     allargs_decls = [:($name = $val) for (name, val) in zip(allargs_newnames, allargs_wrapped)]
     allargs_namedtuple = to_namedtuple_expr(modelinfo[:allargs_syms], allargs_newnames)
+
+    internals_newnames = [gensym(x) for x in modelinfo[:latentnames]]
+    internals_decls = map(internals_newnames) do name
+        :($name = $(DynamicPPL.Variable)(missing))
+    end
+    internals_namedtuple = to_namedtuple_expr(modelinfo[:latentnames], internals_newnames)
     
     # Update the function body of the user-specified model.
     # We use a name for the anonymous evaluator that does not conflict with other variables.
@@ -401,10 +408,12 @@ function build_output(modelinfo, linenumbernode)
         $(linenumbernode)
         $evaluator = $(MacroTools.combinedef(evaluatordef))
         $(allargs_decls...)
+        $(internals_decls...)
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
             $evaluator,
             $allargs_namedtuple,
+            $internals_namedtuple,
         )
     end
 

@@ -30,20 +30,24 @@ Constant(x) = Constant(x, NO_DEFAULT)
 
 A `Model` struct with model evaluation function of type `F`, and arguments `arguments`.
 """
-struct Model{F, argumentnames, Targs} <: AbstractProbabilisticProgram
+struct Model{F, argumentnames, Targs, internalnames, Tinternals} <: AbstractProbabilisticProgram
     name::Symbol
     # code::Expr
     evaluator::F
     arguments::NamedTuple{argumentnames,Targs}
+    internal_variables::NamedTuple{internalnames,Tinternals}
 end
 
 function Base.show(io::IO, ::MIME"text/plain", model::Model)
     println(io, "Model ", model.name, " given")
-    print(io, "    constants          ")
+    print(io, "    constants:          ")
     join(io, getconstants(model), ", ")
     println(io)
-    print(io, "    observed variables ")
+    print(io, "    observed variables: ")
     join(io, getobservedvariables(model), ", ")
+    println(io)
+    print(io, "    latent variables:   ")
+    join(io, getlatentvariables(model), ", ")
     return nothing
 end
 
@@ -166,10 +170,10 @@ the types of arguments (constant, variable, default) by passing an `Argument` su
 """
 getarguments(model::Model) = map(arg -> arg.value, model.arguments)
 @generated function getarguments(
-    model::Model{<:Any,argnames,TArgs},
+    model::Model{<:Any,argnames,Targs},
     ::Type{T}
-) where {argnames,TArgs,T}
-    filtered_argnames = _getargumentnames(argnames, TArgs, T)
+) where {argnames,Targs,T}
+    filtered_argnames = _getargumentnames(argnames, Targs, T)
     values = [:(model.arguments.$arg.value) for arg in filtered_argnames]
     return :(NamedTuple{$filtered_argnames}(($(values...),)))
 end
@@ -219,6 +223,10 @@ function getobservedvariables(model::Model)
         end
     end
     return observed_variables
+end
+
+function getlatentvariables(model::Model)
+    return [VarName{var}() for var in keys(model.internal_variables)]
 end
 
 getconstants(model::Model) = VarName[VarName{c}() for c in getargumentnames(model, Constant)]
