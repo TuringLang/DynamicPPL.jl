@@ -149,7 +149,7 @@ function build_model_info(input_expr)
 
     # Split the argument expressions and the default values, by unzipping allargs, taking care of
     # the empty case
-    allargs_exprs, allargs_defaults = foldl(allargs, init=([], [])) do (ae, ad), arg
+    allargs_exprs, allargs_defaults = foldl(allargs; init=([], [])) do (ae, ad), arg
         (expr, default) = MacroTools.@match arg begin
             (x_ = val_) => (x, val)
             x_ => (x, NO_DEFAULT)

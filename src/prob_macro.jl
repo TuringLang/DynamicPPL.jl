@@ -1,7 +1,7 @@
 function _isdefault(argnames, TArgs, arg)
     ix = findfirst(==(arg), argnames)
     if !ismissing(ix)
-        return !(TArgs.parameters[ix] <: Argument{<:Any, NoDefault})
+        return !(TArgs.parameters[ix] <: Argument{<:Any,NoDefault})
     else
         return false
     end
@@ -63,11 +63,10 @@ function probtype(ntl::NamedTuple{namesl}, ntr::NamedTuple{namesr}) where {names
             vi = nothing
         end
         @assert all(getargumentnames(model)) do arg
-            isdefined(ntl, arg) ||
-                isdefined(ntr, arg) ||
-                (hasargument(model, arg) &&
-                 hasdefault(model, arg) &&
-                 !ismissing(getdefault(model, arg)))
+            isdefined(ntl, arg) || isdefined(ntr, arg) ||
+                hasargument(model, arg) &&
+                hasdefault(model, arg) &&
+                !ismissing(getdefault(model, arg))
         end
         return Val(:likelihood), model, vi
     else

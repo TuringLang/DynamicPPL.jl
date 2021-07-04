@@ -44,10 +44,12 @@ function Base.show(io::IO, ::MIME"text/plain", model::Model)
     println(io)
     print(io, "    observed variables ")
     join(io, getobservedvariables(model), ", ")
+    return nothing
 end
 
 function Base.show(io::IO, model::Model)
     println(io, "$(model.name)$(getarguments(model))")
+    return nothing
 end
 
 
