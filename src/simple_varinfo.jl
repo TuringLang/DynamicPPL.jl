@@ -65,7 +65,7 @@ getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = getval(vi, vns)
 # Necessary for `matchingvalue` to work properly.
 function Base.eltype(
     vi::SimpleVarInfo{<:Any,T}, spl::Union{AbstractSampler,SampleFromPrior}
-)
+) where {T}
     return T
 end
 
@@ -136,3 +136,5 @@ function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names
 
     return SimpleVarInfo{T}(NamedTuple{names}(vals))
 end
+
+SimpleVarInfo(model::Model, args...) = SimpleVarInfo(VarInfo(Random.GLOBAL_RNG, model, args...))
