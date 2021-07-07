@@ -182,7 +182,10 @@ end
     # `args` is inserted as properly typed NamedTuple expression;
     return quote
         $(warnings...)
-        Model(model.name, model.evaluator, $(to_namedtuple_expr(argnames, argvals)))
+        Model(model.name,
+              model.evaluator,
+              $(to_namedtuple_expr(argnames, argvals)),
+              model.internal_variables)
     end
 end
 
@@ -236,5 +239,9 @@ end
 
     # `args` is inserted as properly typed NamedTuple expression;
     # `missings` is splatted into a tuple at compile time and inserted as literal
-    return :(Model(model.name, model.evaluator, $(to_namedtuple_expr(argnames, argvals))))
+    return :(Model(
+        model.name,
+        model.evaluator,
+        $(to_namedtuple_expr(argnames, argvals)),
+        model.internal_variables))
 end

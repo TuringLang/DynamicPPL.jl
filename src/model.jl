@@ -201,8 +201,11 @@ isobservation(::VarName, ::Constant) = false
 isobservation(vn::VarName, obs::Variable{Missing}) = false
 isobservation(vn::VarName, obs::Variable) = !ismissing(_getindex(obs.value, vn.indexing))
 
-function getobservedvariables(model::Model)
+function getvariables_separated(model::Model)
     observed_variables = VarName[]
+    latent_variables = VarName[]
+
+    # separate the argument variables into observed and latend
     for (var, value) in pairs(getarguments(model, Variable))
         if value isa AbstractArray
             all_indices = CartesianIndices(value)
@@ -212,23 +215,33 @@ function getobservedvariables(model::Model)
                 push!(observed_variables, VarName{var}())
             else
                 # mixed case -- indexed variables in both categories
-                observed_indices = setdiff(all_indices, missing_indices)
-                for ix in observed_indices
-                    push!(observed_variables, VarName{var}((Tuple(ix),)))
+                for ix in all_indices
+                    complete_name = VarName{var}((Tuple(ix),))
+                    if ix in missing_indices
+                        push!(latent_variables, complete_name)
+                    else
+                        push!(observed_variables, complete_name)
+                    end
                 end
             end
         else
             complete_name = VarName{var}()
-            !ismissing(value) && push!(observed_variables, complete_name)
+            if ismissing(value)
+                push!(latent_variables, complete_name)
+            else
+                push!(observed_variables, complete_name)
+            end
         end
     end
-    return observed_variables
+
+    # add purely internal variables as latent
+    append!(latent_variables, (VarName{var}() for var in keys(model.internal_variables)))
+    
+    return (observed_variables, latent_variables)
 end
 
-function getlatentvariables(model::Model)
-    return [VarName{var}() for var in keys(model.internal_variables)]
-end
-
+getobservedvariables(model::Model) = getvariables_separated(model)[1]
+getlatentvariables(model::Model) = getvariables_separated(model)[2]
 getconstants(model::Model) = VarName[VarName{c}() for c in getargumentnames(model, Constant)]
 
 """
