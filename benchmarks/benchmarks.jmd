@@ -10,6 +10,10 @@ using BenchmarkTools, DynamicPPL, Distributions, Serialization
 include("utils.jl")
 ```
 
+```julia; echo=false; results="hidden";
+mkpath(joinpath("results", WEAVE_ARGS[:prefix]))
+```
+
 ## Models
 
 ### `demo1`

@@ -17,14 +17,14 @@ typed = typed_code(m)
 
 ```julia; echo=false; results="hidden"
 # Serialize the output of `typed_code` so we can compare later.
-haskey(WEAVE_ARGS, :prefix) && serialize("$(WEAVE_ARGS[:prefix])_$(m.name).jls", string(typed));
+haskey(WEAVE_ARGS, :prefix) && serialize(joinpath("results", WEAVE_ARGS[:prefix],"$(m.name).jls"), string(typed));
 ```
 
 ```julia; wrap=false
 if haskey(WEAVE_ARGS, :prefix_old)
     # We want to compare the generated code to the previous version.
     import DiffUtils
-    typed_old = deserialize("$(WEAVE_ARGS[:prefix_old])_$(m.name).jls");
+    typed_old = deserialize(joinpath("results", WEAVE_ARGS[:prefix_old], "$(m.name).jls"));
     DiffUtils.diff(typed_old, string(typed), width=130)
 end
 ```
