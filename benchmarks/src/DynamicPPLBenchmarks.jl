@@ -20,7 +20,7 @@ function benchmark_untyped_varinfo!(suite, m)
     # Populate.
     m(vi)
     # Evaluate.
-    suite["evaluation_untyped"] = @benchmarkable $m($vi)
+    suite["evaluation_untyped"] = @benchmarkable $m($vi, $(DefaultContext()))
     return suite
 end
 
@@ -28,7 +28,7 @@ function benchmark_typed_varinfo!(suite, m)
     # Populate.
     vi = VarInfo(m)
     # Evaluate.
-    suite["evaluation_typed"] = @benchmarkable $m($vi)
+    suite["evaluation_typed"] = @benchmarkable $m($vi, $(DefaultContext()))
     return suite
 end
 
