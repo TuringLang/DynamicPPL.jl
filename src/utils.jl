@@ -14,6 +14,22 @@ macro addlogprob!(ex)
 end
 
 """
+    @isassumption(x)
+
+Return `true` if `x` is an assumption and `false` otherwise.
+
+Should only be used within a model-definition.
+
+See also: [`isassumption`](@ref).
+"""
+macro isassumption(left)
+    return :(
+        $(DynamicPPL.isassumption)($(esc(:(__model__))), $(varname(left))) ||
+        ismissing($(esc(left)))
+    )
+end
+
+"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
