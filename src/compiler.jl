@@ -28,7 +28,7 @@ Should only be used within a model-definition as it assumes the existence
 of a variable `__model__` pointing to a [`Model`](@ref) instance.
 
 # Examples
-```julia-repl
+```jldoctest
 julia> @macroexpand DynamicPPL.@isassumption(x)
 :((DynamicPPL.isassumption)(__model__, (VarName){:x}()) || x === missing)
 
