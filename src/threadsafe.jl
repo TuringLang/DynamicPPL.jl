@@ -47,7 +47,7 @@ set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
 function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
-    setgid!(vi.varinfo, gid, vn)
+    return setgid!(vi.varinfo, gid, vn)
 end
 setorder!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = setorder!(vi.varinfo, vn, index)
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
@@ -66,13 +66,13 @@ getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
 getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
 
 function setindex!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
-    setindex!(vi.varinfo, val, spl)
+    return setindex!(vi.varinfo, val, spl)
 end
 function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
-    setindex!(vi.varinfo, val, spl)
+    return setindex!(vi.varinfo, val, spl)
 end
 function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
-    setindex!(vi.varinfo, val, spl)
+    return setindex!(vi.varinfo, val, spl)
 end
 
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
@@ -87,13 +87,9 @@ function empty!(vi::ThreadSafeVarInfo)
 end
 
 function push!(
-    vi::ThreadSafeVarInfo,
-    vn::VarName,
-    r,
-    dist::Distribution,
-    gidset::Set{Selector}
+    vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
-    push!(vi.varinfo, vn, r, dist, gidset)
+    return push!(vi.varinfo, vn, r, dist, gidset)
 end
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)

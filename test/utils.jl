@@ -3,7 +3,7 @@
         @model function testmodel()
             global lp_before = getlogp(__varinfo__)
             @addlogprob!(42)
-            global lp_after = getlogp(__varinfo__)
+            return global lp_after = getlogp(__varinfo__)
         end
 
         model = testmodel()
