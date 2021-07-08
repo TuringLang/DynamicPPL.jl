@@ -142,7 +142,7 @@ Weave benchmarks present in `benchmarks.jmd` into a single file.
 - Rest of the passed `kwargs` will be passed on to `Weave.weave`.
 """
 function weave_benchmarks(
-    input="benchmarks.jmd";
+    input=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmarks.jmd");
     benchmarkbody=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmark_body.jmd"),
     include_commit_id=false,
     name=default_name(include_commit_id=include_commit_id),
