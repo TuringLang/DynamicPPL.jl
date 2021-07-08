@@ -40,14 +40,35 @@ function typed_code(m, vi = VarInfo(m))
     return first(results)
 end
 
-function make_suite(m)
+"""
+    make_suite(model)
+
+Create default benchmark suite for `model`.
+"""
+function make_suite(model)
     suite = BenchmarkGroup()
-    benchmark_untyped_varinfo!(suite, m)
-    benchmark_typed_varinfo!(suite, m)
+    benchmark_untyped_varinfo!(suite, model)
+    benchmark_typed_varinfo!(suite, model)
 
     return suite
 end
 
+"""
+    weave_child(indoc; mod, args, kwargs...)
+
+Weave `indoc` with scope of `mod` into markdown.
+
+Useful for weaving within weaving, e.g.
+```julia
+weave_child(child_jmd_path, mod = @__MODULE__, args = WEAVE_ARGS)
+```
+together with `results="markup"` and `echo=false` will simply insert
+the weaved version of `indoc`.
+
+# Notes
+- Currently only supports `doctype == "github"`. Other outputs are "supported"
+  in the sense that it works but you might lose niceties such as syntax highlighting.
+"""
 function weave_child(indoc; mod, args, kwargs...)
     # FIXME: Make this work for other output formats than just `github`.
     doc = Weave.WeaveDoc(indoc, nothing)
@@ -56,11 +77,28 @@ function weave_child(indoc; mod, args, kwargs...)
     return display(Markdown.parse(rendered))
 end
 
+"""
+    pkgversion(m::Module)
+
+Return version of module `m` as listed in its Project.toml.
+"""
 function pkgversion(m::Module)
     projecttoml_path = joinpath(dirname(pathof(m)), "..", "Project.toml")
     return Pkg.TOML.parsefile(projecttoml_path)["version"]
 end
 
+"""
+    default_name(; include_commit_id=false)
+
+Construct a name from either repo information or package version
+of `DynamicPPL`.
+
+If the path of `DynamicPPL` is a git-repo, return name of current branch,
+joined with the commit id if `include_commit_id` is `true`.
+
+If path of `DynamicPPL` is _not_ a git-repo, it is assumed to be a release,
+resulting in a name of the form `release-VERSION`.
+"""
 function default_name(; include_commit_id=false)
     dppl_path = abspath(joinpath(dirname(pathof(DynamicPPL)), ".."))
 
@@ -88,8 +126,23 @@ function default_name(; include_commit_id=false)
     return name
 end
 
+"""
+    weave_benchmarks(input="benchmarks.jmd"; kwargs...)
+
+Weave benchmarks present in `benchmarks.jmd` into a single file.
+
+# Keyword arguments
+- `benchmarkbody`: JMD-file to be rendered for each model.
+- `include_commit_id=false`: specify whether to include commit-id in the default name.
+- `name`: the name of directory in `results/` to use as output directory.
+- `name_old=nothing`: if specified, comparisons of current run vs. the run pinted to
+  by `name_old` will be included in the generated document.
+- `include_typed_code=false`: if `true`, output of `code_typed` for the evaluator
+  of the model will be included in the weaved document.
+- Rest of the passed `kwargs` will be passed on to `Weave.weave`.
+"""
 function weave_benchmarks(
-    ;
+    input="benchmarks.jmd";
     benchmarkbody=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmark_body.jmd"),
     include_commit_id=false,
     name=default_name(include_commit_id=include_commit_id),
@@ -109,7 +162,7 @@ function weave_benchmarks(
     end
     @info "Storing output in $(outpath)"
     mkpath(outpath)
-    Weave.weave("benchmarks.jmd", doctype; out_path=outpath, args=args, kwargs...)
+    Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
 end
 
 end # module
