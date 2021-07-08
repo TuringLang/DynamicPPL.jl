@@ -4,8 +4,7 @@ const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rn
 """
     isassumption(model::Model, vn::VarName[, value])
 
-Returns a `bool` indicating whether `vn` and `value` represents an
-assumption in `model`.
+Return `true` if `vn` and `value` represent an assumption in `model`, and `false` otherwise.
 
 E.g. `@varname(x[1])` is an assumption in the following cases:
     1. `x` is not among the input data to the model,
