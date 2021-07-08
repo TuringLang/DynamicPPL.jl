@@ -2,48 +2,50 @@ const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
-    isassumption(model::Model, vn::VarName[, value])
+    isassumption(model::Model, vn::VarName)
 
-Return `true` if `vn` and `value` represent an assumption in `model`, and `false` otherwise.
-
-E.g. `@varname(x[1])` is an assumption in the following cases:
-    1. `x` is not among the input data to the model, or
-    2. `x` is among the input data to the model but with `value === missing`.
+Return `true` if `vn` represents an assumption in `model`, and `false` otherwise.
 """
-isassumption(model::Model, vn::VarName, value::Missing) = true
-isassumption(model::Model, vn::VarName, value) = isassumption(model, vn)
 function isassumption(model::Model, vn::VarName)
     return !DynamicPPL.inargnames(vn, model) || DynamicPPL.inmissings(vn, model)
 end
 
 """
-    @isassumption(x)
+    @isassumption model x
 
 Return `true` if `x` is an assumption and `false` otherwise.
 
-This is equivalent to `isassumption(model, varname, value)` but
-avoids evaluation of `x` if `isassumption(model, varname)` is `true`.
+E.g. `x[1]` is an assumption in the following cases:
+    1. `x` is not among the input data to the model, or
+    2. `x` is among the input data to the model but with `value === missing`.!
 
-Should only be used within a model-definition as it assumes the existence
-of a variable `__model__` pointing to a [`Model`](@ref) instance.
+A literal, e.g. `1.0`, results in `false`.
 
 # Examples
 ```jldoctest
-julia> @macroexpand DynamicPPL.@isassumption(x)
-:((DynamicPPL.isassumption)(__model__, (VarName){:x}()) || x === missing)
+julia> @macroexpand DynamicPPL.@isassumption(model, x)
+:((DynamicPPL.isassumption)(model, (VarName){:x}()) || x === missing)
 
-julia> @macroexpand DynamicPPL.@isassumption(x[1][i, :])
-:((DynamicPPL.isassumption)(__model__, (VarName){:x}(((1,), (i, :)))) || (x[1])[i, :] === missing)
+julia> @macroexpand DynamicPPL.@isassumption(model, x[1][i, :])
+:((DynamicPPL.isassumption)(model, (VarName){:x}(((1,), (i, :)))) || (x[1])[i, :] === missing)
 ```
 
 # See also
 - [`isassumption`](@ref)
 """
-macro isassumption(left)
-    return :(
-        $(DynamicPPL.isassumption)($(esc(:(__model__))), $(esc(varname(left)))) ||
-        $(esc(left)) === $(missing)
-    )
+macro isassumption(model, left)
+    return isassumption_expr(model, left)
+end
+
+function isassumption_expr(model, left)
+    return if isliteral(left)
+        :(false)
+    else
+        :(
+            $(DynamicPPL.isassumption)($(esc(model)), $(esc(varname(left)))) ||
+            ($(Expr(:escape, Expr(:isdefined, vsym(left)))) && $(esc(left)) === $(missing))
+        )
+    end
 end
 
 """
@@ -321,7 +323,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption($left)
+        if DynamicPPL.@isassumption(esc(:(__module__)), $left)
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -364,7 +366,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption($left)
+        if DynamicPPL.@isassumption(esc(:(__module__)), $left)
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
