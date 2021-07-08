@@ -21,10 +21,11 @@ end
 
 Return `true` if `x` is an assumption and `false` otherwise.
 
+This is equivalent to `isassumption(model, varname, value)` but
+avoids evaluation of `x` if `isassumption(model, varname)` is `true`.
+
 Should only be used within a model-definition as it assumes the existence
 of a variable `__model__` pointing to a [`Model`](@ref) instance.
-
-See also: [`isassumption`](@ref).
 
 # Examples
 ```julia-repl
@@ -34,6 +35,9 @@ julia> @macroexpand DynamicPPL.@isassumption(x)
 julia> @macroexpand DynamicPPL.@isassumption(x[1][i, :])
 :((DynamicPPL.isassumption)(__model__, (VarName){:x}(((1,), (i, :)))) || (x[1])[i, :] === missing)
 ```
+
+# See also
+- [`isassumption`](@ref)
 """
 macro isassumption(left)
     return :(
