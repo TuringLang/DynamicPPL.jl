@@ -19,6 +19,22 @@ function isassumption(model::Model, vn::VarName)
 end
 
 """
+    @isassumption(x)
+
+Return `true` if `x` is an assumption and `false` otherwise.
+
+Should only be used within a model-definition.
+
+See also: [`isassumption`](@ref).
+"""
+macro isassumption(left)
+    return :(
+        $(DynamicPPL.isassumption)($(esc(:(__model__))), $(varname(left))) ||
+        ismissing($(esc(left)))
+    )
+end
+
+"""
     isliteral(expr)
 
 Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` otherwise.
@@ -293,7 +309,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(DynamicPPL.isassumption)(__model__, $vn) || ismissing($left)
+        if DynamicPPL.@isassumption($left)
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -336,7 +352,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(DynamicPPL.isassumption)(__model__, $vn) || ismissing($left)
+        if DynamicPPL.@isassumption($left)
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
