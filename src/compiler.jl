@@ -30,7 +30,7 @@ See also: [`isassumption`](@ref).
 macro isassumption(left)
     return :(
         $(DynamicPPL.isassumption)($(esc(:(__model__))), $(varname(left))) ||
-        ismissing($(esc(left)))
+        $(esc(left)) === $(missing)
     )
 end
 
