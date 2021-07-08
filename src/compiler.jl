@@ -2,39 +2,22 @@ const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
-    isassumption(expr)
+    isassumption(model::Model, vn::VarName[, value])
 
-Return an expression that can be evaluated to check if `expr` is an assumption in the
-model.
+Returns a `bool` indicating whether `vn` and `value` represents an
+assumption in `model`.
 
-Let `expr` be `:(x[1])`. It is an assumption in the following cases:
+E.g. `@varname(x[1])` is an assumption in the following cases:
     1. `x` is not among the input data to the model,
-    2. `x` is among the input data to the model but with a value `missing`, or
-    3. `x` is among the input data to the model with a value other than missing,
+    2. `x` is among the input data to the model but with `value === missing`, or
+    3. `x` is among the input data to the model with a `value !== missing`,
        but `x[1] === missing`.
-
-When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol,Expr})
-    vn = gensym(:vn)
-
-    return quote
-        let $vn = $(varname(expr))
-            # This branch should compile nicely in all cases except for partial missing data
-            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               $(DynamicPPL.inmissings)($vn, __model__)
-                true
-            else
-                # Evaluate the LHS
-                $expr === missing
-            end
-        end
-    end
+isassumption(model::Model, vn::VarName, value::Missing) = true
+isassumption(model::Model, vn::VarName, value) = isassumption(model, vn)
+function isassumption(model::Model, vn::VarName)
+    return !DynamicPPL.inargnames(vn, model) || DynamicPPL.inmissings(vn, model)
 end
-
-# failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
 
 """
     isliteral(expr)
@@ -307,12 +290,11 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn inds
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        $isassumption = $(DynamicPPL.isassumption(left))
-        if $isassumption
+        if $(DynamicPPL.isassumption)(__model__, $vn) || ismissing($left)
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -351,12 +333,11 @@ function generate_dot_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn inds
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        $isassumption = $(DynamicPPL.isassumption(left))
-        if $isassumption
+        if $(DynamicPPL.isassumption)(__model__, $vn) || ismissing($left)
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
