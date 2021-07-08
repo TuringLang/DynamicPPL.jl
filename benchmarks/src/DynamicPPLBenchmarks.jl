@@ -3,10 +3,11 @@ module DynamicPPLBenchmarks
 using DynamicPPL
 using BenchmarkTools
 
-import Weave
-import Markdown
+using Weave: Weave
+using Markdown: Markdown
 
-import LibGit2, Pkg
+using LibGit2: LibGit2
+using Pkg: Pkg
 
 export weave_benchmarks
 
@@ -31,8 +32,8 @@ function benchmark_typed_varinfo!(suite, m)
     return suite
 end
 
-function typed_code(m, vi = VarInfo(m))
-    rng = DynamicPPL.Random.MersenneTwister(42);
+function typed_code(m, vi=VarInfo(m))
+    rng = DynamicPPL.Random.MersenneTwister(42)
     spl = DynamicPPL.SampleFromPrior()
     ctx = DynamicPPL.SamplingContext(rng, spl, DynamicPPL.DefaultContext())
 
@@ -72,7 +73,7 @@ the weaved version of `indoc`.
 function weave_child(indoc; mod, args, kwargs...)
     # FIXME: Make this work for other output formats than just `github`.
     doc = Weave.WeaveDoc(indoc, nothing)
-    doc = Weave.run_doc(doc, doctype = "github", mod = mod, args = args, kwargs...)
+    doc = Weave.run_doc(doc; doctype="github", mod=mod, args=args, kwargs...)
     rendered = Weave.render_doc(doc)
     return display(Markdown.parse(rendered))
 end
@@ -143,26 +144,28 @@ Weave benchmarks present in `benchmarks.jmd` into a single file.
 """
 function weave_benchmarks(
     input=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmarks.jmd");
-    benchmarkbody=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmark_body.jmd"),
+    benchmarkbody=joinpath(
+        dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmark_body.jmd"
+    ),
     include_commit_id=false,
-    name=default_name(include_commit_id=include_commit_id),
+    name=default_name(; include_commit_id=include_commit_id),
     name_old=nothing,
     include_typed_code=false,
     doctype="github",
     outpath="results/$(name)/",
-    kwargs...
+    kwargs...,
 )
     args = Dict(
         :benchmarkbody => benchmarkbody,
         :name => name,
-        :include_typed_code => include_typed_code
+        :include_typed_code => include_typed_code,
     )
     if !isnothing(name_old)
         args[:name_old] = name_old
     end
     @info "Storing output in $(outpath)"
     mkpath(outpath)
-    Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
+    return Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
 end
 
 end # module
