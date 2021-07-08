@@ -231,7 +231,7 @@ function assume(dist::Distribution, vn::VarName, vi)
         error("variable $vn does not exist")
     end
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, vi[vn], istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
 # SampleFromPrior and SampleFromUniform
