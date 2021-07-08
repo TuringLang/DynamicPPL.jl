@@ -28,9 +28,10 @@ end
 function typed_code(m, vi = VarInfo(m))
     rng = DynamicPPL.Random.MersenneTwister(42);
     spl = DynamicPPL.SampleFromPrior()
-    ctx = DynamicPPL.DefaultContext()
+    ctx = DynamicPPL.SamplingContext(rng, spl, DynamicPPL.DefaultContext())
 
-    return Main.@code_typed m.f(rng, m, vi, spl, ctx, m.args...)
+    results = code_typed(m.f, Base.typesof(m, vi, ctx, m.args...))
+    return first(results)
 end
 
 function make_suite(m)
