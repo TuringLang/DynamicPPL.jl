@@ -7,11 +7,7 @@ using BenchmarkTools, DynamicPPL, Distributions, Serialization
 ```
 
 ```julia
-include("utils.jl")
-```
-
-```julia; echo=false; results="hidden";
-mkpath(joinpath("results", WEAVE_ARGS[:prefix]))
+import DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
 ```
 
 ## Models
