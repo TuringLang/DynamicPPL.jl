@@ -56,8 +56,24 @@ function isassumption(model, left, vn=varname(left))
     sym = vsym(left)
     return :(
         (!$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)) ||
-        (@isdefined($sym) && $(left) === $(missing))
+        (@isdefined($sym) && ($(left) === $(missing) || $(DynamicPPL.is_entirely_missing)($left)))
     )
+end
+
+is_entirely_missing(x) = false
+function is_entirely_missing(x::AbstractArray{>:Missing})
+    missings = missing .=== x
+    if all(missings)
+        # All are `missing`.
+        return true
+    end
+
+    if any(missings)
+        # Only some are `missing` => we don't know what to do.
+        error("$(vn) have some `missing` and some not; this is currently not supported")
+    end
+
+    return false
 end
 
 """
