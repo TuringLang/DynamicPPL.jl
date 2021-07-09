@@ -1,3 +1,5 @@
+using Setfield
+
 """
     SimpleVarInfo{NT,T} <: AbstractVarInfo
 
@@ -19,6 +21,8 @@ end
 
 SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
+SimpleVarInfo{T}() where {T<:Real} = SimpleVarInfo{T}(nothing)
+SimpleVarInfo() = SimpleVarInfo{Float64}()
 
 getlogp(vi::SimpleVarInfo) = vi.logp
 setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
@@ -69,16 +73,47 @@ function Base.eltype(
     return T
 end
 
+function push!!(vi::SimpleVarInfo{Nothing}, vn::VarName{sym, Tuple{}}, value, dist::Distribution) where {sym}
+    @set vi.θ = NamedTuple{(sym, )}((value, ))
+end
+function push!!(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym, Tuple{}}, value, dist::Distribution) where {sym}
+    @set vi.θ = merge(vi.θ, NamedTuple{(sym, )}((value, )))
+end
+
 # Context implementations
-# Only evaluation makes sense for `SimpleVarInfo`, so we only implement this.
-function assume(dist::Distribution, vn::VarName, vi::SimpleVarInfo{<:NamedTuple})
+function tilde_assume!!(context, right, vn, inds, vi::SimpleVarInfo)
+    value, logp, vi_new = tilde_assume(context, right, vn, inds, vi)
+    return value, acclogp!!(vi_new, logp)
+end
+
+function assume(dist::Distribution, vn::VarName, vi::SimpleVarInfo)
     left = vi[vn]
-    return left, Distributions.loglikelihood(dist, left)
+    return left, Distributions.loglikelihood(dist, left), vi
+end
+
+function assume(
+    rng::Random.AbstractRNG,
+    sampler::SampleFromPrior,
+    dist::Distribution,
+    vn::VarName,
+    vi::SimpleVarInfo
+)
+    value = init(rng, dist, sampler)
+    vi = push!!(vi, vn, value, dist, sampler)
+    vi = settrans!!(vi, false, vn)
+    return value, Distributions.loglikelihood(dist, value), vi
 end
 
 # function dot_tilde_assume!!(context, right, left, vn, inds, vi::SimpleVarInfo)
 #     throw(MethodError(dot_tilde_assume!!, (context, right, left, vn, inds, vi)))
 # end
+
+function dot_tilde_assume!!(context, right, left, vn, inds, vi::SimpleVarInfo)
+    value, logp, vi_new = dot_tilde_assume(context, right, left, vn, inds, vi)
+    # Mutation of `value` no longer occurs in main body, so we do it here.
+    left .= value
+    return value, acclogp!!(vi_new, logp)
+end
 
 function dot_assume(
     dist::MultivariateDistribution,
@@ -93,11 +128,11 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = vi[vns]
-    lp = sum(zip(vns, eachcol(r))) do vn, ri
-        return Distributions.logpdf(dist, ri)
+    value = vi[vns]
+    lp = sum(zip(vns, eachcol(value))) do vn, val
+        return Distributions.logpdf(dist, val)
     end
-    return r, lp
+    return value, lp, vi
 end
 
 function dot_assume(
@@ -112,13 +147,14 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = vi[vns]
-    lp = sum(Distributions.logpdf.(dists, r))
-    return r, lp
+    value = vi[vns]
+    lp = sum(Distributions.logpdf.(dists, value))
+    return value, lp, vi
 end
 
 # HACK: Allows us to re-use the impleemntation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
+settrans!!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = vi
 
 # Interaction with `VarInfo`
 SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
