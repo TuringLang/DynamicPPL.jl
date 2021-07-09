@@ -41,7 +41,7 @@ maybe_view(x) = x
 maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@view($x)))
 
 maybe_unwrap_view(x) = x
-maybe_unwrap_view(x::SubArray{<:Any, 0}) = x[1]
+maybe_unwrap_view(x::SubArray{<:Any,0}) = x[1]
 
 """
     isliteral(expr)
@@ -307,7 +307,10 @@ function generate_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), __varinfo__
+                __context__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $(maybe_view(left)),
+                __varinfo__,
             )
         end
     end
@@ -351,7 +354,10 @@ function generate_dot_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), __varinfo__
+                __context__,
+                $(DynamicPPL.check_tilde_rhs)($right),
+                $(maybe_view(left)),
+                __varinfo__,
             )
         end
     end
