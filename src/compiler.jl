@@ -56,7 +56,10 @@ function isassumption(model, left, vn=varname(left))
     sym = vsym(left)
     return :(
         (!$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)) ||
-        (@isdefined($sym) && ($(left) === $(missing) || $(DynamicPPL.is_entirely_missing)($left)))
+        (
+            @isdefined($sym) &&
+            ($(left) === $(missing) || $(DynamicPPL.is_entirely_missing)($left))
+        )
     )
 end
 
