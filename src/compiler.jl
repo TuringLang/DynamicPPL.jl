@@ -30,22 +30,36 @@ julia> @macroexpand DynamicPPL.@isassumption(model, x[1][i, :])
 :((DynamicPPL.isassumption)(model, (VarName){:x}(((1,), (i, :)))) || (x[1])[i, :] === missing)
 ```
 
-# See also
-- [`isassumption`](@ref)
+See also: [`isassumption`](@ref)
 """
+macro isassumption(left)
+    return esc(isassumption(:(__model__), left))
+end
 macro isassumption(model, left)
-    return isassumption_expr(model, left)
+    return esc(isassumption(model, left))
 end
 
-function isassumption_expr(model, left)
-    return if isliteral(left)
-        :(false)
-    else
-        :(
-            $(DynamicPPL.isassumption)($(esc(model)), $(esc(varname(left)))) ||
-            ($(Expr(:escape, Expr(:isdefined, vsym(left)))) && $(esc(left)) === $(missing))
-        )
+"""
+    isassumption(model, left[, vn])
+
+Return an expression evaluating to `true` if expression `left` is considered
+as an assumption in `model`, where `model` evaluates to a [`Model`](@ref).
+
+If `vn` is specified, is is assumed to evaluate to `varname(left)`.
+If `vn` is not specified, `varname(left)` is used in instead.
+
+See also: [`@isassumtpion`](@ref)
+"""
+function isassumption(model, left, vn=varname(left))
+    if isliteral(left)
+        return :(false)
     end
+
+    sym = vsym(left)
+    return :(
+        (!$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)) ||
+        (@isdefined($sym) && $(left) === $(missing))
+    )
 end
 
 """
@@ -323,7 +337,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption(esc(:(__module__)), $left)
+        if $(DynamicPPL.isassumption(:(__model__), left, vn))
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -366,7 +380,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption(esc(:(__module__)), $left)
+        if $(DynamicPPL.isassumption(:(__model__), left, vn))
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
