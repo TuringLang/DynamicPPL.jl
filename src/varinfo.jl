@@ -955,6 +955,7 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 The value(s) may or may not be transformed to Euclidean space.
 """
 setindex!(vi::AbstractVarInfo, val, vn::VarName) = setval!(vi, val, vn)
+setindex!!(vi::AbstractVarInfo, val, vn::VarName) = setindex!(vi, val, vn)
 
 """
     setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
