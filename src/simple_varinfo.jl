@@ -73,11 +73,15 @@ function Base.eltype(
     return T
 end
 
-function push!!(vi::SimpleVarInfo{Nothing}, vn::VarName{sym, Tuple{}}, value, dist::Distribution) where {sym}
-    @set vi.θ = NamedTuple{(sym, )}((value, ))
+function push!!(
+    vi::SimpleVarInfo{Nothing}, vn::VarName{sym,Tuple{}}, value, dist::Distribution
+) where {sym}
+    @set vi.θ = NamedTuple{(sym,)}((value,))
 end
-function push!!(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym, Tuple{}}, value, dist::Distribution) where {sym}
-    @set vi.θ = merge(vi.θ, NamedTuple{(sym, )}((value, )))
+function push!!(
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym,Tuple{}}, value, dist::Distribution
+) where {sym}
+    @set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
 end
 
 # Context implementations
@@ -96,7 +100,7 @@ function assume(
     sampler::SampleFromPrior,
     dist::Distribution,
     vn::VarName,
-    vi::SimpleVarInfo
+    vi::SimpleVarInfo,
 )
     value = init(rng, dist, sampler)
     vi = push!!(vi, vn, value, dist, sampler)
