@@ -137,4 +137,6 @@ function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names
     return SimpleVarInfo{T}(NamedTuple{names}(vals))
 end
 
-SimpleVarInfo(model::Model, args...) = SimpleVarInfo(VarInfo(Random.GLOBAL_RNG, model, args...))
+function SimpleVarInfo(model::Model, args...)
+    return SimpleVarInfo(VarInfo(Random.GLOBAL_RNG, model, args...))
+end
