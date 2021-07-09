@@ -11,7 +11,8 @@ function isassumption(model::Model, vn::VarName)
 end
 
 """
-    @isassumption model x
+    @isassumption x
+    @isassumption model x[, varname]
 
 Return `true` if `x` is an assumption and `false` otherwise.
 
@@ -23,11 +24,17 @@ A literal, e.g. `1.0`, results in `false`.
 
 # Examples
 ```jldoctest
-julia> @macroexpand DynamicPPL.@isassumption(model, x)
-:((DynamicPPL.isassumption)(model, (VarName){:x}()) || x === missing)
+julia> @macroexpand @isassumption(x)
+:((!((DynamicPPL.inargnames)((VarName){:x}(), __model__)) || (DynamicPPL.inmissings)((VarName){:x}(), __model__)) || $(Expr(:isdefined, :x)) && x === missing)
 
-julia> @macroexpand DynamicPPL.@isassumption(model, x[1][i, :])
-:((DynamicPPL.isassumption)(model, (VarName){:x}(((1,), (i, :)))) || (x[1])[i, :] === missing)
+julia> @macroexpand @isassumption m x
+:((!((DynamicPPL.inargnames)((VarName){:x}(), m)) || (DynamicPPL.inmissings)((VarName){:x}(), m)) || $(Expr(:isdefined, :x)) && x === missing)
+
+julia> @macroexpand @isassumption m x @varname(x)
+:((!((DynamicPPL.inargnames)((VarName){:x}(), m)) || (DynamicPPL.inmissings)((VarName){:x}(), m)) || $(Expr(:isdefined, :x)) && x === missing)
+
+julia> @macroexpand @isassumption(model, x[1][i, :])
+:((!((DynamicPPL.inargnames)((VarName){:x}(((1,), (i, :))), model)) || (DynamicPPL.inmissings)((VarName){:x}(((1,), (i, :))), model)) || $(Expr(:isdefined, :x)) && (x[1])[i, :] === missing)
 ```
 
 See also: [`isassumption`](@ref)
@@ -35,8 +42,8 @@ See also: [`isassumption`](@ref)
 macro isassumption(left)
     return esc(isassumption(:(__model__), left))
 end
-macro isassumption(model, left)
-    return esc(isassumption(model, left))
+macro isassumption(model, left, vn=varname(left))
+    return esc(isassumption(model, left, vn))
 end
 
 """
@@ -337,7 +344,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(DynamicPPL.isassumption(:(__model__), left, vn))
+        if DynamicPPL.@isassumption(__model__, $left, $vn)
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -380,7 +387,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(DynamicPPL.isassumption(:(__model__), left, vn))
+        if DynamicPPL.@isassumption(__model__, $left, $vn)
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
