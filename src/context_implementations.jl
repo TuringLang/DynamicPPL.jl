@@ -44,8 +44,10 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, inds, vi)
 end
@@ -59,8 +61,10 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
 end
@@ -73,8 +77,10 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, inds, vi)
 end
@@ -88,8 +94,10 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, inds, vi)
 end
