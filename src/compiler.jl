@@ -2,15 +2,6 @@ const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
-    isassumption(model::Model, vn::VarName)
-
-Return `true` if `vn` represents an assumption in `model`, and `false` otherwise.
-"""
-function isassumption(model::Model, vn::VarName)
-    return !DynamicPPL.inargnames(vn, model) || DynamicPPL.inmissings(vn, model)
-end
-
-"""
     @isassumption x
     @isassumption model x[, varname]
 
