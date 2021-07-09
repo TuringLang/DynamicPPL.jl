@@ -307,7 +307,7 @@ function generate_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), __varinfo__
+                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
     end
@@ -351,7 +351,7 @@ function generate_dot_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), __varinfo__
+                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
             )
         end
     end
