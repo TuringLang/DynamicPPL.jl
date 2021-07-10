@@ -65,13 +65,13 @@ end
 
 is_entirely_missing(x) = false
 function is_entirely_missing(x::AbstractArray{>:Missing})
-    missings = missing .=== x
-    if all(missings)
+    num_missing = count(===(missing), x)
+    if num_missing == length(x)
         # All are `missing`.
         return true
     end
 
-    if any(missings)
+    if num_missing > 0
         # Only some are `missing` => we don't know what to do.
         error("$(vn) have some `missing` and some not; this is currently not supported")
     end
