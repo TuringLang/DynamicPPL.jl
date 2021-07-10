@@ -41,7 +41,7 @@ maybe_view(x) = x
 maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@view($x)))
 
 maybe_unwrap_view(x) = x
-maybe_unwrap_view(x::SubArray{<:Any, 0}) = x[1]
+maybe_unwrap_view(x::SubArray{<:Any,0}) = x[1]
 
 """
     isliteral(expr)
