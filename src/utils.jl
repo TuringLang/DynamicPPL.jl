@@ -14,6 +14,44 @@ macro addlogprob!(ex)
 end
 
 """
+    @observe x ~ dist
+    @observe x .~ dist
+
+Force this `~` statement to always be an observe-statement.
+
+Only usable within the body of [@model](@ref).
+
+# Examples
+
+```jldoctest
+julia> @model function demo()
+           x = 1.0
+           @observe x ~ Normal()
+
+           return getlogp(__varinfo__)
+       end
+demo (generic function with 1 method)
+
+julia> demo()() == logpdf(Normal(), 1.0)
+true
+
+julia> @model function demo()
+           x = [1.0, ]
+           @observe x .~ Normal()
+
+           return getlogp(__varinfo__)
+       end
+demo (generic function with 1 method)
+
+julia> demo()() == logpdf(Normal(), 1.0)
+true
+```
+"""
+macro observe(ex)
+    return esc(generate_mainbody(__module__, ex, false; force_observe=true))
+end
+
+"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
