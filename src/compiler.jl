@@ -15,14 +15,14 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol,Expr})
+function isassumption(expr::Union{Symbol,Expr}; check_inargs=true)
     vn = gensym(:vn)
 
     return quote
         let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
+            if ($check_inargs && !$(DynamicPPL.inargnames)($vn, __model__)) ||
                $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
@@ -233,7 +233,9 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn; kwargs...) = generate_mainbody!(mod, Symbol[], expr, warn; kwargs...)
+function generate_mainbody(mod, expr, warn; kwargs...)
+    return generate_mainbody!(mod, Symbol[], expr, warn; kwargs...)
+end
 
 generate_mainbody!(mod, found, x, warn; kwargs...) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn; kwargs...)
@@ -259,7 +261,9 @@ function generate_mainbody!(mod, found, expr::Expr, warn; tilde_kwargs...)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
-        return generate_mainbody!(mod, found, macroexpand(mod, expr; recursive=true), warn; tilde_kwargs...)
+        return generate_mainbody!(
+            mod, found, macroexpand(mod, expr; recursive=true), warn; tilde_kwargs...
+        )
     end
 
     # Modify dotted tilde operators.
@@ -270,7 +274,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn; tilde_kwargs...)
             generate_dot_tilde(
                 generate_mainbody!(mod, found, L, warn; tilde_kwargs...),
                 generate_mainbody!(mod, found, R, warn; tilde_kwargs...);
-                tilde_kwargs...
+                tilde_kwargs...,
             ),
         )
     end
@@ -283,12 +287,15 @@ function generate_mainbody!(mod, found, expr::Expr, warn; tilde_kwargs...)
             generate_tilde(
                 generate_mainbody!(mod, found, L, warn; tilde_kwargs...),
                 generate_mainbody!(mod, found, R, warn; tilde_kwargs...);
-                tilde_kwargs...
+                tilde_kwargs...,
             ),
         )
     end
 
-    return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn; tilde_kwargs...), expr.args)...)
+    return Expr(
+        expr.head,
+        map(x -> generate_mainbody!(mod, found, x, warn; tilde_kwargs...), expr.args)...,
+    )
 end
 
 """
@@ -310,7 +317,7 @@ end
 Generate an `observe` expression for data variables and `assume` expression for parameter
 variables.
 """
-function generate_tilde(left, right; force_observe=false)
+function generate_tilde(left, right; check_inargs=true)
     # If the LHS is a literal, it is always an observation
     isliteral(left) && return generate_tilde_literal(left, right)
 
@@ -320,7 +327,7 @@ function generate_tilde(left, right; force_observe=false)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        $isassumption = $(force_observe ? false : DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left; check_inargs=check_inargs))
         if $isassumption
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
@@ -348,7 +355,7 @@ end
 
 Generate the expression that replaces `left .~ right` in the model body.
 """
-function generate_dot_tilde(left, right; force_observe=true)
+function generate_dot_tilde(left, right; check_inargs=true)
     # If the LHS is a literal, it is always an observation
     isliteral(left) && return generate_tilde_literal(left, right)
 
@@ -358,7 +365,7 @@ function generate_dot_tilde(left, right; force_observe=true)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        $isassumption = $(force_observe ? false : DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left; check_inargs=check_inargs))
         if $isassumption
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,

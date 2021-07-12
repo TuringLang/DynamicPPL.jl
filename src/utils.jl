@@ -17,7 +17,8 @@ end
     @observe x ~ dist
     @observe x .~ dist
 
-Force this `~` statement to always be an observe-statement.
+Force this `~` statement to be an observe-statement unless `x` is `missing`,
+effectively circumventing the check as to whether `x` is the arguments.
 
 Only usable within the body of [@model](@ref).
 
@@ -29,8 +30,7 @@ julia> @model function demo()
            @observe x ~ Normal()
 
            return getlogp(__varinfo__)
-       end
-demo (generic function with 1 method)
+       end;
 
 julia> demo()() == logpdf(Normal(), 1.0)
 true
@@ -40,15 +40,24 @@ julia> @model function demo()
            @observe x .~ Normal()
 
            return getlogp(__varinfo__)
-       end
-demo (generic function with 1 method)
+       end;
 
 julia> demo()() == logpdf(Normal(), 1.0)
+true
+
+julia> @model function demo(args)
+           x = args.x
+           @observe x ~ Normal()
+
+           return getlogp(__varinfo__)
+       end;
+
+julia> demo((x = 1.0, ))() == logpdf(Normal(), 1.0)
 true
 ```
 """
 macro observe(ex)
-    return esc(generate_mainbody(__module__, ex, false; force_observe=true))
+    return esc(generate_mainbody(__module__, ex, false; check_inargs=false))
 end
 
 """
