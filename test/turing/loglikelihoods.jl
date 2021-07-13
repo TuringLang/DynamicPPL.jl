@@ -13,7 +13,9 @@
     y = randn()
     model = demo(xs, y)
     chain = sample(model, MH(), MCMCThreads(), 100, 2)
-    var_to_likelihoods = pointwise_loglikelihoods(model, chain)
+    var_to_likelihoods = pointwise_loglikelihoods(
+        model, MCMCChains.get_sections(chain, :parameters)
+    )
     @test haskey(var_to_likelihoods, "xs[1]")
     @test haskey(var_to_likelihoods, "xs[2]")
     @test haskey(var_to_likelihoods, "xs[3]")
