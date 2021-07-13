@@ -1,0 +1,13 @@
+name = "DynamicPPLBenchmarks"
+uuid = "d94a1522-c11e-44a7-981a-42bf5dc1a001"
+version = "0.1.0"
+
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+DiffUtils = "8294860b-85a6-42f8-8c35-d911f667b5f6"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+LibGit2 = "76f85450-5226-5b5a-8eaa-529ad045b433"
+Markdown = "d6f4376e-aef5-505a-96c1-9c027394607a"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
