@@ -40,6 +40,9 @@ isassumption(expr) = :(false)
 maybe_view(x) = x
 maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@view($x)))
 
+# If the result of a `view` is a zero-dim array then it's just a
+# single element. Likely the rest is expecting type `eltype(x)`, hence
+# we extract the value rather than passing the array.
 maybe_unwrap_view(x) = x
 maybe_unwrap_view(x::SubArray{<:Any,0}) = x[1]
 
