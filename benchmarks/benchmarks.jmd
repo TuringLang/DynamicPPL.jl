@@ -1,0 +1,96 @@
+# Benchmarks
+
+## Setup
+
+```julia
+using BenchmarkTools, DynamicPPL, Distributions, Serialization
+```
+
+```julia
+import DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
+```
+
+## Models
+
+### `demo1`
+
+```julia
+@model function demo1(x)
+    m ~ Normal()
+    x ~ Normal(m, 1)
+
+    return (m = m, x = x)
+end
+
+model_def = demo1;
+data = 1.0;
+```
+
+```julia; results="markup"; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+### `demo2`
+
+```julia
+@model function demo2(y) 
+    # Our prior belief about the probability of heads in a coin.
+    p ~ Beta(1, 1)
+
+    # The number of observations.
+    N = length(y)
+    for n in 1:N
+        # Heads or tails of a coin are drawn from a Bernoulli distribution.
+        y[n] ~ Bernoulli(p)
+    end
+end
+
+model_def = demo2;
+data = rand(0:1, 10);
+```
+
+```julia; results="markup"; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+### `demo3`
+
+```julia
+@model function demo3(x)
+    D, N = size(x)
+
+    # Draw the parameters for cluster 1.
+    μ1 ~ Normal()
+
+    # Draw the parameters for cluster 2.
+    μ2 ~ Normal()
+
+    μ = [μ1, μ2]
+
+    # Comment out this line if you instead want to draw the weights.
+    w = [0.5, 0.5]
+
+    # Draw assignments for each datum and generate it from a multivariate normal.
+    k = Vector{Int}(undef, N)
+    for i in 1:N
+        k[i] ~ Categorical(w)
+        x[:,i] ~ MvNormal([μ[k[i]], μ[k[i]]], 1.)
+    end
+    return k
+end
+
+model_def = demo3
+
+# Construct 30 data points for each cluster.
+N = 30
+
+# Parameters for each cluster, we assume that each cluster is Gaussian distributed in the example.
+μs = [-3.5, 0.0]
+
+# Construct the data points.
+data = mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.), N), hcat, 1:2);
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
