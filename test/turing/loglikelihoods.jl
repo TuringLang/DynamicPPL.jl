@@ -32,8 +32,8 @@
     results = pointwise_loglikelihoods(model, var_info)
     var_to_likelihoods = Dict(string(vn) => ℓ for (vn, ℓ) in results)
     s, m = var_info[SampleFromPrior()]
-    @test logpdf(Normal(m, √s), xs[1]) == var_to_likelihoods["xs[1]"]
-    @test logpdf(Normal(m, √s), xs[2]) == var_to_likelihoods["xs[2]"]
-    @test logpdf(Normal(m, √s), xs[3]) == var_to_likelihoods["xs[3]"]
-    @test logpdf(Normal(m, √s), y) == var_to_likelihoods["y"]
+    @test [logpdf(Normal(m, √s), xs[1])] == var_to_likelihoods["xs[1]"]
+    @test [logpdf(Normal(m, √s), xs[2])] == var_to_likelihoods["xs[2]"]
+    @test [logpdf(Normal(m, √s), xs[3])] == var_to_likelihoods["xs[3]"]
+    @test [logpdf(Normal(m, √s), y)] == var_to_likelihoods["y"]
 end
