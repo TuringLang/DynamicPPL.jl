@@ -141,7 +141,6 @@ function decondition(context::ConditionContext, sym, syms...)
         syms...
     )
 end
-decondition(context::ConditionContext) = context
 function decondition(context::ConditionContext, ::Val{sym}, syms...) where {sym}
     return decondition(
         ConditionContext(BangBang.delete!!(context.values, Val{sym}()), context.context),
