@@ -30,11 +30,11 @@
         chain1 = sample(model1, MH(), 100)
         chain2 = sample(model2, MH(), 100)
 
-        res11 = generated_quantities(model1, chain1)
-        res21 = generated_quantities(model2, chain1)
+        res11 = generated_quantities(model1, MCMCChains.get_sections(chain1, :parameters))
+        res21 = generated_quantities(model2, MCMCChains.get_sections(chain1, :parameters))
 
-        res12 = generated_quantities(model1, chain2)
-        res22 = generated_quantities(model2, chain2)
+        res12 = generated_quantities(model1, MCMCChains.get_sections(chain2, :parameters))
+        res22 = generated_quantities(model2, MCMCChains.get_sections(chain2, :parameters))
 
         # Check that the two different models produce the same values for
         # the same chains.
@@ -43,8 +43,8 @@
         # Ensure that they're not all the same (some can be, because rejected samples)
         @test any(res12[1:(end - 1)] .!= res12[2:end])
 
-        test_setval!(model1, chain1)
-        test_setval!(model2, chain2)
+        test_setval!(model1, MCMCChains.get_sections(chain1, :parameters))
+        test_setval!(model2, MCMCChains.get_sections(chain2, :parameters))
 
         # Next level
         @model function demo3(xs, ::Type{TV}=Vector{Float64}) where {TV}
@@ -79,11 +79,11 @@
         chain3 = sample(model3, MH(), 100)
         chain4 = sample(model4, MH(), 100)
 
-        res33 = generated_quantities(model3, chain3)
-        res43 = generated_quantities(model4, chain3)
+        res33 = generated_quantities(model3, MCMCChains.get_sections(chain3, :parameters))
+        res43 = generated_quantities(model4, MCMCChains.get_sections(chain3, :parameters))
 
-        res34 = generated_quantities(model3, chain4)
-        res44 = generated_quantities(model4, chain4)
+        res34 = generated_quantities(model3, MCMCChains.get_sections(chain4, :parameters))
+        res44 = generated_quantities(model4, MCMCChains.get_sections(chain4, :parameters))
 
         # Check that the two different models produce the same values for
         # the same chains.
