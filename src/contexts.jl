@@ -134,16 +134,16 @@ function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {v
 end
 
 # TODO: Can we maybe do this in a better way?
-decondition(context::ConditionContext) = context
+# When no second argument is given, we remove _all_ conditioned variables.
+# TODO: Should we remove this and just return `context.context`?
+# That will work better if `Model` becomes like `ContextualModel`.
+decondition(context::ConditionContext) = ConditionContext(NamedTuple(), context.context)
+function decondition(context::ConditionContext, sym)
+    return ConditionContext(BangBang.delete!!(context.values, sym), context.context)
+end
 function decondition(context::ConditionContext, sym, syms...)
     return decondition(
         ConditionContext(BangBang.delete!!(context.values, sym), context.context),
-        syms...
-    )
-end
-function decondition(context::ConditionContext, ::Val{sym}, syms...) where {sym}
-    return decondition(
-        ConditionContext(BangBang.delete!!(context.values, Val{sym}()), context.context),
         syms...
     )
 end

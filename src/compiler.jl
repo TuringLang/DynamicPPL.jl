@@ -23,7 +23,8 @@ function isassumption(expr::Union{Symbol,Expr})
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
             if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               $(DynamicPPL.inmissings)($vn, __model__)
+                $(DynamicPPL.inmissings)($vn, __model__) ||
+                (__context__ isa $(DynamicPPL.ConditionContext) && !$(Base.haskey)(__context__, $vn))
                 true
             else
                 # Evaluate the LHS
@@ -427,11 +428,14 @@ function build_output(modelinfo, linenumbernode)
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         $evaluator = $(MacroTools.combinedef(evaluatordef))
-        return $(DynamicPPL.Model)(
-            $(QuoteNode(modeldef[:name])),
-            $evaluator,
-            $allargs_namedtuple,
-            $defaults_namedtuple,
+        return $(DynamicPPL.condition)(
+            $(DynamicPPL.Model)(
+                $(QuoteNode(modeldef[:name])),
+                $evaluator,
+                $allargs_namedtuple,
+                $defaults_namedtuple,
+            ),
+            $allargs_namedtuple
         )
     end
 
