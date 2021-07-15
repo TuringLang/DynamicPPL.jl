@@ -134,9 +134,9 @@ function tilde_assume!(context, right, vn, inds, vi)
 end
 
 function tilde_assume!(context::ConditionContext, right, vn, inds, vi)
-    value = if haskey(context, vn)
+    if haskey(context, vn)
         # Extract value.
-        if inds isa Tuple{}
+        value = if inds isa Tuple{}
             getfield(context.values, getsym(vn))
         else
             _getindex(getfield(context.values, getsym(vn)), inds)
@@ -149,7 +149,7 @@ function tilde_assume!(context::ConditionContext, right, vn, inds, vi)
 
         tilde_observe!(context.context, right, value, vn, inds, vi)
     else
-        tilde_assume!(context.context, right, vn, inds, vi)
+        value = tilde_assume!(context.context, right, vn, inds, vi)
     end
 
     return value
@@ -446,9 +446,9 @@ function dot_tilde_assume!(context, right, left, vn, inds, vi)
 end
 
 function dot_tilde_assume!(context::ConditionContext, right, left, vn, inds, vi)
-    value = if vn in context
+    if vn in context
         # Extract value.
-        if inds isa Tuple{}
+        value = if inds isa Tuple{}
             getfield(context.values, sym)
         else
             _getindex(getfield(context.values, sym), inds)
@@ -459,9 +459,9 @@ function dot_tilde_assume!(context::ConditionContext, right, left, vn, inds, vi)
             vi[vn] = value
         end
 
-        dot_tilde_observe!(context.context, right, left, vn, inds, vi)
+        dot_tilde_observe!(context.context, right, value, vn, inds, vi)
     else
-        dot_tilde_assume!(context.context, right, left, vn, inds, vi)
+        value = dot_tilde_assume!(context.context, right, left, vn, inds, vi)
     end
 
     return value

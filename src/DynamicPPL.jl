@@ -121,11 +121,11 @@ abstract type AbstractContext end
 
 include("utils.jl")
 include("selector.jl")
+include("contexts.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
-include("contexts.jl")
 include("varinfo.jl")
 include("threadsafe.jl")
 include("context_implementations.jl")
@@ -134,6 +134,5 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
-include("contextual_model.jl")
 
 end # module

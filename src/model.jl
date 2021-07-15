@@ -34,44 +34,36 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
+struct Model{
+    F,
+    argnames,
+    defaultnames,
+    Targs,
+    Tdefaults,
+    conditionnames,
+    Ctx<:ConditionContext{conditionnames},
+} <: AbstractModel
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
+    context::Ctx
 
-    """
-        Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
-
-    Create a model of name `name` with evaluation function `f` and missing arguments
-    overwritten by `missings`.
-    """
-    function Model{missings}(
+    function Model(
         name::Symbol,
         f::F,
         args::NamedTuple{argnames,Targs},
-        defaults::NamedTuple{defaultnames,Tdefaults},
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(
-            name, f, args, defaults
+        defaults::NamedTuple{defaultnames,Tdefaults}=NamedTuple(),
+        context::ConditionContext{conditionnames}=ConditionContext(args, DefaultContext())
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,conditionnames}
+        return new{F,argnames,defaultnames,Targs,Tdefaults,conditionnames,typeof(context)}(
+            name, f, args, defaults, context
         )
     end
 end
 
-"""
-    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
-
-Create a model of name `name` with evaluation function `f` and missing arguments deduced
-from `args`.
-
-Default arguments `defaults` are used internally when constructing instances of the same
-model with different arguments.
-"""
-@generated function Model(
-    name::Symbol, f::F, args::NamedTuple{argnames,Targs}, defaults::NamedTuple=NamedTuple()
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+function Model(m::Model, context::ConditionContext)
+    return Model(m.name, m.f, m.args, m.defaults, context)
 end
 
 """
@@ -94,10 +86,12 @@ end
 
 (model::AbstractModel)(context::AbstractContext) = model(VarInfo(), context)
 function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
+    condition_context = ConditionContext(model.context.values, context)
+
     if Threads.nthreads() == 1
-        return evaluate_threadunsafe(model, varinfo, context)
+        return evaluate_threadunsafe(model, varinfo, condition_context)
     else
-        return evaluate_threadsafe(model, varinfo, context)
+        return evaluate_threadsafe(model, varinfo, condition_context)
     end
 end
 
@@ -155,11 +149,39 @@ end
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
 @generated function _evaluate(
-    model::Model{_F,argnames}, varinfo, context
-) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(model, varinfo, context, $(unwrap_args...)))
+    model::Model{_F,argnames,<:Any,<:Any,<:Any,conditionnames}, varinfo, context
+) where {_F,argnames,conditionnames}
+    unwrap_args = []
+    for var in argnames
+        # If `var` is not to be found in the `ConditionContext`, we fall back
+        # to the original args.
+        expr = if var in conditionnames
+            :($matchingvalue(context, varinfo, model.context.values.$var))
+        else
+            :($matchingvalue(context, varinfo, model.args.$var))
+        end
+        push!(unwrap_args, expr)
+    end
+
+    return :(model.f(model, varinfo, ConditionContext(model.context, context), $(unwrap_args...)))
 end
+
+"""
+    condition(model::Model, values::NamedTuple)
+    condition(model::Model; values...)
+
+Condition `model` on the specifide `values`, i.e. make `model` treat `values` as observations.
+"""
+condition(model::Model, values) = Model(model, ConditionContext(values, model.context))
+condition(model::Model; values...) = condition(model, (; values...))
+
+"""
+    decondition(model::Model)
+    decondition(model::Model, symbols...)
+
+Decondition `symbols` in `model`, i.e. make `model` treat them as random variables.
+"""
+decondition(model::Model, symbols...) = Model(model, decondition(model.context, symbols...))
 
 """
     getargnames(model::Model)
