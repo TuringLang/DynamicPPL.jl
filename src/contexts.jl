@@ -107,7 +107,6 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     end
 end
 
-
 struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
@@ -128,7 +127,7 @@ function ConditionContext(values::NamedTuple{Vars}, context::ConditionContext) w
     return ConditionContext(merge(context.values, values), context.context)
 end
 
-function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars, sym}
+function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
 end
@@ -143,7 +142,6 @@ function decondition(context::ConditionContext, sym)
 end
 function decondition(context::ConditionContext, sym, syms...)
     return decondition(
-        ConditionContext(BangBang.delete!!(context.values, sym), context.context),
-        syms...
+        ConditionContext(BangBang.delete!!(context.values, sym), context.context), syms...
     )
 end
