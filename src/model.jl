@@ -1,5 +1,3 @@
-abstract type AbstractModel <: AbstractProbabilisticProgram end
-
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
         name::Symbol
@@ -42,7 +40,7 @@ struct Model{
     Tdefaults,
     conditionnames,
     Ctx<:ConditionContext{conditionnames},
-} <: AbstractModel
+} <: AbstractProbabilisticProgram
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
@@ -75,7 +73,7 @@ Sample from the `model` using the `sampler` with random number generator `rng` a
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function (model::AbstractModel)(
+function (model::Model)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
@@ -84,7 +82,7 @@ function (model::AbstractModel)(
     return model(varinfo, SamplingContext(rng, sampler, context))
 end
 
-(model::AbstractModel)(context::AbstractContext) = model(VarInfo(), context)
+(model::Model)(context::AbstractContext) = model(VarInfo(), context)
 function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     condition_context = ConditionContext(model.context.values, context)
 
@@ -95,17 +93,17 @@ function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     end
 end
 
-function (model::AbstractModel)(args...)
+function (model::Model)(args...)
     return model(Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function (model::AbstractModel)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
+function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
     return model(rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
-function (model::AbstractModel)(rng::Random.AbstractRNG, context::AbstractContext)
+function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
     return model(rng, VarInfo(), SampleFromPrior(), context)
 end
 
