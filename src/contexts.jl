@@ -110,14 +110,38 @@ end
 struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
+
+    function ConditionContext{Values}(
+        values::Values, context::AbstractContext
+    ) where {names,Values<:NamedTuple{names}}
+        return new{names,typeof(values),typeof(context)}(values, context)
+    end
 end
 
-function ConditionContext(values::NamedTuple{Vars}) where {Vars}
+@generated function drop_missings(nt::NamedTuple{names,values}) where {names,values}
+    names_expr = Expr(:tuple)
+    values_expr = Expr(:tuple)
+
+    for (n, v) in zip(names, values.parameters)
+        if !(v <: Missing)
+            push!(names_expr.args, QuoteNode(n))
+            push!(values_expr.args, :(nt.$n))
+        end
+    end
+
+    return :(NamedTuple{$names_expr}($values_expr))
+end
+
+function ConditionContext(context::ConditionContext, child_context::AbstractContext)
+    return ConditionContext(context.values, child_context)
+end
+function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
 
-function ConditionContext(values::NamedTuple{Vars}, context) where {Vars}
-    return ConditionContext{Vars,typeof(values),typeof(context)}(values, context)
+function ConditionContext(values::NamedTuple, context::AbstractContext)
+    values_wo_missing = drop_missings(values)
+    return ConditionContext{typeof(values_wo_missing)}(values_wo_missing, context)
 end
 
 # Try to avoid nested `ConditionContext`.
