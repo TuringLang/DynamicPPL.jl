@@ -52,7 +52,7 @@ struct Model{
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults}=NamedTuple(),
-        context::ConditionContext{conditionnames}=ConditionContext(args, DefaultContext())
+        context::ConditionContext{conditionnames}=ConditionContext(args, DefaultContext()),
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,conditionnames}
         return new{F,argnames,defaultnames,Targs,Tdefaults,conditionnames,typeof(context)}(
             name, f, args, defaults, context
@@ -161,7 +161,9 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         push!(unwrap_args, expr)
     end
 
-    return :(model.f(model, varinfo, ConditionContext(model.context, context), $(unwrap_args...)))
+    return :(model.f(
+        model, varinfo, ConditionContext(model.context, context), $(unwrap_args...)
+    ))
 end
 
 """

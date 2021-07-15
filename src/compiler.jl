@@ -22,11 +22,10 @@ function isassumption(expr::Union{Symbol,Expr})
         let $vn = $(varname(expr))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               (
-                   __context__ isa $(DynamicPPL.ConditionContext) &&
-                   !$(Base.haskey)(__context__, $vn)
-               )
+            if !$(DynamicPPL.inargnames)($vn, __model__) || (
+                __context__ isa $(DynamicPPL.ConditionContext) &&
+                !$(Base.haskey)(__context__, $vn)
+            )
                 true
             else
                 # Evaluate the LHS

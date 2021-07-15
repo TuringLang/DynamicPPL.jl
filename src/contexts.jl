@@ -111,8 +111,10 @@ struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
 
-    function ConditionContext{Values}(values::Values, context::AbstractContext) where {names, Values<:NamedTuple{names}}
-        return new{names, typeof(values), typeof(context)}(values, context)
+    function ConditionContext{Values}(
+        values::Values, context::AbstractContext
+    ) where {names,Values<:NamedTuple{names}}
+        return new{names,typeof(values),typeof(context)}(values, context)
     end
 end
 
