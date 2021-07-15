@@ -133,6 +133,28 @@ function tilde_assume!(context, right, vn, inds, vi)
     return value
 end
 
+function tilde_assume!(context::ConditionContext, right, vn, inds, vi)
+    value = if haskey(context, vn)
+        # Extract value.
+        if inds isa Tuple{}
+            getfield(context.values, getsym(vn))
+        else
+            _getindex(getfield(context.values, getsym(vn)), inds)
+        end
+
+        # Should we even do this?
+        if haskey(vi, vn)
+            vi[vn] = value
+        end
+
+        tilde_observe!(context.context, right, value, vn, inds, vi)
+    else
+        tilde_assume!(context.context, right, vn, inds, vi)
+    end
+
+    return value
+end
+
 # observe
 """
     tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
@@ -215,6 +237,10 @@ function tilde_observe!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
+end
+
+function tilde_observe!(context::ConditionContext, right, left, vi)
+    return tilde_observe!(context.context, right, left, vi)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -416,6 +442,28 @@ Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 function dot_tilde_assume!(context, right, left, vn, inds, vi)
     value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
     acclogp!(vi, logp)
+    return value
+end
+
+function dot_tilde_assume!(context::ConditionContext, right, left, vn, inds, vi)
+    value = if vn in context
+        # Extract value.
+        if inds isa Tuple{}
+            getfield(context.values, sym)
+        else
+            _getindex(getfield(context.values, sym), inds)
+        end
+
+        # Should we even do this?
+        if haskey(vi, vn)
+            vi[vn] = value
+        end
+
+        dot_tilde_observe!(context.context, right, left, vn, inds, vi)
+    else
+        dot_tilde_assume!(context.context, right, left, vn, inds, vi)
+    end
+
     return value
 end
 
@@ -636,6 +684,9 @@ function dot_tilde_observe!(context, right, left, vi)
     logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
+end
+function dot_tilde_observe!(context::ConditionContext, right, left, vi)
+    return dot_tilde_observe!(context.context, right, left, vi)
 end
 
 # Falls back to non-sampler definition.

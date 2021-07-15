@@ -106,3 +106,45 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
 end
+
+
+struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
+    values::Values
+    context::Ctx
+end
+
+function ConditionContext(values::NamedTuple{Vars}) where {Vars}
+    return ConditionContext(values, DefaultContext())
+end
+
+function ConditionContext(values::NamedTuple{Vars}, context) where {Vars}
+    return ConditionContext{Vars,typeof(values),typeof(context)}(values, context)
+end
+
+# Try to avoid nested `ConditionContext`.
+function ConditionContext(values::NamedTuple{Vars}, context::ConditionContext) where {Vars}
+    # Note that this potentially overrides values from `context`, thus giving
+    # precedence to the outmost `ConditionContext`.
+    return ConditionContext(merge(context.values, values), context.context)
+end
+
+function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars, sym}
+    # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
+    return sym in vars
+end
+
+# TODO: Can we maybe do this in a better way?
+decondition(context::ConditionContext) = context
+function decondition(context::ConditionContext, sym, syms...)
+    return decondition(
+        ConditionContext(BangBang.delete!!(context.values, sym), context.context),
+        syms...
+    )
+end
+decondition(context::ConditionContext) = context
+function decondition(context::ConditionContext, ::Val{sym}, syms...) where {sym}
+    return decondition(
+        ConditionContext(BangBang.delete!!(context.values, Val{sym}()), context.context),
+        syms...
+    )
+end

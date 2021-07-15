@@ -1,3 +1,5 @@
+abstract type AbstractModel <: AbstractProbabilisticProgram end
+
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
         name::Symbol
@@ -33,7 +35,7 @@ Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x 
 ```
 """
 struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <:
-       AbstractProbabilisticProgram
+       AbstractModel
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
@@ -82,7 +84,7 @@ Sample from the `model` using the `sampler` with random number generator `rng` a
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function (model::Model)(
+function (model::AbstractModel)(
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
     sampler::AbstractSampler=SampleFromPrior(),
@@ -91,7 +93,7 @@ function (model::Model)(
     return model(varinfo, SamplingContext(rng, sampler, context))
 end
 
-(model::Model)(context::AbstractContext) = model(VarInfo(), context)
+(model::AbstractModel)(context::AbstractContext) = model(VarInfo(), context)
 function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(model, varinfo, context)
@@ -100,17 +102,17 @@ function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     end
 end
 
-function (model::Model)(args...)
+function (model::AbstractModel)(args...)
     return model(Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
+function (model::AbstractModel)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
     return model(rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
-function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
+function (model::AbstractModel)(rng::Random.AbstractRNG, context::AbstractContext)
     return model(rng, VarInfo(), SampleFromPrior(), context)
 end
 
