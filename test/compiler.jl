@@ -172,10 +172,10 @@ end
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __sampler__
+            global sampler_ = __context__.sampler
             global model_ = __model__
             global context_ = __context__
-            global rng_ = __rng__
+            global rng_ = __context__.rng
             global lp = getlogp(__varinfo__)
             return x
         end
@@ -184,18 +184,17 @@ end
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
-        @test sampler_ === SampleFromPrior()
-        @test context_ === DefaultContext()
+        @test context_ isa SamplingContext
         @test rng_ isa Random.AbstractRNG
 
         # disable warnings
         @model function testmodel_missing4(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __sampler__
+            global sampler_ = __context__.sampler
             global model_ = __model__
             global context_ = __context__
-            global rng_ = __rng__
+            global rng_ = __context__.rng
             global lp = getlogp(__varinfo__)
             return x
         end false
@@ -252,11 +251,11 @@ end
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == VarName{:y}()
+        @test vi1.metadata.y.vns[1] == @varname(y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == VarName{:y}(((2,), (Colon(), 1)))
+        @test vi2.metadata.y.vns[1] == @varname(y[2][:, 1])
         @test haskey(vi3.metadata, :y)
-        @test vi3.metadata.y.vns[1] == VarName{:y}(((1,),))
+        @test vi3.metadata.y.vns[1] == @varname(y[1])
     end
     @testset "custom tilde" begin
         @model demo() = begin
@@ -326,22 +325,22 @@ end
         m = demo2(missing, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test VarName(:x) ∈ ks
-        @test VarName(:y) ∈ ks
+        @test @varname(x) ∈ ks
+        @test @varname(y) ∈ ks
 
         # Observation in top-level.
         m = demo2(missing, 1.0)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test VarName(:x) ∈ ks
-        @test VarName(:y) ∉ ks
+        @test @varname(x) ∈ ks
+        @test @varname(y) ∉ ks
 
         # Observation in nested model.
         m = demo2(1000.0, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test VarName(:x) ∉ ks
-        @test VarName(:y) ∈ ks
+        @test @varname(x) ∉ ks
+        @test @varname(y) ∈ ks
 
         # Observe all.
         m = demo2(1000.0, 0.5)
@@ -350,13 +349,13 @@ end
         @test isempty(ks)
 
         # Check values makes sense.
-        @model function demo2(x, y)
+        @model function demo3(x, y)
             @submodel demo1(x)
             return y ~ Normal(x)
         end
-        m = demo2(1000.0, missing)
+        m = demo3(1000.0, missing)
         # Mean of `y` should be close to 1000.
-        @test abs(mean([VarInfo(m)[VarName(:y)] for i in 1:10]) - 1000) ≤ 10
+        @test abs(mean([VarInfo(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
 
         # Prefixed submodels and usage of submodel return values.
         @model function demo_return(x)
@@ -373,10 +372,10 @@ end
         m = demo_useval(missing, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test VarName(Symbol("sub1.x")) ∈ ks
-        @test VarName(Symbol("sub2.x")) ∈ ks
-        @test VarName(:z) ∈ ks
-        @test abs(mean([VarInfo(m)[VarName(:z)] for i in 1:10]) - 100) ≤ 10
+        @test VarName{Symbol("sub1.x")}() ∈ ks
+        @test VarName{Symbol("sub2.x")}() ∈ ks
+        @test @varname(z) ∈ ks
+        @test abs(mean([VarInfo(m)[@varname(z)] for i in 1:10]) - 100) ≤ 10
 
         # AR1 model. Dynamic prefixing.
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
@@ -410,7 +409,7 @@ end
         vi = VarInfo(m)
 
         for k in [:α, :μ, :σ, Symbol("ar1_1.η"), Symbol("ar1_2.η")]
-            @test VarName(k) ∈ keys(vi)
+            @test VarName{k}() ∈ keys(vi)
         end
     end
 
@@ -422,5 +421,44 @@ end
 
         x = [Laplace(), Normal(), MvNormal(3, 1.0)]
         @test DynamicPPL.check_tilde_rhs(x) === x
+    end
+    @testset "isliteral" begin
+        @test DynamicPPL.isliteral(:([1.0]))
+        @test DynamicPPL.isliteral(:([[1.0], 1.0]))
+        @test DynamicPPL.isliteral(:((1.0, 1.0)))
+
+        @test !(DynamicPPL.isliteral(:([x])))
+        @test !(DynamicPPL.isliteral(:([[x], 1.0])))
+        @test !(DynamicPPL.isliteral(:((x, 1.0))))
+    end
+
+    @testset "array literals" begin
+        # Verify that we indeed can parse this.
+        @test @model(function array_literal_model()
+            # `assume` and literal `observe`
+            m ~ MvNormal(2, 1.0)
+            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+        end) isa Function
+
+        @model function array_literal_model2()
+            # `assume` and literal `observe`
+            m ~ MvNormal(2, 1.0)
+            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+        end
+
+        @test array_literal_model2()() == [10.0, 10.0]
+    end
+
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/260
+    @testset "anonymous function" begin
+        error = ArgumentError("anonymous functions without name are not supported")
+        @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
+            @model function (x)
+                return x ~ Normal()
+            end
+        end
+        @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
+            model = @model(x -> (x ~ Normal()))
+        end
     end
 end

@@ -11,7 +11,9 @@
 
         model = demo(xval)
         varinfo = VarInfo(model)
-        chain = sample(model, IS(), iters; save_state=true)
+        chain = MCMCChains.get_sections(
+            sample(model, IS(), iters; save_state=true), :parameters
+        )
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
         lps = logpdf.(Normal.(chain["m"], 1), xval)
         @test logprob"x = xval | chain = chain" == lps
@@ -40,7 +42,9 @@
 
         model = demo(xval)
         varinfo = VarInfo(model)
-        chain = sample(model, HMC(0.5, 1), iters; save_state=true)
+        chain = MCMCChains.get_sections(
+            sample(model, HMC(0.5, 1), iters; save_state=true), :parameters
+        )
         chain2 = Chains(chain.value, chain.logevidence, chain.name_map, NamedTuple())
 
         names = namesingroup(chain, "m")
@@ -74,7 +78,10 @@
         group = rand(1:4, 100)
         n_groups = 4
 
-        chain1 = sample(model1(y, group, n_groups), NUTS(0.65), 2_000; save_state=true)
+        chain1 = MCMCChains.get_sections(
+            sample(model1(y, group, n_groups), NUTS(0.65), 2_000; save_state=true),
+            :parameters,
+        )
         logprob"y = y[[1]] | group = group[[1]], n_groups = n_groups, chain = chain1"
 
         @model function model2(y, group, n_groups)
@@ -85,7 +92,10 @@
             end
         end
 
-        chain2 = sample(model2(y, group, n_groups), NUTS(0.65), 2_000; save_state=true)
+        chain2 = MCMCChains.get_sections(
+            sample(model2(y, group, n_groups), NUTS(0.65), 2_000; save_state=true),
+            :parameters,
+        )
         logprob"y = y[[1]] | group = group[[1]], n_groups = n_groups, chain = chain2"
     end
 end

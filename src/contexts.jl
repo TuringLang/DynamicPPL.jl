@@ -1,4 +1,18 @@
 """
+    SamplingContext(rng, sampler, context)
+
+Create a context that allows you to sample parameters with the `sampler` when running the model.
+The `context` determines how the returned log density is computed when running the model.
+
+See also: [`DefaultContext`](@ref), [`LikelihoodContext`](@ref), [`PriorContext`](@ref)
+"""
+struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
+    rng::R
+    sampler::S
+    context::C
+end
+
+"""
     struct DefaultContext <: AbstractContext end
 
 The `DefaultContext` is used by default to compute log the joint probability of the data 
@@ -35,7 +49,7 @@ LikelihoodContext() = LikelihoodContext(nothing)
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
-        ctx::Tctx
+        context::Tctx
         loglike_scalar::T
     end
 
@@ -46,37 +60,48 @@ This is useful in batch-based stochastic gradient descent algorithms to be optim
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
 struct MiniBatchContext{Tctx,T} <: AbstractContext
-    ctx::Tctx
+    context::Tctx
     loglike_scalar::T
 end
-function MiniBatchContext(ctx=DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(ctx, npoints / batch_size)
+function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
+    return MiniBatchContext(context, npoints / batch_size)
 end
 
+"""
+    PrefixContext{Prefix}(context)
+
+Create a context that allows you to use the wrapped `context` when running the model and
+adds the `Prefix` to all parameters.
+
+This context is useful in nested models to ensure that the names of the parameters are
+unique.
+
+See also: [`@submodel`](@ref)
+"""
 struct PrefixContext{Prefix,C} <: AbstractContext
-    ctx::C
+    context::C
 end
-function PrefixContext{Prefix}(ctx::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(ctx)}(ctx)
+function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
+    return PrefixContext{Prefix,typeof(context)}(context)
 end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
 function PrefixContext{PrefixInner}(
-    ctx::PrefixContext{PrefixOuter}
+    context::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
     if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, _prefix_seperator, PrefixInner)))}(
-            ctx.ctx
+        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
+            context.context
         ))
     else
-        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(ctx.ctx)
+        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(context.context)
     end
 end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, _prefix_seperator, Sym)))}(vn.indexing))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(vn.indexing))
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end

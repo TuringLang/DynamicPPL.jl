@@ -499,8 +499,13 @@ end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
+
 @inline function findranges(f_ranges, f_idcs)
-    return mapreduce(i -> f_ranges[i], vcat, f_idcs; init=Int[])
+    results = Int[]
+    for i in f_idcs
+        append!(results, f_ranges[i])
+    end
+    return results
 end
 
 """
@@ -1325,6 +1330,7 @@ end
 
 """
     setval!(vi::AbstractVarInfo, x)
+    setval!(vi::AbstractVarInfo, values, keys)
     setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
 
 Set the values in `vi` to the provided values and leave those which are not present in
@@ -1379,20 +1385,18 @@ julia> var_info[@varname(x[1])] # [✓] unchanged
 -0.22312984965118443
 ```
 """
-setval!(vi::AbstractVarInfo, x) = _apply!(_setval_kernel!, vi, values(x), keys(x))
+setval!(vi::AbstractVarInfo, x) = setval!(vi, values(x), keys(x))
+setval!(vi::AbstractVarInfo, values, keys) = _apply!(_setval_kernel!, vi, values, keys)
 function setval!(
     vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
 )
-    return _apply!(
-        _setval_kernel!, vi, chains.value[sample_idx, :, chain_idx], keys(chains)
-    )
+    return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
 function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
-        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
-        val = reduce(vcat, values[sorted_indices])
+        val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     end
@@ -1402,6 +1406,7 @@ end
 
 """
     setval_and_resample!(vi::AbstractVarInfo, x)
+    setval_and_resample!(vi::AbstractVarInfo, values, keys)
     setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx, chain_idx)
 
 Set the values in `vi` to the provided values and those which are not present
@@ -1458,24 +1463,21 @@ julia> var_info[@varname(x[1])] # [✓] changed
 - [`setval!`](@ref)
 """
 function setval_and_resample!(vi::AbstractVarInfo, x)
-    return _apply!(_setval_and_resample_kernel!, vi, values(x), keys(x))
+    return setval_and_resample!(vi, values(x), keys(x))
+end
+function setval_and_resample!(vi::AbstractVarInfo, values, keys)
+    return _apply!(_setval_and_resample_kernel!, vi, values, keys)
 end
 function setval_and_resample!(
     vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
 )
-    return _apply!(
-        _setval_and_resample_kernel!,
-        vi,
-        chains.value[sample_idx, :, chain_idx],
-        keys(chains),
-    )
+    return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
 function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
-        sorted_indices = sort!(indices; by=i -> keys[i], lt=NaturalSort.natural)
-        val = reduce(vcat, values[sorted_indices])
+        val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
         settrans!(vi, false, vn)
     else

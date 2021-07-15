@@ -7,7 +7,6 @@ using Bijectors
 
 using AbstractMCMC: AbstractMCMC
 using ChainRulesCore: ChainRulesCore
-using NaturalSort: NaturalSort
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 
@@ -76,6 +75,7 @@ export AbstractVarInfo,
     SampleFromPrior,
     SampleFromUniform,
     # Contexts
+    SamplingContext,
     DefaultContext,
     LikelihoodContext,
     PriorContext,
@@ -83,10 +83,12 @@ export AbstractVarInfo,
     PrefixContext,
     assume,
     dot_assume,
-    observer,
+    observe,
     dot_observe,
-    tilde,
-    dot_tilde,
+    tilde_assume,
+    tilde_observe,
+    dot_tilde_assume,
+    dot_tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,

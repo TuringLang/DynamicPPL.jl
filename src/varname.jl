@@ -39,3 +39,6 @@ Possibly existing indices of `varname` are neglected.
 ) where {s,missings,_F,_a,_T}
     return s in missings
 end
+
+# HACK: Type-piracy. Is this really the way to go?
+AbstractPPL.getsym(::AbstractVector{<:VarName{sym}}) where {sym} = sym

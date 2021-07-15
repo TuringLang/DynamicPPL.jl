@@ -39,11 +39,14 @@ include("test_util.jl")
             include("prob_macro.jl")
             include("independence.jl")
             include("distribution_wrappers.jl")
+            include("contexts.jl")
             include("context_implementations.jl")
 
             include("threadsafe.jl")
 
             include("serialization.jl")
+
+            include("loglikelihoods.jl")
         end
 
         @testset "compat" begin
@@ -60,18 +63,26 @@ include("test_util.jl")
 
     if GROUP == "All" || GROUP == "Downstream"
         @testset "turing" begin
-            # activate separate test environment
-            Pkg.activate(DIRECTORY_Turing_tests)
-            Pkg.develop(PackageSpec(; path=DIRECTORY_DynamicPPL))
-            Pkg.instantiate()
+            try
+                # activate separate test environment
+                Pkg.activate(DIRECTORY_Turing_tests)
+                Pkg.develop(PackageSpec(; path=DIRECTORY_DynamicPPL))
+                Pkg.instantiate()
 
-            # make sure that the new environment is considered `using` and `import` statements
-            # (not added automatically on Julia 1.3, see e.g. PR #209)
-            if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
-                pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
+                # make sure that the new environment is considered `using` and `import` statements
+                # (not added automatically on Julia 1.3, see e.g. PR #209)
+                if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
+                    pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
+                end
+
+                include(joinpath("turing", "runtests.jl"))
+            catch err
+                err isa Pkg.Resolve.ResolverError || rethrow()
+                # If we can't resolve that means this is incompatible by SemVer and this is fine
+                # It means we marked this as a breaking change, so we don't need to worry about
+                # Mistakenly introducing a breaking change, as we have intentionally made one
+                @info "Not compatible with this release. No problem." exception = err
             end
-
-            include(joinpath("turing", "runtests.jl"))
         end
     end
 end
