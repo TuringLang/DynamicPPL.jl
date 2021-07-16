@@ -156,6 +156,11 @@ function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {v
     return sym in vars
 end
 
+function Base.haskey(context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}) where {vars,sym}
+    # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
+    return sym in vars
+end
+
 # TODO: Can we maybe do this in a better way?
 # When no second argument is given, we remove _all_ conditioned variables.
 # TODO: Should we remove this and just return `context.context`?

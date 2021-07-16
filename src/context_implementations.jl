@@ -446,7 +446,7 @@ function dot_tilde_assume!(context, right, left, vn, inds, vi)
 end
 
 function dot_tilde_assume!(context::ConditionContext, right, left, vn, inds, vi)
-    if vn in context
+    if haskey(context, vn)
         # Extract value.
         value = if inds isa Tuple{}
             getfield(context.values, sym)
