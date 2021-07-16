@@ -8,7 +8,8 @@
 
             return logpdf(InverseGamma(2, 3), s) +
                    logpdf(Normal(0, sqrt(s)), m) +
-                   logpdf(dist, 1.5) + logpdf(dist, 2.0)
+                   logpdf(dist, 1.5) +
+                   logpdf(dist, 2.0)
         end
 
         test_model_ad(gdemo_default, logp_gdemo_default)
