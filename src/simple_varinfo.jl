@@ -24,6 +24,29 @@ SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
 SimpleVarInfo{T}() where {T<:Real} = SimpleVarInfo{T}(nothing)
 SimpleVarInfo() = SimpleVarInfo{Float64}()
 
+# Interaction with `VarInfo`
+SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
+function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names}
+    vals = map(names) do n
+        let md = getfield(vi.metadata, n)
+            x = map(enumerate(md.ranges)) do (i, r)
+                reconstruct(md.dists[i], md.vals[r])
+            end
+
+            # TODO: Doesn't support batches of `MultivariateDistribution`?
+            length(x) == 1 ? x[1] : x
+        end
+    end
+
+    return SimpleVarInfo{T}(NamedTuple{names}(vals))
+end
+
+SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
+function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
+    _, svi = DynamicPPL.evaluate(model, SimpleVarInfo{T}(), args...)
+    return svi
+end
+
 getlogp(vi::SimpleVarInfo) = vi.logp
 setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
 acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
@@ -159,24 +182,3 @@ end
 # HACK: Allows us to re-use the impleemntation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
 settrans!!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = vi
-
-# Interaction with `VarInfo`
-SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
-function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names}
-    vals = map(names) do n
-        let md = getfield(vi.metadata, n)
-            x = map(enumerate(md.ranges)) do (i, r)
-                reconstruct(md.dists[i], md.vals[r])
-            end
-
-            # TODO: Doesn't support batches of `MultivariateDistribution`?
-            length(x) == 1 ? x[1] : x
-        end
-    end
-
-    return SimpleVarInfo{T}(NamedTuple{names}(vals))
-end
-
-function SimpleVarInfo(model::Model, args...)
-    return SimpleVarInfo(VarInfo(Random.GLOBAL_RNG, model, args...))
-end
