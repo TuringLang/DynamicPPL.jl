@@ -156,7 +156,9 @@ function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {v
     return sym in vars
 end
 
-function Base.haskey(context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}) where {vars,sym}
+function Base.haskey(
+    context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}
+) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
 end
