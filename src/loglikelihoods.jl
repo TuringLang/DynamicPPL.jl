@@ -92,11 +92,19 @@ end
 function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
-    logp = dot_tilde_observe(context.context, right, left, vi)
-    acclogp!(vi, logp)
 
-    # Track loglikelihood value.
-    push!(context, vn, logp)
+    # We want to treat `.~` as a collection of independent observations,
+    # hence we need the `logp` for each of them. Broadcasting the univariate
+    # `tilde_obseve` does exactly this.
+    logps = tilde_observe.(Ref(context.context), right, left, Ref(vi))
+    acclogp!(vi, sum(logps))
+
+    # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
+    _, _, vns = unwrap_right_left_vns(right, left, vn)
+    for (vn, logp) in zip(vns, logps)
+        # Track loglikelihood value.
+        push!(context, vn, logp)
+    end
 
     return left
 end
