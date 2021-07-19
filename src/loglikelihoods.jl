@@ -197,16 +197,14 @@ julia> @model function demo(x)
 
 julia> m = demo([1.0, ]);
 
-julia> pointwise_loglikelihoods(m, VarInfo(m))
-Dict{VarName, Vector{Float64}} with 1 entry:
-  x[1] => [-1.41894]
+julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); ℓ[@varname(x[1])]
+1-element Vector{Float64}:
+ -1.4189385332046727
 
 julia> m = demo([1.0; 1.0]);
 
-julia> pointwise_loglikelihoods(m, VarInfo(m))
-Dict{VarName, Vector{Float64}} with 2 entries:
-  x[1] => [-1.41894]
-  x[2] => [-1.41894]
+julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); ℓ[@varname(x[1])], ℓ[@varname(x[2])]
+([-1.4189385332046727], [-1.4189385332046727])
 ```
 
 """
