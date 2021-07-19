@@ -24,7 +24,7 @@ Only usable within the body of [@model](@ref).
 
 # Examples
 
-```jldoctest
+```jldoctest; setup = :(using Distributions)
 julia> @model function demo()
            x = 1.0
            @observe x ~ Normal()
