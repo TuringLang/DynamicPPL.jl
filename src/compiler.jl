@@ -24,10 +24,7 @@ function isassumption(expr::Union{Symbol,Expr})
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
             if !$(DynamicPPL.inargnames)($vn, __model__) ||
                $(DynamicPPL.inmissings)($vn, __model__) ||
-               (
-                   __context__ isa $(DynamicPPL.ConditionContext) &&
-                   !$(Base.haskey)(__context__, $vn)
-               )
+               $(DynamicPPL.contextual_isassumption)(__context__, $vn)
                 true
             else
                 # Evaluate the LHS
@@ -36,6 +33,9 @@ function isassumption(expr::Union{Symbol,Expr})
         end
     end
 end
+
+contextual_isassumption(context::AbstractContext, vn) = false
+contextual_isassumption(context::ConditionContext, vn::VarName) = !(haskey(context, vn))
 
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
