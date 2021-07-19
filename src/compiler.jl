@@ -364,7 +364,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption(__model__, $left, $vn)
+        if $(isassumption(__model__, left, vn))
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -407,7 +407,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if DynamicPPL.@isassumption(__model__, $left, $vn)
+        if $(isassumption(__model__, left, vn))
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
