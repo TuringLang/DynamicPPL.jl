@@ -122,22 +122,30 @@ Currently, only `String` and `VarName` are supported.
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
 both being `<:Real`. Then the *observe* (i.e. when the left-hand side is an
-*observation*) statements can be implemented in two ways:
+*observation*) statements can be implemented in three ways:
+1. using a `for` loop:
 ```julia
 for i in eachindex(y)
     y[i] ~ Normal(μ, σ)
 end
 ```
-or
+2. using `.~`:
 ```julia
-y ~ MvNormal(fill(μ, n), fill(σ, n))
+y .~ Normal(μ, σ)
 ```
-Unfortunately, just by looking at the latter statement, it's impossible to tell 
-whether or not this is one *single* observation which is `n` dimensional OR if we
-have *multiple* 1-dimensional observations. Therefore, `loglikelihoods` will only
-work with the first example.
+3. using `MvNormal`:
+```julia
+y ~ MvNormal(fill(μ, n), Diagonal(fill(σ, n)))
+```
+
+In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,
+while in (3) `y` will be treated as a _single_ n-dimensional observation.
+
+This is important to keep in mind, in particular if the computation is used
+for downstream computations.
 
 # Examples
+## From chain
 ```julia-repl
 julia> using DynamicPPL, Turing
 
@@ -177,6 +185,30 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
   xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
 ```
+
+## Broadcasting
+Note that `x .~ Dist()` will treat `x` as a collection of
+_independent_ observations rather than as a single observation.
+
+```jldoctest
+julia> @model function demo(x)
+           x .~ Normal()
+       end;
+
+julia> m = demo([1.0, ]);
+
+julia> pointwise_loglikelihoods(m, VarInfo(m))
+Dict{VarName, Vector{Float64}} with 1 entry:
+  x[1] => [-1.41894]
+
+julia> m = demo([1.0; 1.0]);
+
+julia> pointwise_loglikelihoods(m, VarInfo(m))
+Dict{VarName, Vector{Float64}} with 2 entries:
+  x[1] => [-1.41894]
+  x[2] => [-1.41894]
+```
+
 """
 function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
     # Get the data by executing the model once
