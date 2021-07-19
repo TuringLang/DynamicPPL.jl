@@ -1,0 +1,39 @@
+```julia
+@time model_def(data)();
+```
+
+```julia
+m = time_model_def(model_def, data);
+```
+
+```julia
+suite = make_suite(m);
+results = run(suite)
+results
+```
+
+```julia; echo=false; results="hidden";
+BenchmarkTools.save(joinpath("results", WEAVE_ARGS[:name], "$(m.name)_benchmarks.json"), results)
+```
+
+```julia; wrap=false
+if WEAVE_ARGS[:include_typed_code]
+    typed = typed_code(m)
+end
+```
+
+```julia; echo=false; results="hidden"
+if WEAVE_ARGS[:include_typed_code]
+    # Serialize the output of `typed_code` so we can compare later.
+    haskey(WEAVE_ARGS, :name) && serialize(joinpath("results", WEAVE_ARGS[:name],"$(m.name).jls"), string(typed));
+end
+```
+
+```julia; wrap=false; echo=false;
+if haskey(WEAVE_ARGS, :name_old)
+    # We want to compare the generated code to the previous version.
+    import DiffUtils
+    typed_old = deserialize(joinpath("results", WEAVE_ARGS[:name_old], "$(m.name).jls"));
+    DiffUtils.diff(typed_old, string(typed), width=130)
+end
+```

@@ -58,39 +58,12 @@ function getargs_assignment(expr::Expr)
     end
 end
 
-############################################
-# Julia 1.2 temporary fix - Julia PR 33303 #
-############################################
 function to_namedtuple_expr(syms, vals=syms)
-    if length(syms) == 0
-        nt = :(NamedTuple())
-    else
-        nt_type = Expr(
-            :curly,
-            :NamedTuple,
-            Expr(:tuple, QuoteNode.(syms)...),
-            Expr(:curly, :Tuple, [:(Core.Typeof($x)) for x in vals]...),
-        )
-        nt = Expr(:call, :($(DynamicPPL.namedtuple)), nt_type, Expr(:tuple, vals...))
-    end
-    return nt
-end
+    length(syms) == 0 && return :(NamedTuple())
 
-if VERSION == v"1.2"
-    @eval function namedtuple(
-        ::Type{NamedTuple{names,T}}, args::Tuple
-    ) where {names,T<:Tuple}
-        if length(args) != length(names)
-            throw(ArgumentError("Wrong number of arguments to named tuple constructor."))
-        end
-        # Note T(args) might not return something of type T; e.g.
-        # Tuple{Type{Float64}}((Float64,)) returns a Tuple{DataType}
-        return $(Expr(:splatnew, :(NamedTuple{names,T}), :(T(args))))
-    end
-else
-    function namedtuple(::Type{NamedTuple{names,T}}, args::Tuple) where {names,T<:Tuple}
-        return NamedTuple{names,T}(args)
-    end
+    names_expr = Expr(:tuple, QuoteNode.(syms)...)
+    vals_expr = Expr(:tuple, vals...)
+    return :(NamedTuple{$names_expr}($vals_expr))
 end
 
 #####################################################

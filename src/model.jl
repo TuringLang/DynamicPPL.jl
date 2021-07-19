@@ -39,7 +39,7 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <:
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
 
-    """
+    @doc """
         Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
 
     Create a model of name `name` with evaluation function `f` and missing arguments
