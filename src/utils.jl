@@ -54,6 +54,9 @@ julia> @model function demo(args)
 
 julia> demo((x = 1.0, ))() == logpdf(Normal(), 1.0)
 true
+
+julia> VarInfo(demo((x = missing, )))[@varname(x)] !== missing
+true
 ```
 """
 macro observe(ex)
