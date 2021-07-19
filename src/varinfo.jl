@@ -499,8 +499,13 @@ end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
+
 @inline function findranges(f_ranges, f_idcs)
-    return mapreduce(i -> f_ranges[i], vcat, f_idcs; init=Int[])
+    results = Int[]
+    for i in f_idcs
+        append!(results, f_ranges[i])
+    end
+    return results
 end
 
 """
