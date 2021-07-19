@@ -107,7 +107,7 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     end
 end
 
-struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
+struct ConditionContext{Names,Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
 
@@ -145,7 +145,7 @@ function ConditionContext(values::NamedTuple, context::AbstractContext)
 end
 
 # Try to avoid nested `ConditionContext`.
-function ConditionContext(values::NamedTuple{Vars}, context::ConditionContext) where {Vars}
+function ConditionContext(values::NamedTuple{Names}, context::ConditionContext) where {Names}
     # Note that this potentially overrides values from `context`, thus giving
     # precedence to the outmost `ConditionContext`.
     return ConditionContext(merge(context.values, values), context.context)
