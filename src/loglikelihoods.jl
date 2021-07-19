@@ -190,7 +190,7 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
 Note that `x .~ Dist()` will treat `x` as a collection of
 _independent_ observations rather than as a single observation.
 
-```jldoctest
+```jldoctest; setup = :(using Distributions)
 julia> @model function demo(x)
            x .~ Normal()
        end;
