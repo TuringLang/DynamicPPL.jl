@@ -101,7 +101,8 @@ export AbstractVarInfo,
     pointwise_loglikelihoods,
     # Convenience macros
     @addlogprob!,
-    @submodel
+    @submodel,
+    @observe
 
 # Reexport
 using Distributions: loglikelihood

@@ -14,6 +14,56 @@ macro addlogprob!(ex)
 end
 
 """
+    @observe x ~ dist
+    @observe x .~ dist
+
+Force this `~` statement to be an observe-statement unless `x` is `missing`,
+effectively circumventing the check as to whether `x` is the arguments.
+
+Only usable within the body of [@model](@ref).
+
+# Examples
+
+```jldoctest; setup = :(using Distributions)
+julia> @model function demo()
+           x = 1.0
+           @observe x ~ Normal()
+
+           return getlogp(__varinfo__)
+       end;
+
+julia> demo()() == logpdf(Normal(), 1.0)
+true
+
+julia> @model function demo()
+           x = [1.0, ]
+           @observe x .~ Normal()
+
+           return getlogp(__varinfo__)
+       end;
+
+julia> demo()() == logpdf(Normal(), 1.0)
+true
+
+julia> @model function demo(args)
+           x = args.x
+           @observe x ~ Normal()
+
+           return getlogp(__varinfo__)
+       end;
+
+julia> demo((x = 1.0, ))() == logpdf(Normal(), 1.0)
+true
+
+julia> VarInfo(demo((x = missing, )))[@varname(x)] !== missing
+true
+```
+"""
+macro observe(ex)
+    return esc(generate_mainbody(__module__, ex, false; check_inargs=false))
+end
+
+"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
