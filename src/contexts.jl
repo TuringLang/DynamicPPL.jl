@@ -145,7 +145,9 @@ function ConditionContext(values::NamedTuple, context::AbstractContext)
 end
 
 # Try to avoid nested `ConditionContext`.
-function ConditionContext(values::NamedTuple{Names}, context::ConditionContext) where {Names}
+function ConditionContext(
+    values::NamedTuple{Names}, context::ConditionContext
+) where {Names}
     # Note that this potentially overrides values from `context`, thus giving
     # precedence to the outmost `ConditionContext`.
     return ConditionContext(merge(context.values, values), context.context)
