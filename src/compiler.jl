@@ -15,17 +15,42 @@ A literal, e.g. `1.0`, results in `false`.
 
 # Examples
 ```jldoctest
-julia> @macroexpand @isassumption(x)
-:((!((DynamicPPL.inargnames)((VarName){:x}(), __model__)) || (DynamicPPL.inmissings)((VarName){:x}(), __model__)) || $(Expr(:isdefined, :x)) && x === missing)
+julia> @model demo(x) = x ~ Normal(); # univariate
 
-julia> @macroexpand @isassumption m x
-:((!((DynamicPPL.inargnames)((VarName){:x}(), m)) || (DynamicPPL.inmissings)((VarName){:x}(), m)) || $(Expr(:isdefined, :x)) && x === missing)
+julia> @isassumption(demo(1.0), x)
+false
 
-julia> @macroexpand @isassumption m x @varname(x)
-:((!((DynamicPPL.inargnames)((VarName){:x}(), m)) || (DynamicPPL.inmissings)((VarName){:x}(), m)) || $(Expr(:isdefined, :x)) && x === missing)
+julia> @isassumption(demo(1.0), y)
+true
 
-julia> @macroexpand @isassumption(model, x[1][i, :])
-:((!((DynamicPPL.inargnames)((VarName){:x}(((1,), (i, :))), model)) || (DynamicPPL.inmissings)((VarName){:x}(((1,), (i, :))), model)) || $(Expr(:isdefined, :x)) && (x[1])[i, :] === missing)
+julia> x = missing; @isassumption(demo(1.0), x)
+true
+
+julia> @model demov(x) = x .~ Normal(); # multivariate
+
+julia> x = [1.0, 1.0];
+
+julia> @isassumption(demov(x), x)
+false
+
+julia> @isassumption(demov(x), y)
+true
+
+julia> @isassumption(demov(x), missing)
+true
+
+julia> x = [1.0, missing]; # partially missing not supported for multivariate
+
+julia> @isassumption(demov(x), x)
+ERROR: x have some `missing` and some not; this is currently not supported
+
+julia> @isassumption(demov(x), y)
+true
+
+julia> x = [missing, missing]; # fully missing supported for multivariate
+
+julia> @isassumption(demov(x), x)
+true
 ```
 
 See also: [`isassumption`](@ref)
@@ -46,7 +71,7 @@ as an assumption in `model`, where `model` evaluates to a [`Model`](@ref).
 If `vn` is specified, is is assumed to evaluate to `varname(left)`.
 If `vn` is not specified, `varname(left)` is used in instead.
 
-See also: [`@isassumtpion`](@ref)
+See also: [`@isassumption`](@ref)
 """
 function isassumption(model, left, vn=varname(left))
     if isliteral(left)
@@ -58,14 +83,14 @@ function isassumption(model, left, vn=varname(left))
         (!$(DynamicPPL.inargnames)($vn, $model) || $(DynamicPPL.inmissings)($vn, $model)) ||
         (
             @isdefined($sym) &&
-            ($(left) === $(missing) || $(DynamicPPL.is_entirely_missing)($left))
+            ($left === $(missing) || $(DynamicPPL.is_entirely_missing)($vn, $left))
         )
     )
 end
 
-is_entirely_missing(x) = false
-function is_entirely_missing(x::AbstractArray{>:Missing})
-    num_missing = count(===(missing), x)
+is_entirely_missing(vn, x) = false
+function is_entirely_missing(vn::VarName, x::AbstractArray{>:Missing})
+    num_missing = count(x -> x === missing, x)
     if num_missing == length(x)
         # All are `missing`.
         return true
@@ -364,7 +389,7 @@ function generate_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(isassumption(__model__, left, vn))
+        if $(isassumption(:__model__, left, vn))
             $left = $(DynamicPPL.tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_vn)(
@@ -407,7 +432,7 @@ function generate_dot_tilde(left, right)
     return quote
         $vn = $(varname(left))
         $inds = $(vinds(left))
-        if $(isassumption(__model__, left, vn))
+        if $(isassumption(:__model__, left, vn))
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
