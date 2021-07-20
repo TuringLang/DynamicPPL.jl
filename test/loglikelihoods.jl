@@ -69,7 +69,7 @@ end
 
 @model function gdemo9()
     # Submodel prior
-    m = @submodel _prior_dot_assume()
+    @submodel m ~ _prior_dot_assume()
     for i in eachindex(m)
         10.0 ~ Normal(m[i], 0.5)
     end

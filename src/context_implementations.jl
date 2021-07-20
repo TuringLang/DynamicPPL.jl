@@ -44,8 +44,10 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, inds, vi)
 end
@@ -59,8 +61,10 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
 end
@@ -73,8 +77,10 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, inds, vi)
 end
@@ -88,8 +94,10 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
-        settrans!(vi, false, vn)
+        vi = setindex!!(
+            vi, vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds)), vn
+        )
+        vi = settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, inds, vi)
 end
@@ -119,7 +127,7 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
 end
 
 """
-    tilde_assume!(context, right, vn, inds, vi)
+    tilde_assume!!(context, right, vn, inds, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
@@ -127,10 +135,9 @@ accumulate the log probability, and return the sampled value.
 By default, calls `tilde_assume(context, right, vn, inds, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_assume!(context, right, vn, inds, vi)
+function tilde_assume!!(context, right, vn, inds, vi)
     value, logp = tilde_assume(context, right, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    return value, acclogp!!(vi, logp)
 end
 
 # observe
@@ -190,16 +197,16 @@ function tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    tilde_observe!(context, right, left, vname, vinds, vi)
+    tilde_observe!!(context, right, left, vname, vinds, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `tilde_observe!(context, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(context, right, left, vname, vinds, vi)
-    return tilde_observe!(context, right, left, vi)
+function tilde_observe!!(context, right, left, vname, vinds, vi)
+    return tilde_observe!!(context, right, left, vi)
 end
 
 """
@@ -211,10 +218,9 @@ return the observed value.
 By default, calls `tilde_observe(context, right, left, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_observe!(context, right, left, vi)
+function tilde_observe!!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return left, acclogp!!(vi, logp)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -245,18 +251,18 @@ function assume(
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
-            unset_flag!(vi, vn, "del")
+            unset_flag!!(vi, vn, "del")
             r = init(rng, dist, sampler)
             vi[vn] = vectorize(dist, r)
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             r = vi[vn]
         end
     else
         r = init(rng, dist, sampler)
-        push!(vi, vn, r, dist, sampler)
-        settrans!(vi, false, vn)
+        push!!(vi, vn, r, dist, sampler)
+        settrans!!(vi, false, vn)
     end
 
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
@@ -307,7 +313,7 @@ function dot_tilde_assume(
         var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.(Ref(vi), false, _vns)
         dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, inds, vi)
     else
         dot_tilde_assume(LikelihoodContext(), right, left, vn, inds, vi)
@@ -327,7 +333,7 @@ function dot_tilde_assume(
         var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.(Ref(vi), false, _vns)
         dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, inds, vi)
     else
         dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, inds, vi)
@@ -348,7 +354,7 @@ function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, 
         var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.(Ref(vi), false, _vns)
         dot_tilde_assume(PriorContext(), _right, _left, _vns, inds, vi)
     else
         dot_tilde_assume(PriorContext(), right, left, vn, inds, vi)
@@ -368,7 +374,7 @@ function dot_tilde_assume(
         var = _getindex(getfield(context.vars, getsym(vn)), inds)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.(Ref(vi), false, _vns)
         dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, inds, vi)
     else
         dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, inds, vi)
@@ -406,17 +412,18 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
 end
 
 """
-    dot_tilde_assume!(context, right, left, vn, inds, vi)
+    dot_tilde_assume!!(context, right, left, vn, inds, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
 Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
-function dot_tilde_assume!(context, right, left, vn, inds, vi)
+function dot_tilde_assume!!(context, right, left, vn, inds, vi)
     value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
-    acclogp!(vi, logp)
-    return value
+    # Mutation of `value` no longer occurs in main body, so we do it here.
+    left .= value
+    return value, acclogp!!(vi, logp)
 end
 
 # `dot_assume`
@@ -497,12 +504,12 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            unset_flag!!(vi, vns[1], "del")
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
                 vi[vn] = vectorize(dist, r[:, i])
-                settrans!(vi, false, vn)
+                settrans!!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -512,8 +519,8 @@ function get_and_set_val!(
         r = init(rng, dist, spl, n)
         for i in 1:n
             vn = vns[i]
-            push!(vi, vn, r[:, i], dist, spl)
-            settrans!(vi, false, vn)
+            push!!(vi, vn, r[:, i], dist, spl)
+            settrans!!(vi, false, vn)
         end
     end
     return r
@@ -529,14 +536,14 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            unset_flag!!(vi, vns[1], "del")
             f = (vn, dist) -> init(rng, dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
                 vi[vn] = vectorize(dist, r[i])
-                settrans!(vi, false, vn)
+                settrans!!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -545,8 +552,8 @@ function get_and_set_val!(
     else
         f = (vn, dist) -> init(rng, dist, spl)
         r = f.(vns, dists)
-        push!.(Ref(vi), vns, r, dists, Ref(spl))
-        settrans!.(Ref(vi), false, vns)
+        push!!.(Ref(vi), vns, r, dists, Ref(spl))
+        settrans!!.(Ref(vi), false, vns)
     end
     return r
 end
@@ -612,30 +619,29 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vname, vinds, vi)
+    dot_tilde_observe!!(context, right, left, vname, vinds, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
 
-Falls back to `dot_tilde_observe!(context, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(context, right, left, vn, inds, vi)
-    return dot_tilde_observe!(context, right, left, vi)
+function dot_tilde_observe!!(context, right, left, vn, inds, vi)
+    return dot_tilde_observe!!(context, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vi)
+    dot_tilde_observe!!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
 probability, and return the observed value.
 
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
-function dot_tilde_observe!(context, right, left, vi)
+function dot_tilde_observe!!(context, right, left, vi)
     logp = dot_tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+    return left, acclogp!!(vi, logp)
 end
 
 # Falls back to non-sampler definition.

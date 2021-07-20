@@ -9,7 +9,7 @@ Add the result of the evaluation of `ex` to the joint log probability.
 """
 macro addlogprob!(ex)
     return quote
-        acclogp!($(esc(:(__varinfo__))), $(esc(ex)))
+        $(esc(:(__varinfo__))) = acclogp!!($(esc(:(__varinfo__))), $(esc(ex)))
     end
 end
 
@@ -44,6 +44,20 @@ function getargs_tilde(expr::Expr)
     end
 end
 
+"""
+    getargs_assignment(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L = R`, or `nothing`
+otherwise.
+"""
+getargs_assignment(x) = nothing
+function getargs_assignment(expr::Expr)
+    return MacroTools.@match expr begin
+        (L_ = R_) => (L, R)
+        x_ => nothing
+    end
+end
+
 function to_namedtuple_expr(syms, vals=syms)
     length(syms) == 0 && return :(NamedTuple())
 
@@ -66,11 +80,10 @@ vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
 # otherwise we will have error for MatrixDistribution.
 # Note this is not the case for MultivariateDistribution so I guess this might be lack of
 # support for some types related to matrices (like PDMat).
-reconstruct(d::UnivariateDistribution, val::AbstractVector) = val[1]
-reconstruct(d::MultivariateDistribution, val::AbstractVector) = copy(val)
-function reconstruct(d::MatrixDistribution, val::AbstractVector)
-    return reshape(copy(val), size(d))
-end
+reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
+reconstruct(::Tuple{}, val::AbstractVector) = val[1]
+reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
+reconstruct(s::NTuple{2}, val::AbstractVector) = reshape(copy(val), s)
 function reconstruct!(r, d::Distribution, val::AbstractVector)
     return reconstruct!(r, d, val)
 end
@@ -79,17 +92,17 @@ function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector)
     return r
 end
 function reconstruct(d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct(d, val, n)
+    return reconstruct(size(d), val, n)
 end
-function reconstruct(d::UnivariateDistribution, val::AbstractVector, n::Int)
+function reconstruct(::Tuple{}, val::AbstractVector, n::Int)
     return copy(val)
 end
-function reconstruct(d::MultivariateDistribution, val::AbstractVector, n::Int)
-    return copy(reshape(val, size(d)[1], n))
+function reconstruct(s::NTuple{1}, val::AbstractVector, n::Int)
+    return copy(reshape(val, s[1], n))
 end
-function reconstruct(d::MatrixDistribution, val::AbstractVector, n::Int)
-    tmp = reshape(val, size(d)[1], size(d)[2], n)
-    orig = [tmp[:, :, i] for i in 1:size(tmp, 3)]
+function reconstruct(s::NTuple{2}, val::AbstractVector, n::Int)
+    tmp = reshape(val, s..., n)
+    orig = [tmp[:, :, i] for i in 1:n]
     return orig
 end
 function reconstruct!(r, d::Distribution, val::AbstractVector, n::Int)
