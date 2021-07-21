@@ -14,8 +14,17 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
-_getindex(x, inds::Tuple) = _getindex(x[first(inds)...], Base.tail(inds))
+_getindex(x, inds::Tuple) = _getindex(Base.maybeview(x, first(inds)...), Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
+_getvalue(x, vn::VarName{sym}) where {sym} = _getindex(getproperty(x, sym), vn.indexing)
+function _getvalue(x, vns::AbstractVector{<:VarName{sym}}) where {sym}
+    val = getproperty(x, sym)
+
+    # This should work with both cartesian and linear indexing.
+    return map(vns) do vn
+        _getindex(val, vn)
+    end
+end
 
 # assume
 """
