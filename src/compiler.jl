@@ -35,9 +35,18 @@ function isassumption(expr::Union{Symbol,Expr})
 end
 
 contextual_isassumption(context::AbstractContext, vn) = false
-contextual_isassumption(context::ConditionContext, vn::VarName) = !(haskey(context, vn))
-function contextual_isassumption(context::PrefixContext, vn::VarName)
+function contextual_isassumption(context::ConditionContext, vn)
+    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`.
+    return !(haskey(context, vn)) || contextual_isassumption(context, vn)
+end
+function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(context.context, prefix(context, vn))
+end
+function contextual_isassumption(context::MiniBatchContext, vn)
+    return contextual_isassumption(context.context, vn)
+end
+function contextual_isassumption(context::PointwiseLikelihoodContext, vn)
+    return contextual_isassumption(context.context, vn)
 end
 
 # failsafe: a literal is never an assumption
