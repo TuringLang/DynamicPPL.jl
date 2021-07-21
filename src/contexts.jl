@@ -106,3 +106,66 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
     end
 end
+
+struct ConditionContext{Vars,Values,Ctx<:AbstractContext} <: AbstractContext
+    values::Values
+    context::Ctx
+
+    function ConditionContext{Values}(
+        values::Values, context::AbstractContext
+    ) where {names,Values<:NamedTuple{names}}
+        return new{names,typeof(values),typeof(context)}(values, context)
+    end
+end
+
+@generated function drop_missings(nt::NamedTuple{names,values}) where {names,values}
+    names_expr = Expr(:tuple)
+    values_expr = Expr(:tuple)
+
+    for (n, v) in zip(names, values.parameters)
+        if !(v <: Missing)
+            push!(names_expr.args, QuoteNode(n))
+            push!(values_expr.args, :(nt.$n))
+        end
+    end
+
+    return :(NamedTuple{$names_expr}($values_expr))
+end
+
+function ConditionContext(context::ConditionContext, child_context::AbstractContext)
+    return ConditionContext(context.values, child_context)
+end
+function ConditionContext(values::NamedTuple)
+    return ConditionContext(values, DefaultContext())
+end
+
+function ConditionContext(values::NamedTuple, context::AbstractContext)
+    values_wo_missing = drop_missings(values)
+    return ConditionContext{typeof(values_wo_missing)}(values_wo_missing, context)
+end
+
+# Try to avoid nested `ConditionContext`.
+function ConditionContext(values::NamedTuple{Vars}, context::ConditionContext) where {Vars}
+    # Note that this potentially overrides values from `context`, thus giving
+    # precedence to the outmost `ConditionContext`.
+    return ConditionContext(merge(context.values, values), context.context)
+end
+
+function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
+    # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
+    return sym in vars
+end
+
+# TODO: Can we maybe do this in a better way?
+# When no second argument is given, we remove _all_ conditioned variables.
+# TODO: Should we remove this and just return `context.context`?
+# That will work better if `Model` becomes like `ContextualModel`.
+decondition(context::ConditionContext) = ConditionContext(NamedTuple(), context.context)
+function decondition(context::ConditionContext, sym)
+    return ConditionContext(BangBang.delete!!(context.values, sym), context.context)
+end
+function decondition(context::ConditionContext, sym, syms...)
+    return decondition(
+        ConditionContext(BangBang.delete!!(context.values, sym), context.context), syms...
+    )
+end

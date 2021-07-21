@@ -6,6 +6,7 @@ using Distributions
 using Bijectors
 
 using AbstractMCMC: AbstractMCMC
+using BangBang: BangBang
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
@@ -67,6 +68,7 @@ export AbstractVarInfo,
     vectorize,
     # Model
     Model,
+    ContextualModel,
     getmissings,
     getargnames,
     generated_quantities,
@@ -81,6 +83,7 @@ export AbstractVarInfo,
     PriorContext,
     MiniBatchContext,
     PrefixContext,
+    ConditionContext,
     assume,
     dot_assume,
     observe,
@@ -99,6 +102,8 @@ export AbstractVarInfo,
     logprior,
     logjoint,
     pointwise_loglikelihoods,
+    condition,
+    decondition,
     # Convenience macros
     @addlogprob!,
     @submodel
@@ -116,11 +121,11 @@ abstract type AbstractContext end
 
 include("utils.jl")
 include("selector.jl")
+include("contexts.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
-include("contexts.jl")
 include("varinfo.jl")
 include("threadsafe.jl")
 include("context_implementations.jl")
