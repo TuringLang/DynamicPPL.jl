@@ -646,6 +646,11 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
     return dot_tilde_observe(context.context, right, left, vi)
 end
 
+# `ConditionContext`
+function dot_tilde_observe(context::ConditionContext, right, left, vi)
+    return dot_tilde_observe(context.context, right, left, vi)
+end
+
 """
     dot_tilde_observe!(context, right, left, vname, vinds, vi)
 
@@ -671,9 +676,6 @@ function dot_tilde_observe!(context, right, left, vi)
     logp = dot_tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
-end
-function dot_tilde_observe!(context::ConditionContext, right, left, vi)
-    return dot_tilde_observe!(context.context, right, left, vi)
 end
 
 # Falls back to non-sampler definition.
