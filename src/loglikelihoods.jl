@@ -96,7 +96,7 @@ function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn
     # We want to treat `.~` as a collection of independent observations,
     # hence we need the `logp` for each of them. Broadcasting the univariate
     # `tilde_obseve` does exactly this.
-    logps = tilde_observe.(Ref(context.context), right, left, Ref(vi))
+    logps = _pointwise_tilde_observe(context.context, right, left, vi)
     acclogp!(vi, sum(logps))
 
     # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
@@ -107,6 +107,18 @@ function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn
     end
 
     return left
+end
+
+# FIXME: This is really not a good approach since it needs to stay in sync with
+# the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
+function _pointwise_tilde_observe(context, right, left, vi)
+    return tilde_observe.(Ref(context), right, left, Ref(vi))
+end
+
+function _pointwise_tilde_observe(
+    context, right::MultivariateDistribution, left::AbstractMatrix, vi
+)
+    return tilde_observe.(Ref(context), Ref(right), eachcol(left), Ref(vi))
 end
 
 """
