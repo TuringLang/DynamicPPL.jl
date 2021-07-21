@@ -124,7 +124,7 @@ end
 
 function VarInfo(
     rng::Random.AbstractRNG,
-    model::Model,
+    model::AbstractModel,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
@@ -132,10 +132,10 @@ function VarInfo(
     model(rng, varinfo, sampler, context)
     return TypedVarInfo(varinfo)
 end
-VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
+VarInfo(model::AbstractModel, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
 
 # without AbstractSampler
-function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+function VarInfo(rng::Random.AbstractRNG, model::AbstractModel, context::AbstractContext)
     return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
