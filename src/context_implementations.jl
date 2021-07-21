@@ -436,7 +436,9 @@ function dot_tilde_assume(context::ConditionContext, right, left, vn, inds, vi)
     return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
-function dot_tilde_assume(rng, context::ConditionContext, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(
+    rng, context::ConditionContext, sampler, right, left, vn, inds, vi
+)
     return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
 end
 

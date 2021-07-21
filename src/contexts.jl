@@ -154,7 +154,11 @@ function ConditionContext(
 end
 
 function getvalue(context::ConditionContext, vn)
-    haskey(context, vn) ? _getvalue(context.values, vn) : getvalue(context.context, vn)
+    return if haskey(context, vn)
+        _getvalue(context.values, vn)
+    else
+        getvalue(context.context, vn)
+    end
 end
 getvalue(context::AbstractContext, vn) = getvalue(context.context, vn)
 getvalue(context::PrefixContext, vn) = getvalue(context.context, prefix(context, vn))
