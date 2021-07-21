@@ -127,6 +127,36 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
 end
 
+# `ConditionContext`
+function tilde_assume(context::ConditionContext, right, vn, inds, vi)
+    if !haskey(context, vn)
+        # Not conditioned on => defer to child context.
+        return tilde_assume(context.context, right, vn, inds, vi)
+    end
+
+    # Extract value.
+    value = _getvalue(context.values, vn)
+
+    # Update the value in `vi`.
+    # TODO: Should we even do this?
+    if haskey(vi, vn)
+        vi[vn] = value
+    end
+
+    logp = tilde_observe(context.context, right, value, vn, inds, vi)
+    return value, logp
+end
+
+function tilde_assume(rng, context::ConditionContext, sampler, right, vn, inds, vi)
+    if haskey(context, vn)
+        # Defer to child context.
+        return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
+    end
+
+    # If we're conditioning, then we just fall back to non-rng impl.
+    return tilde_assume(context, right, vn, inds, vi)
+end
+
 """
     tilde_assume!(context, right, vn, inds, vi)
 
@@ -139,28 +169,6 @@ probability of `vi` with the returned value.
 function tilde_assume!(context, right, vn, inds, vi)
     value, logp = tilde_assume(context, right, vn, inds, vi)
     acclogp!(vi, logp)
-    return value
-end
-
-function tilde_assume!(context::ConditionContext, right, vn, inds, vi)
-    if haskey(context, vn)
-        # Extract value.
-        value = if inds isa Tuple{}
-            getfield(context.values, getsym(vn))
-        else
-            _getindex(getfield(context.values, getsym(vn)), inds)
-        end
-
-        # Should we even do this?
-        if haskey(vi, vn)
-            vi[vn] = value
-        end
-
-        tilde_observe!(context.context, right, value, vn, inds, vi)
-    else
-        value = tilde_assume!(context.context, right, vn, inds, vi)
-    end
-
     return value
 end
 
@@ -220,6 +228,14 @@ function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
 end
 
+# `ConditionContext`
+function tilde_observe(context::ConditionContext, right, left, vname, vi)
+    return tilde_observe(context.context, right, left, vname, vi)
+end
+function tilde_observe(context::ConditionContext, right, left, vi)
+    return tilde_observe(context.context, right, left, vi)
+end
+
 """
     tilde_observe!(context, right, left, vname, vinds, vi)
 
@@ -246,10 +262,6 @@ function tilde_observe!(context, right, left, vi)
     logp = tilde_observe(context, right, left, vi)
     acclogp!(vi, logp)
     return left
-end
-
-function tilde_observe!(context::ConditionContext, right, left, vi)
-    return tilde_observe!(context.context, right, left, vi)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -440,6 +452,37 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
     )
 end
 
+# `ConditionContext`
+function dot_tilde_assume(context::ConditionContext, right, left, vn, inds, vi)
+    if !haskey(context, vn)
+        # Not conditioned on => defer to child context.
+        return dot_tilde_assume(context.context, right, left, vn, inds, vi)
+    end
+
+    # Extract value.
+    # FIXME: Handle the case where `vn` is actually `AbstractArray{<:VarName}`.
+    value = _getvalue(context.values, vn)
+
+    # Update the value in `vi`.
+    # TODO: Should we even do this?
+    if haskey(vi, vn)
+        vi[vn] = value
+    end
+
+    logp = dot_tilde_observe(context.context, right, left, value, vn, inds, vi)
+    return value, logp
+end
+
+function dot_tilde_assume(rng, context::ConditionContext, sampler, right, left, vn, inds, vi)
+    if !haskey(context, vn)
+        # Defer to child context.
+        return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
+    end
+
+    # If we're conditioning, then we just fall back to non-rng impl.
+    return dot_tilde_assume(context, right, left, vn, inds, vi)
+end
+
 """
     dot_tilde_assume!(context, right, left, vn, inds, vi)
 
@@ -451,28 +494,6 @@ Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 function dot_tilde_assume!(context, right, left, vn, inds, vi)
     value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
     acclogp!(vi, logp)
-    return value
-end
-
-function dot_tilde_assume!(context::ConditionContext, right, left, vn, inds, vi)
-    if haskey(context, vn)
-        # Extract value.
-        value = if inds isa Tuple{}
-            getfield(context.values, sym)
-        else
-            _getindex(getfield(context.values, sym), inds)
-        end
-
-        # Should we even do this?
-        if haskey(vi, vn)
-            vi[vn] = value
-        end
-
-        dot_tilde_observe!(context.context, right, value, vn, inds, vi)
-    else
-        value = dot_tilde_assume!(context.context, right, left, vn, inds, vi)
-    end
-
     return value
 end
 
