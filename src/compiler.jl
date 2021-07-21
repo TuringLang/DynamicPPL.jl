@@ -36,6 +36,9 @@ end
 
 contextual_isassumption(context::AbstractContext, vn) = false
 contextual_isassumption(context::ConditionContext, vn::VarName) = !(haskey(context, vn))
+function contextual_isassumption(context::PrefixContext, vn::VarName)
+    return contextual_isassumption(context.context, prefix(context, vn))
+end
 
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
