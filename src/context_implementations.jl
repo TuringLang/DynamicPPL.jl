@@ -129,32 +129,11 @@ end
 
 # `ConditionContext`
 function tilde_assume(context::ConditionContext, right, vn, inds, vi)
-    if !haskey(context, vn)
-        # Not conditioned on => defer to child context.
-        return tilde_assume(context.context, right, vn, inds, vi)
-    end
-
-    # Extract value.
-    value = _getvalue(context.values, vn)
-
-    # Update the value in `vi`.
-    # TODO: Should we even do this?
-    if haskey(vi, vn)
-        vi[vn] = value
-    end
-
-    logp = tilde_observe(context.context, right, value, vn, inds, vi)
-    return value, logp
+    return tilde_assume(context.context, right, vn, inds, vi)
 end
 
 function tilde_assume(rng, context::ConditionContext, sampler, right, vn, inds, vi)
-    if haskey(context, vn)
-        # Defer to child context.
-        return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
-    end
-
-    # If we're conditioning, then we just fall back to non-rng impl.
-    return tilde_assume(context, right, vn, inds, vi)
+    return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
 end
 
 """
@@ -454,33 +433,11 @@ end
 
 # `ConditionContext`
 function dot_tilde_assume(context::ConditionContext, right, left, vn, inds, vi)
-    if !haskey(context, vn)
-        # Not conditioned on => defer to child context.
-        return dot_tilde_assume(context.context, right, left, vn, inds, vi)
-    end
-
-    # Extract value.
-    # FIXME: Handle the case where `vn` is actually `AbstractArray{<:VarName}`.
-    value = _getvalue(context.values, vn)
-
-    # Update the value in `vi`.
-    # TODO: Should we even do this?
-    if haskey(vi, vn)
-        vi[vn] = value
-    end
-
-    logp = dot_tilde_observe(context.context, right, left, value, vn, inds, vi)
-    return value, logp
+    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
 function dot_tilde_assume(rng, context::ConditionContext, sampler, right, left, vn, inds, vi)
-    if !haskey(context, vn)
-        # Defer to child context.
-        return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
-    end
-
-    # If we're conditioning, then we just fall back to non-rng impl.
-    return dot_tilde_assume(context, right, left, vn, inds, vi)
+    return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
 end
 
 """

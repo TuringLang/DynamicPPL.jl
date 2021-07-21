@@ -13,6 +13,14 @@ function PointwiseLikelihoodContext(
     )
 end
 
+function contextual_isassumption(context::PointwiseLikelihoodContext, vn)
+    return contextual_isassumption(context.context, vn)
+end
+
+function contextual_isobservation(context::PointwiseLikelihoodContext, vn)
+    return contextual_isobservation(context.context, vn)
+end
+
 function Base.push!(
     context::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}},
     vn::VarName,

@@ -20,32 +20,57 @@ function isassumption(expr::Union{Symbol,Expr})
 
     return quote
         let $vn = $(varname(expr))
-            # This branch should compile nicely in all cases except for partial missing data
-            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               $(DynamicPPL.inmissings)($vn, __model__) ||
-               $(DynamicPPL.contextual_isassumption)(__context__, $vn)
-                true
+            if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+                # Considered an assumption by `__context__` which means either:
+                # 1. We hit the default implementation, e.g. using `DefaultContext`,
+                #    which in turn means that we haven't considered if it's one of
+                #    the model arguments, hence we need to check this.
+                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+                #    i.e. we're trying to condition one of the latent variables.
+                #    In this case, the below will return `true` since the first branch
+                #    will be hit.
+                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+                #    i.e. we're trying to override the value. This is currently NOT supported.
+                #    TODO: Support by adding context to model, and use `model.args`
+                #    as the default conditioning. Then we no longer need to check `inargnames`
+                #    since it will all be handled by `contextual_isassumption`.
+                if !($(DynamicPPL.inargnames)($vn, __model__))
+                    true
+                else
+                    $expr === missing
+                end
             else
-                # Evaluate the LHS
-                $(maybe_view(expr)) === missing
+                false
             end
         end
     end
 end
 
-contextual_isassumption(context::AbstractContext, vn) = false
+"""
+    contextual_isassumption(context, vn)
+
+Return `true` if `vn` is considered an assumption by `context`.
+
+The default implementation for `AbstractContext` always returns `true`.
+"""
+contextual_isassumption(context::AbstractContext, vn) = true
 function contextual_isassumption(context::ConditionContext, vn)
     # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`.
-    return !(haskey(context, vn)) || contextual_isassumption(context, vn)
+
+    # We have either of the following cases:
+    # 1. `context` considers `vn` as an observation, i.e. it has `vn` as a key,
+    #    which means we have a value to replace with and we don't need to recurse.
+    # 2. One of the decendant contexts consider it as an observation, i.e.
+    #    `contextual_isassumption` evaluates to `false`.
+    #    The below then evaluates to `!(false || true) === false`.
+    # 3. Neither `context` nor any of it's decendants considers it an observation,
+    #    in which case the below evaluates to `!(false || false) === true`.
+    return !(haskey(context, vn) || !contextual_isassumption(context.context, vn))
 end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(context.context, prefix(context, vn))
 end
 function contextual_isassumption(context::MiniBatchContext, vn)
-    return contextual_isassumption(context.context, vn)
-end
-function contextual_isassumption(context::PointwiseLikelihoodContext, vn)
     return contextual_isassumption(context.context, vn)
 end
 
@@ -348,6 +373,11 @@ function generate_tilde(left, right)
                 __varinfo__,
             )
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left = $(DynamicPPL.getvalue)(__context__, $vn)
+            end
+
             $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -392,6 +422,11 @@ function generate_dot_tilde(left, right)
                 __varinfo__,
             )
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left .= $(DynamicPPL.getvalue)(__context__, $vn)
+            end
+
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -453,14 +488,11 @@ function build_output(modelinfo, linenumbernode)
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         $evaluator = $(MacroTools.combinedef(evaluatordef))
-        return $(DynamicPPL.condition)(
-            $(DynamicPPL.Model)(
-                $(QuoteNode(modeldef[:name])),
-                $evaluator,
-                $allargs_namedtuple,
-                $defaults_namedtuple,
-            ),
+        return $(DynamicPPL.Model)(
+            $(QuoteNode(modeldef[:name])),
+            $evaluator,
             $allargs_namedtuple,
+            $defaults_namedtuple,
         )
     end
 

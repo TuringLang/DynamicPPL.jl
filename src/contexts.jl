@@ -153,6 +153,12 @@ function ConditionContext(
     return ConditionContext(merge(context.values, values), context.context)
 end
 
+function getvalue(context::ConditionContext, vn)
+    haskey(context, vn) ? _getvalue(context.values, vn) : getvalue(context.context, vn)
+end
+getvalue(context::AbstractContext, vn) = getvalue(context.context, vn)
+getvalue(context::PrefixContext, vn) = getvalue(context.context, prefix(context, vn))
+
 function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
