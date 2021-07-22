@@ -9,12 +9,10 @@ end
 
 # TODO: What do we do for other contexts? Could handle this in general if we had a
 # notion of wrapper-, primitive-context, etc.
-function (cmodel::ContextualModel{<:ConditionContext})(
-    varinfo::AbstractVarInfo, context::AbstractContext
-)
+function _evaluate(cmodel::ContextualModel{<:ConditionContext}, varinfo, context)
     # Wrap `context` in the model-associated `ConditionContext`, but now using `context` as
     # `ConditionContext` child.
-    return cmodel.model(varinfo, ConditionContext(cmodel.context.values, context))
+    return _evaluate(cmodel.model, varinfo, ConditionContext(cmodel.context.values, context))
 end
 
 condition(model::AbstractModel, values) = contextualize(model, ConditionContext(values))

@@ -93,7 +93,7 @@ function (model::AbstractModel)(
 end
 
 (model::AbstractModel)(context::AbstractContext) = model(VarInfo(), context)
-function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
+function (model::AbstractModel)(varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
         return evaluate_threadunsafe(model, varinfo, context)
     else
