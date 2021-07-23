@@ -405,7 +405,7 @@ function replace_returns(e::Expr)
             e.args[1]
         end
 
-        return :($(DynamicPPL.return_values)($retval_expr, __varinfo__))
+        return :(return $(DynamicPPL.return_values)($retval_expr, __varinfo__))
     end
 
     return Expr(e.head, map(replace_returns, e.args)...)
