@@ -1,3 +1,11 @@
+# Fallback traits
+# TODO: Should this instead be `NoChildren()`, `HasChild()`, etc. so we allow plural too, e.g. `HasChildren()`?
+struct IsLeaf end
+struct IsParent end
+
+NodeTrait(::Any, context) = NodeTrait(context)
+
+# Contexts
 """
     SamplingContext(rng, sampler, context)
 
@@ -11,6 +19,7 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     sampler::S
     context::C
 end
+NodeTrait(context::SamplingContext) = IsParent()
 
 """
     struct DefaultContext <: AbstractContext end
@@ -19,6 +28,7 @@ The `DefaultContext` is used by default to compute log the joint probability of 
 and parameters when running the model.
 """
 struct DefaultContext <: AbstractContext end
+NodeTrait(context::DefaultContext) = IsLeaf()
 
 """
     struct PriorContext{Tvars} <: AbstractContext
@@ -32,6 +42,7 @@ struct PriorContext{Tvars} <: AbstractContext
     vars::Tvars
 end
 PriorContext() = PriorContext(nothing)
+NodeTrait(context::PriorContext) = IsLeaf()
 
 """
     struct LikelihoodContext{Tvars} <: AbstractContext
@@ -46,6 +57,7 @@ struct LikelihoodContext{Tvars} <: AbstractContext
     vars::Tvars
 end
 LikelihoodContext() = LikelihoodContext(nothing)
+NodeTrait(context::LikelihoodContext) = IsLeaf()
 
 """
     struct MiniBatchContext{Tctx, T} <: AbstractContext
@@ -66,6 +78,7 @@ end
 function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
     return MiniBatchContext(context, npoints / batch_size)
 end
+NodeTrait(context::MiniBatchContext) = IsParent()
 
 """
     PrefixContext{Prefix}(context)
