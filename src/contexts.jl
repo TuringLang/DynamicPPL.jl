@@ -174,19 +174,34 @@ function ConditionContext(
 ) where {Names}
     # Note that this potentially overrides values from `context`, thus giving
     # precedence to the outmost `ConditionContext`.
-    return ConditionContext(merge(context.values, values), context.context)
+    return ConditionContext(merge(context.values, values), childcontext(context))
 end
 
+"""
+    getvalue(context, vn)
+
+Return the value of the parameter corresponding to `vn` from `context`.
+If `context` does not contain the value for `vn`, then `nothing` is returned,
+e.g. [`DefaultContext`](@ref) will always return `nothing`.
+"""
+getvalue(::IsLeaf, context, vn) = nothing
+getvalue(::IsParent, context, vn) = getvalue(childcontext(context), vn)
+getvalue(context::AbstractContext, vn) = getvalue(NodeTrait(getvalue, context), context, vn)
+getvalue(context::PrefixContext, vn) = getvalue(childcontext(context), prefix(context, vn))
 function getvalue(context::ConditionContext, vn)
     return if haskey(context, vn)
         _getvalue(context.values, vn)
     else
-        getvalue(context.context, vn)
+        getvalue(childcontext(context), vn)
     end
 end
-getvalue(context::AbstractContext, vn) = getvalue(context.context, vn)
-getvalue(context::PrefixContext, vn) = getvalue(context.context, prefix(context, vn))
 
+# General implementations of `haskey`.
+Base.haskey(::IsLeaf, context, vn) = false
+Base.haskey(::IsParent, context, vn) = Base.haskey(childcontext(context), vn)
+Base.haskey(context::AbstractContext, vn) = Base.haskey(NodeTrait(context), context, vn)
+
+# Specific to `ConditionContext`.
 function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
@@ -201,15 +216,18 @@ end
 
 # TODO: Can we maybe do this in a better way?
 # When no second argument is given, we remove _all_ conditioned variables.
-# TODO: Should we remove this and just return `context.context`?
+# TODO: Should we remove this and just return `childcontext(context)`?
 # That will work better if `Model` becomes like `ContextualModel`.
-decondition(context::ConditionContext) = ConditionContext(NamedTuple(), context.context)
+function decondition(context::ConditionContext)
+    return ConditionContext(NamedTuple(), childcontext(context))
+end
 function decondition(context::ConditionContext, sym)
-    return ConditionContext(BangBang.delete!!(context.values, sym), context.context)
+    return ConditionContext(BangBang.delete!!(context.values, sym), childcontext(context))
 end
 function decondition(context::ConditionContext, sym, syms...)
     return decondition(
-        ConditionContext(BangBang.delete!!(context.values, sym), context.context), syms...
+        ConditionContext(BangBang.delete!!(context.values, sym), childcontext(context)),
+        syms...,
     )
 end
 

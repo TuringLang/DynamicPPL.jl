@@ -53,7 +53,13 @@ Return `true` if `vn` is considered an assumption by `context`.
 
 The default implementation for `AbstractContext` always returns `true`.
 """
-contextual_isassumption(context::AbstractContext, vn) = true
+contextual_isassumption(::IsLeaf, context, vn) = true
+function contextual_isassumption(::IsParent, context, vn)
+    return contextual_isassumption(childcontext(context), vn)
+end
+function contextual_isassumption(context::AbstractContext, vn)
+    return contextual_isassumption(NodeTrait(context), context, vn)
+end
 function contextual_isassumption(context::ConditionContext, vn)
     # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`.
 
@@ -65,13 +71,10 @@ function contextual_isassumption(context::ConditionContext, vn)
     #    The below then evaluates to `!(false || true) === false`.
     # 3. Neither `context` nor any of it's decendants considers it an observation,
     #    in which case the below evaluates to `!(false || false) === true`.
-    return !(haskey(context, vn) || !contextual_isassumption(context.context, vn))
+    return !(haskey(context, vn) || !contextual_isassumption(childcontext(context), vn))
 end
 function contextual_isassumption(context::PrefixContext, vn)
-    return contextual_isassumption(context.context, prefix(context, vn))
-end
-function contextual_isassumption(context::MiniBatchContext, vn)
-    return contextual_isassumption(context.context, vn)
+    return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
 
 # failsafe: a literal is never an assumption
