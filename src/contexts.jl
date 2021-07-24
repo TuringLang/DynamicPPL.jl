@@ -138,7 +138,7 @@ function ConditionContext(
 end
 
 function Base.show(io::IO, context::ConditionContext)
-    print(io, "ConditionContext($(context.values), $(context.context))")
+    return print(io, "ConditionContext($(context.values), $(context.context))")
 end
 
 function getvalue(context::ConditionContext, vn)
