@@ -8,8 +8,43 @@ struct IsParent end
     NodeTrait(f, context)
 
 Specifies the role of `context` in the context-tree.
+
+The officially supported traits are:
+- `IsLeaf`: `context` does not have any decendants.
+- `IsParent`: `context` has a child context to which we often defer.
+  Expects the following methods to be implemented:
+  - [`childcontext`](@ref)
+  - [`rewrap`](@ref)
 """
 NodeTrait(_, context) = NodeTrait(context)
+
+"""
+    childcontext(context)
+
+Return the descendant context of `context`.
+"""
+childcontext
+
+"""
+    rewrap(parent::AbstractContext, child::AbstractContext)
+
+Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
+effectively updating the child context.
+
+# Examples
+```jldoctest
+julia> ctx = SamplingContext();
+
+julia> DynamicPPL.childcontext(ctx)
+DefaultContext()
+
+julia> ctx_prior = DynamicPPL.rewrap(ctx, PriorContext()); # only compute the logprior
+
+julia> DynamicPPL.childcontext(ctx_prior)
+PriorContext{Nothing}(nothing)
+```
+"""
+rewrap
 
 # Contexts
 """
@@ -25,8 +60,14 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     sampler::S
     context::C
 end
+SamplingContext(sampler, context) = SamplingContext(Random.GLOBAL_RNG, sampler, context)
+SamplingContext(context::AbstractContext) = SamplingContext(SampleFromPrior(), context)
+SamplingContext(sampler::AbstractSampler) = SamplingContext(sampler, DefaultContext())
+SamplingContext() = SamplingContext(SampleFromPrior())
+
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
+rewrap(parent::SamplingContext, child) = SamplingContext(parent.rng, parent.sampler, child)
 
 """
     struct DefaultContext <: AbstractContext end
@@ -87,6 +128,7 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
 end
 NodeTrait(context::MiniBatchContext) = IsParent()
 childcontext(context::MiniBatchContext) = context.context
+rewrap(parent::MiniBatchContext, child) = MiniBatchContext(child, parent.loglike_scalar)
 
 """
     PrefixContext{Prefix}(context)
@@ -108,6 +150,7 @@ end
 
 NodeTrait(context::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
+rewrap(parent::PrefixContext{Prefix}, child) where {Prefix} = PrefixContext{Prefix}(child)
 
 const PREFIX_SEPARATOR = Symbol(".")
 
@@ -156,9 +199,7 @@ end
     return :(NamedTuple{$names_expr}($values_expr))
 end
 
-function ConditionContext(context::ConditionContext, child_context::AbstractContext)
-    return ConditionContext(context.values, child_context)
-end
+ConditionContext(; values...) = ConditionContext((; values...))
 function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
@@ -176,6 +217,10 @@ function ConditionContext(
     # precedence to the outmost `ConditionContext`.
     return ConditionContext(merge(context.values, values), childcontext(context))
 end
+
+NodeTrait(context::ConditionContext) = IsParent()
+childcontext(context::ConditionContext) = context.context
+rewrap(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
     getvalue(context, vn)
@@ -214,10 +259,10 @@ function Base.haskey(
     return sym in vars
 end
 
-# TODO: Can we maybe do this in a better way?
-# When no second argument is given, we remove _all_ conditioned variables.
-# TODO: Should we remove this and just return `childcontext(context)`?
-# That will work better if `Model` becomes like `ContextualModel`.
+# Recursively `decondition` the context.
+decondition(::IsLeaf, context) = context
+decondition(::IsParent, context) = rewrap(context, decondition(childcontext(context)))
+decondition(context) = decondition(NodeTrait(context), context)
 function decondition(context::ConditionContext)
     return ConditionContext(NamedTuple(), childcontext(context))
 end
@@ -230,6 +275,3 @@ function decondition(context::ConditionContext, sym, syms...)
         syms...,
     )
 end
-
-NodeTrait(context::ConditionContext) = IsParent()
-childcontext(context::ConditionContext) = context.context
