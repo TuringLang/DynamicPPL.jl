@@ -55,7 +55,7 @@
     @testset "nameof" begin
         @model function test1(x)
             m ~ Normal(0, 1)
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
         @model test2(x) = begin
             m ~ Normal(0, 1)

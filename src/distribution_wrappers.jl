@@ -1,31 +1,20 @@
-import Distributions
-import Bijectors
-using Distributions: Univariate,
-                     Multivariate,
-                     Matrixvariate
-
+using Distributions: Distributions
+using Bijectors: Bijectors
+using Distributions: Univariate, Multivariate, Matrixvariate
 
 """
 A named distribution that carries the name of the random variable with it.
 """
-struct NamedDist{
-    variate, 
-    support, 
-    Td <: Distribution{variate, support},
-    Tv <: VarName
-} <: Distribution{variate, support}
+struct NamedDist{variate,support,Td<:Distribution{variate,support},Tv<:VarName} <:
+       Distribution{variate,support}
     dist::Td
     name::Tv
 end
 
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
 
-
-struct NoDist{
-    variate, 
-    support, 
-    Td <: Distribution{variate, support}
-} <: Distribution{variate, support}
+struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
+       Distribution{variate,support}
     dist::Td
 end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)

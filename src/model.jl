@@ -32,13 +32,14 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractProbabilisticProgram
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <:
+       AbstractProbabilisticProgram
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
 
-    """
+    @doc """
         Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
 
     Create a model of name `name` with evaluation function `f` and missing arguments
@@ -50,7 +51,9 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractProbab
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(name, f, args, defaults)
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(
+            name, f, args, defaults
+        )
     end
 end
 
@@ -64,10 +67,7 @@ Default arguments `defaults` are used internally when constructing instances of 
 model with different arguments.
 """
 @generated function Model(
-    name::Symbol,
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple = NamedTuple(),
+    name::Symbol, f::F, args::NamedTuple{argnames,Targs}, defaults::NamedTuple=NamedTuple()
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
     return :(Model{$missings}(name, f, args, defaults))
@@ -84,26 +84,28 @@ number of `sampler`.
 """
 function (model::Model)(
     rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo = VarInfo(),
-    sampler::AbstractSampler = SampleFromPrior(),
-    context::AbstractContext = DefaultContext(),
+    varinfo::AbstractVarInfo=VarInfo(),
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
+    return model(varinfo, SamplingContext(rng, sampler, context))
+end
+
+(model::Model)(context::AbstractContext) = model(VarInfo(), context)
+function (model::Model)(varinfo::AbstractVarInfo, context::AbstractContext)
     if Threads.nthreads() == 1
-        return evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+        return evaluate_threadunsafe(model, varinfo, context)
     else
-        return evaluate_threadsafe(rng, model, varinfo, sampler, context)
+        return evaluate_threadsafe(model, varinfo, context)
     end
 end
+
 function (model::Model)(args...)
     return model(Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function (model::Model)(
-    rng::Random.AbstractRNG,
-    sampler::AbstractSampler,
-    args...,
-)
+function (model::Model)(rng::Random.AbstractRNG, sampler::AbstractSampler, args...)
     return model(rng, VarInfo(), sampler, args...)
 end
 
@@ -113,7 +115,7 @@ function (model::Model)(rng::Random.AbstractRNG, context::AbstractContext)
 end
 
 """
-    evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+    evaluate_threadunsafe(model, varinfo, context)
 
 Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
 
@@ -122,13 +124,13 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe`](@ref)
 """
-function evaluate_threadunsafe(rng, model, varinfo, sampler, context)
+function evaluate_threadunsafe(model, varinfo, context)
     resetlogp!(varinfo)
-    return _evaluate(rng, model, varinfo, sampler, context)
+    return _evaluate(model, varinfo, context)
 end
 
 """
-    evaluate_threadsafe(rng, model, varinfo, sampler, context)
+    evaluate_threadsafe(model, varinfo, context)
 
 Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
 
@@ -138,22 +140,24 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadunsafe`](@ref)
 """
-function evaluate_threadsafe(rng, model, varinfo, sampler, context)
+function evaluate_threadsafe(model, varinfo, context)
     resetlogp!(varinfo)
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = _evaluate(rng, model, wrapper, sampler, context)
+    result = _evaluate(model, wrapper, context)
     setlogp!(varinfo, getlogp(wrapper))
     return result
 end
 
 """
-    _evaluate(rng, model::Model, varinfo, sampler, context)
+    _evaluate(model::Model, varinfo, context)
 
-Evaluate the `model` with the arguments matching the given `sampler` and `varinfo` object.
+Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
-@generated function _evaluate(rng, model::Model{_F,argnames}, varinfo, sampler, context) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(sampler, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(rng, model, varinfo, sampler, context, $(unwrap_args...)))
+@generated function _evaluate(
+    model::Model{_F,argnames}, varinfo, context
+) where {_F,argnames}
+    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
+    return :(model.f(model, varinfo, context, $(unwrap_args...)))
 end
 
 """
@@ -162,7 +166,6 @@ end
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
 
 """
     getmissings(model::Model)
@@ -186,7 +189,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), DefaultContext())
+    model(varinfo, DefaultContext())
     return getlogp(varinfo)
 end
 
@@ -198,7 +201,7 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), PriorContext())
+    model(varinfo, PriorContext())
     return getlogp(varinfo)
 end
 
@@ -210,7 +213,7 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    model(varinfo, SampleFromPrior(), LikelihoodContext())
+    model(varinfo, LikelihoodContext())
     return getlogp(varinfo)
 end
 
