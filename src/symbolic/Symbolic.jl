@@ -29,8 +29,8 @@ function symbolize(
 
     # Symbolic `logpdf` for fixed observations.
     Symbolics.@variables θ[1:length(θ_orig)]
-    vi = VarInfo(vi, spl, θ, zero(eltype(θ)));
-    m(rng, vi, spl, ctx);
+    vi = VarInfo{Real}(vi, spl, θ, 0.0);
+    m(vi, ctx);
 
     return vi, θ
 end
