@@ -1,5 +1,5 @@
-import Bijectors
-import Symbolics
+using Bijectors: Bijectors
+using Symbolics: Symbolics
 using Symbolics.SymbolicUtils
 
 Symbolics.@register Bijectors.logpdf_with_trans(dist, r, istrans)
@@ -11,8 +11,12 @@ islogpdf(x) = false
 
 # HACK: Apparently this is needed for disambiguiation.
 # TODO: Open issue.
-Symbolics.:<ₑ(a::Real, b::Symbolics.Num) = Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
-Symbolics.:<ₑ(a::Symbolics.Num, b::Real) = Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
+function Symbolics.:<ₑ(a::Real, b::Symbolics.Num)
+    return Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
+end
+function Symbolics.:<ₑ(a::Symbolics.Num, b::Real)
+    return Symbolics.:<ₑ(Symbolics.value(a), Symbolics.value(b))
+end
 
 #############
 ### Rules ###
@@ -22,13 +26,15 @@ const rmnum_rule = @rule (~x) => Symbolics.value(~x)
 const addnum_rule = @rule (~x) => Symbolics.Num(~x)
 
 # In the case where we want to work directly with the `x ~ Distribution` statements, the following rules can be useful:
-const logpdf_rule = @rule (~x ~ ~d) => Distributions.logpdf(Symbolics.Num(~d), Symbolics.Num(~x));
+const logpdf_rule = @rule (~x ~ ~d) =>
+    Distributions.logpdf(Symbolics.Num(~d), Symbolics.Num(~x));
 const rand_rule = @rule (~x ~ ~d) => Distributions.rand(Symbolics.Num(~d))
 
 # We don't want to trace into `Bijectors.logpdf_with_trans`, so we just replace it with `logpdf`.
 islogpdf_with_trans(f::Function) = f === Bijectors.logpdf_with_trans
 islogpdf_with_trans(x) = false
-const logpdf_with_trans_rule = @rule (~f::islogpdf_with_trans)(~dist, ~x, ~istrans) => logpdf(~dist, ~x)
+const logpdf_with_trans_rule = @rule (~f::islogpdf_with_trans)(~dist, ~x, ~istrans) =>
+    logpdf(~dist, ~x)
 
 # Attempt to expand `logpdf` to get analytical expressions.
 # The idea is that `getlogpdf(d, args)` should return a method of the following signature:
@@ -39,11 +45,8 @@ const logpdf_with_trans_rule = @rule (~f::islogpdf_with_trans)(~dist, ~x, ~istra
 # HACK: this is very hacky but you get the idea
 import Distributions: StatsFuns
 function getlogpdf(d, args)
-    replacements = Dict(
-        :Normal => StatsFuns.normlogpdf,
-        :Gamma => StatsFuns.gammalogpdf
-    )
-    
+    replacements = Dict(:Normal => StatsFuns.normlogpdf, :Gamma => StatsFuns.gammalogpdf)
+
     dsym = Symbol(d)
     if haskey(replacements, dsym)
         return replacements[dsym]
@@ -52,8 +55,8 @@ function getlogpdf(d, args)
     end
 end
 
-const analytic_rule = @rule (~f::islogpdf)((~d::isdist)(~~args), ~x) => getlogpdf(~d, ~~args)(map(Symbolics.Num, (~~args))..., Symbolics.Num(~x))
-
+const analytic_rule = @rule (~f::islogpdf)((~d::isdist)(~~args), ~x) =>
+    getlogpdf(~d, ~~args)(map(Symbolics.Num, (~~args))..., Symbolics.Num(~x))
 
 #################
 ### Rewriters ###

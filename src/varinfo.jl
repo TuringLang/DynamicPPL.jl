@@ -124,12 +124,12 @@ end
 
 function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector, lp::T) where {T}
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
-    VarInfo(md, Base.RefValue{T}(lp), Ref(get_num_produce(old_vi)))
+    return VarInfo(md, Base.RefValue{T}(lp), Ref(get_num_produce(old_vi)))
 end
 
 function VarInfo{T}(old_vi::TypedVarInfo, spl, x::AbstractVector) where {T}
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
-    VarInfo(md, Base.RefValue{T}(0.0), Ref(get_num_produce(old_vi)))
+    return VarInfo(md, Base.RefValue{T}(0.0), Ref(get_num_produce(old_vi)))
 end
 
 function VarInfo(

@@ -17,7 +17,6 @@ function DynamicPPL.tilde_assume(rng, ctx::SymbolicContext, sampler, right, vn, 
     return DynamicPPL.tilde_assume(rng, ctx.ctx, sampler, right, vn, inds, vi)
 end
 
-
 # TODO: Make it more useful when working with symbolic observations.
 # observe
 function DynamicPPL.tilde_observe(ctx::SymbolicContext, sampler, right, left, vi)
