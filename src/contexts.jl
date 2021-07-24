@@ -199,7 +199,7 @@ end
     return :(NamedTuple{$names_expr}($values_expr))
 end
 
-ConditionContext(; values...) = ConditionContext((; values...))
+ConditionContext(context=DefaultContext(); values...) = ConditionContext((; values...), context)
 function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
@@ -259,14 +259,46 @@ function Base.haskey(
     return sym in vars
 end
 
-# Recursively `decondition` the context.
+"""
+    context([context::AbstractContext,] values::NamedTuple)
+    context([context::AbstractContext]; values...)
+
+Return `ConditionContext` with `values` and wrapping `context`.
+"""
+condition(context=DefaultContext(); values...) = ConditionContext(context; values...)
+
+"""
+    decondition(context::AbstractContext, syms...)
+
+Return `context` but with `syms` no longer conditioned on.
+
+Note that this recursively traverses contexts, deconditioning all along the way.
+
+# Examples
+```jldoctest
+julia> ctx = DefaultContext();
+
+julia> decondition(ctx) === ctx # this is a no-op
+true
+
+julia> ctx = ConditionContext(x = 1.0);
+
+julia> decondition(ctx)
+DefaultContext()
+
+julia> ctx_nested = ConditionContext(SamplingContext(ConditionContext(y=2.0)), x=1.0);
+
+julia> decondition(ctx_nested)
+SamplingContext{SampleFromPrior, DefaultContext, Random._GLOBAL_RNG}(Random._GLOBAL_RNG(), SampleFromPrior(), DefaultContext())
+```
+"""
 decondition(::IsLeaf, context, args...) = context
 function decondition(::IsParent, context, args...)
     return rewrap(context, decondition(childcontext(context), args...))
 end
 decondition(context, args...) = decondition(NodeTrait(context), context, args...)
 function decondition(context::ConditionContext)
-    return ConditionContext(NamedTuple(), decondition(childcontext(context)))
+    return decondition(childcontext(context))
 end
 function decondition(context::ConditionContext, sym)
     return ConditionContext(
