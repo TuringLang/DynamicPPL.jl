@@ -48,7 +48,9 @@ end
 function tilde_assume(rng, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vinds, vi)
+function tilde_assume(
+    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vinds, vi
+)
     return assume(rng, sampler, right, vn, vi)
 end
 function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
@@ -296,7 +298,9 @@ end
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, inds, vi)
     return dot_assume(right, left, vns, vi)
 end
-function dot_tilde_assume(::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, inds, vi)
+function dot_tilde_assume(
+    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, inds, vi
+)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
