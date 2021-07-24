@@ -212,3 +212,6 @@ function decondition(context::ConditionContext, sym, syms...)
         ConditionContext(BangBang.delete!!(context.values, sym), context.context), syms...
     )
 end
+
+NodeTrait(context::ConditionContext) = IsParent()
+childcontext(context::ConditionContext) = context.context

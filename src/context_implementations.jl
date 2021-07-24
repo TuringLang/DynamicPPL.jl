@@ -127,15 +127,6 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
 end
 
-# `ConditionContext`
-function tilde_assume(context::ConditionContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, vn, inds, vi)
-end
-
-function tilde_assume(rng, context::ConditionContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
-end
-
 """
     tilde_assume!(context, right, vn, inds, vi)
 
@@ -202,14 +193,6 @@ end
 # `PrefixContext`
 function tilde_observe(context::PrefixContext, right, left, vname, vi)
     return tilde_observe(context.context, right, left, prefix(context, vname), vi)
-end
-
-# `ConditionContext`
-function tilde_observe(context::ConditionContext, right, left, vname, vi)
-    return tilde_observe(context.context, right, left, vname, vi)
-end
-function tilde_observe(context::ConditionContext, right, left, vi)
-    return tilde_observe(context.context, right, left, vi)
 end
 
 """
@@ -428,17 +411,6 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
     )
 end
 
-# `ConditionContext`
-function dot_tilde_assume(context::ConditionContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
-end
-
-function dot_tilde_assume(
-    rng, context::ConditionContext, sampler, right, left, vn, inds, vi
-)
-    return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
-end
-
 """
     dot_tilde_assume!(context, right, left, vn, inds, vi)
 
@@ -637,11 +609,6 @@ end
 
 # `PrefixContext`
 function dot_tilde_observe(context::PrefixContext, right, left, vi)
-    return dot_tilde_observe(context.context, right, left, vi)
-end
-
-# `ConditionContext`
-function dot_tilde_observe(context::ConditionContext, right, left, vi)
     return dot_tilde_observe(context.context, right, left, vi)
 end
 
