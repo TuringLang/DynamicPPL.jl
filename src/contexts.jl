@@ -137,6 +137,10 @@ function ConditionContext(
     return ConditionContext(merge(context.values, values), context.context)
 end
 
+function Base.show(io::IO, context::ConditionContext)
+    println(io, "ConditionContext($(context.values), $(context.context))")
+end
+
 function getvalue(context::ConditionContext, vn)
     return if haskey(context, vn)
         _getvalue(context.values, vn)
