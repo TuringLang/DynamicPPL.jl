@@ -210,6 +210,10 @@ function ConditionContext(
     return ConditionContext(merge(context.values, values), childcontext(context))
 end
 
+function Base.show(io::IO, context::ConditionContext)
+    return print(io, "ConditionContext($(context.values), $(childcontext(context)))")
+end
+
 NodeTrait(context::ConditionContext) = IsParent()
 childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
@@ -225,6 +229,7 @@ getvalue(::IsLeaf, context, vn) = nothing
 getvalue(::IsParent, context, vn) = getvalue(childcontext(context), vn)
 getvalue(context::AbstractContext, vn) = getvalue(NodeTrait(getvalue, context), context, vn)
 getvalue(context::PrefixContext, vn) = getvalue(childcontext(context), prefix(context, vn))
+
 function getvalue(context::ConditionContext, vn)
     return if haskey(context, vn)
         _getvalue(context.values, vn)
