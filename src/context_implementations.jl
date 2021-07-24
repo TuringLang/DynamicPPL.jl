@@ -44,11 +44,26 @@ function tilde_assume(context::SamplingContext, right, vn, inds, vi)
 end
 
 # Leaf contexts
-tilde_assume(::DefaultContext, right, vn, inds, vi) = assume(right, vn, vi)
+function tilde_assume(context::AbstractContext, args...)
+    return tilde_assume(NodeTrait(tilde_assume, context), context, args...)
+end
+function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vinds, vi)
+    return assume(right, vn, vi)
+end
+function tilde_assume(::IsParent, context::AbstractContext, args...)
+    return tilde_assume(childcontext(context), args...)
+end
+
+function tilde_assume(rng, context::AbstractContext, args...)
+    return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
+end
 function tilde_assume(
-    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, inds, vi
+    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vinds, vi
 )
     return assume(rng, sampler, right, vn, vi)
+end
+function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
+    return tilde_assume(rng, childcontext(context), args...)
 end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
@@ -72,12 +87,6 @@ function tilde_assume(
         settrans!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
-end
-function tilde_assume(::PriorContext, right, vn, inds, vi)
-    return assume(right, vn, vi)
-end
-function tilde_assume(rng::Random.AbstractRNG, ::PriorContext, sampler, right, vn, inds, vi)
-    return assume(rng, sampler, right, vn, vi)
 end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
@@ -111,18 +120,9 @@ function tilde_assume(
     return assume(rng, sampler, NoDist(right), vn, vi)
 end
 
-function tilde_assume(context::MiniBatchContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, vn, inds, vi)
-end
-
-function tilde_assume(rng, context::MiniBatchContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, context.context, sampler, right, vn, inds, vi)
-end
-
 function tilde_assume(context::PrefixContext, right, vn, inds, vi)
     return tilde_assume(context.context, right, prefix(context, vn), inds, vi)
 end
-
 function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
 end
@@ -180,16 +180,16 @@ function tilde_observe(context::SamplingContext, right, left, vi)
 end
 
 # Leaf contexts
-tilde_observe(::DefaultContext, right, left, vi) = observe(right, left, vi)
-function tilde_observe(::DefaultContext, sampler, right, left, vi)
-    return observe(sampler, right, left, vi)
+function tilde_observe(context::AbstractContext, args...)
+    return tilde_observe(NodeTrait(tilde_observe, context), context, args...)
 end
+tilde_observe(::IsLeaf, context::AbstractContext, args...) = observe(args...)
+function tilde_observe(::IsParent, context::AbstractContext, args...)
+    return tilde_observe(childcontext(context), args...)
+end
+
 tilde_observe(::PriorContext, right, left, vi) = 0
 tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-tilde_observe(::LikelihoodContext, right, left, vi) = observe(right, left, vi)
-function tilde_observe(::LikelihoodContext, sampler, right, left, vi)
-    return observe(sampler, right, left, vi)
-end
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
@@ -202,9 +202,6 @@ end
 # `PrefixContext`
 function tilde_observe(context::PrefixContext, right, left, vname, vi)
     return tilde_observe(context.context, right, left, prefix(context, vname), vi)
-end
-function tilde_observe(context::PrefixContext, right, left, vi)
-    return tilde_observe(context.context, right, left, vi)
 end
 
 # `ConditionContext`
@@ -317,8 +314,27 @@ function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
 end
 
 # `DefaultContext`
-function dot_tilde_assume(::DefaultContext, right, left, vns, inds, vi)
+function dot_tilde_assume(context::AbstractContext, args...)
+    return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), context, args...)
+end
+function dot_tilde_assume(rng, context::AbstractContext, args...)
+    return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
+end
+
+function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, inds, vi)
     return dot_assume(right, left, vns, vi)
+end
+function dot_tilde_assume(
+    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, inds, vi
+)
+    return dot_assume(rng, sampler, right, vns, left, vi)
+end
+
+function dot_tilde_assume(::IsParent, context::AbstractContext, args...)
+    return dot_tilde_assume(childcontext(context), args...)
+end
+function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
+    return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
 function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, inds, vi)
@@ -399,25 +415,6 @@ function dot_tilde_assume(
     else
         dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, inds, vi)
     end
-end
-function dot_tilde_assume(context::PriorContext, right, left, vn, inds, vi)
-    return dot_assume(right, left, vn, vi)
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::PriorContext, sampler, right, left, vn, inds, vi
-)
-    return dot_assume(rng, sampler, right, vn, left, vi)
-end
-
-# `MiniBatchContext`
-function dot_tilde_assume(context::MiniBatchContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
-end
-
-function dot_tilde_assume(
-    rng, context::MiniBatchContext, sampler, right, left, vn, inds, vi
-)
-    return dot_tilde_assume(rng, context.context, sampler, right, left, vn, inds, vi)
 end
 
 # `PrefixContext`
@@ -625,18 +622,13 @@ function dot_tilde_observe(context::SamplingContext, right, left, vi)
 end
 
 # Leaf contexts
-dot_tilde_observe(::DefaultContext, right, left, vi) = dot_observe(right, left, vi)
-function dot_tilde_observe(::DefaultContext, sampler, right, left, vi)
-    return dot_observe(sampler, right, left, vi)
+dot_tilde_observe(::IsLeaf, ::AbstractContext, args...) = dot_observe(args...)
+function dot_tilde_observe(::IsParent, context::AbstractContext, args...)
+    return dot_tilde_observe(childcontext(context), args...)
 end
+
 dot_tilde_observe(::PriorContext, right, left, vi) = 0
 dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
-function dot_tilde_observe(context::LikelihoodContext, right, left, vi)
-    return dot_observe(right, left, vi)
-end
-function dot_tilde_observe(context::LikelihoodContext, sampler, right, left, vi)
-    return dot_observe(sampler, right, left, vi)
-end
 
 # `MiniBatchContext`
 function dot_tilde_observe(context::MiniBatchContext, right, left, vi)
