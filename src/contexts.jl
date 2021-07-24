@@ -199,7 +199,9 @@ end
     return :(NamedTuple{$names_expr}($values_expr))
 end
 
-ConditionContext(context=DefaultContext(); values...) = ConditionContext((; values...), context)
+function ConditionContext(context=DefaultContext(); values...)
+    return ConditionContext((; values...), context)
+end
 function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
@@ -263,9 +265,18 @@ end
     context([context::AbstractContext,] values::NamedTuple)
     context([context::AbstractContext]; values...)
 
-Return `ConditionContext` with `values` and wrapping `context`.
+Return `ConditionContext` with `values` and `context` if `values` is non-empty,
+otherwise return `context` which is [`DefaultContext`](@ref) by default.
+
+See also: [`decondition`](@ref)
 """
-condition(context=DefaultContext(); values...) = ConditionContext(context; values...)
+condition() = decondition(ConditionContext())
+condition(values::NamedTuple) = condition(DefaultContext(), values)
+condition(context::AbstractContext, values::NamedTuple{()}) = context
+condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
+function condition(context::AbstractContext=DefaultContext(); values...)
+    return ConditionContext(context; values...)
+end
 
 """
     decondition(context::AbstractContext, syms...)
@@ -273,6 +284,8 @@ condition(context=DefaultContext(); values...) = ConditionContext(context; value
 Return `context` but with `syms` no longer conditioned on.
 
 Note that this recursively traverses contexts, deconditioning all along the way.
+
+See also: [`condition`](@ref)
 
 # Examples
 ```jldoctest
@@ -301,15 +314,15 @@ function decondition(context::ConditionContext)
     return decondition(childcontext(context))
 end
 function decondition(context::ConditionContext, sym)
-    return ConditionContext(
-        BangBang.delete!!(context.values, sym), childcontext(context, sym)
+    return condition(
+        decondition(childcontext(context), sym), BangBang.delete!!(context.values, sym)
     )
 end
 function decondition(context::ConditionContext, sym, syms...)
     return decondition(
-        ConditionContext(
-            BangBang.delete!!(context.values, sym),
+        condition(
             decondition(childcontext(context), syms...),
+            BangBang.delete!!(context.values, sym),
         ),
         syms...,
     )
