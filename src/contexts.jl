@@ -14,7 +14,7 @@ The officially supported traits are:
 - `IsParent`: `context` has a child context to which we often defer.
   Expects the following methods to be implemented:
   - [`childcontext`](@ref)
-  - [`rewrap`](@ref)
+  - [`setchildcontext`](@ref)
 """
 NodeTrait(_, context) = NodeTrait(context)
 
@@ -26,7 +26,7 @@ Return the descendant context of `context`.
 childcontext
 
 """
-    rewrap(parent::AbstractContext, child::AbstractContext)
+    setchildcontext(parent::AbstractContext, child::AbstractContext)
 
 Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
 effectively updating the child context.
@@ -38,13 +38,13 @@ julia> ctx = SamplingContext();
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
 
-julia> ctx_prior = DynamicPPL.rewrap(ctx, PriorContext()); # only compute the logprior
+julia> ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
 
 julia> DynamicPPL.childcontext(ctx_prior)
 PriorContext{Nothing}(nothing)
 ```
 """
-rewrap
+setchildcontext
 
 # Contexts
 """
@@ -67,7 +67,7 @@ SamplingContext() = SamplingContext(SampleFromPrior())
 
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
-rewrap(parent::SamplingContext, child) = SamplingContext(parent.rng, parent.sampler, child)
+setchildcontext(parent::SamplingContext, child) = SamplingContext(parent.rng, parent.sampler, child)
 
 """
     struct DefaultContext <: AbstractContext end
@@ -128,7 +128,7 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
 end
 NodeTrait(context::MiniBatchContext) = IsParent()
 childcontext(context::MiniBatchContext) = context.context
-rewrap(parent::MiniBatchContext, child) = MiniBatchContext(child, parent.loglike_scalar)
+setchildcontext(parent::MiniBatchContext, child) = MiniBatchContext(child, parent.loglike_scalar)
 
 """
     PrefixContext{Prefix}(context)
@@ -150,7 +150,7 @@ end
 
 NodeTrait(context::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
-rewrap(parent::PrefixContext{Prefix}, child) where {Prefix} = PrefixContext{Prefix}(child)
+setchildcontext(parent::PrefixContext{Prefix}, child) where {Prefix} = PrefixContext{Prefix}(child)
 
 const PREFIX_SEPARATOR = Symbol(".")
 
@@ -206,7 +206,7 @@ end
 
 NodeTrait(context::ConditionContext) = IsParent()
 childcontext(context::ConditionContext) = context.context
-rewrap(parent::ConditionContext, child) = ConditionContext(parent.values, child)
+setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
     getvalue(context, vn)
@@ -291,7 +291,7 @@ SamplingContext{SampleFromPrior, DefaultContext, Random._GLOBAL_RNG}(Random._GLO
 """
 decondition(::IsLeaf, context, args...) = context
 function decondition(::IsParent, context, args...)
-    return rewrap(context, decondition(childcontext(context), args...))
+    return setchildcontext(context, decondition(childcontext(context), args...))
 end
 decondition(context, args...) = decondition(NodeTrait(context), context, args...)
 function decondition(context::ConditionContext)
