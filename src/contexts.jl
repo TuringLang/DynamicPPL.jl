@@ -67,7 +67,9 @@ SamplingContext() = SamplingContext(SampleFromPrior())
 
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
-setchildcontext(parent::SamplingContext, child) = SamplingContext(parent.rng, parent.sampler, child)
+function setchildcontext(parent::SamplingContext, child)
+    return SamplingContext(parent.rng, parent.sampler, child)
+end
 
 """
     struct DefaultContext <: AbstractContext end
@@ -128,7 +130,9 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
 end
 NodeTrait(context::MiniBatchContext) = IsParent()
 childcontext(context::MiniBatchContext) = context.context
-setchildcontext(parent::MiniBatchContext, child) = MiniBatchContext(child, parent.loglike_scalar)
+function setchildcontext(parent::MiniBatchContext, child)
+    return MiniBatchContext(child, parent.loglike_scalar)
+end
 
 """
     PrefixContext{Prefix}(context)
@@ -150,7 +154,9 @@ end
 
 NodeTrait(context::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
-setchildcontext(parent::PrefixContext{Prefix}, child) where {Prefix} = PrefixContext{Prefix}(child)
+function setchildcontext(parent::PrefixContext{Prefix}, child) where {Prefix}
+    return PrefixContext{Prefix}(child)
+end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
