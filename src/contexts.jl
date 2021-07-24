@@ -260,18 +260,25 @@ function Base.haskey(
 end
 
 # Recursively `decondition` the context.
-decondition(::IsLeaf, context) = context
-decondition(::IsParent, context) = rewrap(context, decondition(childcontext(context)))
-decondition(context) = decondition(NodeTrait(context), context)
+decondition(::IsLeaf, context, args...) = context
+function decondition(::IsParent, context, args...)
+    return rewrap(context, decondition(childcontext(context), args...))
+end
+decondition(context, args...) = decondition(NodeTrait(context), context, args...)
 function decondition(context::ConditionContext)
-    return ConditionContext(NamedTuple(), childcontext(context))
+    return ConditionContext(NamedTuple(), decondition(childcontext(context)))
 end
 function decondition(context::ConditionContext, sym)
-    return ConditionContext(BangBang.delete!!(context.values, sym), childcontext(context))
+    return ConditionContext(
+        BangBang.delete!!(context.values, sym), childcontext(context, sym)
+    )
 end
 function decondition(context::ConditionContext, sym, syms...)
     return decondition(
-        ConditionContext(BangBang.delete!!(context.values, sym), childcontext(context)),
+        ConditionContext(
+            BangBang.delete!!(context.values, sym),
+            decondition(childcontext(context), syms...),
+        ),
         syms...,
     )
 end
