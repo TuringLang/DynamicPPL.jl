@@ -12,7 +12,7 @@ end
 function _evaluate(cmodel::ContextualModel{<:ConditionContext}, varinfo, context)
     # Wrap `context` in the model-associated `ConditionContext`, but now using `context` as
     # `ConditionContext` child.
-    return _evaluate(cmodel.model, varinfo, ConditionContext(cmodel.context.values, context))
+    return _evaluate(cmodel.model, varinfo, rewrap(cmodel.context, context))
 end
 
 condition(model::AbstractModel, values) = contextualize(model, ConditionContext(values))
