@@ -3,7 +3,13 @@
 struct IsLeaf end
 struct IsParent end
 
-NodeTrait(::Any, context) = NodeTrait(context)
+"""
+    NodeTrait(context)
+    NodeTrait(f, context)
+
+Specifies the role of `context` in the context-tree.
+"""
+NodeTrait(_, context) = NodeTrait(context)
 
 # Contexts
 """
@@ -20,6 +26,7 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     context::C
 end
 NodeTrait(context::SamplingContext) = IsParent()
+childcontext(context::SamplingContext) = context.context
 
 """
     struct DefaultContext <: AbstractContext end
@@ -79,6 +86,7 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
     return MiniBatchContext(context, npoints / batch_size)
 end
 NodeTrait(context::MiniBatchContext) = IsParent()
+childcontext(context::MiniBatchContext) = context.context
 
 """
     PrefixContext{Prefix}(context)
@@ -97,6 +105,9 @@ end
 function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
     return PrefixContext{Prefix,typeof(context)}(context)
 end
+
+NodeTrait(context::PrefixContext) = IsParent()
+childcontext(context::PrefixContext) = context.context
 
 const PREFIX_SEPARATOR = Symbol(".")
 
