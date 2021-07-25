@@ -34,11 +34,13 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
+       AbstractModel
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
+    context::Ctx
 
     @doc """
         Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
@@ -51,9 +53,10 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults} <: AbstractModel
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults}(
-            name, f, args, defaults
+        context::Ctx=DefaultContext(),
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
+            name, f, args, defaults, context
         )
     end
 end
@@ -68,10 +71,14 @@ Default arguments `defaults` are used internally when constructing instances of 
 model with different arguments.
 """
 @generated function Model(
-    name::Symbol, f::F, args::NamedTuple{argnames,Targs}, defaults::NamedTuple=NamedTuple()
+    name::Symbol,
+    f::F,
+    args::NamedTuple{argnames,Targs},
+    defaults::NamedTuple=NamedTuple(),
+    context::AbstractContext=DefaultContext(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults))
+    return :(Model{$missings}(name, f, args, defaults, context))
 end
 
 """
@@ -157,8 +164,13 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
 @generated function _evaluate(
     model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
-    unwrap_args = [:($matchingvalue(context, varinfo, model.args.$var)) for var in argnames]
-    return :(model.f(model, varinfo, context, $(unwrap_args...)))
+    unwrap_args = [
+        :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
+    ]
+    return quote
+        context_new = insertcontext(context, model.context)
+        model.f(model, varinfo, context_new, $(unwrap_args...))
+    end
 end
 
 """

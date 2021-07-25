@@ -4,7 +4,7 @@ struct ContextualModel{Ctx<:AbstractContext,M<:Model} <: AbstractModel
 end
 
 function contextualize(model::AbstractModel, context::AbstractContext)
-    return ContextualModel(context, model)
+    return Model(model.name, model.f, model.args, model.defaults, context)
 end
 
 # TODO: What do we do for other contexts? Could handle this in general if we had a
@@ -15,6 +15,8 @@ function _evaluate(cmodel::ContextualModel{<:ConditionContext}, varinfo, context
     return _evaluate(cmodel.model, varinfo, setchildcontext(cmodel.context, context))
 end
 
+
+Base.:|(model::AbstractModel, values) = condition(model, values)
 condition(model::AbstractModel, values) = contextualize(model, ConditionContext(values))
 condition(model::AbstractModel; values...) = condition(model, (; values...))
 function condition(cmodel::ContextualModel{<:ConditionContext}, values)
