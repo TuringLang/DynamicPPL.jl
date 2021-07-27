@@ -501,6 +501,8 @@ end
 end
 
 @inline function findranges(f_ranges, f_idcs)
+    # Old implementation was using `mapreduce` but turned out
+    # to be type-unstable.
     results = Int[]
     for i in f_idcs
         append!(results, f_ranges[i])
