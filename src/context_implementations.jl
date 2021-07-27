@@ -460,7 +460,7 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = vi[vns]
+    r = reshape(vi[vec(vns)], size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     return r, lp
 end
