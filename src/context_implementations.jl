@@ -228,7 +228,7 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, vi[vn], istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
 # SampleFromPrior and SampleFromUniform
