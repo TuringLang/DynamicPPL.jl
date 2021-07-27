@@ -10,7 +10,7 @@ vectorize(d::MeasureTheory.AbstractMeasure, x::Real) = [x]
 vectorize(d::MeasureTheory.AbstractMeasure, x::AbstractArray{<:Real}) = copy(vec(x))
 
 function reconstruct(d::MeasureTheory.AbstractMeasure, x::AbstractVector{<:Real})
-    return _reconstruct(d, x, sampletype(d))
+    return _reconstruct(d, x, MeasureTheory.sampletype(d))
 end
 
 # TODO: Higher dims. What to do? Do we have access to size, e.g. for `LKJ` we should have?
