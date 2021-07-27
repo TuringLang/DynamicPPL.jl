@@ -99,7 +99,7 @@ function unwrap_right_left_vns(
     right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
 )
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return VarName(vn, (vn.indexing..., Colon(), Tuple(i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
