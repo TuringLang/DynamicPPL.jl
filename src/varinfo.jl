@@ -43,7 +43,7 @@ barrier to make the rest of the sampling type stable.
 """
 struct Metadata{
     TIdcs<:Dict{<:VarName,Int},
-    TDists<:AbstractVector{<:Distribution},
+    TDists<:AbstractVector,
     TVN<:AbstractVector{<:VarName},
     TVal<:AbstractVector{<:Real},
     TGIds<:AbstractVector{Set{Selector}},
@@ -192,7 +192,7 @@ function Metadata()
         Vector{VarName}(),
         Vector{UnitRange{Int}}(),
         vals,
-        Vector{Distribution}(),
+        Vector(),
         Vector{Set{Selector}}(),
         Vector{Int}(),
         flags,
@@ -1096,7 +1096,7 @@ end
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
 the `VarInfo` `vi`.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+function push!(vi::AbstractVarInfo, vn::VarName, r, dist)
     return push!(vi, vn, r, dist, Set{Selector}([]))
 end
 
@@ -1108,11 +1108,11 @@ from a distribution `dist` to `VarInfo` `vi`.
 
 The sampler is passed here to invalidate its cache where defined.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
+function push!(vi::AbstractVarInfo, vn::VarName, r, dist, spl::Sampler)
     return push!(vi, vn, r, dist, spl.selector)
 end
 function push!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
+    vi::AbstractVarInfo, vn::VarName, r, dist, spl::AbstractSampler
 )
     return push!(vi, vn, r, dist)
 end
@@ -1123,10 +1123,10 @@ end
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
 selector `gid` from a distribution `dist` to `VarInfo` `vi`.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+function push!(vi::AbstractVarInfo, vn::VarName, r, dist, gid::Selector)
     return push!(vi, vn, r, dist, Set([gid]))
 end
-function push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function push!(vi::VarInfo, vn::VarName, r, dist, gidset::Set{Selector})
     if vi isa UntypedVarInfo
         @assert ~(vn in keys(vi)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
