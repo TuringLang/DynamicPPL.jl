@@ -38,7 +38,7 @@ isassumption(expr) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
-maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@view($x)))
+maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@views($x)))
 
 # If the result of a `view` is a zero-dim array then it's just a
 # single element. Likely the rest is expecting type `eltype(x)`, hence
@@ -267,6 +267,10 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
+    # Do we don't want escaped expressions because we unfortunately
+    # escape the entire body afterwards.
+    Meta.isexpr(expr, :escape) && return generate_mainbody(mod, found, expr.args[1], warn)
+
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
         return generate_mainbody!(mod, found, macroexpand(mod, expr; recursive=true), warn)
@@ -299,6 +303,15 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
 end
 
+function generate_tilde_literal(left, right)
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(DynamicPPL.tilde_observe!)(
+            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+        )
+    end
+end
+
 """
     generate_tilde(left, right)
 
@@ -306,42 +319,53 @@ Generate an `observe` expression for data variables and `assume` expression for 
 variables.
 """
 function generate_tilde(left, right)
-    # If the LHS is a literal, it is always an observation
-    if isliteral(left)
-        return quote
-            $(DynamicPPL.tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
-            )
-        end
-    end
+    isliteral(left) && return generate_tilde_literal(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn isassumption
+
     return quote
-        $vn = $(varname(left))
-        $inds = $(vinds(left))
-        $isassumption = $(DynamicPPL.isassumption(left))
+        $vn = $(remove_escape(varname(left)))
+        $isassumption = $(remove_escape(DynamicPPL.isassumption(left)))
         if $isassumption
-            $left = $(DynamicPPL.tilde_assume!)(
-                __context__,
-                $(DynamicPPL.unwrap_right_vn)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $vn
-                )...,
-                $inds,
-                __varinfo__,
-            )
+            $(generate_tilde_assume(left, right, vn))
         else
             $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
-                $inds,
                 __varinfo__,
             )
         end
     end
+end
+
+function generate_tilde_assume(left::Symbol, right, vn)
+    return quote
+        $left = $(DynamicPPL.tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_vn)(
+                $(DynamicPPL.check_tilde_rhs)($right), $vn
+            )...,
+            __varinfo__,
+        )
+    end
+end
+
+function generate_tilde_assume(left::Expr, right, vn)
+    expr = :(
+        $left = $(DynamicPPL.tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_vn)(
+                $(DynamicPPL.check_tilde_rhs)($right), $vn
+            )...,
+            __varinfo__,
+        )
+    )
+
+    return remove_escape(setmacro(identity, expr, overwrite=true))
 end
 
 """
@@ -350,42 +374,88 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    # If the LHS is a literal, it is always an observation
-    if isliteral(left)
-        return quote
-            $(DynamicPPL.dot_tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
-            )
-        end
-    end
+    isliteral(left) && return generate_tilde_literal(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn isassumption
     return quote
         $vn = $(varname(left))
-        $inds = $(vinds(left))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left .= $(DynamicPPL.dot_tilde_assume!)(
-                __context__,
-                $(DynamicPPL.unwrap_right_left_vns)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-                )...,
-                $inds,
-                __varinfo__,
-            )
+            $(generate_dot_tilde_assume(left, right, vn))
         else
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
-                $inds,
                 __varinfo__,
             )
         end
     end
+end
+
+function generate_dot_tilde_assume(left::Symbol, right, vn)
+    return :(
+        $left .= $(DynamicPPL.dot_tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_left_vns)(
+                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
+            )...,
+            __varinfo__,
+        )
+    )
+end
+
+function generate_dot_tilde_assume(left::Expr, right, vn)
+    expr = :(
+        $left .= $(DynamicPPL.dot_tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_left_vns)(
+                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
+            )...,
+            __varinfo__,
+        )
+    )
+
+    return remove_escape(setmacro(identity, expr, overwrite=true))
+end
+
+# HACK: This is unfortunate. It's a consequence of the fact that in
+# DynamicPPL we the entire function body. Instead we should be
+# more selective with our escape. Until that's the case, we remove them all.
+remove_escape(x) = x
+function remove_escape(expr::Expr)
+    Meta.isexpr(expr, :escape) && return remove_escape(expr.args[1])
+    return Expr(expr.head, map(x -> remove_escape(x), expr.args)...)
+end
+
+# TODO: Make PR to Setfield.jl to use `gensym` for the `lens` variable.
+# This seems like it should be the case anyways since it allows multiple
+# calls to `setmacro` without any cost to the current functionality.
+function setmacro(lenstransform, ex::Expr; overwrite::Bool=false)
+    @assert ex.head isa Symbol
+    @assert length(ex.args) == 2
+    ref, val = ex.args
+    obj, lens = Setfield.parse_obj_lens(ref)
+    lens_var = gensym("lens")
+    dst = overwrite ? obj : gensym("_")
+    val = esc(val)
+    ret = if ex.head == :(=)
+        quote
+            $lens_var = ($lenstransform)($lens)
+            $dst = $(Setfield.set)($obj, $lens_var, $val)
+        end
+    else
+        op = get_update_op(ex.head)
+        f = :($(Setfield._UpdateOp)($op,$val))
+        quote
+            $lens_var = ($lenstransform)($lens)
+            $dst = $(Setfield.modify)($f, $obj, $lens_var)
+        end
+    end
+    ret
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}

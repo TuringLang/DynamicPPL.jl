@@ -10,6 +10,8 @@ using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 
+using Setfield: Setfield
+
 using Random: Random
 
 import Base:
