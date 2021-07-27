@@ -14,8 +14,16 @@ function reconstruct(d::MeasureTheory.AbstractMeasure, x::AbstractVector{<:Real}
 end
 
 # TODO: Higher dims. What to do? Do we have access to size, e.g. for `LKJ` we should have?
-_reconstruct(d::MeasureTheory.AbstractMeasure, x::AbstractVector{<:Real}, ::Type{<:Real}) = x[1]
-function _reconstruct(d::MeasureTheory.AbstractMeasure, x::AbstractVector{<:Real}, ::Type{<:AbstractVector{<:Real}})
+function _reconstruct(
+    d::MeasureTheory.AbstractMeasure, x::AbstractVector{<:Real}, ::Type{<:Real}
+)
+    return x[1]
+end
+function _reconstruct(
+    d::MeasureTheory.AbstractMeasure,
+    x::AbstractVector{<:Real},
+    ::Type{<:AbstractVector{<:Real}},
+)
     return x
 end
 

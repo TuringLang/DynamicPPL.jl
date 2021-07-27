@@ -1111,9 +1111,7 @@ The sampler is passed here to invalidate its cache where defined.
 function push!(vi::AbstractVarInfo, vn::VarName, r, dist, spl::Sampler)
     return push!(vi, vn, r, dist, spl.selector)
 end
-function push!(
-    vi::AbstractVarInfo, vn::VarName, r, dist, spl::AbstractSampler
-)
+function push!(vi::AbstractVarInfo, vn::VarName, r, dist, spl::AbstractSampler)
     return push!(vi, vn, r, dist)
 end
 
