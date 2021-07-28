@@ -8,8 +8,106 @@ struct IsParent end
     NodeTrait(f, context)
 
 Specifies the role of `context` in the context-tree.
+
+The officially supported traits are:
+- `IsLeaf`: `context` does not have any decendants.
+- `IsParent`: `context` has a child context to which we often defer.
+  Expects the following methods to be implemented:
+  - [`childcontext`](@ref)
+  - [`setchildcontext`](@ref)
 """
 NodeTrait(_, context) = NodeTrait(context)
+
+"""
+    childcontext(context)
+
+Return the descendant context of `context`.
+"""
+childcontext
+
+"""
+    setchildcontext(parent::AbstractContext, child::AbstractContext)
+
+Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
+effectively updating the child context.
+
+# Examples
+```jldoctest
+julia> ctx = SamplingContext();
+
+julia> DynamicPPL.childcontext(ctx)
+DefaultContext()
+
+julia> ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
+
+julia> DynamicPPL.childcontext(ctx_prior)
+PriorContext{Nothing}(nothing)
+```
+"""
+setchildcontext
+
+"""
+    leafcontext(context)
+
+Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
+"""
+leafcontext(context) = leafcontext(NodeTrait(leafcontext, context), context)
+leafcontext(::IsLeaf, context) = context
+leafcontext(::IsParent, context) = leafcontext(childcontext(context))
+
+"""
+    setleafcontext(left, right)
+
+Return `left` but now with its leaf context replaced by `right`.
+
+Note that this also works even if `right` is not a leaf context,
+in which case effectively append `right` to `left`, dropping the
+original leaf context of `left`.
+
+# Examples
+```jldoctest
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext
+
+julia> struct ParentContext{C}
+           context::C
+       end
+
+julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
+
+julia> DynamicPPL.childcontext(context::ParentContext) = context.context
+
+julia> DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
+
+julia> Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
+
+julia> ctx = ParentContext(ParentContext(DefaultContext()))
+ParentContext(ParentContext(DefaultContext()))
+
+julia> # Replace the leaf context with another leaf.
+       leafcontext(setleafcontext(ctx, PriorContext()))
+PriorContext{Nothing}(nothing)
+
+julia> # Append another parent context.
+       setleafcontext(ctx, ParentContext(DefaultContext()))
+ParentContext(ParentContext(ParentContext(DefaultContext())))
+```
+"""
+function setleafcontext(left, right)
+    return setleafcontext(
+        NodeTrait(setleafcontext, left),
+        NodeTrait(setleafcontext, right),
+        left,
+        right
+    )
+end
+function setleafcontext(::IsParent, ::IsParent, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+function setleafcontext(::IsParent, ::IsLeaf, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+setleafcontext(::IsLeaf, ::IsParent, left, right) = right
+setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 
 # Contexts
 """
@@ -25,8 +123,16 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     sampler::S
     context::C
 end
+SamplingContext(sampler, context) = SamplingContext(Random.GLOBAL_RNG, sampler, context)
+SamplingContext(context::AbstractContext) = SamplingContext(SampleFromPrior(), context)
+SamplingContext(sampler::AbstractSampler) = SamplingContext(sampler, DefaultContext())
+SamplingContext() = SamplingContext(SampleFromPrior())
+
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
+function setchildcontext(parent::SamplingContext, child)
+    return SamplingContext(parent.rng, parent.sampler, child)
+end
 
 """
     struct DefaultContext <: AbstractContext end
@@ -87,6 +193,9 @@ function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
 end
 NodeTrait(context::MiniBatchContext) = IsParent()
 childcontext(context::MiniBatchContext) = context.context
+function setchildcontext(parent::MiniBatchContext, child)
+    return MiniBatchContext(child, parent.loglike_scalar)
+end
 
 """
     PrefixContext{Prefix}(context)
@@ -108,6 +217,9 @@ end
 
 NodeTrait(context::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
+function setchildcontext(parent::PrefixContext{Prefix}, child) where {Prefix}
+    return PrefixContext{Prefix}(child)
+end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
