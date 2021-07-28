@@ -46,6 +46,69 @@ PriorContext{Nothing}(nothing)
 """
 setchildcontext
 
+"""
+    leafcontext(context)
+
+Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
+"""
+leafcontext(context) = leafcontext(NodeTrait(leafcontext, context), context)
+leafcontext(::IsLeaf, context) = context
+leafcontext(::IsParent, context) = leafcontext(childcontext(context))
+
+"""
+    setleafcontext(left, right)
+
+Return `left` but now with its leaf context replaced by `right`.
+
+Note that this also works even if `right` is not a leaf context,
+in which case effectively append `right` to `left`, dropping the
+original leaf context of `left`.
+
+# Examples
+```jldoctest
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext
+
+julia> struct ParentContext{C}
+           context::C
+       end
+
+julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
+
+julia> DynamicPPL.childcontext(context::ParentContext) = context.context
+
+julia> DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
+
+julia> Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
+
+julia> ctx = ParentContext(ParentContext(DefaultContext()))
+ParentContext(ParentContext(DefaultContext()))
+
+julia> # Replace the leaf context with another leaf.
+       leafcontext(setleafcontext(ctx, PriorContext()))
+PriorContext{Nothing}(nothing)
+
+julia> # Append another parent context.
+       setleafcontext(ctx, ParentContext(DefaultContext()))
+ParentContext(ParentContext(ParentContext(DefaultContext())))
+```
+"""
+function setleafcontext(left, right)
+    return setleafcontext(
+        NodeTrait(setleafcontext, left),
+        NodeTrait(setleafcontext, right),
+        left,
+        right
+    )
+end
+function setleafcontext(::IsParent, ::IsParent, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+function setleafcontext(::IsParent, ::IsLeaf, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+setleafcontext(::IsLeaf, ::IsParent, left, right) = right
+setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
+
 # Contexts
 """
     SamplingContext(rng, sampler, context)
@@ -231,7 +294,7 @@ getvalue(context::AbstractContext, vn) = getvalue(NodeTrait(getvalue, context), 
 getvalue(context::PrefixContext, vn) = getvalue(childcontext(context), prefix(context, vn))
 
 function getvalue(context::ConditionContext, vn)
-    return if haskey(context, vn)
+    return if hasvalue(context, vn)
         _getvalue(context.values, vn)
     else
         getvalue(childcontext(context), vn)
@@ -239,17 +302,17 @@ function getvalue(context::ConditionContext, vn)
 end
 
 # General implementations of `haskey`.
-Base.haskey(::IsLeaf, context, vn) = false
-Base.haskey(::IsParent, context, vn) = Base.haskey(childcontext(context), vn)
-Base.haskey(context::AbstractContext, vn) = Base.haskey(NodeTrait(context), context, vn)
+hasvalue(::IsLeaf, context, vn) = false
+hasvalue(::IsParent, context, vn) = hasvalue(childcontext(context), vn)
+hasvalue(context::AbstractContext, vn) = hasvalue(NodeTrait(context), context, vn)
 
 # Specific to `ConditionContext`.
-function Base.haskey(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
+function hasvalue(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
 end
 
-function Base.haskey(
+function hasvalue(
     context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}
 ) where {vars,sym}
     # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
@@ -269,8 +332,8 @@ condition() = decondition(ConditionContext())
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
 condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
-function condition(context::AbstractContext=DefaultContext(); values...)
-    return ConditionContext(context; values...)
+function condition(context::AbstractContext; values...)
+    return condition(context, (; values...))
 end
 
 """

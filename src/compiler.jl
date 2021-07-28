@@ -61,17 +61,17 @@ function contextual_isassumption(context::AbstractContext, vn)
     return contextual_isassumption(NodeTrait(context), context, vn)
 end
 function contextual_isassumption(context::ConditionContext, vn)
-    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`.
+    if hasvalue(context, vn)
+        val = getvalue(context, vn)
+        # TODO: Do we even need the `>: Missing` to help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return true
+        end
+    end
 
-    # We have either of the following cases:
-    # 1. `context` considers `vn` as an observation, i.e. it has `vn` as a key,
-    #    which means we have a value to replace with and we don't need to recurse.
-    # 2. One of the decendant contexts consider it as an observation, i.e.
-    #    `contextual_isassumption` evaluates to `false`.
-    #    The below then evaluates to `!(false || true) === false`.
-    # 3. Neither `context` nor any of it's decendants considers it an observation,
-    #    in which case the below evaluates to `!(false || false) === true`.
-    return !(haskey(context, vn) || !contextual_isassumption(childcontext(context), vn))
+    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isassumption(childcontext(context), vn)
 end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
