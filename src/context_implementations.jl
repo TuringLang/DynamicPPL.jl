@@ -233,11 +233,8 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    if !haskey(vi, vn)
-        error("variable $vn does not exist")
-    end
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, vi[vn], istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
 end
 
 # SampleFromPrior and SampleFromUniform
@@ -436,12 +433,13 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = get_and_set_val!(Random.GLOBAL_RNG, vi, vns, dist, SampleFromPrior())
+    r = vi[vns]
     lp = sum(zip(vns, eachcol(r))) do vn, ri
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
     return r, lp
 end
+
 function dot_assume(
     rng,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -468,7 +466,7 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = get_and_set_val!(Random.GLOBAL_RNG, vi, vns, dists, SampleFromPrior())
+    r = reshape(vi[vec(vns)], size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     return r, lp
 end
