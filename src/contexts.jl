@@ -46,6 +46,69 @@ PriorContext{Nothing}(nothing)
 """
 setchildcontext
 
+"""
+    leafcontext(context)
+
+Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
+"""
+leafcontext(context) = leafcontext(NodeTrait(leafcontext, context), context)
+leafcontext(::IsLeaf, context) = context
+leafcontext(::IsParent, context) = leafcontext(childcontext(context))
+
+"""
+    setleafcontext(left, right)
+
+Return `left` but now with its leaf context replaced by `right`.
+
+Note that this also works even if `right` is not a leaf context,
+in which case effectively append `right` to `left`, dropping the
+original leaf context of `left`.
+
+# Examples
+```jldoctest
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext
+
+julia> struct ParentContext{C}
+           context::C
+       end
+
+julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
+
+julia> DynamicPPL.childcontext(context::ParentContext) = context.context
+
+julia> DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
+
+julia> Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
+
+julia> ctx = ParentContext(ParentContext(DefaultContext()))
+ParentContext(ParentContext(DefaultContext()))
+
+julia> # Replace the leaf context with another leaf.
+       leafcontext(setleafcontext(ctx, PriorContext()))
+PriorContext{Nothing}(nothing)
+
+julia> # Append another parent context.
+       setleafcontext(ctx, ParentContext(DefaultContext()))
+ParentContext(ParentContext(ParentContext(DefaultContext())))
+```
+"""
+function setleafcontext(left, right)
+    return setleafcontext(
+        NodeTrait(setleafcontext, left),
+        NodeTrait(setleafcontext, right),
+        left,
+        right
+    )
+end
+function setleafcontext(::IsParent, ::IsParent, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+function setleafcontext(::IsParent, ::IsLeaf, left, right)
+    return setchildcontext(left, setleafcontext(childcontext(left), right))
+end
+setleafcontext(::IsLeaf, ::IsParent, left, right) = right
+setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
+
 # Contexts
 """
     SamplingContext(rng, sampler, context)
