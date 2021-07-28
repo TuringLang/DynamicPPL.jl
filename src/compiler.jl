@@ -142,8 +142,12 @@ end
 function unwrap_right_left_vns(
     right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
 )
+    # This an expression such as `x .~ MvNormal()` which we interpret as
+    #     x[:, i] ~ MvNormal()
+    # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
+    # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return VarName(vn, (vn.indexing..., Colon(), Tuple(i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
