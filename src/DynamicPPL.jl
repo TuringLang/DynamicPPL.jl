@@ -6,7 +6,6 @@ using Distributions
 using Bijectors
 
 using AbstractMCMC: AbstractMCMC
-using BangBang: BangBang
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
