@@ -6,7 +6,6 @@ using Distributions
 using Bijectors
 
 using AbstractMCMC: AbstractMCMC
-using BangBang: BangBang
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
@@ -134,6 +133,5 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
-include("contextual_model.jl")
 
 end # module
