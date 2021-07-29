@@ -183,7 +183,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
     ]
     return quote
-        context_new = insertcontext(context, model.context)
+        context_new = setleafcontext(context, model.context)
         model.f(model, varinfo, context_new, $(unwrap_args...))
     end
 end
