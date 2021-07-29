@@ -592,6 +592,9 @@ function dot_tilde_observe(context::SamplingContext, right, left, vi)
 end
 
 # Leaf contexts
+function dot_tilde_observe(context::AbstractContext, args...)
+    return dot_tilde_observe(NodeTrait(tilde_observe, context), context, args...)
+end
 dot_tilde_observe(::IsLeaf, ::AbstractContext, args...) = dot_observe(args...)
 function dot_tilde_observe(::IsParent, context::AbstractContext, args...)
     return dot_tilde_observe(childcontext(context), args...)
