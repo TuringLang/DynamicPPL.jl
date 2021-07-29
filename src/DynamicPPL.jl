@@ -9,6 +9,7 @@ using AbstractMCMC: AbstractMCMC
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
+using BangBang: BangBang
 
 using Random: Random
 
