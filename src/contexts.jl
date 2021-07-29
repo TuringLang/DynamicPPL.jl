@@ -326,7 +326,11 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 See also: [`decondition`](@ref)
 """
 function condition(; values...)
-    return isempty(values) ? decondition(ConditionContext()) : condition(DefaultContext(), (; values...))
+    return if isempty(values)
+        decondition(ConditionContext())
+    else
+        condition(DefaultContext(), (; values...))
+    end
 end
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
