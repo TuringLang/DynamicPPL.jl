@@ -85,7 +85,6 @@ end
 
 Base.:|(model::Model, values) = condition(model, values)
 
-condition(model::Model, values) = contextualize(model, ConditionContext(values))
 condition(model::Model; values...) = condition(model, (; values...))
 function condition(model::Model, values)
     return contextualize(model, condition(model.context, values))
@@ -181,8 +180,15 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
     unwrap_args = [
         :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
     ]
+    # We want to give `context` precedence over `model.context` while also
+    # preserving the leaf context of `context`. We can do this by
+    # 1. Set the leaf context of `model.context` to `leafcontext(context)`.
+    # 2. Set leaf context of `context` to the context resulting from (1).
+    # The result is:
+    # `context` -> `childcontext(context)` -> ... -> `model.context`
+    #  -> `childcontext(model.context)` -> ... -> `leafcontext(context)`
     return quote
-        context_new = setleafcontext(context, model.context)
+        context_new = setleafcontext(context, setleafcontext(model.context, leafcontext(context)))
         model.f(model, varinfo, context_new, $(unwrap_args...))
     end
 end
