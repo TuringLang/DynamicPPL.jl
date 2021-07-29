@@ -66,9 +66,9 @@ original leaf context of `left`.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext
 
-julia> struct ParentContext{C}
+julia> struct ParentContext{C} <: AbstractContext
            context::C
        end
 
@@ -328,14 +328,13 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 
 See also: [`decondition`](@ref)
 """
-condition() = decondition(ConditionContext())
+function condition(; values...)
+    return isempty(values) ? decondition(ConditionContext()) : condition(DefaultContext(), (; values...))
+end
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
 condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
-function condition(context::AbstractContext; values...)
-    return condition(context, (; values...))
-end
-
+condition(context::AbstractContext; values...) = condition(context, (; values...))
 """
     decondition(context::AbstractContext, syms...)
 
@@ -347,20 +346,60 @@ See also: [`condition`](@ref)
 
 # Examples
 ```jldoctest
-julia> ctx = DefaultContext();
+julia> using DynamicPPL: AbstractContext, leafcontext, setleafcontext, childcontext, setchildcontext
+
+julia> struct ParentContext{C} <: AbstractContext
+           context::C
+       end
+
+julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
+
+julia> DynamicPPL.childcontext(context::ParentContext) = context.context
+
+julia> DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
+
+julia> Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
+
+julia> ctx = DefaultContext()
+DefaultContext()
 
 julia> decondition(ctx) === ctx # this is a no-op
 true
 
-julia> ctx = ConditionContext(x = 1.0);
+julia> ctx = condition(x = 1.0) # default "constructor" for `ConditionContext`
+ConditionContext((x = 1.0,), DefaultContext())
 
-julia> decondition(ctx)
+julia> decondition(ctx) # `decondition` without arguments drops all conditioning
 DefaultContext()
 
-julia> ctx_nested = ConditionContext(SamplingContext(ConditionContext(y=2.0)), x=1.0);
+julia> # Nested conditioning is supported.
+       ctx_nested = condition(ParentContext(condition(y=2.0)), x=1.0)
+ConditionContext((x = 1.0,), ParentContext(ConditionContext((y = 2.0,), DefaultContext())))
+
+julia> # We can also specify which variables to drop.
+       decondition(ctx_nested, :x)
+ParentContext(ConditionContext((y = 2.0,), DefaultContext()))
+
+julia> # No matter the nested level.
+       decondition(ctx_nested, :y)
+ConditionContext((x = 1.0,), ParentContext(DefaultContext()))
+
+julia> # Or specify multiple at in one call.
+       decondition(ctx_nested, :x, :y)
+ParentContext(DefaultContext())
 
 julia> decondition(ctx_nested)
-SamplingContext{SampleFromPrior, DefaultContext, Random._GLOBAL_RNG}(Random._GLOBAL_RNG(), SampleFromPrior(), DefaultContext())
+ParentContext(DefaultContext())
+
+julia> # `Val` is also supported.
+       decondition(ctx_nested, Val(:x))
+ParentContext(ConditionContext((y = 2.0,), DefaultContext()))
+
+julia> decondition(ctx_nested, Val(:y))
+ConditionContext((x = 1.0,), ParentContext(DefaultContext()))
+
+julia> decondition(ctx_nested, Val(:x), Val(:y))
+ParentContext(DefaultContext())
 ```
 """
 decondition(::IsLeaf, context, args...) = context
