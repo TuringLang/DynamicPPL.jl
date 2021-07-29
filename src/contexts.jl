@@ -66,9 +66,9 @@ original leaf context of `left`.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext
 
-julia> struct ParentContext{C}
+julia> struct ParentContext{C} <: AbstractContext
            context::C
        end
 
