@@ -188,7 +188,9 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
     # `context` -> `childcontext(context)` -> ... -> `model.context`
     #  -> `childcontext(model.context)` -> ... -> `leafcontext(context)`
     return quote
-        context_new = setleafcontext(context, setleafcontext(model.context, leafcontext(context)))
+        context_new = setleafcontext(
+            context, setleafcontext(model.context, leafcontext(context))
+        )
         model.f(model, varinfo, context_new, $(unwrap_args...))
     end
 end
