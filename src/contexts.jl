@@ -251,9 +251,6 @@ struct ConditionContext{Names,Values,Ctx<:AbstractContext} <: AbstractContext
     end
 end
 
-function ConditionContext(context::ConditionContext, child_context::AbstractContext)
-    return ConditionContext(context.values, child_context)
-end
 function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
@@ -325,13 +322,7 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 
 See also: [`decondition`](@ref)
 """
-function condition(; values...)
-    return if isempty(values)
-        decondition(ConditionContext())
-    else
-        condition(DefaultContext(), (; values...))
-    end
-end
+condition(; values...) = condition(DefaultContext(), (; values...))
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
 condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
