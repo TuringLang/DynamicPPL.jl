@@ -94,10 +94,7 @@ ParentContext(ParentContext(ParentContext(DefaultContext())))
 """
 function setleafcontext(left, right)
     return setleafcontext(
-        NodeTrait(setleafcontext, left),
-        NodeTrait(setleafcontext, right),
-        left,
-        right
+        NodeTrait(setleafcontext, left), NodeTrait(setleafcontext, right), left, right
     )
 end
 function setleafcontext(::IsParent, ::IsParent, left, right)
