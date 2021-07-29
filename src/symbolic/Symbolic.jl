@@ -16,6 +16,9 @@ issym(x) = false
 include("rules.jl")
 include("contexts.jl")
 
+# Allow `num` to appear on the RHS of `~`.
+DynamicPPL.check_tilde_rhs(x::Union{Symbolics.Num,SymbolicUtils.Symbolic}) = x
+
 symbolize(args...; kwargs...) = symbolize(Random.GLOBAL_RNG, args...; kwargs...)
 function symbolize(
     rng::Random.AbstractRNG,
@@ -31,7 +34,7 @@ function symbolize(
     # Symbolic `logpdf` for fixed observations.
     # TODO: don't `collect` once symbolic arrays are mature enough.
     Symbolics.@variables θ[1:length(θ_orig)]
-    vi = VarInfo{Real}(vi, spl, θ, 0.0)
+    vi = VarInfo{Real}(vi, spl, θ)
     m(vi, ctx)
 
     return vi, θ
