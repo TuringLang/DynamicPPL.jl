@@ -95,7 +95,6 @@ function decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
 end
 
-
 """
     (model::Model)([rng, varinfo, sampler, context])
 
