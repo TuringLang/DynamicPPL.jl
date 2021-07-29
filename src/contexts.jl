@@ -94,10 +94,7 @@ ParentContext(ParentContext(ParentContext(DefaultContext())))
 """
 function setleafcontext(left, right)
     return setleafcontext(
-        NodeTrait(setleafcontext, left),
-        NodeTrait(setleafcontext, right),
-        left,
-        right
+        NodeTrait(setleafcontext, left), NodeTrait(setleafcontext, right), left, right
     )
 end
 function setleafcontext(::IsParent, ::IsParent, left, right)
@@ -329,7 +326,11 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 See also: [`decondition`](@ref)
 """
 function condition(; values...)
-    return isempty(values) ? decondition(ConditionContext()) : condition(DefaultContext(), (; values...))
+    return if isempty(values)
+        decondition(ConditionContext())
+    else
+        condition(DefaultContext(), (; values...))
+    end
 end
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
