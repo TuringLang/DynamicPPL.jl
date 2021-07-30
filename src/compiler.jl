@@ -103,7 +103,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Colon(), Tuple(i)))
+        return VarName(vn, (vn.indexing..., (Colon(), i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
