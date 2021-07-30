@@ -92,7 +92,7 @@ This is used mainly to unwrap `NamedDist` distributions and adjust the indices o
 variables.
 
 # Examples
-```jldoctest
+```jldoctest; setup=:(using Distributions)
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); vns
 2-element Vector{VarName{:x, Setfield.IndexLens{Tuple{Colon, Int64}}}}:
  x[:,1]
