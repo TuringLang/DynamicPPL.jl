@@ -93,31 +93,31 @@ variables.
 
 # Example
 ```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); vns
-2-element Vector{VarName{:x, Tuple{Tuple{Colon, Int64}}}}:
- x[:,1]
- x[:,2]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); map(string, vns)
+2-element Vector{String}:
+ "x[:,1]"
+ "x[:,2]"
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns
-1×2 Matrix{VarName{:x, Tuple{Tuple{Colon}, Tuple{Int64, Int64}}}}:
- x[:][1,1]  x[:][1,2]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); map(string, vns)
+1×2 Matrix{String}:
+ "x[:][1,1]"  "x[:][1,2]"
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns
-3-element Vector{VarName{:x, Tuple{Tuple{Int64}, Tuple{Int64}}}}:
- x[1][1]
- x[1][2]
- x[1][3]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); map(string, vns)
+3-element Vector{String}:
+ "x[1][1]"
+ "x[1][2]"
+ "x[1][3]"
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2, 3), @varname(x)); vns
-1×2×3 Array{VarName{:x, Tuple{Tuple{Int64, Int64, Int64}}}, 3}:
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2, 3), @varname(x)); map(string, vns)
+1×2×3 Array{String, 3}:
 [:, :, 1] =
- x[1,1,1]  x[1,2,1]
+ "x[1,1,1]"  "x[1,2,1]"
 
 [:, :, 2] =
- x[1,1,2]  x[1,2,2]
+ "x[1,1,2]"  "x[1,2,2]"
 
 [:, :, 3] =
- x[1,1,3]  x[1,2,3]
+ "x[1,1,3]"  "x[1,2,3]"
 ```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
