@@ -372,9 +372,7 @@ function generate_tilde_assume(left::Symbol, right, vn)
     return quote
         $left = $(DynamicPPL.tilde_assume!)(
             __context__,
-            $(DynamicPPL.unwrap_right_vn)(
-                $(DynamicPPL.check_tilde_rhs)($right), $vn
-            )...,
+            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
     end
@@ -384,14 +382,12 @@ function generate_tilde_assume(left::Expr, right, vn)
     expr = :(
         $left = $(DynamicPPL.tilde_assume!)(
             __context__,
-            $(DynamicPPL.unwrap_right_vn)(
-                $(DynamicPPL.check_tilde_rhs)($right), $vn
-            )...,
+            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
     )
 
-    return remove_escape(setmacro(identity, expr, overwrite=true))
+    return remove_escape(setmacro(identity, expr; overwrite=true))
 end
 
 """
@@ -445,7 +441,7 @@ function generate_dot_tilde_assume(left::Expr, right, vn)
         )
     )
 
-    return remove_escape(setmacro(identity, expr, overwrite=true))
+    return remove_escape(setmacro(identity, expr; overwrite=true))
 end
 
 # HACK: This is unfortunate. It's a consequence of the fact that in
@@ -475,13 +471,13 @@ function setmacro(lenstransform, ex::Expr; overwrite::Bool=false)
         end
     else
         op = get_update_op(ex.head)
-        f = :($(Setfield._UpdateOp)($op,$val))
+        f = :($(Setfield._UpdateOp)($op, $val))
         quote
             $lens_var = ($lenstransform)($lens)
             $dst = $(Setfield.modify)($f, $obj, $lens_var)
         end
     end
-    ret
+    return ret
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
