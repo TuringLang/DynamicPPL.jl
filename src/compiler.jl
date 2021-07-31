@@ -19,7 +19,7 @@ function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
-        let $vn = $(varname(expr, true))
+        let $vn = $(AbstractPPL.drop_escape(varname(expr, true)))
             # This branch should compile nicely in all cases except for partial missing data
             # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
             if !$(DynamicPPL.inargnames)($vn, __model__) ||
@@ -351,9 +351,12 @@ function generate_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption
 
+    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
+    # that in DynamicPPL we the entire function body. Instead we should be
+    # more selective with our escape. Until that's the case, we remove them all.
     return quote
-        $vn = $(remove_escape(varname(left, true)))
-        $isassumption = $(remove_escape(DynamicPPL.isassumption(left)))
+        $vn = $(AbstractPPL.drop_escape(varname(left, true)))
+        $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $(generate_tilde_assume(left, right, vn))
         else
