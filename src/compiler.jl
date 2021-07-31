@@ -27,7 +27,7 @@ function isassumption(expr::Union{Symbol,Expr})
                 true
             else
                 # Evaluate the LHS
-                $expr === missing
+                $(maybe_view(expr)) === missing
             end
         end
     end
@@ -35,6 +35,16 @@ end
 
 # failsafe: a literal is never an assumption
 isassumption(expr) = :(false)
+
+# If we're working with, say, a `Symbol`, then we're not going to `view`.
+maybe_view(x) = x
+maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@view($x)))
+
+# If the result of a `view` is a zero-dim array then it's just a
+# single element. Likely the rest is expecting type `eltype(x)`, hence
+# we extract the value rather than passing the array.
+maybe_unwrap_view(x) = x
+maybe_unwrap_view(x::SubArray{<:Any,0}) = x[1]
 
 """
     isliteral(expr)
@@ -88,8 +98,12 @@ end
 function unwrap_right_left_vns(
     right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
 )
+    # This an expression such as `x .~ MvNormal()` which we interpret as
+    #     x[:, i] ~ MvNormal()
+    # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
+    # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return VarName(vn, (vn.indexing..., Colon(), Tuple(i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -325,7 +339,7 @@ function generate_tilde(left, right)
             $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
-                $left,
+                $(maybe_view(left)),
                 $vn,
                 $inds,
                 __varinfo__,
@@ -360,7 +374,7 @@ function generate_dot_tilde(left, right)
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 __context__,
                 $(DynamicPPL.unwrap_right_left_vns)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $left, $vn
+                    $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
                 )...,
                 $inds,
                 __varinfo__,
@@ -369,7 +383,7 @@ function generate_dot_tilde(left, right)
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
-                $left,
+                $(maybe_view(left)),
                 $vn,
                 $inds,
                 __varinfo__,
