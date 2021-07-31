@@ -93,24 +93,17 @@ variables.
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); vns
-2-element Vector{VarName{:x, Setfield.IndexLens{Tuple{Colon, Int64}}}}:
- x[:,1]
- x[:,2]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); vns[end]
+x[:,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns
-1×2 Matrix{VarName{:x, Setfield.IndexLens{Tuple{Int64, Int64}}}}:
- x[1,1]  x[1,2]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
+x[1,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns
-1×2 Matrix{VarName{:x, Setfield.ComposedLens{Setfield.IndexLens{Tuple{Colon}}, Setfield.IndexLens{Tuple{Int64, Int64}}}}}:
- x[:][1,1]  x[:][1,2]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
+x[:][1,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns
-3-element Vector{VarName{:x, Setfield.ComposedLens{Setfield.IndexLens{Tuple{Int64}}, Setfield.IndexLens{Tuple{Int64}}}}}:
- x[1][1]
- x[1][2]
- x[1][3]
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
+x[1][3]
 ```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
