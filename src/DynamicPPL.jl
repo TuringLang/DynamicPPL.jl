@@ -132,36 +132,4 @@ include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 
-# `tilde_assume`
-@deprecate(
-    tilde_assume(rng, context, sampler, right, left, vn, inds, vi),
-    tilde_assume(rng, context, sampler, right, left, vn, vi)
-)
-@deprecate(
-    tilde_assume(context, right, left, vn, inds, vi),
-    tilde_assume(context, right, left, vn, vi)
-)
-
-# `tilde_observe`
-@deprecate(
-    tilde_observe(context, right, left, vn, inds, vi),
-    tilde_observe(context, right, left, vn, vi)
-)
-# Need to specify the `sampler` type here to avoid clashing with
-# the deprecation above since they have the same number of arguments.
-@deprecate(
-    tilde_observe(context, sampler::AbstractSampler, right, left, inds, vi),
-    tilde_observe(context, sampler::AbstractSampler, right, left, vi)
-)
-
-# `dot_tilde_assume`
-@deprecate(
-    dot_tilde_assume(context, right, left, vns, inds, vi),
-    dot_tilde_assume(context, right, left, vns, vi)
-)
-@deprecate(
-    dot_tilde_assume(rng, context, sampler, right, left, vns, inds, vi),
-    dot_tilde_assume(rng, context, sampler, right, left, vns, vi)
-)
-
 end # module
