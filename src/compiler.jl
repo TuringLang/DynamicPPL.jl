@@ -423,9 +423,8 @@ function generate_dot_tilde_assume(left, right, vn)
     )
 end
 
-# TODO: Make PR to Setfield.jl to use `gensym` for the `lens` variable.
-# This seems like it should be the case anyways since it allows multiple
-# calls to `make_set` without any cost to the current functionality.
+# TODO: Replace with `setmacro` once https://github.com/jw3126/Setfield.jl/pull/156
+# has been merged.
 function make_set(lenstransform, ex::Expr; overwrite::Bool=false)
     @assert ex.head isa Symbol
     @assert length(ex.args) == 2
