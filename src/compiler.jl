@@ -371,17 +371,7 @@ function generate_tilde(left, right)
     end
 end
 
-function generate_tilde_assume(left::Symbol, right, vn)
-    return quote
-        $left = $(DynamicPPL.tilde_assume!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
-            __varinfo__,
-        )
-    end
-end
-
-function generate_tilde_assume(left::Expr, right, vn)
+function generate_tilde_assume(left, right, vn)
     expr = :(
         $left = $(DynamicPPL.tilde_assume!)(
             __context__,
@@ -390,7 +380,11 @@ function generate_tilde_assume(left::Expr, right, vn)
         )
     )
 
-    return remove_escape(setmacro(identity, expr; overwrite=true))
+    return if left isa Expr
+        AbstractPPL.drop_escape(make_set(identity, expr; overwrite=true))
+    else
+        return expr
+    end
 end
 
 """
@@ -405,7 +399,7 @@ function generate_dot_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption
     return quote
-        $vn = $(varname(left, true))
+        $vn = $(AbstractPPL.drop_escape(varname(left, true)))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
@@ -421,7 +415,10 @@ function generate_dot_tilde(left, right)
     end
 end
 
-function generate_dot_tilde_assume(left::Symbol, right, vn)
+function generate_dot_tilde_assume(left, right, vn)
+    # We don't need to use `Setfield.@set` here since
+    # `.=` is always going to be inplace + needs `left` to
+    # be something that supports `.=`.
     return :(
         $left .= $(DynamicPPL.dot_tilde_assume!)(
             __context__,
@@ -433,33 +430,10 @@ function generate_dot_tilde_assume(left::Symbol, right, vn)
     )
 end
 
-function generate_dot_tilde_assume(left::Expr, right, vn)
-    expr = :(
-        $left .= $(DynamicPPL.dot_tilde_assume!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_left_vns)(
-                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-            )...,
-            __varinfo__,
-        )
-    )
-
-    return remove_escape(setmacro(identity, expr; overwrite=true))
-end
-
-# HACK: This is unfortunate. It's a consequence of the fact that in
-# DynamicPPL we the entire function body. Instead we should be
-# more selective with our escape. Until that's the case, we remove them all.
-remove_escape(x) = x
-function remove_escape(expr::Expr)
-    Meta.isexpr(expr, :escape) && return remove_escape(expr.args[1])
-    return Expr(expr.head, map(x -> remove_escape(x), expr.args)...)
-end
-
 # TODO: Make PR to Setfield.jl to use `gensym` for the `lens` variable.
 # This seems like it should be the case anyways since it allows multiple
-# calls to `setmacro` without any cost to the current functionality.
-function setmacro(lenstransform, ex::Expr; overwrite::Bool=false)
+# calls to `make_set` without any cost to the current functionality.
+function make_set(lenstransform, ex::Expr; overwrite::Bool=false)
     @assert ex.head isa Symbol
     @assert length(ex.args) == 2
     ref, val = ex.args
@@ -473,7 +447,7 @@ function setmacro(lenstransform, ex::Expr; overwrite::Bool=false)
             $dst = $(Setfield.set)($obj, $lens_var, $val)
         end
     else
-        op = get_update_op(ex.head)
+        op = Setfield.get_update_op(ex.head)
         f = :($(Setfield._UpdateOp)($op, $val))
         quote
             $lens_var = ($lenstransform)($lens)
