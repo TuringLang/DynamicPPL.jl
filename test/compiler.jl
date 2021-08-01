@@ -239,7 +239,7 @@ end
         @model function testmodel_nonarray(x, y)
             s ~ InverseGamma(2, 3)
             m ~ Normal(0, √s)
-            for i in 2:length(x.a) - 1
+            for i in 2:(length(x.a) - 1)
                 x.a[i] ~ Normal(m, √s)
             end
 
@@ -258,12 +258,14 @@ end
             return (; s, m, x, y, z)
         end
 
-        m_nonarray = testmodel_nonarray(MyCoolStruct([missing, missing]), MyCoolStruct(missing));
+        m_nonarray = testmodel_nonarray(
+            MyCoolStruct([missing, missing]), MyCoolStruct(missing)
+        )
         result = m_nonarray()
-	@test !any(ismissing, result.x.a)
-	@test result.y.a !== missing
-	@test result.x.a[begin] < -10
-	@test result.x.a[end] > 10
+        @test !any(ismissing, result.x.a)
+        @test result.y.a !== missing
+        @test result.x.a[begin] < -10
+        @test result.x.a[end] > 10
 
         # Ensure that we can work with `Vector{Real}(undef, N)` which is the
         # reason why we're using `BangBang.prefermutation` in `src/compiler.jl`
