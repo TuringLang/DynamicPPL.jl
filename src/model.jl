@@ -94,6 +94,11 @@ function decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
 end
 
+"""
+    observations(model::Model)
+
+Alias for [`conditioned`](@ref).
+"""
 observations(model::Model) = conditioned(model)
 conditioned(model::Model) = conditioned(model.context)
 
