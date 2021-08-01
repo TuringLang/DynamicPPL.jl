@@ -104,6 +104,9 @@ export AbstractVarInfo,
     pointwise_loglikelihoods,
     condition,
     decondition,
+    contextualize,
+    observations,
+    conditioned,
     # Convenience macros
     @addlogprob!,
     @submodel
