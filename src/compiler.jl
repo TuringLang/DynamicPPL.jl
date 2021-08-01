@@ -374,7 +374,9 @@ function generate_tilde_assume(left, right, vn)
     )
 
     return if left isa Expr
-        AbstractPPL.drop_escape(Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true))
+        AbstractPPL.drop_escape(
+            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+        )
     else
         return expr
     end
