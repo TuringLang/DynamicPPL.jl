@@ -94,3 +94,37 @@ data = mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.), N), hcat, 1:2);
 ```julia; echo=false
 weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
 ```
+
+### `demo4`: loads of indexing
+
+```julia
+@model function demo4(n, ::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, n)
+    for i in eachindex(x)
+        x[i] ~ Normal(m, 1.0)
+    end
+end
+
+model_def = demo4
+data = (100_000, );
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+```julia
+@model function demo4_dotted(n, ::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, n)
+    x .~ Normal(m, 1.0)
+end
+
+model_def = demo4_dotted
+data = (100_000, );
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
