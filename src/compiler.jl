@@ -374,7 +374,7 @@ function generate_tilde_assume(left, right, vn)
     )
 
     return if left isa Expr
-        AbstractPPL.drop_escape(make_set(BangBang.prefermutation, expr; overwrite=true))
+        AbstractPPL.drop_escape(Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true))
     else
         return expr
     end
@@ -421,32 +421,6 @@ function generate_dot_tilde_assume(left, right, vn)
             __varinfo__,
         )
     )
-end
-
-# TODO: Replace with `setmacro` once https://github.com/jw3126/Setfield.jl/pull/156
-# has been merged.
-function make_set(lenstransform, ex::Expr; overwrite::Bool=false)
-    @assert ex.head isa Symbol
-    @assert length(ex.args) == 2
-    ref, val = ex.args
-    obj, lens = Setfield.parse_obj_lens(ref)
-    lens_var = gensym("lens")
-    dst = overwrite ? obj : gensym("_")
-    val = esc(val)
-    ret = if ex.head == :(=)
-        quote
-            $lens_var = ($lenstransform)($lens)
-            $dst = $(Setfield.set)($obj, $lens_var, $val)
-        end
-    else
-        op = Setfield.get_update_op(ex.head)
-        f = :($(Setfield._UpdateOp)($op, $val))
-        quote
-            $lens_var = ($lenstransform)($lens)
-            $dst = $(Setfield.modify)($f, $obj, $lens_var)
-        end
-    end
-    return ret
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
