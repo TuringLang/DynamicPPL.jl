@@ -28,6 +28,11 @@ macro mymodel2(ex)
     end
 end
 
+# Used to test sampling of immutable types.
+struct MyCoolStruct{T}
+    a::T
+end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
@@ -229,6 +234,51 @@ end
         @test haskey(vi.metadata, :x)
         vi = VarInfo(gdemo(x))
         @test haskey(vi.metadata, :x)
+
+        # Non-array variables
+        @model function testmodel_nonarray(x, y)
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, √s)
+            for i in 2:length(x.a) - 1
+                x.a[i] ~ Normal(m, √s)
+            end
+
+            # Dynamic indexing
+            x.a[begin] ~ Normal(-100.0, 1.0)
+            x.a[end] ~ Normal(100.0, 1.0)
+
+            # Immutable set
+            y.a ~ Normal()
+
+            # Dotted
+            z = Vector{Float64}(undef, 3)
+            z[1:2] .~ Normal()
+            z[end:end] .~ Normal()
+
+            return (; s, m, x, y, z)
+        end
+
+        m_nonarray = testmodel_nonarray(MyCoolStruct([missing, missing]), MyCoolStruct(missing));
+        result = m_nonarray()
+	@test !any(ismissing, result.x.a)
+	@test result.y.a !== missing
+	@test result.x.a[begin] < -10
+	@test result.x.a[end] > 10
+
+        # Ensure that we can work with `Vector{Real}(undef, N)` which is the
+        # reason why we're using `BangBang.prefermutation` in `src/compiler.jl`
+        # rather than the default from Setfield.jl.
+        # Related: https://github.com/jw3126/Setfield.jl/issues/157
+        @model function vdemo()
+            x = Vector{Real}(undef, 10)
+            for i in eachindex(x)
+                x[i] ~ Normal(0, sqrt(4))
+            end
+
+            return x
+        end
+        x = vdemo()()
+        @test all((isassigned(x, i) for i in eachindex(x)))
     end
     @testset "nested model" begin
         function makemodel(p)
