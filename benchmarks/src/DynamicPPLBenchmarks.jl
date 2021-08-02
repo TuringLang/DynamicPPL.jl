@@ -151,6 +151,7 @@ function weave_benchmarks(
     name=default_name(; include_commit_id=include_commit_id),
     name_old=nothing,
     include_typed_code=false,
+    seconds=10,
     doctype="github",
     outpath="results/$(name)/",
     kwargs...,
@@ -159,6 +160,7 @@ function weave_benchmarks(
         :benchmarkbody => benchmarkbody,
         :name => name,
         :include_typed_code => include_typed_code,
+        :seconds => seconds
     )
     if !isnothing(name_old)
         args[:name_old] = name_old
@@ -167,5 +169,7 @@ function weave_benchmarks(
     mkpath(outpath)
     return Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
 end
+
+include("tables.jl")
 
 end # module

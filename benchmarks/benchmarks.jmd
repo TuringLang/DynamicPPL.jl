@@ -1,18 +1,19 @@
-# Benchmarks
+`j display("text/markdown", "## $(WEAVE_ARGS[:name]) ##")`
 
-## Setup
+### Setup ###
 
 ```julia
 using BenchmarkTools, DynamicPPL, Distributions, Serialization
 ```
 
 ```julia
-import DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
+using DynamicPPLBenchmarks
+using DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
 ```
 
-## Models
+### Models ###
 
-### `demo1`
+#### `demo1` ####
 
 ```julia
 @model function demo1(x)
@@ -23,14 +24,14 @@ import DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
 end
 
 model_def = demo1;
-data = 1.0;
+data = (1.0, );
 ```
 
 ```julia; results="markup"; echo=false
 weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
 ```
 
-### `demo2`
+#### `demo2` ####
 
 ```julia
 @model function demo2(y) 
@@ -46,14 +47,14 @@ weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
 end
 
 model_def = demo2;
-data = rand(0:1, 10);
+data = (rand(0:1, 10), );
 ```
 
 ```julia; results="markup"; echo=false
 weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
 ```
 
-### `demo3`
+#### `demo3` ####
 
 ```julia
 @model function demo3(x)
@@ -88,9 +89,92 @@ N = 30
 μs = [-3.5, 0.0]
 
 # Construct the data points.
-data = mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.), N), hcat, 1:2);
+data = (mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.), N), hcat, 1:2), );
 ```
 
 ```julia; echo=false
 weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+#### `demo4`: lots of variables
+
+```julia
+@model function demo4_1k(::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, 1_000)
+    for i in eachindex(x)
+        x[i] ~ Normal(m, 1.0)
+    end
+end
+
+model_def = demo4_1k
+data = ();
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+```julia
+@model function demo4_10k(::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, 10_000)
+    for i in eachindex(x)
+        x[i] ~ Normal(m, 1.0)
+    end
+end
+
+model_def = demo4_10k
+data = ();
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+```julia
+@model function demo4_100k(::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, 100_000)
+    for i in eachindex(x)
+        x[i] ~ Normal(m, 1.0)
+    end
+end
+
+model_def = demo4_100k
+data = ();
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+
+#### `demo4_dotted`: `.~` for large number of variables
+
+```julia
+@model function demo4_100k_dotted(::Type{TV}=Vector{Float64}) where {TV}
+    m ~ Normal()
+    x = TV(undef, 100_000)
+    x .~ Normal(m, 1.0)
+end
+
+model_def = demo4_100k_dotted
+data = ();
+```
+
+```julia; echo=false
+weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+```
+
+```julia; echo=false
+if haskey(WEAVE_ARGS, :name_old)
+    display(MIME"text/markdown"(), "## Comparison with $(WEAVE_ARGS[:name_old]) ##")
+end
+```
+
+```julia; echo=false; displaysize=(30, 200)
+if haskey(WEAVE_ARGS, :name_old)
+    DynamicPPLBenchmarks.judgementtable(WEAVE_ARGS[:name], WEAVE_ARGS[:name_old])
+end
 ```

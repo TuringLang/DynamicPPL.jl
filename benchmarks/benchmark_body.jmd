@@ -1,22 +1,29 @@
 ```julia
-@time model_def(data)();
+@time model_def(data...)();
 ```
 
 ```julia
-m = time_model_def(model_def, data);
+m = time_model_def(model_def, data...);
 ```
 
 ```julia
 suite = make_suite(m);
-results = run(suite)
-results
+results = run(suite, seconds=WEAVE_ARGS[:seconds]);
+```
+
+```julia; displaysize=(100, 300)
+results["evaluation_untyped"]
+```
+
+```julia; displaysize=(100, 300)
+results["evaluation_typed"]
 ```
 
 ```julia; echo=false; results="hidden";
 BenchmarkTools.save(joinpath("results", WEAVE_ARGS[:name], "$(m.name)_benchmarks.json"), results)
 ```
 
-```julia; wrap=false
+```julia; wrap=false; echo=false
 if WEAVE_ARGS[:include_typed_code]
     typed = typed_code(m)
 end
@@ -30,7 +37,7 @@ end
 ```
 
 ```julia; wrap=false; echo=false;
-if haskey(WEAVE_ARGS, :name_old)
+if WEAVE_ARGS[:include_typed_code] && haskey(WEAVE_ARGS, :name_old)
     # We want to compare the generated code to the previous version.
     import DiffUtils
     typed_old = deserialize(joinpath("results", WEAVE_ARGS[:name_old], "$(m.name).jls"));
