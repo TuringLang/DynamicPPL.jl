@@ -68,7 +68,6 @@ export AbstractVarInfo,
     vectorize,
     # Model
     Model,
-    ContextualModel,
     getmissings,
     getargnames,
     generated_quantities,
