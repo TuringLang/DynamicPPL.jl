@@ -460,7 +460,7 @@ Any[]
 ```
 """
 function conditioned(context::AbstractContext)
-    conditioned(NodeTrait(conditioned, context), context)
+    return conditioned(NodeTrait(conditioned, context), context)
 end
 conditioned(::IsLeaf, context) = ()
 conditioned(::IsParent, context) = conditioned(childcontext(context))

@@ -189,7 +189,8 @@ function tilde_observe(context::MiniBatchContext, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.context, sampler, right, left, vname, vi)
+    return context.loglike_scalar *
+           tilde_observe(context.context, sampler, right, left, vname, vi)
 end
 
 # `PrefixContext`
