@@ -284,3 +284,15 @@ function generated_quantities(model::Model, chain::AbstractChains)
         model(varinfo)
     end
 end
+
+function generated_quantities(model::Model, par::NamedTuple)
+    varinfo = VarInfo(model)
+    setval_and_resample!(varinfo, values(par), keys(par))
+    return model(varinfo)
+end
+
+function generated_quantities(model::Model, values, keys)
+    varinfo = VarInfo(model)
+    setval_and_resample!(varinfo, values, keys)
+    return model(varinfo)
+end
