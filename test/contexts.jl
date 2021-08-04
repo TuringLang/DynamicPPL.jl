@@ -1,5 +1,14 @@
 using Test, DynamicPPL
-using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext, NodeTrait, IsLeaf, IsParent, PointwiseLikelihoodContext
+using DynamicPPL:
+    leafcontext,
+    setleafcontext,
+    childcontext,
+    setchildcontext,
+    AbstractContext,
+    NodeTrait,
+    IsLeaf,
+    IsParent,
+    PointwiseLikelihoodContext
 
 struct ParentContext{C<:AbstractContext} <: AbstractContext
     context::C
@@ -11,18 +20,14 @@ DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
 Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
 
 @testset "contexts.jl" begin
-    child_contexts = [
-        DefaultContext(),
-        PriorContext(),
-        LikelihoodContext(),
-    ]
+    child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 
     parent_contexts = [
         ParentContext(DefaultContext()),
         SamplingContext(),
         MiniBatchContext(DefaultContext(), 0.0),
         PrefixContext{:x}(DefaultContext()),
-        PointwiseLikelihoodContext()
+        PointwiseLikelihoodContext(),
     ]
 
     contexts = vcat(child_contexts, parent_contexts)
@@ -60,18 +65,21 @@ Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c
 
         @testset "$context" for context in parent_contexts
             # Leaf contexts.
-            new_leaf = leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
+            new_leaf =
+                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
             @test leafcontext(setleafcontext(context, new_leaf)) === new_leaf
 
             # Setting parent contexts as "leaf" means that the new leaf should be
             # the leaf of the parent context we just set as the leaf.
-            new_leaf = ParentContext((leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()))
+            new_leaf = ParentContext((
+                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
+            ))
             @test leafcontext(setleafcontext(context, new_leaf)) === leafcontext(new_leaf)
         end
     end
 
     # `IsParent` interface.
-    @testset "childcontext" begin        
+    @testset "childcontext" begin
         @testset "$context" for context in parent_contexts
             @test childcontext(context) isa AbstractContext
         end
@@ -81,13 +89,16 @@ Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c
         @testset "nested contexts" begin
             # Both of the following should result in the same context.
             context1 = ParentContext(ParentContext(ParentContext()))
-            context2 = setchildcontext(ParentContext(), setchildcontext(ParentContext(), ParentContext()))
+            context2 = setchildcontext(
+                ParentContext(), setchildcontext(ParentContext(), ParentContext())
+            )
             @test context1 === context2
         end
 
         @testset "$context" for context in parent_contexts
             # Setting the child context to a leaf should now change the `leafcontext` accordingly.
-            new_leaf = leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
+            new_leaf =
+                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
             new_context = setchildcontext(context, new_leaf)
             @test childcontext(new_context) === leafcontext(new_context) === new_leaf
         end
