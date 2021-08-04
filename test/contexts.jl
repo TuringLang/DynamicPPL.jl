@@ -213,9 +213,6 @@ end
                     for vn_child in varnames(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
                         @test hasvalue_nested(context, vn_child)
-                        if !hasvalue_nested(context, vn_child)
-                            @info "" context vn_child
-                        end
                         # Value should be the same as extracted above.
                         @test getvalue_nested(context, vn_child) ===
                               DynamicPPL._getindex(val, vn_child.indexing)
