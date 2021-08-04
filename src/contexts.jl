@@ -317,6 +317,9 @@ getvalue(context::ConditionContext, vn) = _getvalue(context.values, vn)
     hasvalue_nested(context, vn)
 
 Return `true` if `vn` is found in `context` or any of its descendants.
+
+This is contrast to [`hasvalue`](@ref) which only checks for `vn` in `context`,
+not recursively checking if `vn` is in any of its descendants.
 """
 function hasvalue_nested(context::AbstractContext, vn)
     return hasvalue_nested(NodeTrait(hasvalue_nested, context), context, vn)
@@ -333,6 +336,9 @@ end
     getvalue_nested(context, vn)
 
 Return the value of the parameter corresponding to `vn` from `context` or its descendants.
+
+This is contrast to [`getvalue`](@ref) which only returns the value `vn` in `context`,
+not recursively looking into its descendants.
 """
 function getvalue_nested(context::AbstractContext, vn)
     return getvalue_nested(NodeTrait(getvalue_nested, context), context, vn)
