@@ -1,7 +1,5 @@
 # Fallback traits
 # TODO: Should this instead be `NoChildren()`, `HasChild()`, etc. so we allow plural too, e.g. `HasChildren()`?
-struct IsLeaf end
-struct IsParent end
 
 """
     NodeTrait(context)
@@ -16,7 +14,21 @@ The officially supported traits are:
   - [`childcontext`](@ref)
   - [`setchildcontext`](@ref)
 """
+abstract type NodeTrait end
 NodeTrait(_, context) = NodeTrait(context)
+
+"""
+    IsLeaf
+
+Specifies that the context is a leaf in the context-tree.
+"""
+struct IsLeaf <: NodeTrait end
+"""
+    IsParent
+
+Specifies that the context is a parent in the context-tree.
+"""
+struct IsParent <: NodeTrait end
 
 """
     childcontext(context)
