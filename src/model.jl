@@ -102,7 +102,6 @@ Alias for [`conditioned`](@ref).
 observations(model::Model) = conditioned(model)
 conditioned(model::Model) = conditioned(model.context)
 
-
 """
     (model::Model)([rng, varinfo, sampler, context])
 
