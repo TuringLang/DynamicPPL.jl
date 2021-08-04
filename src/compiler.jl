@@ -38,7 +38,7 @@ function isassumption(expr::Union{Symbol,Expr})
                    $(DynamicPPL.inmissings)($vn, __model__)
                     true
                 else
-                    $expr === missing
+                    $(maybe_view(expr)) === missing
                 end
             else
                 false
