@@ -288,41 +288,67 @@ childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
-    getvalue(context, vn)
+    hasvalue(context, vn)
 
-Return the value of the parameter corresponding to `vn` from `context`.
-If `context` does not contain the value for `vn`, then `nothing` is returned,
-e.g. [`DefaultContext`](@ref) will always return `nothing`.
+Return `true` if `vn` is found in `context`.
 """
-getvalue(::IsLeaf, context, vn) = nothing
-getvalue(::IsParent, context, vn) = getvalue(childcontext(context), vn)
-getvalue(context::AbstractContext, vn) = getvalue(NodeTrait(getvalue, context), context, vn)
-getvalue(context::PrefixContext, vn) = getvalue(childcontext(context), prefix(context, vn))
+hasvalue(context, vn) = false
 
-function getvalue(context::ConditionContext, vn)
-    return if hasvalue(context, vn)
-        _getvalue(context.values, vn)
-    else
-        getvalue(childcontext(context), vn)
-    end
-end
-
-# General implementations of `haskey`.
-hasvalue(::IsLeaf, context, vn) = false
-hasvalue(::IsParent, context, vn) = hasvalue(childcontext(context), vn)
-hasvalue(context::AbstractContext, vn) = hasvalue(NodeTrait(context), context, vn)
-
-# Specific to `ConditionContext`.
 function hasvalue(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
-    # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
 end
-
 function hasvalue(
     context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}
 ) where {vars,sym}
-    # TODO: Add possibility of indexed variables, e.g. `x[1]`, etc.
     return sym in vars
+end
+
+"""
+    getvalue(context, vn)
+
+Return value of `vn` in `context`.
+"""
+function getvalue(context::AbstractContext, vn)
+    return error("context $(context) does not contain value for $vn")
+end
+getvalue(context::ConditionContext, vn) = _getvalue(context.values, vn)
+
+"""
+    hasvalue_nested(context, vn)
+
+Return `true` if `vn` is found in `context` or any of its descendants.
+"""
+function hasvalue_nested(context::AbstractContext, vn)
+    return hasvalue_nested(NodeTrait(hasvalue_nested, context), context, vn)
+end
+hasvalue_nested(::IsLeaf, context, vn) = hasvalue(context, vn)
+function hasvalue_nested(::IsParent, context, vn)
+    return hasvalue(context, vn) || hasvalue_nested(childcontext(context), vn)
+end
+function hasvalue_nested(context::PrefixContext, vn)
+    return hasvalue_nested(childcontext(context), prefix(context, vn))
+end
+
+"""
+    getvalue_nested(context, vn)
+
+Return the value of the parameter corresponding to `vn` from `context` or its descendants.
+"""
+function getvalue_nested(context::AbstractContext, vn)
+    return getvalue_nested(NodeTrait(getvalue_nested, context), context, vn)
+end
+function getvalue_nested(::IsLeaf, context, vn)
+    return error("context $(context) does not contain value for $vn")
+end
+function getvalue_nested(context::PrefixContext, vn)
+    return getvalue_nested(childcontext(context), prefix(context, vn))
+end
+function getvalue_nested(::IsParent, context, vn)
+    return if hasvalue(context, vn)
+        getvalue(context, vn)
+    else
+        getvalue_nested(childcontext(context), vn)
+    end
 end
 
 """
