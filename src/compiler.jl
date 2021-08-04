@@ -501,7 +501,13 @@ function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
+    return matchingvalue(NodeTrait(matchingvalue, context), context, vi, value)
+end
+function matchingvalue(::IsLeaf, context::AbstractContext, vi, value)
     return matchingvalue(SampleFromPrior(), vi, value)
+end
+function matchingvalue(::IsParent, context::AbstractContext, vi, value)
+    return matchingvalue(childcontext(context), vi, value)
 end
 function matchingvalue(context::SamplingContext, vi, value)
     return matchingvalue(context.sampler, vi, value)
