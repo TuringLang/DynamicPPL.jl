@@ -285,12 +285,74 @@ function generated_quantities(model::Model, chain::AbstractChains)
     end
 end
 
+"""
+    generated_quantities(model::Model, par::NamedTuple)
+
+Execute `model` for a single parameter set defined as a NamedTuple and return the values
+returned by the `model`.
+
+# Example
+```jldoctest
+julia> using DynamicPPL, Turing
+
+julia> @model function demo(xs)
+           s ~ InverseGamma(2, 3)
+           m_shifted ~ Normal(10, √s)
+           m = m_shifted - 10
+
+           for i in eachindex(xs)
+               xs[i] ~ Normal(m, √s)
+           end
+
+           return (m, )
+       end
+demo (generic function with 1 method)
+
+julia> model = demo(randn(10));
+
+julia> par = (; s = 1.0, m_shifted=10);
+
+julia> generated_quantities(model, par)
+(0.0,)
+```
+"""
 function generated_quantities(model::Model, par::NamedTuple)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values(par), keys(par))
     return model(varinfo)
 end
 
+"""
+    generated_quantities(model::Model, values, keys)
+
+Execute `model` for a single parameter set defined as two seperate Tuple containing parameter values and names respectively and return the values
+returned by the `model`.
+
+# Example
+```jldoctest
+julia> using DynamicPPL, Turing
+
+julia> @model function demo(xs)
+           s ~ InverseGamma(2, 3)
+           m_shifted ~ Normal(10, √s)
+           m = m_shifted - 10
+
+           for i in eachindex(xs)
+               xs[i] ~ Normal(m, √s)
+           end
+
+           return (m, )
+       end
+demo (generic function with 1 method)
+
+julia> model = demo(randn(10));
+
+julia> par = (; s = 1.0, m_shifted=10);
+
+julia> generated_quantities(model, values(par), keys(par))
+(0.0,)
+```
+"""
 function generated_quantities(model::Model, values, keys)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values, keys)
