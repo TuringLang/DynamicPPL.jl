@@ -90,6 +90,21 @@ left-hand side of a `.~` expression such as `x .~ Normal()`.
 
 This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
 variables.
+
+# Example
+```jldoctest; setup=:(using Distributions)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); string(vns[end])
+"x[:,2]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); string(vns[end])
+"x[:][1,2]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); string(vns[end])
+"x[1][3]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2, 3), @varname(x)); string(vns[end])
+"x[1,2,3]"
+```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
 function unwrap_right_left_vns(right::NamedDist, left, vns)
@@ -98,8 +113,12 @@ end
 function unwrap_right_left_vns(
     right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
 )
+    # This an expression such as `x .~ MvNormal()` which we interpret as
+    #     x[:, i] ~ MvNormal()
+    # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
+    # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return VarName(vn, (vn.indexing..., (Colon(), i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
