@@ -286,7 +286,8 @@ function generated_quantities(model::Model, chain::AbstractChains)
 end
 
 """
-    generated_quantities(model::Model, par::NamedTuple)
+    generated_quantities(model::Model, parameters::NamedTuple)
+    generated_quantities(model::Model, values, keys)
     generated_quantities(model::Model, values, keys)
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
