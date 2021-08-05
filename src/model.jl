@@ -293,7 +293,7 @@ returned by the `model`.
 
 # Example
 ```jldoctest
-julia> using DynamicPPL, Turing
+julia> using DynamicPPL, Distributions
 
 julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
@@ -330,7 +330,7 @@ returned by the `model`.
 
 # Example
 ```jldoctest
-julia> using DynamicPPL, Turing
+julia> using DynamicPPL, Distributions
 
 julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
