@@ -17,8 +17,11 @@ The major differences between this and `TypedVarInfo` are:
    b) the values have been specified with the corret shapes.
 
 # Examples
-```jldoctest; setup=:(using Distributions, Random)
+```jldoctest; setup=:(using Distributions)
+julia> using StableRNGs
+
 julia> @model function demo()
+           m ~ Normal()
            x = Vector{Float64}(undef, 2)
            for i in eachindex(x)
                x[i] ~ Normal()
@@ -29,59 +32,46 @@ demo (generic function with 1 method)
 
 julia> m = demo();
 
-julia> ctx = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext());
+julia> rng = StableRNG(42);
 
-julia> # Notice how the resulting `vi` has keys `(var"x[1]", var"x[2]")`
-       # and thus accessing these values will be type-unstable and slower.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo(), ctx); vi
-SimpleVarInfo{NamedTuple{(Symbol("x[1]"), Symbol("x[2]")), Tuple{Float64, Float64}}, Float64}((x[1] = 0.14447203090358265, x[2] = 0.21780448216717593), -1.8720325464921044)
+julia> ### Sampling ###
+       ctx = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext());
 
-julia> # (×) SLOW!!!
-       DynamicPPL.getval(vi, @varname(x[1]))
-0.14447203090358265
-
-julia> # In addtion, we can only access varnames as they appear in the model!
-       DynamicPPL.getval(vi, @varname(x))
-ERROR: type NamedTuple has no field x
-[...]
-
-julia> julia> DynamicPPL.getval(vi, @varname(x[1:2]))
-ERROR: type NamedTuple has no field x[1:2]
-[...]
-
-julia> # In contrast, if we provide the container for `x`, the `vi` now only
-       # has the key `x` and we access parts of it using indices.
+julia> # In the `NamedTuple` version we need to provide the place-holder values for
+       # the variablse which are using "containers", e.g. `Array`.
+       # In this case, this means that we need to specify `x` but not `m`.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
-SimpleVarInfo{NamedTuple{(:x,), Tuple{Vector{Float64}}}, Float64}((x = [-0.6538238172778861, 0.10742338922309654],), -2.0573897507053474)
+SimpleVarInfo{NamedTuple{(:x, :m), Tuple{Vector{Float64}, Float64}}, Float64}((x = [1.6642061055583879, 1.796319600944139], m = -0.16796295277202952), -5.769094411622931)
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
--0.6538238172778861
+1.6642061055583879
 
 julia> # We can also access arbitrary varnames pointing to `x`, e.g.
        DynamicPPL.getval(vi, @varname(x))
 2-element Vector{Float64}:
- -0.6538238172778861
-  0.10742338922309654
+ 1.6642061055583879
+ 1.796319600944139
 
 julia> DynamicPPL.getval(vi, @varname(x[1:2]))
 2-element view(::Vector{Float64}, 1:2) with eltype Float64:
- -0.6538238172778861
-  0.10742338922309654
+ 1.6642061055583879
+ 1.796319600944139
 
-julia> # The better way to handle sampling of variables involving indexing
-       # if one does not know the varnames, is to use a `Dict` as the container instead.
-       # Notice that here the keys are the same as for the `SimpleVarInfo()` scenario, i.e. 
-       # how they appear in the model.
+julia> # (×) If we don't provide the container...
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo(), ctx); vi
+ERROR: type NamedTuple has no field x
+[...]
+
+julia> # If one does not know the varnames, we can use a `Dict` instead.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx); vi
-SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => 1.1292246244328437, x[2] => -1.382335836121636), -3.4308773745351453)
+SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => 1.192696983568277, x[2] => 0.4914514300738121, m => 0.25572200616753643), -3.6215377732004237)
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
-1.1292246244328437
+1.192696983568277
 
-julia> # And as in the `SimpleVarInfo()` case, we cannot access varnames that does
-       # not directly appear in the model.
+julia> # In addtion, we can only access varnames as they appear in the model!
        DynamicPPL.getval(vi, @varname(x))
 ERROR: KeyError: key x not found
 [...]
@@ -136,24 +126,15 @@ end
 function _getvalue(nt::NamedTuple, ::Val{sym}, inds=()) where {sym}
     # Use `getproperty` instead of `getfield`
     value = getproperty(nt, sym)
+    # Note that this will return a `view`, even if the resulting value is 0-dim.
+    # This makes it possible to call `setindex!` on the result later to update
+    # in place even in the case where are retrieving a single element, e.g. `x[1]`.
     return _getindex(value, inds)
 end
 
 # `NamedTuple`
-function getval(vi::SimpleVarInfo, vn::VarName{sym}) where {sym}
-    # If `sym` is found in `vi.θ` we assume it will be of correct
-    # shape to support `getindex` for `vn.indexing`.
-    # If `sym` is NOT found in `vi.θ`, we try `Symbol(vn)`.
-    # This means that we support both the following cases:
-    # 1. `x[1]` has been provided by the user and can be assumed to be
-    #   of shape that allows us to call `_getvalue` on it.
-    # 2. `x[1]` was not provided by the user, e.g. possibly obtained by
-    #   sampling with a `SimpleVarInfo` which then produced the key `var"x[1]"`.
-    return if haskey(vi.θ, sym)
-        maybe_unwrap_view(_getvalue(vi.θ, Val{sym}(), vn.indexing))
-    else
-        getproperty(vi.θ, Symbol(vn))
-    end
+function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}) where {sym}
+    return maybe_unwrap_view(_getvalue(vi.θ, Val{sym}(), vn.indexing))
 end
 
 # `Dict`
@@ -204,14 +185,12 @@ function push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    # If the key is already there, we try to update in place.
-    return if haskey(vi.θ, sym)
-        current = _getvalue(vi.θ, Val{sym}(), vn.indexing)
-        current .= value
-        vi
-    else
-        @set vi.θ = merge(vi.θ, NamedTuple{(Symbol(vn),)}((value,)))
-    end
+    # We update in place.
+    # We need a view into the array, hence we call `_getvalue` directly
+    # rather than `getval`.
+    current = _getvalue(vi.θ, Val{sym}(), vn.indexing)
+    current .= value
+    return vi
 end
 
 # `Dict`
