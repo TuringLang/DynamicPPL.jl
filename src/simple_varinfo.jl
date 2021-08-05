@@ -6,13 +6,90 @@ using Setfield
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
 
-Currently only implemented for `NT <: NamedTuple`.
+Currently only implemented for `NT<:NamedTuple` and `NT<:Dict`.
 
-## Notes
+# Notes
 The major differences between this and `TypedVarInfo` are:
 1. `SimpleVarInfo` does not require linearization.
 2. `SimpleVarInfo` can use more efficient bijectors.
-3. `SimpleVarInfo` only supports evaluation.
+3. `SimpleVarInfo` is only type-stable if `NT<:NamedTuple` and either
+   a) no indexing is used in tilde-statements, or
+   b) the values have been specified with the corret shapes.
+
+# Examples
+```jldoctest; setup=:(using Distributions, Random)
+julia> @model function demo()
+           x = Vector{Float64}(undef, 2)
+           for i in eachindex(x)
+               x[i] ~ Normal()
+           end
+           return x
+       end
+demo (generic function with 1 method)
+
+julia> m = demo();
+
+julia> ctx = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext());
+
+julia> # Notice how the resulting `vi` has keys `(var"x[1]", var"x[2]")`
+       # and thus accessing these values will be type-unstable and slower.
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo(), ctx); vi
+SimpleVarInfo{NamedTuple{(Symbol("x[1]"), Symbol("x[2]")), Tuple{Float64, Float64}}, Float64}((x[1] = 0.14447203090358265, x[2] = 0.21780448216717593), -1.8720325464921044)
+
+julia> # (×) SLOW!!!
+       DynamicPPL.getval(vi, @varname(x[1]))
+0.14447203090358265
+
+julia> # In addtion, we can only access varnames as they appear in the model!
+       DynamicPPL.getval(vi, @varname(x))
+ERROR: type NamedTuple has no field x
+[...]
+
+julia> julia> DynamicPPL.getval(vi, @varname(x[1:2]))
+ERROR: type NamedTuple has no field x[1:2]
+[...]
+
+julia> # In contrast, if we provide the container for `x`, the `vi` now only
+       # has the key `x` and we access parts of it using indices.
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
+SimpleVarInfo{NamedTuple{(:x,), Tuple{Vector{Float64}}}, Float64}((x = [-0.6538238172778861, 0.10742338922309654],), -2.0573897507053474)
+
+julia> # (✓) Vroom, vroom! FAST!!!
+       DynamicPPL.getval(vi, @varname(x[1]))
+-0.6538238172778861
+
+julia> # We can also access arbitrary varnames pointing to `x`, e.g.
+       DynamicPPL.getval(vi, @varname(x))
+2-element Vector{Float64}:
+ -0.6538238172778861
+  0.10742338922309654
+
+julia> DynamicPPL.getval(vi, @varname(x[1:2]))
+2-element view(::Vector{Float64}, 1:2) with eltype Float64:
+ -0.6538238172778861
+  0.10742338922309654
+
+julia> # The better way to handle sampling of variables involving indexing
+       # if one does not know the varnames, is to use a `Dict` as the container instead.
+       # Notice that here the keys are the same as for the `SimpleVarInfo()` scenario, i.e. 
+       # how they appear in the model.
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx); vi
+SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => 1.1292246244328437, x[2] => -1.382335836121636), -3.4308773745351453)
+
+julia> # (✓) Sort of fast, but only possible at runtime.
+       DynamicPPL.getval(vi, @varname(x[1]))
+1.1292246244328437
+
+julia> # And as in the `SimpleVarInfo()` case, we cannot access varnames that does
+       # not directly appear in the model.
+       DynamicPPL.getval(vi, @varname(x))
+ERROR: KeyError: key x not found
+[...]
+
+julia> julia> DynamicPPL.getval(vi, @varname(x[1:2]))
+ERROR: KeyError: key x[1:2] not found
+[...]
+```
 """
 struct SimpleVarInfo{NT,T} <: AbstractVarInfo
     θ::NT
@@ -73,7 +150,7 @@ function getval(vi::SimpleVarInfo, vn::VarName{sym}) where {sym}
     # 2. `x[1]` was not provided by the user, e.g. possibly obtained by
     #   sampling with a `SimpleVarInfo` which then produced the key `var"x[1]"`.
     return if haskey(vi.θ, sym)
-        _getvalue(vi.θ, Val{sym}(), vn.indexing)
+        maybe_unwrap_view(_getvalue(vi.θ, Val{sym}(), vn.indexing))
     else
         getproperty(vi.θ, Symbol(vn))
     end
@@ -117,9 +194,16 @@ function push!!(
     @set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
 end
 function push!!(
-    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName, value, dist::Distribution, gidset::Set{Selector}
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}, value, dist::Distribution, gidset::Set{Selector}
 ) where {sym}
-    @set vi.θ = merge(vi.θ, NamedTuple{(Symbol(vn),)}((value,)))
+    # If the key is already there, we try to update in place.
+    return if haskey(vi.θ, sym)
+        current = _getvalue(vi.θ, Val{sym}(), vn.indexing)
+        current .= value
+        vi
+    else
+        @set vi.θ = merge(vi.θ, NamedTuple{(Symbol(vn),)}((value,)))
+    end
 end
 
 # `Dict`
