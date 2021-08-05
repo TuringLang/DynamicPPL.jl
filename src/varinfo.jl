@@ -1511,5 +1511,8 @@ function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{Dict}) where {names}
 end
 
 function values_from_metadata(md::Metadata)
-    return (vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for vn in md.vns)
+    return (
+        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
+        vn in md.vns
+    )
 end

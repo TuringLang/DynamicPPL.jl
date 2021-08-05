@@ -189,12 +189,20 @@ end
 
 # `NamedTuple`
 function push!!(
-    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym,Tuple{}}, value, dist::Distribution, gidset::Set{Selector}
+    vi::SimpleVarInfo{<:NamedTuple},
+    vn::VarName{sym,Tuple{}},
+    value,
+    dist::Distribution,
+    gidset::Set{Selector},
 ) where {sym}
     @set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
 end
 function push!!(
-    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}, value, dist::Distribution, gidset::Set{Selector}
+    vi::SimpleVarInfo{<:NamedTuple},
+    vn::VarName{sym},
+    value,
+    dist::Distribution,
+    gidset::Set{Selector},
 ) where {sym}
     # If the key is already there, we try to update in place.
     return if haskey(vi.θ, sym)
@@ -207,7 +215,9 @@ function push!!(
 end
 
 # `Dict`
-function push!!(vi::SimpleVarInfo{<:Dict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function push!!(
+    vi::SimpleVarInfo{<:Dict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+)
     vi.θ[vn] = r
     return vi
 end
