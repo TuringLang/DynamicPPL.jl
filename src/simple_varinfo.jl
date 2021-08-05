@@ -21,30 +21,25 @@ end
 
 SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
-SimpleVarInfo{T}() where {T<:Real} = SimpleVarInfo{T}(nothing)
+SimpleVarInfo{T}() where {T<:Real} = SimpleVarInfo{T}(NamedTuple())
 SimpleVarInfo() = SimpleVarInfo{Float64}()
 
-# Interaction with `VarInfo`
-SimpleVarInfo(vi::TypedVarInfo) = SimpleVarInfo{eltype(getlogp(vi))}(vi)
-function SimpleVarInfo{T}(vi::VarInfo{<:NamedTuple{names}}) where {T<:Real,names}
-    vals = map(names) do n
-        let md = getfield(vi.metadata, n)
-            x = map(enumerate(md.ranges)) do (i, r)
-                reconstruct(md.dists[i], md.vals[r])
-            end
-
-            # TODO: Doesn't support batches of `MultivariateDistribution`?
-            length(x) == 1 ? x[1] : x
-        end
-    end
-
-    return SimpleVarInfo{T}(NamedTuple{names}(vals))
-end
-
+# Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
 function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
     _, svi = DynamicPPL.evaluate(model, SimpleVarInfo{T}(), args...)
     return svi
+end
+
+# Constructor from `VarInfo`.
+function SimpleVarInfo(vi::TypedVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
+    return SimpleVarInfo{eltype(getlogp(vi))}(vi, D; kwargs...)
+end
+function SimpleVarInfo{T}(
+    vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
+) where {T<:Real,names,D}
+    values = values_as(vi, D)
+    return SimpleVarInfo{T}(values)
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp
@@ -67,9 +62,28 @@ function _getvalue(nt::NamedTuple, ::Val{sym}, inds=()) where {sym}
     return _getindex(value, inds)
 end
 
+# `NamedTuple`
 function getval(vi::SimpleVarInfo, vn::VarName{sym}) where {sym}
-    return _getvalue(vi.θ, Val{sym}(), vn.indexing)
+    # If `sym` is found in `vi.θ` we assume it will be of correct
+    # shape to support `getindex` for `vn.indexing`.
+    # If `sym` is NOT found in `vi.θ`, we try `Symbol(vn)`.
+    # This means that we support both the following cases:
+    # 1. `x[1]` has been provided by the user and can be assumed to be
+    #   of shape that allows us to call `_getvalue` on it.
+    # 2. `x[1]` was not provided by the user, e.g. possibly obtained by
+    #   sampling with a `SimpleVarInfo` which then produced the key `var"x[1]"`.
+    return if haskey(vi.θ, sym)
+        _getvalue(vi.θ, Val{sym}(), vn.indexing)
+    else
+        getproperty(vi.θ, Symbol(vn))
+    end
 end
+
+# `Dict`
+function getval(vi::SimpleVarInfo{<:Dict}, vn::VarName)
+    return vi.θ[vn]
+end
+
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
 getval(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = map(vn -> getval(vi, vn), vns)
@@ -96,15 +110,22 @@ function Base.eltype(
     return T
 end
 
+# `NamedTuple`
 function push!!(
-    vi::SimpleVarInfo{Nothing}, vn::VarName{sym,Tuple{}}, value, dist::Distribution
-) where {sym}
-    @set vi.θ = NamedTuple{(sym,)}((value,))
-end
-function push!!(
-    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym,Tuple{}}, value, dist::Distribution
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym,Tuple{}}, value, dist::Distribution, gidset::Set{Selector}
 ) where {sym}
     @set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
+end
+function push!!(
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName, value, dist::Distribution, gidset::Set{Selector}
+) where {sym}
+    @set vi.θ = merge(vi.θ, NamedTuple{(Symbol(vn),)}((value,)))
+end
+
+# `Dict`
+function push!!(vi::SimpleVarInfo{<:Dict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+    vi.θ[vn] = r
+    return vi
 end
 
 # Context implementations
