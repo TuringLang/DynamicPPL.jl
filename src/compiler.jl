@@ -64,7 +64,7 @@ end
 function contextual_isassumption(context::ConditionContext, vn)
     if hasvalue(context, vn)
         val = getvalue(context, vn)
-        # TODO: Do we even need the `>: Missing` to help the compiler?
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
         else
