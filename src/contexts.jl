@@ -358,8 +358,8 @@ function getvalue_nested(::IsParent, context, vn)
 end
 
 """
-    context([context::AbstractContext,] values::NamedTuple)
-    context([context::AbstractContext]; values...)
+    condition([context::AbstractContext,] values::NamedTuple)
+    condition([context::AbstractContext]; values...)
 
 Return `ConditionContext` with `values` and `context` if `values` is non-empty,
 otherwise return `context` which is [`DefaultContext`](@ref) by default.
@@ -371,6 +371,7 @@ condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
 condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
 condition(context::AbstractContext; values...) = condition(context, NamedTuple(values))
+
 """
     decondition(context::AbstractContext, syms...)
 
@@ -379,64 +380,6 @@ Return `context` but with `syms` no longer conditioned on.
 Note that this recursively traverses contexts, deconditioning all along the way.
 
 See also: [`condition`](@ref)
-
-# Examples
-```jldoctest
-julia> using DynamicPPL: AbstractContext, leafcontext, setleafcontext, childcontext, setchildcontext
-
-julia> struct ParentContext{C} <: AbstractContext
-           context::C
-       end
-
-julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
-
-julia> DynamicPPL.childcontext(context::ParentContext) = context.context
-
-julia> DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
-
-julia> Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
-
-julia> ctx = DefaultContext()
-DefaultContext()
-
-julia> decondition(ctx) === ctx # this is a no-op
-true
-
-julia> ctx = condition(x = 1.0) # default "constructor" for `ConditionContext`
-ConditionContext((x = 1.0,), DefaultContext())
-
-julia> decondition(ctx) # `decondition` without arguments drops all conditioning
-DefaultContext()
-
-julia> # Nested conditioning is supported.
-       ctx_nested = condition(ParentContext(condition(y=2.0)), x=1.0)
-ConditionContext((x = 1.0,), ParentContext(ConditionContext((y = 2.0,), DefaultContext())))
-
-julia> # We can also specify which variables to drop.
-       decondition(ctx_nested, :x)
-ParentContext(ConditionContext((y = 2.0,), DefaultContext()))
-
-julia> # No matter the nested level.
-       decondition(ctx_nested, :y)
-ConditionContext((x = 1.0,), ParentContext(DefaultContext()))
-
-julia> # Or specify multiple at in one call.
-       decondition(ctx_nested, :x, :y)
-ParentContext(DefaultContext())
-
-julia> decondition(ctx_nested)
-ParentContext(DefaultContext())
-
-julia> # `Val` is also supported.
-       decondition(ctx_nested, Val(:x))
-ParentContext(ConditionContext((y = 2.0,), DefaultContext()))
-
-julia> decondition(ctx_nested, Val(:y))
-ConditionContext((x = 1.0,), ParentContext(DefaultContext()))
-
-julia> decondition(ctx_nested, Val(:x), Val(:y))
-ParentContext(DefaultContext())
-```
 """
 decondition(::IsLeaf, context, args...) = context
 function decondition(::IsParent, context, args...)
@@ -462,46 +405,12 @@ function decondition(context::ConditionContext, sym, syms...)
 end
 
 """
-    conditioned(model::Model)
     conditioned(context::AbstractContext)
 
-Return `NamedTuple` of values that are conditioned on under `model`/`context`.
+Return `NamedTuple` of values that are conditioned on under context`.
 
-# Examples
-```jldoctest
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-       end
-demo (generic function with 1 methods)
-
-julia> m = demo();
-
-julia> # Returns all the variables we have conditioned on + their values.
-       conditioned(condition(m, x=100.0, m=1.0))
-(x = 100.0, m = 1.0)
-
-julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(m=1.0))), x=100.0);
-
-julia> conditioned(cm)
-(x = 100.0, m = 1.0)
-
-julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
-       # `a.m` is treated as a random variable.
-       keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Tuple{}}}:
- a.m
-
-julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(var"a.m"=1.0))), x=100.0);
-
-julia> conditioned(cm)
-(x = 100.0, a.m = 1.0)
-
-julia> keys(VarInfo(cm)) # <= no variables are sampled
-Any[]
-```
+Note that this will recursively traverse the context stack and return
+a merged version of the condition values.
 """
 function conditioned(context::AbstractContext)
     return conditioned(NodeTrait(conditioned, context), context)
