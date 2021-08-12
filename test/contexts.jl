@@ -52,7 +52,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 Return `vn` but now with the prefix removed.
 """
 function remove_prefix(vn::VarName)
-    return VarName{Symbol(split(string(vn), DynamicPPL.PREFIX_SEPARATOR)[end])}(vn.indexing)
+    return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(vn.indexing)
 end
 
 """

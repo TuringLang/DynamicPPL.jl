@@ -328,6 +328,8 @@ Return `NamedTuple` of values that are conditioned on under `model`.
 
 # Examples
 ```jldoctest
+julia> using DynamicPPL: conditioned
+
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
