@@ -366,11 +366,11 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 
 See also: [`decondition`](@ref)
 """
-condition(; values...) = condition(DefaultContext(), (; values...))
+condition(; values...) = condition(DefaultContext(), NamedTuple(values))
 condition(values::NamedTuple) = condition(DefaultContext(), values)
 condition(context::AbstractContext, values::NamedTuple{()}) = context
 condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
-condition(context::AbstractContext; values...) = condition(context, (; values...))
+condition(context::AbstractContext; values...) = condition(context, NamedTuple(values))
 """
     decondition(context::AbstractContext, syms...)
 

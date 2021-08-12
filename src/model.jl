@@ -85,7 +85,7 @@ end
 
 Base.:|(model::Model, values) = condition(model, values)
 
-condition(model::Model; values...) = condition(model, (; values...))
+condition(model::Model; values...) = condition(model, NamedTuple(values))
 function condition(model::Model, values)
     return contextualize(model, condition(model.context, values))
 end
