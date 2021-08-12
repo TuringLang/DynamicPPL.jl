@@ -192,8 +192,8 @@ function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
 end
 
 # `PrefixContext`
-function tilde_observe(context::PrefixContext, right, left, vname, vi)
-    return tilde_observe(context.context, right, left, prefix(context, vname), vi)
+function tilde_observe(context::PrefixContext, right, left, vi)
+    return tilde_observe(context.context, right, left, vi)
 end
 
 """
