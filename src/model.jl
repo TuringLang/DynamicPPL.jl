@@ -119,7 +119,6 @@ julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reprodu
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
-
            return (; m, x)
        end
 demo (generic function with 1 method)
@@ -328,13 +327,15 @@ Return `NamedTuple` of values that are conditioned on under `model`.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL: conditioned
+julia> using Distributions
+
+julia> using DynamicPPL: conditioned, contextualize
 
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
        end
-demo (generic function with 1 methods)
+demo (generic function with 1 method)
 
 julia> m = demo();
 
