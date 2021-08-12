@@ -171,8 +171,6 @@ function tilde_observe(context::SamplingContext, right, left, vi)
 end
 
 # Leaf contexts
-# TODO: Should we maybe not do `args...` here but instead be explicit?
-# Could help avoid stealthy bugs.
 function tilde_observe(context::AbstractContext, args...)
     return tilde_observe(NodeTrait(tilde_observe, context), context, args...)
 end
@@ -194,8 +192,8 @@ function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
 end
 
 # `PrefixContext`
-function tilde_observe(context::PrefixContext, right, left, vi)
-    return tilde_observe(context.context, right, left, vi)
+function tilde_observe(context::PrefixContext, right, left, vname, vi)
+    return tilde_observe(context.context, right, left, prefix(context, vname), vi)
 end
 
 """
