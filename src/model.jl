@@ -159,7 +159,6 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m = Vector{TV}(undef, 2)
            m[1] ~ Normal()
            m[2] ~ Normal()
-
            return m
        end
 demo_mv (generic function with 2 methods)
@@ -204,7 +203,7 @@ demo_outer (generic function with 1 method)
 julia> model = demo_outer();
 
 julia> model(rng)
-0.683947930996541
+-0.7935128416361353
 
 julia> conditioned_model = model | (m = 1.0, );
 
@@ -225,7 +224,7 @@ julia> # This doesn't work now!
        conditioned_model = demo_outer_prefix() | (m = 1.0, );
 
 julia> conditioned_model(rng)
--1.019202452456547
+1.7747246334368165
 
 julia> # `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
        conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
@@ -278,7 +277,6 @@ julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reprodu
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
-
            return (; m, x)
        end
 demo (generic function with 1 method)
