@@ -119,7 +119,7 @@ julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reprodu
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
-           return (; m, x)
+           return (; m=m, x=x)
        end
 demo (generic function with 1 method)
 
@@ -233,8 +233,8 @@ julia> conditioned_model(rng)
 1.0
 
 julia> # Note that the above `var"..."` is just standard Julia syntax:
-       typeof((var"inner.m" = 1.0, ))
-NamedTuple{(Symbol("inner.m"),), Tuple{Float64}}
+       keys((var"inner.m" = 1.0, ))
+(Symbol("inner.m"),)
 ```
 
 The difference is maybe more obvious once we look at how these different
@@ -277,7 +277,7 @@ julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reprodu
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
-           return (; m, x)
+           return (; m=m, x=x)
        end
 demo (generic function with 1 method)
 
