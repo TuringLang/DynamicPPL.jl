@@ -273,6 +273,6 @@ function dot_assume(
     return value, lp, vi
 end
 
-# HACK: Allows us to re-use the impleemntation of `dot_tilde`, etc. for literals.
+# HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
 settrans!!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = vi
