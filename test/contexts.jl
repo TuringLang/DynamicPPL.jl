@@ -226,6 +226,13 @@ end
         end
     end
 
+    @testset "Evaluation" begin
+        @testset "$context" for context in contexts
+            # Just making sure that we can actually sample with each of the contexts.
+            @test (gdemo_default(SamplingContext(context)); true)
+        end
+    end
+
     @testset "PrefixContext" begin
         ctx = @inferred PrefixContext{:f}(
             PrefixContext{:e}(
