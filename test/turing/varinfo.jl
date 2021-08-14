@@ -187,7 +187,7 @@
         i, j, k = 1, 2, 3
 
         vn1 = @varname x[1]
-        @test vn1 == VarName(:x, ((1,),))
+        @test vn1 == VarName{:x}(((1,),))
 
         # Symbol
         v_sym = string(:x)

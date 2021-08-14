@@ -6,5 +6,5 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
 DynamicPPL = "0.13"
-Turing = "0.15, 0.16"
+Turing = "0.17"
 julia = "1.3"
