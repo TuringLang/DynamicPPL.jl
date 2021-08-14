@@ -14,8 +14,17 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
-_getindex(x, inds::Tuple) = _getindex(view(x, first(inds)...), Base.tail(inds))
+_getindex(x, inds::Tuple) = _getindex(Base.maybeview(x, first(inds)...), Base.tail(inds))
 _getindex(x, inds::Tuple{}) = x
+_getvalue(x, vn::VarName{sym}) where {sym} = _getindex(getproperty(x, sym), vn.indexing)
+function _getvalue(x, vns::AbstractVector{<:VarName{sym}}) where {sym}
+    val = getproperty(x, sym)
+
+    # This should work with both cartesian and linear indexing.
+    return map(vns) do vn
+        _getindex(val, vn)
+    end
+end
 
 # assume
 """
@@ -177,13 +186,14 @@ tilde_observe(::PriorContext, sampler, right, left, vi) = 0
 function tilde_observe(context::MiniBatchContext, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
-function tilde_observe(context::MiniBatchContext, right, left, vname, vi)
-    return context.loglike_scalar * tilde_observe(context.context, right, left, vname, vi)
+function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
+    return context.loglike_scalar *
+           tilde_observe(context.context, sampler, right, left, vname, vi)
 end
 
 # `PrefixContext`
-function tilde_observe(context::PrefixContext, right, left, vname, vi)
-    return tilde_observe(context.context, right, left, prefix(context, vname), vi)
+function tilde_observe(context::PrefixContext, right, left, vi)
+    return tilde_observe(context.context, right, left, vi)
 end
 
 """

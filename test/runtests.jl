@@ -57,7 +57,15 @@ include("test_util.jl")
             DocMeta.setdocmeta!(
                 DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
             )
-            doctest(DynamicPPL; manual=false)
+            doctestfilters = [
+                # Older versions will show "0 element Array" instead of "Type[]".
+                r"(Any\[\]|0-element Array{.+,[0-9]+})",
+                # Older versions will show "Array{...,1}" instead of "Vector{...}".
+                r"(Array{.+,\s?1}|Vector{.+})",
+                # Older versions will show "Array{...,2}" instead of "Matrix{...}".
+                r"(Array{.+,\s?2}|Matrix{.+})",
+            ]
+            doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
         end
     end
 
