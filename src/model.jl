@@ -608,7 +608,6 @@ julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
            m_shifted ~ Normal(10, √s)
            m = m_shifted - 10
-
            for i in eachindex(xs)
                xs[i] ~ Normal(m, √s)
            end
