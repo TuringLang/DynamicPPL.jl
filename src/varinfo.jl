@@ -1522,10 +1522,3 @@ function values_from_metadata(md::Metadata)
         vn in md.vns
     )
 end
-
-function values_from_metadata(md::Metadata)
-    return (
-        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
-        vn in md.vns
-    )
-end
