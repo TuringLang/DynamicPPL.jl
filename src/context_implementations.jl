@@ -144,22 +144,6 @@ end
 
 # observe
 """
-    tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
-
-Handle observed variables with a `context` associated with a sampler.
-
-Falls back to
-```julia
-tilde_observe(context.rng, context.context, context.sampler, right, left, vname, vinds, vi)
-```
-"""
-function tilde_observe(context::SamplingContext, right, left, vname, vinds, vi)
-    return tilde_observe(
-        context.rng, context.context, context.sampler, right, left, vname, vinds, vi
-    )
-end
-
-"""
     tilde_observe(context::SamplingContext, right, left, vi)
 
 Handle observed constants with a `context` associated with a sampler.
@@ -187,8 +171,7 @@ function tilde_observe(context::MiniBatchContext, right, left, vi)
     return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar *
-           tilde_observe(context.context, sampler, right, left, vname, vi)
+    return context.loglike_scalar * tilde_observe(context.context, sampler, right, left, vi)
 end
 
 # `PrefixContext`
