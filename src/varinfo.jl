@@ -1495,11 +1495,17 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
 end
 
 """
-    values_as(vi::TypedVarInfo, ::Type{NamedTuple})
-    values_as(vi::TypedVarInfo, ::Type{Dict})
+    values_as(vi::AbstractVarInfo, ::Type{NamedTuple})
+    values_as(vi::AbstractVarInfo, ::Type{Dict})
 
-Return values in `vi` as the specified type, e.g. `NamedTuple` is returned if
+Return values in `vi` as the specified type.
 """
+function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
+    iter = values_from_metadata(vi.metadata)
+    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
+end
+values_as(vi::UntypedVarInfo, ::Type{Dict}) = Dict(values_from_metadata(vi.metadata))
+
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
@@ -1508,6 +1514,13 @@ end
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{Dict}) where {names}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
     return Dict(iter)
+end
+
+function values_from_metadata(md::Metadata)
+    return (
+        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
+        vn in md.vns
+    )
 end
 
 function values_from_metadata(md::Metadata)

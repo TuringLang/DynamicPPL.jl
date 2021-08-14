@@ -276,3 +276,7 @@ end
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
 settrans!!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = vi
+
+values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.θ))
+values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.θ))
+values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.θ
