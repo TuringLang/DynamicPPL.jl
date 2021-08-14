@@ -13,6 +13,12 @@ function PointwiseLikelihoodContext(
     )
 end
 
+NodeTrait(::PointwiseLikelihoodContext) = IsParent()
+childcontext(context::PointwiseLikelihoodContext) = context.context
+function setchildcontext(context::PointwiseLikelihoodContext, child)
+    return PointwiseLikelihoodContext(context.loglikelihoods, child)
+end
+
 function Base.push!(
     context::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}},
     vn::VarName,
@@ -61,18 +67,6 @@ function Base.push!(
     return context.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(context::PointwiseLikelihoodContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, vn, inds, vi)
-end
-
-function dot_tilde_assume(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
-end
-
-function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
-    # Defer literal `observe` to child-context.
-    return tilde_observe!!(context.context, right, left, vi)
-end
 function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vinds, vi)
     # Need the `logp` value, so we cannot defer `acclogp!!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!!`.
@@ -84,10 +78,6 @@ function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, v
     return left, acclogp!!(vi, logp)
 end
 
-function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
-    # Defer literal `observe` to child-context.
-    return dot_tilde_observe!!(context.context, right, left, vi)
-end
 function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
