@@ -611,7 +611,6 @@ julia> @model function demo(xs)
            for i in eachindex(xs)
                xs[i] ~ Normal(m, √s)
            end
-
            return (m, )
        end
 demo (generic function with 1 method)
