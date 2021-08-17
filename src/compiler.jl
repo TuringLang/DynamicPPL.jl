@@ -19,18 +19,65 @@ function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
-        let $vn = $(AbstractPPL.drop_escape(varname(expr)))
-            # This branch should compile nicely in all cases except for partial missing data
-            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               $(DynamicPPL.inmissings)($vn, __model__)
-                true
+        let $vn = $(varname(expr))
+            if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+                # Considered an assumption by `__context__` which means either:
+                # 1. We hit the default implementation, e.g. using `DefaultContext`,
+                #    which in turn means that we haven't considered if it's one of
+                #    the model arguments, hence we need to check this.
+                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+                #    i.e. we're trying to condition one of the latent variables.
+                #    In this case, the below will return `true` since the first branch
+                #    will be hit.
+                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+                #    i.e. we're trying to override the value. This is currently NOT supported.
+                #    TODO: Support by adding context to model, and use `model.args`
+                #    as the default conditioning. Then we no longer need to check `inargnames`
+                #    since it will all be handled by `contextual_isassumption`.
+                if !($(DynamicPPL.inargnames)($vn, __model__)) ||
+                   $(DynamicPPL.inmissings)($vn, __model__)
+                    true
+                else
+                    $(maybe_view(expr)) === missing
+                end
             else
-                # Evaluate the LHS
-                $(maybe_view(expr)) === missing
+                false
             end
         end
     end
+end
+
+"""
+    contextual_isassumption(context, vn)
+
+Return `true` if `vn` is considered an assumption by `context`.
+
+The default implementation for `AbstractContext` always returns `true`.
+"""
+contextual_isassumption(::IsLeaf, context, vn) = true
+function contextual_isassumption(::IsParent, context, vn)
+    return contextual_isassumption(childcontext(context), vn)
+end
+function contextual_isassumption(context::AbstractContext, vn)
+    return contextual_isassumption(NodeTrait(context), context, vn)
+end
+function contextual_isassumption(context::ConditionContext, vn)
+    if hasvalue(context, vn)
+        val = getvalue(context, vn)
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return true
+        else
+            return false
+        end
+    end
+
+    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isassumption(childcontext(context), vn)
+end
+function contextual_isassumption(context::PrefixContext, vn)
+    return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
 
 # failsafe: a literal is never an assumption
@@ -353,6 +400,11 @@ function generate_tilde(left, right)
         if $isassumption
             $(generate_tilde_assume(left, right, vn))
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            end
+
             $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -399,6 +451,11 @@ function generate_dot_tilde(left, right)
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            end
+
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -519,7 +576,13 @@ function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
+    return matchingvalue(NodeTrait(matchingvalue, context), context, vi, value)
+end
+function matchingvalue(::IsLeaf, context::AbstractContext, vi, value)
     return matchingvalue(SampleFromPrior(), vi, value)
+end
+function matchingvalue(::IsParent, context::AbstractContext, vi, value)
+    return matchingvalue(childcontext(context), vi, value)
 end
 function matchingvalue(context::SamplingContext, vi, value)
     return matchingvalue(context.sampler, vi, value)
