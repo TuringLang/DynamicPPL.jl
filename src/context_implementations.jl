@@ -47,7 +47,7 @@ end
 function tilde_assume(context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), context, args...)
 end
-function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vinds, vi)
+function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vi)
     return assume(right, vn, vi)
 end
 function tilde_assume(::IsParent, context::AbstractContext, args...)
@@ -58,7 +58,7 @@ function tilde_assume(rng, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
 function tilde_assume(
-    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vinds, vi
+    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi
 )
     return assume(rng, sampler, right, vn, vi)
 end
@@ -111,11 +111,11 @@ function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, rig
     return assume(rng, sampler, NoDist(right), vn, vi)
 end
 
-function tilde_assume(context::PrefixContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, prefix(context, vn), inds, vi)
+function tilde_assume(context::PrefixContext, right, vn, vi)
+    return tilde_assume(context.context, right, prefix(context, vn), vi)
 end
-function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
+function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
+    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
 """
@@ -276,11 +276,11 @@ function dot_tilde_assume(rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
 end
 
-function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, inds, vi)
+function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
     return dot_assume(right, left, vns, vi)
 end
 function dot_tilde_assume(
-    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, inds, vi
+    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, vi
 )
     return dot_assume(rng, sampler, right, vns, left, vi)
 end

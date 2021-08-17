@@ -19,7 +19,7 @@ function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
-        let $vn = $(varname(expr))
+        let $vn = $(AbstractPPL.drop_escape(varname(expr)))
             if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
                 # Considered an assumption by `__context__` which means either:
                 # 1. We hit the default implementation, e.g. using `DefaultContext`,

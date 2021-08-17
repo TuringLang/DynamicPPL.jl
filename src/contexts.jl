@@ -311,7 +311,7 @@ Return value of `vn` in `context`.
 function getvalue(context::AbstractContext, vn)
     return error("context $(context) does not contain value for $vn")
 end
-getvalue(context::ConditionContext, vn) = _getvalue(context.values, vn)
+getvalue(context::ConditionContext, vn) = get(context.values, vn)
 
 """
     hasvalue_nested(context, vn)
