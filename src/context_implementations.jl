@@ -97,7 +97,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(context.vars,  vn))
+        vi[vn] = vectorize(right, get(context.vars, vn))
         settrans!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
