@@ -57,9 +57,7 @@ end
 function tilde_assume(rng, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(
-    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi
-)
+function tilde_assume(::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi)
     return assume(rng, sampler, right, vn, vi)
 end
 function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
@@ -99,7 +97,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(getfield(context.vars, getsym(vn)), vn.indexing))
+        vi[vn] = vectorize(right, get(context.vars,  vn))
         settrans!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -279,9 +277,7 @@ end
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
     return dot_assume(right, left, vns, vi)
 end
-function dot_tilde_assume(
-    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, vi
-)
+function dot_tilde_assume(::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, vi)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 

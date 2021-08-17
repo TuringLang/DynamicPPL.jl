@@ -65,7 +65,10 @@ e.g. `varnames(@varname(x), rand(2))` results in an iterator over `[@varname(x[1
 """
 varnames(vn::VarName, val::Real) = [vn]
 function varnames(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
-    return (VarName(vn, vn.indexing ∘ Setfield.IndexLens(Tuple(I))) for I in CartesianIndices(val))
+    return (
+        VarName(vn, vn.indexing ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
 end
 function varnames(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
