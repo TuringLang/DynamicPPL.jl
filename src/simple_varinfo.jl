@@ -123,18 +123,29 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     return vi
 end
 
-function _getvalue(nt::NamedTuple, ::Val{sym}, inds=()) where {sym}
+# TODO: Get rid of this once we have lenses.
+_getindex_view(x, inds::Tuple) = _getindex(view(x, first(inds)...), Base.tail(inds))
+_getindex_view(x, inds::Tuple{}) = x
+
+# TODO: Get rid of this once we have lenses.
+function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym, Tuple{}}) where {sym}
+    return merge(nt, NamedTuple{(sym, )}((val, )))
+end
+function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
     # Use `getproperty` instead of `getfield`
     value = getproperty(nt, sym)
     # Note that this will return a `view`, even if the resulting value is 0-dim.
     # This makes it possible to call `setindex!` on the result later to update
     # in place even in the case where are retrieving a single element, e.g. `x[1]`.
-    return _getindex(value, inds)
+    dest_view = _getindex_view(value, vn.indexing)
+    dest_view .= val
+
+    return nt
 end
 
 # `NamedTuple`
 function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}) where {sym}
-    return maybe_unwrap_view(_getvalue(vi.θ, Val{sym}(), vn.indexing))
+    return _getvalue(vi.θ, Val{sym}(), vn.indexing)
 end
 
 # `Dict`
@@ -188,8 +199,7 @@ function push!!(
     # We update in place.
     # We need a view into the array, hence we call `_getvalue` directly
     # rather than `getval`.
-    current = _getvalue(vi.θ, Val{sym}(), vn.indexing)
-    current .= value
+    _setvalue!!(vi.θ, value, vn)
     return vi
 end
 
