@@ -128,7 +128,7 @@ _getindex_view(x, inds::Tuple) = _getindex(view(x, first(inds)...), Base.tail(in
 _getindex_view(x, inds::Tuple{}) = x
 
 # TODO: Get rid of this once we have lenses.
-function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym, Tuple{}}) where {sym}
+function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym, Setfield.IdentityLens}) where {sym}
     return merge(nt, NamedTuple{(sym, )}((val, )))
 end
 function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
@@ -182,7 +182,7 @@ end
 # `NamedTuple`
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Tuple{}},
+    vn::VarName{sym,Setfield.IdentityLens},
     value,
     dist::Distribution,
     gidset::Set{Selector},
