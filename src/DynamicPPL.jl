@@ -10,6 +10,7 @@ using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
+using Setfield: Setfield
 
 using Random: Random
 

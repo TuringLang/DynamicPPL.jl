@@ -1,5 +1,3 @@
-using Setfield
-
 """
     SimpleVarInfo{NT,T} <: AbstractVarInfo
 
@@ -128,7 +126,7 @@ _getindex_view(x, inds::Tuple) = _getindex(view(x, first(inds)...), Base.tail(in
 _getindex_view(x, inds::Tuple{}) = x
 
 # TODO: Get rid of this once we have lenses.
-function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym, Setfield.IdentityLens}) where {sym}
+function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym,Tuple{}}) where {sym}
     return merge(nt, NamedTuple{(sym, )}((val, )))
 end
 function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
@@ -182,12 +180,12 @@ end
 # `NamedTuple`
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Setfield.IdentityLens},
+    vn::VarName{sym,Tuple{}},
     value,
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    @set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
+    Setfield.@set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
 end
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
