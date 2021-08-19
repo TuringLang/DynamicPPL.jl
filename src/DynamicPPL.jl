@@ -9,6 +9,7 @@ using AbstractMCMC: AbstractMCMC
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
+using BangBang: BangBang
 
 using Random: Random
 
@@ -81,6 +82,7 @@ export AbstractVarInfo,
     PriorContext,
     MiniBatchContext,
     PrefixContext,
+    ConditionContext,
     assume,
     dot_assume,
     observe,
@@ -99,6 +101,8 @@ export AbstractVarInfo,
     logprior,
     logjoint,
     pointwise_loglikelihoods,
+    condition,
+    decondition,
     # Convenience macros
     @addlogprob!,
     @submodel

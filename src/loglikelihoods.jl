@@ -13,6 +13,12 @@ function PointwiseLikelihoodContext(
     )
 end
 
+NodeTrait(::PointwiseLikelihoodContext) = IsParent()
+childcontext(context::PointwiseLikelihoodContext) = context.context
+function setchildcontext(context::PointwiseLikelihoodContext, child)
+    return PointwiseLikelihoodContext(context.loglikelihoods, child)
+end
+
 function Base.push!(
     context::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}},
     vn::VarName,
@@ -59,14 +65,6 @@ function Base.push!(
     context::PointwiseLikelihoodContext{Dict{String,Float64}}, vn::String, logp::Real
 )
     return context.loglikelihoods[vn] = logp
-end
-
-function tilde_assume(context::PointwiseLikelihoodContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, vn, inds, vi)
-end
-
-function dot_tilde_assume(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
 end
 
 function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
