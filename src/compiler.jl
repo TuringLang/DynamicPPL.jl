@@ -15,34 +15,30 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol,Expr})
-    vn = gensym(:vn)
-
+function isassumption(vn::Symbol, expr::Union{Expr,Symbol})
     return quote
-        let $vn = $(AbstractPPL.drop_escape(varname(expr)))
-            if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
-                # Considered an assumption by `__context__` which means either:
-                # 1. We hit the default implementation, e.g. using `DefaultContext`,
-                #    which in turn means that we haven't considered if it's one of
-                #    the model arguments, hence we need to check this.
-                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
-                #    i.e. we're trying to condition one of the latent variables.
-                #    In this case, the below will return `true` since the first branch
-                #    will be hit.
-                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
-                #    i.e. we're trying to override the value. This is currently NOT supported.
-                #    TODO: Support by adding context to model, and use `model.args`
-                #    as the default conditioning. Then we no longer need to check `inargnames`
-                #    since it will all be handled by `contextual_isassumption`.
-                if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                   $(DynamicPPL.inmissings)($vn, __model__)
-                    true
-                else
-                    $(maybe_view(expr)) === missing
-                end
+        if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+            # Considered an assumption by `__context__` which means either:
+            # 1. We hit the default implementation, e.g. using `DefaultContext`,
+            #    which in turn means that we haven't considered if it's one of
+            #    the model arguments, hence we need to check this.
+            # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+            #    i.e. we're trying to condition one of the latent variables.
+            #    In this case, the below will return `true` since the first branch
+            #    will be hit.
+            # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+            #    i.e. we're trying to override the value. This is currently NOT supported.
+            #    TODO: Support by adding context to model, and use `model.args`
+            #    as the default conditioning. Then we no longer need to check `inargnames`
+            #    since it will all be handled by `contextual_isassumption`.
+            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
+                $(DynamicPPL.inmissings)($vn, __model__)
+                true
             else
-                false
+                $(maybe_view(expr)) === missing
             end
+        else
+            false
         end
     end
 end
@@ -81,7 +77,7 @@ function contextual_isassumption(context::PrefixContext, vn)
 end
 
 # failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
+isassumption(expr, vn) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
@@ -396,7 +392,7 @@ function generate_tilde(left, right)
     # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
-        $isassumption = $(DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_tilde_assume(left, right, vn))
         else
@@ -417,8 +413,8 @@ function generate_tilde(left, right)
 end
 
 function generate_tilde_assume(left, right, vn)
-    expr = :(
-        $left = $(DynamicPPL.tilde_assume!)(
+    new_right = :(
+        $(DynamicPPL.tilde_assume!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
@@ -426,11 +422,15 @@ function generate_tilde_assume(left, right, vn)
     )
 
     return if left isa Expr
+        @gensym lens
         AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+            quote
+                $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
+                $left = $(Setfield.set)($left, $lens, $new_right)
+            end
         )
     else
-        return expr
+        return :($left = $new_right)
     end
 end
 
@@ -447,7 +447,7 @@ function generate_dot_tilde(left, right)
     @gensym vn isassumption
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
-        $isassumption = $(DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
