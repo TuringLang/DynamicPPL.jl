@@ -464,10 +464,39 @@ function generate_dot_tilde(left, right)
     end
 end
 
+"""
+    isfuncdef(expr)
+
+Return `true` if `expr` is any form of function definition, and `false` otherwise.
+"""
+function isfuncdef(e::Expr)
+    return if Meta.isexpr(e, :function)
+        # Classic `function f(...)`
+        true
+    elseif Meta.isexpr(e, :->)
+        # Anonymous functions/lambdas, e.g. `do` blocks or `->` defs.
+        true
+    elseif Meta.isexpr(e, :=) && Meta.isexpr(e.args[1], :call)
+        # Short function defs, e.g. `f(args...) = ...`.
+        true
+    else
+        false
+    end
+end
+
+"""
+    replace_returns(expr)
+
+Return `Expr` with all `return ...` statements replaced with
+`return ..., DynamicPPL.return_values(__varinfo__)`.
+
+Note that this method will _not_ replace `return` statements within function
+definitions. This is checked using [`isfuncdef`](@ref).
+"""
 replace_returns(e) = e
 replace_returns(e::Symbol) = e
 function replace_returns(e::Expr)
-    if Meta.isexpr(e, :function) || Meta.isexpr(e, :->)
+    if isfuncdef(e)
         return e
     end
 
@@ -487,6 +516,40 @@ function replace_returns(e::Expr)
     return Expr(e.head, map(replace_returns, e.args)...)
 end
 
+"""
+    return_values(retval, varinfo)
+
+Return `(retval, varinfo)` if `retval` is not a `Tuple` with second
+component being a `AbstractVarInfo`.
+
+Used together with [`replace_returns`](@ref), it handles the following case.
+
+# Example
+
+Suppose the following is the return-value:
+
+```julia
+return x ~ Normal()
+```
+
+Without `return_values`, once expanded in [`generated_mainbody!`](@ref), this would be
+
+```julia
+return (x, __varinfo__ = tilde_assume!!(...)), __varinfo__
+```
+
+i.e. the return-value of the model would end up `(x, __varinfo__), __varinfo__`
+which in turn would lead to a `(::Model)(args...)` call returning `(x, __varinfo__)`,
+breaking with the expectation of the user.
+
+In such a scenario `return_values` effectively results in the following
+
+```julia
+return x, __varinfo__ = tilde_assume!!(...)
+```
+
+preserving user expectation, as desired.
+"""
 return_values(retval, varinfo::AbstractVarInfo) = (retval, varinfo)
 return_values(retval::Tuple{<:Any,<:AbstractVarInfo}, ::AbstractVarInfo) = retval
 
@@ -534,6 +597,10 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
+    # NOTE: We need to replace statements of the form `return ...` with
+    # `return DynamicPPL.return_values(..., __varinfo__)` to ensure that the second
+    # element in the returned value is always the most up-to-date `__varinfo__`.
+    # See the docstrings of `replace_returns` and `return_values` for more info.
     evaluatordef[:body] = replace_returns(make_returns_explicit!(modelinfo[:body]))
 
     ## Build the model function.
