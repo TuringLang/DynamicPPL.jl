@@ -2,11 +2,10 @@ using DynamicPPL.Experimental
 
 @testset "Experimental" begin
     @testset "evaluatortype" begin
-        @model demo() = x ~ Normal()
-
-        f(::Model{evaluatortype(demo)}) = true
         f(x) = false
 
+        @model demo() = x ~ Normal()
+        f(::Model{evaluatortype(demo)}) = true
         @test f(demo())
 
         # Leads to re-definition of `demo` with new body.
@@ -15,6 +14,12 @@ using DynamicPPL.Experimental
 
         # Ensure we can specialize on number of arguments.
         @model demo(x) = x ~ Normal()
+        f(::Model{evaluatortype(demo, 1)}) = true
         @test f(demo(1.0))
+        @test !f(demo()) # should still be `false`
+
+        # Set it to `true` again.
+        f(::Model{evaluatortype(demo)}) = true
+        @test f(demo())
     end
 end
