@@ -7,7 +7,9 @@ using Test
 
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
-@model function demo_dot_assume_dot_observe(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_dot_observe(
+    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+) where {TV}
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
     m .~ Normal()
@@ -15,7 +17,9 @@ using Test
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo_assume_index_observe(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_assume_index_observe(
+    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+) where {TV}
     # `assume` with indexing and `observe`
     m = TV(undef, length(x))
     for i in eachindex(m)
@@ -34,7 +38,9 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo_dot_assume_observe_index(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_index(
+    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+) where {TV}
     # `dot_assume` and `observe` with indexing
     m = TV(undef, length(x))
     m .~ Normal()
@@ -103,7 +109,9 @@ end
     return x ~ MvNormal(m, 0.5 * ones(length(m)))
 end
 
-@model function demo_dot_assume_observe_submodel(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_submodel(
+    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
 
@@ -113,7 +121,9 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo_dot_assume_dot_observe_matrix(x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_dot_observe_matrix(
+    x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}
+) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
 
