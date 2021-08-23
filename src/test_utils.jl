@@ -12,7 +12,7 @@ using Test
     m = TV(undef, length(x))
     m .~ Normal()
     x ~ MvNormal(m, 0.5 * ones(length(x)))
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo2(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
@@ -23,7 +23,7 @@ end
     end
     x ~ MvNormal(m, 0.5 * ones(length(x)))
 
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo3(x=10 * ones(2))
@@ -31,7 +31,7 @@ end
     m ~ MvNormal(length(x), 1.0)
     x ~ MvNormal(m, 0.5 * ones(length(x)))
 
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo4(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
@@ -42,7 +42,7 @@ end
         x[i] ~ Normal(m[i], 0.5)
     end
 
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
@@ -52,7 +52,7 @@ end
     m ~ Normal()
     x .~ Normal(m, 0.5)
 
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo6()
@@ -60,7 +60,7 @@ end
     m ~ MvNormal(2, 1.0)
     [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
 
-    return (; m, x=[10.0, 10.0], logp=getlogp(__varinfo__))
+    return (; m=m, x=[10.0, 10.0], logp=getlogp(__varinfo__))
 end
 
 @model function demo7(::Type{TV}=Vector{Float64}) where {TV}
@@ -71,7 +71,7 @@ end
         10.0 ~ Normal(m[i], 0.5)
     end
 
-    return (; m, x=10 * ones(length(m)), logp=getlogp(__varinfo__))
+    return (; m=m, x=10 * ones(length(m)), logp=getlogp(__varinfo__))
 end
 
 @model function demo8()
@@ -79,7 +79,7 @@ end
     m ~ Normal()
     [10.0] .~ Normal(m, 0.5)
 
-    return (; m, x=[10.0], logp=getlogp(__varinfo__))
+    return (; m=m, x=[10.0], logp=getlogp(__varinfo__))
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -96,7 +96,7 @@ end
         10.0 ~ Normal(m[i], 0.5)
     end
 
-    return (; m, x=[10.0], logp=getlogp(__varinfo__))
+    return (; m=m, x=[10.0], logp=getlogp(__varinfo__))
 end
 
 @model function _likelihood_dot_observe(m, x)
@@ -110,7 +110,7 @@ end
     # Submodel likelihood
     @submodel _likelihood_dot_observe(m, x)
 
-    return (; m, x, logp=getlogp(__varinfo__))
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo11(x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}) where {TV}
@@ -118,7 +118,9 @@ end
     m .~ Normal()
 
     # Dotted observe for `Matrix`.
-    return x .~ MvNormal(m, 0.5)
+    x .~ MvNormal(m, 0.5)
+
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 const demo_models = (
