@@ -547,7 +547,10 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi::VarInfo, vns::AbstractVector{<:VarName}, dist::MultivariateDistribution, val::AbstractMatrix
+    vi::VarInfo,
+    vns::AbstractVector{<:VarName},
+    dist::MultivariateDistribution,
+    val::AbstractMatrix,
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)

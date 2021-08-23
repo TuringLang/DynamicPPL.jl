@@ -127,7 +127,7 @@ _getindex_view(x, inds::Tuple{}) = x
 
 # TODO: Get rid of this once we have lenses.
 function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym,Tuple{}}) where {sym}
-    return merge(nt, NamedTuple{(sym, )}((val, )))
+    return merge(nt, NamedTuple{(sym,)}((val,)))
 end
 function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
     # Use `getproperty` instead of `getfield`
