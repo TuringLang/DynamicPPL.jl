@@ -1,5 +1,5 @@
-const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
-const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
+const DEPRECATED_INTERNALNAMES = Tuple(Symbol(string(name)[2:end-2]) for name in INTERNALNAMES)
 
 """
     isassumption(expr)
