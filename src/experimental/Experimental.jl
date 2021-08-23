@@ -2,7 +2,7 @@ module Experimental
 
 using ..DynamicPPL: DynamicPPL
 
-export evaluatortype
+export modeltype
 
 """
     evaluatortype(f)
@@ -32,5 +32,19 @@ function evaluatortype(f)
     return evaluatortype(f, nargs)
 end
 evaluatortype(::DynamicPPL.Model{F}) where {F} = F
+
+"""
+    modeltype(modeldef)
+    modeltype(modeldef, args...)
+    modeltype(model::Model)
+
+Return `Model{F}` where `F` is the evaluator of `model`/`modeldef`.
+
+This is particularly useful for dispatching on models without instantiation.
+
+See [`evaluatortype`](@ref) for information on the additional `args` that can be passed.
+"""
+modeltype(modeldef, args...) = DynamicPPL.Model{evaluatortype(modeldef, args...)}
+modeltype(::DynamicPPL.Model{F}) where {F} = DynamicPPL.Model{F}
 
 end
