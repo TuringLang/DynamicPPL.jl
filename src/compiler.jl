@@ -476,7 +476,7 @@ function isfuncdef(e::Expr)
     elseif Meta.isexpr(e, :->)
         # Anonymous functions/lambdas, e.g. `do` blocks or `->` defs.
         true
-    elseif Meta.isexpr(e, :=) && Meta.isexpr(e.args[1], :call)
+    elseif Meta.isexpr(e, :(=)) && Meta.isexpr(e.args[1], :call)
         # Short function defs, e.g. `f(args...) = ...`.
         true
     else
