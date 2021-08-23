@@ -263,6 +263,7 @@ function build_model_info(input_expr)
         MacroTools.@match arg begin
             (::Type{T_}) | (name_::Type{T_}) => T
             name_::T_ => name
+            ::T_ => throw(ArgumentError("unnamed arguments are not supported"))
             x_ => x
         end
     end
