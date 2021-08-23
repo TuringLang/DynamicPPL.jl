@@ -7,7 +7,7 @@ using Test
 
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
-@model function demo1(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_dot_observe(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
     m .~ Normal()
@@ -15,7 +15,7 @@ using Test
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo2(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_assume_index_observe(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `assume` with indexing and `observe`
     m = TV(undef, length(x))
     for i in eachindex(m)
@@ -26,7 +26,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo3(x=10 * ones(2))
+@model function demo_assume_multivariate_observe_index(x=10 * ones(2))
     # Multivariate `assume` and `observe`
     m ~ MvNormal(length(x), 1.0)
     x ~ MvNormal(m, 0.5 * ones(length(x)))
@@ -34,7 +34,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo4(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_index(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and `observe` with indexing
     m = TV(undef, length(x))
     m .~ Normal()
@@ -47,7 +47,7 @@ end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
-@model function demo5(x=10 * ones(1))
+@model function demo_assume_dot_observe(x=10 * ones(1))
     # `assume` and `dot_observe`
     m ~ Normal()
     x .~ Normal(m, 0.5)
@@ -55,7 +55,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo6()
+@model function demo_assume_observe_literal()
     # `assume` and literal `observe`
     m ~ MvNormal(2, 1.0)
     [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
@@ -63,7 +63,7 @@ end
     return (; m=m, x=[10.0, 10.0], logp=getlogp(__varinfo__))
 end
 
-@model function demo7(::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and literal `observe` with indexing
     m = TV(undef, 2)
     m .~ Normal()
@@ -74,7 +74,7 @@ end
     return (; m=m, x=10 * ones(length(m)), logp=getlogp(__varinfo__))
 end
 
-@model function demo8()
+@model function demo_assume_literal_dot_observe()
     # `assume` and literal `dot_observe`
     m ~ Normal()
     [10.0] .~ Normal(m, 0.5)
@@ -89,7 +89,7 @@ end
     return m
 end
 
-@model function demo9()
+@model function demo_assume_submodel_observe_index_literal()
     # Submodel prior
     m = @submodel _prior_dot_assume()
     for i in eachindex(m)
@@ -103,7 +103,7 @@ end
     return x ~ MvNormal(m, 0.5 * ones(length(m)))
 end
 
-@model function demo10(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_submodel(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
 
@@ -113,7 +113,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo11(x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_dot_observe_matrix(x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
 
@@ -124,17 +124,17 @@ end
 end
 
 const demo_models = (
-    demo1(),
-    demo2(),
-    demo3(),
-    demo4(),
-    demo5(),
-    demo6(),
-    demo7(),
-    demo8(),
-    demo9(),
-    demo10(),
-    demo11(),
+    demo_dot_assume_dot_observe(),
+    demo_assume_index_observe(),
+    demo_assume_multivariate_observe_index(),
+    demo_dot_assume_observe_index(),
+    demo_assume_dot_observe(),
+    demo_assume_observe_literal(),
+    demo_dot_assume_observe_index_literal(),
+    demo_assume_literal_dot_observe(),
+    demo_assume_submodel_observe_index_literal(),
+    demo_dot_assume_observe_submodel(),
+    demo_dot_assume_dot_observe_matrix(),
 )
 
 # TODO: Is this really the best/most convenient "default" test method?
