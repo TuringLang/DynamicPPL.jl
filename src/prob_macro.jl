@@ -146,7 +146,7 @@ function logprior(
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
     end
-    model(vi, SampleFromPrior(), PriorContext(left))
+    _, vi = DynamicPPL.evaluate(model, vi, SampleFromPrior(), PriorContext(left))
     return getlogp(vi)
 end
 

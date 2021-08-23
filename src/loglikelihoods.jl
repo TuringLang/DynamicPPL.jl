@@ -86,7 +86,6 @@ function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, v
     # hence we need the `logp` for each of them. Broadcasting the univariate
     # `tilde_obseve` does exactly this.
     logps = _pointwise_tilde_observe(context.context, right, left, vi)
-    acclogp!(vi, sum(logps))
 
     # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
     _, _, vns = unwrap_right_left_vns(right, left, vn)
@@ -95,7 +94,7 @@ function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, v
         push!(context, vn, logp)
     end
 
-    return left, acclogp!!(vi, logp)
+    return left, acclogp!!(vi, sum(logps))
 end
 
 # FIXME: This is really not a good approach since it needs to stay in sync with

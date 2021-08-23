@@ -33,28 +33,28 @@ julia> m = demo();
 julia> rng = StableRNG(42);
 
 julia> ### Sampling ###
-       ctx = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext());
+       ctx = SamplingContext(rng, SampleFromPrior(), DefaultContext());
 
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variablse which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
-SimpleVarInfo{NamedTuple{(:x, :m), Tuple{Vector{Float64}, Float64}}, Float64}((x = [1.6642061055583879, 1.796319600944139], m = -0.16796295277202952), -5.769094411622931)
+SimpleVarInfo{NamedTuple{(:x, :m), Tuple{Vector{Float64}, Float64}}, Float64}((x = [0.4471218424633827, 1.3736306979834252], m = -0.6702516921145671), -4.024823883230379)
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
-1.6642061055583879
+0.4471218424633827
 
 julia> # We can also access arbitrary varnames pointing to `x`, e.g.
        DynamicPPL.getval(vi, @varname(x))
 2-element Vector{Float64}:
- 1.6642061055583879
- 1.796319600944139
+ 0.4471218424633827
+ 1.3736306979834252
 
 julia> DynamicPPL.getval(vi, @varname(x[1:2]))
 2-element view(::Vector{Float64}, 1:2) with eltype Float64:
- 1.6642061055583879
- 1.796319600944139
+ 0.4471218424633827
+ 1.3736306979834252
 
 julia> # (×) If we don't provide the container...
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo(), ctx); vi
@@ -63,11 +63,11 @@ ERROR: type NamedTuple has no field x
 
 julia> # If one does not know the varnames, we can use a `Dict` instead.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx); vi
-SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => 1.192696983568277, x[2] => 0.4914514300738121, m => 0.25572200616753643), -3.6215377732004237)
+SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => -1.019202452456547, x[2] => -0.7935128416361353, m => 0.683947930996541), -3.8249261202386906)
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
-1.192696983568277
+-1.019202452456547
 
 julia> # In addtion, we can only access varnames as they appear in the model!
        DynamicPPL.getval(vi, @varname(x))
@@ -142,8 +142,8 @@ function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
 end
 
 # `NamedTuple`
-function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}) where {sym}
-    return _getvalue(vi.θ, Val{sym}(), vn.indexing)
+function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName)
+    return _getvalue(vi.θ, vn)
 end
 
 # `Dict`

@@ -369,7 +369,13 @@ getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 Set the `trans` flag value of `vn` in `vi`, mutating if it makes sense.
 """
 function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    return trans ? set_flag!!(vi, vn, "trans") : unset_flag!!(vi, vn, "trans")
+    if trans
+        set_flag!!(vi, vn, "trans")
+    else
+        unset_flag!!(vi, vn, "trans")
+    end
+
+    return vi
 end
 
 """
@@ -962,8 +968,8 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::AbstractVarInfo, val, vn::VarName) = setval!(vi, val, vn)
-setindex!!(vi::AbstractVarInfo, val, vn::VarName) = setindex!(vi, val, vn)
+setindex!(vi::AbstractVarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
+setindex!!(vi::AbstractVarInfo, val, vn::VarName) = (setindex!(vi, val, vn); return vi)
 
 """
     setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
@@ -978,7 +984,7 @@ function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
     ranges = _getranges(vi, spl)
     _setindex!(vi.metadata, val, ranges)
-    return val
+    return vi
 end
 # Recursively writes the entries of `val` to the `vals` fields of all the symbols as if they were a contiguous vector.
 @generated function _setindex!(metadata, val, ranges::NamedTuple{names}) where {names}
@@ -1189,7 +1195,8 @@ end
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
 function unset_flag!!(vi::VarInfo, vn::VarName, flag::String)
-    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    return vi
 end
 
 """

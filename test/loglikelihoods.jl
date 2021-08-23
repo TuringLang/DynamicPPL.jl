@@ -69,7 +69,7 @@ end
 
 @model function gdemo9()
     # Submodel prior
-    @submodel m ~ _prior_dot_assume()
+    @submodel m = _prior_dot_assume()
     for i in eachindex(m)
         10.0 ~ Normal(m[i], 0.5)
     end
@@ -110,7 +110,7 @@ const gdemo_models = (
 )
 
 @testset "loglikelihoods.jl" begin
-    for m in gdemo_models
+    @testset "$(m.name)" for m in gdemo_models
         vi = VarInfo(m)
 
         vns = vi.metadata.m.vns

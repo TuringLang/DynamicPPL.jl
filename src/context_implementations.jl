@@ -233,7 +233,7 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi,
+    vi::VarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
@@ -468,7 +468,7 @@ function dot_assume(
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
-    vi,
+    vi::VarInfo,
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
@@ -483,7 +483,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi,
+    vi::VarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -516,7 +516,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi,
+    vi::VarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -547,7 +547,7 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi, vns::AbstractVector{<:VarName}, dist::MultivariateDistribution, val::AbstractMatrix
+    vi::VarInfo, vns::AbstractVector{<:VarName}, dist::MultivariateDistribution, val::AbstractMatrix
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
@@ -556,7 +556,7 @@ function set_val!(
     return val
 end
 function set_val!(
-    vi,
+    vi::VarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     val::AbstractArray,
