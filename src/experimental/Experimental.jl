@@ -2,6 +2,8 @@ module Experimental
 
 using ..DynamicPPL: DynamicPPL
 
+export evaluatortype
+
 """
     evaluatortype(f)
     evaluatortype(f, nargs)
