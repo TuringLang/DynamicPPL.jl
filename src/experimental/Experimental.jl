@@ -18,7 +18,9 @@ the model since `evaluatortype` might have changed.
 function evaluatortype(f, argtypes)
     rets = Core.Compiler.return_types(f, argtypes)
     if (length(rets) != 1) || !(first(rets) <: DynamicPPL.Model)
-        error("inferred return-type of $(f) using $(argtypes) is not `Model`; please specify argument types")
+        error(
+            "inferred return-type of $(f) using $(argtypes) is not `Model`; please specify argument types",
+        )
     end
     # Extract the anonymous evaluator.
     return first(rets).parameters[1]
