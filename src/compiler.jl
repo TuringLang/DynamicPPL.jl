@@ -403,7 +403,7 @@ function generate_tilde(left, right)
                 $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            $(DynamicPPL.tilde_observe!!)(
+            _, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
@@ -452,7 +452,7 @@ function generate_dot_tilde(left, right)
                 $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            $(DynamicPPL.dot_tilde_observe!!)(
+            _, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
