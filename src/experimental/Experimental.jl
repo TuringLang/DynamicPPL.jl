@@ -36,8 +36,7 @@ end
 evaluatortype(::DynamicPPL.Model{F}) where {F} = F
 
 """
-    modeltype(modeldef)
-    modeltype(modeldef, args...)
+    modeltype(modeldef[, args...])
     modeltype(model::Model)
 
 Return `Model{F}` where `F` is the evaluator of `model`/`modeldef`.
