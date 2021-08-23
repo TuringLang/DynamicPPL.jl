@@ -135,32 +135,60 @@ const demo_models = (
     demo11(),
 )
 
-# TODO: Is this really the best "default"?
+# TODO: Is this really the best/most convenient "default" test method?
+"""
+    test_sampler_demo_models(meanfunction, sampler, args...; kwargs...)
+
+Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
+
+In short, this method iterators through `demo_models`, calls `AbstractMCMC.sample` on the
+`model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain)` against `target`
+provided in `kwargs...`.
+
+# Arguments
+- `meanfunction`: A callable which computes the mean of the marginal means from the
+  chain resulting from the `sample` call.
+- `sampler`: The `AbstractMCMC.AbstractSampler` to test.
+- `args...`: Arguments forwarded to `sample`.
+
+# Keyword arguments
+- `target`: Value to compare result of `meanfunction(chain)` to.
+- `atol=1e-1`: Absolute tolerance used in `@test`.
+- `rtol=1e-3`: Relative tolerance used in `@test`.
+- `kwargs...`: Keyword arguments forwarded to `sample`.
+"""
 function test_sampler_demo_models(
-    meanf,
-    spl::AbstractMCMC.AbstractSampler,
+    meanfunction,
+    sampler::AbstractMCMC.AbstractSampler,
     args...;
     target=8.0,
     atol=1e-1,
-    rtol=1 - 1,
+    rtol=1e-3,
     kwargs...,
 )
-    @testset "$(nameof(typeof(spl))) on $(m.name)" for m in demo_models
-        chain = AbstractMCMC.sample(m, spl, args...)
-        μ = meanf(chain)
+    @testset "$(nameof(typeof(sampler))) on $(m.name)" for model in demo_models
+        chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
+        μ = meanfunction(chain)
         @test μ ≈ target atol = atol rtol = rtol
     end
 end
 
+"""
+    test_sampler_continuous([meanfunction, ]sampler, args...; kwargs...)
+
+Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
+
+As of right now, this is just an alias for [`test_sampler_demo_models`](@ref).
+"""
 function test_sampler_continuous(
-    meanf, spl::AbstractMCMC.AbstractSampler, args...; kwargs...
+    meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
 )
-    return test_sampler_demo_models(meanf, spl, args...; kwargs...)
+    return test_sampler_demo_models(meanfunction, sampler, args...; kwargs...)
 end
 
-function test_sampler_continuous(spl::AbstractMCMC.AbstractSampler, args...; kwargs...)
+function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     # Default for `MCMCChains.Chains`.
-    return test_sampler_continuous(spl, args...; kwargs...) do chain
+    return test_sampler_continuous(sampler, args...; kwargs...) do chain
         mean(Array(chain))
     end
 end
