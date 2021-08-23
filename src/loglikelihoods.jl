@@ -13,6 +13,12 @@ function PointwiseLikelihoodContext(
     )
 end
 
+NodeTrait(::PointwiseLikelihoodContext) = IsParent()
+childcontext(context::PointwiseLikelihoodContext) = context.context
+function setchildcontext(context::PointwiseLikelihoodContext, child)
+    return PointwiseLikelihoodContext(context.loglikelihoods, child)
+end
+
 function Base.push!(
     context::PointwiseLikelihoodContext{Dict{VarName,Vector{Float64}}},
     vn::VarName,
@@ -61,14 +67,6 @@ function Base.push!(
     return context.loglikelihoods[vn] = logp
 end
 
-function tilde_assume(context::PointwiseLikelihoodContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, vn, inds, vi)
-end
-
-function dot_tilde_assume(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, left, vn, inds, vi)
-end
-
 function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return tilde_observe!(context.context, right, left, vi)
@@ -92,13 +90,33 @@ end
 function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
-    logp = dot_tilde_observe(context.context, right, left, vi)
-    acclogp!(vi, logp)
 
-    # Track loglikelihood value.
-    push!(context, vn, logp)
+    # We want to treat `.~` as a collection of independent observations,
+    # hence we need the `logp` for each of them. Broadcasting the univariate
+    # `tilde_obseve` does exactly this.
+    logps = _pointwise_tilde_observe(context.context, right, left, vi)
+    acclogp!(vi, sum(logps))
+
+    # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
+    _, _, vns = unwrap_right_left_vns(right, left, vn)
+    for (vn, logp) in zip(vns, logps)
+        # Track loglikelihood value.
+        push!(context, vn, logp)
+    end
 
     return left
+end
+
+# FIXME: This is really not a good approach since it needs to stay in sync with
+# the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
+function _pointwise_tilde_observe(context, right, left, vi)
+    return tilde_observe.(Ref(context), right, left, Ref(vi))
+end
+
+function _pointwise_tilde_observe(
+    context, right::MultivariateDistribution, left::AbstractMatrix, vi
+)
+    return tilde_observe.(Ref(context), Ref(right), eachcol(left), Ref(vi))
 end
 
 """
@@ -114,22 +132,30 @@ Currently, only `String` and `VarName` are supported.
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
 both being `<:Real`. Then the *observe* (i.e. when the left-hand side is an
-*observation*) statements can be implemented in two ways:
+*observation*) statements can be implemented in three ways:
+1. using a `for` loop:
 ```julia
 for i in eachindex(y)
     y[i] ~ Normal(μ, σ)
 end
 ```
-or
+2. using `.~`:
 ```julia
-y ~ MvNormal(fill(μ, n), fill(σ, n))
+y .~ Normal(μ, σ)
 ```
-Unfortunately, just by looking at the latter statement, it's impossible to tell 
-whether or not this is one *single* observation which is `n` dimensional OR if we
-have *multiple* 1-dimensional observations. Therefore, `loglikelihoods` will only
-work with the first example.
+3. using `MvNormal`:
+```julia
+y ~ MvNormal(fill(μ, n), Diagonal(fill(σ, n)))
+```
+
+In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,
+while in (3) `y` will be treated as a _single_ n-dimensional observation.
+
+This is important to keep in mind, in particular if the computation is used
+for downstream computations.
 
 # Examples
+## From chain
 ```julia-repl
 julia> using DynamicPPL, Turing
 
@@ -169,6 +195,27 @@ Dict{VarName,Array{Float64,2}} with 4 entries:
   xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
 ```
+
+## Broadcasting
+Note that `x .~ Dist()` will treat `x` as a collection of
+_independent_ observations rather than as a single observation.
+
+```jldoctest; setup = :(using Distributions)
+julia> @model function demo(x)
+           x .~ Normal()
+       end;
+
+julia> m = demo([1.0, ]);
+
+julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first(ℓ[@varname(x[1])])
+-1.4189385332046727
+
+julia> m = demo([1.0; 1.0]);
+
+julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
+(-1.4189385332046727, -1.4189385332046727)
+```
+
 """
 function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
     # Get the data by executing the model once

@@ -11,7 +11,7 @@ struct NamedDist{variate,support,Td<:Distribution{variate,support},Tv<:VarName} 
     name::Tv
 end
 
-NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName(name))
+NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
 
 struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
        Distribution{variate,support}

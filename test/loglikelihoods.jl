@@ -4,7 +4,7 @@
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
     m .~ Normal()
-    return x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5)
 end
 
 @model function gdemo2(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
@@ -13,13 +13,13 @@ end
     for i in eachindex(m)
         m[i] ~ Normal()
     end
-    return x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5)
 end
 
 @model function gdemo3(x=10 * ones(2))
     # Multivariate `assume` and `observe`
     m ~ MvNormal(length(x), 1.0)
-    return x ~ MvNormal(m, 0.5 * ones(length(x)))
+    return x ~ MvNormal(m, 0.5)
 end
 
 @model function gdemo4(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
@@ -39,11 +39,11 @@ end
     return x .~ Normal(m, 0.5)
 end
 
-# @model function gdemo6(::Type{TV} = Vector{Float64}) where {TV}
-#     # `assume` and literal `observe`
-#     m ~ MvNormal(length(x), 1.0)
-#     [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
-# end
+@model function gdemo6(::Type{TV}=Vector{Float64}) where {TV}
+    # `assume` and literal `observe`
+    m ~ MvNormal(2, 1.0)
+    return [10.0, 10.0] ~ MvNormal(m, 0.5)
+end
 
 @model function gdemo7(::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and literal `observe` with indexing
@@ -54,11 +54,11 @@ end
     end
 end
 
-# @model function gdemo8(::Type{TV} = Vector{Float64}) where {TV}
-#     # `assume` and literal `dot_observe`
-#     m ~ Normal()
-#     [10.0, ] .~ Normal(m, 0.5)
-# end
+@model function gdemo8(::Type{TV}=Vector{Float64}) where {TV}
+    # `assume` and literal `dot_observe`
+    m ~ Normal()
+    return [10.0] .~ Normal(m, 0.5)
+end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
     m = TV(undef, 2)
@@ -76,7 +76,7 @@ end
 end
 
 @model function _likelihood_dot_observe(m, x)
-    return x ~ MvNormal(m, 0.5 * ones(length(m)))
+    return x ~ MvNormal(m, 0.5)
 end
 
 @model function gdemo10(x=10 * ones(2), ::Type{TV}=Vector{Float64}) where {TV}
@@ -87,8 +87,26 @@ end
     @submodel _likelihood_dot_observe(m, x)
 end
 
+@model function gdemo11(x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}) where {TV}
+    m = TV(undef, length(x))
+    m .~ Normal()
+
+    # Dotted observe for `Matrix`.
+    return x .~ MvNormal(m, 0.5)
+end
+
 const gdemo_models = (
-    gdemo1(), gdemo2(), gdemo3(), gdemo4(), gdemo5(), gdemo7(), gdemo9(), gdemo10()
+    gdemo1(),
+    gdemo2(),
+    gdemo3(),
+    gdemo4(),
+    gdemo5(),
+    gdemo6(),
+    gdemo7(),
+    gdemo8(),
+    gdemo9(),
+    gdemo10(),
+    gdemo11(),
 )
 
 @testset "loglikelihoods.jl" begin

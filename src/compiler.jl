@@ -20,17 +20,64 @@ function isassumption(expr::Union{Symbol,Expr})
 
     return quote
         let $vn = $(varname(expr))
-            # This branch should compile nicely in all cases except for partial missing data
-            # For example, when `expr` is `:(x[i])` and `x isa Vector{Union{Missing, Float64}}`
-            if !$(DynamicPPL.inargnames)($vn, __model__) ||
-               $(DynamicPPL.inmissings)($vn, __model__)
-                true
+            if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+                # Considered an assumption by `__context__` which means either:
+                # 1. We hit the default implementation, e.g. using `DefaultContext`,
+                #    which in turn means that we haven't considered if it's one of
+                #    the model arguments, hence we need to check this.
+                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+                #    i.e. we're trying to condition one of the latent variables.
+                #    In this case, the below will return `true` since the first branch
+                #    will be hit.
+                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+                #    i.e. we're trying to override the value. This is currently NOT supported.
+                #    TODO: Support by adding context to model, and use `model.args`
+                #    as the default conditioning. Then we no longer need to check `inargnames`
+                #    since it will all be handled by `contextual_isassumption`.
+                if !($(DynamicPPL.inargnames)($vn, __model__)) ||
+                   $(DynamicPPL.inmissings)($vn, __model__)
+                    true
+                else
+                    $(maybe_view(expr)) === missing
+                end
             else
-                # Evaluate the LHS
-                $(maybe_view(expr)) === missing
+                false
             end
         end
     end
+end
+
+"""
+    contextual_isassumption(context, vn)
+
+Return `true` if `vn` is considered an assumption by `context`.
+
+The default implementation for `AbstractContext` always returns `true`.
+"""
+contextual_isassumption(::IsLeaf, context, vn) = true
+function contextual_isassumption(::IsParent, context, vn)
+    return contextual_isassumption(childcontext(context), vn)
+end
+function contextual_isassumption(context::AbstractContext, vn)
+    return contextual_isassumption(NodeTrait(context), context, vn)
+end
+function contextual_isassumption(context::ConditionContext, vn)
+    if hasvalue(context, vn)
+        val = getvalue(context, vn)
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return true
+        else
+            return false
+        end
+    end
+
+    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isassumption(childcontext(context), vn)
+end
+function contextual_isassumption(context::PrefixContext, vn)
+    return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
 
 # failsafe: a literal is never an assumption
@@ -90,6 +137,21 @@ left-hand side of a `.~` expression such as `x .~ Normal()`.
 
 This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
 variables.
+
+# Example
+```jldoctest; setup=:(using Distributions)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal([1.0, 1.0], [1.0 0.0; 0.0 1.0]), randn(2, 2), @varname(x)); string(vns[end])
+"x[:,2]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); string(vns[end])
+"x[:][1,2]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); string(vns[end])
+"x[1][3]"
+
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2, 3), @varname(x)); string(vns[end])
+"x[1,2,3]"
+```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
 function unwrap_right_left_vns(right::NamedDist, left, vns)
@@ -98,8 +160,12 @@ end
 function unwrap_right_left_vns(
     right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
 )
+    # This an expression such as `x .~ MvNormal()` which we interpret as
+    #     x[:, i] ~ MvNormal()
+    # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
+    # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return VarName(vn, (vn.indexing..., (Colon(), i)))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -332,6 +398,11 @@ function generate_tilde(left, right)
                 __varinfo__,
             )
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            end
+
             $(DynamicPPL.tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -376,6 +447,11 @@ function generate_dot_tilde(left, right)
                 __varinfo__,
             )
         else
+            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+            if !$(DynamicPPL.inargnames)($vn, __model__)
+                $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            end
+
             $(DynamicPPL.dot_tilde_observe!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
@@ -482,7 +558,13 @@ function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
+    return matchingvalue(NodeTrait(matchingvalue, context), context, vi, value)
+end
+function matchingvalue(::IsLeaf, context::AbstractContext, vi, value)
     return matchingvalue(SampleFromPrior(), vi, value)
+end
+function matchingvalue(::IsParent, context::AbstractContext, vi, value)
+    return matchingvalue(childcontext(context), vi, value)
 end
 function matchingvalue(context::SamplingContext, vi, value)
     return matchingvalue(context.sampler, vi, value)
