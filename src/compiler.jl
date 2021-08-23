@@ -5,6 +5,15 @@ for name in INTERNALNAMES
     @eval $(Symbol(uppercase(string(name)))) = $(Meta.quot((name)))
 end
 
+
+# macro _id(expr)
+#     return expr
+# end
+
+# macro hygienize(expr)
+#     return Meta.quot(macroexpand(__module__, :(@_id $expr)))
+# end
+
 """
     isassumption(expr)
 
@@ -19,32 +28,30 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(expr::Union{Symbol,Expr})
+function isassumption(expr::Union{Symbol,Expr}, vn)
     return quote
-        let vn = $(varname(expr))
-            if $(DynamicPPL.contextual_isassumption)($__CONTEXT__, vn)
-                # Considered an assumption by `__context__` which means either:
-                # 1. We hit the default implementation, e.g. using `DefaultContext`,
-                #    which in turn means that we haven't considered if it's one of
-                #    the model arguments, hence we need to check this.
-                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
-                #    i.e. we're trying to condition one of the latent variables.
-                #    In this case, the below will return `true` since the first branch
-                #    will be hit.
-                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
-                #    i.e. we're trying to override the value. This is currently NOT supported.
-                #    TODO: Support by adding context to model, and use `model.args`
-                #    as the default conditioning. Then we no longer need to check `inargnames`
-                #    since it will all be handled by `contextual_isassumption`.
-                if !($(DynamicPPL.inargnames)(vn, $__MODEL__)) ||
-                   $(DynamicPPL.inmissings)(vn, $__MODEL__)
-                    true
-                else
-                    $(maybe_view(expr)) === missing
-                end
+        if $(DynamicPPL.contextual_isassumption)($__CONTEXT__, $vn)
+            # Considered an assumption by `__context__` which means either:
+            # 1. We hit the default implementation, e.g. using `DefaultContext`,
+            #    which in turn means that we haven't considered if it's one of
+            #    the model arguments, hence we need to check this.
+            # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+            #    i.e. we're trying to condition one of the latent variables.
+            #    In this case, the below will return `true` since the first branch
+            #    will be hit.
+            # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+            #    i.e. we're trying to override the value. This is currently NOT supported.
+            #    TODO: Support by adding context to model, and use `model.args`
+            #    as the default conditioning. Then we no longer need to check `inargnames`
+            #    since it will all be handled by `contextual_isassumption`.
+            if !($(DynamicPPL.inargnames)($vn, $__MODEL__)) ||
+                $(DynamicPPL.inmissings)($vn, $__MODEL__)
+                true
             else
-                false
+                $(maybe_view(expr)) === missing
             end
+        else
+            false
         end
     end
 end
@@ -379,31 +386,32 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        vn = $(varname(left))
-        inds = $(vinds(left))
-        isassumption = $(DynamicPPL.isassumption(left))
-        if isassumption
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
+        if $isassumption
             $left = $(DynamicPPL.tilde_assume!)(
                 $__CONTEXT__,
                 $(DynamicPPL.unwrap_right_vn)(
-                    $(DynamicPPL.check_tilde_rhs)($right), vn
+                    $(DynamicPPL.check_tilde_rhs)($right), $vn
                 )...,
-                inds,
+                $inds,
                 $__VARINFO__,
             )
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)(vn, $__MODEL__)
-                $left = $(DynamicPPL.getvalue_nested)($__CONTEXT__, vn)
+            if !$(DynamicPPL.inargnames)($vn, $__MODEL__)
+                $left = $(DynamicPPL.getvalue_nested)($__CONTEXT__, $vn)
             end
 
             $(DynamicPPL.tilde_observe!)(
                 $__CONTEXT__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
-                vn,
-                inds,
+                $vn,
+                $inds,
                 $__VARINFO__,
             )
         end
@@ -427,31 +435,32 @@ function generate_dot_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
+    @gensym vn inds isassumption
     return quote
-        vn = $(varname(left))
-        inds = $(vinds(left))
-        isassumption = $(DynamicPPL.isassumption(left))
-        if isassumption
+        $vn = $(varname(left))
+        $inds = $(vinds(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
+        if $isassumption
             $left .= $(DynamicPPL.dot_tilde_assume!)(
                 $__CONTEXT__,
                 $(DynamicPPL.unwrap_right_left_vns)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), vn
+                    $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
                 )...,
-                inds,
+                $inds,
                 $__VARINFO__,
             )
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)(vn, $__MODEL__)
-                $left .= $(DynamicPPL.getvalue_nested)($__CONTEXT__, vn)
+                $left .= $(DynamicPPL.getvalue_nested)($__CONTEXT__, $vn)
             end
 
             $(DynamicPPL.dot_tilde_observe!)(
                 $__CONTEXT__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
-                vn,
-                inds,
+                $vn,
+                $inds,
                 $__VARINFO__,
             )
         end
@@ -500,15 +509,17 @@ function build_output(modelinfo, linenumbernode)
     # Update the function body of the user-specified model.
     # We use a name for the anonymous evaluator that does not conflict with other variables.
     modeldef = modelinfo[:modeldef]
+    modeldef[:name] = esc(modeldef[:name])
+    @gensym evaluator
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        evaluator = $(MacroTools.combinedef(evaluatordef))
+        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
-            evaluator,
+            $evaluator,
             $allargs_namedtuple,
             $defaults_namedtuple,
         )
