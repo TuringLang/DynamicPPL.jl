@@ -2,7 +2,7 @@ const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 for name in INTERNALNAMES
-    @eval $(Symbol(uppercase(string(name)))) = $(Meta.quot((name)))
+    @eval $(Symbol(uppercase(string(name)))) = $(Meta.quot(name))
 end
 
 
@@ -90,7 +90,7 @@ function contextual_isassumption(context::PrefixContext, vn)
 end
 
 # failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
+isassumption(expr, vn) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
@@ -524,7 +524,7 @@ function build_output(modelinfo, linenumbernode)
             $defaults_namedtuple,
         )
     end
-
+    
     return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
 end
 
