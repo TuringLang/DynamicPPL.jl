@@ -123,7 +123,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-const demo_models = (
+const DEMO_MODELS = (
     demo_dot_assume_dot_observe(),
     demo_assume_index_observe(),
     demo_assume_multivariate_observe_index(),
@@ -168,7 +168,7 @@ function test_sampler_demo_models(
     rtol=1e-3,
     kwargs...,
 )
-    @testset "$(nameof(typeof(sampler))) on $(m.name)" for model in demo_models
+    @testset "$(nameof(typeof(sampler))) on $(m.name)" for model in DEMO_MODELS
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         μ = meanfunction(chain)
         @test μ ≈ target atol = atol rtol = rtol
