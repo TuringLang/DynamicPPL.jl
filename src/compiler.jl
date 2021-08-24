@@ -470,10 +470,7 @@ Builds the output expression.
 """
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
-
-    # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
-    delete!(evaluatordef, :name)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -489,7 +486,13 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
+    # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
+    # to the call site
+    evaluatordef[:body] = MacroTools.@q begin
+        $(linenumbernode)
+        $(modelinfo[:body])
+    end
 
     ## Build the model function.
 
@@ -498,24 +501,24 @@ function build_output(modelinfo, linenumbernode)
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
     # Update the function body of the user-specified model.
-    # We use a name for the anonymous evaluator that does not conflict with other variables.
-    modeldef = modelinfo[:modeldef]
-    @gensym evaluator
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
+    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
-            $evaluator,
+            $(modeldef[:name]),
             $allargs_namedtuple,
             $defaults_namedtuple,
         )
     end
 
-    return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
+    return MacroTools.@q begin
+        $(MacroTools.combinedef(evaluatordef))
+        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
+    end
 end
 
 function warn_empty(body)
