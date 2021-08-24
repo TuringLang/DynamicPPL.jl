@@ -145,7 +145,7 @@ By default, calls `tilde_assume(context, right, vn, inds, vi)` and accumulates t
 probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, inds, vi)
-    value, logp = tilde_assume(context, right, vn, inds, vi)
+    value, logp, vi = tilde_assume(context, right, vn, inds, vi)
     return value, acclogp!!(vi, logp)
 end
 
@@ -224,7 +224,7 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # SampleFromPrior and SampleFromUniform
@@ -252,7 +252,7 @@ function assume(
         settrans!(vi, false, vn)
     end
 
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
@@ -407,7 +407,7 @@ model inputs), accumulate the log probability, and return the sampled value.
 Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, inds, vi)
-    value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
+    value, logp, vi = dot_tilde_assume(context, right, left, vn, inds, vi)
     # Mutation of `value` no longer occurs in main body, so we do it here.
     left .= value
     return value, acclogp!!(vi, logp)
@@ -428,7 +428,7 @@ function dot_assume(
     lp = sum(zip(vns, eachcol(r))) do vn, ri
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -442,7 +442,7 @@ function dot_assume(
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -459,7 +459,7 @@ function dot_assume(
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = reshape(vi[vec(vns)], size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -473,7 +473,7 @@ function dot_assume(
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
     return error(
