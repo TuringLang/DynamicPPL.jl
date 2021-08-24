@@ -364,18 +364,18 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!(vi::VarInfo, trans::Bool, vn::VarName)
 
 Set the `trans` flag value of `vn` in `vi`, mutating if it makes sense.
 """
-function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+function settrans!(vi::AbstractVarInfo, trans::Bool, vn::Union{VarName,AbstractArray{<:VarName}})
     if trans
-        set_flag!!(vi, vn, "trans")
+        set_flag!(vi, vn, "trans")
     else
-        unset_flag!!(vi, vn, "trans")
+        unset_flag!(vi, vn, "trans")
     end
 
-    return vi
+    return trans
 end
 
 """
@@ -518,13 +518,20 @@ end
 end
 
 """
-    set_flag!!(vi::VarInfo, vn::VarName, flag::String)
+    set_flag!(vi::VarInfo, vn::VarName, flag::String)
 
 Set `vn`'s value for `flag` to `true` in `vi`.
 """
-function set_flag!!(vi::VarInfo, vn::VarName, flag::String)
-    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
-    return vi
+function set_flag!(vi::VarInfo, vn::VarName, flag::String)
+    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
+end
+
+function set_flag!(vi::VarInfo, vns::AbstractArray{<:VarName}, flag::String)
+    foreach(vns) do vn
+        set_flag!(vi, vn, flag)
+    end
+
+    return true
 end
 
 ####
@@ -643,11 +650,11 @@ Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
 end
 
 """
-    setgid!!(vi::VarInfo, gid::Selector, vn::VarName)
+    setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-function setgid!!(vi::VarInfo, gid::Selector, vn::VarName)
+function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
     return push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
 end
 
@@ -762,7 +769,7 @@ function link!!(vi::UntypedVarInfo, spl::Sampler)
                 vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!!(vi, true, vn)
+            settrans!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -798,7 +805,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!!(vi, true, vn)
+                            settrans!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -829,7 +836,7 @@ function invlink!!(vi::UntypedVarInfo, spl::AbstractSampler)
                 vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!!(vi, false, vn)
+            settrans!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -867,7 +874,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!!(vi, false, vn)
+                            settrans!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -1190,13 +1197,20 @@ function is_flagged(vi::VarInfo, vn::VarName, flag::String)
 end
 
 """
-    unset_flag!!(vi::VarInfo, vn::VarName, flag::String)
+    unset_flag!(vi::VarInfo, vn::VarName, flag::String)
 
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
-function unset_flag!!(vi::VarInfo, vn::VarName, flag::String)
-    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
-    return vi
+function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+end
+
+function unset_flag!(vi::VarInfo, vns::AbstractArray{<:VarName}, flag::String)
+    foreach(vns) do vn
+        unset_flag!(vi, vn, flag)
+    end
+    
+    return false
 end
 
 """
@@ -1255,14 +1269,14 @@ end
 end
 
 """
-    updategid!!(vi::VarInfo, vn::VarName, spl::Sampler)
+    updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
 
 Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
 and `vn`'s symbol is in the space of `spl`.
 """
-function updategid!!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
+function updategid!(vi::AbstractVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
-        setgid!!(vi, spl.selector, vn)
+        setgid!(vi, spl.selector, vn)
     end
 end
 
@@ -1410,7 +1424,7 @@ function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     end
 
     return indices
@@ -1424,7 +1438,7 @@ end
 Set the values in `vi` to the provided values and those which are not present
 in `x` or `chains` to *be* resampled.
 
-Note that this does *not* resample the values not provided! It will call `setflag!(vi, vn, "del")`
+Note that this does *not* resample the values not provided! It will call [`set_flag!(vi, vn, "del")`](@ref)
 for variables `vn` for which no values are provided, which means that the next time we call `model(vi)` these
 variables will be resampled.
 
@@ -1491,11 +1505,11 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.
-        set_flag!!(vi, vn, "del")
+        set_flag!(vi, vn, "del")
     end
 
     return indices
