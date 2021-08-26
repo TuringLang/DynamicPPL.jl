@@ -8,7 +8,7 @@ using Test
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
 @model function demo_dot_assume_dot_observe(
-    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+    x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
@@ -18,7 +18,7 @@ using Test
 end
 
 @model function demo_assume_index_observe(
-    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+    x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `assume` with indexing and `observe`
     m = TV(undef, length(x))
@@ -30,7 +30,7 @@ end
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
-@model function demo_assume_multivariate_observe_index(x=10 * ones(2))
+@model function demo_assume_multivariate_observe_index(x=[10.0, 10.0])
     # Multivariate `assume` and `observe`
     m ~ MvNormal(length(x), 1.0)
     x ~ MvNormal(m, 0.5 * ones(length(x)))
@@ -39,7 +39,7 @@ end
 end
 
 @model function demo_dot_assume_observe_index(
-    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+    x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `dot_assume` and `observe` with indexing
     m = TV(undef, length(x))
@@ -53,7 +53,7 @@ end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
-@model function demo_assume_dot_observe(x=10 * ones(1))
+@model function demo_assume_dot_observe(x=[10.0])
     # `assume` and `dot_observe`
     m ~ Normal()
     x .~ Normal(m, 0.5)
@@ -77,7 +77,7 @@ end
         10.0 ~ Normal(m[i], 0.5)
     end
 
-    return (; m=m, x=10 * ones(length(m)), logp=getlogp(__varinfo__))
+    return (; m=m, x=fill(10.0, length(m)), logp=getlogp(__varinfo__))
 end
 
 @model function demo_assume_literal_dot_observe()
@@ -110,7 +110,7 @@ end
 end
 
 @model function demo_dot_assume_observe_submodel(
-    x=10 * ones(2), ::Type{TV}=Vector{Float64}
+    x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
@@ -122,7 +122,7 @@ end
 end
 
 @model function demo_dot_assume_dot_observe_matrix(
-    x=10 * ones(2, 1), ::Type{TV}=Vector{Float64}
+    x=fill(10.0, 2, 1), ::Type{TV}=Vector{Float64}
 ) where {TV}
     m = TV(undef, length(x))
     m .~ Normal()
