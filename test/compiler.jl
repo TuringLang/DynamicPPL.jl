@@ -206,7 +206,7 @@ end
         # test DPPL#61
         @model function testmodel_missing5(z)
             m ~ Normal()
-            z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
+            z[1:end] ~ MvNormal(fill(m, length(z)), I)
             return m
         end
         model = testmodel_missing5(rand(10))
@@ -379,7 +379,7 @@ end
 
         # AR1 model. Dynamic prefixing.
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
-            η ~ MvNormal(num_steps, 1.0)
+            η ~ MvNormal(zeros(num_steps), I)
             δ = sqrt(1 - α^2)
 
             x = TV(undef, num_steps)
@@ -400,7 +400,7 @@ end
             num_obs = length(y)
             @inbounds for i in 1:num_obs
                 x = @submodel $(Symbol("ar1_$i")) AR1(num_steps, α, μ, σ)
-                y[i] ~ MvNormal(x, 0.1)
+                y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
 
@@ -419,7 +419,7 @@ end
         x = Normal()
         @test DynamicPPL.check_tilde_rhs(x) === x
 
-        x = [Laplace(), Normal(), MvNormal(3, 1.0)]
+        x = [Laplace(), Normal(), MvNormal(zeros(3), I)]
         @test DynamicPPL.check_tilde_rhs(x) === x
     end
     @testset "isliteral" begin
@@ -436,14 +436,14 @@ end
         # Verify that we indeed can parse this.
         @test @model(function array_literal_model()
             # `assume` and literal `observe`
-            m ~ MvNormal(2, 1.0)
-            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            m ~ MvNormal(zeros(2), I)
+            return [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
         end) isa Function
 
         @model function array_literal_model2()
             # `assume` and literal `observe`
-            m ~ MvNormal(2, 1.0)
-            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            m ~ MvNormal(zeros(2), I)
+            return [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
         end
 
         @test array_literal_model2()() == [10.0, 10.0]
