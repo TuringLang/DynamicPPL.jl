@@ -133,8 +133,8 @@ This is used mainly to unwrap `NamedDist` distributions and adjust the indices o
 variables.
 
 # Example
-```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal([1.0, 1.0], [1.0 0.0; 0.0 1.0]), randn(2, 2), @varname(x)); string(vns[end])
+```jldoctest; setup=:(using Distributions, LinearAlgebra)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); string(vns[end])
 "x[:,2]"
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); string(vns[end])

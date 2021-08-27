@@ -175,12 +175,12 @@
 
         res = sample(vdemo1b(x), alg, 250)
 
-        D = 2
         @model function vdemo2(x)
-            μ ~ MvNormal(zeros(D), ones(D))
-            @. x ~ $(MvNormal(μ, ones(D)))
+            μ ~ MvNormal(zeros(size(x, 1)), I)
+            @. x ~ $(MvNormal(μ, I))
         end
 
+        D = 2
         alg = HMC(0.01, 5)
         res = sample(vdemo2(randn(D, 100)), alg, 250)
 
@@ -206,7 +206,7 @@
 
         t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
 
-        @model vdemo5() = x ~ MvNormal(zeros(N), 2 * ones(N))
+        @model vdemo5() = x ~ MvNormal(zeros(N), 4 * I)
 
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
@@ -243,12 +243,12 @@
         x = randn(100)
         res = sample(vdemo1(x), alg, 250)
 
-        D = 2
         @model function vdemo2(x)
-            μ ~ MvNormal(zeros(D), ones(D))
-            return x .~ MvNormal(μ, ones(D))
+            μ ~ MvNormal(zeros(size(x, 1)), I)
+            return x .~ MvNormal(μ, I)
         end
 
+        D = 2
         alg = HMC(0.01, 5)
         res = sample(vdemo2(randn(D, 100)), alg, 250)
 
@@ -274,7 +274,7 @@
 
         t_vec = @elapsed res = sample(vdemo4(), alg, 1000)
 
-        @model vdemo5() = x ~ MvNormal(zeros(N), 2 * ones(N))
+        @model vdemo5() = x ~ MvNormal(zeros(N), 4 * I)
 
         t_mv = @elapsed res = sample(vdemo5(), alg, 1000)
 
