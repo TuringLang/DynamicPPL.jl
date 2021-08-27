@@ -13,7 +13,7 @@ using Test
     # `dot_assume` and `observe`
     m = TV(undef, length(x))
     m .~ Normal()
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    x ~ MvNormal(m, 0.25 * I)
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
@@ -25,15 +25,15 @@ end
     for i in eachindex(m)
         m[i] ~ Normal()
     end
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    x ~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
 
 @model function demo_assume_multivariate_observe_index(x=[10.0, 10.0])
     # Multivariate `assume` and `observe`
-    m ~ MvNormal(length(x), 1.0)
-    x ~ MvNormal(m, 0.5 * ones(length(x)))
+    m ~ MvNormal(zero(x), I)
+    x ~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
@@ -63,8 +63,8 @@ end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
-    m ~ MvNormal(2, 1.0)
-    [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+    m ~ MvNormal(zeros(2), I)
+    [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=[10.0, 10.0], logp=getlogp(__varinfo__))
 end
@@ -106,7 +106,7 @@ end
 end
 
 @model function _likelihood_dot_observe(m, x)
-    return x ~ MvNormal(m, 0.5 * ones(length(m)))
+    return x ~ MvNormal(m, 0.25 * I)
 end
 
 @model function demo_dot_assume_observe_submodel(
@@ -128,7 +128,7 @@ end
     m .~ Normal()
 
     # Dotted observe for `Matrix`.
-    x .~ MvNormal(m, 0.5)
+    x .~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
