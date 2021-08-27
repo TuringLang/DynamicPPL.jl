@@ -39,6 +39,7 @@ end
 
             return x, y
         end
+        @test length(methods(testmodel_comp)) == 2
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
@@ -46,6 +47,7 @@ end
             x ~ Normal()
             return x
         end
+        @test length(methods(testmodel01)) == 3
         f0_mm = testmodel01()
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
@@ -58,6 +60,7 @@ end
             x[2] ~ Normal()
             return x
         end
+        @test length(methods(testmodel02)) == 3
         f0_mm = testmodel02()
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
@@ -66,6 +69,7 @@ end
             return x
         end
         f01_mm = testmodel03()
+        @test length(methods(testmodel03)) == 3
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -78,6 +82,7 @@ end
 
             return x1, x2
         end
+        @test length(methods(testmodel1)) == 2
         f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
@@ -95,6 +100,7 @@ end
 
             return x1, x2
         end
+        @test length(methods(testmodel2)) == 2
         f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
@@ -460,5 +466,32 @@ end
         @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
             model = @model(x -> (x ~ Normal()))
         end
+    end
+
+    @testset "dispatching with model" begin
+        f(x) = false
+
+        @model demo() = x ~ Normal()
+        @test !f(demo())
+        f(::Model{typeof(demo)}) = true
+        @test f(demo())
+
+        # Leads to re-definition of `demo` and trait is not affected.
+        @test length(methods(demo)) == 2
+        @model demo() = x ~ Normal()
+        @test length(methods(demo)) == 2
+        @test f(demo())
+
+        # Ensure we can specialize on arguments.
+        @model demo(x) = x ~ Normal()
+        length(methods(demo))
+        @test f(demo(1.0))
+        f(::Model{typeof(demo),(:x,)}) = false
+        @test !f(demo(1.0))
+        @test f(demo()) # should still be `true`
+
+        # Set it to `false` again.
+        f(::Model{typeof(demo),()}) = false
+        @test !f(demo())
     end
 end

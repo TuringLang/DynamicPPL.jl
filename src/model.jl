@@ -121,7 +121,7 @@ julia> @model function demo()
            x ~ Normal(m, 1)
            return (; m=m, x=x)
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
 julia> model = demo();
 
@@ -161,7 +161,7 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 2 methods)
+demo_mv (generic function with 3 methods)
 
 julia> model = demo_mv();
 
@@ -192,13 +192,13 @@ the use of [`@submodel`](@ref).
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
-demo_inner (generic function with 1 method)
+demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
            m = @submodel demo_inner()
            return m
        end
-demo_outer (generic function with 1 method)
+demo_outer (generic function with 2 methods)
 
 julia> model = demo_outer();
 
@@ -218,7 +218,7 @@ julia> @model function demo_outer_prefix()
            m = @submodel inner demo_inner()
            return m
        end
-demo_outer_prefix (generic function with 1 method)
+demo_outer_prefix (generic function with 2 methods)
 
 julia> # This doesn't work now!
        conditioned_model = demo_outer_prefix() | (m = 1.0, );
@@ -279,7 +279,7 @@ julia> @model function demo()
            x ~ Normal(m, 1)
            return (; m=m, x=x)
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
 julia> conditioned_model = condition(demo(), m = 1.0, x = 10.0);
 
@@ -333,7 +333,7 @@ julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
 julia> m = demo();
 
@@ -613,7 +613,7 @@ julia> @model function demo(xs)
            end
            return (m, )
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
 julia> model = demo(randn(10));
 
