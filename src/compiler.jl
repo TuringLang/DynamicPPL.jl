@@ -314,15 +314,6 @@ generate_mainbody(mod, expr, warn) = generate_mainbody!(mod, Symbol[], expr, war
 
 generate_mainbody!(mod, found, x, warn) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn)
-    if sym in DEPRECATED_INTERNALNAMES
-        newsym = Symbol(:_, sym, :__)
-        Base.depwarn(
-            "internal variable `$sym` is deprecated, use `$newsym` instead.",
-            :generate_mainbody!,
-        )
-        return generate_mainbody!(mod, found, newsym, warn)
-    end
-
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$sym`"
         push!(found, sym)
