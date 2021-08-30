@@ -1,7 +1,7 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 for name in INTERNALNAMES
-    @eval $(Symbol(uppercase(string(name)))) = $(Meta.quot(name))
+    @eval const $(Symbol(uppercase(string(name)))) = $(Meta.quot(name))
 end
 
 # macro _id(expr)
@@ -28,7 +28,7 @@ When `expr` is not an expression or symbol (i.e., a literal), this expands to `f
 """
 function isassumption(expr::Union{Symbol,Expr}, vn)
     return quote
-        if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+        if $(DynamicPPL.contextual_isassumption)($__CONTEXT__, $vn)
             # Considered an assumption by `__context__` which means either:
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
@@ -42,8 +42,8 @@ function isassumption(expr::Union{Symbol,Expr}, vn)
             #    TODO: Support by adding context to model, and use `model.args`
             #    as the default conditioning. Then we no longer need to check `inargnames`
             #    since it will all be handled by `contextual_isassumption`.
-            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                $(DynamicPPL.inmissings)($vn, __model__)
+            if !($(DynamicPPL.inargnames)($vn, $__MODEL__)) ||
+                $(DynamicPPL.inmissings)($vn, $__MODEL__)
                 true
             else
                 $(maybe_view(expr)) === missing
@@ -208,7 +208,7 @@ To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
 macro model(expr, warn=false)
     # include `LineNumberNode` with information about the call site in the
     # generated function for easier debugging and interpretation of error messages
-    return esc(model(__module__, __source__, expr, warn))
+    return model(__module__, __source__, expr, warn)
 end
 
 function model(mod, linenumbernode, expr, warn)
@@ -323,7 +323,7 @@ function generate_mainbody!(mod, found, sym::Symbol, warn)
 end
 function generate_mainbody!(mod, found, expr::Expr, warn)
     # Do not touch interpolated expressions
-    expr.head === :$ && return expr.args[1]
+    Meta.isexpr(expr, :$) && return esc(expr.args[1])
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
@@ -368,7 +368,7 @@ function generate_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+                $__CONTEXT__, $(DynamicPPL.check_tilde_rhs)($right), $left, $__VARINFO__
             )
         end
     end
@@ -382,26 +382,26 @@ function generate_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $left = $(DynamicPPL.tilde_assume!)(
-                __context__,
+                $__CONTEXT__,
                 $(DynamicPPL.unwrap_right_vn)(
                     $(DynamicPPL.check_tilde_rhs)($right), $vn
                 )...,
                 $inds,
-                __varinfo__,
+                $__VARINFO__,
             )
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            if !$(DynamicPPL.inargnames)($vn, $__MODEL__)
+                $left = $(DynamicPPL.getvalue_nested)($__CONTEXT__, $vn)
             end
 
             $(DynamicPPL.tilde_observe!)(
-                __context__,
+                $__CONTEXT__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 $inds,
-                __varinfo__,
+                $__VARINFO__,
             )
         end
     end
@@ -417,7 +417,7 @@ function generate_dot_tilde(left, right)
     if isliteral(left)
         return quote
             $(DynamicPPL.dot_tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+                $__CONTEXT__, $(DynamicPPL.check_tilde_rhs)($right), $left, $__VARINFO__
             )
         end
     end
@@ -431,26 +431,26 @@ function generate_dot_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $left .= $(DynamicPPL.dot_tilde_assume!)(
-                __context__,
+                $__CONTEXT__,
                 $(DynamicPPL.unwrap_right_left_vns)(
                     $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
                 )...,
                 $inds,
-                __varinfo__,
+                $__VARINFO__,
             )
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
+            if !$(DynamicPPL.inargnames)($vn, $__MODEL__)
+                $left .= $(DynamicPPL.getvalue_nested)($__CONTEXT__, $vn)
             end
 
             $(DynamicPPL.dot_tilde_observe!)(
-                __context__,
+                $__CONTEXT__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 $inds,
-                __varinfo__,
+                $__VARINFO__,
             )
         end
     end
@@ -469,6 +469,7 @@ Builds the output expression.
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = deepcopy(modelinfo[:modeldef])
+    evaluatordef[:name] = esc(evaluatordef[:name])
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -482,7 +483,6 @@ function build_output(modelinfo, linenumbernode)
 
     # Delete the keyword arguments.
     evaluatordef[:kwargs] = []
-    evaluatordef[:name] = esc(evaluatordef[:name])
 
     # Replace the user-provided function body with the version created by DynamicPPL.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
@@ -503,11 +503,12 @@ function build_output(modelinfo, linenumbernode)
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
     modeldef = modelinfo[:modeldef]
+    modelname_symbol = Meta.quot(modeldef[:name])
     modeldef[:name] = esc(modeldef[:name])
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         return $(DynamicPPL.Model)(
-            $(QuoteNode(modeldef[:name])),
+            $modelname_symbol,
             $(modeldef[:name]),
             $allargs_namedtuple,
             $defaults_namedtuple,
