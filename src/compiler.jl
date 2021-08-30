@@ -425,7 +425,6 @@ function generate_tilde_assume(left, right, vn)
     return if left isa Expr
         # `x[i] = ...` needs to become `x = set(x, @lens(_[i]), ...)`
         @gensym lens
-        # TODO: maybe export this from AbstractPPL again...
         vn_name = AbstractPPL.vsym(left)
         quote
             $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
