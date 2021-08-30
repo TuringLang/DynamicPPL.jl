@@ -1,5 +1,4 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
-const DEPRECATED_INTERNALNAMES = (:_model, :_context, :_varinfo)
 
 for name in INTERNALNAMES
     @eval $(Symbol(uppercase(string(name)))) = $(Meta.quot(name))
