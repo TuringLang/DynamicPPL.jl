@@ -32,7 +32,7 @@ function isassumption(vn::Symbol, expr::Union{Expr,Symbol})
             #    as the default conditioning. Then we no longer need to check `inargnames`
             #    since it will all be handled by `contextual_isassumption`.
             if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                $(DynamicPPL.inmissings)($vn, __model__)
+               $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
                 $(maybe_view(expr)) === missing
@@ -77,6 +77,7 @@ function contextual_isassumption(context::PrefixContext, vn)
 end
 
 # failsafe: a literal is never an assumption
+isassumption(expr) = :(false)
 isassumption(expr, vn) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
@@ -413,7 +414,7 @@ function generate_tilde(left, right)
 end
 
 function generate_tilde_assume(left, right, vn)
-    new_right = :(
+    tilde = :(
         $(DynamicPPL.tilde_assume!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
@@ -426,11 +427,11 @@ function generate_tilde_assume(left, right, vn)
         AbstractPPL.drop_escape(
             quote
                 $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
-                $left = $(Setfield.set)($left, $lens, $new_right)
-            end
+                $left = $(Setfield.set)($left, $lens, $tilde)
+            end,
         )
     else
-        return :($left = $new_right)
+        return :($left = $tilde)
     end
 end
 
