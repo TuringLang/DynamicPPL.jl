@@ -2,7 +2,7 @@ const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__
 const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
 
 """
-    isassumption(expr)
+    isassumption(expr, vn)
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
 model.
@@ -15,7 +15,7 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 """
-function isassumption(vn::Symbol, expr::Union{Expr,Symbol})
+function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr)))
     return quote
         if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
             # Considered an assumption by `__context__` which means either:
@@ -42,6 +42,10 @@ function isassumption(vn::Symbol, expr::Union{Expr,Symbol})
         end
     end
 end
+
+# failsafe: a literal is never an assumption
+isassumption(expr, vn) = :(false)
+isassumption(expr) = :(false)
 
 """
     contextual_isassumption(context, vn)
@@ -75,10 +79,6 @@ end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
-
-# failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
-isassumption(expr, vn) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
@@ -423,13 +423,14 @@ function generate_tilde_assume(left, right, vn)
     )
 
     return if left isa Expr
+        # `x[i] = ...` needs to become `x = set(x, @lens(_[i]), ...)`
         @gensym lens
-        AbstractPPL.drop_escape(
-            quote
-                $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
-                $left = $(Setfield.set)($left, $lens, $tilde)
-            end,
-        )
+        # TODO: maybe export this from AbstractPPL again...
+        vn_name = AbstractPPL.vsym(left)
+        quote
+            $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
+            $vn_name = $(Setfield.set)($vn_name, $lens, $tilde)
+        end
     else
         return :($left = $tilde)
     end
