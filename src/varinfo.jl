@@ -1,8 +1,3 @@
-# Constants for caching
-const CACHERESET = 0b00
-const CACHEIDCS = 0b10
-const CACHERANGES = 0b01
-
 ####
 #### Types for typed and untyped VarInfo
 ####
