@@ -14,7 +14,7 @@
         end
 
         @model function demo2(xs)
-            m ~ MvNormal(2, 1.0)
+            m ~ MvNormal(zeros(2), I)
 
             for i in eachindex(xs)
                 xs[i] ~ Normal(m[1], 1.0)
@@ -50,7 +50,7 @@
         @model function demo3(xs, ::Type{TV}=Vector{Float64}) where {TV}
             m = Vector{TV}(undef, 2)
             for i in 1:length(m)
-                m[i] ~ MvNormal(2, 1.0)
+                m[i] ~ MvNormal(zeros(2), I)
             end
 
             for i in eachindex(xs)
@@ -63,7 +63,7 @@
         @model function demo4(xs, ::Type{TV}=Vector{Vector{Float64}}) where {TV}
             m = TV(undef, 2)
             for i in 1:length(m)
-                m[i] ~ MvNormal(2, 1.0)
+                m[i] ~ MvNormal(zeros(2), I)
             end
 
             for i in eachindex(xs)

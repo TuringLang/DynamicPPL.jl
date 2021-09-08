@@ -44,6 +44,7 @@ end
 
             return x, y
         end
+        @test length(methods(testmodel_comp)) == 2
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
@@ -51,6 +52,7 @@ end
             x ~ Normal()
             return x
         end
+        @test length(methods(testmodel01)) == 3
         f0_mm = testmodel01()
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
@@ -63,6 +65,7 @@ end
             x[2] ~ Normal()
             return x
         end
+        @test length(methods(testmodel02)) == 3
         f0_mm = testmodel02()
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
@@ -71,6 +74,7 @@ end
             return x
         end
         f01_mm = testmodel03()
+        @test length(methods(testmodel03)) == 3
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -83,6 +87,7 @@ end
 
             return x1, x2
         end
+        @test length(methods(testmodel1)) == 2
         f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
@@ -100,6 +105,7 @@ end
 
             return x1, x2
         end
+        @test length(methods(testmodel2)) == 2
         f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
@@ -211,7 +217,7 @@ end
         # test DPPL#61
         @model function testmodel_missing5(z)
             m ~ Normal()
-            z[1:end] ~ MvNormal(fill(m, length(z)), 1.0)
+            z[1:end] ~ MvNormal(fill(m, length(z)), I)
             return m
         end
         model = testmodel_missing5(rand(10))
@@ -431,7 +437,7 @@ end
 
         # AR1 model. Dynamic prefixing.
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
-            η ~ MvNormal(num_steps, 1.0)
+            η ~ MvNormal(zeros(num_steps), I)
             δ = sqrt(1 - α^2)
 
             x = TV(undef, num_steps)
@@ -452,7 +458,7 @@ end
             num_obs = length(y)
             @inbounds for i in 1:num_obs
                 x = @submodel $(Symbol("ar1_$i")) AR1(num_steps, α, μ, σ)
-                y[i] ~ MvNormal(x, 0.1)
+                y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
 
@@ -471,7 +477,7 @@ end
         x = Normal()
         @test DynamicPPL.check_tilde_rhs(x) === x
 
-        x = [Laplace(), Normal(), MvNormal(3, 1.0)]
+        x = [Laplace(), Normal(), MvNormal(zeros(3), I)]
         @test DynamicPPL.check_tilde_rhs(x) === x
     end
     @testset "isliteral" begin
@@ -488,14 +494,14 @@ end
         # Verify that we indeed can parse this.
         @test @model(function array_literal_model()
             # `assume` and literal `observe`
-            m ~ MvNormal(2, 1.0)
-            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            m ~ MvNormal(zeros(2), I)
+            return [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
         end) isa Function
 
         @model function array_literal_model2()
             # `assume` and literal `observe`
-            m ~ MvNormal(2, 1.0)
-            return [10.0, 10.0] ~ MvNormal(m, 0.5 * ones(2))
+            m ~ MvNormal(zeros(2), I)
+            return [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
         end
 
         @test array_literal_model2()() == [10.0, 10.0]
@@ -512,5 +518,32 @@ end
         @test_throws LoadError(@__FILE__, (@__LINE__) + 1, error) @macroexpand begin
             model = @model(x -> (x ~ Normal()))
         end
+    end
+
+    @testset "dispatching with model" begin
+        f(x) = false
+
+        @model demo() = x ~ Normal()
+        @test !f(demo())
+        f(::Model{typeof(demo)}) = true
+        @test f(demo())
+
+        # Leads to re-definition of `demo` and trait is not affected.
+        @test length(methods(demo)) == 2
+        @model demo() = x ~ Normal()
+        @test length(methods(demo)) == 2
+        @test f(demo())
+
+        # Ensure we can specialize on arguments.
+        @model demo(x) = x ~ Normal()
+        length(methods(demo))
+        @test f(demo(1.0))
+        f(::Model{typeof(demo),(:x,)}) = false
+        @test !f(demo(1.0))
+        @test f(demo()) # should still be `true`
+
+        # Set it to `false` again.
+        f(::Model{typeof(demo),()}) = false
+        @test !f(demo())
     end
 end

@@ -231,7 +231,7 @@
         check_numerical(chain, ["p[1][1]"], [0]; atol=0.25)
     end
     @testset "varinfo" begin
-        dists = [Normal(0, 1), MvNormal([0; 0], [1.0 0; 0 1.0]), Wishart(7, [1 0.5; 0.5 1])]
+        dists = [Normal(0, 1), MvNormal(zeros(2), I), Wishart(7, [1 0.5; 0.5 1])]
         function test_varinfo!(vi)
             @test getlogp(vi) === 0.0
             setlogp!(vi, 1)
