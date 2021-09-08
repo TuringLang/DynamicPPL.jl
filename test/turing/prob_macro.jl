@@ -33,8 +33,8 @@
     @testset "vector" begin
         n = 5
         @model function demo(x, n=n)
-            m ~ MvNormal(n, 1.0)
-            return x ~ MvNormal(m, 1.0)
+            m ~ MvNormal(zeros(n), I)
+            return x ~ MvNormal(m, I)
         end
         mval = rand(n)
         xval = rand(n)
@@ -49,7 +49,7 @@
 
         names = namesingroup(chain, "m")
         lps = [
-            logpdf(MvNormal(chain.value[i, names, j], 1.0), xval) for i in 1:size(chain, 1),
+            logpdf(MvNormal(chain.value[i, names, j], I), xval) for i in 1:size(chain, 1),
             j in 1:size(chain, 3)
         ]
         @test logprob"x = xval | chain = chain" == lps
@@ -71,7 +71,7 @@
             σ ~ truncated(Cauchy(0, 1), 0, Inf)
             α ~ filldist(Normal(0, 10), n_groups)
             μ = α[group]
-            return y ~ MvNormal(μ, σ)
+            return y ~ MvNormal(μ, σ^2 * I)
         end
 
         y = randn(100)
