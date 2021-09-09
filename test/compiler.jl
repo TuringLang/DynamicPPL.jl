@@ -183,7 +183,7 @@ end
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __context__.sampler
+            global sampler_ = __context__.s2ampler
             global model_ = __model__
             global context_ = __context__
             global rng_ = __context__.rng
@@ -260,7 +260,7 @@ end
             z[1:2] .~ Normal()
             z[end:end] .~ Normal()
 
-            return (; s, m, x, y, z)
+            return (; s=s, m=m, x=x, y=y, z=z)
         end
 
         m_nonarray = testmodel_nonarray(
