@@ -1,5 +1,5 @@
 @testset "loglikelihoods.jl" begin
-    for m in DynamicPPL.TestUtils.demo_models
+    for m in DynamicPPL.TestUtils.DEMO_MODELS
         vi = VarInfo(m)
 
         vns = vi.metadata.m.vns
