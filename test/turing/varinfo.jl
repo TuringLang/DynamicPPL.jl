@@ -184,29 +184,6 @@
         chain = sample(priorsinarray(xs), HMC(0.01, 10), 10)
     end
     @testset "varname" begin
-        i, j, k = 1, 2, 3
-
-        vn1 = @varname x[1]
-        @test vn1 == VarName{:x}(((1,),))
-
-        # Symbol
-        v_sym = string(:x)
-        @test v_sym == "x"
-
-        # Array
-        v_arr = @varname x[i]
-        @test v_arr.indexing == ((1,),)
-
-        # Matrix
-        v_mat = @varname x[i, j]
-        @test v_mat.indexing == ((1, 2),)
-
-        v_mat = @varname x[i, j, k]
-        @test v_mat.indexing == ((1, 2, 3),)
-
-        v_mat = @varname x[1, 2][1 + 5][45][3][i]
-        @test v_mat.indexing == ((1, 2), (6,), (45,), (3,), (1,))
-
         @model function mat_name_test()
             p = Array{Any}(undef, 2, 2)
             for i in 1:2, j in 1:2
