@@ -229,7 +229,6 @@ function assume(
 )
     value = init(rng, dist, sampler)
     vi = push!!(vi, vn, value, dist, sampler)
-    vi = settrans!!(vi, false, vn)
     return value, Distributions.loglikelihood(dist, value), vi
 end
 
@@ -283,7 +282,7 @@ end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleVarInfo) = nothing
-settrans!!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = vi
+settrans!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = nothing
 
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.θ))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.θ))
