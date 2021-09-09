@@ -26,7 +26,7 @@ julia> @model function demo()
            end
            return x
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
 julia> m = demo();
 
