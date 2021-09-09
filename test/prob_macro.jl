@@ -30,15 +30,15 @@
     @testset "vector" begin
         n = 5
         @model function demo(x, n=n)
-            m ~ MvNormal(n, 1.0)
-            return x ~ MvNormal(m, 1.0)
+            m ~ MvNormal(zeros(n), I)
+            return x ~ MvNormal(m, I)
         end
         mval = rand(n)
         xval = rand(n)
         iters = 1000
 
-        logprior = logpdf(MvNormal(n, 1.0), mval)
-        loglike = logpdf(MvNormal(mval, 1.0), xval)
+        logprior = logpdf(MvNormal(zeros(n), I), mval)
+        loglike = logpdf(MvNormal(mval, I), xval)
         logjoint = logprior + loglike
 
         model = demo(xval)

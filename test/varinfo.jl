@@ -149,8 +149,8 @@
         @model function testmodel(x)
             n = length(x)
             s ~ truncated(Normal(), 0, Inf)
-            m ~ MvNormal(n, 1.0)
-            return x ~ MvNormal(m, s)
+            m ~ MvNormal(zeros(n), I)
+            return x ~ MvNormal(m, s^2 * I)
         end
 
         @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
@@ -259,7 +259,7 @@
 
         # https://github.com/TuringLang/DynamicPPL.jl/issues/250
         @model function demo()
-            return x ~ filldist(MvNormal([1, 100], 1), 2)
+            return x ~ filldist(MvNormal([1, 100], I), 2)
         end
 
         vi = VarInfo(demo())

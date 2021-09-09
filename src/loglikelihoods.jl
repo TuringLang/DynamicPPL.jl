@@ -135,7 +135,7 @@ y .~ Normal(μ, σ)
 ```
 3. using `MvNormal`:
 ```julia
-y ~ MvNormal(fill(μ, n), Diagonal(fill(σ, n)))
+y ~ MvNormal(fill(μ, n), σ^2 * I)
 ```
 
 In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,

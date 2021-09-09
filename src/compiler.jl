@@ -1,5 +1,4 @@
-const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
-const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
     isassumption(expr)
@@ -133,8 +132,8 @@ This is used mainly to unwrap `NamedDist` distributions and adjust the indices o
 variables.
 
 # Example
-```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal([1.0, 1.0], [1.0 0.0; 0.0 1.0]), randn(2, 2), @varname(x)); string(vns[end])
+```jldoctest; setup=:(using Distributions, LinearAlgebra)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); string(vns[end])
 "x[:,2]"
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); string(vns[end])
@@ -307,15 +306,6 @@ generate_mainbody(mod, expr, warn) = generate_mainbody!(mod, Symbol[], expr, war
 
 generate_mainbody!(mod, found, x, warn) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn)
-    if sym in DEPRECATED_INTERNALNAMES
-        newsym = Symbol(:_, sym, :__)
-        Base.depwarn(
-            "internal variable `$sym` is deprecated, use `$newsym` instead.",
-            :generate_mainbody!,
-        )
-        return generate_mainbody!(mod, found, newsym, warn)
-    end
-
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$sym`"
         push!(found, sym)
@@ -572,10 +562,7 @@ Builds the output expression.
 """
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
-
-    # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
-    delete!(evaluatordef, :name)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -591,11 +578,17 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
+    # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
+    # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
+    # to the call site
     # NOTE: We need to replace statements of the form `return ...` with
     # `return DynamicPPL.return_values(..., __varinfo__)` to ensure that the second
     # element in the returned value is always the most up-to-date `__varinfo__`.
     # See the docstrings of `replace_returns` and `return_values` for more info.
-    evaluatordef[:body] = replace_returns(make_returns_explicit!(modelinfo[:body]))
+    evaluatordef[:body] = MacroTools.@q begin
+        $(linenumbernode)
+        $(replace_returns(make_returns_explicit!(modelinfo[:body])))
+    end
 
     ## Build the model function.
 
@@ -604,24 +597,24 @@ function build_output(modelinfo, linenumbernode)
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
     # Update the function body of the user-specified model.
-    # We use a name for the anonymous evaluator that does not conflict with other variables.
-    modeldef = modelinfo[:modeldef]
-    @gensym evaluator
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
+    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
-            $evaluator,
+            $(modeldef[:name]),
             $allargs_namedtuple,
             $defaults_namedtuple,
         )
     end
 
-    return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
+    return MacroTools.@q begin
+        $(MacroTools.combinedef(evaluatordef))
+        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
+    end
 end
 
 function warn_empty(body)
