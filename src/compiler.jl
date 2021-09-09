@@ -486,7 +486,7 @@ function replace_returns(e::Expr)
 
     if Meta.isexpr(e, :return)
         # NOTE: `return` always has an argument. In the case of
-        # `return`, the parsed expression will be `return nothing`.
+        # an empty `return`, the lowered expression will be `return nothing`.
         # Hence we don't need any special handling for empty returns.
         retval_expr = if length(e.args) > 1
             Expr(:tuple, e.args...)
