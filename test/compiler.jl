@@ -250,7 +250,6 @@ end
             end
 
             # Dynamic indexing
-            x.a[begin] ~ Normal(-100.0, 1.0)
             x.a[end] ~ Normal(100.0, 1.0)
 
             # Immutable set
@@ -270,7 +269,6 @@ end
         result = m_nonarray()
         @test !any(ismissing, result.x.a)
         @test result.y.a !== missing
-        @test result.x.a[begin] < -10
         @test result.x.a[end] > 10
 
         # Ensure that we can work with `Vector{Real}(undef, N)` which is the
