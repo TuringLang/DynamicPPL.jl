@@ -114,10 +114,10 @@
             # del is set by default
             @test !is_flagged(vi, vn_x, "del")
 
-            set_flag!!(vi, vn_x, "del")
+            set_flag!(vi, vn_x, "del")
             @test is_flagged(vi, vn_x, "del")
 
-            unset_flag!!(vi, vn_x, "del")
+            unset_flag!(vi, vn_x, "del")
             @test !is_flagged(vi, vn_x, "del")
         end
         vi = VarInfo()
