@@ -2,6 +2,7 @@ module TestUtils
 
 using AbstractMCMC
 using DynamicPPL
+using LinearAlgebra
 using Distributions
 using Test
 
