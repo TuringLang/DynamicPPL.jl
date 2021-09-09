@@ -134,4 +134,6 @@ include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 
+include("test_utils.jl")
+
 end # module
