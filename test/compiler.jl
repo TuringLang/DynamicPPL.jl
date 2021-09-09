@@ -183,7 +183,7 @@ end
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
-            global sampler_ = __context__.s2ampler
+            global sampler_ = __context__.sampler
             global model_ = __model__
             global context_ = __context__
             global rng_ = __context__.rng
