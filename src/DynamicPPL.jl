@@ -11,6 +11,9 @@ using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
 
+using Setfield: Setfield
+using BangBang: BangBang
+
 using Random: Random
 
 import Base:
