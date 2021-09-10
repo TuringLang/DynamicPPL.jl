@@ -245,7 +245,7 @@ end
         @model function testmodel_nonarray(x, y)
             s ~ InverseGamma(2, 3)
             m ~ Normal(0, √s)
-            for i in 2:(length(x.a) - 1)
+            for i in 1:(length(x.a) - 1)
                 x.a[i] ~ Normal(m, √s)
             end
 
