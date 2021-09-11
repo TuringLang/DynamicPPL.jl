@@ -398,13 +398,11 @@ function generate_tilde(left, right)
 end
 
 function generate_tilde_assume(left, right, vn)
-    rhs = :(
-        $(DynamicPPL.tilde_assume!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
-            __varinfo__,
-        )
-    )
+    rhs = :($(DynamicPPL.tilde_assume!)(
+        __context__,
+        $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+        __varinfo__,
+    ))
 
     return if left isa Expr
         # `x[i] = ...` needs to become `x = set(x, @lens(_[i]), ...)`
