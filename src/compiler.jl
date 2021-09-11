@@ -411,7 +411,7 @@ function generate_tilde_assume(left, right, vn)
         @gensym lens
         vn_name = AbstractPPL.vsym(left)
         quote
-            $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
+            $lens = $(BangBang.prefermutation)($(DynamicPPL.getlens)($vn))
             $vn_name = $(Setfield.set)($vn_name, $lens, $rhs)
         end
     else
