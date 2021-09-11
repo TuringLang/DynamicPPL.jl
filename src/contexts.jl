@@ -246,9 +246,9 @@ end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(vn.indexing))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(getlens(vn)))
     else
-        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
+        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getlens(vn))
     end
 end
 

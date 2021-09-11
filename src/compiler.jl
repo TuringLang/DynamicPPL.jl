@@ -1,5 +1,4 @@
-const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
-const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
     isassumption(expr, vn)
@@ -82,13 +81,7 @@ end
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
-maybe_view(x::Expr) = :($(DynamicPPL.maybe_unwrap_view)(@views($x)))
-
-# If the result of a `view` is a zero-dim array then it's just a
-# single element. Likely the rest is expecting type `eltype(x)`, hence
-# we extract the value rather than passing the array.
-maybe_unwrap_view(x) = x
-maybe_unwrap_view(x::SubArray{<:Any,0}) = x[1]
+maybe_view(x::Expr) = :(@views($x))
 
 """
     isliteral(expr)
@@ -135,9 +128,9 @@ left-hand side of a `.~` expression such as `x .~ Normal()`.
 This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
 variables.
 
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(1, 1.0), randn(1, 2), @varname(x)); vns[end]
+# Example
+```jldoctest; setup=:(using Distributions, LinearAlgebra)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
 x[:,2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
@@ -310,15 +303,6 @@ generate_mainbody(mod, expr, warn) = generate_mainbody!(mod, Symbol[], expr, war
 
 generate_mainbody!(mod, found, x, warn) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn)
-    if sym in DEPRECATED_INTERNALNAMES
-        newsym = Symbol(:_, sym, :__)
-        Base.depwarn(
-            "internal variable `$sym` is deprecated, use `$newsym` instead.",
-            :generate_mainbody!,
-        )
-        return generate_mainbody!(mod, found, newsym, warn)
-    end
-
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$sym`"
         push!(found, sym)
@@ -414,7 +398,7 @@ function generate_tilde(left, right)
 end
 
 function generate_tilde_assume(left, right, vn)
-    tilde = :(
+    rhs = :(
         $(DynamicPPL.tilde_assume!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
@@ -428,10 +412,10 @@ function generate_tilde_assume(left, right, vn)
         vn_name = AbstractPPL.vsym(left)
         quote
             $lens = $(BangBang.prefermutation)($(DynamicPPL.getindexing)($vn))
-            $vn_name = $(Setfield.set)($vn_name, $lens, $tilde)
+            $vn_name = $(Setfield.set)($vn_name, $lens, $rhs)
         end
     else
-        return :($left = $tilde)
+        return :($left = $rhs)
     end
 end
 
@@ -495,10 +479,7 @@ Builds the output expression.
 """
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
-
-    # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
-    delete!(evaluatordef, :name)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -514,7 +495,13 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
+    # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
+    # to the call site
+    evaluatordef[:body] = MacroTools.@q begin
+        $(linenumbernode)
+        $(modelinfo[:body])
+    end
 
     ## Build the model function.
 
@@ -523,24 +510,24 @@ function build_output(modelinfo, linenumbernode)
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
     # Update the function body of the user-specified model.
-    # We use a name for the anonymous evaluator that does not conflict with other variables.
-    modeldef = modelinfo[:modeldef]
-    @gensym evaluator
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
+    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
-            $evaluator,
+            $(modeldef[:name]),
             $allargs_namedtuple,
             $defaults_namedtuple,
         )
     end
 
-    return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
+    return MacroTools.@q begin
+        $(MacroTools.combinedef(evaluatordef))
+        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
+    end
 end
 
 function warn_empty(body)
