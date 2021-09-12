@@ -246,9 +246,9 @@ end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(vn.indexing))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(getlens(vn)))
     else
-        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(vn.indexing)
+        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getlens(vn))
     end
 end
 
@@ -311,7 +311,7 @@ Return value of `vn` in `context`.
 function getvalue(context::AbstractContext, vn)
     return error("context $(context) does not contain value for $vn")
 end
-getvalue(context::ConditionContext, vn) = _getvalue(context.values, vn)
+getvalue(context::ConditionContext, vn) = get(context.values, vn)
 
 """
     hasvalue_nested(context, vn)

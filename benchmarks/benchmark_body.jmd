@@ -8,8 +8,15 @@ m = time_model_def(model_def, data);
 
 ```julia
 suite = make_suite(m);
-results = run(suite)
-results
+results = run(suite);
+```
+
+```julia
+results["evaluation_untyped"]
+```
+
+```julia
+results["evaluation_typed"]
 ```
 
 ```julia; echo=false; results="hidden";

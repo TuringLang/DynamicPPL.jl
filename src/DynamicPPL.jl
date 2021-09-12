@@ -11,6 +11,9 @@ using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
 
+using Setfield: Setfield
+using BangBang: BangBang
+
 using Random: Random
 
 import Base:
@@ -133,5 +136,7 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
+
+include("test_utils.jl")
 
 end # module
