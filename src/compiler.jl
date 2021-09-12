@@ -469,16 +469,15 @@ Builds the output expression.
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = deepcopy(modelinfo[:modeldef])
+    original_arguments = modelinfo[:allargs_exprs]
     evaluatordef[:name] = esc(evaluatordef[:name])
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [
-            :($__MODEL__::$(DynamicPPL.Model)),
-            :($__VARINFO__::$(DynamicPPL.AbstractVarInfo)),
-            :($__CONTEXT__::$(DynamicPPL.AbstractContext)),
-        ],
-        modelinfo[:allargs_exprs],
+        :($__MODEL__::$(DynamicPPL.Model)),
+        :($__VARINFO__::$(DynamicPPL.AbstractVarInfo)),
+        :($__CONTEXT__::$(DynamicPPL.AbstractContext)),
+        original_arguments,
     )
 
     # Delete the keyword arguments.
