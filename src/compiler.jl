@@ -476,7 +476,6 @@ function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = deepcopy(modelinfo[:modeldef])
     original_arguments = modelinfo[:allargs_exprs]
-    # evaluatordef[:name] = esc(evaluatordef[:name])
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -510,7 +509,6 @@ function build_output(modelinfo, linenumbernode)
     # to the call site
     modeldef = modelinfo[:modeldef]
     modelname_symbol = Meta.quot(modeldef[:name])
-    # modeldef[:name] = esc(modeldef[:name])
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         return $(DynamicPPL.Model)(
