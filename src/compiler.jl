@@ -4,13 +4,6 @@ for name in INTERNALNAMES
     @eval const $(Symbol(uppercase(string(name)))) = $(Meta.quot(name))
 end
 
-# macro _id(expr)
-#     return expr
-# end
-
-# macro hygienize(expr)
-#     return Meta.quot(macroexpand(__module__, :(@_id $expr)))
-# end
 
 """
     isassumption(expr, vn)
@@ -322,15 +315,13 @@ function generate_mainbody!(mod, found, sym::Symbol, warn)
     return sym
 end
 function generate_mainbody!(mod, found, expr::Expr, warn)
-    # Do not touch interpolated expressions
-    Meta.isexpr(expr, :$) && return esc(expr.args[1])
-
-    # Do we don't want escaped expressions because we unfortunately
-    # escape the entire body afterwards.
-    Meta.isexpr(expr, :escape) && return generate_mainbody(mod, found, expr.args[1], warn)
-
-    # If it's a macro, we expand it
-    if Meta.isexpr(expr, :macrocall)
+    if Meta.isexpr(expr, :$)
+        # Do not touch interpolated expressions
+        return expr.args[1]
+    elseif Meta.isexpr(expr, :escape)
+        return generate_mainbody(mod, found, expr.args[1], warn)
+    elseif Meta.isexpr(expr, :macrocall)
+        # If it's a macro, we expand it (recursively)
         return generate_mainbody!(mod, found, macroexpand(mod, expr; recursive=true), warn)
     end
 
@@ -383,9 +374,6 @@ function generate_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption
 
-    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
-    # that in DynamicPPL we the entire function body. Instead we should be
-    # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
         $isassumption = $(DynamicPPL.isassumption(left, vn))
@@ -417,8 +405,8 @@ function generate_tilde_assume(left, right, vn)
         )
     )
 
-    return if left isa Expr
-        AbstractPPL.drop_escape(
+    if left isa Expr
+        return AbstractPPL.drop_escape(
             Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
         )
     else
@@ -488,7 +476,7 @@ function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = deepcopy(modelinfo[:modeldef])
     original_arguments = modelinfo[:allargs_exprs]
-    evaluatordef[:name] = esc(evaluatordef[:name])
+    # evaluatordef[:name] = esc(evaluatordef[:name])
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -522,7 +510,7 @@ function build_output(modelinfo, linenumbernode)
     # to the call site
     modeldef = modelinfo[:modeldef]
     modelname_symbol = Meta.quot(modeldef[:name])
-    modeldef[:name] = esc(modeldef[:name])
+    # modeldef[:name] = esc(modeldef[:name])
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
         return $(DynamicPPL.Model)(
