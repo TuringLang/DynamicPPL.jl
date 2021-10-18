@@ -1,9 +1,21 @@
 # TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
 # That would let us use all defaults for Sampler, combine it with other samplers etc.
 """
-Robust initialization method for model parameters in Hamiltonian samplers.
+    SampleFromUniform
+
+Sampling algorithm that samples unobserved random variables from a uniform distribution.
+
+# References
+
+[Stan reference manual](https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values)
 """
 struct SampleFromUniform <: AbstractSampler end
+
+"""
+    SampleFromPrior
+
+Sampling algorithm that samples unobserved random variables from their prior distribution.
+"""
 struct SampleFromPrior <: AbstractSampler end
 
 getspace(::Union{SampleFromPrior,SampleFromUniform}) = ()
@@ -25,7 +37,7 @@ end
 Generic sampler type for inference algorithms of type `T` in DynamicPPL.
 
 `Sampler` should implement the AbstractMCMC interface, and in particular
-[`AbstractMCMC.step`](@ref). A default implementation of the initial sampling step is
+`AbstractMCMC.step`. A default implementation of the initial sampling step is
 provided that supports resuming sampling from a previous state and setting initial
 parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
 for loading previous states and actually performing the initial sampling step,

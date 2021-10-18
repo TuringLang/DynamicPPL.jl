@@ -118,6 +118,15 @@ export loglikelihood
 function getspace end
 
 # Necessary forward declarations
+"""
+    AbstractVarInfo
+
+Abstract supertype for data structures that capture random variables when executing a
+probabilistic model and accumulate log densities such as the log likelihood or the
+log joint probability of the model.
+
+See also: [`VarInfo`](@ref)
+"""
 abstract type AbstractVarInfo <: AbstractModelTrace end
 abstract type AbstractContext end
 
