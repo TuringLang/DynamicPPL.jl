@@ -222,7 +222,7 @@ end
                         @test hasvalue_nested(context, vn_child)
                         # Value should be the same as extracted above.
                         @test getvalue_nested(context, vn_child) ===
-                              get(val, getlens(vn_child))
+                            get(val, getlens(vn_child))
                     end
                 end
             end
