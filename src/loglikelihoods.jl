@@ -67,9 +67,13 @@ function Base.push!(
     return context.loglikelihoods[vn] = logp
 end
 
-function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vinds, vi)
-    # Need the `logp` value, so we cannot defer `acclogp!!` to child-context, i.e.
-    # we have to intercept the call to `tilde_observe!!`.
+function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
+    # Defer literal `observe` to child-context.
+    return tilde_observe!!(context.context, right, left, vi)
+end
+function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
+    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
+    # we have to intercept the call to `tilde_observe!`.
     logp = tilde_observe(context.context, right, left, vi)
 
     # Track loglikelihood value.
@@ -78,7 +82,11 @@ function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, v
     return left, acclogp!!(vi, logp)
 end
 
-function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
+function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
+    # Defer literal `observe` to child-context.
+    return dot_tilde_observe!!(context.context, right, left, vi)
+end
+function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
