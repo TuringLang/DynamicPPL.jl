@@ -534,7 +534,7 @@ end
 
         # Ensure we can specialize on arguments.
         @model demo(x) = x ~ Normal()
-        length(methods(demo))
+        @test length(methods(demo)) == 4
         @test f(demo(1.0))
         f(::Model{typeof(demo),(:x,)}) = false
         @test !f(demo(1.0))
