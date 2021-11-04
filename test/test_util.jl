@@ -43,7 +43,12 @@ function test_model_ad(model, logp_manual)
 
     y, back = Zygote.pullback(logp_model, x)
     @test y ≈ lp
-    @test_broken back(1)[1] ≈ grad
+    # will be fixed by https://github.com/FluxML/Zygote.jl/pull/1104
+    if Threads.nthreads() > 1
+        @test_broken back(1)[1] ≈ grad
+    else
+        @test back(1)[1] ≈ grad
+    end
 end
 
 """
