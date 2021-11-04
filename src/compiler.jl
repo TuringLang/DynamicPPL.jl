@@ -34,7 +34,7 @@ function isassumption(expr::Union{Symbol,Expr})
                 #    as the default conditioning. Then we no longer need to check `inargnames`
                 #    since it will all be handled by `contextual_isassumption`.
                 if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                   $(DynamicPPL.inmissings)($vn, __model__)
+                    $(DynamicPPL.inmissings)($vn, __model__)
                     true
                 else
                     $(maybe_view(expr)) === missing
