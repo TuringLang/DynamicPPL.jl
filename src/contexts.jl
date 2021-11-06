@@ -366,11 +366,15 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 
 See also: [`decondition`](@ref)
 """
-condition(; values...) = condition(DefaultContext(), NamedTuple(values))
-condition(values::NamedTuple) = condition(DefaultContext(), values)
-condition(context::AbstractContext, values::NamedTuple{()}) = context
-condition(context::AbstractContext, values::NamedTuple) = ConditionContext(values, context)
-condition(context::AbstractContext; values...) = condition(context, NamedTuple(values))
+AbstractPPL.condition(; values...) = condition(DefaultContext(), NamedTuple(values))
+AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
+AbstractPPL.condition(context::AbstractContext, values::NamedTuple{()}) = context
+function AbstractPPL.condition(context::AbstractContext, values::NamedTuple)
+    return ConditionContext(values, context)
+end
+function AbstractPPL.condition(context::AbstractContext; values...)
+    return condition(context, NamedTuple(values))
+end
 
 """
     decondition(context::AbstractContext, syms...)
@@ -381,20 +385,22 @@ Note that this recursively traverses contexts, deconditioning all along the way.
 
 See also: [`condition`](@ref)
 """
-decondition(::IsLeaf, context, args...) = context
-function decondition(::IsParent, context, args...)
+AbstractPPL.decondition(::IsLeaf, context, args...) = context
+function AbstractPPL.decondition(::IsParent, context, args...)
     return setchildcontext(context, decondition(childcontext(context), args...))
 end
-decondition(context, args...) = decondition(NodeTrait(context), context, args...)
-function decondition(context::ConditionContext)
+function AbstractPPL.decondition(context, args...)
+    return decondition(NodeTrait(context), context, args...)
+end
+function AbstractPPL.decondition(context::ConditionContext)
     return decondition(childcontext(context))
 end
-function decondition(context::ConditionContext, sym)
+function AbstractPPL.decondition(context::ConditionContext, sym)
     return condition(
         decondition(childcontext(context), sym), BangBang.delete!!(context.values, sym)
     )
 end
-function decondition(context::ConditionContext, sym, syms...)
+function AbstractPPL.decondition(context::ConditionContext, sym, syms...)
     return decondition(
         condition(
             decondition(childcontext(context), syms...),

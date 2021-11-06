@@ -254,8 +254,8 @@ From this we can tell what the correct way to condition `m` within `demo_inner`
 is in the two different models.
 
 """
-condition(model::Model; values...) = condition(model, NamedTuple(values))
-function condition(model::Model, values)
+AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
+function AbstractPPL.condition(model::Model, values)
     return contextualize(model, condition(model.context, values))
 end
 
@@ -307,7 +307,7 @@ julia> model(rng)
 (m = 0.683947930996541, x = 10.0)
 ```
 """
-function decondition(model::Model, syms...)
+function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
 end
 

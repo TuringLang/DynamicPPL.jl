@@ -1,0 +1,5 @@
+# DynamicPPL
+
+```@autodocs
+Modules = [DynamicPPL]
+```
