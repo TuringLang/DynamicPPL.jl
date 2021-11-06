@@ -92,8 +92,8 @@ function push!!(
     return push!!(vi.varinfo, vn, r, dist, gidset)
 end
 
-function unset_flag!!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return unset_flag!!(vi.varinfo, vn, flag)
+function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
+    return unset_flag!(vi.varinfo, vn, flag)
 end
 function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
