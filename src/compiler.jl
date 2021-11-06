@@ -401,20 +401,26 @@ function generate_tilde(left, right)
 end
 
 function generate_tilde_assume(left, right, vn)
-    expr = :(
-        $left, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
+    # HACK: Because the Setfield.jl macro does not support assignment
+    # with multiple arguments on the LHS, we need to capture the return-values
+    # and then update them LHS variables one by one.
+    tmp = gensym(:tmp)
+    expr = :($left = ($tmp)[1])
+    if left isa Expr
+        expr = AbstractPPL.drop_escape(
+            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+        )
+    end
+
+    return quote
+        $tmp = $(DynamicPPL.tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
-    )
-
-    return if left isa Expr
-        AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
-        )
-    else
-        return expr
+        $expr
+        __varinfo__ = $tmp[2]
+        $left, __varinfo__
     end
 end
 
@@ -456,7 +462,7 @@ function generate_dot_tilde_assume(left, right, vn)
     # `.=` is always going to be inplace + needs `left` to
     # be something that supports `.=`.
     return :(
-        $left, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
+        ($left, __varinfo__) = $(DynamicPPL.dot_tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_left_vns)(
                 $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
