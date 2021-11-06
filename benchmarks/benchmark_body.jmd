@@ -11,11 +11,11 @@ suite = make_suite(m);
 results = run(suite, seconds=WEAVE_ARGS[:seconds]);
 ```
 
-```julia; displaysize=(100, 300)
+```julia
 results["evaluation_untyped"]
 ```
 
-```julia; displaysize=(100, 300)
+```julia
 results["evaluation_typed"]
 ```
 

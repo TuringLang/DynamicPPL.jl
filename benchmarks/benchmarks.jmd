@@ -173,7 +173,7 @@ if haskey(WEAVE_ARGS, :name_old)
 end
 ```
 
-```julia; echo=false; displaysize=(30, 200)
+```julia; echo=false
 if haskey(WEAVE_ARGS, :name_old)
     DynamicPPLBenchmarks.judgementtable(WEAVE_ARGS[:name], WEAVE_ARGS[:name_old])
 end

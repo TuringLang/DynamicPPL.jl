@@ -14,21 +14,9 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
-_getindex(x, inds::Tuple) = _getindex(Base.maybeview(x, first(inds)...), Base.tail(inds))
-_getindex(x, inds::Tuple{}) = x
-_getvalue(x, vn::VarName{sym}) where {sym} = _getindex(getproperty(x, sym), vn.indexing)
-function _getvalue(x, vns::AbstractVector{<:VarName{sym}}) where {sym}
-    val = getproperty(x, sym)
-
-    # This should work with both cartesian and linear indexing.
-    return map(vns) do vn
-        _getindex(val, vn)
-    end
-end
-
 # assume
 """
-    tilde_assume(context::SamplingContext, right, vn, inds, vi)
+    tilde_assume(context::SamplingContext, right, vn, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value with a context associated
@@ -36,18 +24,18 @@ with a sampler.
 
 Falls back to
 ```julia
-tilde_assume(context.rng, context.context, context.sampler, right, vn, inds, vi)
+tilde_assume(context.rng, context.context, context.sampler, right, vn, vi)
 ```
 """
-function tilde_assume(context::SamplingContext, right, vn, inds, vi)
-    return tilde_assume(context.rng, context.context, context.sampler, right, vn, inds, vi)
+function tilde_assume(context::SamplingContext, right, vn, vi)
+    return tilde_assume(context.rng, context.context, context.sampler, right, vn, vi)
 end
 
 # Leaf contexts
 function tilde_assume(context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), context, args...)
 end
-function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vinds, vi)
+function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vi)
     return assume(right, vn, vi)
 end
 function tilde_assume(::IsParent, context::AbstractContext, args...)
@@ -57,44 +45,36 @@ end
 function tilde_assume(rng, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(
-    ::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vinds, vi
-)
+function tilde_assume(::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi)
     return assume(rng, sampler, right, vn, vi)
 end
 function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return tilde_assume(rng, childcontext(context), args...)
 end
 
-function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, inds, vi)
+function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
+        vi[vn] = vectorize(right, get(context.vars, vn))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(PriorContext(), right, vn, inds, vi)
+    return tilde_assume(PriorContext(), right, vn, vi)
 end
 function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    inds,
-    vi,
+    rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
+        vi[vn] = vectorize(right, get(context.vars, vn))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(rng, PriorContext(), sampler, right, vn, inds, vi)
+    return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
 end
 
-function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, inds, vi)
+function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
+        vi[vn] = vectorize(right, get(context.vars, vn))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(LikelihoodContext(), right, vn, inds, vi)
+    return tilde_assume(LikelihoodContext(), right, vn, vi)
 end
 function tilde_assume(
     rng::Random.AbstractRNG,
@@ -102,42 +82,39 @@ function tilde_assume(
     sampler,
     right,
     vn,
-    inds,
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, _getindex(getfield(context.vars, getsym(vn)), inds))
+        vi[vn] = vectorize(right, get(context.vars, vn))
         settrans!(vi, false, vn)
     end
-    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, inds, vi)
+    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
 end
-function tilde_assume(::LikelihoodContext, right, vn, inds, vi)
+function tilde_assume(::LikelihoodContext, right, vn, vi)
     return assume(NoDist(right), vn, vi)
 end
-function tilde_assume(
-    rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, inds, vi
-)
+function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, vi)
     return assume(rng, sampler, NoDist(right), vn, vi)
 end
 
-function tilde_assume(context::PrefixContext, right, vn, inds, vi)
-    return tilde_assume(context.context, right, prefix(context, vn), inds, vi)
+function tilde_assume(context::PrefixContext, right, vn, vi)
+    return tilde_assume(context.context, right, prefix(context, vn), vi)
 end
-function tilde_assume(rng, context::PrefixContext, sampler, right, vn, inds, vi)
-    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), inds, vi)
+function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
+    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
 """
-    tilde_assume!(context, right, vn, inds, vi)
+    tilde_assume!(context, right, vn, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value.
 
-By default, calls `tilde_assume(context, right, vn, inds, vi)` and accumulates the log
+By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_assume!(context, right, vn, inds, vi)
-    value, logp = tilde_assume(context, right, vn, inds, vi)
+function tilde_assume!(context, right, vn, vi)
+    value, logp = tilde_assume(context, right, vn, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -180,7 +157,7 @@ function tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    tilde_observe!(context, right, left, vname, vinds, vi)
+    tilde_observe!(context, right, left, vname, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
@@ -188,7 +165,7 @@ accumulate the log probability, and return the observed value.
 Falls back to `tilde_observe!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(context, right, left, vname, vinds, vi)
+function tilde_observe!(context, right, left, vname, vi)
     return tilde_observe!(context, right, left, vi)
 end
 
@@ -260,7 +237,7 @@ end
 
 # assume
 """
-    dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
+    dot_tilde_assume(context::SamplingContext, right, left, vn, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value for a context
@@ -268,12 +245,12 @@ associated with a sampler.
 
 Falls back to
 ```julia
-dot_tilde_assume(context.rng, context.context, context.sampler, right, left, vn, inds, vi)
+dot_tilde_assume(context.rng, context.context, context.sampler, right, left, vn, vi)
 ```
 """
-function dot_tilde_assume(context::SamplingContext, right, left, vn, inds, vi)
+function dot_tilde_assume(context::SamplingContext, right, left, vn, vi)
     return dot_tilde_assume(
-        context.rng, context.context, context.sampler, right, left, vn, inds, vi
+        context.rng, context.context, context.sampler, right, left, vn, vi
     )
 end
 
@@ -285,12 +262,10 @@ function dot_tilde_assume(rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
 end
 
-function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, inds, vi)
+function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
     return dot_assume(right, left, vns, vi)
 end
-function dot_tilde_assume(
-    ::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, inds, vi
-)
+function dot_tilde_assume(::IsLeaf, rng, ::AbstractContext, sampler, right, left, vns, vi)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
@@ -301,22 +276,20 @@ function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
-function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, inds, vi)
+function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, vi)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
 # `LikelihoodContext`
-function dot_tilde_assume(
-    context::LikelihoodContext{<:NamedTuple}, right, left, vn, inds, vi
-)
+function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left, vn, vi)
     return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
+        var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
     else
-        dot_tilde_assume(LikelihoodContext(), right, left, vn, inds, vi)
+        dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
     end
 end
 function dot_tilde_assume(
@@ -326,38 +299,37 @@ function dot_tilde_assume(
     right,
     left,
     vn,
-    inds,
     vi,
 )
     return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
+        var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, inds, vi)
+        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
     else
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, inds, vi)
+        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
     end
 end
-function dot_tilde_assume(context::LikelihoodContext, right, left, vn, inds, vi)
+function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
     return dot_assume(NoDist.(right), left, vn, vi)
 end
 function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, inds, vi
+    rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
     return dot_assume(rng, sampler, NoDist.(right), vn, left, vi)
 end
 
 # `PriorContext`
-function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, inds, vi)
+function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, vi)
     return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
+        var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(PriorContext(), _right, _left, _vns, inds, vi)
+        dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
     else
-        dot_tilde_assume(PriorContext(), right, left, vn, inds, vi)
+        dot_tilde_assume(PriorContext(), right, left, vn, vi)
     end
 end
 function dot_tilde_assume(
@@ -367,41 +339,40 @@ function dot_tilde_assume(
     right,
     left,
     vn,
-    inds,
     vi,
 )
     return if haskey(context.vars, getsym(vn))
-        var = _getindex(getfield(context.vars, getsym(vn)), inds)
+        var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
         settrans!.(Ref(vi), false, _vns)
-        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, inds, vi)
+        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
     else
-        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, inds, vi)
+        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
     end
 end
 
 # `PrefixContext`
-function dot_tilde_assume(context::PrefixContext, right, left, vn, inds, vi)
-    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), inds, vi)
+function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
+    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), vi)
 end
 
-function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, inds, vi)
+function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, vi)
     return dot_tilde_assume(
-        rng, context.context, sampler, right, prefix.(Ref(context), vn), inds, vi
+        rng, context.context, sampler, right, prefix.(Ref(context), vn), vi
     )
 end
 
 """
-    dot_tilde_assume!(context, right, left, vn, inds, vi)
+    dot_tilde_assume!(context, right, left, vn, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
 model inputs), accumulate the log probability, and return the sampled value.
 
-Falls back to `dot_tilde_assume(context, right, left, vn, inds, vi)`.
+Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
-function dot_tilde_assume!(context, right, left, vn, inds, vi)
-    value, logp = dot_tilde_assume(context, right, left, vn, inds, vi)
+function dot_tilde_assume!(context, right, left, vn, vi)
+    value, logp = dot_tilde_assume(context, right, left, vn, vi)
     acclogp!(vi, logp)
     return value
 end
@@ -598,7 +569,7 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vname, vinds, vi)
+    dot_tilde_observe!(context, right, left, vname, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value.
@@ -606,7 +577,7 @@ accumulate the log probability, and return the observed value.
 Falls back to `dot_tilde_observe!(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(context, right, left, vn, inds, vi)
+function dot_tilde_observe!(context, right, left, vn, vi)
     return dot_tilde_observe!(context, right, left, vi)
 end
 
