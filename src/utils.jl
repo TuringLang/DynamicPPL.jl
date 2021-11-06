@@ -155,3 +155,11 @@ end
 #######################
 collectmaybe(x) = x
 collectmaybe(x::Base.AbstractSet) = collect(x)
+
+#######################
+# BangBang.jl related #
+#######################
+function set!!(obj, vn::VarName{sym}, value) where {sym}
+    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
+    return Setfield.set(obj, lens, value)
+end

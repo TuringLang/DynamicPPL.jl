@@ -58,17 +58,12 @@ export AbstractVarInfo,
     set_flag!,
     unset_flag!,
     set_flag!!,
-    unset_flag!!,
     setgid!,
     updategid!,
-    setgid!!,
-    updategid!!,
     setorder!,
     istrans,
     link!,
     invlink!,
-    link!!,
-    invlink!!,
     tonamedtuple,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -172,8 +167,5 @@ include("test_utils.jl")
 @deprecate setlogp!(vi, logp) setlogp!!(vi, logp)
 @deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
 @deprecate resetlogp!(vi) resetlogp!!(vi)
-
-@deprecate link!(vi, spl) link!!(vi, spl)
-@deprecate invlink!(vi, spl) invlink!!(vi, spl)
 
 end # module

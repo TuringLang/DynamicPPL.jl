@@ -57,7 +57,7 @@ function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
         vi = setindex!!(
             vi, vectorize(right, get(context.vars, vn)), vn
         )
-        vi = settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
 end
@@ -66,7 +66,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        vi = settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
 end
@@ -74,7 +74,7 @@ end
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        vi = settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
 end
@@ -88,7 +88,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        vi = settrans!!(vi, false, vn)
+        settrans!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
 end
@@ -141,15 +141,17 @@ function tilde_observe(::IsParent, context::AbstractContext, args...)
     return tilde_observe(childcontext(context), args...)
 end
 
-tilde_observe(::PriorContext, right, left, vi) = 0
-tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+tilde_observe(::PriorContext, right, left, vi) = 0, vi
+tilde_observe(::PriorContext, sampler, right, left, vi) = 0, vi
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
+    logp, vi = tilde_observe(context.context, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.context, sampler, right, left, vi)
+    logp, vi = tilde_observe(context.context, sampler, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 
 # `PrefixContext`
@@ -180,7 +182,7 @@ By default, calls `tilde_observe(context, right, left, vi)` and accumulates the 
 probability of `vi` with the returned value.
 """
 function tilde_observe!!(context, right, left, vi)
-    logp = tilde_observe(context, right, left, vi)
+    logp, vi = tilde_observe(context, right, left, vi)
     return left, acclogp!!(vi, logp)
 end
 
@@ -195,7 +197,7 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # SampleFromPrior and SampleFromUniform
@@ -223,14 +225,14 @@ function assume(
         settrans!(vi, false, vn)
     end
 
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
 observe(sampler::AbstractSampler, right, left, vi) = observe(right, left, vi)
 function observe(right::Distribution, left, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(right, left)
+    return Distributions.loglikelihood(right, left), vi
 end
 
 # .~ functions
@@ -372,10 +374,10 @@ model inputs), accumulate the log probability, and return the sampled value.
 Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
-    value, logp = dot_tilde_assume(context, right, left, vn, vi)
+    value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
     # Mutation of `value` no longer occurs in main body, so we do it here.
     left .= value
-    return value, acclogp!!(vi, logp)
+    return value, acclogp!!(vi, logp), vi
 end
 
 # `dot_assume`
@@ -393,7 +395,7 @@ function dot_assume(
     lp = sum(zip(vns, eachcol(r))) do vn, ri
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -407,7 +409,7 @@ function dot_assume(
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -424,7 +426,7 @@ function dot_assume(
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = reshape(vi[vec(vns)], size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -438,7 +440,7 @@ function dot_assume(
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
     return error(
@@ -559,12 +561,13 @@ function dot_tilde_observe(::IsParent, context::AbstractContext, args...)
     return dot_tilde_observe(childcontext(context), args...)
 end
 
-dot_tilde_observe(::PriorContext, right, left, vi) = 0
-dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+dot_tilde_observe(::PriorContext, right, left, vi) = 0, vi
+dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0, vi
 
 # `MiniBatchContext`
 function dot_tilde_observe(context::MiniBatchContext, right, left, vi)
-    return context.loglike_scalar * dot_tilde_observe(context.context, right, left, vi)
+    logp, vi = dot_tilde_observe(context.context, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 
 # `PrefixContext`
@@ -594,7 +597,7 @@ probability, and return the observed value.
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!!(context, right, left, vi)
-    logp = dot_tilde_observe(context, right, left, vi)
+    logp, vi = dot_tilde_observe(context, right, left, vi)
     return left, acclogp!!(vi, logp)
 end
 
@@ -604,13 +607,13 @@ function dot_observe(::AbstractSampler, dist, value, vi)
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dist, value)
+    return Distributions.loglikelihood(dist, value), vi
 end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dists, value)
+    return Distributions.loglikelihood(dists, value), vi
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    return sum(Distributions.loglikelihood.(dists, value))
+    return sum(Distributions.loglikelihood.(dists, value)), vi
 end

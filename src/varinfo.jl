@@ -738,13 +738,13 @@ end
 
 # X -> R for all variables associated with given sampler
 """
-    link!!(vi::VarInfo, spl::Sampler)
+    link!(vi::VarInfo, spl::Sampler)
 
 Transform the values of the random variables sampled by `spl` in `vi` from the support
 of their distributions to the Euclidean space and set their corresponding `"trans"`
 flag values to `true`.
 """
-function link!!(vi::UntypedVarInfo, spl::Sampler)
+function link!(vi::UntypedVarInfo, spl::Sampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
@@ -763,10 +763,10 @@ function link!!(vi::UntypedVarInfo, spl::Sampler)
         @warn("[DynamicPPL] attempt to link a linked vi")
     end
 end
-function link!!(vi::TypedVarInfo, spl::AbstractSampler)
-    return link!!(vi, spl, Val(getspace(spl)))
+function link!(vi::TypedVarInfo, spl::AbstractSampler)
+    return link!(vi, spl, Val(getspace(spl)))
 end
-function link!!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _link!(vi.metadata, vi, vns, spaceval)
 end
@@ -807,13 +807,13 @@ end
 
 # R -> X for all variables associated with given sampler
 """
-    invlink!!(vi::VarInfo, spl::AbstractSampler)
+    invlink!(vi::VarInfo, spl::AbstractSampler)
 
 Transform the values of the random variables sampled by `spl` in `vi` from the
 Euclidean space back to the support of their distributions and sets their corresponding
 `"trans"` flag values to `false`.
 """
-function invlink!!(vi::UntypedVarInfo, spl::AbstractSampler)
+function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
@@ -830,10 +830,10 @@ function invlink!!(vi::UntypedVarInfo, spl::AbstractSampler)
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
     end
 end
-function invlink!!(vi::TypedVarInfo, spl::AbstractSampler)
-    return invlink!!(vi, spl, Val(getspace(spl)))
+function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
+    return invlink!(vi, spl, Val(getspace(spl)))
 end
-function invlink!!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _invlink!(vi.metadata, vi, vns, spaceval)
 end

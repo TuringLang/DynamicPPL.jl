@@ -46,8 +46,8 @@ set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n
 
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
-function setgid!!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
-    return setgid!!(vi.varinfo, gid, vn)
+function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
+    return setgid!(vi.varinfo, gid, vn)
 end
 setorder!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = setorder!(vi.varinfo, vn, index)
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
@@ -55,8 +55,8 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-link!!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!!(vi.varinfo, spl)
-invlink!!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!!(vi.varinfo, spl)
+link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
+invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)

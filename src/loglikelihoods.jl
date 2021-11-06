@@ -74,7 +74,7 @@ end
 function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
-    logp = tilde_observe(context.context, right, left, vi)
+    logp, vi = tilde_observe(context.context, right, left, vi)
 
     # Track loglikelihood value.
     push!(context, vn, logp)
@@ -108,13 +108,17 @@ end
 # FIXME: This is really not a good approach since it needs to stay in sync with
 # the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
 function _pointwise_tilde_observe(context, right, left, vi)
-    return tilde_observe.(Ref(context), right, left, Ref(vi))
+    # We need to drop the `vi` returned.
+    observe_logps(r, l) = first(tilde_observe(context, r, l, vi))
+    return observe_logps.(right, left)
 end
 
 function _pointwise_tilde_observe(
-    context, right::MultivariateDistribution, left::AbstractMatrix, vi
+    context, right::MultivariateDistribution, left::AbstractMatrix, vi::VarInfo
 )
-    return tilde_observe.(Ref(context), Ref(right), eachcol(left), Ref(vi))
+    # We need to drop the `vi` returned.
+    observe_logps(l) = first(tilde_observe(context, right, l, vi))
+    return observe_logps.(eachcol(left))
 end
 
 """
