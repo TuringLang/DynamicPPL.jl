@@ -54,9 +54,7 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(
-            vi, vectorize(right, get(context.vars, vn)), vn
-        )
+        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
         settrans!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)

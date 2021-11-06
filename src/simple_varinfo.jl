@@ -181,7 +181,11 @@ end
 
 # `Dict`
 function push!!(
-    vi::SimpleVarInfo{<:AbstractDict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+    vi::SimpleVarInfo{<:AbstractDict},
+    vn::VarName,
+    r,
+    dist::Distribution,
+    gidset::Set{Selector},
 )
     vi.θ[vn] = r
     return vi
