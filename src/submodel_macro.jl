@@ -67,8 +67,8 @@ julia> @model function demo1(x)
        end;
 
 julia> @model function demo2(x, y, z)
-            a = @submodel sub1 demo1(x)
-            b = @submodel sub2 demo1(y)
+            @submodel sub1 a = demo1(x)
+            @submodel sub2 b = demo1(y)
             return z ~ Uniform(-a, b)
        end;
 ```
