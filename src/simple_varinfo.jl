@@ -16,7 +16,7 @@ The major differences between this and `TypedVarInfo` are:
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
-julia> using StableRNGs
+julia> using StableRNGs, OrderedCollections
 
 julia> @model function demo()
            m ~ Normal()
@@ -52,7 +52,7 @@ julia> # We can also access arbitrary varnames pointing to `x`, e.g.
  1.3736306979834252
 
 julia> DynamicPPL.getval(vi, @varname(x[1:2]))
-2-element view(::Vector{Float64}, 1:2) with eltype Float64:
+2-element Vector{Float64}:
  0.4471218424633827
  1.3736306979834252
 
@@ -61,9 +61,9 @@ julia> # (×) If we don't provide the container...
 ERROR: type NamedTuple has no field x
 [...]
 
-julia> # If one does not know the varnames, we can use a `Dict` instead.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx); vi
-SimpleVarInfo{Dict{Any, Any}, Float64}(Dict{Any, Any}(x[1] => -1.019202452456547, x[2] => -0.7935128416361353, m => 0.683947930996541), -3.8249261202386906)
+julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(OrderedDict()), ctx); vi
+SimpleVarInfo{OrderedDict{Any, Any}, Float64}(OrderedCollections.OrderedDict{Any, Any}(m => 0.683947930996541, x[1] => -1.019202452456547, x[2] => -0.7935128416361353), -3.8249261202386906)
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -121,33 +121,15 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     return vi
 end
 
-# TODO: Get rid of this once we have lenses.
-_getindex_view(x, inds::Tuple) = _getindex(view(x, first(inds)...), Base.tail(inds))
-_getindex_view(x, inds::Tuple{}) = x
-
-# TODO: Get rid of this once we have lenses.
-function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym,Tuple{}}) where {sym}
-    return merge(nt, NamedTuple{(sym,)}((val,)))
-end
-function _setvalue!!(nt::NamedTuple, val, vn::VarName{sym}) where {sym}
-    # Use `getproperty` instead of `getfield`
-    value = getproperty(nt, sym)
-    # Note that this will return a `view`, even if the resulting value is 0-dim.
-    # This makes it possible to call `setindex!` on the result later to update
-    # in place even in the case where are retrieving a single element, e.g. `x[1]`.
-    dest_view = _getindex_view(value, vn.indexing)
-    dest_view .= val
-
-    return nt
-end
-
 # `NamedTuple`
 function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName)
-    return _getvalue(vi.θ, vn)
+    return get(vi.θ, vn)
 end
 
 # `Dict`
-function getval(vi::SimpleVarInfo{<:Dict}, vn::VarName)
+function getval(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName{sym}) where {sym}
+    # TODO: Should we maybe allow indexing of sub-keys, etc. too? E.g.
+    # if `x` is present and it has an array, maybe we should allow indexing `x[1]`, etc.
     return vi.θ[vn]
 end
 
@@ -180,12 +162,12 @@ end
 # `NamedTuple`
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Tuple{}},
+    vn::VarName{sym,Setfield.IdentityLens},
     value,
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    Setfield.@set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
+    return Setfield.@set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
 end
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -194,16 +176,12 @@ function push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    # We update in place.
-    # We need a view into the array, hence we call `_getvalue` directly
-    # rather than `getval`.
-    _setvalue!!(vi.θ, value, vn)
-    return vi
+    return Setfield.@set vi.θ = set!!(vi.θ, vn, value)
 end
 
 # `Dict`
 function push!!(
-    vi::SimpleVarInfo{<:Dict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+    vi::SimpleVarInfo{<:AbstractDict}, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
     vi.θ[vn] = r
     return vi

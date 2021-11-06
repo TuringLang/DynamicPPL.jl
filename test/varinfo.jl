@@ -135,14 +135,14 @@
 
         push!!(vi, vn, r, dist, gid1)
         @test meta.gids[meta.idcs[vn]] == Set([gid1])
-        setgid!!(vi, gid2, vn)
+        setgid!(vi, gid2, vn)
         @test meta.gids[meta.idcs[vn]] == Set([gid1, gid2])
 
         vi = empty!!(TypedVarInfo(vi))
         meta = vi.metadata
         push!!(vi, vn, r, dist, gid1)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1])
-        setgid!!(vi, gid2, vn)
+        setgid!(vi, gid2, vn)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1, gid2])
     end
     @testset "setval! & setval_and_resample!" begin

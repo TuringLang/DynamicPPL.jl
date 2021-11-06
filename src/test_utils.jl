@@ -98,7 +98,7 @@ end
 
 @model function demo_assume_submodel_observe_index_literal()
     # Submodel prior
-    m = @submodel _prior_dot_assume()
+    @submodel m = _prior_dot_assume()
     for i in eachindex(m)
         10.0 ~ Normal(m[i], 0.5)
     end
