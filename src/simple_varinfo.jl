@@ -128,7 +128,7 @@ function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     print(io, svi.θ)
     print(io, ", ")
     print(io, svi.logp)
-    print(io, ")")
+    return print(io, ")")
 end
 
 # `NamedTuple`
@@ -201,7 +201,9 @@ function push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T} = Union{SimpleVarInfo{T},ThreadSafeVarInfo{<:SimpleVarInfo{T}}}
+const SimpleOrThreadSafeSimple{T} = Union{
+    SimpleVarInfo{T},ThreadSafeVarInfo{<:SimpleVarInfo{T}}
+}
 
 # Context implementations
 function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
