@@ -114,7 +114,7 @@ function _pointwise_tilde_observe(context, right, left, vi)
 end
 
 function _pointwise_tilde_observe(
-    context, right::MultivariateDistribution, left::AbstractMatrix, vi::VarInfo
+    context, right::MultivariateDistribution, left::AbstractMatrix, vi::AbstractVarInfo
 )
     # We need to drop the `vi` returned.
     observe_logps(l) = first(tilde_observe(context, right, l, vi))
