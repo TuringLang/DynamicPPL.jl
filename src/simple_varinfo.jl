@@ -16,7 +16,9 @@ The major differences between this and `TypedVarInfo` are:
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
-julia> using StableRNGs, OrderedCollections
+julia> using StableRNGs
+
+julia> using OrderedCollections: OrderedDict # ensures consisent output
 
 julia> @model function demo()
            m ~ Normal()
@@ -39,7 +41,7 @@ julia> # In the `NamedTuple` version we need to provide the place-holder values 
        # the variablse which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
-SimpleVarInfo{NamedTuple{(:x, :m), Tuple{Vector{Float64}, Float64}}, Float64}((x = [0.4471218424633827, 1.3736306979834252], m = -0.6702516921145671), -4.024823883230379)
+SimpleVarInfo((x = [0.4471218424633827, 1.3736306979834252],), -4.024823883230379)
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -63,7 +65,7 @@ ERROR: type NamedTuple has no field x
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(OrderedDict()), ctx); vi
-SimpleVarInfo{OrderedDict{Any, Any}, Float64}(OrderedCollections.OrderedDict{Any, Any}(m => 0.683947930996541, x[1] => -1.019202452456547, x[2] => -0.7935128416361353), -3.8249261202386906)
+SimpleVarInfo(OrderedCollections.OrderedDict{Any, Any}(m => 0.683947930996541, x[1] => -1.019202452456547, x[2] => -0.7935128416361353), -3.8249261202386906)
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -119,6 +121,14 @@ end
 function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] += logp
     return vi
+end
+
+function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
+    print(io, "SimpleVarInfo(")
+    print(io, svi.θ)
+    print(io, ", ")
+    print(io, svi.logp)
+    print(io, ")")
 end
 
 # `NamedTuple`
@@ -191,13 +201,10 @@ function push!!(
     return vi
 end
 
-# Context implementations
-function tilde_assume!!(context, right, vn, inds, vi::SimpleVarInfo)
-    value, logp, vi_new = tilde_assume(context, right, vn, inds, vi)
-    return value, acclogp!!(vi_new, logp)
-end
+const SimpleOrThreadSafeSimple{T} = Union{SimpleVarInfo{T},ThreadSafeVarInfo{<:SimpleVarInfo{T}}}
 
-function assume(dist::Distribution, vn::VarName, vi::SimpleVarInfo)
+# Context implementations
+function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
     left = vi[vn]
     return left, Distributions.loglikelihood(dist, left), vi
 end
@@ -207,29 +214,18 @@ function assume(
     sampler::SampleFromPrior,
     dist::Distribution,
     vn::VarName,
-    vi::SimpleVarInfo,
+    vi::SimpleOrThreadSafeSimple,
 )
     value = init(rng, dist, sampler)
     vi = push!!(vi, vn, value, dist, sampler)
     return value, Distributions.loglikelihood(dist, value), vi
 end
 
-# function dot_tilde_assume!!(context, right, left, vn, inds, vi::SimpleVarInfo)
-#     throw(MethodError(dot_tilde_assume!!, (context, right, left, vn, inds, vi)))
-# end
-
-function dot_tilde_assume!!(context, right, left, vn, inds, vi::SimpleVarInfo)
-    value, logp, vi_new = dot_tilde_assume(context, right, left, vn, inds, vi)
-    # Mutation of `value` no longer occurs in main body, so we do it here.
-    left .= value
-    return value, acclogp!!(vi_new, logp)
-end
-
 function dot_assume(
     dist::MultivariateDistribution,
     var::AbstractMatrix,
     vns::AbstractVector{<:VarName},
-    vi::SimpleVarInfo,
+    vi::SimpleOrThreadSafeSimple,
 )
     @assert length(dist) == size(var, 1)
     # NOTE: We cannot work with `var` here because we might have a model of the form
@@ -249,7 +245,7 @@ function dot_assume(
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
-    vi::SimpleVarInfo{<:NamedTuple},
+    vi::SimpleOrThreadSafeSimple,
 )
     # NOTE: We cannot work with `var` here because we might have a model of the form
     #
@@ -263,8 +259,8 @@ function dot_assume(
 end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
-increment_num_produce!(::SimpleVarInfo) = nothing
-settrans!(vi::SimpleVarInfo, trans::Bool, vn::VarName) = nothing
+increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
+settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
 
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.θ))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.θ))
