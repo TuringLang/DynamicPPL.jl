@@ -30,13 +30,13 @@ function resetlogp!!(vi::ThreadSafeVarInfo)
     for x in vi.logps
         x[] = zero(x[])
     end
-    return resetlogp!!(vi.varinfo)
+    return ThreadSafeVarInfo(resetlogp!!(vi.varinfo), vi.logps)
 end
 function setlogp!!(vi::ThreadSafeVarInfo, logp)
     for x in vi.logps
         x[] = zero(x[])
     end
-    return setlogp!!(vi.varinfo, logp)
+    return ThreadSafeVarInfo(setlogp!!(vi.varinfo, logp), vi.logps)
 end
 
 get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)

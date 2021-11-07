@@ -450,9 +450,9 @@ See also: [`evaluate_threadunsafe`](@ref)
 function evaluate_threadsafe(model, varinfo, context)
     varinfo = resetlogp!!(varinfo)
     wrapper = ThreadSafeVarInfo(varinfo)
-    result = _evaluate(model, wrapper, context)
-    varinfo = setlogp!!(varinfo, getlogp(wrapper))
-    return result
+    result, wrapper_new = _evaluate(model, wrapper, context)
+    varinfo = setlogp!!(varinfo, getlogp(wrapper_new))
+    return result, varinfo
 end
 
 """
