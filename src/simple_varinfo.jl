@@ -41,7 +41,7 @@ julia> # In the `NamedTuple` version we need to provide the place-holder values 
        # the variablse which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
        _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
-SimpleVarInfo((x = [0.4471218424633827, 1.3736306979834252],), -4.024823883230379)
+SimpleVarInfo((x = [0.4471218424633827, 1.3736306979834252], m = -0.6702516921145671), -4.024823883230379)
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
