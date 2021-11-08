@@ -405,7 +405,7 @@ function generate_tilde_assume(left, right, vn)
     # with multiple arguments on the LHS, we need to capture the return-values
     # and then update them LHS variables one by one.
     tmp = gensym(:tmp)
-    expr = :($left = ($tmp)[1])
+    expr = :($left = $first($tmp))
     if left isa Expr
         expr = AbstractPPL.drop_escape(
             Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
@@ -419,7 +419,7 @@ function generate_tilde_assume(left, right, vn)
             __varinfo__,
         )
         $expr
-        __varinfo__ = $tmp[2]
+        __varinfo__ = $last($tmp)
         $left, __varinfo__
     end
 end
