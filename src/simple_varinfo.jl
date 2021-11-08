@@ -18,8 +18,6 @@ The major differences between this and `TypedVarInfo` are:
 ```jldoctest; setup=:(using Distributions)
 julia> using StableRNGs
 
-julia> using OrderedCollections: OrderedDict # ensures consisent output
-
 julia> @model function demo()
            m ~ Normal()
            x = Vector{Float64}(undef, 2)
@@ -38,10 +36,9 @@ julia> ### Sampling ###
        ctx = SamplingContext(rng, SampleFromPrior(), DefaultContext());
 
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
-       # the variablse which are using "containers", e.g. `Array`.
+       # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx); vi
-SimpleVarInfo((x = [0.4471218424633827, 1.3736306979834252], m = -0.6702516921145671), -4.024823883230379)
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx);
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -63,9 +60,8 @@ julia> # (×) If we don't provide the container...
 ERROR: type NamedTuple has no field x
 [...]
 
-julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(OrderedDict()), ctx); vi
-SimpleVarInfo(OrderedCollections.OrderedDict{Any, Any}(m => 0.683947930996541, x[1] => -1.019202452456547, x[2] => -0.7935128416361353), -3.8249261202386906)
+julia> # If one does not know the varnames, we can use a `Dict` instead.
+       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx);
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
