@@ -540,7 +540,7 @@ Suppose the following is the return-value:
 return x ~ Normal()
 ```
 
-Without `return_values`, once expanded in [`generated_mainbody!`](@ref), this would be
+Without `return_values`, once expanded in `generated_mainbody!`, this would be
 
 ```julia
 return (x, __varinfo__ = tilde_assume!!(...)), __varinfo__
