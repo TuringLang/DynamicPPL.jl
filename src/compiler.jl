@@ -1,5 +1,4 @@
-const INTERNALNAMES = (:__model__, :__sampler__, :__context__, :__varinfo__, :__rng__)
-const DEPRECATED_INTERNALNAMES = (:_model, :_sampler, :_context, :_varinfo, :_rng)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
     isassumption(expr)
@@ -19,7 +18,7 @@ function isassumption(expr::Union{Symbol,Expr})
     vn = gensym(:vn)
 
     return quote
-        let $vn = $(varname(expr))
+        let $vn = $(AbstractPPL.drop_escape(varname(expr)))
             if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
                 # Considered an assumption by `__context__` which means either:
                 # 1. We hit the default implementation, e.g. using `DefaultContext`,
@@ -35,7 +34,7 @@ function isassumption(expr::Union{Symbol,Expr})
                 #    as the default conditioning. Then we no longer need to check `inargnames`
                 #    since it will all be handled by `contextual_isassumption`.
                 if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                   $(DynamicPPL.inmissings)($vn, __model__)
+                    $(DynamicPPL.inmissings)($vn, __model__)
                     true
                 else
                     $(maybe_view(expr)) === missing
@@ -133,18 +132,18 @@ This is used mainly to unwrap `NamedDist` distributions and adjust the indices o
 variables.
 
 # Example
-```jldoctest; setup=:(using Distributions)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal([1.0, 1.0], [1.0 0.0; 0.0 1.0]), randn(2, 2), @varname(x)); string(vns[end])
-"x[:,2]"
+```jldoctest; setup=:(using Distributions, LinearAlgebra)
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
+x[:,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); string(vns[end])
-"x[:][1,2]"
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
+x[1,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); string(vns[end])
-"x[1][3]"
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
+x[:][1,2]
 
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2, 3), @varname(x)); string(vns[end])
-"x[1,2,3]"
+julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
+x[1][3]
 ```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
@@ -159,7 +158,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return VarName(vn, (vn.indexing..., (Colon(), i)))
+        return vn ∘ Setfield.IndexLens((Colon(), i))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -169,7 +168,7 @@ function unwrap_right_left_vns(
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return VarName(vn, (vn.indexing..., Tuple(i)))
+        return vn ∘ Setfield.IndexLens(Tuple(i))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -308,15 +307,6 @@ generate_mainbody(mod, expr, warn) = generate_mainbody!(mod, Symbol[], expr, war
 
 generate_mainbody!(mod, found, x, warn) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn)
-    if sym in DEPRECATED_INTERNALNAMES
-        newsym = Symbol(:_, sym, :__)
-        Base.depwarn(
-            "internal variable `$sym` is deprecated, use `$newsym` instead.",
-            :generate_mainbody!,
-        )
-        return generate_mainbody!(mod, found, newsym, warn)
-    end
-
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$sym`"
         push!(found, sym)
@@ -327,6 +317,10 @@ end
 function generate_mainbody!(mod, found, expr::Expr, warn)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
+
+    # Do we don't want escaped expressions because we unfortunately
+    # escape the entire body afterwards.
+    Meta.isexpr(expr, :escape) && return generate_mainbody(mod, found, expr.args[1], warn)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
@@ -360,6 +354,15 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
 end
 
+function generate_tilde_literal(left, right)
+    # If the LHS is a literal, it is always an observation
+    return quote
+        $(DynamicPPL.tilde_observe!)(
+            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+        )
+    end
+end
+
 """
     generate_tilde(left, right)
 
@@ -367,31 +370,20 @@ Generate an `observe` expression for data variables and `assume` expression for 
 variables.
 """
 function generate_tilde(left, right)
-    # If the LHS is a literal, it is always an observation
-    if isliteral(left)
-        return quote
-            $(DynamicPPL.tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
-            )
-        end
-    end
+    isliteral(left) && return generate_tilde_literal(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn isassumption
+
+    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
+    # that in DynamicPPL we the entire function body. Instead we should be
+    # more selective with our escape. Until that's the case, we remove them all.
     return quote
-        $vn = $(varname(left))
-        $inds = $(vinds(left))
+        $vn = $(AbstractPPL.drop_escape(varname(left)))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left = $(DynamicPPL.tilde_assume!)(
-                __context__,
-                $(DynamicPPL.unwrap_right_vn)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $vn
-                )...,
-                $inds,
-                __varinfo__,
-            )
+            $(generate_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
@@ -403,10 +395,27 @@ function generate_tilde(left, right)
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
-                $inds,
                 __varinfo__,
             )
         end
+    end
+end
+
+function generate_tilde_assume(left, right, vn)
+    expr = :(
+        $left = $(DynamicPPL.tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+            __varinfo__,
+        )
+    )
+
+    return if left isa Expr
+        AbstractPPL.drop_escape(
+            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+        )
+    else
+        return expr
     end
 end
 
@@ -416,31 +425,16 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    # If the LHS is a literal, it is always an observation
-    if isliteral(left)
-        return quote
-            $(DynamicPPL.dot_tilde_observe!)(
-                __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
-            )
-        end
-    end
+    isliteral(left) && return generate_tilde_literal(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn inds isassumption
+    @gensym vn isassumption
     return quote
-        $vn = $(varname(left))
-        $inds = $(vinds(left))
+        $vn = $(AbstractPPL.drop_escape(varname(left)))
         $isassumption = $(DynamicPPL.isassumption(left))
         if $isassumption
-            $left .= $(DynamicPPL.dot_tilde_assume!)(
-                __context__,
-                $(DynamicPPL.unwrap_right_left_vns)(
-                    $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-                )...,
-                $inds,
-                __varinfo__,
-            )
+            $(generate_dot_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
@@ -452,11 +446,25 @@ function generate_dot_tilde(left, right)
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
-                $inds,
                 __varinfo__,
             )
         end
     end
+end
+
+function generate_dot_tilde_assume(left, right, vn)
+    # We don't need to use `Setfield.@set` here since
+    # `.=` is always going to be inplace + needs `left` to
+    # be something that supports `.=`.
+    return :(
+        $left .= $(DynamicPPL.dot_tilde_assume!)(
+            __context__,
+            $(DynamicPPL.unwrap_right_left_vns)(
+                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
+            )...,
+            __varinfo__,
+        )
+    )
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -471,10 +479,7 @@ Builds the output expression.
 """
 function build_output(modelinfo, linenumbernode)
     ## Build the anonymous evaluator from the user-provided model definition.
-
-    # Remove the name.
     evaluatordef = deepcopy(modelinfo[:modeldef])
-    delete!(evaluatordef, :name)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -490,7 +495,13 @@ function build_output(modelinfo, linenumbernode)
     evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
-    evaluatordef[:body] = modelinfo[:body]
+    # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
+    # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
+    # to the call site
+    evaluatordef[:body] = MacroTools.@q begin
+        $(linenumbernode)
+        $(modelinfo[:body])
+    end
 
     ## Build the model function.
 
@@ -499,24 +510,24 @@ function build_output(modelinfo, linenumbernode)
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
     # Update the function body of the user-specified model.
-    # We use a name for the anonymous evaluator that does not conflict with other variables.
-    modeldef = modelinfo[:modeldef]
-    @gensym evaluator
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
+    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $evaluator = $(MacroTools.combinedef(evaluatordef))
         return $(DynamicPPL.Model)(
             $(QuoteNode(modeldef[:name])),
-            $evaluator,
+            $(modeldef[:name]),
             $allargs_namedtuple,
             $defaults_namedtuple,
         )
     end
 
-    return :($(Base).@__doc__ $(MacroTools.combinedef(modeldef)))
+    return MacroTools.@q begin
+        $(MacroTools.combinedef(evaluatordef))
+        $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
+    end
 end
 
 function warn_empty(body)

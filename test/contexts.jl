@@ -1,4 +1,4 @@
-using Test, DynamicPPL
+using Test, DynamicPPL, Setfield
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -53,7 +53,7 @@ Return `vn` but now with the prefix removed.
 """
 function remove_prefix(vn::VarName)
     return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(
-        vn.indexing
+        getlens(vn)
     )
 end
 
@@ -65,11 +65,14 @@ e.g. `varnames(@varname(x), rand(2))` results in an iterator over `[@varname(x[1
 """
 varnames(vn::VarName, val::Real) = [vn]
 function varnames(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
-    return (VarName(vn, (vn.indexing..., Tuple(I))) for I in CartesianIndices(val))
+    return (
+        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
 end
 function varnames(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varnames(VarName(vn, (vn.indexing..., Tuple(I))), val[I]) for
+        varnames(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
         I in CartesianIndices(val)
     )
 end
@@ -183,7 +186,7 @@ end
 
                     # Let's check elementwise.
                     for vn_child in varnames(vn_without_prefix, val)
-                        if DynamicPPL._getindex(val, vn_child.indexing) === missing
+                        if get(val, getlens(vn_child)) === missing
                             @test contextual_isassumption(context, vn_child)
                         else
                             @test !contextual_isassumption(context, vn_child)
@@ -219,7 +222,7 @@ end
                         @test hasvalue_nested(context, vn_child)
                         # Value should be the same as extracted above.
                         @test getvalue_nested(context, vn_child) ===
-                              DynamicPPL._getindex(val, vn_child.indexing)
+                            get(val, getlens(vn_child))
                     end
                 end
             end
@@ -246,11 +249,11 @@ end
         vn = VarName{:x}()
         vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
         @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test vn_prefixed.indexing === vn.indexing
+        @test getlens(vn_prefixed) === getlens(vn)
 
-        vn = VarName{:x}((1,))
+        vn = VarName{:x}(((1,),))
         vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
         @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test vn_prefixed.indexing === vn.indexing
+        @test getlens(vn_prefixed) === getlens(vn)
     end
 end

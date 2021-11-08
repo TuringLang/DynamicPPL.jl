@@ -1,8 +1,3 @@
-# Constants for caching
-const CACHERESET = 0b00
-const CACHEIDCS = 0b10
-const CACHERANGES = 0b01
-
 ####
 #### Types for typed and untyped VarInfo
 ####
@@ -34,7 +29,7 @@ Let `md` be an instance of `Metadata`:
 To make `md::Metadata` type stable, all the `md.vns` must have the same symbol
 and distribution type. However, one can have a Julia variable, say `x`, that is a
 matrix or a hierarchical array sampled in partitions, e.g.
-`x[1][:] ~ MvNormal(zeros(2), 1.0); x[2][:] ~ MvNormal(ones(2), 1.0)`, and is managed by
+`x[1][:] ~ MvNormal(zeros(2), I); x[2][:] ~ MvNormal(ones(2), I)`, and is managed by
 a single `md::Metadata` so long as all the distributions on the RHS of `~` are of the
 same type. Type unstable `Metadata` will still work but will have inferior performance.
 When sampling, the first iteration uses a type unstable `Metadata` for all the

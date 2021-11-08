@@ -71,7 +71,7 @@ function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return tilde_observe!(context.context, right, left, vi)
 end
-function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vinds, vi)
+function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
     logp = tilde_observe(context.context, right, left, vi)
@@ -87,7 +87,7 @@ function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi
     # Defer literal `observe` to child-context.
     return dot_tilde_observe!(context.context, right, left, vi)
 end
-function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, inds, vi)
+function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
@@ -145,7 +145,7 @@ y .~ Normal(μ, σ)
 ```
 3. using `MvNormal`:
 ```julia
-y ~ MvNormal(fill(μ, n), Diagonal(fill(σ, n)))
+y ~ MvNormal(fill(μ, n), σ^2 * I)
 ```
 
 In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,

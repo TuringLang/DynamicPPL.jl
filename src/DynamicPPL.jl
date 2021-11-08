@@ -11,6 +11,9 @@ using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
 
+using Setfield: Setfield
+using BangBang: BangBang
+
 using Random: Random
 
 import Base:
@@ -115,6 +118,15 @@ export loglikelihood
 function getspace end
 
 # Necessary forward declarations
+"""
+    AbstractVarInfo
+
+Abstract supertype for data structures that capture random variables when executing a
+probabilistic model and accumulate log densities such as the log likelihood or the
+log joint probability of the model.
+
+See also: [`VarInfo`](@ref)
+"""
 abstract type AbstractVarInfo <: AbstractModelTrace end
 abstract type AbstractContext end
 
@@ -133,5 +145,7 @@ include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
+
+include("test_utils.jl")
 
 end # module

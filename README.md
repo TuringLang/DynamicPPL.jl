@@ -1,5 +1,7 @@
 # DynamicPPL.jl
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/stable)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/dev)
 [![CI](https://github.com/TuringLang/DynamicPPL.jl/workflows/CI/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ACI+branch%3Amaster)
 [![JuliaNightly](https://github.com/TuringLang/DynamicPPL.jl/workflows/JuliaNightly/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AJuliaNightly+branch%3Amaster)
 [![IntegrationTest](https://github.com/TuringLang/DynamicPPL.jl/workflows/IntegrationTest/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AIntegrationTest+branch%3Amaster)
