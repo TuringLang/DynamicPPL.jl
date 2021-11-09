@@ -380,7 +380,10 @@ end
 
 # `dot_assume`
 function dot_assume(
-    dist::MultivariateDistribution, var::AbstractMatrix, vns::AbstractVector{<:VarName}, vi
+    dist::MultivariateDistribution,
+    var::AbstractMatrix,
+    vns::AbstractVector{<:VarName},
+    vi::AbstractVarInfo,
 )
     @assert length(dist) == size(var, 1)
     # NOTE: We cannot work with `var` here because we might have a model of the form
@@ -390,7 +393,7 @@ function dot_assume(
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = vi[vns]
-    lp = sum(zip(vns, eachcol(r))) do vn, ri
+    lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
     return r, lp, vi
@@ -402,7 +405,7 @@ function dot_assume(
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
     var::AbstractMatrix,
-    vi,
+    vi::AbstractVarInfo,
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)

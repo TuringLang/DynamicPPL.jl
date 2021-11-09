@@ -233,7 +233,7 @@ function dot_assume(
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     value = vi[vns]
-    lp = sum(zip(vns, eachcol(value))) do vn, val
+    lp = sum(zip(vns, eachcol(value))) do (vn, val)
         return Distributions.logpdf(dist, val)
     end
     return value, lp, vi
