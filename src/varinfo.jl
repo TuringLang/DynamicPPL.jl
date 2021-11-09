@@ -979,8 +979,14 @@ function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
     ranges = _getranges(vi, spl)
     _setindex!(vi.metadata, val, ranges)
+    return nothing
+end
+
+function setindex!!(vi::AbstractVarInfo, val, spl::AbstractSampler)
+    setindex!(vi, val, spl)
     return vi
 end
+
 # Recursively writes the entries of `val` to the `vals` fields of all the symbols as if they were a contiguous vector.
 @generated function _setindex!(metadata, val, ranges::NamedTuple{names}) where {names}
     expr = Expr(:block)

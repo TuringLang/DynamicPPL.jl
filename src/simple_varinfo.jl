@@ -90,7 +90,7 @@ SimpleVarInfo() = SimpleVarInfo{Float64}()
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
 function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
-    _, svi = DynamicPPL.evaluate(model, SimpleVarInfo{T}(), args...)
+    svi = last(DynamicPPL.evaluate(model, SimpleVarInfo{T}(), args...))
     return svi
 end
 
@@ -102,7 +102,7 @@ function SimpleVarInfo{T}(
     vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
 ) where {T<:Real,names,D}
     values = values_as(vi, D)
-    return SimpleVarInfo{T}(values)
+    return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp

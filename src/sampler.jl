@@ -116,7 +116,7 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
+function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
@@ -126,7 +126,10 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
 
     # Get all values.
     linked = islinked(vi, spl)
-    linked && invlink!(vi, spl)
+    if linked
+        # TODO: Make work with immutable `vi`.
+        invlink!(vi, spl)
+    end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
         error("Provided initial value doesn't match the dimension of the model")
@@ -140,10 +143,13 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     end
 
     # Update in `vi`.
-    vi[spl] = theta
-    linked && link!(vi, spl)
+    vi = setindex!!(vi, theta, spl)
+    if linked
+        # TODO: Make work with immutable `vi`.
+        link!(vi, spl)
+    end
 
-    return nothing
+    return vi
 end
 
 """
