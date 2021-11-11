@@ -60,7 +60,7 @@
         @time wthreads(x)(vi)
 
         # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
-        DynamicPPL.evaluate_threadsafe(
+        DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -68,8 +68,8 @@
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
 
-        println("  evaluate_threadsafe:")
-        @time DynamicPPL.evaluate_threadsafe(
+        println("  evaluate_threadsafe!!:")
+        @time DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -99,7 +99,7 @@
         @test lp_w_threads ≈ lp_wo_threads
 
         # Ensure that we use `VarInfo`.
-        DynamicPPL.evaluate_threadunsafe(
+        DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -107,8 +107,8 @@
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
 
-        println("  evaluate_threadunsafe:")
-        @time DynamicPPL.evaluate_threadunsafe(
+        println("  evaluate_threadunsafe!!:")
+        @time DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),

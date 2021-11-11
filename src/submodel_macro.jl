@@ -120,7 +120,7 @@ function submodel(expr, ctx=esc(:__context__))
     return if args_assign === nothing
         # In this case we only want to get the `__varinfo__`.
         quote
-            $(esc(:_)), $(esc(:__varinfo__)) = _evaluate(
+            $(esc(:_)), $(esc(:__varinfo__)) = _evaluate!!(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
         end
@@ -129,7 +129,7 @@ function submodel(expr, ctx=esc(:__context__))
         # TODO: Should we prefix by `L` by default?
         L, R = args_assign
         quote
-            $(esc(L)), $(esc(:__varinfo__)) = _evaluate(
+            $(esc(L)), $(esc(:__varinfo__)) = _evaluate!!(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
         end

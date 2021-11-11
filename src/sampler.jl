@@ -82,7 +82,7 @@ function AbstractMCMC.step(
 
     # Update the parameters if provided.
     if haskey(kwargs, :init_params)
-        initialize_parameters!(vi, kwargs[:init_params], spl)
+        vi = initialize_parameters!!(vi, kwargs[:init_params], spl)
 
         # Update joint log probability.
         # TODO: fix properly by using sampler and evaluation contexts

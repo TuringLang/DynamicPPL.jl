@@ -38,7 +38,7 @@ julia> ### Sampling ###
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo((x = ones(2), )), ctx);
+       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo((x = ones(2), )), ctx);
 
 julia> # (✓) Vroom, vroom! FAST!!!
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -56,12 +56,12 @@ julia> DynamicPPL.getval(vi, @varname(x[1:2]))
  1.3736306979834252
 
 julia> # (×) If we don't provide the container...
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo(), ctx); vi
+       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx); vi
 ERROR: type NamedTuple has no field x
 [...]
 
 julia> # If one does not know the varnames, we can use a `Dict` instead.
-       _, vi = DynamicPPL.evaluate(m, SimpleVarInfo{Float64}(Dict()), ctx);
+       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(Dict()), ctx);
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        DynamicPPL.getval(vi, @varname(x[1]))
@@ -90,7 +90,7 @@ SimpleVarInfo() = SimpleVarInfo{Float64}()
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
 function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
-    svi = last(DynamicPPL.evaluate(model, SimpleVarInfo{T}(), args...))
+    svi = last(DynamicPPL.evaluate!!(model, SimpleVarInfo{T}(), args...))
     return svi
 end
 

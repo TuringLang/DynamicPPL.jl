@@ -72,9 +72,9 @@
         # sample from model and extract variables
         vi = VarInfo(model)
 
-        # Second component of return-value of `evaluate` should
+        # Second component of return-value of `evaluate!!` should
         # be a `DynamicPPL.AbstractVarInfo`.
-        evaluate_retval = DynamicPPL.evaluate(model, vi, DefaultContext())
+        evaluate_retval = DynamicPPL.evaluate!!(model, vi, DefaultContext())
         @test evaluate_retval[2] isa DynamicPPL.AbstractVarInfo
 
         # Should not return `AbstractVarInfo` when we call the model.
