@@ -211,13 +211,13 @@ function getindex(vi::SimpleVarInfo, vn::VarName)
 
     # If we found a valid split, then we can extract the value.
     # TODO: Should we also check that we `canview` the extracted `value`?
-    if issuccess
-        value = vi.values[VarName(vn, keylens)]
-        return get(value, child)
+    if !issuccess
+        # At this point we just throw an error since the key could not be found.
+        throw(KeyError(vn))
     end
 
-    # At this point we just throw an error since the key could not be found.
-    throw(KeyError(vn))
+    value = vi.values[VarName(vn, keylens)]
+    return get(value, child)
 end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
@@ -244,7 +244,7 @@ function hasvalue(nt::NamedTuple, vn::VarName)
 end
 
 hasvalue(dictlike, vn::VarName) = haskey(dictlike, vn) || hasvalue(dictlike, parent(vn))
-hasvalue(dictlike, vn::VarName{<:Any, Setfield.IdentityLens}) = haskey(dictlike, vn)
+hasvalue(dictlike, vn::VarName{<:Any,Setfield.IdentityLens}) = haskey(dictlike, vn)
 
 function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
     return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
