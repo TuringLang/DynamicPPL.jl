@@ -242,6 +242,7 @@ julia> parent(@lens(_.a[1]))
 
 julia> # Parent of lens without parents results in `nothing`.
        (parent ∘ parent)(@lens(_.a[1])) === nothing
+true
 ```
 """
 parent(lens::Setfield.Lens) = first(parent_and_child(lens))
