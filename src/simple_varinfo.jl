@@ -15,6 +15,7 @@ The major differences between this and `TypedVarInfo` are:
    b) the values have been specified with the corret shapes.
 
 # Examples
+## General usage
 ```jldoctest; setup=:(using Distributions)
 julia> using StableRNGs
 
@@ -76,16 +77,67 @@ julia> julia> DynamicPPL.getval(vi, @varname(x[1:2]))
 ERROR: KeyError: key x[1:2] not found
 [...]
 ```
+
+## Indexing
+Using `NamedTuple` as underlying storage.
+
+```jldoctest
+julia> svi_nt = SimpleVarInfo((m = (a = [1.0], ), ))
+SimpleVarInfo((m = (a = [1.0],),), 0.0)
+
+julia> svi_nt[@varname(m)]
+(a = [1.0],)
+
+julia> svi_nt[@varname(m.a)]
+1-element Vector{Float64}:
+ 1.0
+
+julia> svi_nt[@varname(m.a[1])]
+1.0
+
+julia> svi_nt[@varname(m.a[2])]
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+
+julia> svi_nt[@varname(m.b)]
+ERROR: type NamedTuple has no field b
+[...]
+```
+
+Using `Dict` as underlying storage.
+```jldoctest
+julia> svi_dict = SimpleVarInfo(Dict(@varname(m) => (a = [1.0], )))
+SimpleVarInfo(Dict{VarName{:m, Setfield.IdentityLens}, NamedTuple{(:a,), Tuple{Vector{Float64}}}}(m => (a = [1.0],)), 0.0)
+
+julia> svi_dict[@varname(m)]
+(a = [1.0],)
+
+julia> svi_dict[@varname(m.a)]
+1-element Vector{Float64}:
+ 1.0
+
+julia> svi_dict[@varname(m.a[1])]
+1.0
+
+julia> svi_dict[@varname(m.a[2])]
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+
+julia> svi_dict[@varname(m.b)]
+ERROR: type NamedTuple has no field b
+[...]
+```
 """
 struct SimpleVarInfo{NT,T} <: AbstractVarInfo
-    θ::NT
+    values::NT
     logp::T
 end
 
 SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
-SimpleVarInfo(θ) = SimpleVarInfo{eltype(first(θ))}(θ)
-SimpleVarInfo{T}() where {T<:Real} = SimpleVarInfo{T}(NamedTuple())
-SimpleVarInfo() = SimpleVarInfo{Float64}()
+SimpleVarInfo{T}(; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs))
+SimpleVarInfo(; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs))
+SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+SimpleVarInfo(θ::NamedTuple) = SimpleVarInfo{Float64}(θ)
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
@@ -106,8 +158,18 @@ function SimpleVarInfo{T}(
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, logp)
-acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.θ, getlogp(vi) + logp)
+setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, logp)
+acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp)
+
+"""
+    keys(vi::SimpleVarInfo)
+
+Return an iterator of keys present in `vi`.
+"""
+Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+# TODO: Is this really the "right" thing to do?
+# Is there a better function name we can use?
+Base.values(vi::SimpleVarInfo) = vi.values
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -121,42 +183,77 @@ end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     print(io, "SimpleVarInfo(")
-    print(io, svi.θ)
+    print(io, svi.values)
     print(io, ", ")
     print(io, svi.logp)
     return print(io, ")")
 end
 
 # `NamedTuple`
-function getval(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName)
-    return get(vi.θ, vn)
+function getindex(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName)
+    return get(vi.values, vn)
 end
 
 # `Dict`
-function getval(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName{sym}) where {sym}
-    # TODO: Should we maybe allow indexing of sub-keys, etc. too? E.g.
-    # if `x` is present and it has an array, maybe we should allow indexing `x[1]`, etc.
-    return vi.θ[vn]
+function getindex(vi::SimpleVarInfo, vn::VarName)
+    if haskey(vi.values, vn)
+        return vi.values[vn]
+    end
+
+    # Split the lens into the key / `parent` and the
+    # extraction lens / `child`.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(vi.values, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    # If we found a valid split, then we can extract the value.
+    # TODO: Should we also check that we `canview` the extracted `value`?
+    if issuccess
+        value = vi.values[VarName(vn, keylens)]
+        return get(value, child)
+    end
+
+    # At this point we just throw an error since the key could not be found.
+    throw(KeyError(vn))
 end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
-getval(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = map(vn -> getval(vi, vn), vns)
-# To disambiguiate.
-getval(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(vn -> getval(vi, vn), vns)
+function getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
+    return map(vn -> getindex(vi, vn), vns)
+end
+# HACK: Needed to disambiguiate.
+getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(vn -> getindex(vi, vn), vns)
 
-haskey(vi::SimpleVarInfo, vn) = haskey(vi.θ, getsym(vn))
+getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
+getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
+# TODO: Should we do better?
+getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+
+haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
+
+# TODO: Is `hasvalue` really the right function here?
+function hasvalue(nt::NamedTuple, vn::VarName)
+    # LHS: Ensure that `nt` indeed has the property we want.
+    # RHS: Ensure that the lens can view into `nt`.
+    sym = getsym(vn)
+    return haskey(nt, sym) && canview(getlens(vn), getindex(nt, sym))
+end
+
+hasvalue(dictlike, vn::VarName) = haskey(dictlike, vn) || hasvalue(dictlike, parent(vn))
+hasvalue(dictlike, vn::VarName{<:Any, Setfield.IdentityLens}) = haskey(dictlike, vn)
+
+function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
+    return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
+end
+function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
+    return SimpleVarInfo(setindex!!(vi.values, val, vn), vi.logp)
+end
 
 istrans(::SimpleVarInfo, vn::VarName) = false
-
-getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.θ
-getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.θ
-# TODO: Should we do better?
-getindex(vi::SimpleVarInfo, spl::Sampler) = vi.θ
-getindex(vi::SimpleVarInfo, vn::VarName) = getval(vi, vn)
-getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = getval(vi, vns)
-# HACK: Need to disambiguiate.
-getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = getval(vi, vns)
 
 # Necessary for `matchingvalue` to work properly.
 function Base.eltype(
@@ -173,7 +270,7 @@ function push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.θ = merge(vi.θ, NamedTuple{(sym,)}((value,)))
+    return Setfield.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -182,7 +279,7 @@ function push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.θ = set!!(vi.θ, vn, value)
+    return Setfield.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `Dict`
@@ -193,7 +290,7 @@ function push!!(
     dist::Distribution,
     gidset::Set{Selector},
 )
-    vi.θ[vn] = r
+    vi.values[vn] = r
     return vi
 end
 
@@ -260,6 +357,6 @@ end
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
 
-values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.θ))
-values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.θ))
-values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.θ
+values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
+values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
+values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values

@@ -163,3 +163,153 @@ function set!!(obj, vn::VarName{sym}, value) where {sym}
     lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
     return Setfield.set(obj, lens, value)
 end
+
+function set!!(obj, vn::VarName{sym}, value) where {sym}
+    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
+    return Setfield.set(obj, lens, value)
+end
+
+#############################
+# AbstractPPL.jl extensions #
+#############################
+# This is preferable to `haskey` because the order of arguments is different, and
+# we're more likely to specialize on the key in these settings rather than the container.
+# TODO: I'm not sure about this name.
+"""
+    canview(lens, container)
+
+Return `true` if `lens` can be used to view `container`, and `false` otherwise.
+
+# Examples
+```jldoctest; setup=:(using Setfield)
+julia> canview(@lens(_.a), (a = 1.0, ))
+true
+
+julia> canview(@lens(_.a), (b = 1.0, )) # property `a` does not exist
+false
+
+julia> canview(@lens(_.a[1]), (a = [1.0, 2.0], ))
+true
+
+julia> canview(@lens(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
+false
+```
+"""
+canview(lens, container) = false
+canview(::Setfield.IdentityLens, _) = true
+function canview(lens::Setfield.PropertyLens{field}, x) where {field}
+    return haskey(x, field)
+end
+# `IndexLens`: only relevant if `x` supports indexing.
+canview(lens::Setfield.IndexLens, x) = false
+canview(lens::Setfield.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
+
+# `ComposedLens`: check that we can view `.outer` and `.inner`, but using
+# value extracted using `.outer`.
+function canview(lens::Setfield.ComposedLens, x)
+    return canview(lens.outer, x) && canview(lens.inner, get(x, lens.outer))
+end
+
+"""
+    parent(vn::VarName)
+
+Return the parent `VarName`.
+
+# Examples
+```julia-repl
+julia> parent(@varname(x.a[1]))
+x.a
+
+julia> (parent ∘ parent)(@varname(x.a[1]))
+x
+
+julia> (parent ∘ parent ∘ parent)(@varname(x.a[1]))
+x
+```
+"""
+function parent(vn::VarName)
+    p = parent(getlens(vn))
+    return p === nothing ? VarName(vn, Setfield.IdentityLens()) : VarName(vn, p)
+end
+
+"""
+    parent(lens::Setfield.Lens)
+
+Return the parent lens.
+
+See also: [`parent_and_child`].
+
+# Examples
+```jldoctest; setup=:(using Setfield; using DynamicPPL: parent)
+julia> parent(@lens(_.a[1]))
+(@lens _.a)
+
+julia> (parent ∘ parent)(@lens(_.a[1]))
+(@lens _)
+
+julia> # parent of `IdentityLens` is `IdentityLens`
+       (parent ∘ parent ∘ parent)(@lens(_.a[1]))
+(@lens _)
+```
+"""
+parent(lens::Setfield.Lens) = first(parent_and_child(lens))
+
+"""
+    parent(lens::Setfield.Lens)
+
+Return a 2-tuple of lenses `(parent, child)` where
+
+See also: [`parent`].
+
+# Examples
+```jldoctest; setup=:(using Setfield; using DynamicPPL: parent_and_child)
+julia> parent_and_child(@lens(_.a[1]))
+((@lens _.a), (@lens _[1]))
+
+julia> parent_and_child(@lens(_.a))
+(nothing, (@lens _.a))
+```
+"""
+parent_and_child(lens::Setfield.Lens) = (nothing, lens)
+function parent_and_child(lens::Setfield.ComposedLens)
+    p, child = parent_and_child(lens.inner)
+    parent = p === nothing ? lens.outer : lens.outer ∘ p
+    return parent, child
+end
+
+"""
+    splitlens(condition, lens)
+
+Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
+`parent` is a lens such that `condition(parent)` is `true` and `parent ∘ child == lens`.
+
+If `issuccess` is `false`, then no such split could be found.
+
+# Examples
+```jldoctest; setup=:(using Setfield; using DynamicPPL: splitlens)
+julia> p, c, issucesss = splitlens(@lens(_.a[1])) do parent
+           # Succeeds!
+           parent == @lens(_.a)
+       end
+((@lens _.a), (@lens _[1]), true)
+
+julia> p ∘ c
+(@lens _.a[1])
+
+julia> splitlens(@lens(_.a[1])) do parent
+           # Fails!
+           parent == @lens(_.b)
+       end
+(nothing, (@lens _.a[1]), false)
+```
+"""
+function splitlens(condition, lens)
+    current_parent, current_child = parent_and_child(lens)
+    # We stop if either a) `condition` is satisfied, or b) we reached the root.
+    while !condition(current_parent) && current_parent !== nothing
+        current_parent, c = parent_and_child(current_parent)
+        current_child = c ∘ current_child
+    end
+
+    return current_parent, current_child, condition(current_parent)
+end
