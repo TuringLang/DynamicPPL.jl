@@ -42,16 +42,16 @@ julia> # In the `NamedTuple` version we need to provide the place-holder values 
        _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo((x = ones(2), )), ctx);
 
 julia> # (✓) Vroom, vroom! FAST!!!
-       DynamicPPL.getval(vi, @varname(x[1]))
+       vi[@varname(x[1])]
 0.4471218424633827
 
 julia> # We can also access arbitrary varnames pointing to `x`, e.g.
-       DynamicPPL.getval(vi, @varname(x))
+       vi[@varname(x)]
 2-element Vector{Float64}:
  0.4471218424633827
  1.3736306979834252
 
-julia> DynamicPPL.getval(vi, @varname(x[1:2]))
+julia> vi[@varname(x[1:2])]
 2-element Vector{Float64}:
  0.4471218424633827
  1.3736306979834252
@@ -65,15 +65,15 @@ julia> # If one does not know the varnames, we can use a `Dict` instead.
        _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(Dict()), ctx);
 
 julia> # (✓) Sort of fast, but only possible at runtime.
-       DynamicPPL.getval(vi, @varname(x[1]))
+       vi[@varname(x[1])]
 -1.019202452456547
 
 julia> # In addtion, we can only access varnames as they appear in the model!
-       DynamicPPL.getval(vi, @varname(x))
+       vi[@varname(x)]
 ERROR: KeyError: key x not found
 [...]
 
-julia> julia> DynamicPPL.getval(vi, @varname(x[1:2]))
+julia> vi[@varname(x[1:2])]
 ERROR: KeyError: key x[1:2] not found
 [...]
 ```
