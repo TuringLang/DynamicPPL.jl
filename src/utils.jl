@@ -176,9 +176,7 @@ end
 Return `true` if `lens` can be used to view `container`, and `false` otherwise.
 
 # Examples
-```jldoctest
-julia> using Setfield
-
+```jldoctest; setup=:(using Setfield; using DynamicPPL: canview)
 julia> canview(@lens(_.a), (a = 1.0, ))
 true
 
