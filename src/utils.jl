@@ -164,11 +164,6 @@ function set!!(obj, vn::VarName{sym}, value) where {sym}
     return Setfield.set(obj, lens, value)
 end
 
-function set!!(obj, vn::VarName{sym}, value) where {sym}
-    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
-    return Setfield.set(obj, lens, value)
-end
-
 #############################
 # AbstractPPL.jl extensions #
 #############################

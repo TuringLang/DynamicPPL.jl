@@ -242,13 +242,17 @@ function hasvalue(nt::NamedTuple, vn::VarName)
     return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
 end
 
-hasvalue(dictlike, vn::VarName) = haskey(dictlike, vn) || hasvalue(dictlike, parent(vn))
-hasvalue(dictlike, vn::VarName{<:Any,Setfield.IdentityLens}) = haskey(dictlike, vn)
+# For `dictlike` we need to check wether `vn` is "immediately" present, or
+# if some ancestor of `vn` is present in `dictlike`.
+hasvalue(dict::AbstractDict, vn::VarName) = haskey(dict, vn) || hasvalue(dict, parent(vn))
+hasvalue(dict::AbstractDict, vn::VarName{<:Any,Setfield.IdentityLens}) = haskey(dict, vn)
 
 function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
+    # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
     return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
 end
 function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
+    # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     return SimpleVarInfo(setindex!!(vi.values, val, vn), vi.logp)
 end
 
@@ -356,6 +360,11 @@ end
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
 
+"""
+    values(varinfo, Type)
+
+Return the values/realizations in `varinfo` as `Type`, if implemented.
+"""
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
