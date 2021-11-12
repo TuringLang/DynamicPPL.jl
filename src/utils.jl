@@ -211,7 +211,7 @@ end
 Return the parent `VarName`.
 
 # Examples
-```julia-repl
+```julia-repl; setup=:(using DynamicPPL: parent)
 julia> parent(@varname(x.a[1]))
 x.a
 
@@ -230,7 +230,8 @@ end
 """
     parent(lens::Setfield.Lens)
 
-Return the parent lens.
+Return the parent lens. If `lens` doesn't have a parent,
+`nothing` is returned.
 
 See also: [`parent_and_child`].
 
@@ -239,20 +240,19 @@ See also: [`parent_and_child`].
 julia> parent(@lens(_.a[1]))
 (@lens _.a)
 
-julia> (parent ∘ parent)(@lens(_.a[1]))
-(@lens _)
-
-julia> # parent of `IdentityLens` is `IdentityLens`
-       (parent ∘ parent ∘ parent)(@lens(_.a[1]))
-(@lens _)
+julia> # Parent of lens without parents results in `nothing`.
+       (parent ∘ parent)(@lens(_.a[1])) === nothing
 ```
 """
 parent(lens::Setfield.Lens) = first(parent_and_child(lens))
 
 """
-    parent(lens::Setfield.Lens)
+    parent_and_child(lens::Setfield.Lens)
 
-Return a 2-tuple of lenses `(parent, child)` where
+Return a 2-tuple of lenses `(parent, child)` where `parent` is the
+parent lens of `lens` and `child` is the child lens of `lens`.
+
+If `lens` does not have a parent, we return `(nothing, lens)`.
 
 See also: [`parent`].
 
