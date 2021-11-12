@@ -137,7 +137,6 @@ SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 SimpleVarInfo{T}(; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs))
 SimpleVarInfo(; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs))
 SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
-SimpleVarInfo(θ::NamedTuple) = SimpleVarInfo{Float64}(θ)
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
