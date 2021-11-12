@@ -239,7 +239,7 @@ function hasvalue(nt::NamedTuple, vn::VarName)
     # LHS: Ensure that `nt` indeed has the property we want.
     # RHS: Ensure that the lens can view into `nt`.
     sym = getsym(vn)
-    return haskey(nt, sym) && canview(getlens(vn), getindex(nt, sym))
+    return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
 end
 
 hasvalue(dictlike, vn::VarName) = haskey(dictlike, vn) || hasvalue(dictlike, parent(vn))
