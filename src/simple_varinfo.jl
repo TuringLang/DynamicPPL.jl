@@ -242,16 +242,53 @@ end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
 # if some ancestor of `vn` is present in `dictlike`.
-hasvalue(dict::AbstractDict, vn::VarName) = haskey(dict, vn) || hasvalue(dict, parent(vn))
-hasvalue(dict::AbstractDict, vn::VarName{<:Any,Setfield.IdentityLens}) = haskey(dict, vn)
+function hasvalue(dict::AbstractDict, vn::VarName)
+    # First we check if `vn` is present as is.
+    haskey(dict, vn) && return true
+
+    # If `vn` is not present, we check any parent-varnames by attempting
+    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(dict, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    # Return early if no such split could be found.
+    issuccess || return false
+
+    # At this point we just need to check that we `canview` the value.
+    value = dict[VarName(vn, keylens)]
+
+    return canview(getlens(vn), value)
+end
 
 function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
     return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
 end
+
+# TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
+# same symbol and same type of, say, `IndexLens`, for improvemed `.~` performance.
+function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, vals, vns::AbstractVector{<:VarName})
+    for (vn, val) in zip(vns, vals)
+        vi = setindex!!(vi, val, vn)
+    end
+    return vi
+end
+
 function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     return SimpleVarInfo(setindex!!(vi.values, val, vn), vi.logp)
+end
+
+function setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
+    for (vn, val) in zip(vns, vals)
+        vi = setindex!!(vi, val, vn)
+    end
+    return vi
 end
 
 istrans(::SimpleVarInfo, vn::VarName) = false
