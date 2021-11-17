@@ -332,8 +332,7 @@ end
 """
     setall!(vi::VarInfo, val)
 
-Set the values of all the variables in `vi` to `val`,
-mutating if it makese sense.
+Set the values of all the variables in `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """

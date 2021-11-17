@@ -271,7 +271,7 @@ function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
-# same symbol and same type of, say, `IndexLens`, for improvemed `.~` performance.
+# same symbol and same type of, say, `IndexLens`, for improved `.~` performance.
 function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, vals, vns::AbstractVector{<:VarName})
     for (vn, val) in zip(vns, vals)
         vi = setindex!!(vi, val, vn)
