@@ -82,8 +82,7 @@ ERROR: KeyError: key x[1:2] not found
 Using `NamedTuple` as underlying storage.
 
 ```jldoctest
-julia> svi_nt = SimpleVarInfo((m = (a = [1.0], ), ))
-SimpleVarInfo((m = (a = [1.0],),), 0.0)
+julia> svi_nt = SimpleVarInfo((m = (a = [1.0], ), ));
 
 julia> svi_nt[@varname(m)]
 (a = [1.0],)
@@ -106,8 +105,7 @@ ERROR: type NamedTuple has no field b
 
 Using `Dict` as underlying storage.
 ```jldoctest
-julia> svi_dict = SimpleVarInfo(Dict(@varname(m) => (a = [1.0], )))
-SimpleVarInfo(Dict{VarName{:m, Setfield.IdentityLens}, NamedTuple{(:a,), Tuple{Vector{Float64}}}}(m => (a = [1.0],)), 0.0)
+julia> svi_dict = SimpleVarInfo(Dict(@varname(m) => (a = [1.0], )));
 
 julia> svi_dict[@varname(m)]
 (a = [1.0],)
