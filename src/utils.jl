@@ -159,6 +159,10 @@ collectmaybe(x::Base.AbstractSet) = collect(x)
 #######################
 # BangBang.jl related #
 #######################
+function set!!(obj, lens::Setfield.Lens, value)
+    lensmut = BangBang.prefermutation(lens)
+    return Setfield.set(obj, lensmut, value)
+end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
     lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
     return Setfield.set(obj, lens, value)
@@ -193,8 +197,9 @@ false
 canview(lens, container) = false
 canview(::Setfield.IdentityLens, _) = true
 function canview(lens::Setfield.PropertyLens{field}, x) where {field}
-    return haskey(x, field)
+    return hasproperty(x, field)
 end
+
 # `IndexLens`: only relevant if `x` supports indexing.
 canview(lens::Setfield.IndexLens, x) = false
 canview(lens::Setfield.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)

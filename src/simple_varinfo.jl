@@ -262,7 +262,7 @@ function hasvalue(dict::AbstractDict, vn::VarName)
     # At this point we just need to check that we `canview` the value.
     value = dict[VarName(vn, keylens)]
 
-    return canview(getlens(vn), value)
+    return canview(child, value)
 end
 
 function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
@@ -279,9 +279,30 @@ function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, vals, vns::AbstractVector{<
     return vi
 end
 
-function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
+function setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
-    return SimpleVarInfo(setindex!!(vi.values, val, vn), vi.logp)
+    dict = values(vi)
+    # Attempt to split into `parent` and `child` lenses.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(dict, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    dict_new = if !issuccess
+        # Split doesn't exist ⟹ we're working with a new key.
+        setindex!!(dict, val, vn)
+    else
+        # Split exists ⟹ trying to set an existing key.
+        vn_key = VarName(vn, keylens)
+        setindex!!(
+            dict,
+            set!!(dict[vn_key], child, val),
+            vn_key
+        )
+    end
+    return SimpleVarInfo(dict_new, vi.logp)
 end
 
 function setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
