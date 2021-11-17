@@ -1140,9 +1140,9 @@ function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Se
 end
 function push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
     val = vectorize(dist, r)
