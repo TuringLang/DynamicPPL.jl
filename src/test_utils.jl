@@ -6,6 +6,49 @@ using LinearAlgebra
 using Distributions
 using Test
 
+"""
+    logprior_true(model, θ)
+
+Return the `logprior` of `model` for `θ`.
+
+This should generally be implemented by hand for every specific `model`.
+
+See also: [`logjoint_true`](@ref), [`loglikelihood_true`](@ref).
+"""
+function logprior_true end
+
+"""
+    loglikelihood_true(model, θ)
+
+Return the `loglikelihood` of `model` for `θ`.
+
+This should generally be implemented by hand for every specific `model`.
+
+See also: [`logjoint_true`](@ref), [`logprior_true`](@ref).
+"""
+function loglikelihood_true end
+
+"""
+    logjoint_true(model, θ)
+
+Return the `logjoint` of `model` for `θ`.
+
+Defaults to `logprior_true(model, θ) + loglikelihood_true(model, θ)`.
+
+This should generally be implemented by hand for every specific `model`
+so that the returned value can be used as a ground-truth for testing things like:
+
+1. Validity of evaluation of `model` using a particular implementation of `AbstractVarInfo`.
+2. Validity of a sampler when combined with DynamicPPL by running the sampler twice: once targeting ground-truth functions, e.g. `logjoint_true`, and once targeting `model`.
+
+And more.
+
+See also: [`logprior_true`](@ref), [`loglikelihood_true`](@ref).
+"""
+function logjoint_true(model::Model, args...)
+    return logprior_true(model, args...) + loglikelihood_true(model, args...)
+end
+
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
 @model function demo_dot_assume_dot_observe(
@@ -16,6 +59,12 @@ using Test
     m .~ Normal()
     x ~ MvNormal(m, 0.25 * I)
     return (; m=m, x=x, logp=getlogp(__varinfo__))
+end
+function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, m)
+    return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
 end
 
 @model function demo_assume_index_observe(
@@ -30,13 +79,25 @@ end
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_assume_index_observe)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_assume_index_observe)}, m)
+    return logpdf(MvNormal(m, 0.25 * I), model.args.x)
+end
 
-@model function demo_assume_multivariate_observe_index(x=[10.0, 10.0])
+@model function demo_assume_multivariate_observe(x=[10.0, 10.0])
     # Multivariate `assume` and `observe`
     m ~ MvNormal(zero(x), I)
     x ~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
+end
+function logprior_true(model::Model{typeof(demo_assume_multivariate_observe)}, m)
+    return logpdf(MvNormal(zero(model.args.x), I), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_assume_multivariate_observe)}, m)
+    return logpdf(MvNormal(m, 0.25 * I), model.args.x)
 end
 
 @model function demo_dot_assume_observe_index(
@@ -51,6 +112,12 @@ end
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_dot_assume_observe_index)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index)}, m)
+    return sum(logpdf.(Normal.(m, 0.5), model.args.x))
+end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
@@ -61,6 +128,12 @@ end
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_assume_dot_observe)}, m)
+    return logpdf(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_assume_dot_observe)}, m)
+    return sum(logpdf.(Normal.(m, 0.5), model.args.x))
+end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
@@ -68,6 +141,12 @@ end
     [10.0, 10.0] ~ MvNormal(m, 0.25 * I)
 
     return (; m=m, x=[10.0, 10.0], logp=getlogp(__varinfo__))
+end
+function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, m)
+    return logpdf(MvNormal(zeros(2), I), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, m)
+    return logpdf(MvNormal(m, 0.25 * I), [10.0, 10.0])
 end
 
 @model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
@@ -80,6 +159,12 @@ end
 
     return (; m=m, x=fill(10.0, length(m)), logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, m)
+    return sum(logpdf.(Normal.(m, 0.5), fill(10.0, length(m))))
+end
 
 @model function demo_assume_literal_dot_observe()
     # `assume` and literal `dot_observe`
@@ -87,6 +172,12 @@ end
     [10.0] .~ Normal(m, 0.5)
 
     return (; m=m, x=[10.0], logp=getlogp(__varinfo__))
+end
+function logprior_true(model::Model{typeof(demo_assume_literal_dot_observe)}, m)
+    return logpdf(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, m)
+    return logpdf(Normal(m, 0.5), 10.0)
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -105,6 +196,14 @@ end
 
     return (; m=m, x=[10.0], logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_assume_submodel_observe_index_literal)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}, m
+)
+    return sum(logpdf.(Normal.(m, 0.5), 10.0))
+end
 
 @model function _likelihood_dot_observe(m, x)
     return x ~ MvNormal(m, 0.25 * I)
@@ -121,6 +220,12 @@ end
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_dot_assume_observe_submodel)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_submodel)}, m)
+    return logpdf(MvNormal(m, 0.25 * I), model.args.x)
+end
 
 @model function demo_dot_assume_dot_observe_matrix(
     x=fill(10.0, 2, 1), ::Type{TV}=Vector{Float64}
@@ -133,11 +238,17 @@ end
 
     return (; m=m, x=x, logp=getlogp(__varinfo__))
 end
+function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, m)
+    return loglikelihood(Normal(), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, m)
+    return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
+end
 
 const DEMO_MODELS = (
     demo_dot_assume_dot_observe(),
     demo_assume_index_observe(),
-    demo_assume_multivariate_observe_index(),
+    demo_assume_multivariate_observe(),
     demo_dot_assume_observe_index(),
     demo_assume_dot_observe(),
     demo_assume_observe_literal(),
