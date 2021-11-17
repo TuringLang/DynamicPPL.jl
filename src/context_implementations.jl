@@ -508,6 +508,11 @@ function get_and_set_val!(
     else
         f = (vn, dist) -> init(rng, dist, spl)
         r = f.(vns, dists)
+        # TODO: This will inefficient since it will allocate an entire vector.
+        # We could either:
+        # 1. Figure out the broadcast size and use a `foreach`.
+        # 2. Define a anonynous function which returns `nothing`, which
+        #    we then broadcast. This will allocate a vector of `nothing` though.
         push!!.(Ref(vi), vns, r, dists, Ref(spl))
         settrans!.(Ref(vi), false, vns)
     end
