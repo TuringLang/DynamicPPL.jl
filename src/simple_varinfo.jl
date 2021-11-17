@@ -296,11 +296,7 @@ function setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     else
         # Split exists ⟹ trying to set an existing key.
         vn_key = VarName(vn, keylens)
-        setindex!!(
-            dict,
-            set!!(dict[vn_key], child, val),
-            vn_key
-        )
+        setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
     return SimpleVarInfo(dict_new, vi.logp)
 end
