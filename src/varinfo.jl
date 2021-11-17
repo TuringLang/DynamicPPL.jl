@@ -361,7 +361,7 @@ getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 """
     settrans!(vi::VarInfo, trans::Bool, vn::VarName)
 
-Set the `trans` flag value of `vn` in `vi`, mutating if it makes sense.
+Set the `trans` flag value of `vn` in `vi`.
 """
 function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
     return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
@@ -592,7 +592,7 @@ TypedVarInfo(vi::TypedVarInfo) = vi
     empty!!(vi::VarInfo)
 
 Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
-zeros, mutating if it makes sense.
+zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
