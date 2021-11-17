@@ -197,8 +197,7 @@ function getindex(vi::SimpleVarInfo, vn::VarName)
         return vi.values[vn]
     end
 
-    # Split the lens into the key / `parent` and the
-    # extraction lens / `child`.
+    # Split the lens into the key / `parent` and the extraction lens / `child`.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
         l = lens === nothing ? Setfield.IdentityLens() : lens
         haskey(vi.values, VarName(vn, l))
@@ -207,12 +206,13 @@ function getindex(vi::SimpleVarInfo, vn::VarName)
     keylens = parent === nothing ? Setfield.IdentityLens() : parent
 
     # If we found a valid split, then we can extract the value.
-    # TODO: Should we also check that we `canview` the extracted `value`?
     if !issuccess
         # At this point we just throw an error since the key could not be found.
         throw(KeyError(vn))
     end
 
+    # TODO: Should we also check that we `canview` the extracted `value`
+    # rather than just let it fail upon `get` call?
     value = vi.values[VarName(vn, keylens)]
     return get(value, child)
 end
