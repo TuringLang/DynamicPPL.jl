@@ -10,6 +10,7 @@ using MacroTools
 using MCMCChains
 using Tracker
 using Zygote
+using Setfield
 
 using Distributed
 using LinearAlgebra
@@ -34,6 +35,7 @@ include("test_util.jl")
             include("utils.jl")
             include("compiler.jl")
             include("varinfo.jl")
+            include("simple_varinfo.jl")
             include("model.jl")
             include("sampler.jl")
             include("prob_macro.jl")
