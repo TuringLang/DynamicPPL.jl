@@ -330,15 +330,15 @@ getall(vi::TypedVarInfo) = vcat(_getall(vi.metadata)...)
 end
 
 """
-    setall!!(vi::VarInfo, val)
+    setall!(vi::VarInfo, val)
 
 Set the values of all the variables in `vi` to `val`,
 mutating if it makese sense.
 
 The values may or may not be transformed to Euclidean space.
 """
-setall!!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
-setall!!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
+setall!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
+setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 @generated function _setall!(metadata::NamedTuple{names}, val, start=0) where {names}
     expr = Expr(:block)
     start = :(1)
@@ -973,7 +973,7 @@ Set the current value(s) of the random variables sampled by `spl` in `vi` to `va
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::AbstractVarInfo, val, spl::SampleFromPrior) = setall!!(vi, val)
+setindex!(vi::AbstractVarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
 setindex!(vi::UntypedVarInfo, val, spl::Sampler) = setval!(vi, val, _getranges(vi, spl))
 function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
