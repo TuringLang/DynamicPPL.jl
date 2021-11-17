@@ -364,13 +364,7 @@ getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 Set the `trans` flag value of `vn` in `vi`, mutating if it makes sense.
 """
 function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    if trans
-        set_flag!(vi, vn, "trans")
-    else
-        unset_flag!(vi, vn, "trans")
-    end
-
-    return nothing
+    return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
 end
 
 """
