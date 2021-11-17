@@ -512,8 +512,7 @@ end
 Set `vn`'s value for `flag` to `true` in `vi`.
 """
 function set_flag!(vi::VarInfo, vn::VarName, flag::String)
-    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
-    return vi
+    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
 end
 
 ####
