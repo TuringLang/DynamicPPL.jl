@@ -435,3 +435,105 @@ Return the values/realizations in `varinfo` as `Type`, if implemented.
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
+
+"""
+    logjoint(model::Model, θ)
+
+Return the log joint probability of variables `θ` for the probabilistic `model`.
+
+See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logjoint(demo([1.0]), (m = 100.0, ))
+-9902.33787706641
+
+julia> # Using a `Dict`.
+       logjoint(demo([1.0]), Dict(@varname(m) => 100.0))
+-9902.33787706641
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
+-9902.33787706641
+```
+"""
+function logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
+    return logjoint(model, SimpleVarInfo(θ))
+end
+
+"""
+    logprior(model::Model, θ)
+
+Return the log prior probability of variables `θ` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logprior(demo([1.0]), (m = 100.0, ))
+-5000.918938533205
+
+julia> # Using a `Dict`.
+       logprior(demo([1.0]), Dict(@varname(m) => 100.0))
+-5000.918938533205
+
+julia> # Truth.
+       logpdf(Normal(), 100.0)
+-5000.918938533205
+```
+"""
+function logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
+    return logprior(model, SimpleVarInfo(θ))
+end
+
+"""
+    loglikelihood(model::Model, θ)
+
+Return the log likelihood of variables `θ` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`logprior`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       loglikelihood(demo([1.0]), (m = 100.0, ))
+-4901.418938533205
+
+julia> # Using a `Dict`.
+       loglikelihood(demo([1.0]), Dict(@varname(m) => 100.0))
+-4901.418938533205
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0)
+-4901.418938533205
+```
+"""
+function Distributions.loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
+    return Distributions.loglikelihood(model, SimpleVarInfo(θ))
+end
