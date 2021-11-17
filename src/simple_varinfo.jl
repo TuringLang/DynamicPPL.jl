@@ -391,6 +391,21 @@ function dot_assume(
     return value, lp, vi
 end
 
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    vns::AbstractArray{<:VarName},
+    var::AbstractArray,
+    vi::SimpleOrThreadSafeSimple,
+)
+    f = (vn, dist) -> init(rng, dist, spl)
+    value = f.(vns, dists)
+    vi = setindex!!(vi, value, vns)
+    lp = sum(Distributions.logpdf.(dists, value))
+    return value, lp, vi
+end
+
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
