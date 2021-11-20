@@ -187,12 +187,12 @@ function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
 end
 
 # `NamedTuple`
-function getindex(vi::SimpleVarInfo{<:NamedTuple}, vn::VarName)
+function getindex(vi::SimpleVarInfo, vn::VarName)
     return get(vi.values, vn)
 end
 
 # `Dict`
-function getindex(vi::SimpleVarInfo, vn::VarName)
+function getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
     if haskey(vi.values, vn)
         return vi.values[vn]
     end
@@ -265,14 +265,14 @@ function hasvalue(dict::AbstractDict, vn::VarName)
     return canview(child, value)
 end
 
-function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, val, vn::VarName)
+function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
     return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
 # same symbol and same type of, say, `IndexLens`, for improved `.~` performance.
-function setindex!!(vi::SimpleVarInfo{<:NamedTuple}, vals, vns::AbstractVector{<:VarName})
+function setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
     for (vn, val) in zip(vns, vals)
         vi = setindex!!(vi, val, vn)
     end
@@ -300,15 +300,6 @@ function setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     end
     return SimpleVarInfo(dict_new, vi.logp)
 end
-
-function setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
-    for (vn, val) in zip(vns, vals)
-        vi = setindex!!(vi, val, vn)
-    end
-    return vi
-end
-
-istrans(::SimpleVarInfo, vn::VarName) = false
 
 # Necessary for `matchingvalue` to work properly.
 function Base.eltype(
@@ -426,6 +417,7 @@ end
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
+istrans(::SimpleVarInfo, vn::VarName) = false
 
 """
     values(varinfo, Type)
