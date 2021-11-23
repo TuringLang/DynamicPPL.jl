@@ -12,7 +12,7 @@ The major differences between this and `TypedVarInfo` are:
 2. `SimpleVarInfo` can use more efficient bijectors.
 3. `SimpleVarInfo` is only type-stable if `NT<:NamedTuple` and either
    a) no indexing is used in tilde-statements, or
-   b) the values have been specified with the corret shapes.
+   b) the values have been specified with the correct shapes.
 
 # Examples
 ## General usage
