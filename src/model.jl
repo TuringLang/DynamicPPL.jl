@@ -195,7 +195,7 @@ julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           m = @submodel demo_inner()
+           @submodel m = demo_inner()
            return m
        end
 demo_outer (generic function with 2 methods)
@@ -215,7 +215,7 @@ But one needs to be careful when prefixing variables in the nested models:
 
 ```jldoctest condition
 julia> @model function demo_outer_prefix()
-           m = @submodel inner demo_inner()
+           @submodel inner m = demo_inner()
            return m
        end
 demo_outer_prefix (generic function with 2 methods)
