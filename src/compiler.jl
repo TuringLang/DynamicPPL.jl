@@ -355,10 +355,12 @@ end
 
 function generate_tilde_literal(left, right)
     # If the LHS is a literal, it is always an observation
+    value = gensym(:value)
     return quote
-        _, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
+        $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
             __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
         )
+        $value
     end
 end
 
@@ -373,7 +375,7 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption
+    @gensym vn isassumption value
 
     # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
     # that in DynamicPPL we the entire function body. Instead we should be
@@ -389,13 +391,14 @@ function generate_tilde(left, right)
                 $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            _, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
+            $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 __varinfo__,
             )
+            $value
         end
     end
 end
@@ -404,8 +407,8 @@ function generate_tilde_assume(left, right, vn)
     # HACK: Because the Setfield.jl macro does not support assignment
     # with multiple arguments on the LHS, we need to capture the return-values
     # and then update them LHS variables one by one.
-    tmp = gensym(:tmp)
-    expr = :($left = $first($tmp))
+    value = gensym(:value)
+    expr = :($left = $value)
     if left isa Expr
         expr = AbstractPPL.drop_escape(
             Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
@@ -413,14 +416,13 @@ function generate_tilde_assume(left, right, vn)
     end
 
     return quote
-        $tmp = $(DynamicPPL.tilde_assume!!)(
+        ($value, __varinfo__) = $(DynamicPPL.tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
         $expr
-        __varinfo__ = $last($tmp)
-        $left, __varinfo__
+        $value
     end
 end
 
@@ -434,7 +436,7 @@ function generate_dot_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption
+    @gensym vn isassumption value
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
         $isassumption = $(DynamicPPL.isassumption(left))
@@ -446,13 +448,14 @@ function generate_dot_tilde(left, right)
                 $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            _, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
+            $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 __varinfo__,
             )
+            $value
         end
     end
 end
@@ -461,15 +464,18 @@ function generate_dot_tilde_assume(left, right, vn)
     # We don't need to use `Setfield.@set` here since
     # `.=` is always going to be inplace + needs `left` to
     # be something that supports `.=`.
-    return :(
-        ($left, __varinfo__) = $(DynamicPPL.dot_tilde_assume!!)(
+    value = gensym(:value)
+    return quote
+        ($value, __varinfo__) = $(DynamicPPL.dot_tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_left_vns)(
                 $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
             )...,
             __varinfo__,
         )
-    )
+        $left .= $value
+        $value
+    end
 end
 
 """
@@ -518,48 +524,11 @@ function replace_returns(e::Expr)
             e.args[1]
         end
 
-        return :(return $(DynamicPPL.return_values)($retval_expr, __varinfo__))
+        return :(return ($retval_expr, __varinfo__))
     end
 
     return Expr(e.head, map(replace_returns, e.args)...)
 end
-
-"""
-    return_values(retval, varinfo)
-
-Return `(retval, varinfo)` if `retval` is not a `Tuple` with second
-component being a `AbstractVarInfo`.
-
-Used together with [`replace_returns`](@ref), it handles the following case.
-
-# Example
-
-Suppose the following is the return-value:
-
-```julia
-return x ~ Normal()
-```
-
-Without `return_values`, once expanded in `generate_mainbody!`, this would be
-
-```julia
-return (x, __varinfo__ = tilde_assume!!(...)), __varinfo__
-```
-
-i.e. the return-value of the model would end up `(x, __varinfo__), __varinfo__`
-which in turn would lead to a `(::Model)(args...)` call returning `(x, __varinfo__)`,
-breaking with the expectation of the user.
-
-In such a scenario `return_values` effectively results in the following
-
-```julia
-return x, __varinfo__ = tilde_assume!!(...)
-```
-
-preserving user expectation, as desired.
-"""
-return_values(retval, varinfo::AbstractVarInfo) = (retval, varinfo)
-return_values(retval::Tuple{<:Any,<:AbstractVarInfo}, ::AbstractVarInfo) = retval
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
 make_returns_explicit!(body) = Expr(:return, body)
@@ -604,11 +573,11 @@ function build_output(modelinfo, linenumbernode)
     # Replace the user-provided function body with the version created by DynamicPPL.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
-    # to the call site
+    # to the call site.
     # NOTE: We need to replace statements of the form `return ...` with
-    # `return DynamicPPL.return_values(..., __varinfo__)` to ensure that the second
+    # `return (..., __varinfo__)` to ensure that the second
     # element in the returned value is always the most up-to-date `__varinfo__`.
-    # See the docstrings of `replace_returns` and `return_values` for more info.
+    # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
         $(replace_returns(make_returns_explicit!(modelinfo[:body])))

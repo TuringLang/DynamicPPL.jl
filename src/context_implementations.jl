@@ -373,8 +373,6 @@ Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
     value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
-    # Mutation of `value` no longer occurs in main body, so we do it here.
-    left .= value
     return value, acclogp!!(vi, logp), vi
 end
 
