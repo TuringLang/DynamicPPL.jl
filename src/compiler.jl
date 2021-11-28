@@ -101,15 +101,18 @@ isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
 Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
 `Distributions`, then return `x`.
 """
-function check_tilde_rhs(@nospecialize(x))
+check_tilde_rhs(x) = check_tilde_rhs(x, DensityInterface.DensityKind(x))
+check_tilde_rhs(x::Distribution) = x
+check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
+# check_tilde_rhs(x::AbstractArray{T}) where {T} = check_tilde_rhs(x, DensityInterface.DensityKind(T))
+check_tilde_rhs(x, ::DensityInterface.IsOrHasDensity) = x
+function check_tilde_rhs(@nospecialize(x), ::DensityInterface.NoDensity)
     return throw(
         ArgumentError(
             "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
         ),
     )
 end
-check_tilde_rhs(x::Distribution) = x
-check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 
 """
     unwrap_right_vn(right, vn)

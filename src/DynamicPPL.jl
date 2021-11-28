@@ -7,6 +7,7 @@ using Bijectors
 
 using AbstractMCMC: AbstractMCMC
 using ChainRulesCore: ChainRulesCore
+using DensityInterface: DensityInterface
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
