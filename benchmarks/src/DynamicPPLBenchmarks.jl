@@ -32,6 +32,18 @@ function benchmark_typed_varinfo!(suite, m)
     return suite
 end
 
+function benchmark_simple_varinfo_namedtuple!(suite, m)
+    # We expect the model to return the random variables as a `NamedTuple`.
+    retvals = m()
+
+    # Populate.
+    vi = SimpleVarInfo{Float64}(retvals)
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_namedtuple"] = @benchmarkable $m($vi, $(DefaultContext()))
+    return suite
+end
+
 function typed_code(m, vi=VarInfo(m))
     rng = DynamicPPL.Random.MersenneTwister(42)
     spl = DynamicPPL.SampleFromPrior()
@@ -50,6 +62,10 @@ function make_suite(model)
     suite = BenchmarkGroup()
     benchmark_untyped_varinfo!(suite, model)
     benchmark_typed_varinfo!(suite, model)
+
+    if isdefined(DynamicPPL, :SimpleVarInfo)
+        benchmark_simple_varinfo_namedtuple!(suite, model)
+    end
 
     return suite
 end

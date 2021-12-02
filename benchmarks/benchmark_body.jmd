@@ -19,6 +19,10 @@ results["evaluation_untyped"]
 results["evaluation_typed"]
 ```
 
+```julia
+haskey(results, "evaluation_simple_varinfo_namedtuple") && results["evaluation_simple_varinfo_namedtuple"]
+```
+
 ```julia; echo=false; results="hidden";
 BenchmarkTools.save(joinpath("results", WEAVE_ARGS[:name], "$(m.name)_benchmarks.json"), results)
 ```
