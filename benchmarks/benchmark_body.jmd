@@ -20,7 +20,21 @@ results["evaluation_typed"]
 ```
 
 ```julia
-haskey(results, "evaluation_simple_varinfo_namedtuple") && results["evaluation_simple_varinfo_namedtuple"]
+let k = "evaluation_simple_varinfo_nt"
+    haskey(results, k) && results[k]
+end
+```
+
+```julia
+let k = "evaluation_simple_varinfo_dict"
+    haskey(results, k) && results[k]
+end
+```
+
+```julia
+let k = "evaluation_simple_varinfo_dict_from_nt"
+    haskey(results, k) && results[k]
+end
 ```
 
 ```julia; echo=false; results="hidden";

@@ -41,7 +41,27 @@ function benchmark_simple_varinfo_namedtuple!(suite, m)
     vi = SimpleVarInfo{Float64}(retvals)
 
     # Evaluate.
-    suite["evaluation_simple_varinfo_namedtuple"] = @benchmarkable $m($vi, $(DefaultContext()))
+    suite["evaluation_simple_varinfo_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
+    return suite
+end
+
+function benchmark_simple_varinfo_dict!(suite, m)
+    # Populate.
+    vi = SimpleVarInfo{Float64}(Dict())
+    retvals = m(vi)
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_dict"] = @benchmarkable $m($vi, $(DefaultContext()))
+
+    # We expect the model to return the random variables as a `NamedTuple`.
+    vns = map(keys(retvals)) do k
+        VarName{k}()
+    end
+    vi = SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_dict_from_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
+
     return suite
 end
 
@@ -66,6 +86,7 @@ function make_suite(model)
 
     if isdefined(DynamicPPL, :SimpleVarInfo)
         benchmark_simple_varinfo_namedtuple!(suite, model)
+        benchmark_simple_varinfo_dict!(suite, model)
     end
 
     return suite
