@@ -164,6 +164,7 @@ function judgementtable(
         )
         for i in eachindex(results)
         for groupname in keys(results[i])
+        if groupname in keys(results_old[i])
     )
 end
 
@@ -183,5 +184,42 @@ function judgementtable(name::String, name_old::String; kwargs...)
     extras = [(model_name = model_name, ) for model_name in model_names]
 
     return judgementtable(results, results_old, extras; kwargs...)
+end
+
+function judgementtable_single(
+    results::AbstractVector,
+    reference_group::AbstractString,
+    extras=fill(NamedTuple(), length(results));
+    stat = minimum
+)
+    return collect(
+        TrialJudgementRow(
+            groupname,
+            judge(stat(results[i][groupname]), stat(results[i][reference_group])),
+            extras[i]
+        )
+        for i in eachindex(results)
+        for groupname in keys(results[i])
+    )
+end
+
+function judgementtable_single(
+    name::AbstractString,
+    reference_group::AbstractString;
+    kwargs...
+)
+    model_names = map(filter(endswith("_benchmarks.json"), readdir(projectdir("results", name)))) do x
+        # Strip the suffix.
+        x[1:end-5]
+    end
+
+    results = []
+    for model_name in model_names
+        append!(results, BenchmarkTools.load(projectdir("results", name, "$(model_name).json")))
+    end
+
+    extras = [(model_name = model_name, ) for model_name in model_names]
+
+    return judgementtable_single(results, reference_group, extras; kwargs...)
 end
 
