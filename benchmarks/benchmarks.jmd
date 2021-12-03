@@ -11,6 +11,12 @@ using DynamicPPLBenchmarks
 using DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
 ```
 
+### Environment
+
+```julia; echo=false; skip="notebook"
+DynamicPPLBenchmarks.display_environment()
+```
+
 ### Models ###
 
 #### `demo1` ####

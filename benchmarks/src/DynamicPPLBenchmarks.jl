@@ -2,6 +2,7 @@ module DynamicPPLBenchmarks
 
 using DynamicPPL
 using BenchmarkTools
+using InteractiveUtils
 
 using Weave: Weave
 using Markdown: Markdown
@@ -184,6 +185,30 @@ function weave_benchmarks(
     @info "Storing output in $(outpath)"
     mkpath(outpath)
     return Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
+end
+
+function display_environment()
+    display("text/markdown", "Computer Information:")
+    vinfo = sprint(InteractiveUtils.versioninfo)
+    display("text/markdown",  """
+        ```
+        $(vinfo)
+        ```
+        """)
+
+    ctx = Pkg.API.Context()
+
+    pkg_status = let io = IOBuffer()
+        Pkg.status(Pkg.API.Context(); io = io)
+        String(take!(io))
+    end
+
+    display("text/markdown","""
+        Package Information:
+        """)
+
+    md = "```\n$(pkg_status)\n```"
+    display("text/markdown", md)
 end
 
 include("tables.jl")
