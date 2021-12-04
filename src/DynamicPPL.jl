@@ -142,6 +142,7 @@ abstract type AbstractContext end
 include("utils.jl")
 include("selector.jl")
 include("model.jl")
+include("model_transformed.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
