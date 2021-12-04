@@ -458,7 +458,7 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-function logjoint(model::Model, θ)
+function logjoint(model::AbstractModel, θ)
     return logjoint(model, SimpleVarInfo(θ))
 end
 
@@ -492,7 +492,7 @@ julia> # Truth.
 -5000.918938533205
 ```
 """
-function logprior(model::Model, θ)
+function logprior(model::AbstractModel, θ)
     return logprior(model, SimpleVarInfo(θ))
 end
 
@@ -526,6 +526,6 @@ julia> # Truth.
 -4901.418938533205
 ```
 """
-function Distributions.loglikelihood(model::Model, θ)
+function Distributions.loglikelihood(model::AbstractModel, θ)
     return Distributions.loglikelihood(model, SimpleVarInfo(θ))
 end

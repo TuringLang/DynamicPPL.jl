@@ -1,3 +1,5 @@
+abstract type AbstractModel <: AbstractProbabilisticProgram end
+
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
         name::Symbol
@@ -33,7 +35,7 @@ Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x 
 ```
 """
 struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
-       AbstractProbabilisticProgram
+       AbstractModel
     name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
@@ -90,7 +92,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values) = condition(model, values)
+Base.:|(model::AbstractModel, values) = condition(model, values)
 
 """
     condition(model::Model; values...)
@@ -387,40 +389,16 @@ Returns both the return-value of the original model, and the resulting varinfo.
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+function evaluate!!(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(),
+    context::AbstractContext=SamplingContext(),
+)
     if Threads.nthreads() == 1
         return evaluate_threadunsafe!!(model, varinfo, context)
     else
         return evaluate_threadsafe!!(model, varinfo, context)
     end
-end
-
-function evaluate!!(
-    model::Model,
-    rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo=VarInfo(),
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    return evaluate!!(model, varinfo, SamplingContext(rng, sampler, context))
-end
-
-evaluate!!(model::Model, context::AbstractContext) = evaluate!!(model, VarInfo(), context)
-
-function evaluate!!(model::Model, args...)
-    return evaluate!!(model, Random.GLOBAL_RNG, args...)
-end
-
-# without VarInfo
-function evaluate!!(
-    model::Model, rng::Random.AbstractRNG, sampler::AbstractSampler, args...
-)
-    return evaluate!!(model, rng, VarInfo(), sampler, args...)
-end
-
-# without VarInfo and without AbstractSampler
-function evaluate!!(model::Model, rng::Random.AbstractRNG, context::AbstractContext)
-    return evaluate!!(model, rng, VarInfo(), SampleFromPrior(), context)
 end
 
 """
@@ -511,7 +489,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
-function logjoint(model::Model, varinfo::AbstractVarInfo)
+function logjoint(model::AbstractModel, varinfo::AbstractVarInfo)
     _, varinfo_new = evaluate!!(model, varinfo, DefaultContext())
     return getlogp(varinfo_new)
 end
@@ -523,7 +501,7 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
-function logprior(model::Model, varinfo::AbstractVarInfo)
+function logprior(model::AbstractModel, varinfo::AbstractVarInfo)
     _, varinfo_new = evaluate!!(model, varinfo, PriorContext())
     return getlogp(varinfo_new)
 end
@@ -535,7 +513,7 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
-function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
+function Distributions.loglikelihood(model::AbstractModel, varinfo::AbstractVarInfo)
     _, varinfo_new = evaluate!!(model, varinfo, LikelihoodContext())
     return getlogp(varinfo_new)
 end
@@ -599,7 +577,7 @@ julia> generated_quantities(model, chain)
  (-0.16489786710222099,)
 ```
 """
-function generated_quantities(model::Model, chain::AbstractChains)
+function generated_quantities(model::AbstractModel, chain::AbstractChains)
     varinfo = VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
@@ -643,13 +621,13 @@ julia> generated_quantities(model, values(parameters), keys(parameters))
 (0.0,)
 ```
 """
-function generated_quantities(model::Model, parameters::NamedTuple)
+function generated_quantities(model::AbstractModel, parameters::NamedTuple)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values(parameters), keys(parameters))
     return model(varinfo)
 end
 
-function generated_quantities(model::Model, values, keys)
+function generated_quantities(model::AbstractModel, values, keys)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values, keys)
     return model(varinfo)
