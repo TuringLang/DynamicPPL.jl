@@ -5,6 +5,7 @@ version = "0.1.0"
 [deps]
 AbstractPPL = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DiffUtils = "8294860b-85a6-42f8-8c35-d911f667b5f6"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"

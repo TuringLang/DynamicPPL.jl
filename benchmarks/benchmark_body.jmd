@@ -26,6 +26,12 @@ end
 ```
 
 ```julia
+let k = "evaluation_simple_varinfo_componentarray"
+    haskey(results, k) && results[k]
+end
+```
+
+```julia
 let k = "evaluation_simple_varinfo_dict"
     haskey(results, k) && results[k]
 end

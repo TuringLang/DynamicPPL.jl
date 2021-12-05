@@ -4,6 +4,8 @@ using DynamicPPL
 using BenchmarkTools
 using InteractiveUtils
 
+using ComponentArrays: ComponentArrays
+
 using Weave: Weave
 using Markdown: Markdown
 
@@ -39,9 +41,11 @@ function benchmark_simple_varinfo_namedtuple!(suite, m)
 
     # Populate.
     vi = SimpleVarInfo{Float64}(retvals)
+    vi_ca = SimpleVarInfo{Float64}(ComponentArrays.ComponentArray(retvals))
 
     # Evaluate.
     suite["evaluation_simple_varinfo_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
+    suite["evaluation_simple_varinfo_componentarrays"] = @benchmarkable $m($vi_ca, $(DefaultContext()))
     return suite
 end
 
