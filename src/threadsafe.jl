@@ -89,7 +89,7 @@ end
 function push!!(
     vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
-    return @set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
+    return Setfield.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
 end
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
