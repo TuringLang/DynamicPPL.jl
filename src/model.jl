@@ -433,7 +433,9 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe!!`](@ref)
 """
-evaluate_threadunsafe!!(model, varinfo, context) = _evaluate!!(model, resetlogp!!(varinfo), context)
+function evaluate_threadunsafe!!(model, varinfo, context)
+    return _evaluate!!(model, resetlogp!!(varinfo), context)
+end
 
 """
     evaluate_threadsafe!!(model, varinfo, context)

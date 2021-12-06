@@ -141,7 +141,6 @@ SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
 function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
     return last(evaluate!!(model, SimpleVarInfo{T}(), args...))
 end
-end
 
 # Constructor from `VarInfo`.
 function SimpleVarInfo(vi::TypedVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
@@ -213,7 +212,9 @@ end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
-Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
+function Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
+    return map(Base.Fix1(getindex, vi), vns)
+end
 # HACK: Needed to disambiguiate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
