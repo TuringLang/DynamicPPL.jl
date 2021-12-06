@@ -314,12 +314,3 @@ function splitlens(condition, lens)
 
     return current_parent, current_child, condition(current_parent)
 end
-
-##################################
-### Generally useful functions ###
-##################################
-function broadcast_foreach(op, args...)
-    bc = Base.broadcasted(op, args...)
-    foreach(identity, bc)
-    return nothing
-end
