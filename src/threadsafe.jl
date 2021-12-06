@@ -81,7 +81,7 @@ end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function empty!!(vi::ThreadSafeVarInfo)
-    empty!!(vi.varinfo)
+    Setfield.@set! vi.varinfo = empty!!(vi.varinfo)
     fill!(vi.logps, zero(getlogp(vi)))
     return vi
 end
@@ -89,7 +89,7 @@ end
 function push!!(
     vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
-    return push!!(vi.varinfo, vn, r, dist, gidset)
+    return @set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
 end
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
