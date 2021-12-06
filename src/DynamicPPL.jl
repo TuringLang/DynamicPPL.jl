@@ -176,8 +176,4 @@ include("test_utils.jl")
 @deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
 @deprecate resetlogp!(vi) resetlogp!!(vi)
 
-@deprecate initialize_parameters!(vi, init_params, spl) initialize_parameters!!(
-    vi, init_params, spl
-)
-
 end # module
