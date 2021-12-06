@@ -224,10 +224,8 @@ Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 
-haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
-
-# TODO: Is `hasvalue` really the right function here?
-function hasvalue(nt::NamedTuple, vn::VarName)
+Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
+function _haskey(nt::NamedTuple, vn::VarName)
     # LHS: Ensure that `nt` indeed has the property we want.
     # RHS: Ensure that the lens can view into `nt`.
     sym = getsym(vn)
@@ -236,7 +234,7 @@ end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
 # if some ancestor of `vn` is present in `dictlike`.
-function hasvalue(dict::AbstractDict, vn::VarName)
+function _haskey(dict::AbstractDict, vn::VarName)
     # First we check if `vn` is present as is.
     haskey(dict, vn) && return true
 
