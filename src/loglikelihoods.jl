@@ -109,16 +109,18 @@ end
 # the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
 function _pointwise_tilde_observe(context, right, left, vi)
     # We need to drop the `vi` returned.
-    observe_logps(r, l) = first(tilde_observe(context, r, l, vi))
-    return observe_logps.(right, left)
+    return broadcast(right, left) do r, l
+        return first(tilde_observe(context, r, l, vi))
+    end
 end
 
 function _pointwise_tilde_observe(
     context, right::MultivariateDistribution, left::AbstractMatrix, vi::AbstractVarInfo
 )
     # We need to drop the `vi` returned.
-    observe_logps(l) = first(tilde_observe(context, right, l, vi))
-    return observe_logps.(eachcol(left))
+    return map(eachcol(left)) do l
+        return first(tilde_observe(context, right, l, vi))
+    end
 end
 
 """

@@ -355,7 +355,7 @@ end
 
 function generate_tilde_literal(left, right)
     # If the LHS is a literal, it is always an observation
-    value = gensym(:value)
+    @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
             __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
@@ -406,8 +406,8 @@ end
 function generate_tilde_assume(left, right, vn)
     # HACK: Because the Setfield.jl macro does not support assignment
     # with multiple arguments on the LHS, we need to capture the return-values
-    # and then update them LHS variables one by one.
-    value = gensym(:value)
+    # and then update the LHS variables one by one.
+    @gensym value
     expr = :($left = $value)
     if left isa Expr
         expr = AbstractPPL.drop_escape(
@@ -464,7 +464,7 @@ function generate_dot_tilde_assume(left, right, vn)
     # We don't need to use `Setfield.@set` here since
     # `.=` is always going to be inplace + needs `left` to
     # be something that supports `.=`.
-    value = gensym(:value)
+    @gensym value
     return quote
         ($value, __varinfo__) = $(DynamicPPL.dot_tilde_assume!!)(
             __context__,
@@ -508,7 +508,6 @@ Note that this method will _not_ replace `return` statements within function
 definitions. This is checked using [`isfuncdef`](@ref).
 """
 replace_returns(e) = e
-replace_returns(e::Symbol) = e
 function replace_returns(e::Expr)
     if isfuncdef(e)
         return e
@@ -534,12 +533,10 @@ end
 make_returns_explicit!(body) = Expr(:return, body)
 function make_returns_explicit!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
-    if Meta.isexpr(body.args[end], :return)
-        return body
-    end
-
     # Otherwise we replace the last statement with a `return` statement.
-    body.args[end] = Expr(:return, body.args[end])
+    if !Meta.isexpr(body.args[end], :return)
+        body.args[end] = Expr(:return, body.args[end])
+    end
     return body
 end
 

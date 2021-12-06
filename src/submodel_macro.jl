@@ -120,9 +120,9 @@ function submodel(expr, ctx=esc(:__context__))
     return if args_assign === nothing
         # In this case we only want to get the `__varinfo__`.
         quote
-            $(esc(:_)), $(esc(:__varinfo__)) = _evaluate!!(
+            $(esc(:__varinfo__)) = last(_evaluate!!(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
-            )
+            ))
         end
     else
         # Here we also want the return-variable.

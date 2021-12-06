@@ -374,7 +374,7 @@ Sample from the `model` using the `sampler` with random number generator `rng` a
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-(model::Model)(args...) = (first ∘ evaluate!!)(model, args...)
+(model::Model)(args...) = first(evaluate!!(model, args...))
 
 """
     evaluate!!(model::Model[, rng, varinfo, sampler, context])
@@ -433,10 +433,7 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe!!`](@ref)
 """
-function evaluate_threadunsafe!!(model, varinfo, context)
-    varinfo = resetlogp!!(varinfo)
-    return _evaluate!!(model, varinfo, context)
-end
+evaluate_threadunsafe!!(model, varinfo, context) = _evaluate!!(model, resetlogp!!(varinfo), context)
 
 """
     evaluate_threadsafe!!(model, varinfo, context)
@@ -450,11 +447,9 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 See also: [`evaluate_threadunsafe!!`](@ref)
 """
 function evaluate_threadsafe!!(model, varinfo, context)
-    varinfo = resetlogp!!(varinfo)
-    wrapper = ThreadSafeVarInfo(varinfo)
+    wrapper = ThreadSafeVarInfo(resetlogp!!(varinfo))
     result, wrapper_new = _evaluate!!(model, wrapper, context)
-    varinfo = setlogp!!(varinfo, getlogp(wrapper_new))
-    return result, varinfo
+    return result, setlogp!!(varinfo, getlogp(wrapper_new))
 end
 
 """
@@ -512,8 +507,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    _, varinfo_new = evaluate!!(model, varinfo, DefaultContext())
-    return getlogp(varinfo_new)
+    return getlogp(last(evaluate!!(model, varinfo, DefaultContext())))
 end
 
 """
@@ -524,8 +518,7 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
-    _, varinfo_new = evaluate!!(model, varinfo, PriorContext())
-    return getlogp(varinfo_new)
+    return getlogp(last(evaluate!!(model, varinfo, PriorContext())))
 end
 
 """
@@ -536,8 +529,7 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    _, varinfo_new = evaluate!!(model, varinfo, LikelihoodContext())
-    return getlogp(varinfo_new)
+    return getlogp(last(evaluate!!(model, varinfo, LikelihoodContext())))
 end
 
 """

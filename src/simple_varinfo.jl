@@ -139,8 +139,8 @@ SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
 function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
-    svi = last(DynamicPPL.evaluate!!(model, SimpleVarInfo{T}(), args...))
-    return svi
+    return last(evaluate!!(model, SimpleVarInfo{T}(), args...))
+end
 end
 
 # Constructor from `VarInfo`.
@@ -179,20 +179,14 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
-    print(io, "SimpleVarInfo(")
-    print(io, svi.values)
-    print(io, ", ")
-    print(io, svi.logp)
-    return print(io, ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
-function getindex(vi::SimpleVarInfo, vn::VarName)
-    return get(vi.values, vn)
-end
+Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
 # `Dict`
-function getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
+function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
     if haskey(vi.values, vn)
         return vi.values[vn]
     end
@@ -219,16 +213,14 @@ end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
-function getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
-    return map(vn -> getindex(vi, vn), vns)
-end
+Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 # HACK: Needed to disambiguiate.
-getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(vn -> getindex(vi, vn), vns)
+Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
-getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
-getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
 # TODO: Should we do better?
-getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 
 haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
@@ -458,9 +450,7 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-function logjoint(model::Model, θ)
-    return logjoint(model, SimpleVarInfo(θ))
-end
+logjoint(model::Model, θ) = logjoint(model, SimpleVarInfo(θ))
 
 """
     logprior(model::Model, θ)
@@ -492,9 +482,7 @@ julia> # Truth.
 -5000.918938533205
 ```
 """
-function logprior(model::Model, θ)
-    return logprior(model, SimpleVarInfo(θ))
-end
+logprior(model::Model, θ) = logprior(model, SimpleVarInfo(θ))
 
 """
     loglikelihood(model::Model, θ)
@@ -526,6 +514,4 @@ julia> # Truth.
 -4901.418938533205
 ```
 """
-function Distributions.loglikelihood(model::Model, θ)
-    return Distributions.loglikelihood(model, SimpleVarInfo(θ))
-end
+Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
