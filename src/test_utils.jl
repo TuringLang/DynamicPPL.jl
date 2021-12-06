@@ -116,7 +116,7 @@ function logprior_true(model::Model{typeof(demo_dot_assume_observe_index)}, m)
     return loglikelihood(Normal(), m)
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index)}, m)
-    return logpdf(MvNormal(m, 0.25 * I), model.args.x)
+    return sum(logpdf.(Normal.(m, 0.5), model.args.x))
 end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
@@ -132,7 +132,7 @@ function logprior_true(model::Model{typeof(demo_assume_dot_observe)}, m)
     return logpdf(Normal(), m)
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_dot_observe)}, m)
-    return logpdf(MvNormal(m, 0.25 * I), model.args.x)
+    return sum(logpdf.(Normal.(m, 0.5), model.args.x))
 end
 
 @model function demo_assume_observe_literal()
@@ -163,7 +163,7 @@ function logprior_true(model::Model{typeof(demo_dot_assume_observe_index_literal
     return loglikelihood(Normal(), m)
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, m)
-    return logpdf(MvNormal(m, 0.25 * I), fill(10.0, length(m)))
+    return sum(logpdf.(Normal.(m, 0.5), fill(10.0, length(m))))
 end
 
 @model function demo_assume_literal_dot_observe()
