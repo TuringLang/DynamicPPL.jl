@@ -122,7 +122,9 @@ true
 ```
 
 ## Different ways of setting the prefix
-```julia
+```jldoctest submodel-prefix; setup=:(using DynamicPPL, Distributions)
+julia> @model inner() = x ~ Normal();
+
 julia> # Don't use any prefix.
        @model outer() = @submodel prefix=false a = inner();
 
