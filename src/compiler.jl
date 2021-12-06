@@ -478,6 +478,8 @@ function generate_dot_tilde_assume(left, right, vn)
     end
 end
 
+# Note that we cannot use `MacroTools.isdef` because
+# of https://github.com/FluxML/MacroTools.jl/issues/154.
 """
     isfuncdef(expr)
 
