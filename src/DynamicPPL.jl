@@ -32,7 +32,7 @@ import Base:
     keys,
     haskey
 
-import BangBang: push!!, empty!!, setindex!!
+using BangBang: push!!, empty!!, setindex!!
 
 # VarInfo
 export AbstractVarInfo,
