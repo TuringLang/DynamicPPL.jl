@@ -45,7 +45,7 @@ true
 ```
 """
 macro submodel(expr)
-    return submodel(:(prefix=false), expr)
+    return submodel(:(prefix = false), expr)
 end
 
 """
@@ -201,7 +201,6 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     if prefix_left !== :prefix
         error("$(prefix_left) is not a valid kwarg")
     end
-    
     # `prefix=false` => don't prefix, i.e. do nothing to `ctx`.
     # `prefix=true` => automatically determine prefix.
     # `prefix=...` => use it.
@@ -220,7 +219,9 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
         try
             ctx = prefix_submodel_context(prefix, L, ctx)
         catch e
-            error("failed to determine prefix from $(L); please specify prefix using the `@submodel prefix=\"your prefix\" ...` syntax")
+            error(
+                "failed to determine prefix from $(L); please specify prefix using the `@submodel prefix=\"your prefix\" ...` syntax",
+            )
         end
         quote
             $(esc(L)), $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
