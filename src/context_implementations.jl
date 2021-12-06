@@ -108,7 +108,7 @@ end
     tilde_assume!!(context, right, vn, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the sampled value and the update `vi`.
+accumulate the log probability, and return the sampled value and updated `vi`.
 
 By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
@@ -161,7 +161,7 @@ end
     tilde_observe!!(context, right, left, vname, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the observed value and the updated `vi`.
+accumulate the log probability, and return the observed value and updated `vi`.
 
 Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
@@ -596,7 +596,7 @@ end
     dot_tilde_observe!!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
-probability, and return the observed value.
+probability, and return the observed value and updated `vi`.
 
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
