@@ -167,9 +167,6 @@ acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp
 Return an iterator of keys present in `vi`.
 """
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
-# TODO: Is this really the "right" thing to do?
-# Is there a better function name we can use?
-Base.values(vi::SimpleVarInfo) = vi.values
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -417,10 +414,13 @@ settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
 istrans(::SimpleVarInfo, vn::VarName) = false
 
 """
-    values(varinfo, Type)
+    values_as(varinfo[, Type])
 
 Return the values/realizations in `varinfo` as `Type`, if implemented.
+
+If no `Type` is provided, return values as stored in `varinfo`.
 """
+values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values

@@ -1503,6 +1503,11 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
 end
 
 """
+    values_as(vi::AbstractVarInfo)
+"""
+values_as(vi::VarInfo) = vi.metadata
+
+"""
     values_as(vi::AbstractVarInfo, ::Type{NamedTuple})
     values_as(vi::AbstractVarInfo, ::Type{Dict})
 
