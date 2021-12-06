@@ -416,7 +416,7 @@ function generate_tilde_assume(left, right, vn)
     end
 
     return quote
-        ($value, __varinfo__) = $(DynamicPPL.tilde_assume!!)(
+        $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
@@ -466,7 +466,7 @@ function generate_dot_tilde_assume(left, right, vn)
     # be something that supports `.=`.
     @gensym value
     return quote
-        ($value, __varinfo__) = $(DynamicPPL.dot_tilde_assume!!)(
+        $value, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_left_vns)(
                 $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
