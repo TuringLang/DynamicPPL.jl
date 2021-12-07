@@ -595,7 +595,7 @@ zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
-function empty!!(vi::VarInfo)
+function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
     resetlogp!!(vi)
     reset_num_produce!(vi)
@@ -956,7 +956,9 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 The value(s) may or may not be transformed to Euclidean space.
 """
 setindex!(vi::AbstractVarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
-setindex!!(vi::AbstractVarInfo, val, vn::VarName) = (setindex!(vi, val, vn); return vi)
+function BangBang.setindex!!(vi::AbstractVarInfo, val, vn::VarName)
+    return (setindex!(vi, val, vn); return vi)
+end
 
 """
     setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
@@ -974,7 +976,7 @@ function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     return nothing
 end
 
-function setindex!!(vi::AbstractVarInfo, val, spl::AbstractSampler)
+function BangBang.setindex!!(vi::AbstractVarInfo, val, spl::AbstractSampler)
     setindex!(vi, val, spl)
     return vi
 end
@@ -1100,8 +1102,8 @@ end
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
 the `VarInfo` `vi`, mutating if it makes sense.
 """
-function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-    return push!!(vi, vn, r, dist, Set{Selector}([]))
+function BangBang.push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+    return BangBang.push!!(vi, vn, r, dist, Set{Selector}([]))
 end
 
 """
@@ -1112,13 +1114,15 @@ from a distribution `dist` to `VarInfo` `vi`, if it makes sense.
 
 The sampler is passed here to invalidate its cache where defined.
 """
-function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
-    return push!!(vi, vn, r, dist, spl.selector)
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler
+)
+    return BangBang.push!!(vi, vn, r, dist, spl.selector)
 end
-function push!!(
+function BangBang.push!!(
     vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
 )
-    return push!!(vi, vn, r, dist)
+    return BangBang.push!!(vi, vn, r, dist)
 end
 
 """
@@ -1127,10 +1131,14 @@ end
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
 selector `gid` from a distribution `dist` to `VarInfo` `vi`.
 """
-function push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-    return push!!(vi, vn, r, dist, Set([gid]))
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
+)
+    return BangBang.push!!(vi, vn, r, dist, Set([gid]))
 end
-function push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function BangBang.push!!(
+    vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+)
     if vi isa UntypedVarInfo
         @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
@@ -1493,6 +1501,11 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
 
     return indices
 end
+
+"""
+    values_as(vi::AbstractVarInfo)
+"""
+values_as(vi::VarInfo) = vi.metadata
 
 """
     values_as(vi::AbstractVarInfo, ::Type{NamedTuple})

@@ -153,6 +153,10 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
+function BangBang.empty!!(vi::SimpleVarInfo)
+    Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
+end
+
 getlogp(vi::SimpleVarInfo) = vi.logp
 setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, logp)
 acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp)
@@ -163,9 +167,6 @@ acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp
 Return an iterator of keys present in `vi`.
 """
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
-# TODO: Is this really the "right" thing to do?
-# Is there a better function name we can use?
-Base.values(vi::SimpleVarInfo) = vi.values
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -223,10 +224,8 @@ Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 
-haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
-
-# TODO: Is `hasvalue` really the right function here?
-function hasvalue(nt::NamedTuple, vn::VarName)
+Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
+function _haskey(nt::NamedTuple, vn::VarName)
     # LHS: Ensure that `nt` indeed has the property we want.
     # RHS: Ensure that the lens can view into `nt`.
     sym = getsym(vn)
@@ -235,7 +234,7 @@ end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
 # if some ancestor of `vn` is present in `dictlike`.
-function hasvalue(dict::AbstractDict, vn::VarName)
+function _haskey(dict::AbstractDict, vn::VarName)
     # First we check if `vn` is present as is.
     haskey(dict, vn) && return true
 
@@ -258,23 +257,23 @@ function hasvalue(dict::AbstractDict, vn::VarName)
     return canview(child, value)
 end
 
-function setindex!!(vi::SimpleVarInfo, val, vn::VarName)
+function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
     return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
 # same symbol and same type of, say, `IndexLens`, for improved `.~` performance.
-function setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
+function BangBang.setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
     for (vn, val) in zip(vns, vals)
-        vi = setindex!!(vi, val, vn)
+        vi = BangBang.setindex!!(vi, val, vn)
     end
     return vi
 end
 
-function setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
+function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
-    dict = values(vi)
+    dict = values_as(vi)
     # Attempt to split into `parent` and `child` lenses.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
         l = lens === nothing ? Setfield.IdentityLens() : lens
@@ -285,11 +284,11 @@ function setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
 
     dict_new = if !issuccess
         # Split doesn't exist ⟹ we're working with a new key.
-        setindex!!(dict, val, vn)
+        BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
         vn_key = VarName(vn, keylens)
-        setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
+        BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
     return SimpleVarInfo(dict_new, vi.logp)
 end
@@ -302,7 +301,7 @@ function Base.eltype(
 end
 
 # `NamedTuple`
-function push!!(
+function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
     vn::VarName{sym,Setfield.IdentityLens},
     value,
@@ -311,7 +310,7 @@ function push!!(
 ) where {sym}
     return Setfield.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
-function push!!(
+function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
     vn::VarName{sym},
     value,
@@ -322,7 +321,7 @@ function push!!(
 end
 
 # `Dict`
-function push!!(
+function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
     r,
@@ -351,7 +350,7 @@ function assume(
     vi::SimpleOrThreadSafeSimple,
 )
     value = init(rng, dist, sampler)
-    vi = push!!(vi, vn, value, dist, sampler)
+    vi = BangBang.push!!(vi, vn, value, dist, sampler)
     return value, Distributions.loglikelihood(dist, value), vi
 end
 
@@ -402,7 +401,7 @@ function dot_assume(
 )
     f = (vn, dist) -> init(rng, dist, spl)
     value = f.(vns, dists)
-    vi = setindex!!(vi, value, vns)
+    vi = BangBang.setindex!!(vi, value, vns)
     lp = sum(Distributions.logpdf.(dists, value))
     return value, lp, vi
 end
@@ -413,10 +412,13 @@ settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
 istrans(::SimpleVarInfo, vn::VarName) = false
 
 """
-    values(varinfo, Type)
+    values_as(varinfo[, Type])
 
 Return the values/realizations in `varinfo` as `Type`, if implemented.
+
+If no `Type` is provided, return values as stored in `varinfo`.
 """
+values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
