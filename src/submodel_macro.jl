@@ -122,7 +122,7 @@ true
 ```
 
 ## Different ways of setting the prefix
-```jldoctest submodel-prefix; setup=:(using DynamicPPL, Distributions)
+```jldoctest submodel-prefix-alternatives; setup=:(using DynamicPPL, Distributions)
 julia> @model inner() = x ~ Normal();
 
 julia> # Don't use any prefix.
@@ -144,7 +144,7 @@ julia> @varname(var"my prefix.x") in keys(VarInfo(outer()))
 true
 
 julia> # Using string interpolation.
-       @model outer() = @submodel prefix="$(inner().name)" a = inner();
+       @model outer() = @submodel prefix="\$(inner().name)" a = inner();
 
 julia> @varname(var"inner.x") in keys(VarInfo(outer()))
 true
