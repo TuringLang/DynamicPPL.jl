@@ -125,7 +125,13 @@ true
 ```jldoctest submodel-prefix-alternatives; setup=:(using DynamicPPL, Distributions)
 julia> @model inner() = x ~ Normal();
 
-julia> # Don't use any prefix.
+julia> # When `prefix` is unspecified, no prefix is used.
+       @model outer() = @submodel a = inner();
+       
+julia> @varname(x) in keys(VarInfo(outer()))
+true
+
+julia> # Explicitely don't use any prefix.
        @model outer() = @submodel prefix=false a = inner();
 
 julia> @varname(x) in keys(VarInfo(outer()))
