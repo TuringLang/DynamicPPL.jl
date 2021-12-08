@@ -551,7 +551,12 @@ end
         @model demo() = return __varinfo__
         retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
         @test svi == SimpleVarInfo()
-        @test retval == svi
+        if Threads.nthreads() > 1
+            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
+            @test retval.varinfo == svi
+        else
+            @test retval == svi
+        end
 
         # We should not be altering return-values other than at top-level.
         @model function demo()
