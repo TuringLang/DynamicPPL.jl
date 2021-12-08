@@ -293,13 +293,6 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
     return SimpleVarInfo(dict_new, vi.logp)
 end
 
-# Necessary for `matchingvalue` to work properly.
-function Base.eltype(
-    vi::SimpleVarInfo{<:Any,T}, spl::Union{AbstractSampler,SampleFromPrior}
-) where {T}
-    return T
-end
-
 # `NamedTuple`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -332,9 +325,16 @@ function BangBang.push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T} = Union{
-    SimpleVarInfo{T},ThreadSafeVarInfo{<:SimpleVarInfo{T}}
+const SimpleOrThreadSafeSimple{T,V} = Union{
+    SimpleVarInfo{T,V},ThreadSafeVarInfo{<:SimpleVarInfo{T,V}}
 }
+
+# Necessary for `matchingvalue` to work properly.
+function Base.eltype(
+    vi::SimpleOrThreadSafeSimple{<:Any,V}, spl::Union{AbstractSampler,SampleFromPrior}
+) where {V}
+    return V
+end
 
 # Context implementations
 function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
