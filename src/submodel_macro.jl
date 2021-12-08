@@ -159,7 +159,7 @@ julia> # Using string interpolation.
 outer (generic function with 2 methods)
 
 julia> @varname(var"inner.x") in keys(VarInfo(outer()))
-false
+true
 
 julia> # Or using some arbitrary expression.
        @model outer() = @submodel prefix=1 + 2 a = inner()
