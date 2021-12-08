@@ -159,7 +159,11 @@ julia> # Or using some arbitrary expression.
        @model outer() = @submodel prefix=1 + 2 a = inner();
 
 julia> @varname(var"3.x") in keys(VarInfo(outer()))
-true
+
+julia> # (×) Automatic prefixing without a left-hand side expression does not work!
+       @model outer() = @submodel prefix=true inner();
+ERROR: LoadError: LoadError: cannot automatically prefix with no left-hand side
+[...]
 ```
 
 # Notes
@@ -175,7 +179,7 @@ end
 
 # Automatic prefixing.
 function prefix_submodel_context(prefix::Bool, left::Symbol, ctx)
-    return prefix ? prefix_submodel_context(string(left), ctx) : ctx
+    return prefix ? prefix_submodel_context(left, ctx) : ctx
 end
 
 function prefix_submodel_context(prefix::Bool, left::Expr, ctx)
@@ -184,14 +188,12 @@ end
 
 # Manual prefixing.
 prefix_submodel_context(prefix, left, ctx) = prefix_submodel_context(prefix, ctx)
-prefix_submodel_context(prefix, ctx) = ctx
-
-function prefix_submodel_context(prefix::Union{Symbol,Expr}, ctx)
+function prefix_submodel_context(prefix, ctx)
     # E.g. `prefix="asd[$i]"` or `prefix=asd` with `asd` to be evaluated.
     return :($(DynamicPPL.PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
 end
 
-function prefix_submodel_context(prefix::AbstractString, ctx)
+function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, ctx)
     # E.g. `prefix="asd"`.
     return :($(DynamicPPL.PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
 end
