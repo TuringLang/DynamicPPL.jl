@@ -75,6 +75,13 @@ function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
     return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end
 
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vn)
+end
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:VarName})
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vns)
+end
+
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
     return set_retained_vns_del_by_spl!(vi.varinfo, spl)
 end
