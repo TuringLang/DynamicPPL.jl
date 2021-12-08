@@ -159,6 +159,7 @@ julia> # Or using some arbitrary expression.
        @model outer() = @submodel prefix=1 + 2 a = inner();
 
 julia> @varname(var"3.x") in keys(VarInfo(outer()))
+true
 
 julia> # (×) Automatic prefixing without a left-hand side expression does not work!
        @model outer() = @submodel prefix=true inner();
