@@ -170,7 +170,7 @@ true
 
 julia> # (×) Automatic prefixing without a left-hand side expression does not work!
        @model outer() = @submodel prefix=true inner()
-ERROR: LoadError: LoadError: cannot automatically prefix with no left-hand side
+ERROR: LoadError: cannot automatically prefix with no left-hand side
 [...]
 ```
 
