@@ -420,8 +420,8 @@ end
         end
 
         @model function demo_useval(x, y)
-            @submodel sub1 x1 = demo_return(x)
-            @submodel sub2 x2 = demo_return(y)
+            @submodel prefix = "sub1" x1 = demo_return(x)
+            @submodel prefix = "sub2" x2 = demo_return(y)
 
             return z ~ Normal(x1 + x2 + 100, 1.0)
         end
