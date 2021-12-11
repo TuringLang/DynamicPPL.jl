@@ -4,8 +4,6 @@
 
 Run a Turing `model` nested inside of a Turing model.
 
-The return value can be assigned to a variable.
-
 # Examples
 
 ```jldoctest submodel; setup=:(using Distributions)
@@ -59,15 +57,10 @@ Valid expressions for `prefix=...` are:
 - `prefix=false`: no prefix is used.
 - `prefix=true`: _attempt_ to automatically determine the prefix from the left-hand side
   `... = model` by first converting into a `VarName`, and then calling `Symbol` on this.
-- `prefix="my prefix"`: prefix is taken to be the static string "my prefix".
-- `prefix=expression`: `expression` is evaluated at runtime, resulting in
-  the prefix `Symbol(expression)`. Note that this also includes string-interpolation,
-  e.g. `prefix="x[\$i]"` as it requires runtime information.
+- `prefix=expression`: results in the prefix `Symbol(expression)`.
 
 The prefix makes it possible to run the same Turing model multiple times while
 keeping track of all random variables correctly.
-
-The return value can be assigned to a variable.
 
 # Examples
 ## Example models
