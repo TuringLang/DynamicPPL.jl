@@ -420,8 +420,8 @@ end
         end
 
         @model function demo_useval(x, y)
-            x1 = @submodel sub1 demo_return(x)
-            x2 = @submodel sub2 demo_return(y)
+            @submodel prefix = "sub1" x1 = demo_return(x)
+            @submodel prefix = "sub2" x2 = demo_return(y)
 
             return z ~ Normal(x1 + x2 + 100, 1.0)
         end
@@ -455,8 +455,8 @@ end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x = @submodel $(Symbol("ar1_$i")) AR1(num_steps, α, μ, σ)
-                y[i] ~ MvNormal(x, 0.01 * I)
+                @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
+                y[i] ~ MvNormal(x, 0.1)
             end
         end
 
@@ -543,5 +543,32 @@ end
         # Set it to `false` again.
         f(::Model{typeof(demo),()}) = false
         @test !f(demo())
+    end
+
+    @testset "return value" begin
+        # Even if the return-value is `AbstractVarInfo`, we should return
+        # a `Tuple` with `AbstractVarInfo` in the second component too.
+        @model demo() = return __varinfo__
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+        @test svi == SimpleVarInfo()
+        if Threads.nthreads() > 1
+            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
+            @test retval.varinfo == svi
+        else
+            @test retval == svi
+        end
+
+        # We should not be altering return-values other than at top-level.
+        @model function demo()
+            # If we also replaced this `return` inside of `f`, then the
+            # final `return` would be include `__varinfo__`.
+            f(x) = return x^2
+            return f(1.0)
+        end
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+        @test retval isa Float64
+
+        @model demo() = x ~ Normal()
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
     end
 end

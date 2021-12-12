@@ -17,17 +17,17 @@
         lp = getlogp(vi)
         @test getlogp(threadsafe_vi) == lp
 
-        acclogp!(threadsafe_vi, 42)
+        acclogp!!(threadsafe_vi, 42)
         @test threadsafe_vi.logps[Threads.threadid()][] == 42
         @test getlogp(vi) == lp
         @test getlogp(threadsafe_vi) == lp + 42
 
-        resetlogp!(threadsafe_vi)
+        resetlogp!!(threadsafe_vi)
         @test iszero(getlogp(vi))
         @test iszero(getlogp(threadsafe_vi))
         @test all(iszero(x[]) for x in threadsafe_vi.logps)
 
-        setlogp!(threadsafe_vi, 42)
+        setlogp!!(threadsafe_vi, 42)
         @test getlogp(vi) == 42
         @test getlogp(threadsafe_vi) == 42
         @test all(iszero(x[]) for x in threadsafe_vi.logps)
@@ -60,7 +60,7 @@
         @time wthreads(x)(vi)
 
         # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
-        DynamicPPL.evaluate_threadsafe(
+        DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -68,8 +68,8 @@
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
 
-        println("  evaluate_threadsafe:")
-        @time DynamicPPL.evaluate_threadsafe(
+        println("  evaluate_threadsafe!!:")
+        @time DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -99,7 +99,7 @@
         @test lp_w_threads ≈ lp_wo_threads
 
         # Ensure that we use `VarInfo`.
-        DynamicPPL.evaluate_threadunsafe(
+        DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
@@ -107,8 +107,8 @@
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
 
-        println("  evaluate_threadunsafe:")
-        @time DynamicPPL.evaluate_threadunsafe(
+        println("  evaluate_threadunsafe!!:")
+        @time DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
             SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
