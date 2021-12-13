@@ -588,16 +588,16 @@ end
 TypedVarInfo(vi::TypedVarInfo) = vi
 
 """
-    empty!(vi::VarInfo)
+    empty!!(vi::VarInfo)
 
 Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
 zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
-function empty!(vi::VarInfo)
+function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    resetlogp!(vi)
+    resetlogp!!(vi)
     reset_num_produce!(vi)
     return vi
 end
@@ -655,34 +655,34 @@ Return the log of the joint probability of the observed data and parameters samp
 getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
-    setlogp!(vi::VarInfo, logp)
+    setlogp!!(vi::VarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
-`vi` to `logp`.
+`vi` to `logp`, mutating if it makes sense.
 """
-function setlogp!(vi::VarInfo, logp)
+function setlogp!!(vi::VarInfo, logp)
     vi.logp[] = logp
     return vi
 end
 
 """
-    acclogp!(vi::VarInfo, logp)
+    acclogp!!(vi::VarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
-parameters sampled in `vi`.
+parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!(vi::VarInfo, logp)
+function acclogp!!(vi::VarInfo, logp)
     vi.logp[] += logp
     return vi
 end
 
 """
-    resetlogp!(vi::AbstractVarInfo)
+    resetlogp!!(vi::AbstractVarInfo)
 
 Reset the value of the log of the joint probability of the observed data and parameters
-sampled in `vi` to 0.
+sampled in `vi` to 0, mutating if it makes sense.
 """
-resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, zero(getlogp(vi)))
+resetlogp!!(vi::AbstractVarInfo) = setlogp!!(vi, zero(getlogp(vi)))
 
 """
     get_num_produce(vi::VarInfo)
@@ -955,7 +955,10 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::AbstractVarInfo, val, vn::VarName) = setval!(vi, val, vn)
+setindex!(vi::AbstractVarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
+function BangBang.setindex!!(vi::AbstractVarInfo, val, vn::VarName)
+    return (setindex!(vi, val, vn); return vi)
+end
 
 """
     setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
@@ -970,8 +973,14 @@ function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
     ranges = _getranges(vi, spl)
     _setindex!(vi.metadata, val, ranges)
-    return val
+    return nothing
 end
+
+function BangBang.setindex!!(vi::AbstractVarInfo, val, spl::AbstractSampler)
+    setindex!(vi, val, spl)
+    return vi
+end
+
 # Recursively writes the entries of `val` to the `vals` fields of all the symbols as if they were a contiguous vector.
 @generated function _setindex!(metadata, val, ranges::NamedTuple{names}) where {names}
     expr = Expr(:block)
@@ -1088,46 +1097,52 @@ function Base.show(io::IO, vi::UntypedVarInfo)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
 
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
-the `VarInfo` `vi`.
+the `VarInfo` `vi`, mutating if it makes sense.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-    return push!(vi, vn, r, dist, Set{Selector}([]))
+function BangBang.push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+    return BangBang.push!!(vi, vn, r, dist, Set{Selector}([]))
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler `spl`
-from a distribution `dist` to `VarInfo` `vi`.
+from a distribution `dist` to `VarInfo` `vi`, if it makes sense.
 
 The sampler is passed here to invalidate its cache where defined.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
-    return push!(vi, vn, r, dist, spl.selector)
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler
+)
+    return BangBang.push!!(vi, vn, r, dist, spl.selector)
 end
-function push!(
+function BangBang.push!!(
     vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
 )
-    return push!(vi, vn, r, dist)
+    return BangBang.push!!(vi, vn, r, dist)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
 selector `gid` from a distribution `dist` to `VarInfo` `vi`.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-    return push!(vi, vn, r, dist, Set([gid]))
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
+)
+    return BangBang.push!!(vi, vn, r, dist, Set([gid]))
 end
-function push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function BangBang.push!!(
+    vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+)
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
     val = vectorize(dist, r)
@@ -1181,7 +1196,8 @@ end
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
 function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    return vi
 end
 
 """
@@ -1390,7 +1406,7 @@ function setval!(
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
@@ -1471,7 +1487,7 @@ function setval_and_resample!(
     return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
@@ -1484,4 +1500,38 @@ function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, 
     end
 
     return indices
+end
+
+"""
+    values_as(vi::AbstractVarInfo)
+"""
+values_as(vi::VarInfo) = vi.metadata
+
+"""
+    values_as(vi::AbstractVarInfo, ::Type{NamedTuple})
+    values_as(vi::AbstractVarInfo, ::Type{Dict})
+
+Return values in `vi` as the specified type.
+"""
+function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
+    iter = values_from_metadata(vi.metadata)
+    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
+end
+values_as(vi::UntypedVarInfo, ::Type{Dict}) = Dict(values_from_metadata(vi.metadata))
+
+function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
+    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
+    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
+end
+
+function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{Dict}) where {names}
+    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
+    return Dict(iter)
+end
+
+function values_from_metadata(md::Metadata)
+    return (
+        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
+        vn in md.vns
+    )
 end

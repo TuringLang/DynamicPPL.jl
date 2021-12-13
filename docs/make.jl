@@ -8,7 +8,7 @@ makedocs(;
     sitename="DynamicPPL",
     format=Documenter.HTML(),
     modules=[DynamicPPL],
-    pages=["Home" => "index.md"],
+    pages=["Home" => "index.md", "TestUtils" => "test_utils.md"],
     strict=true,
     checkdocs=:exports,
     doctestfilters=[

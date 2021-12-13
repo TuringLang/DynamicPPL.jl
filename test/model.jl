@@ -65,4 +65,20 @@
         @test nameof(test1(rand())) == :test1
         @test nameof(test2(rand())) == :test2
     end
+
+    @testset "Internal methods" begin
+        model = gdemo_default
+
+        # sample from model and extract variables
+        vi = VarInfo(model)
+
+        # Second component of return-value of `evaluate!!` should
+        # be a `DynamicPPL.AbstractVarInfo`.
+        evaluate_retval = DynamicPPL.evaluate!!(model, vi, DefaultContext())
+        @test evaluate_retval[2] isa DynamicPPL.AbstractVarInfo
+
+        # Should not return `AbstractVarInfo` when we call the model.
+        call_retval = model()
+        @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
+    end
 end

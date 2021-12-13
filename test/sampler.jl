@@ -18,7 +18,7 @@
         @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
 
         # Expected value of ``X`` where ``X ~ IG(2, 3)`` is 3.
-        @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.1
+        @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.2
 
         chains = sample(model, SampleFromUniform(), N; progress=false)
         @test chains isa Vector{<:VarInfo}
