@@ -235,7 +235,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             ctx = prefix_submodel_context(prefix, L, ctx)
         catch e
             error(
-                "failed to determine prefix from $(L); please specify prefix using the `@submodel prefix=\"your prefix\" ...` syntax"
+                "failed to determine prefix from $(L); please specify prefix using the `@submodel prefix=\"your prefix\" ...` syntax",
             )
         end
         quote
