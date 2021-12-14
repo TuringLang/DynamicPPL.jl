@@ -570,5 +570,15 @@ end
 
         @model demo() = x ~ Normal()
         retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+
+        # Return-value when using `@submodel`
+        @model inner() = x ~ Normal()
+        # Without assignment.
+        @model outer() = @submodel inner()
+        @test outer()() isa Real
+
+        # With assignment.
+        @model outer() = @submodel x = inner()
+        @test outer()() isa Real
     end
 end

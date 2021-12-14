@@ -225,7 +225,9 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)($(esc(expr)), $(esc(:__varinfo__)), $(ctx))
+            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+                $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
+            )
             $retval
         end
     else
