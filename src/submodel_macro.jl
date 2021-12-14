@@ -244,7 +244,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
-            esc(L) = $retval
+            $(esc(L)) = $retval
         end
     end
 end
