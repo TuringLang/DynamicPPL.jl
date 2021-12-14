@@ -212,17 +212,23 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     if prefix_left !== :prefix
         error("$(prefix_left) is not a valid kwarg")
     end
+
+    # The user expects `@submodel ...` to return the
+    # return-value of the `...`, hence we need to capture
+    # the return-value and handle it correctly.
+    @gensym retval
+
     # `prefix=false` => don't prefix, i.e. do nothing to `ctx`.
     # `prefix=true` => automatically determine prefix.
     # `prefix=...` => use it.
     args_assign = getargs_assignment(expr)
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
-        # In this case we only want to get the `__varinfo__`.
         quote
-            $(esc(:__varinfo__)) = last(
-                $(DynamicPPL._evaluate!!)($(esc(expr)), $(esc(:__varinfo__)), $(ctx))
+            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+                $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
+            $retval
         end
     else
         L, R = args_assign
@@ -235,9 +241,10 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
-            $(esc(L)), $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
+            $(esc(L)) = $retval
         end
     end
 end
