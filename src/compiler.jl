@@ -13,6 +13,11 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
        but `x[1] === missing`.
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
+
+If `vn` is specified, it will be assumed to refer to a expression which
+evaluates to a `VarName`, and this will be used in the subsequent checks.
+If `vn` is not specified, `AbstractPPL.drop_escape(varname(expr))` will be
+used in its place.
 """
 function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr)))
     return quote
@@ -31,7 +36,7 @@ function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varna
             #    as the default conditioning. Then we no longer need to check `inargnames`
             #    since it will all be handled by `contextual_isassumption`.
             if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-               $(DynamicPPL.inmissings)($vn, __model__)
+                $(DynamicPPL.inmissings)($vn, __model__)
                 true
             else
                 $(maybe_view(expr)) === missing
