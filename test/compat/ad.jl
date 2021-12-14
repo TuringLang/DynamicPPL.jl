@@ -30,9 +30,10 @@
     # https://github.com/TuringLang/Turing.jl/issues/1595
     @testset "dot_observe" begin
         function f_dot_observe(x)
-            return DynamicPPL.dot_observe(
+            logp, _ = DynamicPPL.dot_observe(
                 SampleFromPrior(), [Normal(), Normal(-1.0, 2.0)], x, VarInfo()
             )
+            return logp
         end
         function f_dot_observe_manual(x)
             return logpdf(Normal(), x[1]) + logpdf(Normal(-1.0, 2.0), x[2])

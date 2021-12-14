@@ -67,27 +67,26 @@ function Base.push!(
     return context.loglikelihoods[vn] = logp
 end
 
-function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
+function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
     # Defer literal `observe` to child-context.
-    return tilde_observe!(context.context, right, left, vi)
+    return tilde_observe!!(context.context, right, left, vi)
 end
-function tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vi)
+function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
-    logp = tilde_observe(context.context, right, left, vi)
-    acclogp!(vi, logp)
+    logp, vi = tilde_observe(context.context, right, left, vi)
 
     # Track loglikelihood value.
     push!(context, vn, logp)
 
-    return left
+    return left, acclogp!!(vi, logp)
 end
 
-function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vi)
+function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
     # Defer literal `observe` to child-context.
-    return dot_tilde_observe!(context.context, right, left, vi)
+    return dot_tilde_observe!!(context.context, right, left, vi)
 end
-function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn, vi)
+function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
@@ -95,7 +94,6 @@ function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn
     # hence we need the `logp` for each of them. Broadcasting the univariate
     # `tilde_obseve` does exactly this.
     logps = _pointwise_tilde_observe(context.context, right, left, vi)
-    acclogp!(vi, sum(logps))
 
     # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
     _, _, vns = unwrap_right_left_vns(right, left, vn)
@@ -104,19 +102,25 @@ function dot_tilde_observe!(context::PointwiseLikelihoodContext, right, left, vn
         push!(context, vn, logp)
     end
 
-    return left
+    return left, acclogp!!(vi, sum(logps))
 end
 
 # FIXME: This is really not a good approach since it needs to stay in sync with
 # the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
 function _pointwise_tilde_observe(context, right, left, vi)
-    return tilde_observe.(Ref(context), right, left, Ref(vi))
+    # We need to drop the `vi` returned.
+    return broadcast(right, left) do r, l
+        return first(tilde_observe(context, r, l, vi))
+    end
 end
 
 function _pointwise_tilde_observe(
-    context, right::MultivariateDistribution, left::AbstractMatrix, vi
+    context, right::MultivariateDistribution, left::AbstractMatrix, vi::AbstractVarInfo
 )
-    return tilde_observe.(Ref(context), Ref(right), eachcol(left), Ref(vi))
+    # We need to drop the `vi` returned.
+    return map(eachcol(left)) do l
+        return first(tilde_observe(context, right, l, vi))
+    end
 end
 
 """

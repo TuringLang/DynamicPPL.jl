@@ -1,9 +1,21 @@
 # TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
 # That would let us use all defaults for Sampler, combine it with other samplers etc.
 """
-Robust initialization method for model parameters in Hamiltonian samplers.
+    SampleFromUniform
+
+Sampling algorithm that samples unobserved random variables from a uniform distribution.
+
+# References
+
+[Stan reference manual](https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values)
 """
 struct SampleFromUniform <: AbstractSampler end
+
+"""
+    SampleFromPrior
+
+Sampling algorithm that samples unobserved random variables from their prior distribution.
+"""
 struct SampleFromPrior <: AbstractSampler end
 
 getspace(::Union{SampleFromPrior,SampleFromUniform}) = ()
@@ -25,7 +37,7 @@ end
 Generic sampler type for inference algorithms of type `T` in DynamicPPL.
 
 `Sampler` should implement the AbstractMCMC interface, and in particular
-[`AbstractMCMC.step`](@ref). A default implementation of the initial sampling step is
+`AbstractMCMC.step`. A default implementation of the initial sampling step is
 provided that supports resuming sampling from a previous state and setting initial
 parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
 for loading previous states and actually performing the initial sampling step,
@@ -70,7 +82,7 @@ function AbstractMCMC.step(
 
     # Update the parameters if provided.
     if haskey(kwargs, :init_params)
-        initialize_parameters!(vi, kwargs[:init_params], spl)
+        vi = initialize_parameters!!(vi, kwargs[:init_params], spl)
 
         # Update joint log probability.
         # TODO: fix properly by using sampler and evaluation contexts
@@ -104,7 +116,7 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
+function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
@@ -114,7 +126,10 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
 
     # Get all values.
     linked = islinked(vi, spl)
-    linked && invlink!(vi, spl)
+    if linked
+        # TODO: Make work with immutable `vi`.
+        invlink!(vi, spl)
+    end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
         error("Provided initial value doesn't match the dimension of the model")
@@ -128,10 +143,13 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     end
 
     # Update in `vi`.
-    vi[spl] = theta
-    linked && link!(vi, spl)
+    vi = setindex!!(vi, theta, spl)
+    if linked
+        # TODO: Make work with immutable `vi`.
+        link!(vi, spl)
+    end
 
-    return nothing
+    return vi
 end
 
 """

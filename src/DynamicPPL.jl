@@ -10,6 +10,7 @@ using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ZygoteRules: ZygoteRules
 using BangBang: BangBang
+using Setfield: Setfield
 
 using Setfield: Setfield
 using BangBang: BangBang
@@ -31,15 +32,23 @@ import Base:
     keys,
     haskey
 
+using BangBang: push!!, empty!!, setindex!!
+
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
     UntypedVarInfo,
     TypedVarInfo,
+    SimpleVarInfo,
+    push!!,
+    empty!!,
     getlogp,
     setlogp!,
     acclogp!,
     resetlogp!,
+    setlogp!!,
+    acclogp!!,
+    resetlogp!!,
     get_num_produce,
     set_num_produce!,
     reset_num_produce!,
@@ -118,6 +127,15 @@ export loglikelihood
 function getspace end
 
 # Necessary forward declarations
+"""
+    AbstractVarInfo
+
+Abstract supertype for data structures that capture random variables when executing a
+probabilistic model and accumulate log densities such as the log likelihood or the
+log joint probability of the model.
+
+See also: [`VarInfo`](@ref)
+"""
 abstract type AbstractVarInfo <: AbstractModelTrace end
 abstract type AbstractContext end
 
@@ -130,13 +148,32 @@ include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
 include("threadsafe.jl")
+include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
-
 include("test_utils.jl")
+
+# Deprecations
+@deprecate empty!(vi::VarInfo) empty!!(vi::VarInfo)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution) push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution
+)
+@deprecate push!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler
+) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler)
+@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector) push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
+)
+@deprecate push!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector}
+) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector})
+
+@deprecate setlogp!(vi, logp) setlogp!!(vi, logp)
+@deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
+@deprecate resetlogp!(vi) resetlogp!!(vi)
 
 end # module
