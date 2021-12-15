@@ -548,7 +548,7 @@ end
     @testset "return value" begin
         # Make sure that a return-value of `x = 1` isn't combined into
         # an attempt at a `NamedTuple` of the form `(x = 1, __varinfo__)`.
-        @model empty_model() = begin x = 1; end
+        @model empty_model() = return x = 1;
         empty_vi = VarInfo()
         retval_and_vi = DynamicPPL.evaluate!!(empty_model(), empty_vi, SamplingContext())
         @test retval_and_vi isa Tuple{Int,typeof(empty_vi)}
