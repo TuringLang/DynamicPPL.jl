@@ -376,6 +376,17 @@ number of `sampler`.
 """
 (model::Model)(args...) = first(evaluate!!(model, args...))
 
+
+"""
+    requires_threadsafe(context::AbstractContext, varinfo::AbstractVarInfo)
+
+Return `true` if evaluation of a model using `context` and `varinfo` requires
+and supports wrapping `varinfo` in `ThreadSafeVarInfo`, and `false` otherwise.
+"""
+function requires_threadsafe(context::AbstractContext, varinfo::AbstractVarInfo)
+    return Threads.nthreads() > 1
+end
+
 """
     evaluate!!(model::Model[, rng, varinfo, sampler, context])
 
@@ -388,10 +399,10 @@ The method resets the log joint probability of `varinfo` and increases the evalu
 number of `sampler`.
 """
 function evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
-    if Threads.nthreads() == 1
-        return evaluate_threadunsafe!!(model, varinfo, context)
+    return if requires_threadsafe(context, varinfo)
+        evaluate_threadsafe!!(model, varinfo, context)
     else
-        return evaluate_threadsafe!!(model, varinfo, context)
+        evaluate_threadunsafe!!(model, varinfo, context)
     end
 end
 
