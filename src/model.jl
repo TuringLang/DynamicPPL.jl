@@ -376,7 +376,6 @@ number of `sampler`.
 """
 (model::Model)(args...) = first(evaluate!!(model, args...))
 
-
 """
     requires_threadsafe(context::AbstractContext, varinfo::AbstractVarInfo)
 
