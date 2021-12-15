@@ -518,16 +518,17 @@ function replace_returns(e::Expr)
     end
 
     if Meta.isexpr(e, :return)
-        # NOTE: `return` always has an argument. In the case of
-        # an empty `return`, the lowered expression will be `return nothing`.
-        # Hence we don't need any special handling for empty returns.
-        retval_expr = if length(e.args) > 1
-            Expr(:tuple, e.args...)
-        else
-            e.args[1]
+        # We capture the original return-value in `retval` and return
+        # a `Tuple{typeof(retval),typeof(__varinfo__)}`.
+        # If we don't capture the return-value separately, cases such as
+        # `return x = 1` will result in `(x = 1, __varinfo__)` which will
+        # mistakenly attempt to construct a `NamedTuple` (which fails on Julia 1.3
+        # and is not our intent).
+        @gensym retval
+        return quote
+            $retval = $(e.args...)
+            return $retval, __varinfo__
         end
-
-        return :(return ($retval_expr, __varinfo__))
     end
 
     return Expr(e.head, map(replace_returns, e.args)...)
