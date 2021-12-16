@@ -144,14 +144,35 @@ function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::TypedVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
-    return SimpleVarInfo{eltype(getlogp(vi))}(vi, D; kwargs...)
+function SimpleVarInfo(varinfo::TypedVarInfo)
+    T = eltype(getlogp(varinfo))
+    return if issimple(varinfo)
+        SimpleVarInfo{T}(varinfo, NamedTuple)
+    else
+        SimpleVarInfo{T}(varinfo, Dict)
+    end
 end
+
 function SimpleVarInfo{T}(
     vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
 ) where {T<:Real,names,D}
     values = values_as(vi, D)
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
+end
+
+issimple(varinfo::AbstractVarInfo) = false
+issimple(varinfo::TypedVarInfo) = all(is_compile_time_static, keys(varinfo))
+
+is_compile_time_static(vn::VarName) = is_compile_time_static(typeof(vn))
+is_compile_time_static(::Type{VarName{T,L}}) where {T,L<:Setfield.Lens} = is_compile_time_static(L)
+is_compile_time_static(::Type{<:Setfield.Lens}) = false
+is_compile_time_static(::Type{<:Union{Setfield.PropertyLens, Setfield.IdentityLens}}) = true
+function is_compile_time_static(::Type{Setfield.ComposedLens{LO, LI}}) where {LO, LI}
+    return is_compile_time_static(LO) && is_compile_time_static(LI)
+end
+
+function BangBang.empty!!(vi::SimpleVarInfo)
+    Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp

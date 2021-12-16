@@ -20,10 +20,15 @@ function evaluate!!(
 end
 
 # Methods we just defer to the underlying `model` property.
-MacroTools.@forward TransformedModel.model getargnames, nameof, getmissings
-MacroTools.@forward(
-    TransformedModel.model, (AbstractPPL.condition, conditioned, AbstractPPL.decondition)
-)
+MacroTools.@forward TransformedModel.model getargnames, nameof, getmissings, conditioned
+
+function AbstractPPL.condition(model::TransformedModel, args...)
+    return Setfield.@set model.model = AbstractPPL.condition(model.model, args...)
+end
+
+function AbstractPPL.decondition(model::TransformedModel, args...)
+    return Setfield.@set model.model = AbstractPPL.decondition(model.model, args...)
+end
 
 function contextualize(model::TransformedModel{<:Model}, context::AbstractContext)
     return Setfield.@set model.model = contextualize(model.model, context)
