@@ -129,6 +129,7 @@ ERROR: type NamedTuple has no field b
 struct SimpleVarInfo{NT,T} <: AbstractVarInfo
     values::NT
     logp::T
+    # TODO: Should we put this in the type instead?
     istrans::Bool
 end
 
