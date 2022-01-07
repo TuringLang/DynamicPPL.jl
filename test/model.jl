@@ -85,7 +85,7 @@
     @testset "Dynamic constraints" begin
         @model function dynamic_constraints()
             m ~ Normal()
-            x ~ truncated(Normal(), m, Inf)
+            return x ~ truncated(Normal(), m, Inf)
         end
 
         model = dynamic_constraints()
@@ -93,7 +93,7 @@
         spl = SampleFromPrior()
         link!(vi, spl)
 
-        for i = 1:10
+        for i in 1:10
             # Sample with large variations.
             r_raw = randn(length(vi[spl])) * 10
             vi[spl] = r_raw

@@ -132,9 +132,15 @@ struct SimpleVarInfo{NT,T} <: AbstractVarInfo
     istrans::Bool
 end
 
-SimpleVarInfo{T}(θ, istrans::Bool=false) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T), istrans)
-SimpleVarInfo{T}(istrans::Bool=false; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs), istrans)
-SimpleVarInfo(istrans::Bool=false; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs), istrans)
+function SimpleVarInfo{T}(θ, istrans::Bool=false) where {T<:Real}
+    return SimpleVarInfo{typeof(θ),T}(θ, zero(T), istrans)
+end
+function SimpleVarInfo{T}(istrans::Bool=false; kwargs...) where {T<:Real}
+    return SimpleVarInfo{T}(NamedTuple(kwargs), istrans)
+end
+function SimpleVarInfo(istrans::Bool=false; kwargs...)
+    return SimpleVarInfo{Float64}(NamedTuple(kwargs), istrans)
+end
 SimpleVarInfo(θ, istrans::Bool=false) = SimpleVarInfo{Float64}(θ, istrans)
 
 # Constructor from `Model`.
