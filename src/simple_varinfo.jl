@@ -129,12 +129,13 @@ ERROR: type NamedTuple has no field b
 struct SimpleVarInfo{NT,T} <: AbstractVarInfo
     values::NT
     logp::T
+    istrans::Bool
 end
 
-SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
-SimpleVarInfo{T}(; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs))
-SimpleVarInfo(; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs))
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+SimpleVarInfo{T}(θ, istrans::Bool=false) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T), istrans)
+SimpleVarInfo{T}(istrans::Bool=false; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs), istrans)
+SimpleVarInfo(istrans::Bool=false; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs), istrans)
+SimpleVarInfo(θ, istrans::Bool=false) = SimpleVarInfo{Float64}(θ, istrans)
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
@@ -158,8 +159,8 @@ function BangBang.empty!!(vi::SimpleVarInfo)
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, logp)
-acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp)
+setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 
 """
     keys(vi::SimpleVarInfo)
@@ -179,7 +180,7 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
-    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ", ", svi.istrans, ")")
 end
 
 # `NamedTuple`
@@ -223,6 +224,11 @@ Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
 Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+
+# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
+# we simply call `getindex` in `getindex_raw`.
+getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
+getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
 function _haskey(nt::NamedTuple, vn::VarName)
@@ -337,58 +343,21 @@ function Base.eltype(
 end
 
 # Context implementations
-function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
-    left = vi[vn]
-    return left, Distributions.loglikelihood(dist, left), vi
-end
-
+# NOTE: Evaluations, i.e. those without `rng` are shared with other
+# implementations of `AbstractVarInfo`.
 function assume(
     rng::Random.AbstractRNG,
-    sampler::SampleFromPrior,
+    sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
     vi::SimpleOrThreadSafeSimple,
 )
     value = init(rng, dist, sampler)
-    vi = BangBang.push!!(vi, vn, value, dist, sampler)
-    return value, Distributions.loglikelihood(dist, value), vi
-end
-
-function dot_assume(
-    dist::MultivariateDistribution,
-    var::AbstractMatrix,
-    vns::AbstractVector{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    @assert length(dist) == size(var, 1)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(zip(vns, eachcol(value))) do (vn, val)
-        return Distributions.logpdf(dist, val)
-    end
-    return value, lp, vi
-end
-
-function dot_assume(
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    var::AbstractArray,
-    vns::AbstractArray{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(Distributions.logpdf.(dists, value))
-    return value, lp, vi
+    # Transform if we're working in unconstrained space.
+    ist = istrans(vi, vn)
+    value_raw = ist ? Bijectors.link(dist, value) : value
+    vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
+    return value, Bijectors.logpdf_with_trans(dist, value, ist), vi
 end
 
 function dot_assume(
@@ -401,15 +370,23 @@ function dot_assume(
 )
     f = (vn, dist) -> init(rng, dist, spl)
     value = f.(vns, dists)
-    vi = BangBang.setindex!!(vi, value, vns)
-    lp = sum(Distributions.logpdf.(dists, value))
+
+    # Transform if we're working in transformed space.
+    ist = istrans(vi, first(vns))
+    value_raw = ist ? link.(dist, value) : value
+
+    # Update `vi`
+    vi = BangBang.setindex!!(vi, value_raw, vns)
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, ist))
     return value, lp, vi
 end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
-istrans(::SimpleVarInfo, vn::VarName) = false
+istrans(svi::SimpleVarInfo, vn::VarName) = svi.istrans
 
 """
     values_as(varinfo[, Type])
