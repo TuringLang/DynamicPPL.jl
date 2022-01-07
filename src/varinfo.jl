@@ -866,6 +866,9 @@ end
     return expr
 end
 
+maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.invlink(dist, val) : val
+
+
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
 
@@ -922,6 +925,9 @@ function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
         reconstruct(dist, getval(vi, vns), length(vns))
     end
 end
+
+getindex_raw(vi::AbstractVarInfo, vn::VarName) = reconstruct(getdist(vi, vn), getval(vi, vn))
+getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}) = reconstruct(getdist(vi, first(vns)), getval(vi, vns))
 
 """
     getindex(vi::VarInfo, spl::Union{SampleFromPrior, Sampler})

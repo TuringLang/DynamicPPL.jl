@@ -194,7 +194,9 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    r = vi[vn]
+    # x = vi[vn]
+    r_raw = getindex_raw(vi, vn)
+    r = maybe_invlink(vi, vn, dist, r_raw)
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
@@ -215,7 +217,9 @@ function assume(
             settrans!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
-            r = vi[vn]
+            # r = vi[vn]
+            r_raw = getindex_raw(vi, vn)
+            r = maybe_invlink(vi, vn, dist, r_raw)
         end
     else
         r = init(rng, dist, sampler)
@@ -390,7 +394,9 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = vi[vns]
+    # r = vi[vns]
+    r_raw = getindex_raw(vi, vns)
+    r = maybe_invlink(vi, vn, dist, r_raw)
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
@@ -423,7 +429,8 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = reshape(vi[vec(vns)], size(vns))
+    r_raw = getindex_raw(vi, vec(vns))
+    r = reshape(maybe_invlink.(Ref(vi), vns, dists, r_raw), size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     return r, lp, vi
 end
@@ -467,7 +474,8 @@ function get_and_set_val!(
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = vi[vns]
+            r_raw = getindex_raw(vi, vns)
+            r = maybe_invlink(vi, vns, dist, r_raw)
         end
     else
         r = init(rng, dist, spl, n)

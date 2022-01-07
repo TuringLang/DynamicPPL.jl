@@ -81,4 +81,25 @@
         call_retval = model()
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
+
+    @testset "Dynamic constraints" begin
+        @model function dynamic_constraints()
+            m ~ Normal()
+            x ~ truncated(Normal(), m, Inf)
+        end
+
+        model = dynamic_constraints()
+        vi = VarInfo(model)
+        spl = SampleFromPrior()
+        link!(vi, spl)
+
+        for i = 1:10
+            # Sample with large variations.
+            r_raw = randn(length(vi[spl])) * 10
+            vi[spl] = r_raw
+            @test vi[@varname(m)] == r_raw[1]
+            @test vi[@varname(x)] != r_raw[2]
+            model(vi)
+        end
+    end
 end
