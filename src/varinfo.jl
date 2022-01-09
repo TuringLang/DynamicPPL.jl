@@ -645,6 +645,14 @@ function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 end
 
 """
+    istrans(vi::AbstractVarInfo)
+
+Return `true` if `vi` is working in unconstrained space, and `false`
+if `vi` is assuming realizations to be in support of the corresponding distributions.
+"""
+istrans(vi::AbstractVarInfo) = false
+
+"""
     istrans(vi::VarInfo, vn::VarName)
 
 Return true if `vn`'s values in `vi` are transformed to Euclidean space, and false if
@@ -872,6 +880,7 @@ end
     return expr
 end
 
+maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.link(dist, val) : val
 maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.invlink(dist, val) : val
 
 """

@@ -399,8 +399,9 @@ function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans::Bool)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
 end
 
-istrans(svi::SimpleVarInfo, vn::VarName) = svi.istrans
-istrans(svi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = svi.istrans
+istrans(vi::SimpleVarInfo) = vi.istrans
+istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
 """
     values_as(varinfo[, Type])
