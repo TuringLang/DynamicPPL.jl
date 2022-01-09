@@ -55,7 +55,7 @@ end
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
 end
@@ -64,7 +64,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
 end
@@ -72,7 +72,7 @@ end
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
 end
@@ -86,7 +86,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
 end
@@ -214,7 +214,7 @@ function assume(
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
             vi[vn] = vectorize(dist, r)
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # r = vi[vn]
@@ -224,7 +224,7 @@ function assume(
     else
         r = init(rng, dist, sampler)
         push!!(vi, vn, r, dist, sampler)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
 
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
@@ -470,7 +470,7 @@ function get_and_set_val!(
             for i in 1:n
                 vn = vns[i]
                 vi[vn] = vectorize(dist, r[:, i])
-                settrans!(vi, false, vn)
+                settrans!!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -482,7 +482,7 @@ function get_and_set_val!(
         for i in 1:n
             vn = vns[i]
             push!!(vi, vn, r[:, i], dist, spl)
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
         end
     end
     return r
@@ -505,7 +505,7 @@ function get_and_set_val!(
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
                 vi[vn] = vectorize(dist, r[i])
-                settrans!(vi, false, vn)
+                settrans!!(vi, false, vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else

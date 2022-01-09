@@ -358,12 +358,18 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
 
 Set the `trans` flag value of `vn` in `vi`.
 """
-function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
+function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+    if trans
+        set_flag!(vi, vn, "trans")
+    else
+        unset_flag!(vi, vn, "trans")
+    end
+
+    return vi
 end
 
 """
@@ -749,7 +755,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
                 vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, true, vn)
+            settrans!!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -785,7 +791,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, true, vn)
+                            settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -816,7 +822,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
                 vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -854,7 +860,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, false, vn)
+                            settrans!!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -1420,7 +1426,7 @@ function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
 
     return indices
@@ -1501,7 +1507,7 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.

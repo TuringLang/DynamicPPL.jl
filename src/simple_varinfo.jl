@@ -392,8 +392,15 @@ end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
-settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
+
+# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
+settrans!!(vi::SimpleVarInfo, trans::Bool) = Setfield.@set vi.istrans = trans
+function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans::Bool)
+    return Setfield.@set vi.varinfo = settrans!!(vi, trans)
+end
+
 istrans(svi::SimpleVarInfo, vn::VarName) = svi.istrans
+istrans(svi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = svi.istrans
 
 """
     values_as(varinfo[, Type])
