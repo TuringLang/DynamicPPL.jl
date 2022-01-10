@@ -9,7 +9,7 @@
     )
         if !haskey(vi, vn)
             r = rand(dist)
-            push!(vi, vn, r, dist, spl)
+            push!!(vi, vn, r, dist, spl)
             r
         elseif is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
