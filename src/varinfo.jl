@@ -650,7 +650,7 @@ end
 Return `true` if `vi` is working in unconstrained space, and `false`
 if `vi` is assuming realizations to be in support of the corresponding distributions.
 """
-istrans(vi::AbstractVarInfo) = false
+istrans(vi::VarInfo) = false # `VarInfo` works in constrained space by default.
 
 """
     istrans(vi::VarInfo, vn::VarName)
