@@ -395,6 +395,11 @@ end
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
+"""
+    settrans!!(vi::AbstractVarInfo, trans::Bool)
+
+Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
+"""
 settrans!!(vi::SimpleVarInfo, trans::Bool) = Setfield.@set vi.istrans = trans
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans::Bool)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
