@@ -8,7 +8,7 @@ makedocs(;
     sitename="DynamicPPL",
     format=Documenter.HTML(),
     modules=[DynamicPPL],
-    pages=["Home" => "index.md"],
+    pages=["Home" => "index.md", "TestUtils" => "test_utils.md"],
     strict=true,
     checkdocs=:exports,
     doctestfilters=[
@@ -18,6 +18,9 @@ makedocs(;
         r"(Array{.+,\s?1}|Vector{.+})",
         # Older versions will show "Array{...,2}" instead of "Matrix{...}".
         r"(Array{.+,\s?2}|Matrix{.+})",
+        # Errors from macros sometimes result in `LoadError: LoadError:`
+        # rather than `LoadError:`, depending on Julia version.
+        r"ERROR: (LoadError:\s)+",
     ],
 )
 

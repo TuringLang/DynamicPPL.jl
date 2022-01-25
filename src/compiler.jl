@@ -1,7 +1,7 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
-    isassumption(expr)
+    isassumption(expr[, vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
 model.
@@ -13,38 +13,43 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
        but `x[1] === missing`.
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
-"""
-function isassumption(expr::Union{Symbol,Expr})
-    vn = gensym(:vn)
 
+If `vn` is specified, it will be assumed to refer to a expression which
+evaluates to a `VarName`, and this will be used in the subsequent checks.
+If `vn` is not specified, `AbstractPPL.drop_escape(varname(expr))` will be
+used in its place.
+"""
+function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr)))
     return quote
-        let $vn = $(AbstractPPL.drop_escape(varname(expr)))
-            if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
-                # Considered an assumption by `__context__` which means either:
-                # 1. We hit the default implementation, e.g. using `DefaultContext`,
-                #    which in turn means that we haven't considered if it's one of
-                #    the model arguments, hence we need to check this.
-                # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
-                #    i.e. we're trying to condition one of the latent variables.
-                #    In this case, the below will return `true` since the first branch
-                #    will be hit.
-                # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
-                #    i.e. we're trying to override the value. This is currently NOT supported.
-                #    TODO: Support by adding context to model, and use `model.args`
-                #    as the default conditioning. Then we no longer need to check `inargnames`
-                #    since it will all be handled by `contextual_isassumption`.
-                if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                    $(DynamicPPL.inmissings)($vn, __model__)
-                    true
-                else
-                    $(maybe_view(expr)) === missing
-                end
+        if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+            # Considered an assumption by `__context__` which means either:
+            # 1. We hit the default implementation, e.g. using `DefaultContext`,
+            #    which in turn means that we haven't considered if it's one of
+            #    the model arguments, hence we need to check this.
+            # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+            #    i.e. we're trying to condition one of the latent variables.
+            #    In this case, the below will return `true` since the first branch
+            #    will be hit.
+            # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+            #    i.e. we're trying to override the value. This is currently NOT supported.
+            #    TODO: Support by adding context to model, and use `model.args`
+            #    as the default conditioning. Then we no longer need to check `inargnames`
+            #    since it will all be handled by `contextual_isassumption`.
+            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
+                $(DynamicPPL.inmissings)($vn, __model__)
+                true
             else
-                false
+                $(maybe_view(expr)) === missing
             end
+        else
+            false
         end
     end
 end
+
+# failsafe: a literal is never an assumption
+isassumption(expr, vn) = :(false)
+isassumption(expr) = :(false)
 
 """
     contextual_isassumption(context, vn)
@@ -78,9 +83,6 @@ end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
-
-# failsafe: a literal is never an assumption
-isassumption(expr) = :(false)
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
@@ -355,10 +357,12 @@ end
 
 function generate_tilde_literal(left, right)
     # If the LHS is a literal, it is always an observation
+    @gensym value
     return quote
-        $(DynamicPPL.tilde_observe!)(
+        $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
             __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
         )
+        $value
     end
 end
 
@@ -373,14 +377,14 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption
+    @gensym vn isassumption value
 
     # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
     # that in DynamicPPL we the entire function body. Instead we should be
     # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
-        $isassumption = $(DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_tilde_assume(left, right, vn))
         else
@@ -389,32 +393,38 @@ function generate_tilde(left, right)
                 $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            $(DynamicPPL.tilde_observe!)(
+            $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 __varinfo__,
             )
+            $value
         end
     end
 end
 
 function generate_tilde_assume(left, right, vn)
-    expr = :(
-        $left = $(DynamicPPL.tilde_assume!)(
+    # HACK: Because the Setfield.jl macro does not support assignment
+    # with multiple arguments on the LHS, we need to capture the return-values
+    # and then update the LHS variables one by one.
+    @gensym value
+    expr = :($left = $value)
+    if left isa Expr
+        expr = AbstractPPL.drop_escape(
+            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+        )
+    end
+
+    return quote
+        $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
-    )
-
-    return if left isa Expr
-        AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
-        )
-    else
-        return expr
+        $expr
+        $value
     end
 end
 
@@ -428,10 +438,10 @@ function generate_dot_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption
+    @gensym vn isassumption value
     return quote
         $vn = $(AbstractPPL.drop_escape(varname(left)))
-        $isassumption = $(DynamicPPL.isassumption(left))
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
@@ -440,13 +450,14 @@ function generate_dot_tilde(left, right)
                 $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
             end
 
-            $(DynamicPPL.dot_tilde_observe!)(
+            $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
                 __context__,
                 $(DynamicPPL.check_tilde_rhs)($right),
                 $(maybe_view(left)),
                 $vn,
                 __varinfo__,
             )
+            $value
         end
     end
 end
@@ -455,15 +466,83 @@ function generate_dot_tilde_assume(left, right, vn)
     # We don't need to use `Setfield.@set` here since
     # `.=` is always going to be inplace + needs `left` to
     # be something that supports `.=`.
-    return :(
-        $left .= $(DynamicPPL.dot_tilde_assume!)(
+    @gensym value
+    return quote
+        $value, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
             __context__,
             $(DynamicPPL.unwrap_right_left_vns)(
                 $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
             )...,
             __varinfo__,
         )
-    )
+        $left .= $value
+        $value
+    end
+end
+
+# Note that we cannot use `MacroTools.isdef` because
+# of https://github.com/FluxML/MacroTools.jl/issues/154.
+"""
+    isfuncdef(expr)
+
+Return `true` if `expr` is any form of function definition, and `false` otherwise.
+"""
+function isfuncdef(e::Expr)
+    return if Meta.isexpr(e, :function)
+        # Classic `function f(...)`
+        true
+    elseif Meta.isexpr(e, :->)
+        # Anonymous functions/lambdas, e.g. `do` blocks or `->` defs.
+        true
+    elseif Meta.isexpr(e, :(=)) && Meta.isexpr(e.args[1], :call)
+        # Short function defs, e.g. `f(args...) = ...`.
+        true
+    else
+        false
+    end
+end
+
+"""
+    replace_returns(expr)
+
+Return `Expr` with all `return ...` statements replaced with
+`return ..., DynamicPPL.return_values(__varinfo__)`.
+
+Note that this method will _not_ replace `return` statements within function
+definitions. This is checked using [`isfuncdef`](@ref).
+"""
+replace_returns(e) = e
+function replace_returns(e::Expr)
+    if isfuncdef(e)
+        return e
+    end
+
+    if Meta.isexpr(e, :return)
+        # We capture the original return-value in `retval` and return
+        # a `Tuple{typeof(retval),typeof(__varinfo__)}`.
+        # If we don't capture the return-value separately, cases such as
+        # `return x = 1` will result in `(x = 1, __varinfo__)` which will
+        # mistakenly attempt to construct a `NamedTuple` (which fails on Julia 1.3
+        # and is not our intent).
+        @gensym retval
+        return quote
+            $retval = $(e.args...)
+            return $retval, __varinfo__
+        end
+    end
+
+    return Expr(e.head, map(replace_returns, e.args)...)
+end
+
+# If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
+make_returns_explicit!(body) = Expr(:return, body)
+function make_returns_explicit!(body::Expr)
+    # If the last statement is a return-statement, we don't do anything.
+    # Otherwise we replace the last statement with a `return` statement.
+    if !Meta.isexpr(body.args[end], :return)
+        body.args[end] = Expr(:return, body.args[end])
+    end
+    return body
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -496,10 +575,14 @@ function build_output(modelinfo, linenumbernode)
     # Replace the user-provided function body with the version created by DynamicPPL.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
-    # to the call site
+    # to the call site.
+    # NOTE: We need to replace statements of the form `return ...` with
+    # `return (..., __varinfo__)` to ensure that the second
+    # element in the returned value is always the most up-to-date `__varinfo__`.
+    # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(modelinfo[:body])
+        $(replace_returns(make_returns_explicit!(modelinfo[:body])))
     end
 
     ## Build the model function.

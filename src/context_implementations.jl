@@ -54,7 +54,7 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(context.vars, vn))
+        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
         settrans!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
@@ -63,7 +63,7 @@ function tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(context.vars, vn))
+        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
         settrans!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
@@ -71,7 +71,7 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(context.vars, vn))
+        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
         settrans!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
@@ -85,7 +85,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi[vn] = vectorize(right, get(context.vars, vn))
+        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
         settrans!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -105,18 +105,17 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
 end
 
 """
-    tilde_assume!(context, right, vn, vi)
+    tilde_assume!!(context, right, vn, vi)
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the sampled value.
+accumulate the log probability, and return the sampled value and updated `vi`.
 
 By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_assume!(context, right, vn, vi)
-    value, logp = tilde_assume(context, right, vn, vi)
-    acclogp!(vi, logp)
-    return value
+function tilde_assume!!(context, right, vn, vi)
+    value, logp, vi = tilde_assume(context, right, vn, vi)
+    return value, acclogp!!(vi, logp)
 end
 
 # observe
@@ -140,15 +139,17 @@ function tilde_observe(::IsParent, context::AbstractContext, args...)
     return tilde_observe(childcontext(context), args...)
 end
 
-tilde_observe(::PriorContext, right, left, vi) = 0
-tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+tilde_observe(::PriorContext, right, left, vi) = 0, vi
+tilde_observe(::PriorContext, sampler, right, left, vi) = 0, vi
 
 # `MiniBatchContext`
 function tilde_observe(context::MiniBatchContext, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.context, right, left, vi)
+    logp, vi = tilde_observe(context.context, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 function tilde_observe(context::MiniBatchContext, sampler, right, left, vi)
-    return context.loglike_scalar * tilde_observe(context.context, sampler, right, left, vi)
+    logp, vi = tilde_observe(context.context, sampler, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 
 # `PrefixContext`
@@ -157,16 +158,16 @@ function tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    tilde_observe!(context, right, left, vname, vi)
+    tilde_observe!!(context, right, left, vname, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the observed value.
+accumulate the log probability, and return the observed value and updated `vi`.
 
-Falls back to `tilde_observe!(context, right, left, vi)` ignoring the information about variable name
+Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!(context, right, left, vname, vi)
-    return tilde_observe!(context, right, left, vi)
+function tilde_observe!!(context, right, left, vname, vi)
+    return tilde_observe!!(context, right, left, vi)
 end
 
 """
@@ -178,10 +179,9 @@ return the observed value.
 By default, calls `tilde_observe(context, right, left, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
-function tilde_observe!(context, right, left, vi)
-    logp = tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+function tilde_observe!!(context, right, left, vi)
+    logp, vi = tilde_observe(context, right, left, vi)
+    return left, acclogp!!(vi, logp)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -195,7 +195,7 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     r = vi[vn]
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # SampleFromPrior and SampleFromUniform
@@ -204,7 +204,7 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi,
+    vi::AbstractVarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
@@ -219,18 +219,18 @@ function assume(
         end
     else
         r = init(rng, dist, sampler)
-        push!(vi, vn, r, dist, sampler)
+        push!!(vi, vn, r, dist, sampler)
         settrans!(vi, false, vn)
     end
 
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn))
+    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
 observe(sampler::AbstractSampler, right, left, vi) = observe(right, left, vi)
 function observe(right::Distribution, left, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(right, left)
+    return Distributions.loglikelihood(right, left), vi
 end
 
 # .~ functions
@@ -364,22 +364,24 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
 end
 
 """
-    dot_tilde_assume!(context, right, left, vn, vi)
+    dot_tilde_assume!!(context, right, left, vn, vi)
 
 Handle broadcasted assumed variables, e.g., `x .~ MvNormal()` (where `x` does not occur in the
-model inputs), accumulate the log probability, and return the sampled value.
+model inputs), accumulate the log probability, and return the sampled value and updated `vi`.
 
 Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
-function dot_tilde_assume!(context, right, left, vn, vi)
-    value, logp = dot_tilde_assume(context, right, left, vn, vi)
-    acclogp!(vi, logp)
-    return value
+function dot_tilde_assume!!(context, right, left, vn, vi)
+    value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
+    return value, acclogp!!(vi, logp), vi
 end
 
 # `dot_assume`
 function dot_assume(
-    dist::MultivariateDistribution, var::AbstractMatrix, vns::AbstractVector{<:VarName}, vi
+    dist::MultivariateDistribution,
+    var::AbstractMatrix,
+    vns::AbstractVector{<:VarName},
+    vi::AbstractVarInfo,
 )
     @assert length(dist) == size(var, 1)
     # NOTE: We cannot work with `var` here because we might have a model of the form
@@ -389,10 +391,10 @@ function dot_assume(
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = vi[vns]
-    lp = sum(zip(vns, eachcol(r))) do vn, ri
+    lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -401,12 +403,12 @@ function dot_assume(
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
     var::AbstractMatrix,
-    vi,
+    vi::AbstractVarInfo,
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
     lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -423,7 +425,7 @@ function dot_assume(
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = reshape(vi[vec(vns)], size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 
 function dot_assume(
@@ -432,12 +434,12 @@ function dot_assume(
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
     var::AbstractArray,
-    vi,
+    vi::AbstractVarInfo,
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
-    return r, lp
+    return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
     return error(
@@ -447,7 +449,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi,
+    vi::AbstractVarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -471,7 +473,7 @@ function get_and_set_val!(
         r = init(rng, dist, spl, n)
         for i in 1:n
             vn = vns[i]
-            push!(vi, vn, r[:, i], dist, spl)
+            push!!(vi, vn, r[:, i], dist, spl)
             settrans!(vi, false, vn)
         end
     end
@@ -480,7 +482,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi,
+    vi::AbstractVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -504,14 +506,22 @@ function get_and_set_val!(
     else
         f = (vn, dist) -> init(rng, dist, spl)
         r = f.(vns, dists)
-        push!.(Ref(vi), vns, r, dists, Ref(spl))
+        # TODO: This will inefficient since it will allocate an entire vector.
+        # We could either:
+        # 1. Figure out the broadcast size and use a `foreach`.
+        # 2. Define an anonymous function which returns `nothing`, which
+        #    we then broadcast. This will allocate a vector of `nothing` though.
+        push!!.(Ref(vi), vns, r, dists, Ref(spl))
         settrans!.(Ref(vi), false, vns)
     end
     return r
 end
 
 function set_val!(
-    vi, vns::AbstractVector{<:VarName}, dist::MultivariateDistribution, val::AbstractMatrix
+    vi::AbstractVarInfo,
+    vns::AbstractVector{<:VarName},
+    dist::MultivariateDistribution,
+    val::AbstractMatrix,
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
@@ -520,7 +530,7 @@ function set_val!(
     return val
 end
 function set_val!(
-    vi,
+    vi::AbstractVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     val::AbstractArray,
@@ -555,12 +565,13 @@ function dot_tilde_observe(::IsParent, context::AbstractContext, args...)
     return dot_tilde_observe(childcontext(context), args...)
 end
 
-dot_tilde_observe(::PriorContext, right, left, vi) = 0
-dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0
+dot_tilde_observe(::PriorContext, right, left, vi) = 0, vi
+dot_tilde_observe(::PriorContext, sampler, right, left, vi) = 0, vi
 
 # `MiniBatchContext`
 function dot_tilde_observe(context::MiniBatchContext, right, left, vi)
-    return context.loglike_scalar * dot_tilde_observe(context.context, right, left, vi)
+    logp, vi = dot_tilde_observe(context.context, right, left, vi)
+    return context.loglike_scalar * logp, vi
 end
 
 # `PrefixContext`
@@ -569,30 +580,29 @@ function dot_tilde_observe(context::PrefixContext, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vname, vi)
+    dot_tilde_observe!!(context, right, left, vname, vi)
 
 Handle broadcasted observed values, e.g., `x .~ MvNormal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the observed value.
+accumulate the log probability, and return the observed value and updated `vi`.
 
-Falls back to `dot_tilde_observe!(context, right, left, vi)` ignoring the information about variable
+Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the information about variable
 name and indices; if needed, these can be accessed through this function, though.
 """
-function dot_tilde_observe!(context, right, left, vn, vi)
-    return dot_tilde_observe!(context, right, left, vi)
+function dot_tilde_observe!!(context, right, left, vn, vi)
+    return dot_tilde_observe!!(context, right, left, vi)
 end
 
 """
-    dot_tilde_observe!(context, right, left, vi)
+    dot_tilde_observe!!(context, right, left, vi)
 
 Handle broadcasted observed constants, e.g., `[1.0] .~ MvNormal()`, accumulate the log
-probability, and return the observed value.
+probability, and return the observed value and updated `vi`.
 
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
-function dot_tilde_observe!(context, right, left, vi)
-    logp = dot_tilde_observe(context, right, left, vi)
-    acclogp!(vi, logp)
-    return left
+function dot_tilde_observe!!(context, right, left, vi)
+    logp, vi = dot_tilde_observe(context, right, left, vi)
+    return left, acclogp!!(vi, logp)
 end
 
 # Falls back to non-sampler definition.
@@ -601,13 +611,13 @@ function dot_observe(::AbstractSampler, dist, value, vi)
 end
 function dot_observe(dist::MultivariateDistribution, value::AbstractMatrix, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dist, value)
+    return Distributions.loglikelihood(dist, value), vi
 end
 function dot_observe(dists::Distribution, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    return Distributions.loglikelihood(dists, value)
+    return Distributions.loglikelihood(dists, value), vi
 end
 function dot_observe(dists::AbstractArray{<:Distribution}, value::AbstractArray, vi)
     increment_num_produce!(vi)
-    return sum(Distributions.loglikelihood.(dists, value))
+    return sum(Distributions.loglikelihood.(dists, value)), vi
 end
