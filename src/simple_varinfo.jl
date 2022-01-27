@@ -126,16 +126,26 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T} <: AbstractVarInfo
+struct SimpleVarInfo{NT,T,IsTrans} <: AbstractVarInfo
     values::NT
     logp::T
-    # TODO: Should we put this in the type instead?
-    istrans::Bool
 end
 
-SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, false)
+function Setfield.ConstructionBase.constructorof(
+    ::Type{<:SimpleVarInfo{<:Any,<:Any,IsTrans}}
+) where {IsTrans}
+    return function SimpleVarInfo_constructor(values, logp)
+        return SimpleVarInfo{typeof(values),typeof(logp),IsTrans}(values, logp)
+    end
+end
+
+SimpleVarInfo(values, logp, istrans::Bool) = SimpleVarInfo(values, logp, Val{istrans}())
+function SimpleVarInfo(values, logp, ::Val{IsTrans}) where {IsTrans}
+    return SimpleVarInfo{typeof(values),typeof(logp),IsTrans}(values, logp)
+end
+
 function SimpleVarInfo{T}(θ) where {T<:Real}
-    return SimpleVarInfo{typeof(θ),T}(θ, zero(T), false)
+    return SimpleVarInfo{typeof(θ),T,false}(θ, zero(T))
 end
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
     return SimpleVarInfo{T}(NamedTuple(kwargs))
@@ -187,8 +197,10 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     return vi
 end
 
-function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
-    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ", ", svi.istrans, ")")
+function Base.show(
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,IsTrans}
+) where {IsTrans}
+    return print(io, "SimpleVarInfo{IsTrans=$(IsTrans)}(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
@@ -339,8 +351,8 @@ function BangBang.push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T,V} = Union{
-    SimpleVarInfo{T,V},ThreadSafeVarInfo{<:SimpleVarInfo{T,V}}
+const SimpleOrThreadSafeSimple{T,V,IsTrans} = Union{
+    SimpleVarInfo{T,V,IsTrans},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,IsTrans}}
 }
 
 # Necessary for `matchingvalue` to work properly.
@@ -396,16 +408,16 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 """
-    settrans!!(vi::AbstractVarInfo, trans::Bool)
+    settrans!!(vi::AbstractVarInfo, trans)
 
 Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
 """
-settrans!!(vi::SimpleVarInfo, trans::Bool) = Setfield.@set vi.istrans = trans
-function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans::Bool)
+settrans!!(vi::SimpleVarInfo, trans) = SimpleVarInfo(vi.values, vi.logp, trans)
+function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
 end
 
-istrans(vi::SimpleVarInfo) = vi.istrans
+istrans(vi::SimpleVarInfo{<:Any,<:Any,IsTrans}) where {IsTrans} = IsTrans
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
