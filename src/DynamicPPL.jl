@@ -176,4 +176,6 @@ include("test_utils.jl")
 @deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
 @deprecate resetlogp!(vi) resetlogp!!(vi)
 
+@deprecate settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName) settrans!!(vi, trans, vn)
+
 end # module
