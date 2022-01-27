@@ -65,6 +65,9 @@ getindex(vi::ThreadSafeVarInfo, spl::SampleFromUniform) = getindex(vi.varinfo, s
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
 getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
 
+getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
+getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex_raw(vi.varinfo, vns)
+
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
     return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end
