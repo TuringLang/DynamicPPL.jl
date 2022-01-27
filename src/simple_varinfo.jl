@@ -139,7 +139,8 @@ function Setfield.ConstructionBase.constructorof(
     end
 end
 
-function SimpleVarInfo(values, logp, istrans::Bool=false)
+SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, Val{false}())
+function SimpleVarInfo(values, logp, istrans::Bool)
     return SimpleVarInfo(values, logp, Val{istrans}())
 end
 function SimpleVarInfo(values, logp, ::Val{IsTrans}) where {IsTrans}
