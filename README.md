@@ -13,33 +13,6 @@
 
 A domain-specific language and backend for probabilistic programming languages, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).
 
-## Do you want to contribute?
-
-If you feel you have some relevant skills and are interested in contributing then please do get in touch and open an issue on Github.
-
-### Contributor's Guide
-
-This project follows the [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://colprac.sciml.ai/), apart from the following slight variation:
-
-- The master branch contains the most recent release at any point in time. All non-breaking changes (bug fixes etc.) are merged directly into master and a new patch version is released immediately.
-- A separate dev branch contains all breaking changes, and is merged into master when a minor version release happens.
-
-For instance, suppose we are currently on version 0.13.5.
-
-- If someone produces a bug fix, it is merged directly into master and bumps the version to 0.13.6. This change is also merged into dev so that it remains up-to-date with master.
-- If someone is working on a new feature that is not breaking (performance-related, fancy new syntax that is backwards-compatible etc.), the same happens.
-- New breaking changes are merged into dev until a release is ready to go, at which point dev is merged into master and version 0.14 is released.
-
-### Bors
-
-This project uses [Bors](https://bors.tech/) for merging PRs. Bors is a Github bot that prevents merge skew / semantic merge conflicts by testing
-the exact integration of pull requests before merging them.
-
-When a PR is good enough for merging and has been approved by at least one reviewer, instead of merging immediately, it is added to the merge queue
-by commenting with `bors r+`. The Bors bot merges the pull request into a staging area, and runs the CI tests. If tests pass, the commit in the staging
-area is copied to the target branch (i.e., usually master).
-
-PRs can be tested by adding a comment with `bors try`. Additional commands can be found in the [Bors documentation](https://bors.tech/documentation/).
 
 ## Tutorial: Metropolis sampler
 
@@ -155,4 +128,31 @@ samples = sample(rng, m, Normal(0, .05), 1_000_000)
 means = getindex.(samples, (@varname(μ),))  # ~0.2
 ```
 
+## Do you want to contribute?
+
+If you feel you have some relevant skills and are interested in contributing then please do get in touch and open an issue on Github.
+
+### Contributor's Guide
+
+This project follows the [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://colprac.sciml.ai/), apart from the following slight variation:
+
+- The master branch contains the most recent release at any point in time. All non-breaking changes (bug fixes etc.) are merged directly into master and a new patch version is released immediately.
+- A separate dev branch contains all breaking changes, and is merged into master when a minor version release happens.
+
+For instance, suppose we are currently on version 0.13.5.
+
+- If someone produces a bug fix, it is merged directly into master and bumps the version to 0.13.6. This change is also merged into dev so that it remains up-to-date with master.
+- If someone is working on a new feature that is not breaking (performance-related, fancy new syntax that is backwards-compatible etc.), the same happens.
+- New breaking changes are merged into dev until a release is ready to go, at which point dev is merged into master and version 0.14 is released.
+
+### Bors
+
+This project uses [Bors](https://bors.tech/) for merging PRs. Bors is a Github bot that prevents merge skew / semantic merge conflicts by testing
+the exact integration of pull requests before merging them.
+
+When a PR is good enough for merging and has been approved by at least one reviewer, instead of merging immediately, it is added to the merge queue
+by commenting with `bors r+`. The Bors bot merges the pull request into a staging area, and runs the CI tests. If tests pass, the commit in the staging
+area is copied to the target branch (i.e., usually master).
+
+PRs can be tested by adding a comment with `bors try`. Additional commands can be found in the [Bors documentation](https://bors.tech/documentation/).
 
