@@ -41,7 +41,7 @@ area is copied to the target branch (i.e., usually master).
 
 PRs can be tested by adding a comment with `bors try`. Additional commands can be found in the [Bors documentation](https://bors.tech/documentation/).
 
-### Tutorial: Metropolis sampler
+## Tutorial: Metropolis sampler
 
 Let's use DynamicPPL to create a simple Metropolis sampler. DynamicPPL is the part of Turing dealing with models, likelihoods, probabilities, and all that stuff. Before reading this, you should already know:
 1. How to write models in Turing.jl.
@@ -67,7 +67,7 @@ end
 m = demo([-1, 0, 1, 1])
 ```
 
-#### Models
+### Models
 
 What *is* a DynamicPPL model? This is an important question, because the way DynamicPPL treats models can be very different from how you'd intuitively think of them.
 
@@ -111,7 +111,7 @@ By default, we evaluate the log-posterior. This can be specified explicitly usin
 _, x5 = DynamicPPL.evaluate!!(m, deepcopy(x1), DefaultContext()); x5 == x1
 ```
 
-#### Example: A simple sampler (say 5 times fast)
+### Example: A simple sampler (say 5 times fast)
 
 Let's create a Metropolis-Hastings Sampler to see how this works. (Note that to interact with the rest of the Turing ecosystem, a sampler must interface with AbstractMCMC.jl -- this tutorial ignores that step.)
 ```
