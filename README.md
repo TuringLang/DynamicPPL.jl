@@ -80,7 +80,7 @@ _, x4 = DynamicPPL.evaluate!!(m, SamplingContext(PriorContext()))
 ```
 
 By default, we evaluate the log-posterior. This can be specified explicitly using `DefaultContext()`.
-```
+```julia
 _, x5 = DynamicPPL.evaluate!!(m, deepcopy(x1), DefaultContext()); x5 == x1
 ```
 
