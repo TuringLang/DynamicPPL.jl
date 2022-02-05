@@ -123,7 +123,7 @@ end
 ```
 
 And now we can see that if we sample, we get the right mean!
-```
+```julia
 samples = sample(rng, m, Normal(0, .05), 1_000_000)
 means = getindex.(samples, (@varname(μ),))  # ~0.2
 ```
