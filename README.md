@@ -75,7 +75,7 @@ getlogp(x1) ≈ getlogp(x2) + getlogp(x3)  # returns true
 ```
 
 Some contexts can be nested. For instance, `SamplingContext` can be nested with a `PriorContext` to insert the log-prior, rather than the log-posterior into `logp`.
-```
+```julia
 _, x4 = DynamicPPL.evaluate!!(m, SamplingContext(PriorContext()))
 ```
 
