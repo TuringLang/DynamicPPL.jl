@@ -22,7 +22,7 @@ Let's use DynamicPPL to create a simple Metropolis sampler. DynamicPPL is the pa
 
 Let's start by creating a basic model.
 
-```
+```julia
 using DynamicPPL, Distributions, Random
 
 
@@ -46,7 +46,7 @@ What *is* a DynamicPPL model? This is an important question, because the way Dyn
 
 DynamicPPL is a *procedural* programming language, which means we think of a model as a series of instructions (a procedure). This procedure modifies or returns `VarInfo` objects, which hold samples taken from a probability distribution. Here's an example of a VarInfo:
 
-```
+```julia
 # Calling `SimpleVarInfo(model )` creates a `SimpleVarInfo` with the correct type and fields 
 # by sampling one from the prior.
 x = SimpleVarInfo(m)
@@ -59,17 +59,17 @@ Procedural programming also differs from functional programming, where we think 
 In DynamicPPL, we execute a model using the `DynamicPPL.evaluate!!` function. `DynamicPPL.evaluate!!` will always return a tuple consisting of the return value for the function (in our case `nothing`) and a `VarInfo`. (It will also modify `VarInfo` if `VarInfo` is mutable.)
 
 Let's give a quick example of what a `Context` is and does. If we call a model with a `SamplingContext`, for example, it creates a new random sample from the prior:
-```
+```julia
 _, x1 = DynamicPPL.evaluate!!(m, SimpleVarInfo(m), SamplingContext(SampleFromPrior()))
 ```
 
 On the other hand, if we call a model with a `LikelihoodContext` and a preexisting `VarInfo`, the model evaluates the likelihood function (ignoring the prior) and inserts it into the `logp` field, leaving the sample unchanged. Note that the value of `logp` is now different:
-```
+```julia
 _, x2 = DynamicPPL.evaluate!!(m, deepcopy(x1), LikelihoodContext())
 ```
 
 And the value of `logp` for `x1` is equal to the likelihood plus the prior:
-```
+```julia
 _, x3 = DynamicPPL.evaluate!!(m, deepcopy(x1), PriorContext())
 getlogp(x1) ≈ getlogp(x2) + getlogp(x3)  # returns true
 ```
