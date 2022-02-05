@@ -87,7 +87,7 @@ _, x5 = DynamicPPL.evaluate!!(m, deepcopy(x1), DefaultContext()); x5 == x1
 ### Example: A simple sampler (say 5 times fast)
 
 Let's create a Metropolis-Hastings Sampler to see how this works. (Note that to interact with the rest of the Turing ecosystem, a sampler must interface with AbstractMCMC.jl -- this tutorial ignores that step.)
-```
+```julia
 function sample(rng, model::DynamicPPL.Model, kernel::Distribution, n_steps::Int)
 	# First we create a SimpleVarInfo by sampling from the prior, to initialize the model. For convenience, SimpleVarInfo(model) samples from the prior by default.
 	init = SimpleVarInfo(model)
