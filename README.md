@@ -44,7 +44,7 @@ m = demo([-1, 0, 1, 1])
 
 What *is* a DynamicPPL model? This is an important question, because the way DynamicPPL treats models can be very different from how you'd intuitively think of them.
 
-DynamicPPL is a *procedural* programming language, which means we think of a model as a series of instructions (a procedure). This procedure modifies or returns `VarInfo` objects, which hold samples taken from a probability distribution. Here's an example of a VarInfo:
+DynamicPPL is a *procedural* programming language, which means we think of a model as a series of instructions (a procedure). This procedure modifies or returns `AbstractVarInfo` objects, which hold samples taken from a probability distribution. Here's an example of an `AbstractVarInfo`:
 
 ```julia
 # Calling `SimpleVarInfo(model )` creates a `SimpleVarInfo` with the correct type and fields 
