@@ -178,6 +178,6 @@ include("test_utils.jl")
 
 @deprecate settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName) settrans!!(
     vi, trans, vn
-)
+) false
 
 end # module
