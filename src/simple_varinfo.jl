@@ -473,7 +473,9 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
 """
-settrans!!(vi::SimpleVarInfo, trans) = SimpleVarInfo(vi.values, vi.logp, trans ? Unconstrained() : Constrained())
+function settrans!!(vi::SimpleVarInfo, trans)
+    return SimpleVarInfo(vi.values, vi.logp, trans ? Unconstrained() : Constrained())
+end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
 end
