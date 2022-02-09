@@ -11,6 +11,9 @@ accumulation of the logdensity.
 
 Currently only implemented for `NT<:NamedTuple` and `NT<:Dict`.
 
+# Fields
+$(FIELDS)
+
 # Notes
 The major differences between this and `TypedVarInfo` are:
 1. `SimpleVarInfo` does not require linearization.

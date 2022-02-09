@@ -15,6 +15,8 @@ using Setfield: Setfield
 using Setfield: Setfield
 using BangBang: BangBang
 
+using DocStringExtensions
+
 using Random: Random
 
 import Base:
