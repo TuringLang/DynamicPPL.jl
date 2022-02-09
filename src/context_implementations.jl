@@ -488,7 +488,7 @@ function get_and_set_val!(
             if istrans(vi)
                 push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
                 # `push!!` sets the trans-flag to `false` by default.
-                setttrans!!(vi, true, vn)
+                settrans!!(vi, true, vn)
             else
                 push!!(vi, vn, r[:, i], dist, spl)
             end
