@@ -486,7 +486,7 @@ function get_and_set_val!(
         for i in 1:n
             vn = vns[i]
             if istrans(vi)
-                push!!(vi, vn, maybe_link(vi, vn, dist, r[:, i]), dist, spl)
+                push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
                 # `push!!` sets the trans-flag to `false` by default.
                 setttrans!!(vi, true, vn)
             else
