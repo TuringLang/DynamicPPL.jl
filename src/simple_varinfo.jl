@@ -1,5 +1,10 @@
+abstract type AbstractConstraint end
+
+struct Constrained <: AbstractConstraint end
+struct Unconstrained <: AbstractConstraint end
+
 """
-    SimpleVarInfo{NT,T} <: AbstractVarInfo
+    SimpleVarInfo{NT,T,C} <: AbstractVarInfo
 
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
@@ -16,7 +21,7 @@ The major differences between this and `TypedVarInfo` are:
 
 # Examples
 ## General usage
-```jldoctest; setup=:(using Distributions)
+```jldoctest simplevarinfo-general; setup=:(using Distributions)
 julia> using StableRNGs
 
 julia> @model function demo()
@@ -78,6 +83,60 @@ ERROR: KeyError: key x[1:2] not found
 [...]
 ```
 
+You can also sample in _unconstrained_ space:
+
+```jldoctest simplevarinfo-general
+julia> @model demo_constrained() = x ~ Exponential()
+demo_constrained (generic function with 2 methods)
+
+julia> m = demo_constrained();
+
+julia> _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx);
+
+julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
+1.8632965762164932
+
+julia> _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+-0.21080155351918753
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
+true
+
+julia> # And with `Dict` of course!
+       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+0.6225185067787314
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
+true
+```
+
+Evaluation in unconstrained space of course also works:
+
+```jldoctest simplevarinfo-general
+julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
+Unconstrained SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) Positive probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-1.3678794411714423
+
+julia> # While if we forget to make indicate that it's unconstrained/transformed:
+       vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
+Constrained SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) No probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-Inf
+```
+
 ## Indexing
 Using `NamedTuple` as underlying storage.
 
@@ -126,29 +185,19 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T,IsTrans} <: AbstractVarInfo
+struct SimpleVarInfo{NT,T,C<:AbstractConstraint} <: AbstractVarInfo
+    "underlying representation of the realization represented"
     values::NT
+    "holds the accumulated log-probability"
     logp::T
+    "represents whether it assumes variables to be constrained or unconstrained"
+    constraint::C
 end
 
-function Setfield.ConstructionBase.constructorof(
-    ::Type{<:SimpleVarInfo{<:Any,<:Any,IsTrans}}
-) where {IsTrans}
-    return function SimpleVarInfo_constructor(values, logp)
-        return SimpleVarInfo{typeof(values),typeof(logp),IsTrans}(values, logp)
-    end
-end
-
-SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, Val{false}())
-function SimpleVarInfo(values, logp, istrans::Bool)
-    return SimpleVarInfo(values, logp, Val{istrans}())
-end
-function SimpleVarInfo(values, logp, ::Val{IsTrans}) where {IsTrans}
-    return SimpleVarInfo{typeof(values),typeof(logp),IsTrans}(values, logp)
-end
+SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, Constrained())
 
 function SimpleVarInfo{T}(θ) where {T<:Real}
-    return SimpleVarInfo{typeof(θ),T,false}(θ, zero(T))
+    return SimpleVarInfo(θ, zero(T))
 end
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
     return SimpleVarInfo{T}(NamedTuple(kwargs))
@@ -201,9 +250,15 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(
-    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,IsTrans}
-) where {IsTrans}
-    return print(io, "SimpleVarInfo{IsTrans=$(IsTrans)}(", svi.values, ", ", svi.logp, ")")
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:Constrained}
+)
+    return print(io, "Constrained SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+end
+
+function Base.show(
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:Unconstrained}
+)
+    return print(io, "Unconstrained SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
@@ -354,8 +409,8 @@ function BangBang.push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T,V,IsTrans} = Union{
-    SimpleVarInfo{T,V,IsTrans},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,IsTrans}}
+const SimpleOrThreadSafeSimple{T,V,C} = Union{
+    SimpleVarInfo{T,V,C},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,C}}
 }
 
 # Necessary for `matchingvalue` to work properly.
@@ -415,12 +470,13 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
 """
-settrans!!(vi::SimpleVarInfo, trans) = SimpleVarInfo(vi.values, vi.logp, trans)
+settrans!!(vi::SimpleVarInfo, trans) = SimpleVarInfo(vi.values, vi.logp, trans ? Unconstrained() : Constrained())
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
 end
 
-istrans(vi::SimpleVarInfo{<:Any,<:Any,IsTrans}) where {IsTrans} = IsTrans
+istrans(vi::SimpleVarInfo{<:Any,<:Any,<:Constrained}) = false
+istrans(vi::SimpleVarInfo{<:Any,<:Any,<:Unconstrained}) = true
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
