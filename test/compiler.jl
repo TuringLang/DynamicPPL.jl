@@ -588,4 +588,18 @@ end
         @model outer() = @submodel x = inner()
         @test outer()() isa Real
     end
+
+    @testset "issue #368: hasmissing dispatch" begin
+        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
+
+        # (nested) arrays with `Missing` eltypes
+        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
+        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
+        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
+
+        # no `Missing`
+        @test !DynamicPPL.hasmissing(Vector{Float64})
+        @test !DynamicPPL.hasmissing(Matrix{Real})
+        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
+    end
 end

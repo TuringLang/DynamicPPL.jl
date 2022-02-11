@@ -546,9 +546,10 @@ function make_returns_explicit!(body::Expr)
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
-hasmissing(T::Type{<:AbstractArray{TA}}) where {TA<:AbstractArray} = hasmissing(TA)
-hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
-hasmissing(T::Type) = false
+hasmissing(::Type) = false
+hasmissing(::Type{>:Missing}) = true
+hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
+hasmissing(::Type{Union{}}) = false # issue #368
 
 """
     build_output(modelinfo, linenumbernode)
