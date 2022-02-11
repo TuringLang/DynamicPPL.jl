@@ -401,7 +401,7 @@ function dot_assume(
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     # r = vi[vns]
     r_raw = getindex_raw(vi, vns)
-    r = maybe_invlink(vi, vn, dist, r_raw)
+    r = maybe_invlink(vi, vns, dist, r_raw)
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
