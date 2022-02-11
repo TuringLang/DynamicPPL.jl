@@ -373,6 +373,17 @@ function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
 end
 
 """
+    settrans!!(vi::AbstractVarInfo, trans)
+
+Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
+"""
+function settrans!!(vi::VarInfo, trans::Bool)
+    for vn in keys(vi)
+        settrans!!(vi, trans, vn)
+    end
+end
+
+"""
     syms(vi::VarInfo)
 
 Returns a tuple of the unique symbols of random variables sampled in `vi`.

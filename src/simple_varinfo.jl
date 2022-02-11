@@ -468,11 +468,6 @@ end
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
-"""
-    settrans!!(vi::AbstractVarInfo, trans)
-
-Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
-"""
 function settrans!!(vi::SimpleVarInfo, trans)
     return SimpleVarInfo(vi.values, vi.logp, trans ? Unconstrained() : Constrained())
 end
