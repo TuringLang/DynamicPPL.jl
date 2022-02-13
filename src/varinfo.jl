@@ -956,7 +956,7 @@ function getindex_raw(vi::AbstractVarInfo, vn::VarName)
     return reconstruct(getdist(vi, vn), getval(vi, vn))
 end
 function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName})
-    return reconstruct(getdist(vi, first(vns)), getval(vi, vns))
+    return reconstruct(getdist(vi, first(vns)), getval(vi, vns), length(vns))
 end
 
 """
