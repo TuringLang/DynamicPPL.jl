@@ -670,7 +670,7 @@ Return true if `vn`'s values in `vi` are transformed to Euclidean space, and fal
 they are in the support of `vn`'s distribution.
 """
 istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
-istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName}) = all(istrans, vns)
+istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName}) = all(Base.Fix1(istrans, vi), vns)
 
 """
     getlogp(vi::VarInfo)
