@@ -387,7 +387,9 @@ function generate_tilde(left, right)
     # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)($(AbstractPPL.drop_escape(varname(left))), $dist)
+        $vn = $(DynamicPPL.resolve_varnames)(
+            $(AbstractPPL.drop_escape(varname(left))), $dist
+        )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_tilde_assume(left, dist, vn))
@@ -444,7 +446,9 @@ function generate_dot_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption value
     return quote
-        $vn = $(DynamicPPL.resolve_varnames)($(AbstractPPL.drop_escape(varname(left))), right)
+        $vn = $(DynamicPPL.resolve_varnames)(
+            $(AbstractPPL.drop_escape(varname(left))), right
+        )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))

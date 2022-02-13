@@ -13,10 +13,16 @@ end
 
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
 
-Distributions.logpdf(dist::NamedDist, x::Real)= Distributions.logpdf(dist.dist, x)
-Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})= Distributions.logpdf(dist.dist, x)
-Distributions.loglikelihood(dist::NamedDist, x::Real) = Distributions.loglikelihood(dist.dist, x)
-Distributions.loglikelihood(dist::NamedDist, x::AbstractArray{<:Real})= Distributions.loglikelihood(dist.dist, x)
+Distributions.logpdf(dist::NamedDist, x::Real) = Distributions.logpdf(dist.dist, x)
+function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})
+    return Distributions.logpdf(dist.dist, x)
+end
+function Distributions.loglikelihood(dist::NamedDist, x::Real)
+    return Distributions.loglikelihood(dist.dist, x)
+end
+function Distributions.loglikelihood(dist::NamedDist, x::AbstractArray{<:Real})
+    return Distributions.loglikelihood(dist.dist, x)
+end
 
 struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
        Distribution{variate,support}
