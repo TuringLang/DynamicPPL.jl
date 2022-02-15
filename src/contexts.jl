@@ -137,9 +137,7 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     context::C
 
     function SamplingContext(
-        rng::R=Random.GLOBAL_RNG, 
-        sampler::S=SampleFromPrior(), 
-        context::C=DefaultContext()
+        rng::R=Random.GLOBAL_RNG, sampler::S=SampleFromPrior(), context::C=DefaultContext()
     ) where {S<:AbstractSampler,C<:AbstractContext,R<:Random.AbstractRNG}
         return new{S,C,R}(rng, sampler, context)
     end
