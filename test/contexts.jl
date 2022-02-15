@@ -258,21 +258,17 @@ end
     end
 
     @testset "SamplingContext" begin
-        args = (Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
-        f = false
-        t = true
-        powerset = (
-            args[[f, f, f]],
-            args[[f, f, t]],
-            args[[f, t, f]],
-            args[[f, t, t]],
-            args[[t, f, f]],
-            args[[t, f, t]],
-            args[[t, t, f]],
-            args[[t, t, t]],
-        )
-        for args in powerset
-            @test SamplingContext(argset...) == SamplingContext()
-        end
+        context = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+        @test context isa SamplingContext
+
+        # convenience constructors
+        @test SamplingContext() == context
+        @test SamplingContext(Random.GLOBAL_RNG) == context
+        @test SamplingContext(SampleFromPrior()) == context
+        @test SamplingContext(DefaultContext()) == context
+        @test SamplingContext(Random.GLOBAL_RNG, SampleFromPrior()) == context
+        @test SamplingContext(Random.GLOBAL_RNG, DefaultContext()) == context
+        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
+        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
     end
 end
