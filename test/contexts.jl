@@ -263,5 +263,4 @@ end
             @test SamplingContext(argset...) == SamplingContext()
         end
     end
-
 end
