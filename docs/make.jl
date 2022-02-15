@@ -1,14 +1,36 @@
 using Documenter
 using DynamicPPL
+using Pluto: Configuration.CompilerOptions
+using PlutoStaticHTML
+
+const PACKAGE = DynamicPPL
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
+DocMeta.setdocmeta!(PACKAGE, :DocTestSetup, :(using PACKAGE); recursive=true)
+
+tutorials = [
+    "The Basics",
+]
+
+const tutorials_dir = joinpath(pkgdir(PACKAGE), "docs", "src", "tutorials")
+
+include("build.jl")
+
+build()
+md_files = markdown_files()
+T = [t => f for (t, f) in zip(tutorials, md_files)]
+
+DocMeta.setdocmeta!(PACKAGE, :DocTestSetup, :(using PACKAGE); recursive=true)
 
 makedocs(;
-    sitename="DynamicPPL",
+    sitename="$PACKAGE",
     format=Documenter.HTML(),
-    modules=[DynamicPPL],
-    pages=["Home" => "index.md", "TestUtils" => "test_utils.md"],
+    modules=[PACKAGE],
+    pages=[
+        "API" => "api.md", 
+        "TestUtils" => "test_utils.md",
+        "Tutorials" => T,
+    ],
     strict=true,
     checkdocs=:exports,
     doctestfilters=[
@@ -24,4 +46,7 @@ makedocs(;
     ],
 )
 
-deploydocs(; repo="github.com/TuringLang/DynamicPPL.jl.git", push_preview=true)
+deploydocs(; repo="github.com/TuringLang/$PACKAGE.jl.git", push_preview=true)
+
+# Useful for local development.
+cd(pkgdir(PACKAGE))
