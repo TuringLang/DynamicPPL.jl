@@ -137,6 +137,21 @@ SamplingContext(context::AbstractContext) = SamplingContext(SampleFromPrior(), c
 SamplingContext(sampler::AbstractSampler) = SamplingContext(sampler, DefaultContext())
 SamplingContext() = SamplingContext(SampleFromPrior())
 
+function SamplingContext(
+    rng::AbstractRNG=Random.GLOBAL_RNG, sampler::AbstractSampler=SampleFromPrior()
+)
+    return SamplingContext(rng, sampler, DefaultContext())
+end
+function SamplingContext(rng::AbstractRNG, context::AbstractContext)
+    return SamplingContext(rng, SampleFromPrior(), context)
+end
+function SamplingContext(sampler::AbstractSampler, context::AbstractContext=DefaultContext())
+    return SamplingContext(Random.GLOBAL_RNG, sampler, context)
+end
+function SamplingContext(context::AbstractContext)
+    return SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
+end
+
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
 function setchildcontext(parent::SamplingContext, child)
