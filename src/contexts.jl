@@ -121,7 +121,7 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 # Contexts
 """
     SamplingContext([
-            rng::Random.AbstractRNG=Random.GLOBAL_RNG, 
+            rng=Random.GLOBAL_RNG, 
             sampler::AbstractSampler=SampleFromPrior(), 
             context::AbstractContext=DefaultContext(),
         ]

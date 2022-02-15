@@ -259,7 +259,19 @@ end
 
     @testset "SamplingContext" begin
         args = (Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
-        for argset in powerset(args)
+        f = false
+        t = true
+        powerset = (
+            args[[f,f,f]],
+            args[[f,f,t]],
+            args[[f,t,f]],
+            args[[f,t,t]],
+            args[[t,f,f]],
+            args[[t,f,t]],
+            args[[t,t,f]],
+            args[[t,t,t]],
+        )
+        for args in powerset
             @test SamplingContext(argset...) == SamplingContext()
         end
     end
