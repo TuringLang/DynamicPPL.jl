@@ -147,6 +147,9 @@ function SamplingContext(
 )
     return SamplingContext(Random.GLOBAL_RNG, sampler, context)
 end
+function SamplingContext(rng, context::AbstractContext)
+    return SamplingContext(rng, SampleFromPrior(), context)
+end
 function SamplingContext(context::AbstractContext)
     return SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
 end
