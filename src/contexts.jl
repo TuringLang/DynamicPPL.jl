@@ -137,7 +137,9 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     context::C
 end
 
-function SamplingContext(rng, sampler::AbstractSampler=SampleFromPrior())
+function SamplingContext(
+    rng::Random.AbstractRNG=Random.GLOBAL_RNG, sampler::AbstractSampler=SampleFromPrior()
+)
     return SamplingContext(rng, sampler, DefaultContext())
 end
 
