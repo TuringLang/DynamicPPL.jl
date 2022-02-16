@@ -121,9 +121,9 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 # Contexts
 """
     SamplingContext(
-            rng=Random.GLOBAL_RNG, 
-            sampler::AbstractSampler=SampleFromPrior(), 
-            context::AbstractContext=DefaultContext(),
+            [rng::Random.AbstractRNG=Random.GLOBAL_RNG],
+            [sampler::AbstractSampler=SampleFromPrior()],
+            [context::AbstractContext=DefaultContext()],
     )
 
 Create a context that allows you to sample parameters with the `sampler` when running the model.
