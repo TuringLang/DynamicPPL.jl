@@ -137,17 +137,23 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     context::C
 end
 
-SamplingContext(rng, sampler::AbstractSampler=SampleFromPrior()) = 
-    SamplingContext(rng, sampler, DefaultContext())
+function SamplingContext(rng, sampler::AbstractSampler=SampleFromPrior())
+    return SamplingContext(rng, sampler, DefaultContext())
+end
 
-SamplingContext(sampler::AbstractSampler, context::AbstractContext=DefaultContext()) = 
-    SamplingContext(Random.GLOBAL_RNG, sampler, context)
+function SamplingContext(
+    sampler::AbstractSampler, context::AbstractContext=DefaultContext()
+)
+    return SamplingContext(Random.GLOBAL_RNG, sampler, context)
+end
 
-SamplingContext(rng::Random.AbstractRNG, context::AbstractContext) = 
-    SamplingContext(rng, SampleFromPrior(), context)
+function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
+    return SamplingContext(rng, SampleFromPrior(), context)
+end
 
-SamplingContext(context::AbstractContext) =
-    SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
+function SamplingContext(context::AbstractContext)
+    return SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
+end
 
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context
