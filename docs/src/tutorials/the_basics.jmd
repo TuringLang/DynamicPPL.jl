@@ -61,9 +61,9 @@ Procedural programming is also very different from functional programming, where
 
 We can execute a model using `DynamicPPL.evaluate!!`. This will always return two values: the return value for the function (in our case `nothing`) and a `VarInfo`. (It will also modify `VarInfo` if `VarInfo` is mutable.)
 
-Let's run through the most important DynamicPPL `Context`s. First we have the `SamplingContext`, which draws a new `VarInfo` using the given sampler:
+Let's run through the most important DynamicPPL `Context`s. First we have the `SamplingContext`, which draws a new `VarInfo` using a given sampler. By default, this draws a sample from the prior.
 
-```@example e7b41916-7749-4c60-9075-52be202278aa
+```@example
 # Here, our sampler is SampleFromPrior()
 _, x1 = DynamicPPL.evaluate!!(model, x0, SamplingContext())
 ```
@@ -122,10 +122,11 @@ function metropolis(
 
 	for step in 1:n_steps
 		# Draw a new proposed point.
-		proposal = map(current.values) do x
-			x + rand(rng, proposal)
-		end
-		proposal = SimpleVarInfo(proposal)
+		proposal = SimpleVarInfo(
+			map(current.values) do x
+				x + rand(rng, proposal)
+			end
+		)
 
 		# Evaluate the log-probability of the proposed point.
 		_, proposal = DynamicPPL.evaluate!!(model, proposal, DefaultContext())
