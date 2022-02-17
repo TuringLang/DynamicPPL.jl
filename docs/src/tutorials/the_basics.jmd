@@ -10,9 +10,10 @@ In this tutorial, we'll see how to do all of this. Let's start by creating a bas
 ```@example
 using DynamicPPL, Distributions, Random
 rng = Xoshiro(1776);  # Set seed for reproducibility
+```
 
-# This model assumes that our sample follows a normal distribution 
-# with a standard deviation of 1 and an unknown mean.
+This model assumes that our sample follows a normal distribution with a standard deviation of 1 and an unknown mean.
+```@example
 @model function demo(x)
    μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
    x .~ Normal(μ, 1)
@@ -20,9 +21,10 @@ rng = Xoshiro(1776);  # Set seed for reproducibility
 end
 ```
 
+We instantiate the model by calling it on a dataset.
 ```@example
-# We instantiate the model by calling it on a dataset.
-dataset = [-1, 1, 1]; model = demo(dataset)
+dataset = [-1, 1, 1]
+model = demo(dataset)
 ```
 
 In our case, we can calculate the posterior analytically. Let's do that so we can compare results later:
@@ -30,7 +32,7 @@ In our case, we can calculate the posterior analytically. Let's do that so we ca
 ```@example 
 posterior = Normal(
 	mean(vcat(dataset, 0)), 
-	1 / sqrt(length(vcat(dataset, 0)))
+	1 / sqrt(length(dataset) + 1)
 )
 ```
 
@@ -60,7 +62,6 @@ Procedural programming is also very different from functional programming, where
 We can execute a model using `DynamicPPL.evaluate!!`. This will always return two values: the return value for the function (in our case `nothing`) and a `VarInfo`. (It will also modify `VarInfo` if `VarInfo` is mutable.)
 
 Let's run through the most important DynamicPPL `Context`s. First we have the `SamplingContext`, which draws a new `VarInfo` using the given sampler:
-"""
 
 ```@example e7b41916-7749-4c60-9075-52be202278aa
 # Here, our sampler is SampleFromPrior()
@@ -97,7 +98,8 @@ _, x4 = DynamicPPL.evaluate!!(model, x1, SamplingContext())
 By default, we evaluate the log-posterior. This can be specified explicitly using `DefaultContext()`.
 
 ```@example
-_, x5 = DynamicPPL.evaluate!!(model, deepcopy(x1), DefaultContext()); x5 == x1
+_, x5 = DynamicPPL.evaluate!!(model, deepcopy(x1), DefaultContext())
+x5 == x1
 ```
 
 
@@ -106,7 +108,7 @@ _, x5 = DynamicPPL.evaluate!!(model, deepcopy(x1), DefaultContext()); x5 == x1
 Let's create a Metropolis-Hastings Sampler to see how this works:
 
 
-```
+```@example
 function metropolis(
 	rng,
 	init::DynamicPPL.AbstractVarInfo, 

@@ -49,4 +49,3 @@ by commenting with `bors r+`. The Bors bot merges the pull request into a stagin
 area is copied to the target branch (i.e., usually master).
 
 PRs can be tested by adding a comment with `bors try`. Additional commands can be found in the [Bors documentation](https://bors.tech/documentation/).
-
