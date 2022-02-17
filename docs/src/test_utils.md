@@ -1,6 +1,6 @@
 # DynamicPPL.TestUtils
 
-This page describes various functions used by DynamicPPL for testing.
+This page describes various functions for testing.
 
 ```@autodocs
 Modules = [DynamicPPL.TestUtils]
