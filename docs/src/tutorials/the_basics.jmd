@@ -144,7 +144,7 @@ end
 ```
 
 ```
-function sample(rng, model::DynamicPPL.Model, proposal::Distribution, n_steps::Int)
+function mh_sampling(rng, model::DynamicPPL.Model, proposal::Distribution, n_steps::Int)
 	# First we create a SimpleVarInfo by sampling from the prior, to initialize the model. 
 	# For convenience, SimpleVarInfo(model) samples from the prior by default.
 	init = SimpleVarInfo(model)
