@@ -101,7 +101,7 @@ _, x5 = DynamicPPL.evaluate!!(model, deepcopy(x1), DefaultContext()); x5 == x1
 ```
 
 
-### Example: A simple sampler (say 5 times fast)
+### Example: A simple sampler
 
 Let's create a Metropolis-Hastings Sampler to see how this works:
 
