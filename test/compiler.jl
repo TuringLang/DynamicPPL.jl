@@ -456,7 +456,7 @@ end
             num_obs = length(y)
             @inbounds for i in 1:num_obs
                 @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
-                y[i] ~ MvNormal(x, 0.1)
+                y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
 
