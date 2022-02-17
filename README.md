@@ -20,7 +20,7 @@ DynamicPPL is the part of Turing.jl that deals with defining, running, and manip
 * A rich contextual dispatch system allowing for tailored behaviour during model execution.
 * A user-friendly syntax for probabilistic queries.
 
-Information on how to use the DynamicPPL frontend to build Bayesian models can be found on the [Turing website](https://turing.ml/). Tutorials explaining the basics of DynamicPPL can be found [alongside the documentation](https://turinglang.github.io/DynamicPPL.jl/stable/). More information can be found in our paper [DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models](https://arxiv.org/pdf/2002.02702.pdf).
+Information on how to use the DynamicPPL frontend to build Bayesian models can be found on the [Turing website](https://turing.ml/). Tutorials explaining how to use the backend can be found [alongside the documentation](https://turinglang.github.io/DynamicPPL.jl/stable/). More information can be found in our paper [DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models](https://arxiv.org/pdf/2002.02702.pdf).
 
 ## Do you want to contribute?
 
