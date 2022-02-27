@@ -2,6 +2,7 @@ module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
+import AbstractPPL: AbstractContext, evaluate!!
 using Distributions
 using Bijectors
 
@@ -137,7 +138,6 @@ log joint probability of the model.
 See also: [`VarInfo`](@ref)
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
-abstract type AbstractContext end
 
 include("utils.jl")
 include("selector.jl")
