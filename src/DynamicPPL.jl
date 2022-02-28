@@ -2,19 +2,15 @@ module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
-import AbstractPPL: AbstractContext, evaluate!!
-using Distributions
 using Bijectors
+using Distributions
 
 using AbstractMCMC: AbstractMCMC
+using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
+using Setfield: Setfield
 using ZygoteRules: ZygoteRules
-using BangBang: BangBang
-using Setfield: Setfield
-
-using Setfield: Setfield
-using BangBang: BangBang
 
 using Random: Random
 
@@ -32,8 +28,6 @@ import Base:
     setproperty!,
     keys,
     haskey
-
-using BangBang: push!!, empty!!, setindex!!
 
 # VarInfo
 export AbstractVarInfo,
