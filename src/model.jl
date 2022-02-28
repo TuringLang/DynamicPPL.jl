@@ -397,7 +397,9 @@ Returns both the return-value of the original model, and the resulting varinfo.
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+function AbstractPPL.evaluate!!(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext
+)
     return if use_threadsafe_eval(context, varinfo)
         evaluate_threadsafe!!(model, varinfo, context)
     else
@@ -415,7 +417,9 @@ function AbstractPPL.evaluate!!(
     return evaluate!!(model, varinfo, SamplingContext(rng, sampler, context))
 end
 
-AbstractPPL.evaluate!!(model::Model, context::AbstractContext) = evaluate!!(model, VarInfo(), context)
+function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
+    return evaluate!!(model, VarInfo(), context)
+end
 
 function AbstractPPL.evaluate!!(model::Model, args...)
     return evaluate!!(model, Random.GLOBAL_RNG, args...)
@@ -429,7 +433,9 @@ function AbstractPPL.evaluate!!(
 end
 
 # without VarInfo and without AbstractSampler
-function AbstractPPL.evaluate!!(model::Model, rng::Random.AbstractRNG, context::AbstractContext)
+function AbstractPPL.evaluate!!(
+    model::Model, rng::Random.AbstractRNG, context::AbstractContext
+)
     return evaluate!!(model, rng, VarInfo(), SampleFromPrior(), context)
 end
 
