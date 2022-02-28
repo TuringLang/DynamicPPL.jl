@@ -2,7 +2,6 @@ module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
-import AbstractPPL: AbstractContext, evaluate!!
 using Distributions
 using Bijectors
 
