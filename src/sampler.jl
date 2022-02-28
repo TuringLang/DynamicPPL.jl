@@ -31,25 +31,19 @@ function init(rng, dist, ::SampleFromUniform, n::Int)
     return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
 end
 
-
 """
     prior_sample(rng::AbstractRNG, model::Model, ::Type{T}=SimpleVarInfo)
 
 Generate a sample from the prior distribution of the model.
 """
 function prior_sample(rng::AbstractRNG, model::Model, ::Type{T}) where {T}
-    x = SimpleVarInfo(
-        model, SamplingContext(rng, SampleFromPrior(), DefaultContext())
-    )
+    x = SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
     return DynamicPPL.values_as(x, T)
 end
 
 function prior_sample(rng::AbstractRNG, model::Model)
-    return SimpleVarInfo(
-        model, SamplingContext(rng, SampleFromPrior(), DefaultContext())
-    )
+    return SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
 end
-
 
 """
     Sampler{T}
