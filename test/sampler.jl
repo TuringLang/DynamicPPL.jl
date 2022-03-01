@@ -30,9 +30,9 @@
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
 
-        @test SimpleVarInfo(chains[1]) == prior_sample(MersenneTwister(1776), model)
+        @test SimpleVarInfo(chains[1]) == rand(MersenneTwister(1776), model)
         @test SimpleVarInfo(chains[1]).values ==
-            prior_sample(MersenneTwister(1776), model, NamedTuple)
+            rand(MersenneTwister(1776), model, NamedTuple)
     end
     @testset "Initial parameters" begin
         # dummy algorithm that just returns initial value and does not perform any sampling

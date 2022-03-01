@@ -36,13 +36,13 @@ end
 
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
-function Base.rand(rng::AbstractRNG, ::Type{T}, model::Model) where {T}
+function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
     x = SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
     return DynamicPPL.values_as(x, T)
 end
 
 # Default RNG and type
-Base.rand(rng::AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
+Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
 Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
 Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
 
