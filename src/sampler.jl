@@ -32,21 +32,6 @@ function init(rng, dist, ::SampleFromUniform, n::Int)
 end
 
 """
-    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
-
-Generate a sample of type `T` from the prior distribution of the `model`.
-"""
-function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
-    return DynamicPPL.values_as(x, T)
-end
-
-# Default RNG and type
-Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
-Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
-Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
-
-"""
     Sampler{T}
 
 Generic sampler type for inference algorithms of type `T` in DynamicPPL.
