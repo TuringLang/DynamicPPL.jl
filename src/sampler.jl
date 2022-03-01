@@ -32,18 +32,19 @@ function init(rng, dist, ::SampleFromUniform, n::Int)
 end
 
 """
-    prior_sample(rng::AbstractRNG, model::Model, ::Type{T}=SimpleVarInfo)
+    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
 
-Generate a sample from the prior distribution of the model.
+Generate a sample of type `T` from the prior distribution of the `model`.
 """
-function prior_sample(rng::AbstractRNG, model::Model, ::Type{T}) where {T}
+function Base.rand(rng::AbstractRNG, ::Type{T}, model::Model) where {T}
     x = SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
     return DynamicPPL.values_as(x, T)
 end
 
-function prior_sample(rng::AbstractRNG, model::Model)
-    return SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
-end
+# Default RNG and type
+Base.rand(rng::AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
+Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
+Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
 
 """
     Sampler{T}
