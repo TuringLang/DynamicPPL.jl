@@ -10,7 +10,7 @@
         model = gdemo(1.0, 2.0)
         N = 1_000
 
-        chains = sample(model, SampleFromPrior(MersenneTwister(1776)), N; progress=false)
+        chains = sample(model, SampleFromPrior(), N; progress=false)
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
@@ -20,7 +20,7 @@
         # Expected value of ``X`` where ``X ~ IG(2, 3)`` is 3.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.2
 
-        chains = sample(model, SampleFromUniform(MersenneTwister(1776)), N; progress=false)
+        chains = sample(Random.seed!(1776), model, SampleFromUniform(), N; progress=false)
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
@@ -30,9 +30,20 @@
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
 
-        @test SimpleVarInfo(chains[1]) == rand(MersenneTwister(1776), model)
-        @test SimpleVarInfo(chains[1]).values ==
-            rand(MersenneTwister(1776), model, NamedTuple)
+        vi = SimpleVarInfo(chains[1])
+        vi_namedtuple = DynamicPPL.values_as(vi, NamedTuple)
+        vi_dict = DynamicPPL.values_as(vi, Dict)
+
+        @test rand(Random.seed!(1776), model) == vi_namedtuple
+        @test rand(Random.seed!(1776), NamedTuple, model) == vi_namedtuple
+        @test rand(Random.seed!(1776), Dict, model) == vi_dict
+
+        Random.seed!(1776)
+        @test rand(model) == vi_namedtuple
+        Random.seed!(1776)
+        @test rand(NamedTuple, model) == vi_namedtuple
+        Random.seed!(1776)
+        @test rand(Dict, model) == vi_dict
     end
     @testset "Initial parameters" begin
         # dummy algorithm that just returns initial value and does not perform any sampling
