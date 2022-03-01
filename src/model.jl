@@ -523,7 +523,7 @@ Base.nameof(model::Model) = model.name
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = SimpleVarInfo(model, SamplingContext(rng, SampleFromPrior(), DefaultContext()))
+    x = last(evaluate!!(model, SimpleVarInfo{Float64}(), SamplingContext(rng, SampleFromPrior(), DefaultContext())))
     return DynamicPPL.values_as(x, T)
 end
 
