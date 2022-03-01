@@ -15,6 +15,6 @@ delete_merged_branches = true
 required_approvals = 1
 # Squash commits before merging.
 use_squash_merge = true
-# Uncomment this to use a three hour timeout.
+# Uncomment this to use a four hour timeout.
 # The default is one hour.
-timeout_sec = 10800
+timeout_sec = 14400
