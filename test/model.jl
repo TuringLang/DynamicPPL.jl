@@ -81,4 +81,26 @@
         call_retval = model()
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
+
+    @testset "rand" begin
+        model = gdemo_default
+
+        Random.seed!(1776)
+        s, m = model()
+        sample_namedtuple = (; s=s, m=m)
+        sample_dict = Dict(:s => s, :m => m)
+
+        # With explicit RNG
+        @test rand(Random.seed!(1776), model) == sample_namedtuple
+        @test rand(Random.seed!(1776), NamedTuple, model) == sample_namedtuple
+        @test rand(Random.seed!(1776), Dict, model) == sample_dict
+
+        # Without explicit RNG
+        Random.seed!(1776)
+        @test rand(model) == sample_namedtuple
+        Random.seed!(1776)
+        @test rand(NamedTuple, model) == sample_namedtuple
+        Random.seed!(1776)
+        @test rand(Dict, model) == sample_dict
+    end
 end

@@ -518,6 +518,27 @@ Get the name of the `model` as `Symbol`.
 Base.nameof(model::Model) = model.name
 
 """
+    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
+
+Generate a sample of type `T` from the prior distribution of the `model`.
+"""
+function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
+    x = last(
+        evaluate!!(
+            model,
+            SimpleVarInfo{Float64}(),
+            SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+        ),
+    )
+    return DynamicPPL.values_as(x, T)
+end
+
+# Default RNG and type
+Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
+Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
+Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
+
+"""
     logjoint(model::Model, varinfo::AbstractVarInfo)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
