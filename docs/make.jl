@@ -3,19 +3,16 @@ using DynamicPPL
 using DynamicPPL: AbstractPPL
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive = true)
+DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
 
 makedocs(;
-    sitename = "DynamicPPL",
-    format = Documenter.HTML(),
-    modules = [DynamicPPL],
-    pages = [
-        "Home" => "index.md",
-        "API" => "api.md",
-    ],
-    strict = true,
-    checkdocs = :exports,
-    doctestfilters = [
+    sitename="DynamicPPL",
+    format=Documenter.HTML(),
+    modules=[DynamicPPL],
+    pages=["Home" => "index.md", "API" => "api.md"],
+    strict=true,
+    checkdocs=:exports,
+    doctestfilters=[
         # Older versions will show "0 element Array" instead of "Type[]".
         r"(Any\[\]|0-element Array{.+,[0-9]+})",
         # Older versions will show "Array{...,1}" instead of "Vector{...}".
@@ -25,7 +22,7 @@ makedocs(;
         # Errors from macros sometimes result in `LoadError: LoadError:`
         # rather than `LoadError:`, depending on Julia version.
         r"ERROR: (LoadError:\s)+",
-    ]
+    ],
 )
 
-deploydocs(; repo = "github.com/TuringLang/DynamicPPL.jl.git", push_preview = true)
+deploydocs(; repo="github.com/TuringLang/DynamicPPL.jl.git", push_preview=true)
