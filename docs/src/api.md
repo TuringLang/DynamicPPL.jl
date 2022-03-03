@@ -68,7 +68,7 @@ condition
 DynamicPPL.conditioned
 ```
 
-Similarly, one specify with [`AbstractPPL.decondition`](@ref) that certain, or all, random variables are not observed.
+Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, or all, random variables are not observed.
 
 ```@docs
 decondition
@@ -201,7 +201,7 @@ Base.empty!
 
 ### Evaluation Contexts
 
-Internally, both sampling and evaluation of log densities is performed with [`AbstractPPL.evaluate!!`](@ref).
+Internally, both sampling and evaluation of log densities are performed with [`AbstractPPL.evaluate!!`](@ref).
 
 ```@docs
 AbstractPPL.evaluate!!
@@ -222,7 +222,7 @@ PrefixContext
 ### Samplers
 
 In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromPrior`](@ref) which samples from an uniform distribution.
+[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
 
 ```@docs
 SampleFromPrior
