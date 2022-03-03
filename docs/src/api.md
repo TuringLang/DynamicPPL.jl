@@ -23,11 +23,15 @@ One can nest models and call another model inside the model function with [`@sub
 ### Type
 
 A [`Model`](@ref) can be created by calling the model function, as defined by [`@model`](@ref).
-[`Model`](@ref)s are callable structs.
-If they are called, then the model is executed.
 
 ```@docs
 Model
+```
+
+[`Model`](@ref)s are callable structs.
+
+```@docs
+Model()
 ```
 
 Basic properties of a model can be accessed with [`getargnames`](@ref), [`getmissings`](@ref), and [`nameof`](@ref).
