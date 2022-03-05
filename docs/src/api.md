@@ -121,7 +121,7 @@ DynamicPPL.TestUtils.logjoint_true
 
 Names and possibly nested indices of variables are described with `AbstractPPL.VarName`.
 They can be defined with `AbstractPPL.@varname`.
-Please see the documentation of AbstractPPL for further information.
+Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/AbstractPPL.jl) for further information.
 
 ### Data Structures of Variables
 
