@@ -10,7 +10,7 @@ makedocs(;
     modules=[DynamicPPL],
     pages=["Home" => "index.md", "TestUtils" => "test_utils.md"],
     strict=true,
-    checkdocs=:exports
+    checkdocs=:exports,
 )
 
 deploydocs(; repo="github.com/TuringLang/DynamicPPL.jl.git", push_preview=true)
