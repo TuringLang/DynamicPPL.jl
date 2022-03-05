@@ -9,8 +9,6 @@ on:
       - trying
       # Build the master branch.
       - master
-    tags: '*'
-  pull_request:
 
 jobs:
   test:
