@@ -242,11 +242,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest condition
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Tuple{}}}:
+1-element Vector{VarName{:m, Setfield.IdentityLens}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Tuple{}}}:
+1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
  inner.m
 ```
 
@@ -350,14 +350,17 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Tuple{}}}:
+1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
        cm = condition(contextualize(m, PrefixContext{:a}(condition(var"a.m"=1.0))), x=100.0);
 
-julia> conditioned(cm)
-(x = 100.0, a.m = 1.0)
+julia> conditioned(cm).x
+100.0
+
+julia> conditioned(cm).var"a.m"
+1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
 Any[]
