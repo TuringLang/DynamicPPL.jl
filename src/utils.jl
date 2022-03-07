@@ -21,7 +21,7 @@ julia> @model function demo(x)
 
 julia> x = [1.3, -2.1];
 
-julia> loglikelihood(demo(x), (μ=0.2,)) ≈ my_loglikelihood(x, 0.2)
+julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
 true
 ```
 
@@ -57,6 +57,7 @@ true
                μ ~ Normal()
                if DynamicPPL.leafcontext(__context__) !== PriorContext()
                    @addlogprob! myloglikelihood(x, μ)
+               end
            end;
 
     julia> x = [1.3, -2.1];
