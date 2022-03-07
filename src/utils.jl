@@ -35,7 +35,6 @@ julia> @model function demo(x)
                # Exit the model evaluation early
                return
            end
-
            x ~ MvNormal(m, I)
            return
        end;
@@ -65,7 +64,7 @@ true
     julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2)
     true
 
-    julia> loglikelihood(demo(x), (μ=0.2,)) ≈ my_loglikelihood(x, 0.2)
+    julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
     true
     ```
 """
