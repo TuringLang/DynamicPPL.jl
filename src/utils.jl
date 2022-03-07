@@ -44,11 +44,11 @@ true
 ```
 
 !!! note
-    The `@addlogprob!` macro increases the accumulated log probability, regardless of the evaluation context,
+    The `@addlogprob!` macro increases the accumulated log probability regardless of the evaluation context,
     i.e., regardless of whether you evaluate the log prior, the log likelihood or the log joint density.
-    If you would like to avoid this behaviour you should add check the evaluation context
+    If you would like to avoid this behaviour you should check the evaluation context.
     It can be accessed with the internal variable `__context__`.
-    For instance, in the following example the log density is not accumulated with `@addlogprob!` when the log prior is computed:  
+    For instance, in the following example the log density is not accumulated when only the log prior is computed:  
     ```jldoctest; setup = :(using Distributions)
     julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
 
