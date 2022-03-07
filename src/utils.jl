@@ -39,7 +39,7 @@ julia> @model function demo(x)
            return
        end;
 
-julia> logjoint(demo([-2.1]), (μ=[0.2],)) == -Inf
+julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
 true
 ```
 
