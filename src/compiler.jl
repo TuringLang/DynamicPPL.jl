@@ -262,7 +262,7 @@ function build_model_info(input_expr)
     # Extract the names of the arguments.
     allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
-            (::Type{T_}) | (name_::Type{T_}) => T
+            (::S_{T_}) | (name_::Type{T_}) => T
             name_::T_ => name
             x_ => x
         end
