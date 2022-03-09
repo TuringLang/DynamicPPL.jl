@@ -1,0 +1,46 @@
+---
+title: The Procedural Paradigm
+---
+
+What *is* a DynamicPPL model? This is an important question, because the way DynamicPPL treats models can be different from how you'd think of them. DynamicPPL is *procedural*: everything is a series of instructions (a procedure/impure function). This procedure modifies or returns `AbstractVarInfo` objects.
+
+Unlike in the object-oriented approach, a model does not have many properties or attributes. Procedural programming is also very different from functional programming, where we might think of a model as a pure mathematical function like a probability density. Each `~` statement in DynamicPPL is not a pure function, as they can behave differently depending on a model's internal state and the context surrounding them.
+
+
+### Model evaluation
+
+Let's use a simple model as an example:
+```@example
+using DynamicPPL, Distributions, Random
+rng = Xoshiro(1776);  # Set seed for reproducibility
+@model function demo(x)
+   μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
+   x .~ Normal(μ, 1)
+   return nothing
+end
+
+dataset = [-1, 1, 1]
+model = demo(dataset)
+```
+
+We can execute a model using `DynamicPPL.evaluate!!`. This will always return two values: the return value for the function (in our case `nothing`) and a `VarInfo`. (It will also modify `VarInfo` if `VarInfo` is mutable.)
+
+Let's run through the most important DynamicPPL `Context`s. First we have the `SamplingContext`, which draws a new `VarInfo` using a given sampler. By default, this draws a sample from the prior and calculates its log joint density (likelihood plus prior).
+```@example
+# specifying default args is not necessary
+ctx = SamplingContext(rng, SampleFromPrior(), DefaultContext())  
+_, x1 = DynamicPPL.evaluate!!(model, x0, ctx)
+```
+
+On the other hand, if we call a model with a `LikelihoodContext` and a preexisting `VarInfo`, the model evaluates the likelihood function (ignoring the prior) and inserts it into the `logp` field, leaving the sample unchanged:
+```@example
+_, x2 = DynamicPPL.evaluate!!(model, deepcopy(x1), LikelihoodContext())
+```
+
+And the value of `logp` for `x1` is equal to the likelihood plus the prior:
+```@example
+_, x3 = DynamicPPL.evaluate!!(model, deepcopy(x1), PriorContext())
+getlogp(x1) ≈ getlogp(x2) + getlogp(x3)
+```
+
+

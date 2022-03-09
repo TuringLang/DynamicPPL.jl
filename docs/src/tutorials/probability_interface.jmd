@@ -1,0 +1,70 @@
+---
+title: The Probability Interface
+---
+
+For basic queries, Turing can most , closely linked to [AbstractPPL](https://github.com/TuringLang/AbstractPPL.jl). This interface provides two basic functions, `condition` and `logdensity`, which we can use to calculate the probability of a given value.
+
+Let's build a model to use in our example.
+```@example
+using DynamicPPL, Distributions, Random, Turing
+rng = Xoshiro(1776);  # Set seed for reproducibility
+
+@model function gdemo()
+   μ ~ Normal(0, 1)  # Our prior is a standard normal
+   x .~ Normal(μ, 1)  # Our data follows a normal distribution
+   return nothing
+end
+
+dataset = [-1, 1, 1]
+```
+
+## Conditioning and Deconditioning
+
+Bayesian models can be transformed with two main operations, conditioning and deconditioning (also known as marginalization). Conditioning takes a variable and fixes its value as known. We do this by passing a model and a named tuple of conditioned variables to `|`:
+```@example
+model = gdemo() | (x = dataset, μ = 0,)
+```
+
+This operation can be reversed by applying `decondition`:
+```@example
+decondition(model)
+```
+
+We can also decondition only some of the variables:
+```@example
+decondition(model, :x)
+```
+
+If we want, we can also condition on a posterior sample. For example:
+```@example
+sample(rng, demo() | (x = [1, -1, 0],), NUTS(), MCMCThreads(), 1_000, 12)
+```
+
+
+## Probabilities and Densities
+
+We often want to calculate the (unnormalized) probability density assigned to an event. This probability might be a prior, a likelihood, or a posterior (joint) density. DynamicPPL provides convenient functions for this. Say we wanted to calculate the probability of a dataset given a model:
+```@example
+logjoint(model, x) ≈ loglikelihood(model, x) + logprior(model, x)
+```
+
+For convenience, we provide the functions `logprior`, `loglikelihood`, and `logjoint` to calculate probabilities for a `VarInfo` or named tuple, given a model:
+```@example
+logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
+```
+
+Moreover, 
+
+Let's create a random sample from the prior for illustration purposes. We can do this with `rand`:
+```@example
+x = rand(rng, model)
+```
+
+
+
+## Example: Holdout Set Testing
+
+To give an example of the probability interface in use, we can write a function to test the performance of our model using a holdout set. 
+```@example
+function 
+```

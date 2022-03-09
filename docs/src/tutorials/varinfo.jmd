@@ -1,0 +1,37 @@
+---
+title: SimpleVarInfo and Posterior Draws
+---
+
+## Overview
+
+`SimpleVarInfo` is the object used to store draws from the posterior in DynamicPPL. It has two fields, `values` and `logp`. The `values` field is a collection that makes up a single sample from the distribution, while the `logp` field holds the log probability of the sample.
+
+
+## The Two Types
+
+`SimpleVarInfo`s come in two flavors, depending on how whether they store their posterior draws in a named tuple or a dictionary. `NamedTuple`s are much faster data structures than `Dict`s, because they are immutable and the types of all the fields are known at compile time. `Dict`s are slower but more flexible, allowing users to specify models with a possibly varying number of parameters or unknown types.
+
+## Construction
+
+A `SimpleVarInfo` can be constructed in two ways. The first is by specifying the fields directly with a named tuple and number:
+```@example
+using DynamicPPL, Distributions
+
+x = SimpleVarInfo((μ=0,), logpdf(Normal(0, 1), 0))
+```
+
+`SimpleVarInfo` structs can also be sampled from the prior by calling `rand(rng, SimpleVarInfo, model)`:
+```@example
+rng = Xoshiro(1945)
+
+@model function demo(x)
+   μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
+   x .~ Normal(μ, 1)
+end
+
+posterior = demo([0, 1, 1])
+
+x = rand(rng, SimpleVarInfo, posterior)
+```
+
+

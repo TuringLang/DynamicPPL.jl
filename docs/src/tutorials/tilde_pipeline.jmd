@@ -1,0 +1,25 @@
+---
+title: Hooking into the Tilde Pipeline
+---
+
+As mentioned previously, DynamicPPL is a tracing, procedural, and multiple dispatch-oriented PPL. This means we pull information about a model by running it.
+
+This implementation of Importance Sampling uses the model prior distribution as a proposal distribution, and so we need samples from the prior. How can we get this? 
+
+`DynamicPPL.evaluate!!` runs the tilde statements of the model in order, and adds model information to the sampler (the instance of Sampler that stores information about the ongoing sampling process) at each step (see here for more information about how the @model macro is compiled). The DynamicPPL functions assume and observe determine what kind of information to add to the sampler for every tilde statement.
+
+
+As an example of an `InferenceAlgorithm`, we can take the importance sampling algorithm (`IS`) shown below:
+
+```@example
+@model function gdemo(x, y)
+    s² ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s²))
+    x ~ Normal(m, sqrt(s²))
+    y ~ Normal(m, sqrt(s²))
+end
+
+chn = sample(gdemo(1.5, 2), IS(), 1_000)
+```
+
+Importance sampling works by drawing samples from the prior, then reweighting those samples according to their likelihood to create a sample that matches the posterior. If a random sample $i$ has a likelihood of $p_i$, then the importance weight for that sample is $p_i / \sum_i p_i$.
