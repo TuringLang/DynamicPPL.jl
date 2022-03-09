@@ -90,7 +90,7 @@ julia> args = :(f(x::Int, y, ::Type{T}=Float64)).args[2:end]
  :y
  :($(Expr(:kw, :(::Type{T}), :Float64)))
 
-julia> addargnames!(args)
+julia> DynamicPPL.addargnames!(args)
 
 julia> args
 3-element Vector{Any}:
