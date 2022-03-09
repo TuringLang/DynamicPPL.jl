@@ -602,4 +602,10 @@ end
         @test !DynamicPPL.hasmissing(Matrix{Real})
         @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
     end
+
+    @testset "issue #393: anonymous argument with type parameter" begin
+        @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
+        @test f_393()() == 1
+        @test f_393(Val(true))() == 0
+    end
 end
