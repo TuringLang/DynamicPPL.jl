@@ -20,10 +20,9 @@ using DynamicPPL, Distributions
 x = SimpleVarInfo((μ=0,), logpdf(Normal(0, 1), 0))
 ```
 
-`SimpleVarInfo` structs can also be sampled from the prior by calling `rand(rng, SimpleVarInfo, model)`:
-```@example
-rng = Xoshiro(1945)
+In addition, `SimpleVarInfo` structs can be created by sampling them. By default, calling `SimpleVarInfo` on a model will sample from the model's prior.
 
+```@example
 @model function demo(x)
    μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
    x .~ Normal(μ, 1)

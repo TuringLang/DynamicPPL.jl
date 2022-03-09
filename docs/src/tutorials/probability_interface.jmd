@@ -18,6 +18,7 @@ end
 dataset = [-1, 1, 1]
 ```
 
+
 ## Conditioning and Deconditioning
 
 Bayesian models can be transformed with two main operations, conditioning and deconditioning (also known as marginalization). Conditioning takes a variable and fixes its value as known. We do this by passing a model and a named tuple of conditioned variables to `|`:
@@ -35,20 +36,12 @@ We can also decondition only some of the variables:
 decondition(model, :x)
 ```
 
-If we want, we can also condition on a posterior sample. For example:
-```@example
-sample(rng, demo() | (x = [1, -1, 0],), NUTS(), MCMCThreads(), 1_000, 12)
-```
-
 
 ## Probabilities and Densities
 
 We often want to calculate the (unnormalized) probability density assigned to an event. This probability might be a prior, a likelihood, or a posterior (joint) density. DynamicPPL provides convenient functions for this. Say we wanted to calculate the probability of a dataset given a model:
-```@example
-logjoint(model, x) ≈ loglikelihood(model, x) + logprior(model, x)
-```
 
-For convenience, we provide the functions `logprior`, `loglikelihood`, and `logjoint` to calculate probabilities for a `VarInfo` or named tuple, given a model:
+For convenience, we provide the functions `logprior`, `loglikelihood`, and `logjoint` to calculate probabilities for a named tuple, given a model:
 ```@example
 logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ```
@@ -66,5 +59,10 @@ x = rand(rng, model)
 
 To give an example of the probability interface in use, we can write a function to test the performance of our model using a holdout set. 
 ```@example
-function 
+function holdout_test(model, data, holdout)
+   # Calculate the probability of the holdout set
+   logjoint(model, holdout)
+   # Calculate the probability of the training set
+   logjoint(model, data)
+end
 ```
