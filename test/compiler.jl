@@ -456,7 +456,7 @@ end
             num_obs = length(y)
             @inbounds for i in 1:num_obs
                 @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
-                y[i] ~ MvNormal(x, 0.1)
+                y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
 
@@ -587,5 +587,19 @@ end
         # With assignment.
         @model outer() = @submodel x = inner()
         @test outer()() isa Real
+    end
+
+    @testset "issue #368: hasmissing dispatch" begin
+        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
+
+        # (nested) arrays with `Missing` eltypes
+        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
+        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
+        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
+
+        # no `Missing`
+        @test !DynamicPPL.hasmissing(Vector{Float64})
+        @test !DynamicPPL.hasmissing(Matrix{Real})
+        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
     end
 end

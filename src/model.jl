@@ -242,11 +242,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest condition
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Tuple{}}}:
+1-element Vector{VarName{:m, Setfield.IdentityLens}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Tuple{}}}:
+1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
  inner.m
 ```
 
@@ -350,14 +350,17 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Tuple{}}}:
+1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
        cm = condition(contextualize(m, PrefixContext{:a}(condition(var"a.m"=1.0))), x=100.0);
 
-julia> conditioned(cm)
-(x = 100.0, a.m = 1.0)
+julia> conditioned(cm).x
+100.0
+
+julia> conditioned(cm).var"a.m"
+1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
 Any[]
@@ -397,7 +400,9 @@ Returns both the return-value of the original model, and the resulting varinfo.
 The method resets the log joint probability of `varinfo` and increases the evaluation
 number of `sampler`.
 """
-function evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+function AbstractPPL.evaluate!!(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext
+)
     return if use_threadsafe_eval(context, varinfo)
         evaluate_threadsafe!!(model, varinfo, context)
     else
@@ -405,7 +410,7 @@ function evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractCon
     end
 end
 
-function evaluate!!(
+function AbstractPPL.evaluate!!(
     model::Model,
     rng::Random.AbstractRNG,
     varinfo::AbstractVarInfo=VarInfo(),
@@ -415,21 +420,25 @@ function evaluate!!(
     return evaluate!!(model, varinfo, SamplingContext(rng, sampler, context))
 end
 
-evaluate!!(model::Model, context::AbstractContext) = evaluate!!(model, VarInfo(), context)
+function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
+    return evaluate!!(model, VarInfo(), context)
+end
 
-function evaluate!!(model::Model, args...)
+function AbstractPPL.evaluate!!(model::Model, args...)
     return evaluate!!(model, Random.GLOBAL_RNG, args...)
 end
 
 # without VarInfo
-function evaluate!!(
+function AbstractPPL.evaluate!!(
     model::Model, rng::Random.AbstractRNG, sampler::AbstractSampler, args...
 )
     return evaluate!!(model, rng, VarInfo(), sampler, args...)
 end
 
 # without VarInfo and without AbstractSampler
-function evaluate!!(model::Model, rng::Random.AbstractRNG, context::AbstractContext)
+function AbstractPPL.evaluate!!(
+    model::Model, rng::Random.AbstractRNG, context::AbstractContext
+)
     return evaluate!!(model, rng, VarInfo(), SampleFromPrior(), context)
 end
 
@@ -510,6 +519,27 @@ getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missing
 Get the name of the `model` as `Symbol`.
 """
 Base.nameof(model::Model) = model.name
+
+"""
+    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
+
+Generate a sample of type `T` from the prior distribution of the `model`.
+"""
+function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
+    x = last(
+        evaluate!!(
+            model,
+            SimpleVarInfo{Float64}(),
+            SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+        ),
+    )
+    return DynamicPPL.values_as(x, T)
+end
+
+# Default RNG and type
+Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
+Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
+Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
 
 """
     logjoint(model::Model, varinfo::AbstractVarInfo)
