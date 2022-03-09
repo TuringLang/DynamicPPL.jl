@@ -83,7 +83,7 @@ The names are generated with `gensym(:arg)` to avoid conflicts with other variab
 
 # Examples
 
-```jldoctest
+```jldoctest; filter = r"var\"##arg#[0-9]+\""
 julia> args = :(f(x::Int, y, ::Type{T}=Float64)).args[2:end]
 3-element Vector{Any}:
  :(x::Int)
