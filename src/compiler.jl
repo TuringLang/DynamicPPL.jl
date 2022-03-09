@@ -245,6 +245,9 @@ function build_model_info(input_expr)
         return modelinfo
     end
 
+    # Ensure that all arguments have a name, i.e., are of the form `name` or `name::T`
+    addargnames!(modeldef[:args])
+
     # Extract the positional and keyword arguments from the model definition.
     allargs = vcat(modeldef[:args], modeldef[:kwargs])
 
@@ -262,8 +265,7 @@ function build_model_info(input_expr)
     # Extract the names of the arguments.
     allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
-            (::S_{T_}) | (name_::Type{T_}) => T
-            name_::T_ => name
+            (name_::_) => name
             x_ => x
         end
     end

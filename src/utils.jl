@@ -75,6 +75,48 @@ macro addlogprob!(ex)
 end
 
 """
+    addargnames!(args)
+
+Adds names to unnamed arguments in `args`.
+
+The names are generated with `gensym(:arg)` to avoid conflicts with other variable names.
+
+# Examples
+
+```jldoctest
+julia> args = :(f(x::Int, y, ::Type{T}=Float64)).args[2:end]
+3-element Vector{Any}:
+ :(x::Int)
+ :y
+ :($(Expr(:kw, :(::Type{T}), :Float64)))
+
+julia> addargnames!(args)
+
+julia> args
+3-element Vector{Any}:
+ :(x::Int)
+ :y
+ :($(Expr(:kw, :(var"##arg#301"::Type{T}), :Float64)))
+```
+"""
+function addargnames!(args)
+    if isempty(args)
+        return nothing
+    end
+
+    @inbounds for i in eachindex(args)
+        arg = args[i]
+        if MacroTools.@capture(arg, ::T_)
+            args[i] = Expr(:(::), gensym(:arg), T)
+        elseif MacroTools.@capture(arg, ::T_ = val_)
+            args[i] = Expr(:kw, Expr(:(::), gensym(:arg), T), val)
+        end
+    end
+
+    return nothing
+end
+
+"""
     getargs_dottilde(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L .~ R` or
