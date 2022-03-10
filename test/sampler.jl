@@ -65,7 +65,13 @@
 
             # parallel sampling
             chains = sample(
-                model, sampler, MCMCThreads(), 1, 10; init_params=fill(0.2, 10), progress=false
+                model,
+                sampler,
+                MCMCThreads(),
+                1,
+                10;
+                init_params=fill(0.2, 10),
+                progress=false,
             )
             for c in chains
                 @test c[1].metadata.p.vals == [0.2]
@@ -86,7 +92,13 @@
 
             # parallel sampling
             chains = sample(
-                model, sampler, MCMCThreads(), 1, 10; init_params=fill([4, -1], 10), progress=false
+                model,
+                sampler,
+                MCMCThreads(),
+                1,
+                10;
+                init_params=fill([4, -1], 10),
+                progress=false,
             )
             for c in chains
                 @test c[1].metadata.s.vals == [4]
