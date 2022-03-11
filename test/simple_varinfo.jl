@@ -58,7 +58,8 @@
         end
     end
 
-    @testset "SimpleVarInfo on $(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "SimpleVarInfo on $(nameof(model))" for model in
+                                                     DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
         m = model().m
