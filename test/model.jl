@@ -4,12 +4,12 @@ struct MyModel
 end
 @model function (f::MyModel)(x)
     m ~ Normal(f.a, 1)
-    x ~ Normal(m, 1)
+    return x ~ Normal(m, 1)
 end
 struct MyZeroModel end
 @model function (::MyZeroModel)(x)
     m ~ Normal(0, 1)
-    x ~ Normal(m, 1)
+    return x ~ Normal(m, 1)
 end
 
 @testset "model.jl" begin
@@ -78,12 +78,12 @@ end
         function test3 end
         @model function (::typeof(test3))(x)
             m ~ Normal(0, 1)
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
         function test4 end
         @model function (a::typeof(test4))(x)
             m ~ Normal(0, 1)
-            x ~ Normal(m, 1)
+            return x ~ Normal(m, 1)
         end
 
         @test nameof(test1(rand())) == :test1
