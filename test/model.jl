@@ -93,7 +93,7 @@ end
 
         # callables
         @test nameof(MyModel(3)(rand())) == Symbol("MyModel(3)")
-        @test nameof(MyZeroModel()(rand())) == :MyZeroModel
+        @test nameof(MyZeroModel()(rand())) == Symbol("MyZeroModel()")
     end
 
     @testset "Internal methods" begin
