@@ -594,19 +594,24 @@ function build_output(modelinfo, linenumbernode)
     allargs_namedtuple = modelinfo[:allargs_namedtuple]
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
+    # Obtain or generate the name of the model to support functors:
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/367
+    modeldef = modelinfo[:modeldef]
+    if MacroTools.@capture(modeldef[:name], ::T_)
+        name = gensym(:f)
+        modeldef[:name] = Expr(:(::), name, T)
+    elseif MacroTools.@capture(modeldef[:name], (name_::_ | name_))
+    else
+        throw(ArgumentError("unsupported format of model function"))
+    end
+
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
-    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model)(
-            $(QuoteNode(modeldef[:name])),
-            $(modeldef[:name]),
-            $allargs_namedtuple,
-            $defaults_namedtuple,
-        )
+        return $(DynamicPPL.Model)($name, $allargs_namedtuple, $defaults_namedtuple)
     end
 
     return MacroTools.@q begin
