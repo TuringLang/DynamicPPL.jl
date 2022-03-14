@@ -136,23 +136,10 @@
 
             # parallel sampling
             Random.seed!(1234)
-            chains1 = sample(
-                model,
-                sampler,
-                MCMCThreads(),
-                1,
-                10;
-                progress=false,
-            )
+            chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
             Random.seed!(1234)
             chains2 = sample(
-                model,
-                sampler,
-                MCMCThreads(),
-                1,
-                10;
-                init_params=nothing,
-                progress=false,
+                model, sampler, MCMCThreads(), 1, 10; init_params=nothing, progress=false
             )
             for (c1, c2) in zip(chains1, chains2)
                 @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
