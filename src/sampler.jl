@@ -69,7 +69,7 @@ end
 
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; resume_from=nothing, kwargs...
+    rng::Random.AbstractRNG, model::Model, spl::Sampler; resume_from=nothing, init_params=nothing, kwargs...
 )
     if resume_from !== nothing
         state = loadstate(resume_from)
@@ -81,7 +81,6 @@ function AbstractMCMC.step(
     vi = VarInfo(rng, model, _spl)
 
     # Update the parameters if provided.
-    init_params = get(kwargs, :init_params, nothing)
     if init_params !== nothing
         vi = initialize_parameters!!(vi, init_params, spl)
 
@@ -97,7 +96,7 @@ function AbstractMCMC.step(
         end
     end
 
-    return initialstep(rng, model, spl, vi; kwargs...)
+    return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
 end
 
 """
