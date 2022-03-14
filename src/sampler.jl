@@ -69,7 +69,12 @@ end
 
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; resume_from=nothing, init_params=nothing, kwargs...
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Sampler;
+    resume_from=nothing,
+    init_params=nothing,
+    kwargs...,
 )
     if resume_from !== nothing
         state = loadstate(resume_from)
