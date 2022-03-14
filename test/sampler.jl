@@ -125,6 +125,26 @@
                 @test !ismissing(c[1].metadata.s.vals[1])
                 @test c[1].metadata.m.vals == [-1]
             end
+
+            # specify `init_params=nothing`
+            Random.seed!(1234)
+            chain1 = sample(model, sampler, 1; progress=false)
+            Random.seed!(1234)
+            chain2 = sample(model, sampler, 1; init_params=nothing, progress=false)
+            @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
+            @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
+
+            # parallel sampling
+            Random.seed!(1234)
+            chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
+            Random.seed!(1234)
+            chains2 = sample(
+                model, sampler, MCMCThreads(), 1, 10; init_params=nothing, progress=false
+            )
+            for (c1, c2) in zip(chains1, chains2)
+                @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
+                @test c1[1].metadata.s.vals == c2[1].metadata.s.vals
+            end
         end
     end
 end
