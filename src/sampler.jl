@@ -81,8 +81,9 @@ function AbstractMCMC.step(
     vi = VarInfo(rng, model, _spl)
 
     # Update the parameters if provided.
-    if haskey(kwargs, :init_params)
-        vi = initialize_parameters!!(vi, kwargs[:init_params], spl)
+    init_params = get(kwargs, :init_params, nothing)
+    if init_params !== nothing
+        vi = initialize_parameters!!(vi, init_params, spl)
 
         # Update joint log probability.
         # TODO: fix properly by using sampler and evaluation contexts
