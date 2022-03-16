@@ -11,6 +11,7 @@ title: SimpleVarInfo and Posterior Draws
 
 `SimpleVarInfo`s come in two flavors, depending on how whether they store their posterior draws in a named tuple or a dictionary. `NamedTuple`s are much faster data structures than `Dict`s, because they are immutable and the types of all the fields are known at compile time. `Dict`s are slower but more flexible, allowing users to specify models with a possibly varying number of parameters or unknown types.
 
+
 ## Construction
 
 A `SimpleVarInfo` can be constructed in two ways. The first is by specifying the fields directly with a named tuple and number:

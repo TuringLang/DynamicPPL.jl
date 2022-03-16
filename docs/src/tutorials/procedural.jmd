@@ -1,5 +1,5 @@
 ---
-title: The Procedural Paradigm
+title: The Procedural Interface
 ---
 
 What *is* a DynamicPPL model? This is an important question, because the way DynamicPPL treats models can be different from how you'd think of them. DynamicPPL is *procedural*: everything is a series of instructions (a procedure/impure function). This procedure modifies or returns `AbstractVarInfo` objects.
@@ -7,16 +7,16 @@ What *is* a DynamicPPL model? This is an important question, because the way Dyn
 Unlike in the object-oriented approach, a model does not have many properties or attributes. Procedural programming is also very different from functional programming, where we might think of a model as a pure mathematical function like a probability density. Each `~` statement in DynamicPPL is not a pure function, as they can behave differently depending on a model's internal state and the context surrounding them.
 
 
-### Model evaluation
+## Model evaluation
 
 Let's use a simple model as an example:
 ```@example
 using DynamicPPL, Distributions, Random
 rng = Xoshiro(1776);  # Set seed for reproducibility
 @model function demo(x)
-   μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
-   x .~ Normal(μ, 1)
-   return nothing
+    μ ~ Normal(0, 1)  # Our prior is a standard normal distribution
+    x .~ Normal(μ, 1)
+    return nothing
 end
 
 dataset = [-1, 1, 1]
@@ -43,4 +43,38 @@ _, x3 = DynamicPPL.evaluate!!(model, deepcopy(x1), PriorContext())
 getlogp(x1) ≈ getlogp(x2) + getlogp(x3)
 ```
 
+
+## The Tilde Pipeline
+
+The most important function in DynamicPPL is the `~` statement, so much so that a model can be thought of as a "Tilde pipeline" that passes `AbstractVarInfo` objects from one tilde to the next. `@model` rewrites `~`s into `tilde_observe` or `tilde_assume` depending on whether they belong to the prior or likelihood, respectively. `tilde_assume(context, right, vn, vi)` returns a tuple `var, log_prior, vi`. `tilde_observe(context, right, left, vi)` returns a tuple `log_likelihood, vi`. 
+
+This procedural approach lets us modify the execution of a model using multiple dispatch. Let's show this by building a rejection sampler. In a rejection sampler, we first sample from a uniform distribution on a given interval, then accept the point if and only if it falls beneath the PDF. We can easily visualize this in Julia, sampling from $f(x) = 1 - x^2$:
+```@example
+using Plots, InvertedIndices
+
+x = rand(rng, 1000)
+y = rand(rng, 1000)
+
+# Only accept if the point falls under the PDF
+accept = @. y < 1 - x^2
+
+plot(x -> 1 - x^2; xlim=[0, 1]);
+scatter!(x[accept], y[accept]; label="accepted");
+scatter!(x[Not(accept)], y[Not(accept)]; label="rejected")
+```
+
+However, a rejection sampler only works when we have a variable with a bounded support. If the support is infinite, we can't sample from a uniform distribution over the support. Luckily, we can fix this by first transforming the variables we'd like to sample so they're on a bounded interval. One transformation we can use is the CDF of the prior distribution. If the prior and posterior are similar, the rejection rate will be low, because the transformed posterior will be approximately uniform.
+
+
+How can we transform the sampling space like this, though? We can do it by overloading `assume`.
+```@example
+function DynamicPPL.assume(
+    rng::Random.AbstractRNG,
+    sampler::DynamicPPL.Sampler{<:Rejection},
+    dist::Distribution,
+    vn::DynamicPPL.VarName,
+    vi::DynamicPPL.AbstractVarInfo,
+)
+end
+```
 

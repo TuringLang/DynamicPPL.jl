@@ -1,10 +1,10 @@
 ---
-title: The Probability Interface
+title: The Basic Interface
 ---
 
-For basic queries, Turing can most , closely linked to [AbstractPPL](https://github.com/TuringLang/AbstractPPL.jl). This interface provides two basic functions, `condition` and `logdensity`, which we can use to calculate the probability of a given value.
+The easiest way to manipulate and query DynamicPPL models is via the interfaces defined by [AbstractPPL](https://github.com/TuringLang/AbstractPPL.jl) and [DensityInterface.jl](https://github.com/JuliaMath/DensityInterface.jl).
 
-Let's build a model to use in our example.
+Let's build a model to use as an example.
 ```@example
 using DynamicPPL, Distributions, Random, Turing
 rng = Xoshiro(1776);  # Set seed for reproducibility
@@ -15,7 +15,7 @@ rng = Xoshiro(1776);  # Set seed for reproducibility
    return nothing
 end
 
-dataset = [-1, 1, 1]
+dataset = randn(rng, 100)
 ```
 
 
@@ -40,29 +40,40 @@ decondition(model, :x)
 ## Probabilities and Densities
 
 We often want to calculate the (unnormalized) probability density assigned to an event. This probability might be a prior, a likelihood, or a posterior (joint) density. DynamicPPL provides convenient functions for this. Say we wanted to calculate the probability of a dataset given a model:
+```@example
+logdensityof(model, dataset)
+```
 
 For convenience, we provide the functions `logprior`, `loglikelihood`, and `logjoint` to calculate probabilities for a named tuple, given a model:
 ```@example
 logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ```
 
-Moreover, 
 
-Let's create a random sample from the prior for illustration purposes. We can do this with `rand`:
+## Example: Cross-validation
+
+To give an example of the probability interface in use, we can write a function to test the performance of our model using cross-validation. In cross validation, we split the dataset into a training and test set, and we train the model on the training set, then calculate the fit to the test set. Here, we measure fit using the cross entropy (Bayes loss). (See Turing's [ParetoSmooth](https://github.com/TuringLang/ParetoSmooth.jl) package for a faster implementation of cross-validation with less error.)
 ```@example
-x = rand(rng, model)
-```
+using MLUtils
+
+data = randn(rng, 100)
 
 
+for (train, test) in kfolds(data, 5)
+   trained_posterior = sample(
+      rng,
+      gdemo() | (x = train,),
+      NUTS(),
+      MCMCThreads(),
+      1000,
+      12,
+   )
 
-## Example: Holdout Set Testing
+   test_loss = logdensityof(gdemo() | (x = test,), trained_posterior)
+   training_loss = logdensityof(gdemo() | (x = train,), trained_posterior)
+   total_loss = logdensityof(gdemo() | (x = data,), trained_posterior)
+   test_loss == total_loss - training_loss
 
-To give an example of the probability interface in use, we can write a function to test the performance of our model using a holdout set. 
-```@example
-function holdout_test(model, data, holdout)
-   # Calculate the probability of the holdout set
-   logjoint(model, holdout)
-   # Calculate the probability of the training set
-   logjoint(model, data)
 end
+
 ```

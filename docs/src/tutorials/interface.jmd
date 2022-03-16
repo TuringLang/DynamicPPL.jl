@@ -5,25 +5,9 @@ title: Sampler Interface
 The interface for `sample` is designed to make sampling easy for users, but it can be confusing at first for developers. This tutorial will walk through the interface and how to add a new sampler, using Metropolis-Hastings as an example.
 
 
-## Inference Algorithms
-
-An `InferenceAlgorithm` is a struct containing information about how to generate samples from the posterior. This should include any parameters, e.g. the number of steps to take in an HMC algorithm. For random-walk Metropolis, this is very simple, since the only parameter is the proposal:
-```@example
-using DynamicPPL, AbstractMCMC, Distributions
-
-struct MH{P<:Distribution}
-    proposal::P
-end
-```
-
-
 ## Samplers
 
-Samplers are not the same as `InferenceAlgorithm`s. An `AbstractSampler` is an object that stores information about how the model and algorithm interact during sampling, and is modified as sampling progresses.
-
-DynamicPPL provides the concrete `Sampler` struct to implement AbstractMCMC's `AbstractSampler`. The `Sampler` struct has two important fields:
-1. `sampler.alg`: the sampling method used, an `InferenceAlgorithm`.
-2. `sampler.state`: information about the sampling process.
+An `AbstractSampler` is an object that stores information about how the model and algorithm interact.
 
 When you call `sample(mod, algorithm, n_samples)`, Turing first builds a sampler, then calls the AbstractMCMC function `sample(mod, sampler, n_samples)`.
 
@@ -48,16 +32,17 @@ function AbstractMCMC.step(
     kwargs...
 )
     # state is just a tuple containing the last sample and its log probability
-    sample, logp = state
+    sample, logjoint_sample = state
     proposed = sampler.proposal(rng, sample)
     logjoint_proposed = logjoint(model, proposed)
 
     # decide whether to accept or reject the next proposal
-    if log_prob < logjoint_proposed + randexp(rng)
-        sample = proposed, (proposed, logjoint_proposed)
+    if logjoint_sample < logjoint_proposed + randexp(rng)
+        sample = proposed
+        logjoint_sample = logjoint_proposed
     end
 
-    return sample, (sample, log_prob)
+    return sample, (sample, logjoint_sample)
 end
 ```
 
@@ -68,45 +53,7 @@ function AbstractMCMC.step(
     init_from=rand(rng, model),  # `rand` draws a named tuple from the prior
     kwargs...
 )
-    state = init_from, logjoint(model, init_from)
+    state = (init_from, logjoint(model, init_from),)
     return AbstractMCMC.step(rng, model, sampler, state; kwargs...)
-end
-```
-
-
-## Wrap-up
-
-After sampling, we often want to bundle the samples together together with some additional information. This is done with `AbstractMCMC.bundle_samples`. For example, let's say we wanted to estimate the Bayes factor (marginal likelihood) of the model. We could do this by overloading `bundle_samples` to estimate the Bayes factor using the harmonic mean estimator. (Note: The harmonic mean estimator [should *never* be used](https://radfordneal.wordpress.com/2008/08/17/the-harmonic-mean-of-the-likelihood-worst-monte-carlo-method-ever/), as its variance is often infinite!)
-```@example
-function bundle_samples(
-    samples::Vector, 
-    model::AbstractModel,
-    sampler::MHSampler, 
-    state,
-    chain_type::Type{MCMCChains.Chains};
-    kwargs...
-)
-    # calculate the harmonic mean of the likelihoods
-    log_evidence = inv(
-        mean(samples) do sample
-            exp(-loglikelihood(model, sample))
-        end
-    )
-    
-
-    # determine the correct types to invoke the 
-    types = merge(
-        typeof.((samples, model,)),
-        (Sampler{<:InferenceAlgorithm},),
-        typeof.((state, chain_type,))
-    )
-
-    # complete the bundle using the generic method for bundling
-    return invoke(
-        AbstractMCMC.bundle_samples, 
-        types;
-        evidence=log_evidence,
-        kwargs...
-    )
 end
 ```
