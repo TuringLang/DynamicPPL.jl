@@ -272,27 +272,27 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     end
 end
 
-struct ConditionContext{Names,Values,Ctx<:AbstractContext} <: AbstractContext
+struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
 
-    function ConditionContext{Values}(
-        values::Values, context::AbstractContext
-    ) where {names,Values<:NamedTuple{names}}
-        return new{names,typeof(values),typeof(context)}(values, context)
-    end
+    # function ConditionContext{Values}(
+    #     values::Values, context::AbstractContext
+    # ) where {names,Values<:NamedTuple{names}}
+    #     return new{names,typeof(values),typeof(context)}(values, context)
+    # end
 end
+
+const NamedConditionContext{Names} = ConditionContext{<:NamedTuple{Names}}
+const DictConditionContext = ConditionContext{<:AbstractDict}
 
 function ConditionContext(values::NamedTuple)
     return ConditionContext(values, DefaultContext())
 end
-function ConditionContext(values::NamedTuple, context::AbstractContext)
-    return ConditionContext{typeof(values)}(values, context)
-end
 
 # Try to avoid nested `ConditionContext`.
 function ConditionContext(
-    values::NamedTuple{Names}, context::ConditionContext
+    values::NamedTuple{Names}, context::NamedConditionContext
 ) where {Names}
     # Note that this potentially overrides values from `context`, thus giving
     # precedence to the outmost `ConditionContext`.
@@ -303,7 +303,7 @@ function Base.show(io::IO, context::ConditionContext)
     return print(io, "ConditionContext($(context.values), $(childcontext(context)))")
 end
 
-NodeTrait(context::ConditionContext) = IsParent()
+NodeTrait(::ConditionContext) = IsParent()
 childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
@@ -314,14 +314,17 @@ Return `true` if `vn` is found in `context`.
 """
 hasvalue(context, vn) = false
 
-function hasvalue(context::ConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
+function hasvalue(::NamedConditionContext{vars}, vn::VarName{sym}) where {vars,sym}
     return sym in vars
 end
 function hasvalue(
-    context::ConditionContext{vars}, vn::AbstractArray{<:VarName{sym}}
+    ::NamedConditionContext{vars}, ::AbstractArray{<:VarName{sym}}
 ) where {vars,sym}
     return sym in vars
 end
+
+hasvalue(context::DictConditionContext, vn::VarName) = _haskey(context.values, vn)
+hasvalue(context::DictConditionContext, vns::AbstractArray{<:VarName}) = all(Base.Fix1(_haskey, context.values), vns)
 
 """
     getvalue(context, vn)
@@ -331,7 +334,8 @@ Return value of `vn` in `context`.
 function getvalue(context::AbstractContext, vn)
     return error("context $(context) does not contain value for $vn")
 end
-getvalue(context::ConditionContext, vn) = get(context.values, vn)
+getvalue(context::NamedConditionContext, vn) = get(context.values, vn)
+getvalue(context::DictConditionContext, vn) = _getindex(context.values, vn)
 
 """
     hasvalue_nested(context, vn)
@@ -389,7 +393,7 @@ See also: [`decondition`](@ref)
 AbstractPPL.condition(; values...) = condition(DefaultContext(), NamedTuple(values))
 AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
 AbstractPPL.condition(context::AbstractContext, values::NamedTuple{()}) = context
-function AbstractPPL.condition(context::AbstractContext, values::NamedTuple)
+function AbstractPPL.condition(context::AbstractContext, values::Union{Dict,NamedTuple})
     return ConditionContext(values, context)
 end
 function AbstractPPL.condition(context::AbstractContext; values...)

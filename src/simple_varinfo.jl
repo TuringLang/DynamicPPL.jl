@@ -186,15 +186,16 @@ end
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
 # `Dict`
-function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    if haskey(vi.values, vn)
-        return vi.values[vn]
+Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName) = _getindex(vi.values, vn)
+function _getindex(values::AbstractDict, vn::VarName)
+    if haskey(values, vn)
+        return values[vn]
     end
 
     # Split the lens into the key / `parent` and the extraction lens / `child`.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
         l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(vi.values, VarName(vn, l))
+        haskey(values, VarName(vn, l))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
     keylens = parent === nothing ? Setfield.IdentityLens() : parent
@@ -207,7 +208,7 @@ function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
 
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
-    value = vi.values[VarName(vn, keylens)]
+    value = values[VarName(vn, keylens)]
     return get(value, child)
 end
 
