@@ -1,6 +1,5 @@
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
-        name::Symbol
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -34,53 +33,49 @@ Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x 
 """
 struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
        AbstractProbabilisticProgram
-    name::Symbol
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
 
     @doc """
-        Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)
+        Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
 
-    Create a model of name `name` with evaluation function `f` and missing arguments
-    overwritten by `missings`.
+    Create a model with evaluation function `f` and missing arguments overwritten by
+    `missings`.
     """
     function Model{missings}(
-        name::Symbol,
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
         return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
-            name, f, args, defaults, context
+            f, args, defaults, context
         )
     end
 end
 
 """
-    Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])
+    Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-Create a model of name `name` with evaluation function `f` and missing arguments deduced
-from `args`.
+Create a model with evaluation function `f` and missing arguments deduced from `args`.
 
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
 @generated function Model(
-    name::Symbol,
     f::F,
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple=NamedTuple(),
     context::AbstractContext=DefaultContext(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(name, f, args, defaults, context))
+    return :(Model{$missings}(f, args, defaults, context))
 end
 
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.name, model.f, model.args, model.defaults, context)
+    return Model(model.f, model.args, model.defaults, context)
 end
 
 """
@@ -518,7 +513,8 @@ getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missing
 
 Get the name of the `model` as `Symbol`.
 """
-Base.nameof(model::Model) = model.name
+Base.nameof(model::Model) = Symbol(model.f)
+Base.nameof(model::Model{<:Function}) = nameof(model.f)
 
 """
     rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
