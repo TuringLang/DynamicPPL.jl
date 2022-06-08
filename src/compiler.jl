@@ -248,6 +248,9 @@ function build_model_info(input_expr)
         return modelinfo
     end
 
+    # Ensure that all arguments have a name, i.e., are of the form `name` or `name::T`
+    addargnames!(modeldef[:args])
+
     # Extract the positional and keyword arguments from the model definition.
     allargs = vcat(modeldef[:args], modeldef[:kwargs])
 
@@ -265,8 +268,7 @@ function build_model_info(input_expr)
     # Extract the names of the arguments.
     allargs_syms = map(allargs_exprs) do arg
         MacroTools.@match arg begin
-            (::Type{T_}) | (name_::Type{T_}) => T
-            name_::T_ => name
+            (name_::_) => name
             x_ => x
         end
     end
@@ -554,9 +556,10 @@ function make_returns_explicit!(body::Expr)
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
-hasmissing(T::Type{<:AbstractArray{TA}}) where {TA<:AbstractArray} = hasmissing(TA)
-hasmissing(T::Type{<:AbstractArray{>:Missing}}) = true
-hasmissing(T::Type) = false
+hasmissing(::Type) = false
+hasmissing(::Type{>:Missing}) = true
+hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
+hasmissing(::Type{Union{}}) = false # issue #368
 
 """
     build_output(modelinfo, linenumbernode)
@@ -599,19 +602,24 @@ function build_output(modelinfo, linenumbernode)
     allargs_namedtuple = modelinfo[:allargs_namedtuple]
     defaults_namedtuple = modelinfo[:defaults_namedtuple]
 
+    # Obtain or generate the name of the model to support functors:
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/367
+    modeldef = modelinfo[:modeldef]
+    if MacroTools.@capture(modeldef[:name], ::T_)
+        name = gensym(:f)
+        modeldef[:name] = Expr(:(::), name, T)
+    elseif MacroTools.@capture(modeldef[:name], (name_::_ | name_))
+    else
+        throw(ArgumentError("unsupported format of model function"))
+    end
+
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
-    modeldef = modelinfo[:modeldef]
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model)(
-            $(QuoteNode(modeldef[:name])),
-            $(modeldef[:name]),
-            $allargs_namedtuple,
-            $defaults_namedtuple,
-        )
+        return $(DynamicPPL.Model)($name, $allargs_namedtuple, $defaults_namedtuple)
     end
 
     return MacroTools.@q begin

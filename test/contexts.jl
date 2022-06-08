@@ -256,4 +256,19 @@ end
         @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
         @test getlens(vn_prefixed) === getlens(vn)
     end
+
+    @testset "SamplingContext" begin
+        context = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+        @test context isa SamplingContext
+
+        # convenience constructors
+        @test SamplingContext() == context
+        @test SamplingContext(Random.GLOBAL_RNG) == context
+        @test SamplingContext(SampleFromPrior()) == context
+        @test SamplingContext(DefaultContext()) == context
+        @test SamplingContext(Random.GLOBAL_RNG, SampleFromPrior()) == context
+        @test SamplingContext(Random.GLOBAL_RNG, DefaultContext()) == context
+        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
+        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
+    end
 end

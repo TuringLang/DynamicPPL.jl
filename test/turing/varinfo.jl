@@ -9,7 +9,7 @@
     )
         if !haskey(vi, vn)
             r = rand(dist)
-            push!(vi, vn, r, dist, spl)
+            push!!(vi, vn, r, dist, spl)
             r
         elseif is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
@@ -125,7 +125,7 @@
         @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
         @test get_num_produce(vi) == 3
 
-        vi = empty!(TypedVarInfo(vi))
+        vi = empty!!(TypedVarInfo(vi))
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
         increment_num_produce!(vi)
@@ -211,11 +211,11 @@
         dists = [Normal(0, 1), MvNormal(zeros(2), I), Wishart(7, [1 0.5; 0.5 1])]
         function test_varinfo!(vi)
             @test getlogp(vi) === 0.0
-            setlogp!(vi, 1)
+            vi = setlogp!!(vi, 1)
             @test getlogp(vi) === 1.0
-            acclogp!(vi, 1)
+            vi = acclogp!!(vi, 1)
             @test getlogp(vi) === 2.0
-            resetlogp!(vi)
+            vi = resetlogp!!(vi)
             @test getlogp(vi) === 0.0
 
             spl2 = Sampler(PG(5, :w, :u), empty_model())
@@ -263,7 +263,7 @@
         end
         vi = VarInfo()
         test_varinfo!(vi)
-        test_varinfo!(empty!(TypedVarInfo(vi)))
+        test_varinfo!(empty!!(TypedVarInfo(vi)))
 
         @model igtest() = begin
             x ~ InverseGamma(2, 3)
@@ -299,7 +299,7 @@
 
         g = Sampler(Gibbs(PG(10, :x, :y, :z), HMC(0.4, 8, :w, :u)), g_demo_f)
         pg, hmc = g.state.samplers
-        vi = empty!(TypedVarInfo(vi))
+        vi = empty!!(TypedVarInfo(vi))
         @inferred g_demo_f(vi, SampleFromPrior())
         pg.state.vi = vi
         step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)

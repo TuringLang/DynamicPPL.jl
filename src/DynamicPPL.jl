@@ -2,18 +2,15 @@ module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
-using Distributions
 using Bijectors
+using Distributions
 
 using AbstractMCMC: AbstractMCMC
+using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
+using Setfield: Setfield
 using ZygoteRules: ZygoteRules
-using BangBang: BangBang
-using Setfield: Setfield
-
-using Setfield: Setfield
-using BangBang: BangBang
 
 using Random: Random
 
@@ -31,8 +28,6 @@ import Base:
     setproperty!,
     keys,
     haskey
-
-using BangBang: push!!, empty!!, setindex!!
 
 # VarInfo
 export AbstractVarInfo,
@@ -137,7 +132,6 @@ log joint probability of the model.
 See also: [`VarInfo`](@ref)
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
-abstract type AbstractContext end
 
 include("utils.jl")
 include("selector.jl")
@@ -156,24 +150,5 @@ include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
-
-# Deprecations
-@deprecate empty!(vi::VarInfo) empty!!(vi::VarInfo)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution) push!!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution
-)
-@deprecate push!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler
-) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, sampler::AbstractSampler)
-@deprecate push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector) push!!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
-)
-@deprecate push!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector}
-) push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Set{Selector})
-
-@deprecate setlogp!(vi, logp) setlogp!!(vi, logp)
-@deprecate acclogp!(vi, logp) acclogp!!(vi, logp)
-@deprecate resetlogp!(vi) resetlogp!!(vi)
 
 end # module
