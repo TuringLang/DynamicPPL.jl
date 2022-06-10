@@ -120,7 +120,11 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 
 # Contexts
 """
-    SamplingContext(rng, sampler, context)
+    SamplingContext(
+            [rng::Random.AbstractRNG=Random.GLOBAL_RNG],
+            [sampler::AbstractSampler=SampleFromPrior()],
+            [context::AbstractContext=DefaultContext()],
+    )
 
 Create a context that allows you to sample parameters with the `sampler` when running the model.
 The `context` determines how the returned log density is computed when running the model.
@@ -132,10 +136,26 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
     sampler::S
     context::C
 end
-SamplingContext(sampler, context) = SamplingContext(Random.GLOBAL_RNG, sampler, context)
-SamplingContext(context::AbstractContext) = SamplingContext(SampleFromPrior(), context)
-SamplingContext(sampler::AbstractSampler) = SamplingContext(sampler, DefaultContext())
-SamplingContext() = SamplingContext(SampleFromPrior())
+
+function SamplingContext(
+    rng::Random.AbstractRNG=Random.GLOBAL_RNG, sampler::AbstractSampler=SampleFromPrior()
+)
+    return SamplingContext(rng, sampler, DefaultContext())
+end
+
+function SamplingContext(
+    sampler::AbstractSampler, context::AbstractContext=DefaultContext()
+)
+    return SamplingContext(Random.GLOBAL_RNG, sampler, context)
+end
+
+function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
+    return SamplingContext(rng, SampleFromPrior(), context)
+end
+
+function SamplingContext(context::AbstractContext)
+    return SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
+end
 
 NodeTrait(context::SamplingContext) = IsParent()
 childcontext(context::SamplingContext) = context.context

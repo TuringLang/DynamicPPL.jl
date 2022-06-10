@@ -290,7 +290,7 @@ function test_sampler_demo_models(
     rtol=1e-3,
     kwargs...,
 )
-    @testset "$(nameof(typeof(sampler))) on $(m.name)" for model in DEMO_MODELS
+    @testset "$(nameof(typeof(sampler))) on $(nameof(m))" for model in DEMO_MODELS
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         μ = meanfunction(chain)
         @test μ ≈ target atol = atol rtol = rtol
