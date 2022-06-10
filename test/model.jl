@@ -1,3 +1,17 @@
+# some functors (#367)
+struct MyModel
+    a::Int
+end
+@model function (f::MyModel)(x)
+    m ~ Normal(f.a, 1)
+    return x ~ Normal(m, 1)
+end
+struct MyZeroModel end
+@model function (::MyZeroModel)(x)
+    m ~ Normal(0, 1)
+    return x ~ Normal(m, 1)
+end
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
         model = gdemo_default
@@ -61,9 +75,25 @@
             m ~ Normal(0, 1)
             x ~ Normal(m, 1)
         end
+        function test3 end
+        @model function (::typeof(test3))(x)
+            m ~ Normal(0, 1)
+            return x ~ Normal(m, 1)
+        end
+        function test4 end
+        @model function (a::typeof(test4))(x)
+            m ~ Normal(0, 1)
+            return x ~ Normal(m, 1)
+        end
 
         @test nameof(test1(rand())) == :test1
         @test nameof(test2(rand())) == :test2
+        @test nameof(test3(rand())) == :test3
+        @test nameof(test4(rand())) == :test4
+
+        # callables
+        @test nameof(MyModel(3)(rand())) == Symbol("MyModel(3)")
+        @test nameof(MyZeroModel()(rand())) == Symbol("MyZeroModel()")
     end
 
     @testset "Internal methods" begin

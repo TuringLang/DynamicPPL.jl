@@ -148,7 +148,7 @@ julia> @varname(var"my prefix.x") in keys(VarInfo(outer()))
 true
 
 julia> # Using string interpolation.
-       @model outer() = @submodel prefix="\$(inner().name)" a = inner()
+       @model outer() = @submodel prefix="\$(nameof(inner()))" a = inner()
 outer (generic function with 2 methods)
 
 julia> @varname(var"inner.x") in keys(VarInfo(outer()))
