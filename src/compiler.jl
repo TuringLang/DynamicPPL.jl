@@ -449,7 +449,7 @@ function generate_dot_tilde(left, right)
     @gensym vn isassumption value
     return quote
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left))), right
+            $(AbstractPPL.drop_escape(varname(left))), $right
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
