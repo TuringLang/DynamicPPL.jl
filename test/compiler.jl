@@ -312,6 +312,18 @@ end
         @test vi2.metadata.y.vns[1] == @varname(y[2][:, 1])
         @test haskey(vi3.metadata, :y)
         @test vi3.metadata.y.vns[1] == @varname(y[1])
+
+        # Conditioning
+        f1_c = f1() | (y=1,)
+        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][:, 1])) => 1,))
+        f3_c = f3() | NamedTuple((Symbol(@varname(y[1])) => 1,))
+        @test f1_c() == 1
+        # TODO(torfjelde): We need conditioning for `Dict`.
+        @test_broken f2_c() == 1
+        @test_broken f3_c() == 1
+        @test_broken getlogp(VarInfo(f1_c)) ==
+            getlogp(VarInfo(f2_c)) ==
+            getlogp(VarInfo(f3_c))
     end
     @testset "custom tilde" begin
         @model demo() = begin
