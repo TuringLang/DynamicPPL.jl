@@ -175,6 +175,9 @@ function unwrap_right_left_vns(
     return unwrap_right_left_vns(right, left, vns)
 end
 
+resolve_varnames(vn::VarName, _) = vn
+resolve_varnames(vn::VarName, dist::NamedDist) = dist.name
+
 #################
 # Main Compiler #
 #################
@@ -379,16 +382,19 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption value
+    @gensym vn isassumption value dist
 
     # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
     # that in DynamicPPL we the entire function body. Instead we should be
     # more selective with our escape. Until that's the case, we remove them all.
     return quote
-        $vn = $(AbstractPPL.drop_escape(varname(left)))
+        $dist = $right
+        $vn = $(DynamicPPL.resolve_varnames)(
+            $(AbstractPPL.drop_escape(varname(left))), $dist
+        )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
-            $(generate_tilde_assume(left, right, vn))
+            $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
@@ -397,7 +403,7 @@ function generate_tilde(left, right)
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __context__,
-                $(DynamicPPL.check_tilde_rhs)($right),
+                $(DynamicPPL.check_tilde_rhs)($dist),
                 $(maybe_view(left)),
                 $vn,
                 __varinfo__,
@@ -442,7 +448,9 @@ function generate_dot_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption value
     return quote
-        $vn = $(AbstractPPL.drop_escape(varname(left)))
+        $vn = $(DynamicPPL.resolve_varnames)(
+            $(AbstractPPL.drop_escape(varname(left))), $right
+        )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
