@@ -470,7 +470,55 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     ist = istrans(vi, first(vns))
-    value_raw = ist ? link.(dist, value) : value
+    value_raw = ist ? link.(dists, value) : value
+
+    # Update `vi`
+    vi = BangBang.setindex!!(vi, value_raw, vns)
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, ist))
+    return value, lp, vi
+end
+
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    vns::AbstractVector{<:VarName},
+    var::AbstractMatrix,
+    vi::SimpleOrThreadSafeSimple,
+)
+    @assert length(dist) == size(var, 1)
+
+    # r = get_and_set_val!(rng, vi, vns, dist, spl)
+    n = length(vns)
+    value = init(rng, dist, spl, n)
+
+    # Update `vi`.
+    for (vn, val) in zip(vns, eachcol(value))
+        val_linked = maybe_link(vi, vn, dist, val)
+        vi = BangBang.setindex!!(vi, val_linked, vn)
+    end
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi, first(vns))))
+    return value, lp, vi
+end
+
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    vns::AbstractArray{<:VarName},
+    var::AbstractArray,
+    vi::SimpleOrThreadSafeSimple,
+)
+    f = (vn, dist) -> init(rng, dist, spl)
+    value = f.(vns, dists)
+
+    # Transform if we're working in transformed space.
+    ist = istrans(vi, first(vns))
+    value_raw = ist ? link.(dists, value) : value
 
     # Update `vi`
     vi = BangBang.setindex!!(vi, value_raw, vns)
