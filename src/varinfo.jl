@@ -381,6 +381,8 @@ function settrans!!(vi::VarInfo, trans::Bool)
     for vn in keys(vi)
         settrans!!(vi, trans, vn)
     end
+
+    return vi
 end
 
 """
