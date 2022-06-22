@@ -195,7 +195,7 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     # x = vi[vn]
-    r_raw = getindex_raw(vi, vn)
+    r_raw = getindex_raw(vi, vn, dist)
     r = maybe_invlink(vi, vn, dist, r_raw)
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
@@ -218,7 +218,7 @@ function assume(
         else
             # Otherwise we just extract it.
             # r = vi[vn]
-            r_raw = getindex_raw(vi, vn)
+            r_raw = getindex_raw(vi, vn, dist)
             r = maybe_invlink(vi, vn, dist, r_raw)
         end
     else
@@ -400,7 +400,7 @@ function dot_assume(
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     # r = vi[vns]
-    r_raw = getindex_raw(vi, vns)
+    r_raw = getindex_raw(vi, vns, dist)
     r = maybe_invlink(vi, vns, dist, r_raw)
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
@@ -434,7 +434,7 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r_raw = getindex_raw(vi, vec(vns))
+    r_raw = getindex_raw(vi, vec(vns), dists)
     r = reshape(maybe_invlink.(Ref(vi), vns, dists, r_raw), size(vns))
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
     return r, lp, vi
