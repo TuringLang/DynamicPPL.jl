@@ -265,6 +265,16 @@ function Base.show(
 end
 
 # `NamedTuple`
+function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return maybe_invlink(vi, vn, dist, Base.getindex(vi, vn))
+end
+function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    vals_linked = map(vns) do vn
+        maybe_invlink(vi, vn, dist, Base.getindex(vi, vn))
+    end
+    return reconstruct(dist, reduce(vcat, vals_linked), length(vns))
+end
+
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
 # `Dict`
@@ -309,7 +319,13 @@ Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 # Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
 # we simply call `getindex` in `getindex_raw`.
 getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
+getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution) = reconstruct(dist, getindex_raw(vi, vn))
 getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
+function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    vals = getindex_raw(vi, vns)
+    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
+    return reconstruct(dist, reduce(vcat, vals), length(vns))
+end
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
 function _haskey(nt::NamedTuple, vn::VarName)
