@@ -364,7 +364,7 @@ end
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
+    return Setfield.@set vi.values = set!!(vi.values, vn, val)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
@@ -395,7 +395,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
         vn_key = VarName(vn, keylens)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return SimpleVarInfo(dict_new, vi.logp)
+    return Setfield.@set vi.values = dict_new
 end
 
 # `NamedTuple`
@@ -503,30 +503,7 @@ function dot_assume(
     end
 
     # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi, first(vns))))
-    return value, lp, vi
-end
-
-function dot_assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    vns::AbstractArray{<:VarName},
-    var::AbstractArray,
-    vi::SimpleOrThreadSafeSimple,
-)
-    f = (vn, dist) -> init(rng, dist, spl)
-    value = f.(vns, dists)
-
-    # Transform if we're working in transformed space.
-    ist = istrans(vi, first(vns))
-    value_raw = ist ? link.(dists, value) : value
-
-    # Update `vi`
-    vi = BangBang.setindex!!(vi, value_raw, vns)
-
-    # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans.(dists, value, ist))
+    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
     return value, lp, vi
 end
 

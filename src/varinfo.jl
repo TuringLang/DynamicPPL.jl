@@ -947,7 +947,9 @@ function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
         val
     end
 end
-getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}) = getindex(vi, vns, getdist(vi, first(vns)))
+function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    return getindex(vi, vns, getdist(vi, first(vns)))
+end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getindex_raw(vi, vns, dist)
