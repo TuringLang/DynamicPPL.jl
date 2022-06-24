@@ -962,7 +962,9 @@ getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi
 function getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     return reconstruct(dist, getval(vi, vn))
 end
-getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}) = getindex_raw(vi, vns, getdist(vi, first(vns)))
+function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    return getindex_raw(vi, vns, getdist(vi, first(vns)))
+end
 function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     return reconstruct(dist, getval(vi, vns), length(vns))
 end

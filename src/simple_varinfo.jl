@@ -319,7 +319,9 @@ Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 # Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
 # we simply call `getindex` in `getindex_raw`.
 getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
-getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution) = reconstruct(dist, getindex_raw(vi, vn))
+function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return reconstruct(dist, getindex_raw(vi, vn))
+end
 getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
 function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals = getindex_raw(vi, vns)
