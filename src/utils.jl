@@ -417,3 +417,14 @@ function splitlens(condition, lens)
 
     return current_parent, current_child, condition(current_parent)
 end
+
+# HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
+function BangBang.possible(
+    ::typeof(BangBang._setindex!),
+    ::C,
+    ::T,
+    ::Colon,
+    ::Integer
+) where {C<:AbstractMatrix,T<:AbstractVector}
+    return BangBang.implements(setindex!, C) && promote_type(eltype(C), eltype(T)) <: eltype(C)
+end
