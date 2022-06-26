@@ -85,12 +85,14 @@
             isunivariate = !haskey(svi_new, @varname(m[1]))
 
             # Realization for `m` should be different wp. 1.
-            if isunivariate
-                @test svi_new[@varname(m)] != m
-            else
-                @test svi_new[@varname(m[1])] != m[1]
-                @test svi_new[@varname(m[2])] != m[2]
+            for vn in keys(model)
+                # `VarName` functions similarly to `PropertyLens` so
+                # we just strip this part from `vn` to get a lens we can use
+                # to extract the corresponding value of `m`.
+                l = getlens(vn)
+                @test svi_new[vn] != get(m, l)
             end
+
             # Logjoint should be non-zero wp. 1.
             @test getlogp(svi_new) != 0
 
@@ -103,26 +105,26 @@
             end
 
             # Update the realizations in `svi_new`.
-            svi_eval = if isunivariate
-                DynamicPPL.setindex!!(svi_new, m_eval, @varname(m))
-            else
-                DynamicPPL.setindex!!(svi_new, m_eval, [@varname(m[1]), @varname(m[2])])
+            svi_eval = svi_new
+            for vn in keys(model)
+                l = getlens(vn)
+                svi_eval = DynamicPPL.setindex!!(svi_eval, get(m_eval, l), vn)
             end
+
             # Reset the logp field.
             svi_eval = DynamicPPL.resetlogp!!(svi_eval)
 
             # Compute `logjoint` using the varinfo.
             logπ = logjoint(model, svi_eval)
-            # Extract the parameters from `svi_eval`.
-            m_vi = if isunivariate
-                svi_eval[@varname(m)]
-            else
-                svi_eval[[@varname(m[1]), @varname(m[2])]]
+
+            # Values should not have changed.
+            for vn in keys(model)
+                l = getlens(vn)
+                @test svi_eval[vn] == get(m_eval, l)
             end
-            # These should not have changed.
-            @test m_vi == m_eval
+
             # Compute the true `logjoint` and compare.
-            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, m_vi)
+            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, m_eval)
             @test logπ ≈ logπ_true
         end
     end
