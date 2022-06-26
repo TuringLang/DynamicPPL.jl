@@ -274,6 +274,33 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, m)
     return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
 end
+function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
+    return [@varname(m[1]), @varname(m[2])]
+end
+
+@model function demo_dot_assume_matrix_dot_observe_matrix(
+    x=fill(10.0, 2, 1), ::Type{TV}=Array{Float64}
+) where {TV}
+    d = length(x) ÷ 2
+    m = TV(undef, d, 2)
+    m .~ MvNormal(zeros(d), I)
+
+    # Dotted observe for `Matrix`.
+    x .~ MvNormal(vec(m), 0.25 * I)
+
+    return (; m=m, x=x, logp=getlogp(__varinfo__))
+end
+function logprior_true(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, m)
+    return loglikelihood(Normal(), vec(m))
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, m
+)
+    return loglikelihood(MvNormal(vec(m), 0.25 * I), model.args.x)
+end
+function Base.keys(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
+    return [@varname(m[:, 1]), @varname(m[:, 2])]
+end
 
 const DEMO_MODELS = (
     demo_dot_assume_dot_observe(),
@@ -287,6 +314,7 @@ const DEMO_MODELS = (
     demo_assume_submodel_observe_index_literal(),
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_dot_observe_matrix(),
+    demo_dot_assume_matrix_dot_observe_matrix(),
 )
 
 # TODO: Is this really the best/most convenient "default" test method?
