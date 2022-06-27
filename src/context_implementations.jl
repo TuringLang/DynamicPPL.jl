@@ -320,13 +320,16 @@ function dot_tilde_assume(
         dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
     end
 end
+
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
-    return dot_assume(NoDist.(right), left, vn, vi)
+    nodist = right isa Distribution ? NoDist(right) : NoDist.(right)
+    return dot_assume(nodist, left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
-    return dot_assume(rng, sampler, NoDist.(right), vn, left, vi)
+    nodist = right isa Distribution ? NoDist(right) : NoDist.(right)
+    return dot_assume(rng, sampler, nodist, vn, left, vi)
 end
 
 # `PriorContext`
