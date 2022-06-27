@@ -217,9 +217,7 @@ function assume(
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
-            # r = vi[vn]
-            r_raw = getindex_raw(vi, vn, dist)
-            r = maybe_invlink(vi, vn, dist, r_raw)
+            r = vi[vn, dist]
         end
     else
         r = init(rng, dist, sampler)
@@ -481,8 +479,7 @@ function get_and_set_val!(
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r_raw = getindex_raw(vi, vns)
-            r = maybe_invlink(vi, vns, dist, r_raw)
+            r = vi[vns, dist]
         end
     else
         r = init(rng, dist, spl, n)
