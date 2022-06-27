@@ -1,13 +1,13 @@
 @testset "loglikelihoods.jl" begin
-    for m in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         vi = VarInfo(m)
 
-        vns = vi.metadata.m.vns
-        if length(vns) == 1 && length(vi[vns[1]]) == 1
-            # Only have one latent variable.
-            DynamicPPL.setval!(vi, [1.0], ["m"])
-        else
-            DynamicPPL.setval!(vi, [1.0, 1.0], ["m[1]", "m[2]"])
+        for vn in keys(m)
+            if vi[vn] isa Real
+                vi = DynamicPPL.setindex!!(vi, 1.0, vn)
+            else
+                vi = DynamicPPL.setindex!!(vi, ones(size(vi[vn])), vn)
+            end
         end
 
         lls = pointwise_loglikelihoods(m, vi)
