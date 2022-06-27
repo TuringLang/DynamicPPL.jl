@@ -6,20 +6,22 @@ using Distributions: Univariate, Multivariate, Matrixvariate
 Base type for distribution wrappers.
 """
 abstract type WrappedDistribution{variate,support,Td<:Distribution{variate,support}} <:
-        Distribution{variate,support}
+              Distribution{variate,support}
 end
 
-wrapped_dist_type(::Type{<:WrappedDistribution{<:Any,<:Any,Td}}) where Td = Td
+wrapped_dist_type(::Type{<:WrappedDistribution{<:Any,<:Any,Td}}) where {Td} = Td
 wrapped_dist_type(d::WrappedDistribution) = wrapped_dist_type(d)
 
 wrapped_dist(d::WrappedDistribution) = d.dist
 
 Base.length(d::WrappedDistribution{<:Multivariate}) = length(wrapped_dist(d))
 Base.size(d::WrappedDistribution{<:Multivariate}) = size(wrapped_dist(d))
-Base.eltype(::Type{T}) where T <: WrappedDistribution = eltype(wrapped_dist_type(T))
+Base.eltype(::Type{T}) where {T<:WrappedDistribution} = eltype(wrapped_dist_type(T))
 Base.eltype(d::WrappedDistribution) = eltype(wrapped_dist_type(d))
 
-Distributions.rand(rng::Random.AbstractRNG, d::WrappedDistribution) = rand(rng, wrapped_dist(d))
+function Distributions.rand(rng::Random.AbstractRNG, d::WrappedDistribution)
+    rand(rng, wrapped_dist(d))
+end
 Distributions.minimum(d::WrappedDistribution) = minimum(wrapped_dist(d))
 Distributions.maximum(d::WrappedDistribution) = maximum(wrapped_dist(d))
 
