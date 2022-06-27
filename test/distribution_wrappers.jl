@@ -22,8 +22,8 @@
         @test length(rand(nd)) == 2
 
         # Actual tests
-        #@test length(nd) == 2
-        #@test size(nd) == (2,)
+        @test length(nd) == 2
+        @test size(nd) == (2,)
         @test minimum(nd) == [-Inf, 0.0]
         @test maximum(nd) == [Inf, 1.0]
         @test logpdf(nd, [15.0, 0.5]) == 0
