@@ -13,6 +13,9 @@ end
 
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
 
+Base.length(dist::NamedDist) = Base.length(dist.dist)
+Base.size(dist::NamedDist) = Base.size(dist.dist)
+
 Distributions.logpdf(dist::NamedDist, x::Real) = Distributions.logpdf(dist.dist, x)
 function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})
     return Distributions.logpdf(dist.dist, x)
@@ -24,11 +27,16 @@ function Distributions.loglikelihood(dist::NamedDist, x::AbstractArray{<:Real})
     return Distributions.loglikelihood(dist.dist, x)
 end
 
+Bijectors.bijector(d::NamedDist) = Bijectors.bijector(d.dist)
+
 struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
        Distribution{variate,support}
     dist::Td
 end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
+
+Base.length(dist::NoDist) = Base.length(dist.dist)
+Base.size(dist::NoDist) = Base.size(dist.dist)
 
 Distributions.rand(rng::Random.AbstractRNG, d::NoDist) = rand(rng, d.dist)
 Distributions.logpdf(d::NoDist{<:Univariate}, ::Real) = 0
