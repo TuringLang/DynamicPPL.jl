@@ -82,14 +82,20 @@
             # test for bijector
             link!(vi_gen, DynamicPPL.SampleFromPrior())
             invlink!(vi_gen, DynamicPPL.SampleFromPrior())
-    
+
             # explicit model specification
             expl_model = DynamicPPL.Model(NamedTuple()) do model, varinfo, context
-                DynamicPPL.tilde_assume!!(context, NoDist(Product(fill(Uniform(-20, 20), 5))), @varname(x), varinfo)
+                DynamicPPL.tilde_assume!!(
+                    context,
+                    NoDist(Product(fill(Uniform(-20, 20), 5))),
+                    @varname(x),
+                    varinfo
+                )
                 x = varinfo[@varname(x)]
                 @test x isa Vector{<:Real}
                 @test length(x) == 5
-                return nothing, DynamicPPL.acclogp!!(varinfo, sum(logpdf.(Ref(Normal(0, 1)), x)))
+                return (nothing,
+                        DynamicPPL.acclogp!!(varinfo, sum(logpdf.(Ref(Normal(0, 1)), x))))
             end
             vi_expl = VarInfo(expl_model)
             @test isfinite(logjoint(expl_model, vi_expl))

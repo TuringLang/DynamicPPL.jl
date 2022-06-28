@@ -6,8 +6,7 @@ using Distributions: Univariate, Multivariate, Matrixvariate
 Base type for distribution wrappers.
 """
 abstract type WrappedDistribution{variate,support,Td<:Distribution{variate,support}} <:
-              Distribution{variate,support}
-end
+              Distribution{variate,support} end
 
 wrapped_dist_type(::Type{<:WrappedDistribution{<:Any,<:Any,Td}}) where {Td} = Td
 wrapped_dist_type(d::WrappedDistribution) = wrapped_dist_type(d)
@@ -20,7 +19,7 @@ Base.eltype(::Type{T}) where {T<:WrappedDistribution} = eltype(wrapped_dist_type
 Base.eltype(d::WrappedDistribution) = eltype(wrapped_dist_type(d))
 
 function Distributions.rand(rng::Random.AbstractRNG, d::WrappedDistribution)
-    rand(rng, wrapped_dist(d))
+    return rand(rng, wrapped_dist(d))
 end
 Distributions.minimum(d::WrappedDistribution) = minimum(wrapped_dist(d))
 Distributions.maximum(d::WrappedDistribution) = maximum(wrapped_dist(d))
