@@ -103,7 +103,9 @@ pointwise_loglikelihoods
 ```
 
 ```@docs
+WrappedDistribution
 NamedDist
+NoDist
 ```
 
 ## Testing Utilities
