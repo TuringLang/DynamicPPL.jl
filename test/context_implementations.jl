@@ -89,13 +89,15 @@
                     context,
                     NoDist(Product(fill(Uniform(-20, 20), 5))),
                     @varname(x),
-                    varinfo
+                    varinfo,
                 )
                 x = varinfo[@varname(x)]
                 @test x isa Vector{<:Real}
                 @test length(x) == 5
-                return (nothing,
-                        DynamicPPL.acclogp!!(varinfo, sum(logpdf.(Ref(Normal(0, 1)), x))))
+                return (
+                    nothing,
+                    DynamicPPL.acclogp!!(varinfo, sum(logpdf.(Ref(Normal(0, 1)), x))),
+                )
             end
             vi_expl = VarInfo(expl_model)
             @test isfinite(logjoint(expl_model, vi_expl))
