@@ -194,9 +194,7 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    # x = vi[vn]
-    r_raw = getindex_raw(vi, vn, dist)
-    r = maybe_invlink(vi, vn, dist, r_raw)
+    r = vi[vn, dist]
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
