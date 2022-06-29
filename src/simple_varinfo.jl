@@ -453,10 +453,9 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    ist = istrans(vi, vn)
-    value_raw = ist ? Bijectors.link(dist, value) : value
+    value_raw = maybe_link(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
-    return value, Bijectors.logpdf_with_trans(dist, value, ist), vi
+    return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
 function dot_assume(
@@ -471,14 +470,19 @@ function dot_assume(
     value = f.(vns, dists)
 
     # Transform if we're working in transformed space.
-    ist = istrans(vi, first(vns))
-    value_raw = ist ? link.(dists, value) : value
+    value_raw = if dists isa Distribution
+        @assert length(vns) == length(value)
+        map((vn, val) -> maybe_link(vi, vn, dists, val), vns, value)
+    else
+        @assert length(vns) == length(dists) == length(value)
+        map((vn, dist, val) -> maybe_link(vi, vn, dist, val), vns, dists, value)
+    end
 
     # Update `vi`
     vi = BangBang.setindex!!(vi, value_raw, vns)
 
     # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans.(dists, value, ist))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, map(Base.Fix1(istrans, vi), vns)))
     return value, lp, vi
 end
 
