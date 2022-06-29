@@ -398,9 +398,7 @@ function dot_assume(
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    # r = vi[vns]
-    r_raw = getindex_raw(vi, vns, dist)
-    r = maybe_invlink(vi, vns, dist, r_raw)
+    r = vi[vns, dist]
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
@@ -422,20 +420,22 @@ function dot_assume(
 end
 
 function dot_assume(
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
+)
+    r = map(vn -> vi[vn, dist], vns)
+    lp = sum(Bijectors.logpdf_with_trans.(dist, r, map(Base.Fix1(istrans, vi), vns)))
+    return r, lp, vi
+end
+
+function dot_assume(
+    dists::AbstractArray{<:Distribution},
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
     vi,
 )
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r_raw = getindex_raw(vi, vec(vns), dists)
-    r = reshape(maybe_invlink.(Ref(vi), vns, dists, r_raw), size(vns))
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    @assert length(vns) == length(dists) == length(var)
+    r = map((vn, dist) -> vi[vn, dist], vns, dists)
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
     return r, lp, vi
 end
 
@@ -449,7 +449,7 @@ function dot_assume(
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
     return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
