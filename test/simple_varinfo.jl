@@ -79,11 +79,6 @@
             # Sample a new varinfo!
             _, svi_new = DynamicPPL.evaluate!!(model, svi, SamplingContext())
 
-            # If the `m[1]` varname doesn't exist, this is a univariate model.
-            # TODO: Find a better way of dealing with this that is not dependent
-            # on knowledge of internals of `model`.
-            isunivariate = !haskey(svi_new, @varname(m[1]))
-
             # Realization for `m` should be different wp. 1.
             for vn in keys(model)
                 # `VarName` functions similarly to `PropertyLens` so
