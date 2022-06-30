@@ -49,6 +49,28 @@ function logjoint_true(model::Model, args...)
     return logprior_true(model, args...) + loglikelihood_true(model, args...)
 end
 
+"""
+    demo_dynamic_constraint()
+
+A model with variables `m` and `x` with `x` having support depending on `m`.
+"""
+@model function demo_dynamic_constraint()
+    m ~ Normal()
+    x ~ truncated(Normal(), m, Inf)
+
+    return (m=m, x=x)
+end
+
+function logprior_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
+    return logpdf(Normal(), m) + logpdf(truncated(Normal(), m, Inf))
+end
+function loglikelihood_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
+    return zero(float(eltype(m)))
+end
+function Base.keys(model::Model{typeof(demo_dynamic_constraint)})
+    return [@varname(m), @varname(x)]
+end
+
 # A collection of models for which the mean-of-means for the posterior should
 # be same.
 @model function demo_dot_assume_dot_observe(
