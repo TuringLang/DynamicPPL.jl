@@ -312,9 +312,8 @@ end
 # HACK: Needed to disambiguiate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
-Base.getindex(vi::SimpleVarInfo, ::Colon) = vi.values
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi[:]
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi[:]
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
 
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
