@@ -6,6 +6,7 @@ using LinearAlgebra
 using Distributions
 using Test
 
+using Random: Random
 using Bijectors: Bijectors
 
 """
@@ -88,6 +89,21 @@ See also: [`logprior_true`](@ref).
 function logprior_true_with_logabsdet_jacobian end
 
 """
+    example_values(model::Model)
+
+Return a `NamedTuple` compatible with `keys(model)` with values in support of `model`.
+"""
+example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
+
+"""
+    posterior_mean_values(model::Model)
+
+Return a `NamedTuple` compatible with `keys(model)` where the values represent
+the posterior mean under `model`.
+"""
+function posterior_mean_values end
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
@@ -108,7 +124,12 @@ end
 function Base.keys(model::Model{typeof(demo_dynamic_constraint)})
     return [@varname(m), @varname(x)]
 end
-
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dynamic_constraint)}
+)
+    m = rand(rng, Normal())
+    return (m=m, x=rand(rng, truncated(Normal(), m, Inf)))
+end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_dynamic_constraint)}, m, x
 )
@@ -137,6 +158,16 @@ end
 function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_dot_observe)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_dot_observe)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function demo_assume_index_observe(
     x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
@@ -159,6 +190,16 @@ end
 function Base.keys(model::Model{typeof(demo_assume_index_observe)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_index_observe)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_assume_index_observe)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function demo_assume_multivariate_observe(x=[10.0, 10.0])
     # Multivariate `assume` and `observe`
@@ -175,6 +216,16 @@ function loglikelihood_true(model::Model{typeof(demo_assume_multivariate_observe
 end
 function Base.keys(model::Model{typeof(demo_assume_multivariate_observe)})
     return [@varname(m)]
+end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_multivariate_observe)}
+)
+    return (m=rand(rng, MvNormal(zero(model.args.x), I)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_assume_multivariate_observe)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
 end
 
 @model function demo_dot_assume_observe_index(
@@ -198,6 +249,16 @@ end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_index)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_index)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_index)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
@@ -217,6 +278,14 @@ end
 function Base.keys(model::Model{typeof(demo_assume_dot_observe)})
     return [@varname(m)]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_dot_observe)}
+)
+    return (m=rand(rng, Normal()),)
+end
+function posterior_mean_values(model::Model{typeof(demo_assume_dot_observe)})
+    return (m=8.0,)
+end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
@@ -233,6 +302,16 @@ function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, m
 end
 function Base.keys(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(m)]
+end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_observe_literal)}
+)
+    return (m=rand(rng, MvNormal(zeros(2), I)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_assume_observe_literal)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
 end
 
 @model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
@@ -254,6 +333,16 @@ end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_index_literal)}
+)
+    return (m=rand(rng, Normal(), 2),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_index_literal)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function demo_assume_literal_dot_observe()
     # `assume` and literal `dot_observe`
@@ -270,6 +359,14 @@ function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)
 end
 function Base.keys(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(m)]
+end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_literal_dot_observe)}
+)
+    return (m=rand(rng, Normal()),)
+end
+function posterior_mean_values(model::Model{typeof(demo_assume_literal_dot_observe)})
+    return (m=8.0,)
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -299,6 +396,19 @@ end
 function Base.keys(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG,
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)},
+)
+    return (m=rand(rng, Normal(), 2),)
+end
+function posterior_mean_values(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}
+)
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function _likelihood_dot_observe(m, x)
     return x ~ MvNormal(m, 0.25 * I)
@@ -324,6 +434,16 @@ end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_submodel)})
     return [@varname(m[1]), @varname(m[2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_submodel)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_submodel)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function demo_dot_assume_dot_observe_matrix(
     x=fill(10.0, 2, 1), ::Type{TV}=Vector{Float64}
@@ -344,6 +464,16 @@ function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matr
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     return [@varname(m[1]), @varname(m[2])]
+end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_dot_observe_matrix)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
 end
 
 @model function demo_dot_assume_matrix_dot_observe_matrix(
@@ -369,6 +499,19 @@ end
 function Base.keys(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     return [@varname(m[:, 1]), @varname(m[:, 2])]
 end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
+)
+    d = length(model.args.x) ÷ 2
+    return (m=rand(rng, MvNormal(zeros(d), I), 2),)
+end
+function posterior_mean_values(
+    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
+)
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
+end
 
 @model function demo_dot_assume_array_dot_observe(
     x=[10.0, 10.0], ::Type{TV}=Vector{Float64}
@@ -387,6 +530,16 @@ function loglikelihood_true(model::Model{typeof(demo_dot_assume_array_dot_observ
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_array_dot_observe)})
     return [@varname(m[1]), @varname(m[2])]
+end
+function example_values(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_array_dot_observe)}
+)
+    return (m=rand(rng, Normal(), length(model.args.x)),)
+end
+function posterior_mean_values(model::Model{typeof(demo_dot_assume_array_dot_observe)})
+    vals = example_values(model)
+    vals.m .= 8
+    return vals
 end
 
 const DEMO_MODELS = (
@@ -431,7 +584,6 @@ function test_sampler_demo_models(
     meanfunction,
     sampler::AbstractMCMC.AbstractSampler,
     args...;
-    target=8.0,
     atol=1e-1,
     rtol=1e-3,
     kwargs...,
@@ -439,7 +591,11 @@ function test_sampler_demo_models(
     @testset "$(nameof(typeof(sampler))) on $(nameof(m))" for model in DEMO_MODELS
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         μ = meanfunction(chain)
-        @test μ ≈ target atol = atol rtol = rtol
+        target_values = posterior_mean_values(model)
+        for vn in keys(model)
+            target = get(target_values, vn)
+            @test μ ≈ target atol = atol rtol = rtol
+        end
     end
 end
 
@@ -458,7 +614,7 @@ end
 
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     # Default for `MCMCChains.Chains`.
-    return test_sampler_continuous(sampler, args...; kwargs...) do chain
+    return test_sampler_continuous(sampler, args...; kwargs...) do chain, vn
         mean(Array(chain))
     end
 end

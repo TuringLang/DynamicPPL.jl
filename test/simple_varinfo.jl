@@ -62,18 +62,20 @@
                                                      DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        m = model().m
-        svi_nt = if m isa AbstractArray
-            SimpleVarInfo((m=similar(m),))
-        else
-            SimpleVarInfo()
-        end
+        svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.example_values(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
 
-        @testset "$(nameof(typeof(svi.values)))" for svi in (svi_nt, svi_dict)
+        @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
+            svi_nt,
+            svi_dict,
+            DynamicPPL.settrans!!(svi_nt, true),
+            DynamicPPL.settrans!!(svi_dict, true),
+        )
+            Random.seed!(42)
+
             # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
-            m = model().m
+            retval = model()
 
             ### Sampling ###
             # Sample a new varinfo!
@@ -81,11 +83,7 @@
 
             # Realization for `m` should be different wp. 1.
             for vn in keys(model)
-                # `VarName` functions similarly to `PropertyLens` so
-                # we just strip this part from `vn` to get a lens we can use
-                # to extract the corresponding value of `m`.
-                l = getlens(vn)
-                @test svi_new[vn] != get(m, l)
+                @test svi_new[vn] != get(retval, vn)
             end
 
             # Logjoint should be non-zero wp. 1.
@@ -93,17 +91,12 @@
 
             ### Evaluation ###
             # Sample some random testing values.
-            m_eval = if m isa AbstractArray
-                randn!(similar(m))
-            else
-                randn(eltype(m))
-            end
+            values_eval = DynamicPPL.TestUtils.example_values(model)
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
             for vn in keys(model)
-                l = getlens(vn)
-                svi_eval = DynamicPPL.setindex!!(svi_eval, get(m_eval, l), vn)
+                svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
 
             # Reset the logp field.
@@ -114,12 +107,11 @@
 
             # Values should not have changed.
             for vn in keys(model)
-                l = getlens(vn)
-                @test svi_eval[vn] == get(m_eval, l)
+                @test svi_eval[vn] == get(values_eval, vn)
             end
 
             # Compute the true `logjoint` and compare.
-            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, m_eval)
+            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
             @test logπ ≈ logπ_true
         end
     end
