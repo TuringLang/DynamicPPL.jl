@@ -241,6 +241,7 @@ acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 Return an iterator of keys present in `vi`.
 """
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -311,8 +312,10 @@ end
 # HACK: Needed to disambiguiate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
+Base.getindex(vi::SimpleVarInfo, ::Colon) = vi.values
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi[:]
+Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi[:]
+
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
 
