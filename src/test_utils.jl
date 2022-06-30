@@ -6,6 +6,8 @@ using LinearAlgebra
 using Distributions
 using Test
 
+using Bijectors: Bijectors
+
 """
     logprior_true(model, θ)
 
@@ -29,11 +31,11 @@ See also: [`logjoint_true`](@ref), [`logprior_true`](@ref).
 function loglikelihood_true end
 
 """
-    logjoint_true(model, θ)
+    logjoint_true(model, args...)
 
-Return the `logjoint` of `model` for `θ`.
+Return the `logjoint` of `model` for `args...`.
 
-Defaults to `logprior_true(model, θ) + loglikelihood_true(model, θ)`.
+Defaults to `logprior_true(model, args...) + loglikelihood_true(model, args..)`.
 
 This should generally be implemented by hand for every specific `model`
 so that the returned value can be used as a ground-truth for testing things like:
@@ -50,6 +52,42 @@ function logjoint_true(model::Model, args...)
 end
 
 """
+    logjoint_true_with_logabsdet_jacobian(model::Model, args...)
+
+Return a tuple `(args_unconstrained, logjoint)` of `model` for `args...`.
+
+Unlike [`logjoint_true`](@ref), the returned logjoint computation includes the
+log-absdet-jacobian adjustment, thus computing logjoint for the unconstrained variables.
+
+Note that `args` are assumed be in the support of `model`, while `args_unconstrained`
+will be unconstrained.
+
+This should generally not be implemented directly, instead one should implement
+[`logprior_true_with_logabsdet_jacobian`](@ref) for a given `model`.
+
+See also: [`logjoint_true`](@ref), [`logprior_true_with_logabsdet_jacobian`](@ref).
+"""
+function logjoint_true_with_logabsdet_jacobian(model::Model, args...)
+    args_unconstrained, lp = logprior_true_with_logabsdet_jacobian(model, args...)
+    return args_unconstrained, lp + loglikelihood_true(model, args...)
+end
+
+"""
+    logprior_true_with_logabsdet_jacobian(model::Model, args...)
+
+Return a tuple `(args_unconstrained, logprior_unconstrained)` of `model` for `args...`.
+
+Unlike [`logprior_true`](@ref), the returned logprior computation includes the
+log-absdet-jacobian adjustment, thus computing logprior for the unconstrained variables.
+
+Note that `args` are assumed be in the support of `model`, while `args_unconstrained`
+will be unconstrained.
+
+See also: [`logprior_true`](@ref).
+"""
+function logprior_true_with_logabsdet_jacobian end
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
@@ -62,13 +100,21 @@ A model with variables `m` and `x` with `x` having support depending on `m`.
 end
 
 function logprior_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
-    return logpdf(Normal(), m) + logpdf(truncated(Normal(), m, Inf))
+    return logpdf(Normal(), m) + logpdf(truncated(Normal(), m, Inf), x)
 end
 function loglikelihood_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
     return zero(float(eltype(m)))
 end
 function Base.keys(model::Model{typeof(demo_dynamic_constraint)})
     return [@varname(m), @varname(x)]
+end
+
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dynamic_constraint)}, m, x
+)
+    b_x = Bijectors.bijector(truncated(Normal(), m, Inf))
+    x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
+    return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
 end
 
 # A collection of models for which the mean-of-means for the posterior should
