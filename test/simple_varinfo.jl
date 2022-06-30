@@ -123,4 +123,35 @@
             @test logπ ≈ logπ_true
         end
     end
+
+    @testset "Dynamic constraints" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+
+        # Initialize.
+        svi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        svi = last(DynamicPPL.evaluate!!(model, svi, SamplingContext()))
+
+        # Sample with large variations in unconstrained space.
+        for i in 1:10
+            for vn in keys(svi)
+                svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+            end
+            retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
+            @test retval.m == svi[@varname(m)]  # `m` is unconstrained
+            @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
+
+            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                model, retval.m, retval.x
+            )
+
+            # Realizations from model should all be equal to the unconstrained realization.
+            for vn in keys(model)
+                @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
+            end
+
+            # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
+            lp = getlogp(svi)
+            @test lp ≈ lp_true
+        end
+    end
 end

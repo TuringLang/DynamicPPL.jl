@@ -113,12 +113,7 @@ end
     end
 
     @testset "Dynamic constraints" begin
-        @model function dynamic_constraints()
-            m ~ Normal()
-            return x ~ truncated(Normal(), m, Inf)
-        end
-
-        model = dynamic_constraints()
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         spl = SampleFromPrior()
         link!(vi, spl)
