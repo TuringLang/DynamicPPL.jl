@@ -111,8 +111,10 @@
             end
 
             # Compute the true `logjoint` and compare.
-            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
-            @test logπ ≈ logπ_true
+            if !DynamicPPL.istrans(svi)
+                logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
+                @test logπ ≈ logπ_true
+            end
         end
     end
 
