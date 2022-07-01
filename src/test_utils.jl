@@ -34,7 +34,7 @@ end
 """
     logprior_true(model, args...)
 
-Return the `logprior` of `model` for `args...`.
+Return the `logprior` of `model` for `args`.
 
 This should generally be implemented by hand for every specific `model`.
 
@@ -45,7 +45,7 @@ function logprior_true end
 """
     loglikelihood_true(model, args...)
 
-Return the `loglikelihood` of `model` for `args...`.
+Return the `loglikelihood` of `model` for `args`.
 
 This should generally be implemented by hand for every specific `model`.
 
@@ -56,7 +56,7 @@ function loglikelihood_true end
 """
     logjoint_true(model, args...)
 
-Return the `logjoint` of `model` for `args...`.
+Return the `logjoint` of `model` for `args`.
 
 Defaults to `logprior_true(model, args...) + loglikelihood_true(model, args..)`.
 
@@ -77,7 +77,7 @@ end
 """
     logjoint_true_with_logabsdet_jacobian(model::Model, args...)
 
-Return a tuple `(args_unconstrained, logjoint)` of `model` for `args...`.
+Return a tuple `(args_unconstrained, logjoint)` of `model` for `args`.
 
 Unlike [`logjoint_true`](@ref), the returned logjoint computation includes the
 log-absdet-jacobian adjustment, thus computing logjoint for the unconstrained variables.
