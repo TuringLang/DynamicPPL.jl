@@ -267,13 +267,13 @@ end
 
 # `NamedTuple`
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return maybe_invlink(vi, vn, dist, Base.getindex(vi, vn))
+    return maybe_invlink(vi, vn, dist, getindex(vi, vn))
 end
 function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    vals_linked = map(vns) do vn
-        maybe_invlink(vi, vn, dist, Base.getindex(vi, vn))
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
     end
-    return reconstruct(dist, reduce(vcat, vals_linked), length(vns))
+    return reconstruct(dist, vals_linked, length(vns))
 end
 
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
@@ -326,9 +326,9 @@ function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
 end
 getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
 function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    vals = getindex_raw(vi, vns)
     # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
-    return reconstruct(dist, reduce(vcat, vals), length(vns))
+    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
+    return reconstruct(dist, vals, length(vns))
 end
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
@@ -482,7 +482,7 @@ function dot_assume(
     vi = BangBang.setindex!!(vi, value_raw, vns)
 
     # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans.(dists, value, map(Base.Fix1(istrans, vi), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
     return value, lp, vi
 end
 
