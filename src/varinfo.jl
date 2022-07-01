@@ -944,6 +944,8 @@ function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    # NOTE(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
+    # such as `x .~ [Normal(), Exponential()]`.
     return getindex(vi, vns, getdist(vi, first(vns)))
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
