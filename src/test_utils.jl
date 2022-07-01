@@ -88,6 +88,20 @@ See also: [`logprior_true`](@ref).
 function logprior_true_with_logabsdet_jacobian end
 
 """
+    varnames(model::Model)
+
+Return a collection of `VarName` as they are expected to appear in the model.
+
+Even though it is recommended to implement this by hand for a particular `Model`,
+a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
+"""
+function varnames(model::Model)
+    return collect(
+        keys(last(DynamicPPL.evaluate!!(model, SimpleVarInfo(Dict()), SamplingContext())))
+    )
+end
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
