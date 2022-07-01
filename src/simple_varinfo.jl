@@ -4,7 +4,7 @@ struct Constrained <: AbstractConstraint end
 struct Unconstrained <: AbstractConstraint end
 
 """
-    SimpleVarInfo{NT,T,C} <: AbstractVarInfo
+    $(TYPEDEF)
 
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
