@@ -423,7 +423,7 @@ function dot_assume(
     dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
 )
     r = map(vn -> vi[vn, dist], vns)
-    lp = sum(Bijectors.logpdf_with_trans.(dist, r, map(Base.Fix1(istrans, vi), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dist, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -435,7 +435,7 @@ function dot_assume(
 )
     @assert length(vns) == length(dists) == length(var)
     r = map((vn, dist) -> vi[vn, dist], vns, dists)
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi, ), vns)))
     return r, lp, vi
 end
 
@@ -449,7 +449,7 @@ function dot_assume(
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
