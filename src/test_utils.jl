@@ -129,8 +129,8 @@ end
 
 Return a `NamedTuple` compatible with `varnames(model)` with values in support of `model`.
 
-\"Compatible\" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using the call `get(example_values(model), varname)`.
+"Compatible" means that a `varname` from `varnames(model)` can be used to extract the
+corresponding value using `get`, e.g. `get(example_values(model), varname)`.
 """
 example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
 
@@ -140,8 +140,8 @@ example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
 Return a `NamedTuple` compatible with `varnames(model)` where the values represent
 the posterior mean under `model`.
 
-\"Compatible\" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using the call `get(posterior_mean_values(model), varname)`.
+"Compatible" means that a `varname` from `varnames(model)` can be used to extract the
+corresponding value using `get`, e.g. `get(posterior_mean_values(model), varname)`.
 """
 function posterior_mean_values end
 
