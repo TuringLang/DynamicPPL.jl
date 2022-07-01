@@ -389,7 +389,7 @@ function dot_assume(
     vns::AbstractVector{<:VarName},
     vi::AbstractVarInfo,
 )
-    @assert length(dist) == size(var, 1)
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
     # NOTE: We cannot work with `var` here because we might have a model of the form
     #
     #     m = Vector{Float64}(undef, n)
