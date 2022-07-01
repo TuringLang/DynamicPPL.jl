@@ -32,9 +32,9 @@ function varname_leaves(vn::VarName, val::AbstractArray)
 end
 
 """
-    logprior_true(model, θ)
+    logprior_true(model, args...)
 
-Return the `logprior` of `model` for `θ`.
+Return the `logprior` of `model` for `args...`.
 
 This should generally be implemented by hand for every specific `model`.
 
@@ -43,9 +43,9 @@ See also: [`logjoint_true`](@ref), [`loglikelihood_true`](@ref).
 function logprior_true end
 
 """
-    loglikelihood_true(model, θ)
+    loglikelihood_true(model, args...)
 
-Return the `loglikelihood` of `model` for `θ`.
+Return the `loglikelihood` of `model` for `args...`.
 
 This should generally be implemented by hand for every specific `model`.
 
