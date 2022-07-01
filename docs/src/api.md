@@ -103,8 +103,13 @@ NamedDist
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
-DynamicPPL.TestUtils.test_sampler_demo_models
+DynamicPPL.TestUtils.test_sampler_on_models
+DynamicPPL.TestUtils.test_sampler_on_demo_models
 DynamicPPL.TestUtils.test_sampler_continuous
+```
+
+```@docs
+DynamicPPL.TestUtils.DEMO_MODELS
 ```
 
 For every demo model, one can define the true log prior, log likelihood, and log joint probabilities.
@@ -113,6 +118,21 @@ For every demo model, one can define the true log prior, log likelihood, and log
 DynamicPPL.TestUtils.logprior_true
 DynamicPPL.TestUtils.loglikelihood_true
 DynamicPPL.TestUtils.logjoint_true
+```
+
+And in the case where the model might include constrained variables, it can also be useful to define
+
+```@docs
+DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian
+DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian
+```
+
+Finally, the following methods can also be of use:
+
+```@docs
+DynamicPPL.TestUtils.varnames
+DynamicPPL.TestUtils.example_values
+DynamicPPL.TestUtils.posterior_mean_values
 ```
 
 ## Advanced
