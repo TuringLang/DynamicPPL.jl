@@ -291,7 +291,7 @@ function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left,
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
     else
         dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
@@ -310,7 +310,7 @@ function dot_tilde_assume(
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
     else
         dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
@@ -332,7 +332,7 @@ function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, 
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
     else
         dot_tilde_assume(PriorContext(), right, left, vn, vi)
@@ -351,7 +351,7 @@ function dot_tilde_assume(
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
     else
         dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
@@ -525,11 +525,11 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.(Ref(vi), vns, link.(Ref(vi), vns, dists, r), dists, Ref(spl))
+            push!!.((vi,), vns, link.((vi,), vns, dists, r), dists, (spl,))
             # `push!!` sets the trans-flag to `false` by default.
-            settrans!!.(Ref(vi), true, vns)
+            settrans!!.((vi,), true, vns)
         else
-            push!!.(Ref(vi), vns, r, dists, Ref(spl))
+            push!!.((vi,), vns, r, dists, (spl,))
         end
     end
     return r
