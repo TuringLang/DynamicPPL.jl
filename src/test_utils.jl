@@ -735,13 +735,12 @@ const DEMO_MODELS = (
     demo_dot_assume_matrix_dot_observe_matrix(),
 )
 
-# TODO: Is this really the best/most convenient "default" test method?
 """
-    test_sampler_demo_models(meanfunction, sampler, args...; kwargs...)
+    test_sampler_on_models(meanfunction, models, sampler, args...; kwargs...)
 
-Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
+Test that `sampler` produces correct marginal posterior means on each model in `models`.
 
-In short, this method iterators through `demo_models`, calls `AbstractMCMC.sample` on the
+In short, this method iterates through `models`, calls `AbstractMCMC.sample` on the
 `model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain, vn)`
 for every (leaf) varname `vn` against the corresponding value returned by
 [`posterior_mean_values`](@ref) for each model.
@@ -749,6 +748,7 @@ for every (leaf) varname `vn` against the corresponding value returned by
 # Arguments
 - `meanfunction`: A callable which computes the mean of the marginal means from the
   chain resulting from the `sample` call.
+- `models`: A collection of instaces of [`DynamicPPL.Model`](@ref) to test on.
 - `sampler`: The `AbstractMCMC.AbstractSampler` to test.
 - `args...`: Arguments forwarded to `sample`.
 
@@ -757,15 +757,16 @@ for every (leaf) varname `vn` against the corresponding value returned by
 - `rtol=1e-3`: Relative tolerance used in `@test`.
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
-function test_sampler_demo_models(
+function test_sampler_on_models(
     meanfunction,
+    models,
     sampler::AbstractMCMC.AbstractSampler,
     args...;
     atol=1e-1,
     rtol=1e-3,
     kwargs...,
 )
-    @testset "$(typeof(sampler)) on $(nameof(model))" for model in DEMO_MODELS
+    @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean_values(model)
         for vn in varnames(model)
@@ -781,16 +782,29 @@ function test_sampler_demo_models(
 end
 
 """
+    test_sampler_on_demo_models(meanfunction, sampler, args...; kwargs...)
+
+Test `sampler` on every model in [`DEMO_MODELS`](@ref).
+
+This is just a proxy for `test_sampler_on_models(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
+"""
+function test_sampler_on_demo_models(
+    meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
+)
+    return test_sampler_on_models(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)
+end
+
+"""
     test_sampler_continuous([meanfunction, ]sampler, args...; kwargs...)
 
 Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
 
-As of right now, this is just an alias for [`test_sampler_demo_models`](@ref).
+As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref).
 """
 function test_sampler_continuous(
     meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
 )
-    return test_sampler_demo_models(meanfunction, sampler, args...; kwargs...)
+    return test_sampler_on_demo_models(meanfunction, sampler, args...; kwargs...)
 end
 
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
