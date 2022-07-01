@@ -8,6 +8,28 @@ using Test
 
 using Random: Random
 using Bijectors: Bijectors
+using Setfield: Setfield
+
+"""
+    varnames(vn::VarName, val)
+
+Return iterator over all varnames that are represented by `vn` on `val`,
+e.g. `varnames(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
+"""
+varnames(vn::VarName, val::Real) = [vn]
+function varnames(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
+    return (
+        VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
+end
+function varnames(vn::VarName, val::AbstractArray)
+    return Iterators.flatten(
+        varnames(
+            VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
+        ) for I in CartesianIndices(val)
+    )
+end
 
 """
     logprior_true(model, θ)
@@ -723,15 +745,17 @@ function test_sampler_demo_models(
     rtol=1e-3,
     kwargs...,
 )
-    @testset "$(nameof(typeof(sampler))) on $(nameof(m))" for model in DEMO_MODELS
+    @testset "$(typeof(sampler)) on $(nameof(model))" for model in DEMO_MODELS
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
-        # TODO(torfjelde): Move `meanfunction` into loop below, and have it also
-        # take `vn` as input.
-        μ = meanfunction(chain)
         target_values = posterior_mean_values(model)
         for vn in keys(model)
-            target = get(target_values, vn)
-            @test μ ≈ target atol = atol rtol = rtol
+            # We want to compare elementwise which can be achieved by
+            # extracting the leaves of the `VarName` and the corresponding value.
+            for vn_leaf in varnames(vn, get(target_values, vn))
+                target_value = get(target_values, vn_leaf)
+                chain_mean_value = meanfunction(chain, vn_leaf)
+                @test chain_mean_value ≈ target_value atol = atol rtol = rtol
+            end
         end
     end
 end
@@ -752,7 +776,8 @@ end
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     # Default for `MCMCChains.Chains`.
     return test_sampler_continuous(sampler, args...; kwargs...) do chain, vn
-        mean(Array(chain))
+        # HACK(torfjelde): This assumes that we can index into `chain` with `Symbol(vn)`.
+        mean(Array(chain[Symbol(vn)]))
     end
 end
 
