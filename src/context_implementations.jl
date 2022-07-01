@@ -422,8 +422,8 @@ end
 function dot_assume(
     dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
 )
-    r = map(vn -> vi[vn, dist], vns)
-    lp = sum(Bijectors.logpdf_with_trans.(dist, r, istrans.((vi,), vns)))
+    r = getindex.((vi,), vns, (dist,))
+    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -433,7 +433,7 @@ function dot_assume(
     vns::AbstractArray{<:VarName},
     vi,
 )
-    r = map((vn, dist) -> vi[vn, dist], vns, dists)
+    r = getindex.((vi,), vns, dists)
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
