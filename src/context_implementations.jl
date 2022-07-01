@@ -433,7 +433,6 @@ function dot_assume(
     vns::AbstractArray{<:VarName},
     vi,
 )
-    @assert length(vns) == length(dists) == length(var)
     r = map((vn, dist) -> vi[vn, dist], vns, dists)
     lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi

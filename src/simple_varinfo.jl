@@ -473,11 +473,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        @assert length(vns) == length(value)
-        map((vn, val) -> maybe_link(vi, vn, dists, val), vns, value)
+        maybe_link.((vi,), vns, (dists, ), value)
     else
-        @assert length(vns) == length(dists) == length(value)
-        map((vn, dist, val) -> maybe_link(vi, vn, dist, val), vns, dists, value)
+        maybe_link.((vi,), vns, dists, value)
     end
 
     # Update `vi`
