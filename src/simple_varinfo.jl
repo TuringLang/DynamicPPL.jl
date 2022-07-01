@@ -473,7 +473,7 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        maybe_link.((vi,), vns, (dists, ), value)
+        maybe_link.((vi,), vns, (dists,), value)
     else
         maybe_link.((vi,), vns, dists, value)
     end
