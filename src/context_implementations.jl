@@ -318,14 +318,12 @@ function dot_tilde_assume(
 end
 
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
-    nodist = right isa Distribution ? NoDist(right) : NoDist.(right)
-    return dot_assume(nodist, left, vn, vi)
+    return dot_assume(nodist(right), left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
-    nodist = right isa Distribution ? NoDist(right) : NoDist.(right)
-    return dot_assume(rng, sampler, nodist, vn, left, vi)
+    return dot_assume(rng, sampler, nodist(right), vn, left, vi)
 end
 
 # `PriorContext`
@@ -422,8 +420,8 @@ end
 function dot_assume(
     dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
 )
-    r = map(vn -> vi[vn, dist], vns)
-    lp = sum(Bijectors.logpdf_with_trans.(dist, r, map(Base.Fix1(istrans, vi), vns)))
+    r = getindex.((vi,), vns, (dist,))
+    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -433,9 +431,8 @@ function dot_assume(
     vns::AbstractArray{<:VarName},
     vi,
 )
-    @assert length(vns) == length(dists) == length(var)
-    r = map((vn, dist) -> vi[vn, dist], vns, dists)
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
+    r = getindex.((vi,), vns, dists)
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -449,7 +446,7 @@ function dot_assume(
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, map(Base.Fix1(istrans, vi), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)

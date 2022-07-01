@@ -1,10 +1,10 @@
-abstract type AbstractConstraint end
+abstract type AbstractTransformation end
 
-struct Constrained <: AbstractConstraint end
-struct Unconstrained <: AbstractConstraint end
+struct NoTransformation <: AbstractTransformation end
+struct DefaultTransformation <: AbstractTransformation end
 
 """
-    SimpleVarInfo{NT,T,C} <: AbstractVarInfo
+    $(TYPEDEF)
 
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
@@ -86,7 +86,7 @@ ERROR: KeyError: key x[1:2] not found
 [...]
 ```
 
-You can also sample in _unconstrained_ space:
+You can also sample in _transformed_ space:
 
 ```jldoctest simplevarinfo-general
 julia> @model demo_constrained() = x ~ Exponential()
@@ -121,19 +121,19 @@ julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
 ```
 
-Evaluation in unconstrained space of course also works:
+Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Unconstrained SimpleVarInfo((x = -1.0,), 0.0)
+Transformed SimpleVarInfo((x = -1.0,), 0.0)
 
 julia> # (✓) Positive probability mass on negative numbers!
        getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
 -1.3678794411714423
 
-julia> # While if we forget to make indicate that it's unconstrained/transformed:
+julia> # While if we forget to make indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-Constrained SimpleVarInfo((x = -1.0,), 0.0)
+SimpleVarInfo((x = -1.0,), 0.0)
 
 julia> # (✓) No probability mass on negative numbers!
        getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
@@ -188,16 +188,16 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T,C<:AbstractConstraint} <: AbstractVarInfo
+struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
     "underlying representation of the realization represented"
     values::NT
     "holds the accumulated log-probability"
     logp::T
-    "represents whether it assumes variables to be constrained or unconstrained"
-    constraint::C
+    "represents whether it assumes variables to be transformed"
+    transformation::C
 end
 
-SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, Constrained())
+SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
 
 function SimpleVarInfo{T}(θ) where {T<:Real}
     return SimpleVarInfo(θ, zero(T))
@@ -254,15 +254,15 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(
-    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:Constrained}
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:NoTransformation}
 )
-    return print(io, "Constrained SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 function Base.show(
-    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:Unconstrained}
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:DefaultTransformation}
 )
-    return print(io, "Unconstrained SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+    return print(io, "Transformed SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
@@ -473,11 +473,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        @assert length(vns) == length(value)
-        map((vn, val) -> maybe_link(vi, vn, dists, val), vns, value)
+        maybe_link.((vi,), vns, (dists,), value)
     else
-        @assert length(vns) == length(dists) == length(value)
-        map((vn, dist, val) -> maybe_link(vi, vn, dist, val), vns, dists, value)
+        maybe_link.((vi,), vns, dists, value)
     end
 
     # Update `vi`
@@ -518,14 +516,16 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
-    return SimpleVarInfo(vi.values, vi.logp, trans ? Unconstrained() : Constrained())
+    return SimpleVarInfo(
+        vi.values, vi.logp, trans ? DefaultTransformation() : NoTransformation()
+    )
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
 end
 
-istrans(vi::SimpleVarInfo{<:Any,<:Any,<:Constrained}) = false
-istrans(vi::SimpleVarInfo{<:Any,<:Any,<:Unconstrained}) = true
+istrans(vi::SimpleVarInfo{<:Any,<:Any,<:NoTransformation}) = false
+istrans(vi::SimpleVarInfo{<:Any,<:Any,<:DefaultTransformation}) = true
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
