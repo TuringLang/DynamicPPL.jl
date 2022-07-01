@@ -514,7 +514,7 @@ function get_and_set_val!(
         else
             # r = reshape(vi[vec(vns)], size(vns))
             r_raw = getindex_raw(vi, vec(vns))
-            r = maybe_invlink.(Ref(vi), vns, dists, reshape(r_raw, size(vns)))
+            r = maybe_invlink.((vi,), vns, dists, reshape(r_raw, size(vns)))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
