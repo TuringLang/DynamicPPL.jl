@@ -318,14 +318,12 @@ function dot_tilde_assume(
 end
 
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
-    nodist = nodist.(right)
-    return dot_assume(nodist, left, vn, vi)
+    return dot_assume(nodist.(right), left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
-    nodist = nodist.(right)
-    return dot_assume(rng, sampler, nodist, vn, left, vi)
+    return dot_assume(rng, sampler, nodist.(right), vn, left, vi)
 end
 
 # `PriorContext`
