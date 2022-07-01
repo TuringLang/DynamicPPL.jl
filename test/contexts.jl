@@ -165,7 +165,8 @@ end
                     vn_without_prefix = remove_prefix(vn)
 
                     # Let's check elementwise.
-                    for vn_child in DynamicPPL.TestUtils.varnames(vn_without_prefix, val)
+                    for vn_child in
+                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         if get(val, getlens(vn_child)) === missing
                             @test contextual_isassumption(context, vn_child)
                         else
@@ -197,7 +198,8 @@ end
                     # `ConditionContext` with the conditioned variable.
                     vn_without_prefix = remove_prefix(vn)
 
-                    for vn_child in DynamicPPL.TestUtils.varnames(vn_without_prefix, val)
+                    for vn_child in
+                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
                         @test hasvalue_nested(context, vn_child)
                         # Value should be the same as extracted above.
