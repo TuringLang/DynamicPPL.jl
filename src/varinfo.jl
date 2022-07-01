@@ -941,11 +941,7 @@ getindex(vi::AbstractVarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
 function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getindex_raw(vi, vn, dist)
-    return if istrans(vi, vn)
-        Bijectors.invlink(dist, val)
-    else
-        val
-    end
+    return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
     return getindex(vi, vns, getdist(vi, first(vns)))
@@ -953,11 +949,7 @@ end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getindex_raw(vi, vns, dist)
-    return if istrans(vi, vns[1])
-        Bijectors.invlink(dist, val)
-    else
-        val
-    end
+    return maybe_invlink.((vi,), vns, (dist,), val)
 end
 
 getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
