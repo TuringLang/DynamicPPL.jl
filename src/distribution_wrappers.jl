@@ -35,8 +35,8 @@ struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
 end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
 
-# HACK(torfjelde): Useful to have a constructor we can use in broadcasting.
 nodist(dist::Distribution) = NoDist(dist)
+nodist(dists::AbstractArray) = nodist.(dist)
 
 Base.length(dist::NoDist) = Base.length(dist.dist)
 Base.size(dist::NoDist) = Base.size(dist.dist)
