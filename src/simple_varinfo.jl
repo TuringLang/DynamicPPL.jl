@@ -494,7 +494,7 @@ function dot_assume(
     var::AbstractMatrix,
     vi::SimpleOrThreadSafeSimple,
 )
-    @assert length(dist) == size(var, 1)
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
 
     # r = get_and_set_val!(rng, vi, vns, dist, spl)
     n = length(vns)
