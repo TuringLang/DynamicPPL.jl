@@ -57,7 +57,6 @@ function remove_prefix(vn::VarName)
     )
 end
 
-
 @testset "contexts.jl" begin
     child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 

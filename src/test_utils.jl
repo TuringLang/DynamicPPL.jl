@@ -722,8 +722,9 @@ const DEMO_MODELS = (
 Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
 
 In short, this method iterators through `demo_models`, calls `AbstractMCMC.sample` on the
-`model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain)` against `target`
-provided in `kwargs...`.
+`model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain, vn)`
+for every (leaf) varname `vn` against the corresponding value returned by
+[`posterior_mean_values`](@ref) for each model.
 
 # Arguments
 - `meanfunction`: A callable which computes the mean of the marginal means from the
@@ -732,7 +733,6 @@ provided in `kwargs...`.
 - `args...`: Arguments forwarded to `sample`.
 
 # Keyword arguments
-- `target`: Value to compare result of `meanfunction(chain)` to.
 - `atol=1e-1`: Absolute tolerance used in `@test`.
 - `rtol=1e-3`: Relative tolerance used in `@test`.
 - `kwargs...`: Keyword arguments forwarded to `sample`.
