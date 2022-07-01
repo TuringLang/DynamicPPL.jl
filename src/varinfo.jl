@@ -944,7 +944,9 @@ function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
-    return getindex.((vi,), vns, getdist.((vi,), vns))
+    # NOTE(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
+    # such as `x .~ [Normal(), Exponential()]`.
+    return getindex(vi, vns, getdist(vi, first(vns)))
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
