@@ -80,7 +80,7 @@
             _, svi_new = DynamicPPL.evaluate!!(model, svi, SamplingContext())
 
             # Realization for `m` should be different wp. 1.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 # `VarName` functions similarly to `PropertyLens` so
                 # we just strip this part from `vn` to get a lens we can use
                 # to extract the corresponding value of `m`.
@@ -101,7 +101,7 @@
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 l = getlens(vn)
                 svi_eval = DynamicPPL.setindex!!(svi_eval, get(m_eval, l), vn)
             end
@@ -113,7 +113,7 @@
             logπ = logjoint(model, svi_eval)
 
             # Values should not have changed.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 l = getlens(vn)
                 @test svi_eval[vn] == get(m_eval, l)
             end
@@ -145,7 +145,7 @@
             )
 
             # Realizations from model should all be equal to the unconstrained realization.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
             end
 
