@@ -11,21 +11,21 @@ using Bijectors: Bijectors
 using Setfield: Setfield
 
 """
-    varnames(vn::VarName, val)
+    varname_leaves(vn::VarName, val)
 
 Return iterator over all varnames that are represented by `vn` on `val`,
-e.g. `varnames(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
+e.g. `varname_leaves(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
 """
-varnames(vn::VarName, val::Real) = [vn]
-function varnames(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
+varname_leaves(vn::VarName, val::Real) = [vn]
+function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
         VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
         I in CartesianIndices(val)
     )
 end
-function varnames(vn::VarName, val::AbstractArray)
+function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varnames(
+        varname_leaves(
             VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
         ) for I in CartesianIndices(val)
     )
@@ -111,17 +111,37 @@ See also: [`logprior_true`](@ref).
 function logprior_true_with_logabsdet_jacobian end
 
 """
+    varnames(model::Model)
+
+Return a collection of `VarName` as they are expected to appear in the model.
+
+Even though it is recommended to implement this by hand for a particular `Model`,
+a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
+"""
+function varnames(model::Model)
+    return collect(
+        keys(last(DynamicPPL.evaluate!!(model, SimpleVarInfo(Dict()), SamplingContext())))
+    )
+end
+
+"""
     example_values(model::Model)
 
-Return a `NamedTuple` compatible with `keys(model)` with values in support of `model`.
+Return a `NamedTuple` compatible with `varnames(model)` with values in support of `model`.
+
+Compatible means that a `varname` from `varnames(model)` can be used to extract the
+corresponding value using the call `get(example_values(model), varname)`.
 """
 example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
 
 """
     posterior_mean_values(model::Model)
 
-Return a `NamedTuple` compatible with `keys(model)` where the values represent
+Return a `NamedTuple` compatible with `varnames(model)` where the values represent
 the posterior mean under `model`.
+
+Compatible means that a `varname` from `varnames(model)` can be used to extract the
+corresponding value using the call `get(posterior_mean_values(model), varname)`.
 """
 function posterior_mean_values end
 
@@ -143,7 +163,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
     return zero(float(eltype(m)))
 end
-function Base.keys(model::Model{typeof(demo_dynamic_constraint)})
+function varnames(model::Model{typeof(demo_dynamic_constraint)})
     return [@varname(m), @varname(x)]
 end
 function example_values(
@@ -192,7 +212,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe)})
+function varnames(model::Model{typeof(demo_dot_assume_dot_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -240,7 +260,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_index_observe)})
+function varnames(model::Model{typeof(demo_assume_index_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -282,7 +302,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_multivariate_observe)})
+function varnames(model::Model{typeof(demo_assume_multivariate_observe)})
     return [@varname(s), @varname(m)]
 end
 function example_values(
@@ -323,7 +343,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_index)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_index)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -365,7 +385,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_dot_observe)})
+function varnames(model::Model{typeof(demo_assume_dot_observe)})
     return [@varname(s), @varname(m)]
 end
 function example_values(
@@ -400,7 +420,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_observe_literal)})
+function varnames(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(s), @varname(m)]
 end
 function example_values(
@@ -442,7 +462,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_index_literal)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -482,7 +502,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_literal_dot_observe)})
+function varnames(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(s), @varname(m)]
 end
 function example_values(
@@ -529,7 +549,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
+function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -581,7 +601,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_submodel)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -626,7 +646,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
+function varnames(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -679,7 +699,7 @@ function logprior_true_with_logabsdet_jacobian(
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
+function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m[1]), @varname(m[2])]
 end
 function example_values(
@@ -748,10 +768,10 @@ function test_sampler_demo_models(
     @testset "$(typeof(sampler)) on $(nameof(model))" for model in DEMO_MODELS
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean_values(model)
-        for vn in keys(model)
+        for vn in varnames(model)
             # We want to compare elementwise which can be achieved by
             # extracting the leaves of the `VarName` and the corresponding value.
-            for vn_leaf in varnames(vn, get(target_values, vn))
+            for vn_leaf in varname_leaves(vn, get(target_values, vn))
                 target_value = get(target_values, vn_leaf)
                 chain_mean_value = meanfunction(chain, vn_leaf)
                 @test chain_mean_value ≈ target_value atol = atol rtol = rtol

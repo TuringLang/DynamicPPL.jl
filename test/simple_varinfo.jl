@@ -80,7 +80,7 @@
             _, svi_new = DynamicPPL.evaluate!!(model, svi, SamplingContext())
 
             # Realization for `m` should be different wp. 1.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 @test svi_new[vn] != get(retval, vn)
             end
 
@@ -100,7 +100,7 @@
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
 
@@ -111,7 +111,7 @@
             logπ = logjoint(model, svi_eval)
 
             # Values should not have changed.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 @test svi_eval[vn] == get(values_eval, vn)
             end
 
@@ -141,7 +141,7 @@
             )
 
             # Realizations from model should all be equal to the unconstrained realization.
-            for vn in keys(model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
             end
 
