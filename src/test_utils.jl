@@ -700,7 +700,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
-    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m[1]), @varname(m[2])]
+    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
 end
 function example_values(
     rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
