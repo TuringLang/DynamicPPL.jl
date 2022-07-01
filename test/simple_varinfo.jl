@@ -71,8 +71,6 @@
             DynamicPPL.settrans!!(svi_nt, true),
             DynamicPPL.settrans!!(svi_dict, true),
         )
-            Random.seed!(42)
-
             # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
             retval = model()
@@ -90,8 +88,15 @@
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            # Sample some random testing values.
-            values_eval = DynamicPPL.TestUtils.example_values(model)
+            values_eval_constrained = DynamicPPL.TestUtils.example_values(model)
+            if DynamicPPL.istrans(svi)
+                values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
+            else
+                values_eval = values_eval_constrained
+                logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
+            end
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
@@ -110,11 +115,8 @@
                 @test svi_eval[vn] == get(values_eval, vn)
             end
 
-            # Compute the true `logjoint` and compare.
-            if !DynamicPPL.istrans(svi)
-                logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
-                @test logπ ≈ logπ_true
-            end
+            # Compare `logjoint` computations.
+            @test logπ ≈ logπ_true
         end
     end
 

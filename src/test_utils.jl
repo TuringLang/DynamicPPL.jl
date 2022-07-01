@@ -138,8 +138,15 @@ function logprior_true_with_logabsdet_jacobian(
     return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
 end
 
-# A collection of models for which the mean-of-means for the posterior should
-# be same.
+# A collection of models for which the posterior should be "similar".
+# Some utility methods for these.
+function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+    b = Bijectors.bijector(InverseGamma(2, 3))
+    s_unconstrained = b.(s)
+    Δlogp = sum(Base.Fix1(Bijectors.logabsdetjac, b).(s))
+    return (s=s_unconstrained, m=m), logprior_true(model, s, m) - Δlogp
+end
+
 @model function demo_dot_assume_dot_observe(
     x=[1.5, 1.5], ::Type{TV}=Vector{Float64}
 ) where {TV}
@@ -157,6 +164,11 @@ function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
     return loglikelihood(MvNormal(m, Diagonal(s)), model.args.x)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_dot_observe)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
@@ -201,6 +213,11 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_index_observe)}, s, m)
     return logpdf(MvNormal(m, Diagonal(s)), model.args.x)
 end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_index_observe)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
 function Base.keys(model::Model{typeof(demo_assume_index_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
@@ -238,6 +255,11 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_multivariate_observe)}, s, m)
     return logpdf(MvNormal(m, Diagonal(s)), model.args.x)
 end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_multivariate_observe)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
 function Base.keys(model::Model{typeof(demo_assume_multivariate_observe)})
     return [@varname(s), @varname(m)]
 end
@@ -273,6 +295,11 @@ function logprior_true(model::Model{typeof(demo_dot_assume_observe_index)}, s, m
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index)}, s, m)
     return sum(logpdf.(Normal.(m, sqrt.(s)), model.args.x))
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_observe_index)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_index)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
@@ -311,6 +338,11 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_dot_observe)}, s, m)
     return sum(logpdf.(Normal.(m, sqrt.(s)), model.args.x))
 end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_dot_observe)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
 function Base.keys(model::Model{typeof(demo_assume_dot_observe)})
     return [@varname(s), @varname(m)]
 end
@@ -340,6 +372,11 @@ function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     return logpdf(MvNormal(m, Diagonal(s)), [1.5, 1.5])
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_observe_literal)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(s), @varname(m)]
@@ -378,6 +415,11 @@ function loglikelihood_true(
 )
     return sum(logpdf.(Normal.(m, sqrt.(s)), fill(1.5, length(m))))
 end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_observe_index_literal)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
@@ -412,6 +454,11 @@ function logprior_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s,
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
     return logpdf(Normal(m, sqrt(s)), 1.5)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_literal_dot_observe)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(s), @varname(m)]
@@ -454,6 +501,11 @@ function loglikelihood_true(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
 )
     return sum(logpdf.(Normal.(m, sqrt.(s)), 1.5))
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
@@ -502,6 +554,11 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_submodel)}, s, m)
     return logpdf(MvNormal(m, Diagonal(s)), model.args.x)
 end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_observe_submodel)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
 function Base.keys(model::Model{typeof(demo_dot_assume_observe_submodel)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
@@ -541,6 +598,11 @@ function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)},
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, s, m)
     return sum(logpdf.(Normal.(m, sqrt.(s)), model.args.x))
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
@@ -586,6 +648,11 @@ function loglikelihood_true(
     model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
 )
     return loglikelihood(MvNormal(vec(m), Diagonal(vec(s))), model.args.x)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function Base.keys(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m[:, 1]), @varname(m[:, 2])]
