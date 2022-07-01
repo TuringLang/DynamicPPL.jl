@@ -2,7 +2,7 @@
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         vi = VarInfo(m)
 
-        for vn in keys(m)
+        for vn in DynamicPPL.TestUtils.varnames(m)
             if vi[vn] isa Real
                 vi = DynamicPPL.setindex!!(vi, 1.0, vn)
             else
