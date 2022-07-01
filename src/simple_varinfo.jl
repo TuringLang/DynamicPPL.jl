@@ -516,16 +516,16 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
-    return SimpleVarInfo(
-        vi.values, vi.logp, trans ? DefaultTransformation() : NoTransformation()
-    )
+    return settrans!!(vi, trans ? DefaultTransformation() : NoTransformation())
+end
+function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
+    return Setfield.@set vi.transformation = transformation
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Setfield.@set vi.varinfo = settrans!!(vi, trans)
+    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
 end
 
-istrans(vi::SimpleVarInfo{<:Any,<:Any,<:NoTransformation}) = false
-istrans(vi::SimpleVarInfo{<:Any,<:Any,<:DefaultTransformation}) = true
+istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
