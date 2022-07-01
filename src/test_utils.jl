@@ -105,7 +105,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
     return zero(float(eltype(m)))
 end
-function Base.keys(model::Model{typeof(demo_dynamic_constraint)})
+function varnames(model::Model{typeof(demo_dynamic_constraint)})
     return [@varname(m), @varname(x)]
 end
 
@@ -134,7 +134,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, m)
     return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe)})
+function varnames(model::Model{typeof(demo_dot_assume_dot_observe)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -156,7 +156,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_index_observe)}, m)
     return logpdf(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_assume_index_observe)})
+function varnames(model::Model{typeof(demo_assume_index_observe)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -173,7 +173,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_multivariate_observe)}, m)
     return logpdf(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_assume_multivariate_observe)})
+function varnames(model::Model{typeof(demo_assume_multivariate_observe)})
     return [@varname(m)]
 end
 
@@ -195,7 +195,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index)}, m)
     return sum(logpdf.(Normal.(m, 0.5), model.args.x))
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_index)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_index)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -214,7 +214,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_dot_observe)}, m)
     return sum(logpdf.(Normal.(m, 0.5), model.args.x))
 end
-function Base.keys(model::Model{typeof(demo_assume_dot_observe)})
+function varnames(model::Model{typeof(demo_assume_dot_observe)})
     return [@varname(m)]
 end
 
@@ -231,7 +231,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, m)
     return logpdf(MvNormal(m, 0.25 * I), [10.0, 10.0])
 end
-function Base.keys(model::Model{typeof(demo_assume_observe_literal)})
+function varnames(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(m)]
 end
 
@@ -251,7 +251,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, m)
     return sum(logpdf.(Normal.(m, 0.5), fill(10.0, length(m))))
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_index_literal)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -268,7 +268,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, m)
     return logpdf(Normal(m, 0.5), 10.0)
 end
-function Base.keys(model::Model{typeof(demo_assume_literal_dot_observe)})
+function varnames(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(m)]
 end
 
@@ -296,7 +296,7 @@ function loglikelihood_true(
 )
     return sum(logpdf.(Normal.(m, 0.5), 10.0))
 end
-function Base.keys(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
+function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -321,7 +321,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe_submodel)}, m)
     return logpdf(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_observe_submodel)})
+function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -342,7 +342,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, m)
     return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
+function varnames(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
@@ -366,7 +366,7 @@ function loglikelihood_true(
 )
     return loglikelihood(MvNormal(vec(m), 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
+function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     return [@varname(m[:, 1]), @varname(m[:, 2])]
 end
 
@@ -385,7 +385,7 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_array_dot_observe)}, m)
     return loglikelihood(MvNormal(m, 0.25 * I), model.args.x)
 end
-function Base.keys(model::Model{typeof(demo_dot_assume_array_dot_observe)})
+function varnames(model::Model{typeof(demo_dot_assume_array_dot_observe)})
     return [@varname(m[1]), @varname(m[2])]
 end
 
