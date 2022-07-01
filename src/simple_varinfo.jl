@@ -516,7 +516,9 @@ increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
-    return SimpleVarInfo(vi.values, vi.logp, trans ? DefaultTransformation() : NoTransformation())
+    return SimpleVarInfo(
+        vi.values, vi.logp, trans ? DefaultTransformation() : NoTransformation()
+    )
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Setfield.@set vi.varinfo = settrans!!(vi, trans)
