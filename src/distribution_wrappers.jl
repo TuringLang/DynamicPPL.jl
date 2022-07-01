@@ -36,7 +36,7 @@ end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
 
 nodist(dist::Distribution) = NoDist(dist)
-nodist(dists::AbstractArray) = nodist.(dist)
+nodist(dists::AbstractArray) = nodist.(dists)
 
 Base.length(dist::NoDist) = Base.length(dist.dist)
 Base.size(dist::NoDist) = Base.size(dist.dist)
