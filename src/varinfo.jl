@@ -946,6 +946,9 @@ end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
     # NOTE(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
     # such as `x .~ [Normal(), Exponential()]`.
+    # BUT we also can't fix this here because this will lead to "incorrect"
+    # behavior if `vns` arose from something like `x .~ MvNormal(zeros(2), I)`,
+    # where by "incorrect" we mean there exists pieces of code expecting this behavior.
     return getindex(vi, vns, getdist(vi, first(vns)))
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
