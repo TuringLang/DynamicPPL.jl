@@ -720,6 +720,21 @@ function posterior_mean_values(
     return vals
 end
 
+"""
+A collection of models corresponding to the posterior distribution defined by
+the generative process
+
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, √s)
+    1.5 ~ Normal(m, √s)
+
+_or_ a product of such distributions.
+
+The posterior for both `s` and `m` here is known in closed form. In particular,
+
+    mean(s) == 19 / 8
+    mean(m) == 3 / 4
+"""
 const DEMO_MODELS = (
     demo_dot_assume_dot_observe(),
     demo_assume_index_observe(),
