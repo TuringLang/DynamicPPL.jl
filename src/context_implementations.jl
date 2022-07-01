@@ -435,7 +435,7 @@ function dot_assume(
 )
     @assert length(vns) == length(dists) == length(var)
     r = map((vn, dist) -> vi[vn, dist], vns, dists)
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi, ), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
