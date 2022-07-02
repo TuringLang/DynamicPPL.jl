@@ -135,15 +135,15 @@ corresponding value using `get`, e.g. `get(example_values(model), varname)`.
 example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
 
 """
-    posterior_mean_values(model::Model)
+    posterior_mean(model::Model)
 
 Return a `NamedTuple` compatible with `varnames(model)` where the values represent
 the posterior mean under `model`.
 
 "Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(posterior_mean_values(model), varname)`.
+corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
 """
-function posterior_mean_values end
+function posterior_mean end
 
 """
     demo_dynamic_constraint()
@@ -226,7 +226,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_dot_assume_dot_observe)})
+function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -274,7 +274,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_assume_index_observe)})
+function posterior_mean(model::Model{typeof(demo_assume_index_observe)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -311,7 +311,7 @@ function example_values(
     s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
     return (s=s, m=rand(rng, MvNormal(zero(model.args.x), Diagonal(s))))
 end
-function posterior_mean_values(model::Model{typeof(demo_assume_multivariate_observe)})
+function posterior_mean(model::Model{typeof(demo_assume_multivariate_observe)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -357,7 +357,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_index)})
+function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -395,7 +395,7 @@ function example_values(
     m = rand(rng, Normal(0, sqrt(s)))
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_assume_dot_observe)})
+function posterior_mean(model::Model{typeof(demo_assume_dot_observe)})
     return (s=2.375, m=0.75)
 end
 
@@ -429,7 +429,7 @@ function example_values(
     s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
     return (s=s, m=rand(rng, MvNormal(zeros(2), Diagonal(s))))
 end
-function posterior_mean_values(model::Model{typeof(demo_assume_observe_literal)})
+function posterior_mean(model::Model{typeof(demo_assume_observe_literal)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -476,7 +476,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_index_literal)})
+function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -512,7 +512,7 @@ function example_values(
     m = rand(rng, Normal(0, sqrt(s)))
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_assume_literal_dot_observe)})
+function posterior_mean(model::Model{typeof(demo_assume_literal_dot_observe)})
     return (s=2.375, m=0.75)
 end
 
@@ -564,7 +564,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(
+function posterior_mean(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}
 )
     vals = example_values(model)
@@ -615,7 +615,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_dot_assume_observe_submodel)})
+function posterior_mean(model::Model{typeof(demo_dot_assume_observe_submodel)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -660,7 +660,7 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean_values(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
+function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     vals = example_values(model)
     vals.s .= 2.375
     vals.m .= 0.75
@@ -711,7 +711,7 @@ function example_values(
     m = rand(rng, MvNormal(zeros(n), Diagonal(vec(s))))
     return (s=s, m=m)
 end
-function posterior_mean_values(
+function posterior_mean(
     model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
 )
     vals = example_values(model)
@@ -758,7 +758,7 @@ Test that `sampler` produces correct marginal posterior means on each model in `
 In short, this method iterates through `models`, calls `AbstractMCMC.sample` on the
 `model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain, vn)`
 for every (leaf) varname `vn` against the corresponding value returned by
-[`posterior_mean_values`](@ref) for each model.
+[`posterior_mean`](@ref) for each model.
 
 # Arguments
 - `meanfunction`: A callable which computes the mean of the marginal means from the
@@ -783,7 +783,7 @@ function test_sampler_on_models(
 )
     @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
-        target_values = posterior_mean_values(model)
+        target_values = posterior_mean(model)
         for vn in varnames(model)
             # We want to compare elementwise which can be achieved by
             # extracting the leaves of the `VarName` and the corresponding value.
