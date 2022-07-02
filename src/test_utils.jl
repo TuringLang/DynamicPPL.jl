@@ -455,7 +455,7 @@ function logprior_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s,
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
-    return logpdf(Normal(m, sqrt(s)), [1.5, 2.0])
+    return loglikelihood(Normal(m, sqrt(s)), [1.5, 2.0])
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_assume_literal_dot_observe)}, s, m
@@ -623,7 +623,8 @@ function logprior_true(
 )
     n = length(model.args.x)
     s_vec = vec(s)
-    return loglikelihood(InverseGamma(2, 3), s_vec) + logpdf(MvNormal(zeros(n), s_vec), m)
+    return loglikelihood(InverseGamma(2, 3), s_vec) +
+           logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m)
 end
 function loglikelihood_true(
     model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
