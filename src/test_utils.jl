@@ -185,7 +185,7 @@ end
 function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
     b = Bijectors.bijector(InverseGamma(2, 3))
     s_unconstrained = b.(s)
-    Δlogp = sum(Base.Fix1(Bijectors.logabsdetjac, b).(s))
+    Δlogp = sum(Base.Fix1(Bijectors.logabsdetjac, b), s)
     return (s=s_unconstrained, m=m), logprior_true(model, s, m) - Δlogp
 end
 
