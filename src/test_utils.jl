@@ -665,8 +665,7 @@ const DemoModels = Union{
 }
 
 const UnivariateAssumeDemoModels = Union{
-    Model{typeof(demo_assume_dot_observe)},
-    Model{typeof(demo_assume_literal_dot_observe)},
+    Model{typeof(demo_assume_dot_observe)},Model{typeof(demo_assume_literal_dot_observe)}
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
