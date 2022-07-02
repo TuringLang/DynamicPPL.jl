@@ -90,13 +90,26 @@
             ### Evaluation ###
             values_eval_constrained = DynamicPPL.TestUtils.example_values(model)
             if DynamicPPL.istrans(svi)
+                _, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
                 values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
             else
+                logpri_true = DynamicPPL.TestUtils.logprior_true(
+                    model, values_eval_constrained...
+                )
+                logπ_true = DynamicPPL.TestUtils.logjoint_true(
+                    model, values_eval_constrained...
+                )
                 values_eval = values_eval_constrained
-                logπ_true = DynamicPPL.TestUtils.logjoint_true(model, values_eval...)
             end
+
+            # No logabsdet-jacobian correction needed for the likelihood.
+            loglik_true = DynamicPPL.TestUtils.loglikelihood_true(
+                model, values_eval_constrained...
+            )
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
@@ -109,13 +122,19 @@
 
             # Compute `logjoint` using the varinfo.
             logπ = logjoint(model, svi_eval)
+            logpri = logprior(model, svi_eval)
+            loglik = loglikelihood(model, svi_eval)
+
+            retval_svi, _ = DynamicPPL.evaluate!!(model, svi, LikelihoodContext())
 
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
                 @test svi_eval[vn] == get(values_eval, vn)
             end
 
-            # Compare `logjoint` computations.
+            # Compare log-probability computations.
+            @test logpri ≈ logpri_true
+            @test loglik ≈ loglik_true
             @test logπ ≈ logπ_true
         end
     end
