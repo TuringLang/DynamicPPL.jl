@@ -190,7 +190,7 @@ function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 
 @model function demo_dot_assume_dot_observe(
-    x=[1.5, 1.5], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `dot_assume` and `observe`
     s = TV(undef, length(x))
@@ -228,13 +228,18 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
 @model function demo_assume_index_observe(
-    x=[1.5, 1.5], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `assume` with indexing and `observe`
     s = TV(undef, length(x))
@@ -276,12 +281,17 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_assume_index_observe)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
-@model function demo_assume_multivariate_observe(x=[1.5, 1.5])
+@model function demo_assume_multivariate_observe(x=[1.5, 2.0])
     # Multivariate `assume` and `observe`
     s ~ product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)])
     m ~ MvNormal(zero(x), Diagonal(s))
@@ -313,13 +323,18 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_assume_multivariate_observe)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
 @model function demo_dot_assume_observe_index(
-    x=[1.5, 1.5], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     # `dot_assume` and `observe` with indexing
     s = TV(undef, length(x))
@@ -359,14 +374,19 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
-@model function demo_assume_dot_observe(x=[1.5])
+@model function demo_assume_dot_observe(x=[1.5, 2.0])
     # `assume` and `dot_observe`
     s ~ InverseGamma(2, 3)
     m ~ Normal(0, sqrt(s))
@@ -396,16 +416,16 @@ function example_values(
     return (s=s, m=m)
 end
 function posterior_mean(model::Model{typeof(demo_assume_dot_observe)})
-    return (s=2.375, m=0.75)
+    return (s=49 / 24, m=7 / 6)
 end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
     s ~ product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)])
     m ~ MvNormal(zeros(2), Diagonal(s))
-    [1.5, 1.5] ~ MvNormal(m, Diagonal(s))
+    [1.5, 2.0] ~ MvNormal(m, Diagonal(s))
 
-    return (; s=s, m=m, x=[1.5, 1.5], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
 function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     s_dist = product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)])
@@ -413,7 +433,7 @@ function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     return logpdf(s_dist, s) + logpdf(m_dist, m)
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
-    return logpdf(MvNormal(m, Diagonal(s)), [1.5, 1.5])
+    return logpdf(MvNormal(m, Diagonal(s)), [1.5, 2.0])
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_assume_observe_literal)}, s, m
@@ -431,8 +451,13 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_assume_observe_literal)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
@@ -443,11 +468,10 @@ end
     s .~ InverseGamma(2, 3)
     m .~ Normal.(0, sqrt.(s))
 
-    for i in eachindex(m)
-        1.5 ~ Normal(m[i], sqrt(s[i]))
-    end
+    1.5 ~ Normal(m[1], sqrt(s[1]))
+    2.0 ~ Normal(m[2], sqrt(s[2]))
 
-    return (; s=s, m=m, x=fill(1.5, length(m)), logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -455,7 +479,7 @@ end
 function loglikelihood_true(
     model::Model{typeof(demo_dot_assume_observe_index_literal)}, s, m
 )
-    return sum(logpdf.(Normal.(m, sqrt.(s)), fill(1.5, length(m))))
+    return sum(logpdf.(Normal.(m, sqrt.(s)), [1.5, 2.0]))
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_dot_assume_observe_index_literal)}, s, m
@@ -478,8 +502,13 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
@@ -487,15 +516,15 @@ end
     # `assume` and literal `dot_observe`
     s ~ InverseGamma(2, 3)
     m ~ Normal(0, sqrt(s))
-    [1.5] .~ Normal(m, sqrt(s))
+    [1.5, 2.0] .~ Normal(m, sqrt(s))
 
-    return (; s=s, m=m, x=[1.5], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
 function logprior_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 end
 function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
-    return logpdf(Normal(m, sqrt(s)), 1.5)
+    return logpdf(Normal(m, sqrt(s)), [1.5, 2.0])
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_assume_literal_dot_observe)}, s, m
@@ -513,7 +542,7 @@ function example_values(
     return (s=s, m=m)
 end
 function posterior_mean(model::Model{typeof(demo_assume_literal_dot_observe)})
-    return (s=2.375, m=0.75)
+    return (s=49 / 24, m=7 / 6)
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -528,11 +557,10 @@ end
 @model function demo_assume_submodel_observe_index_literal()
     # Submodel prior
     @submodel s, m = _prior_dot_assume()
-    for i in eachindex(m, s)
-        1.5 ~ Normal(m[i], sqrt(s[i]))
-    end
+    1.5 ~ Normal(m[1], sqrt(s[1]))
+    2.0 ~ Normal(m[2], sqrt(s[2]))
 
-    return (; s=s, m=m, x=[1.5, 1.5], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
 function logprior_true(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
@@ -542,7 +570,7 @@ end
 function loglikelihood_true(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
 )
-    return sum(logpdf.(Normal.(m, sqrt.(s)), 1.5))
+    return sum(logpdf.(Normal.(m, sqrt.(s)), [1.5, 2.0]))
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
@@ -564,12 +592,15 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(
-    model::Model{typeof(demo_assume_submodel_observe_index_literal)}
-)
+function posterior_mean(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
@@ -578,7 +609,7 @@ end
 end
 
 @model function demo_dot_assume_observe_submodel(
-    x=[1.5, 1.5], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
 ) where {TV}
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
@@ -617,13 +648,18 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_dot_assume_observe_submodel)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
 @model function demo_dot_assume_dot_observe_matrix(
-    x=fill(1.5, 2, 1), ::Type{TV}=Vector{Float64}
+    x=transpose([1.5 2.0;]), ::Type{TV}=Vector{Float64}
 ) where {TV}
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
@@ -662,13 +698,18 @@ function example_values(
 end
 function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
 @model function demo_dot_assume_matrix_dot_observe_matrix(
-    x=fill(1.5, 2, 1), ::Type{TV}=Array{Float64}
+    x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
 ) where {TV}
     n = length(x)
     d = length(x) ÷ 2
@@ -711,12 +752,15 @@ function example_values(
     m = rand(rng, MvNormal(zeros(n), Diagonal(vec(s))))
     return (s=s, m=m)
 end
-function posterior_mean(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
-)
+function posterior_mean(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     vals = example_values(model)
-    vals.s .= 2.375
-    vals.m .= 0.75
+
+    vals.s[1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[2] = 8 / 3
+    vals.m[2] = 1
+
     return vals
 end
 
@@ -727,13 +771,32 @@ the generative process
     s ~ InverseGamma(2, 3)
     m ~ Normal(0, √s)
     1.5 ~ Normal(m, √s)
+    2.0 ~ Normal(m, √s)
 
-_or_ a product of such distributions.
+or by
 
-The posterior for both `s` and `m` here is known in closed form. In particular,
+    s[1] ~ InverseGamma(2, 3)
+    s[2] ~ InverseGamma(2, 3)
+    m[1] ~ Normal(0, √s)
+    m[2] ~ Normal(0, √s)
+    1.5 ~ Normal(m[1], √s[1])
+    2.0 ~ Normal(m[2], √s[2])
 
-    mean(s) == 19 / 8
-    mean(m) == 3 / 4
+These are examples of a Normal-InverseGamma conjugate prior with Normal likelihood,
+for which the posterior is known in closed form.
+
+In particular, for the univariate model (the former one):
+
+    mean(s) == 49 / 24
+    mean(m) == 7 / 6
+
+And for the multivariate one (the latter one):
+
+    mean(s[1]) == 19 / 8
+    mean(m[1]) == 3 / 4
+    mean(s[2]) == 8 / 3
+    mean(m[2]) == 1
+
 """
 const DEMO_MODELS = (
     demo_dot_assume_dot_observe(),
