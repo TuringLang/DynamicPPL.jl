@@ -254,15 +254,13 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(
-    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:NoTransformation}
+    io::IO, ::MIME"text/plain", svi::SimpleVarInfo
 )
-    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
-end
+    if !(svi.transform isa NoTransformation)
+        print(io, "Transformed ")
+    end
 
-function Base.show(
-    io::IO, ::MIME"text/plain", svi::SimpleVarInfo{<:Any,<:Any,<:DefaultTransformation}
-)
-    return print(io, "Transformed SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
