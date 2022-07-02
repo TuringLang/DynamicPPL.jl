@@ -120,7 +120,7 @@ DynamicPPL.TestUtils.loglikelihood_true
 DynamicPPL.TestUtils.logjoint_true
 ```
 
-And in the case where the model might include constrained variables, it can also be useful to define
+And in the case where the model includes constrained variables, it can also be useful to define
 
 ```@docs
 DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian
