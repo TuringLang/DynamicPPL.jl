@@ -226,17 +226,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 @model function demo_assume_index_observe(
     x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
@@ -279,17 +268,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_assume_index_observe)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 @model function demo_assume_multivariate_observe(x=[1.5, 2.0])
     # Multivariate `assume` and `observe`
@@ -320,17 +298,6 @@ function example_values(
 )
     s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
     return (s=s, m=rand(rng, MvNormal(zero(model.args.x), Diagonal(s))))
-end
-function posterior_mean(model::Model{typeof(demo_assume_multivariate_observe)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
 end
 
 @model function demo_dot_assume_observe_index(
@@ -372,17 +339,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
@@ -415,9 +371,6 @@ function example_values(
     m = rand(rng, Normal(0, sqrt(s)))
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_assume_dot_observe)})
-    return (s=49 / 24, m=7 / 6)
-end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
@@ -448,17 +401,6 @@ function example_values(
 )
     s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
     return (s=s, m=rand(rng, MvNormal(zeros(2), Diagonal(s))))
-end
-function posterior_mean(model::Model{typeof(demo_assume_observe_literal)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
 end
 
 @model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
@@ -500,17 +442,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_dot_assume_observe_index_literal)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 @model function demo_assume_literal_dot_observe()
     # `assume` and literal `dot_observe`
@@ -540,9 +471,6 @@ function example_values(
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
     return (s=s, m=m)
-end
-function posterior_mean(model::Model{typeof(demo_assume_literal_dot_observe)})
-    return (s=49 / 24, m=7 / 6)
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -592,17 +520,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 @model function _likelihood_mltivariate_observe(s, m, x)
     return x ~ MvNormal(m, Diagonal(s))
@@ -646,17 +563,6 @@ function example_values(
     end
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_dot_assume_observe_submodel)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
-end
 
 @model function demo_dot_assume_dot_observe_matrix(
     x=transpose([1.5 2.0;]), ::Type{TV}=Vector{Float64}
@@ -695,17 +601,6 @@ function example_values(
         m[i] = rand(rng, Normal(0, sqrt(s[i])))
     end
     return (s=s, m=m)
-end
-function posterior_mean(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
-    vals = example_values(model)
-
-    vals.s[1] = 19 / 8
-    vals.m[1] = 3 / 4
-
-    vals.s[2] = 8 / 3
-    vals.m[2] = 1
-
-    return vals
 end
 
 @model function demo_dot_assume_matrix_dot_observe_matrix(
@@ -752,7 +647,45 @@ function example_values(
     m = rand(rng, MvNormal(zeros(n), Diagonal(vec(s))))
     return (s=s, m=m)
 end
-function posterior_mean(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
+
+const DemoModels = Union{
+    Model{typeof(demo_dot_assume_dot_observe)},
+    Model{typeof(demo_assume_index_observe)},
+    Model{typeof(demo_assume_multivariate_observe)},
+    Model{typeof(demo_dot_assume_observe_index)},
+    Model{typeof(demo_assume_dot_observe)},
+    Model{typeof(demo_assume_literal_dot_observe)},
+    Model{typeof(demo_assume_observe_literal)},
+    Model{typeof(demo_dot_assume_observe_index_literal)},
+    Model{typeof(demo_assume_submodel_observe_index_literal)},
+    Model{typeof(demo_dot_assume_observe_submodel)},
+    Model{typeof(demo_dot_assume_dot_observe_matrix)},
+    Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
+}
+_observations(model::DemoModels) = [1.5, 2.0]
+
+const UnivariateAssumeDemoModels = Union{
+    Model{typeof(demo_assume_dot_observe)},
+    Model{typeof(demo_assume_literal_dot_observe)},
+}
+function posterior_mean(model::UnivariateAssumeDemoModels)
+    return (s=49 / 24, m=7 / 6)
+end
+
+const MultivariateAssumeDemoModels = Union{
+    Model{typeof(demo_dot_assume_dot_observe)},
+    Model{typeof(demo_assume_index_observe)},
+    Model{typeof(demo_assume_multivariate_observe)},
+    Model{typeof(demo_dot_assume_observe_index)},
+    Model{typeof(demo_assume_observe_literal)},
+    Model{typeof(demo_dot_assume_observe_index_literal)},
+    Model{typeof(demo_assume_submodel_observe_index_literal)},
+    Model{typeof(demo_dot_assume_observe_submodel)},
+    Model{typeof(demo_dot_assume_dot_observe_matrix)},
+    Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
+}
+function posterior_mean(model::MultivariateAssumeDemoModels)
+    # Get some containers to fill.
     vals = example_values(model)
 
     vals.s[1] = 19 / 8
