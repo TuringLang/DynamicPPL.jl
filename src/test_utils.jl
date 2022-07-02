@@ -662,7 +662,6 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe_matrix)},
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
 }
-_observations(model::DemoModels) = [1.5, 2.0]
 
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},
