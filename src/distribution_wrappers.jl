@@ -51,9 +51,21 @@ Distributions.logpdf(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
 Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
-Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real) = 0
-Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
-function Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
+Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real, ::Bool) = 0
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool
+)
+    return 0
+end
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
+)
     return zeros(Int, size(x, 2))
 end
-Bijectors.logpdf_with_trans(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool
+)
+    return 0
+end
+
+Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)
