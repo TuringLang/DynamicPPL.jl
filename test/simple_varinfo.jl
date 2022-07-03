@@ -90,12 +90,15 @@
             ### Evaluation ###
             values_eval_constrained = DynamicPPL.TestUtils.example_values(model)
             if DynamicPPL.istrans(svi)
-                _, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
+                _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
                 values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
+                # Make sure that these two computation paths provide the same
+                # transformed values.
+                @test values_eval == _values_prior
             else
                 logpri_true = DynamicPPL.TestUtils.logprior_true(
                     model, values_eval_constrained...
