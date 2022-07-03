@@ -166,12 +166,6 @@ end
 function varnames(model::Model{typeof(demo_dynamic_constraint)})
     return [@varname(m), @varname(x)]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dynamic_constraint)}
-)
-    m = rand(rng, Normal())
-    return (m=m, x=rand(rng, truncated(Normal(), m, Inf)))
-end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_dynamic_constraint)}, m, x
 )
@@ -215,17 +209,6 @@ end
 function varnames(model::Model{typeof(demo_dot_assume_dot_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_dot_observe)}
-)
-    n = length(model.args.x)
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 @model function demo_assume_index_observe(
     x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
@@ -257,17 +240,6 @@ end
 function varnames(model::Model{typeof(demo_assume_index_observe)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_index_observe)}
-)
-    n = length(model.args.x)
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 @model function demo_assume_multivariate_observe(x=[1.5, 2.0])
     # Multivariate `assume` and `observe`
@@ -292,12 +264,6 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_assume_multivariate_observe)})
     return [@varname(s), @varname(m)]
-end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_multivariate_observe)}
-)
-    s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
-    return (s=s, m=rand(rng, MvNormal(zero(model.args.x), Diagonal(s))))
 end
 
 @model function demo_dot_assume_observe_index(
@@ -328,17 +294,6 @@ end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_index)}
-)
-    n = length(model.args.x)
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
 # as the others.
@@ -364,13 +319,6 @@ end
 function varnames(model::Model{typeof(demo_assume_dot_observe)})
     return [@varname(s), @varname(m)]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_dot_observe)}
-)
-    s = rand(rng, InverseGamma(2, 3))
-    m = rand(rng, Normal(0, sqrt(s)))
-    return (s=s, m=m)
-end
 
 @model function demo_assume_observe_literal()
     # `assume` and literal `observe`
@@ -395,12 +343,6 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(s), @varname(m)]
-end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_observe_literal)}
-)
-    s = rand(rng, product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)]))
-    return (s=s, m=rand(rng, MvNormal(zeros(2), Diagonal(s))))
 end
 
 @model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
@@ -431,17 +373,6 @@ end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_index_literal)}
-)
-    n = 2
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 @model function demo_assume_literal_dot_observe()
     # `assume` and literal `dot_observe`
@@ -464,13 +395,6 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(s), @varname(m)]
-end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_assume_literal_dot_observe)}
-)
-    s = rand(rng, InverseGamma(2, 3))
-    m = rand(rng, Normal(0, sqrt(s)))
-    return (s=s, m=m)
 end
 
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
@@ -508,18 +432,6 @@ end
 function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG,
-    model::Model{typeof(demo_assume_submodel_observe_index_literal)},
-)
-    n = 2
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 @model function _likelihood_mltivariate_observe(s, m, x)
     return x ~ MvNormal(m, Diagonal(s))
@@ -552,17 +464,6 @@ end
 function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_observe_submodel)}
-)
-    n = length(model.args.x)
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
-end
 
 @model function demo_dot_assume_dot_observe_matrix(
     x=transpose([1.5 2.0;]), ::Type{TV}=Vector{Float64}
@@ -590,17 +491,6 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
-end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_dot_observe_matrix)}
-)
-    n = length(model.args.x)
-    s = rand(rng, InverseGamma(2, 3), n)
-    m = similar(s)
-    for i in eachindex(m, s)
-        m[i] = rand(rng, Normal(0, sqrt(s[i])))
-    end
-    return (s=s, m=m)
 end
 
 @model function demo_dot_assume_matrix_dot_observe_matrix(
@@ -639,15 +529,6 @@ end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
 end
-function example_values(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}
-)
-    n = length(model.args.x)
-    d = n ÷ 2
-    s = rand(rng, product_distribution([InverseGamma(2, 3) for _ in 1:d]), 2)
-    m = rand(rng, MvNormal(zeros(n), Diagonal(vec(s))))
-    return (s=s, m=m)
-end
 
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
@@ -669,6 +550,12 @@ const UnivariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
+end
+function example_values(rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels)
+    s = rand(rng, InverseGamma(2, 3))
+    m = rand(rng, Normal(0, sqrt(s)))
+
+    return (s=s, m=m)
 end
 
 const MultivariateAssumeDemoModels = Union{
@@ -692,6 +579,20 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     vals.s[2] = 8 / 3
     vals.m[2] = 1
+
+    return vals
+end
+function example_values(
+    rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels
+)
+    # Get template values from `model`.
+    retval = model(rng)
+    vals = (s = retval.s, m = retval.m)
+    # Fill containers with realizations from prior.
+    for i in LinearIndices(vals.s)
+        vals.s[i] = rand(rng, InverseGamma(2, 3))
+        vals.m[i] = rand(rng, Normal(0, sqrt(vals.s[i])))
+    end
 
     return vals
 end
