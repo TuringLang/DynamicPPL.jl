@@ -746,7 +746,7 @@ const DEMO_MODELS = (
 )
 
 """
-    test_sampler_on_models(meanfunction, models, sampler, args...; kwargs...)
+    test_sampler(meanfunction, models, sampler, args...; kwargs...)
 
 Test that `sampler` produces correct marginal posterior means on each model in `models`.
 
@@ -767,7 +767,7 @@ for every (leaf) varname `vn` against the corresponding value returned by
 - `rtol=1e-3`: Relative tolerance used in `@test`.
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
-function test_sampler_on_models(
+function test_sampler(
     meanfunction,
     models,
     sampler::AbstractMCMC.AbstractSampler,
@@ -796,12 +796,12 @@ end
 
 Test `sampler` on every model in [`DEMO_MODELS`](@ref).
 
-This is just a proxy for `test_sampler_on_models(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
+This is just a proxy for `test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
 """
 function test_sampler_on_demo_models(
     meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
 )
-    return test_sampler_on_models(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)
+    return test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)
 end
 
 """
