@@ -125,8 +125,6 @@
             logpri = logprior(model, svi_eval)
             loglik = loglikelihood(model, svi_eval)
 
-            retval_svi, _ = DynamicPPL.evaluate!!(model, svi, LikelihoodContext())
-
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
                 @test svi_eval[vn] == get(values_eval, vn)
