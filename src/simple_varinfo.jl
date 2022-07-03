@@ -254,7 +254,7 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
-    if !(svi.transform isa NoTransformation)
+    if !(svi.transformation isa NoTransformation)
         print(io, "Transformed ")
     end
 
