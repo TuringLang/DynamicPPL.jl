@@ -103,7 +103,7 @@ NamedDist
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
-DynamicPPL.TestUtils.test_sampler_on_models
+DynamicPPL.TestUtils.test_sampler
 DynamicPPL.TestUtils.test_sampler_on_demo_models
 DynamicPPL.TestUtils.test_sampler_continuous
 ```
