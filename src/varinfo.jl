@@ -944,7 +944,7 @@ function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
-    # NOTE(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
+    # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
     # such as `x .~ [Normal(), Exponential()]`.
     # BUT we also can't fix this here because this will lead to "incorrect"
     # behavior if `vns` arose from something like `x .~ MvNormal(zeros(2), I)`,
@@ -953,8 +953,10 @@ function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    val = getindex_raw(vi, vns, dist)
-    return maybe_invlink.((vi,), vns, (dist,), val)
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
+    end
+    return reconstruct(dist, vals_linked, length(vns))
 end
 
 getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
