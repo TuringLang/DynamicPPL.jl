@@ -582,12 +582,10 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function example_values(
-    rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels
-)
+function example_values(rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels)
     # Get template values from `model`.
     retval = model(rng)
-    vals = (s = retval.s, m = retval.m)
+    vals = (s=retval.s, m=retval.m)
     # Fill containers with realizations from prior.
     for i in LinearIndices(vals.s)
         vals.s[i] = rand(rng, InverseGamma(2, 3))
