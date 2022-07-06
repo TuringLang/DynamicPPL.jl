@@ -1557,9 +1557,11 @@ values_as(vi::VarInfo) = vi.metadata
 """
     values_as(vi::AbstractVarInfo, ::Type{NamedTuple})
     values_as(vi::AbstractVarInfo, ::Type{Dict})
+    values_as(vi::AbstractVarInfo, ::Type{Vector})
 
 Return values in `vi` as the specified type.
 """
+values_as(vi::VarInfo, ::Type{Vector}) = vi[SampleFromPrior()]
 function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
@@ -1582,3 +1584,5 @@ function values_from_metadata(md::Metadata)
         vn in md.vns
     )
 end
+
+unflatten(vi::VarInfo, x::AbstractVector) = VarInfo(vi, SampleFromPrior(), x)

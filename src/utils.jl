@@ -426,3 +426,37 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
+
+
+# HACK(torfjelde): This makes it so it works on iterators, etc. by default.
+# TODO(torfjelde): Do better.
+"""
+    unflatten(original, x::AbstractVector)
+
+Return instance of `original` constructed from `x`.
+"""
+unflatten(original, x::AbstractVector) = map(zip(original, x)) do (original_val, x_val)
+    unflatten(original_val, x_val)
+end
+unflatten(::Real, x::Real) = x
+unflatten(::Real, x::AbstractVector) = only(x)
+unflatten(::AbstractVector{<:Real}, x::AbstractVector) = x
+unflatten(original::AbstractArray{<:Real}, x::AbstractVector) = reshape(x, size(original))
+
+function unflatten(original::Tuple, x::AbstractVector)
+    lengths = map(length, original)
+    end_indices = cumsum(lengths)
+    return ntuple(length(original)) do i
+        v = original[i]
+        l = lengths[i]
+        end_idx = end_indices[i]
+        start_idx = end_idx - l + 1
+        return unflatten(v, @view(x[start_idx:end_idx]))
+    end
+end
+function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
+    return NamedTuple{names}(unflatten(values(original), x))
+end
+function unflatten(original::Dict, x::AbstractVector)
+    return Dict(zip(keys(original), unflatten(values(original), x)))
+end

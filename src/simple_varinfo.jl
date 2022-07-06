@@ -227,6 +227,12 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
+SimpleVarInfo(svi::SimpleVarInfo, spl, x::AbstractVector) = unflatten(svi, x)
+
+function unflatten(svi::SimpleVarInfo, x::AbstractVector)
+    return Setfield.@set svi.values = unflatten(svi.values, x)
+end
+
 function BangBang.empty!!(vi::SimpleVarInfo)
     Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
 end
@@ -536,6 +542,8 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
+values_as(vi::SimpleVarInfo, ::Type{Vector}) = mapreduce(v -> vec([v;]), vcat, values(vi.values))
+
 
 """
     logjoint(model::Model, θ)
