@@ -233,6 +233,9 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     return Setfield.@set svi.values = unflatten(svi.values, x)
 end
 
+Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
+Base.getindex(svi::SimpleVarInfo, ::AbstractSampler) = svi[:]
+
 function BangBang.empty!!(vi::SimpleVarInfo)
     Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
 end

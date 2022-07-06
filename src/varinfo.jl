@@ -977,8 +977,9 @@ Return the current value(s) of the random variables sampled by `spl` in `vi`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-getindex(vi::AbstractVarInfo, spl::SampleFromPrior) = copy(getall(vi))
-getindex(vi::AbstractVarInfo, spl::SampleFromUniform) = copy(getall(vi))
+getindex(vi::AbstractVarInfo, ::Colon) = copy(getall(vi))
+getindex(vi::AbstractVarInfo, ::SampleFromPrior) = vi[:]
+getindex(vi::AbstractVarInfo, ::SampleFromUniform) = vi[:]
 getindex(vi::UntypedVarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
 function getindex(vi::TypedVarInfo, spl::Sampler)
     # Gets the ranges as a NamedTuple
