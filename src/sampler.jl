@@ -67,6 +67,20 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
+function make_default_varinfo(
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler
+)
+    return make_default_varinfo(rng, model, sampler, DefaultContext())
+end
+function make_default_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler,
+    context::AbstractContext,
+)
+    return VarInfo(rng, model, sampler, context)
+end
+
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
@@ -83,7 +97,7 @@ function AbstractMCMC.step(
 
     # Sample initial values.
     _spl = initialsampler(spl)
-    vi = VarInfo(rng, model, _spl)
+    vi = make_default_varinfo(rng, model, _spl)
 
     # Update the parameters if provided.
     if init_params !== nothing
