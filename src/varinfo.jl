@@ -129,6 +129,9 @@ function VarInfo(
 end
 VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
 
+unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, x, SampleFromPrior())
+unflatten(vi::VarInfo, x::AbstractVector, spl) = VarInfo(vi, spl, x)
+
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
     return VarInfo(rng, model, SampleFromPrior(), context)
@@ -1585,5 +1588,3 @@ function values_from_metadata(md::Metadata)
         vn in md.vns
     )
 end
-
-unflatten(vi::VarInfo, x::AbstractVector) = VarInfo(vi, SampleFromPrior(), x)
