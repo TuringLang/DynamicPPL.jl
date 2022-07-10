@@ -229,12 +229,10 @@ end
 
 SimpleVarInfo(svi::SimpleVarInfo, spl, x::AbstractVector) = unflatten(svi, x)
 
+unflatten(svi::SimpleVarInfo, spl, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     return Setfield.@set svi.values = unflatten(svi.values, x)
 end
-
-Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
-Base.getindex(svi::SimpleVarInfo, ::AbstractSampler) = svi[:]
 
 function BangBang.empty!!(vi::SimpleVarInfo)
     Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
@@ -317,11 +315,8 @@ end
 # HACK: Needed to disambiguiate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
-
-# TODO: Should we do better?
-Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
+Base.getindex(svi::SimpleVarInfo, ::AbstractSampler) = svi[:]
 
 # Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
 # we simply call `getindex` in `getindex_raw`.
