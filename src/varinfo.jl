@@ -129,8 +129,8 @@ function VarInfo(
 end
 VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
 
-unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, x, SampleFromPrior())
-unflatten(vi::VarInfo, x::AbstractVector, spl) = VarInfo(vi, spl, x)
+unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
+unflatten(vi::VarInfo, spl, x::AbstractVector) = VarInfo(vi, spl, x)
 
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
