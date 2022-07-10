@@ -513,6 +513,44 @@ end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
+setgid!(vi::SimpleOrThreadSafeSimple, gid::Selector, vn::VarName) = nothing
+
+function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
+    nt_vals = map(keys(vi)) do vn
+        val = vi[vn]
+        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
+        vals = map(Base.Fix1(getindex, vi), vns)
+        (vals, map(string, vns))
+    end
+
+    return NamedTuple{names}(nt_vals)
+end
+
+function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
+    syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
+    for vn in keys(vi)
+        val = vi[vn]
+        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
+        vals = map(Base.Fix1(getindex, vi), vns)
+
+        # Determine the corresponding symbol.
+        sym = only(unique(map(getsym, vns)))
+
+        # Initialize entry if not yet initialized.
+        if !haskey(syms_to_result, sym)
+            syms_to_result[sym] = (Real[], String[])
+        end
+
+        # Combine with old result.
+        old_result = syms_to_result[sym]
+        syms_to_result[sym] = (
+            vcat(old_result[1], vals),
+            vcat(old_result[2], map(string, vns))
+        )
+    end
+
+    return NamedTuple(pairs(syms_to_result))
+end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
