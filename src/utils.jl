@@ -435,11 +435,18 @@ end
 
 Return instance of `original` constructed from `x`.
 """
-unflatten(original, x::AbstractVector) = map(zip(original, x)) do (original_val, x_val)
-    unflatten(original_val, x_val)
+function unflatten(original, x::AbstractVector)
+    lengths = map(length, original)
+    end_indices = cumsum(lengths)
+    return map(zip(original, lengths, end_indices)) do (v, l, end_idx)
+        start_idx = end_idx - l + 1
+        return unflatten(v, @view(x[start_idx:end_idx]))
+    end
 end
+
 unflatten(::Real, x::Real) = x
 unflatten(::Real, x::AbstractVector) = only(x)
+unflatten(::AbstractVector{<:Real}, x::Real) = vcat(x)
 unflatten(::AbstractVector{<:Real}, x::AbstractVector) = x
 unflatten(original::AbstractArray{<:Real}, x::AbstractVector) = reshape(x, size(original))
 
@@ -458,5 +465,5 @@ function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
     return NamedTuple{names}(unflatten(values(original), x))
 end
 function unflatten(original::Dict, x::AbstractVector)
-    return Dict(zip(keys(original), unflatten(values(original), x)))
+    return Dict(zip(keys(original), unflatten(collect(values(original)), x)))
 end
