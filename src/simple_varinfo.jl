@@ -529,6 +529,7 @@ end
 function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
     syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
     for vn in keys(vi)
+        # Extract the leaf varnames and values.
         val = vi[vn]
         vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
         vals = map(Base.Fix1(getindex, vi), vns)
@@ -542,13 +543,14 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
         end
 
         # Combine with old result.
-        old_result = syms_to_result[sym]
+        old_vals, old_string_vns = syms_to_result[sym]
         syms_to_result[sym] = (
-            vcat(old_result[1], vals),
-            vcat(old_result[2], map(string, vns))
+            vcat(old_vals, vals),
+            vcat(old_string_vns, map(string, vns))
         )
     end
 
+    # Construct `NamedTuple`.
     return NamedTuple(pairs(syms_to_result))
 end
 
