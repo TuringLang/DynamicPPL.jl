@@ -657,12 +657,12 @@ marginal_mean_of_samples(chain, varname) = mean(Array(chain[Symbol(varname)]))
 Test that `sampler` produces correct marginal posterior means on each model in `models`.
 
 In short, this method iterates through `models`, calls `AbstractMCMC.sample` on the
-`model` and `sampler` to produce a `chain`, and then checks [`marginal_mean_of_samples(chain, vn)`](@ref)
+`model` and `sampler` to produce a `chain`, and then checks `marginal_mean_of_samples(chain, vn)`
 for every (leaf) varname `vn` against the corresponding value returned by
 [`posterior_mean`](@ref) for each model.
 
 To change how comparison is done for a particular `chain` type, one can overload
-[`marginal_mean_of_samples(chain, vn)`](@ref) for the corresponding type.
+[`marginal_mean_of_samples`](@ref) for the corresponding type.
 
 # Arguments
 - `models`: A collection of instaces of [`DynamicPPL.Model`](@ref) to test on.
