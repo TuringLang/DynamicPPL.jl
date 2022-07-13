@@ -125,16 +125,6 @@ function varnames(model::Model)
 end
 
 """
-    example_values(model::Model)
-
-Return a `NamedTuple` compatible with `varnames(model)` with values in support of `model`.
-
-"Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(example_values(model), varname)`.
-"""
-example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
-
-"""
     posterior_mean(model::Model)
 
 Return a `NamedTuple` compatible with `varnames(model)` where the values represent
@@ -545,13 +535,21 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
 }
 
+# We require demo models to have explict impleentations of `rand` since we want
+# these to be considered as ground truth.
+function Random.rand(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
+    return error("demo models requires explicit implementation of rand")
+end
+
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},Model{typeof(demo_assume_literal_dot_observe)}
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
-function example_values(rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels)
+function Random.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
+)
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
 
@@ -572,7 +570,7 @@ const MultivariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = example_values(model)
+    vals = Random.rand(model)
 
     vals.s[1] = 19 / 8
     vals.m[1] = 3 / 4
@@ -582,7 +580,9 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function example_values(rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels)
+function Random.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
+)
     # Get template values from `model`.
     retval = model(rng)
     vals = (s=retval.s, m=retval.m)
@@ -675,12 +675,7 @@ To change how comparison is done for a particular `chain` type, one can overload
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
 function test_sampler(
-    models,
-    sampler::AbstractMCMC.AbstractSampler,
-    args...;
-    atol=1e-1,
-    rtol=1e-3,
-    kwargs...,
+    models, sampler::AbstractMCMC.AbstractSampler, args...; atol=1e-1, rtol=1e-3, kwargs...
 )
     @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
@@ -717,9 +712,7 @@ Test that `sampler` produces the correct marginal posterior means on all models 
 
 As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref).
 """
-function test_sampler_continuous(
-    sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
-)
+function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     return test_sampler_on_demo_models(sampler, args...; kwargs...)
 end
 

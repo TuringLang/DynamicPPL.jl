@@ -62,7 +62,7 @@
                                                      DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.example_values(model))
+        svi_nt = SimpleVarInfo(rand(NamedTuple, model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
 
         @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
@@ -88,7 +88,7 @@
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            values_eval_constrained = DynamicPPL.TestUtils.example_values(model)
+            values_eval_constrained = rand(NamedTuple, model)
             if DynamicPPL.istrans(svi)
                 _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...

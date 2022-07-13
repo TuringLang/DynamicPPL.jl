@@ -131,7 +131,6 @@ Finally, the following methods can also be of use:
 
 ```@docs
 DynamicPPL.TestUtils.varnames
-DynamicPPL.TestUtils.example_values
 DynamicPPL.TestUtils.posterior_mean
 ```
 
