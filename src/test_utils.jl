@@ -125,16 +125,6 @@ function varnames(model::Model)
 end
 
 """
-    example_values(model::Model)
-
-Return a `NamedTuple` compatible with `varnames(model)` with values in support of `model`.
-
-"Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(example_values(model), varname)`.
-"""
-example_values(model::Model) = example_values(Random.GLOBAL_RNG, model)
-
-"""
     posterior_mean(model::Model)
 
 Return a `NamedTuple` compatible with `varnames(model)` where the values represent
@@ -545,13 +535,21 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
 }
 
+# We require demo models to have explict impleentations of `rand` since we want
+# these to be considered as ground truth.
+function Random.rand(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
+    return error("demo models requires explicit implementation of rand")
+end
+
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},Model{typeof(demo_assume_literal_dot_observe)}
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
-function example_values(rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels)
+function Random.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
+)
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
 
@@ -572,7 +570,7 @@ const MultivariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = example_values(model)
+    vals = Random.rand(model)
 
     vals.s[1] = 19 / 8
     vals.m[1] = 3 / 4
@@ -582,7 +580,9 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function example_values(rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels)
+function Random.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
+)
     # Get template values from `model`.
     retval = model(rng)
     vals = (s=retval.s, m=retval.m)
@@ -645,18 +645,26 @@ const DEMO_MODELS = (
 )
 
 """
-    test_sampler(meanfunction, models, sampler, args...; kwargs...)
+    marginal_mean_of_samples(chain, varname)
+
+Return the mean of variable represented by `varname` in `chain`.
+"""
+marginal_mean_of_samples(chain, varname) = mean(Array(chain[Symbol(varname)]))
+
+"""
+    test_sampler(models, sampler, args...; kwargs...)
 
 Test that `sampler` produces correct marginal posterior means on each model in `models`.
 
 In short, this method iterates through `models`, calls `AbstractMCMC.sample` on the
-`model` and `sampler` to produce a `chain`, and then checks `meanfunction(chain, vn)`
+`model` and `sampler` to produce a `chain`, and then checks `marginal_mean_of_samples(chain, vn)`
 for every (leaf) varname `vn` against the corresponding value returned by
 [`posterior_mean`](@ref) for each model.
 
+To change how comparison is done for a particular `chain` type, one can overload
+[`marginal_mean_of_samples`](@ref) for the corresponding type.
+
 # Arguments
-- `meanfunction`: A callable which computes the mean of the marginal means from the
-  chain resulting from the `sample` call.
 - `models`: A collection of instaces of [`DynamicPPL.Model`](@ref) to test on.
 - `sampler`: The `AbstractMCMC.AbstractSampler` to test.
 - `args...`: Arguments forwarded to `sample`.
@@ -667,13 +675,7 @@ for every (leaf) varname `vn` against the corresponding value returned by
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
 function test_sampler(
-    meanfunction,
-    models,
-    sampler::AbstractMCMC.AbstractSampler,
-    args...;
-    atol=1e-1,
-    rtol=1e-3,
-    kwargs...,
+    models, sampler::AbstractMCMC.AbstractSampler, args...; atol=1e-1, rtol=1e-3, kwargs...
 )
     @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
@@ -683,7 +685,7 @@ function test_sampler(
             # extracting the leaves of the `VarName` and the corresponding value.
             for vn_leaf in varname_leaves(vn, get(target_values, vn))
                 target_value = get(target_values, vn_leaf)
-                chain_mean_value = meanfunction(chain, vn_leaf)
+                chain_mean_value = marginal_mean_of_samples(chain, vn_leaf)
                 @test chain_mean_value ≈ target_value atol = atol rtol = rtol
             end
         end
@@ -698,30 +700,20 @@ Test `sampler` on every model in [`DEMO_MODELS`](@ref).
 This is just a proxy for `test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
 """
 function test_sampler_on_demo_models(
-    meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
+    sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
 )
-    return test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)
+    return test_sampler(DEMO_MODELS, sampler, args...; kwargs...)
 end
 
 """
-    test_sampler_continuous([meanfunction, ]sampler, args...; kwargs...)
+    test_sampler_continuous(sampler, args...; kwargs...)
 
 Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
 
 As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref).
 """
-function test_sampler_continuous(
-    meanfunction, sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
-)
-    return test_sampler_on_demo_models(meanfunction, sampler, args...; kwargs...)
-end
-
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
-    # Default for `MCMCChains.Chains`.
-    return test_sampler_continuous(sampler, args...; kwargs...) do chain, vn
-        # HACK(torfjelde): This assumes that we can index into `chain` with `Symbol(vn)`.
-        mean(Array(chain[Symbol(vn)]))
-    end
+    return test_sampler_on_demo_models(sampler, args...; kwargs...)
 end
 
 end

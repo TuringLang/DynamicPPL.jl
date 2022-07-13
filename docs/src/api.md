@@ -106,6 +106,7 @@ DynamicPPL provides several demo models and helpers for testing samplers in the 
 DynamicPPL.TestUtils.test_sampler
 DynamicPPL.TestUtils.test_sampler_on_demo_models
 DynamicPPL.TestUtils.test_sampler_continuous
+DynamicPPL.TestUtils.marginal_mean_of_samples
 ```
 
 ```@docs
@@ -131,7 +132,6 @@ Finally, the following methods can also be of use:
 
 ```@docs
 DynamicPPL.TestUtils.varnames
-DynamicPPL.TestUtils.example_values
 DynamicPPL.TestUtils.posterior_mean
 ```
 

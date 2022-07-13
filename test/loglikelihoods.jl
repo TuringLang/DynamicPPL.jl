@@ -1,6 +1,6 @@
 @testset "loglikelihoods.jl" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-        example_values = DynamicPPL.TestUtils.example_values(m)
+        example_values = rand(NamedTuple, m)
 
         # Instantiate a `VarInfo` with the example values.
         vi = VarInfo(m)
