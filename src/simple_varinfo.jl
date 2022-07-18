@@ -541,10 +541,7 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
 
         # Combine with old result.
         old_vals, old_string_vns = syms_to_result[sym]
-        syms_to_result[sym] = (
-            vcat(old_vals, vals),
-            vcat(old_string_vns, map(string, vns))
-        )
+        syms_to_result[sym] = (vcat(old_vals, vals), vcat(old_string_vns, map(string, vns)))
     end
 
     # Construct `NamedTuple`.
@@ -678,3 +675,35 @@ julia> # Truth.
 ```
 """
 Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+
+# Allow usage of `NamedBijector` too.
+function link!!(
+    t::BijectorTransformation{<:Bijectors.NamedBijector},
+    vi::SimpleVarInfo{<:NamedTuple},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # TODO: Make sure that `spl` is respected.
+    b = t.bijector
+    x = vi.values
+    y, logjac = with_logabsdet_jacobian(b, x)
+    lp_new = getlogp(vi) - logjac
+    vi_new = setlogp!!(Setfield.@set(vi.values = y), lp_new)
+    return settrans!!(vi_new, t)
+end
+
+function invlink!!(
+    t::BijectorTransformation{<:Bijectors.NamedBijector},
+    vi::SimpleVarInfo{<:NamedTuple},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # TODO: Make sure that `spl` is respected.
+    b = t.bijector
+    ib = inverse(b)
+    y = vi.values
+    x, logjac = with_logabsdet_jacobian(ib, y)
+    lp_new = getlogp(vi) - logjac
+    vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
+    return settrans!!(vi_new, NoTransformation())
+end
