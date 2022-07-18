@@ -2,6 +2,30 @@
 #### Types for typed and untyped VarInfo
 ####
 
+abstract type AbstractTransformation end
+
+struct NoTransformation <: AbstractTransformation end
+struct DefaultTransformation <: AbstractTransformation end
+
+struct BijectorTransformation{B<:Bijectors.AbstractBijector} <: AbstractTransformation
+    bijector::B
+end
+
+"""
+    default_transformation(model::Model[, vi::AbstractVarInfo])
+
+Return the `AbstractTransformation` currently related to `model` and, potentially, `vi`.
+"""
+default_transformation(model::Model, ::AbstractVarInfo) = default_transformation(model)
+default_transformation(::Model) = DefaultTransformation()
+
+"""
+    transformation(vi::AbstractVarInfo)
+
+Return the `AbstractTransformation` related to `vi`.
+"""
+function transformation end
+
 ####################
 # VarInfo metadata #
 ####################
@@ -103,6 +127,8 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
 end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
+
+transformation(vi::VarInfo) = DefaultTransformation()
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)

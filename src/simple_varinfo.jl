@@ -1,8 +1,3 @@
-abstract type AbstractTransformation end
-
-struct NoTransformation <: AbstractTransformation end
-struct DefaultTransformation <: AbstractTransformation end
-
 """
     $(TYPEDEF)
 
@@ -196,6 +191,8 @@ struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
     "represents whether it assumes variables to be transformed"
     transformation::C
 end
+
+transformation(vi::SimpleVarInfo) = vi.transformation
 
 SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
 

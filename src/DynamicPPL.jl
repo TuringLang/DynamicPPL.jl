@@ -57,7 +57,9 @@ export AbstractVarInfo,
     setorder!,
     istrans,
     link!,
+    link!!,
     invlink!,
+    invlink!!,
     tonamedtuple,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -150,5 +152,6 @@ include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
+include("bijectors.jl")
 
 end # module
