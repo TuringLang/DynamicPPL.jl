@@ -569,6 +569,8 @@ istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
+islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
+
 """
     values_as(varinfo[, Type])
 
