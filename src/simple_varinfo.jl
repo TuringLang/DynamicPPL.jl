@@ -582,8 +582,9 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
-values_as(vi::SimpleVarInfo, ::Type{Vector}) = mapreduce(v -> vec([v;]), vcat, values(vi.values))
-
+function values_as(vi::SimpleVarInfo, ::Type{Vector})
+    return mapreduce(v -> vec([v;]), vcat, values(vi.values))
+end
 
 """
     logjoint(model::Model, θ)
