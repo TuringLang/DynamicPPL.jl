@@ -43,7 +43,12 @@ function link!!(
     t::DefaultTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     # TODO: Implement this properly, e.g. using a context or something.
-    return link!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model)
+    # Fall back to `Bijectors.Stacked` but then we act like we're using
+    # the `DefaultTransformation` by setting the transformation accordingly.
+    return settrans!!(
+        link!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model),
+        t
+    )
 end
 function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     # TODO: Implement this properly, e.g. using a context or something.
@@ -51,7 +56,7 @@ function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, mod
     return vi
 end
 function link!!(
-    t::BijectorTransformation{<:Bijectors.Stacked},
+    t::BijectorTransformation,
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
@@ -85,7 +90,7 @@ function invlink!!(::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, m
     return vi
 end
 function invlink!!(
-    t::BijectorTransformation{<:Bijectors.Stacked},
+    t::BijectorTransformation,
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
