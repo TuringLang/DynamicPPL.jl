@@ -91,7 +91,7 @@ function invlink!!(
     model::Model,
 )
     b = t.bijector
-    ib = inv(b)
+    ib = inverse(b)
     y = vi[spl]
     x, logjac = with_logabsdet_jacobian(ib, y)
     # TODO: Do we need this?
