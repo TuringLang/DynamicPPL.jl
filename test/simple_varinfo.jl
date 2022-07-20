@@ -62,18 +62,18 @@
                                                      DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        m = model().m
-        svi_nt = if m isa AbstractArray
-            SimpleVarInfo((m=similar(m),))
-        else
-            SimpleVarInfo()
-        end
+        svi_nt = SimpleVarInfo(rand(NamedTuple, model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
 
-        @testset "$(nameof(typeof(svi.values)))" for svi in (svi_nt, svi_dict)
+        @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
+            svi_nt,
+            svi_dict,
+            DynamicPPL.settrans!!(svi_nt, true),
+            DynamicPPL.settrans!!(svi_dict, true),
+        )
             # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
-            m = model().m
+            retval = model()
 
             ### Sampling ###
             # Sample a new varinfo!
@@ -81,29 +81,43 @@
 
             # Realization for `m` should be different wp. 1.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                # `VarName` functions similarly to `PropertyLens` so
-                # we just strip this part from `vn` to get a lens we can use
-                # to extract the corresponding value of `m`.
-                l = getlens(vn)
-                @test svi_new[vn] != get(m, l)
+                @test svi_new[vn] != get(retval, vn)
             end
 
             # Logjoint should be non-zero wp. 1.
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            # Sample some random testing values.
-            m_eval = if m isa AbstractArray
-                randn!(similar(m))
+            values_eval_constrained = rand(NamedTuple, model)
+            if DynamicPPL.istrans(svi)
+                _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
+                values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
+                # Make sure that these two computation paths provide the same
+                # transformed values.
+                @test values_eval == _values_prior
             else
-                randn(eltype(m))
+                logpri_true = DynamicPPL.TestUtils.logprior_true(
+                    model, values_eval_constrained...
+                )
+                logπ_true = DynamicPPL.TestUtils.logjoint_true(
+                    model, values_eval_constrained...
+                )
+                values_eval = values_eval_constrained
             end
+
+            # No logabsdet-jacobian correction needed for the likelihood.
+            loglik_true = DynamicPPL.TestUtils.loglikelihood_true(
+                model, values_eval_constrained...
+            )
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
             for vn in DynamicPPL.TestUtils.varnames(model)
-                l = getlens(vn)
-                svi_eval = DynamicPPL.setindex!!(svi_eval, get(m_eval, l), vn)
+                svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
 
             # Reset the logp field.
@@ -111,15 +125,17 @@
 
             # Compute `logjoint` using the varinfo.
             logπ = logjoint(model, svi_eval)
+            logpri = logprior(model, svi_eval)
+            loglik = loglikelihood(model, svi_eval)
 
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                l = getlens(vn)
-                @test svi_eval[vn] == get(m_eval, l)
+                @test svi_eval[vn] == get(values_eval, vn)
             end
 
-            # Compute the true `logjoint` and compare.
-            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, m_eval)
+            # Compare log-probability computations.
+            @test logpri ≈ logpri_true
+            @test loglik ≈ loglik_true
             @test logπ ≈ logπ_true
         end
     end
