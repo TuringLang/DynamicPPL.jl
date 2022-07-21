@@ -17,4 +17,5 @@ required_approvals = 1
 use_squash_merge = true
 # Uncomment this to use a four hour timeout.
 # The default is one hour.
-timeout_sec = 14400
+# timeout_sec = 14400
+timeout_sec = 43200
