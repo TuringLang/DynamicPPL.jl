@@ -78,7 +78,8 @@ function make_default_varinfo(
     sampler::AbstractSampler,
     context::AbstractContext,
 )
-    return VarInfo(rng, model, sampler, context)
+    init_sampler = initialsampler(sampler)
+    return VarInfo(rng, model, init_sampler, context)
 end
 
 # initial step: general interface for resuming and
@@ -96,8 +97,7 @@ function AbstractMCMC.step(
     end
 
     # Sample initial values.
-    _spl = initialsampler(spl)
-    vi = make_default_varinfo(rng, model, _spl)
+    vi = make_default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
     if init_params !== nothing
@@ -141,8 +141,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Get all values.
     linked = islinked(vi, spl)
     if linked
-        # TODO: Make work with immutable `vi`.
-        invlink!(vi, spl)
+        vi = invlink!!(vi, spl)
     end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
@@ -159,8 +158,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Update in `vi`.
     vi = setindex!!(vi, theta, spl)
     if linked
-        # TODO: Make work with immutable `vi`.
-        link!(vi, spl)
+        vi = link!!(vi, spl)
     end
 
     return vi
