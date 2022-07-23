@@ -581,7 +581,8 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
 values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
-function values_as(vi::SimpleVarInfo, ::Type{Vector})
+function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
+    length(vi.values) == 0 && return T[]
     return mapreduce(v -> vec([v;]), vcat, values(vi.values))
 end
 
