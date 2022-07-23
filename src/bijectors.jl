@@ -46,8 +46,7 @@ function link!!(
     # Fall back to `Bijectors.Stacked` but then we act like we're using
     # the `DefaultTransformation` by setting the transformation accordingly.
     return settrans!!(
-        link!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model),
-        t
+        link!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model), t
     )
 end
 function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
@@ -56,10 +55,7 @@ function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, mod
     return vi
 end
 function link!!(
-    t::BijectorTransformation,
-    vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    t::BijectorTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     b = t.bijector
     x = vi[spl]
@@ -90,10 +86,7 @@ function invlink!!(::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, m
     return vi
 end
 function invlink!!(
-    t::BijectorTransformation,
-    vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    t::BijectorTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     b = t.bijector
     ib = inverse(b)

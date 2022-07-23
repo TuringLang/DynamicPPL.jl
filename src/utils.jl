@@ -427,7 +427,6 @@ function BangBang.possible(
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
 
-
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
 # TODO(torfjelde): Do better.
 """
