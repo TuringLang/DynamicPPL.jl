@@ -101,7 +101,7 @@ function AbstractMCMC.step(
 
     # Update the parameters if provided.
     if init_params !== nothing
-        vi = initialize_parameters!!(vi, init_params, spl)
+        vi = initialize_parameters!!(vi, init_params, spl, model)
 
         # Update joint log probability.
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
@@ -130,7 +130,7 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
+function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler, model::Model)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
@@ -141,7 +141,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Get all values.
     linked = islinked(vi, spl)
     if linked
-        vi = invlink!!(vi, spl)
+        vi = invlink!!(vi, spl, model)
     end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
@@ -158,7 +158,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Update in `vi`.
     vi = setindex!!(vi, theta, spl)
     if linked
-        vi = link!!(vi, spl)
+        vi = link!!(vi, spl, model)
     end
 
     return vi
