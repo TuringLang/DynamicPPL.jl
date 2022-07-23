@@ -45,20 +45,35 @@
         @test hash(vn2) == hash(vn1)
         @test inspace(vn1, (:x,))
 
-        function test_base!(vi)
-            empty!!(vi)
+        # Tests for `inspace`
+        space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
+
+        @test inspace(@varname(x), space)
+        @test inspace(@varname(y), space)
+        @test inspace(@varname(x[1]), space)
+        @test inspace(@varname(z[1][1]), space)
+        @test inspace(@varname(z[1][:]), space)
+        @test inspace(@varname(z[1][2:3:10]), space)
+        @test inspace(@varname(M[[2, 3], 1]), space)
+        @test inspace(@varname(M[:, 1:4]), space)
+        @test inspace(@varname(M[1, [2, 4, 6]]), space)
+        @test !inspace(@varname(z[2]), space)
+        @test !inspace(@varname(z), space)
+
+        function test_base!!(vi_original)
+            vi = empty!!(vi_original)
             @test getlogp(vi) == 0
-            @test get_num_produce(vi) == 0
+            @test isempty(vi[:])
 
             vn = @varname x
             dist = Normal(0, 1)
             r = rand(dist)
-            gid = Selector()
+            gid = DynamicPPL.Selector()
 
             @test isempty(vi)
             @test ~haskey(vi, vn)
             @test !(vn in keys(vi))
-            push!!(vi, vn, r, dist, gid)
+            vi = push!!(vi, vn, r, dist, gid)
             @test ~isempty(vi)
             @test haskey(vi, vn)
             @test vn in keys(vi)
@@ -68,37 +83,23 @@
 
             @test vi[vn] == r
             @test vi[SampleFromPrior()][1] == r
-            vi[vn] = [2 * r]
+            vi = DynamicPPL.setindex!!(vi, 2 * r, vn)
             @test vi[vn] == 2 * r
             @test vi[SampleFromPrior()][1] == 2 * r
-            vi[SampleFromPrior()] = [3 * r]
+            vi = DynamicPPL.setindex!!(vi, [3 * r], SampleFromPrior())
             @test vi[vn] == 3 * r
             @test vi[SampleFromPrior()][1] == 3 * r
 
-            empty!!(vi)
+            vi = empty!!(vi)
             @test isempty(vi)
-            push!!(vi, vn, r, dist, gid)
-
-            function test_inspace()
-                space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
-
-                @test inspace(@varname(x), space)
-                @test inspace(@varname(y), space)
-                @test inspace(@varname(x[1]), space)
-                @test inspace(@varname(z[1][1]), space)
-                @test inspace(@varname(z[1][:]), space)
-                @test inspace(@varname(z[1][2:3:10]), space)
-                @test inspace(@varname(M[[2, 3], 1]), space)
-                @test inspace(@varname(M[:, 1:4]), space)
-                @test inspace(@varname(M[1, [2, 4, 6]]), space)
-                @test !inspace(@varname(z[2]), space)
-                @test !inspace(@varname(z), space)
-            end
-            return test_inspace()
+            return push!!(vi, vn, r, dist, gid)
         end
+
         vi = VarInfo()
-        test_base!(vi)
-        test_base!(empty!!(TypedVarInfo(vi)))
+        test_base!!(vi)
+        test_base!!(TypedVarInfo(vi))
+        test_base!!(SimpleVarInfo())
+        test_base!!(SimpleVarInfo(Dict()))
     end
     @testset "flags" begin
         # Test flag setting:
