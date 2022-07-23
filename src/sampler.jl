@@ -108,11 +108,7 @@ function AbstractMCMC.step(
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
-        if _spl isa SampleFromUniform
-            model(rng, vi, SampleFromPrior())
-        else
-            model(rng, vi, _spl)
-        end
+        vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
     return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
