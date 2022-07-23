@@ -517,6 +517,8 @@ end
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
 setgid!(vi::SimpleOrThreadSafeSimple, gid::Selector, vn::VarName) = nothing
 
+# We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
+# TODO: Move away from using these `tonamedtuple` methods.
 function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
     nt_vals = map(keys(vi)) do vn
         val = vi[vn]
