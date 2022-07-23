@@ -130,7 +130,9 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler, model::Model)
+function initialize_parameters!!(
+    vi::AbstractVarInfo, init_params, spl::Sampler, model::Model
+)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
