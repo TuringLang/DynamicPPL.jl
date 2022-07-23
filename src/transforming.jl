@@ -52,6 +52,7 @@ end
 function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     # TODO: Implement this properly, e.g. using a context or something.
     DynamicPPL.link!(vi, spl)
+    # TODO: Add `logabsdet_jacobian` correction to `logp`!
     return vi
 end
 function link!!(
@@ -60,7 +61,7 @@ function link!!(
     b = t.bijector
     x = vi[spl]
     y, logjac = with_logabsdet_jacobian(b, x)
-    # TODO: Do we need this?
+
     lp_new = getlogp(vi) - logjac
     vi_new = setlogp!!(unflatten(vi, spl, y), lp_new)
     return settrans!!(vi_new, t)
