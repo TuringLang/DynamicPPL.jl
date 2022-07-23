@@ -104,7 +104,6 @@ function AbstractMCMC.step(
         vi = initialize_parameters!!(vi, init_params, spl)
 
         # Update joint log probability.
-        # TODO: fix properly by using sampler and evaluation contexts
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
