@@ -232,8 +232,9 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
-    Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
+    return resetlogp!!(Setfield.@set vi.values = empty!!(vi.values))
 end
+Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
 setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
