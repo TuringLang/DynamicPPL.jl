@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         version:
-          - '1.3' # minimum supported version
+          - '1.6' # minimum supported version
           - '1' # current stable version
         os:
           - ubuntu-latest

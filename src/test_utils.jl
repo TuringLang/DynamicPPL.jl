@@ -670,17 +670,25 @@ To change how comparison is done for a particular `chain` type, one can overload
 - `args...`: Arguments forwarded to `sample`.
 
 # Keyword arguments
+- `varnames_filter`: A filter to apply to `varnames(model)`, allowing comparison for only
+    a subset of the varnames.
 - `atol=1e-1`: Absolute tolerance used in `@test`.
 - `rtol=1e-3`: Relative tolerance used in `@test`.
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
 function test_sampler(
-    models, sampler::AbstractMCMC.AbstractSampler, args...; atol=1e-1, rtol=1e-3, kwargs...
+    models,
+    sampler::AbstractMCMC.AbstractSampler,
+    args...;
+    varnames_filter=Returns(true),
+    atol=1e-1,
+    rtol=1e-3,
+    kwargs...,
 )
     @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean(model)
-        for vn in varnames(model)
+        for vn in filter(varnames_filter, varnames(model))
             # We want to compare elementwise which can be achieved by
             # extracting the leaves of the `VarName` and the corresponding value.
             for vn_leaf in varname_leaves(vn, get(target_values, vn))

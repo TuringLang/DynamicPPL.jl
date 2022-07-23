@@ -1,3 +1,8 @@
+abstract type AbstractTransformation end
+
+struct NoTransformation <: AbstractTransformation end
+struct DefaultTransformation <: AbstractTransformation end
+
 """
     $(TYPEDEF)
 
