@@ -358,12 +358,31 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
 
 Set the `trans` flag value of `vn` in `vi`.
 """
-function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
+function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+    if trans
+        set_flag!(vi, vn, "trans")
+    else
+        unset_flag!(vi, vn, "trans")
+    end
+
+    return vi
+end
+
+"""
+    settrans!!(vi::AbstractVarInfo, trans)
+
+Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
+"""
+function settrans!!(vi::VarInfo, trans::Bool)
+    for vn in keys(vi)
+        settrans!!(vi, trans, vn)
+    end
+
+    return vi
 end
 
 """
@@ -639,12 +658,23 @@ function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 end
 
 """
+    istrans(vi::AbstractVarInfo)
+
+Return `true` if `vi` is working in unconstrained space, and `false`
+if `vi` is assuming realizations to be in support of the corresponding distributions.
+"""
+istrans(vi::AbstractVarInfo) = false # `VarInfo` works in constrained space by default.
+
+"""
     istrans(vi::VarInfo, vn::VarName)
 
 Return true if `vn`'s values in `vi` are transformed to Euclidean space, and false if
 they are in the support of `vn`'s distribution.
 """
 istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
+function istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
+    return all(Base.Fix1(istrans, vi), vns)
+end
 
 """
     getlogp(vi::VarInfo)
@@ -749,7 +779,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
                 vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, true, vn)
+            settrans!!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -785,7 +815,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, true, vn)
+                            settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -816,7 +846,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
                 vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -854,7 +884,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, false, vn)
+                            settrans!!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -865,6 +895,9 @@ end
     end
     return expr
 end
+
+maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.link(dist, val) : val
+maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.invlink(dist, val) : val
 
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
@@ -904,23 +937,37 @@ distribution(s).
 If the value(s) is (are) transformed to the Euclidean space, it is
 (they are) transformed back.
 """
-function getindex(vi::AbstractVarInfo, vn::VarName)
+getindex(vi::AbstractVarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
+function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vn)
-    return if istrans(vi, vn)
-        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))
-    else
-        reconstruct(dist, getval(vi, vn))
-    end
+    val = getindex_raw(vi, vn, dist)
+    return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
+    # such as `x .~ [Normal(), Exponential()]`.
+    # BUT we also can't fix this here because this will lead to "incorrect"
+    # behavior if `vns` arose from something like `x .~ MvNormal(zeros(2), I)`,
+    # where by "incorrect" we mean there exists pieces of code expecting this behavior.
+    return getindex(vi, vns, getdist(vi, first(vns)))
+end
+function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vns[1])
-    return if istrans(vi, vns[1])
-        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vns), length(vns)))
-    else
-        reconstruct(dist, getval(vi, vns), length(vns))
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
     end
+    return reconstruct(dist, vals_linked, length(vns))
+end
+
+getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
+function getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
+    return reconstruct(dist, getval(vi, vn))
+end
+function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    return getindex_raw(vi, vns, getdist(vi, first(vns)))
+end
+function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return reconstruct(dist, getval(vi, vns), length(vns))
 end
 
 """
@@ -1411,7 +1458,7 @@ function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
 
     return indices
@@ -1492,7 +1539,7 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.

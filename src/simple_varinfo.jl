@@ -1,10 +1,18 @@
+abstract type AbstractTransformation end
+
+struct NoTransformation <: AbstractTransformation end
+struct DefaultTransformation <: AbstractTransformation end
+
 """
-    SimpleVarInfo{NT,T} <: AbstractVarInfo
+    $(TYPEDEF)
 
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
 
 Currently only implemented for `NT<:NamedTuple` and `NT<:Dict`.
+
+# Fields
+$(FIELDS)
 
 # Notes
 The major differences between this and `TypedVarInfo` are:
@@ -16,7 +24,7 @@ The major differences between this and `TypedVarInfo` are:
 
 # Examples
 ## General usage
-```jldoctest; setup=:(using Distributions)
+```jldoctest simplevarinfo-general; setup=:(using Distributions)
 julia> using StableRNGs
 
 julia> @model function demo()
@@ -78,6 +86,60 @@ ERROR: KeyError: key x[1:2] not found
 [...]
 ```
 
+You can also sample in _transformed_ space:
+
+```jldoctest simplevarinfo-general
+julia> @model demo_constrained() = x ~ Exponential()
+demo_constrained (generic function with 2 methods)
+
+julia> m = demo_constrained();
+
+julia> _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx);
+
+julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
+1.8632965762164932
+
+julia> _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+-0.21080155351918753
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
+true
+
+julia> # And with `Dict` of course!
+       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+0.6225185067787314
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
+true
+```
+
+Evaluation in transformed space of course also works:
+
+```jldoctest simplevarinfo-general
+julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
+Transformed SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) Positive probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-1.3678794411714423
+
+julia> # While if we forget to make indicate that it's transformed:
+       vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
+SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) No probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-Inf
+```
+
 ## Indexing
 Using `NamedTuple` as underlying storage.
 
@@ -126,14 +188,26 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T} <: AbstractVarInfo
+struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
+    "underlying representation of the realization represented"
     values::NT
+    "holds the accumulated log-probability"
     logp::T
+    "represents whether it assumes variables to be transformed"
+    transformation::C
 end
 
-SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
-SimpleVarInfo{T}(; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs))
-SimpleVarInfo(; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs))
+SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
+
+function SimpleVarInfo{T}(θ) where {T<:Real}
+    return SimpleVarInfo(θ, zero(T))
+end
+function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
+    return SimpleVarInfo{T}(NamedTuple(kwargs))
+end
+function SimpleVarInfo(; kwargs...)
+    return SimpleVarInfo{Float64}(NamedTuple(kwargs))
+end
 SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
 
 # Constructor from `Model`.
@@ -158,8 +232,8 @@ function BangBang.empty!!(vi::SimpleVarInfo)
 end
 
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, logp)
-acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp)
+setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 
 """
     keys(vi::SimpleVarInfo)
@@ -167,6 +241,7 @@ acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp
 Return an iterator of keys present in `vi`.
 """
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -179,10 +254,24 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
+    if !(svi.transformation isa NoTransformation)
+        print(io, "Transformed ")
+    end
+
     return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
+function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return maybe_invlink(vi, vn, dist, getindex(vi, vn))
+end
+function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
+    end
+    return reconstruct(dist, vals_linked, length(vns))
+end
+
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
 # `Dict`
@@ -221,8 +310,22 @@ Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getinde
 
 Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
 Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
+
 # TODO: Should we do better?
 Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+
+# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
+# we simply call `getindex` in `getindex_raw`.
+getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
+function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return reconstruct(dist, getindex_raw(vi, vn))
+end
+getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
+function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
+    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
+    return reconstruct(dist, vals, length(vns))
+end
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
 function _haskey(nt::NamedTuple, vn::VarName)
@@ -259,7 +362,7 @@ end
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
+    return Setfield.@set vi.values = set!!(vi.values, vn, val)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
@@ -290,7 +393,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
         vn_key = VarName(vn, keylens)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return SimpleVarInfo(dict_new, vi.logp)
+    return Setfield.@set vi.values = dict_new
 end
 
 # `NamedTuple`
@@ -325,8 +428,8 @@ function BangBang.push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T,V} = Union{
-    SimpleVarInfo{T,V},ThreadSafeVarInfo{<:SimpleVarInfo{T,V}}
+const SimpleOrThreadSafeSimple{T,V,C} = Union{
+    SimpleVarInfo{T,V,C},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,C}}
 }
 
 # Necessary for `matchingvalue` to work properly.
@@ -337,58 +440,20 @@ function Base.eltype(
 end
 
 # Context implementations
-function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
-    left = vi[vn]
-    return left, Distributions.loglikelihood(dist, left), vi
-end
-
+# NOTE: Evaluations, i.e. those without `rng` are shared with other
+# implementations of `AbstractVarInfo`.
 function assume(
     rng::Random.AbstractRNG,
-    sampler::SampleFromPrior,
+    sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
     vi::SimpleOrThreadSafeSimple,
 )
     value = init(rng, dist, sampler)
-    vi = BangBang.push!!(vi, vn, value, dist, sampler)
-    return value, Distributions.loglikelihood(dist, value), vi
-end
-
-function dot_assume(
-    dist::MultivariateDistribution,
-    var::AbstractMatrix,
-    vns::AbstractVector{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    @assert length(dist) == size(var, 1)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(zip(vns, eachcol(value))) do (vn, val)
-        return Distributions.logpdf(dist, val)
-    end
-    return value, lp, vi
-end
-
-function dot_assume(
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    var::AbstractArray,
-    vns::AbstractArray{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(Distributions.logpdf.(dists, value))
-    return value, lp, vi
+    # Transform if we're working in unconstrained space.
+    value_raw = maybe_link(vi, vn, dist, value)
+    vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
+    return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
 function dot_assume(
@@ -401,15 +466,64 @@ function dot_assume(
 )
     f = (vn, dist) -> init(rng, dist, spl)
     value = f.(vns, dists)
-    vi = BangBang.setindex!!(vi, value, vns)
-    lp = sum(Distributions.logpdf.(dists, value))
+
+    # Transform if we're working in transformed space.
+    value_raw = if dists isa Distribution
+        maybe_link.((vi,), vns, (dists,), value)
+    else
+        maybe_link.((vi,), vns, dists, value)
+    end
+
+    # Update `vi`
+    vi = BangBang.setindex!!(vi, value_raw, vns)
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
+    return value, lp, vi
+end
+
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    vns::AbstractVector{<:VarName},
+    var::AbstractMatrix,
+    vi::SimpleOrThreadSafeSimple,
+)
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
+
+    # r = get_and_set_val!(rng, vi, vns, dist, spl)
+    n = length(vns)
+    value = init(rng, dist, spl, n)
+
+    # Update `vi`.
+    for (vn, val) in zip(vns, eachcol(value))
+        val_linked = maybe_link(vi, vn, dist, val)
+        vi = BangBang.setindex!!(vi, val_linked, vn)
+    end
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
     return value, lp, vi
 end
 
 # HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
 increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
-settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
-istrans(::SimpleVarInfo, vn::VarName) = false
+
+# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
+function settrans!!(vi::SimpleVarInfo, trans)
+    return settrans!!(vi, trans ? DefaultTransformation() : NoTransformation())
+end
+function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
+    return Setfield.@set vi.transformation = transformation
+end
+function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
+    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+end
+
+istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
+istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
 """
     values_as(varinfo[, Type])

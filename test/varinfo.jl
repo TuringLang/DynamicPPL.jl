@@ -271,4 +271,47 @@
         DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
         @test vals_prev == vi.metadata.x.vals
     end
+
+    @testset "istrans" begin
+        @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
+        model = demo_constrained()
+        vn = @varname(x)
+        dist = truncated(Normal(), 0, Inf)
+
+        ### `VarInfo`
+        # Need to run once since we can't specify that we want to _sample_
+        # in the unconstrained space for `VarInfo` without having `vn`
+        # present in the `varinfo`.
+        ## `UntypedVarInfo`
+        vi = VarInfo()
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = DynamicPPL.settrans!!(vi, true, vn)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ## `TypedVarInfo`
+        vi = VarInfo(model)
+        vi = DynamicPPL.settrans!!(vi, true, vn)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ### `SimpleVarInfo`
+        ## `SimpleVarInfo{<:NamedTuple}`
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ## `SimpleVarInfo{<:Dict}`
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+    end
 end

@@ -12,6 +12,8 @@ using MacroTools: MacroTools
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 
+using DocStringExtensions
+
 using Random: Random
 
 import Base:
