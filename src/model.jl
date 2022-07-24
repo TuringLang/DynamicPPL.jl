@@ -529,7 +529,7 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
             SamplingContext(rng, SampleFromPrior(), DefaultContext()),
         ),
     )
-    return DynamicPPL.values_as(x, T)
+    return values_as(x, T)
 end
 
 # Default RNG and type
