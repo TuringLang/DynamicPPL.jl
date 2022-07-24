@@ -1006,7 +1006,7 @@ Return the current value(s) of the random variables sampled by `spl` in `vi`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-getindex(vi::AbstractVarInfo, ::Colon) = copy(getall(vi))
+getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
 getindex(vi::AbstractVarInfo, ::AbstractSampler) = vi[:]
 getindex(vi::UntypedVarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
 function getindex(vi::TypedVarInfo, spl::Sampler)
@@ -1590,7 +1590,7 @@ values_as(vi::VarInfo) = vi.metadata
 
 Return values in `vi` as the specified type.
 """
-values_as(vi::VarInfo, ::Type{Vector}) = vi[SampleFromPrior()]
+values_as(vi::VarInfo, ::Type{Vector}) = copy(getall(vi))
 function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
