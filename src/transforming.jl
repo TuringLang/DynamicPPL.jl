@@ -1,9 +1,7 @@
-using Bijectors
-
 function Bijectors.Stacked(
-    model::DynamicPPL.Model,
+    model::Model,
     ::Val{sym2ranges}=Val(false);
-    varinfo::DynamicPPL.VarInfo=DynamicPPL.VarInfo(model),
+    varinfo::VarInfo=VarInfo(model),
 ) where {sym2ranges}
     dists = vcat([varinfo.metadata[sym].dists for sym in keys(varinfo.metadata)]...)
 

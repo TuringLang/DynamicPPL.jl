@@ -97,7 +97,7 @@ function AbstractMCMC.step(
     end
 
     # Sample initial values.
-    vi = make_default_varinfo(rng, model, spl)
+    vi = default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
     if init_params !== nothing
