@@ -12,6 +12,8 @@ using MacroTools: MacroTools
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 
+using DocStringExtensions
+
 using Random: Random
 
 import Base:
@@ -38,8 +40,6 @@ export AbstractVarInfo,
     push!!,
     empty!!,
     getlogp,
-    setlogp!,
-    acclogp!,
     resetlogp!,
     setlogp!!,
     acclogp!!,

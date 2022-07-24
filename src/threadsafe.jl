@@ -62,8 +62,24 @@ islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 getindex(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = getindex(vi.varinfo, spl)
 getindex(vi::ThreadSafeVarInfo, spl::SampleFromUniform) = getindex(vi.varinfo, spl)
+
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
+function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
+    return getindex(vi.varinfo, vn, dist)
+end
 getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
+function getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return getindex(vi.varinfo, vns, dist)
+end
+
+getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
+function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
+    return getindex_raw(vi.varinfo, vn, dist)
+end
+getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex_raw(vi.varinfo, vns)
+function getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return getindex_raw(vi.varinfo, vns, dist)
+end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
     return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)

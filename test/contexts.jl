@@ -57,26 +57,6 @@ function remove_prefix(vn::VarName)
     )
 end
 
-"""
-    varnames(vn::VarName, val)
-
-Return iterator over all varnames that are represented by `vn` on `val`,
-e.g. `varnames(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
-"""
-varnames(vn::VarName, val::Real) = [vn]
-function varnames(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
-    return (
-        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
-        I in CartesianIndices(val)
-    )
-end
-function varnames(vn::VarName, val::AbstractArray)
-    return Iterators.flatten(
-        varnames(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
-        I in CartesianIndices(val)
-    )
-end
-
 @testset "contexts.jl" begin
     child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 
@@ -185,7 +165,8 @@ end
                     vn_without_prefix = remove_prefix(vn)
 
                     # Let's check elementwise.
-                    for vn_child in varnames(vn_without_prefix, val)
+                    for vn_child in
+                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         if get(val, getlens(vn_child)) === missing
                             @test contextual_isassumption(context, vn_child)
                         else
@@ -217,7 +198,8 @@ end
                     # `ConditionContext` with the conditioned variable.
                     vn_without_prefix = remove_prefix(vn)
 
-                    for vn_child in varnames(vn_without_prefix, val)
+                    for vn_child in
+                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
                         @test hasvalue_nested(context, vn_child)
                         # Value should be the same as extracted above.
