@@ -314,7 +314,6 @@ end
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
-Base.getindex(svi::SimpleVarInfo, ::Sampler) = svi[:]
 
 # Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
 # we simply call `getindex` in `getindex_raw`.
