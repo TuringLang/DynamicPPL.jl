@@ -67,9 +67,7 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
-function default_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler
-)
+function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
     return default_varinfo(rng, model, sampler, DefaultContext())
 end
 function default_varinfo(
