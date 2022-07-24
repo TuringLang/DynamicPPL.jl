@@ -579,8 +579,10 @@ Return the values/realizations in `varinfo` as `Type`, if implemented.
 If no `Type` is provided, return values as stored in `varinfo`.
 """
 values_as(vi::SimpleVarInfo) = vi.values
-values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
-values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
+values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(zip(keys(vi), values(vi.values)))
+function values_as(vi::SimpleVarInfo{<:Dict}, ::Type{NamedTuple})
+    return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
 values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
 function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
     isempty(vi) && return T[]
