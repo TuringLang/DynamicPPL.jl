@@ -1,7 +1,5 @@
 function Bijectors.Stacked(
-    model::Model,
-    ::Val{sym2ranges}=Val(false);
-    varinfo::VarInfo=VarInfo(model),
+    model::Model, ::Val{sym2ranges}=Val(false); varinfo::VarInfo=VarInfo(model)
 ) where {sym2ranges}
     dists = vcat([varinfo.metadata[sym].dists for sym in keys(varinfo.metadata)]...)
 
