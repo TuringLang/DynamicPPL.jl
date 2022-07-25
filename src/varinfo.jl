@@ -796,6 +796,10 @@ of their distributions to the Euclidean space and set their corresponding `"tran
 flag values to `true`.
 """
 function link!(vi::UntypedVarInfo, spl::Sampler)
+    Base.depwarn(
+        "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
+        :link!,
+    )
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
@@ -815,6 +819,10 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
     end
 end
 function link!(vi::TypedVarInfo, spl::AbstractSampler)
+    Base.depwarn(
+        "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
+        :link!,
+    )
     return link!(vi, spl, Val(getspace(spl)))
 end
 function link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
@@ -865,6 +873,10 @@ Euclidean space back to the support of their distributions and sets their corres
 `"trans"` flag values to `false`.
 """
 function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
+    Base.depwarn(
+        "`invlink!(varinfo, sampler)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
+        :invlink!,
+    )
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
@@ -882,6 +894,10 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     end
 end
 function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
+    Base.depwarn(
+        "`invlink!(varinfo, sampler)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
+        :invlink!,
+    )
     return invlink!(vi, spl, Val(getspace(spl)))
 end
 function invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
