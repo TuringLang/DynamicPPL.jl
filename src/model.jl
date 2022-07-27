@@ -490,7 +490,12 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         context_new = setleafcontext(
             context, setleafcontext(model.context, leafcontext(context))
         )
-        model.f(model, varinfo, context_new, $(unwrap_args...))
+        model.f(
+            model,
+            maybe_invlink_before_eval!!(varinfo, context_new, model),
+            context_new,
+            $(unwrap_args...),
+        )
     end
 end
 

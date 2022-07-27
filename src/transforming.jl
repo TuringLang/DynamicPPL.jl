@@ -98,6 +98,85 @@ function link!!(t::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model:
     return vi
 end
 
+"""
+    maybe_invlink_before_eval!!([t::Transformation,] vi, context, model)
+
+Return a possibly invlinked version of `vi`.
+
+This will be called prior to `model` evaluation, allowing one to perform a single
+`invlink!!` _before_ evaluation rather lazyily evaluate the transforms on as-we-need
+basis as is done with [`LazyTransformation` ](@ref).
+
+# Examples
+```julia-repl
+julia> using DynamicPPL, Distributions, Bijectors
+
+julia> @model demo() = x ~ Normal()
+demo (generic function with 2 methods)
+
+julia> # By subtyping `Bijector{1}`, we inherit the `(inv)link!!` defined for
+       # bijectors which acts on 1-dimensional arrays, i.e. vectors.
+       struct MyBijector <: Bijectors.Bijector{1} end
+
+julia> # Define some dummy `inverse` which will be used in the `link!!` call.
+       Bijectors.inverse(f::MyBijector) = identity
+
+julia> # We need to define `with_logabsdet_jacobian` for `MyBijector`
+       # (`identity` already has `with_logabsdet_jacobian` defined)
+       function Bijectors.with_logabsdet_jacobian(::MyBijector, x)
+           # Just using a large number of the logabsdet-jacobian term
+           # for demonstration purposes.
+           return (x, 1000)
+       end
+
+julia> # Change the `default_transformation` for our model to be a
+       # `StaticTransformation` using `MyBijector`.
+       function DynamicPPL.default_transformation(::Model{typeof(demo)})
+           return DynamicPPL.StaticTransformation(MyBijector())
+       end
+
+julia> model = demo();
+
+julia> vi = SimpleVarInfo(x=1.0)
+SimpleVarInfo((x = 1.0,), 0.0)
+
+julia> # Uses the `inverse` of `MyBijector`, which we have defined as `identity`
+       vi_linked = link!!(vi, model)
+Transformed SimpleVarInfo((x = 1.0,), 0.0)
+
+julia> # Now performs a single `invlink!!` before model evaluation.
+       logjoint(model, vi_linked)
+-1001.4189385332047
+```
+"""
+function maybe_invlink_before_eval!!(
+    vi::AbstractVarInfo, context::AbstractContext, model::Model
+)
+    return maybe_invlink_before_eval!!(transformation(vi), vi, context, model)
+end
+function maybe_invlink_before_eval!!(
+    t::AbstractTransformation,
+    vi::AbstractVarInfo,
+    context::AbstractContext,
+    model::Model,
+)
+    # Default behavior is to _not_ transform.
+    return vi
+end
+function maybe_invlink_before_eval!!(
+    t::StaticTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+)
+    return invlink!!(t, vi, _default_sampler(context), model)
+end
+
+function _default_sampler(context::AbstractContext)
+    return _default_sampler(NodeTrait(_default_sampler, context), context)
+end
+_default_sampler(::IsLeaf, context::AbstractContext) = SampleFromPrior()
+function _default_sampler(::IsParent, context::AbstractContext)
+    return _default_sampler(childcontext(context))
+end
+
 invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), model)
 function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, vi, SampleFromPrior(), model)
