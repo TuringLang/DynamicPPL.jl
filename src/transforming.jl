@@ -1,30 +1,83 @@
-function Bijectors.Stacked(
-    model::Model, ::Val{sym2ranges}=Val(false); varinfo::VarInfo=VarInfo(model)
-) where {sym2ranges}
-    dists = vcat([varinfo.metadata[sym].dists for sym in keys(varinfo.metadata)]...)
+struct LazyTransformationContext{isinverse} <: AbstractContext end
+NodeTrait(::LazyTransformationContext) = IsLeaf()
 
-    num_ranges = sum([
-        length(varinfo.metadata[sym].ranges) for sym in keys(varinfo.metadata)
-    ])
-    ranges = Vector{UnitRange{Int}}(undef, num_ranges)
-    idx = 0
-    range_idx = 1
+function tilde_assume(
+    ::LazyTransformationContext{isinverse}, right, vn, vi
+) where {isinverse}
+    r = vi[vn, right]
+    lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
 
-    # ranges might be discontinuous => values are vectors of ranges rather than just ranges
-    sym_lookup = Dict{Symbol,Vector{UnitRange{Int}}}()
-    for sym in keys(varinfo.metadata)
-        sym_lookup[sym] = Vector{UnitRange{Int}}()
-        for r in varinfo.metadata[sym].ranges
-            ranges[range_idx] = idx .+ r
-            push!(sym_lookup[sym], ranges[range_idx])
-            range_idx += 1
-        end
-
-        idx += varinfo.metadata[sym].ranges[end][end]
+    if istrans(vi, vn)
+        @assert isinverse "Trying to link already transformed variables"
+    else
+        @assert !isinverse "Trying to invlink non-transformed variables"
     end
 
-    b = Bijectors.Stacked(map(Bijectors.bijector, dists), ranges)
-    return sym2ranges ? (b, Dict(zip(keys(sym_lookup), values(sym_lookup)))) : b
+    # Only transform if `!isinverse` since `vi[vn, right]`
+    # already performs the inverse transformation if it's transformed.
+    r_transformed = isinverse ? r : bijector(right)(r)
+    return r, lp, setindex!!(vi, r_transformed, vn)
+end
+
+function dot_tilde_assume(
+    ::LazyTransformationContext{isinverse},
+    dist::Distribution,
+    var::AbstractArray,
+    vns::AbstractArray{<:VarName},
+    vi,
+) where {isinverse}
+    r = getindex.((vi,), vns, (dist,))
+    b = bijector(dist)
+
+    is_trans_uniques = unique(istrans.((vi,), vns))
+    @assert length(is_trans_uniques) == 1 "LazyTransformationContext only supports transforming all variables"
+    is_trans = first(is_trans_uniques)
+    if is_trans
+        @assert isinverse "Trying to link already transformed variables"
+    else
+        @assert !isinverse "Trying to invlink non-transformed variables"
+    end
+
+    # Only transform if `!isinverse` since `vi[vn, right]`
+    # already performs the inverse transformation if it's transformed.
+    r_transformed = isinverse ? r : b.(r)
+    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, (!isinverse,)))
+    return r, lp, setindex!!(vi, r_transformed, vns)
+end
+
+function dot_tilde_assume(
+    ::LazyTransformationContext{isinverse},
+    dist::MultivariateDistribution,
+    var::AbstractMatrix,
+    vns::AbstractVector{<:VarName},
+    vi::AbstractVarInfo,
+) where {isinverse}
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
+    r = vi[vns, dist]
+
+    # Compute `logpdf` with logabsdet-jacobian correction.
+    lp = sum(zip(vns, eachcol(r))) do (vn, ri)
+        return Bijectors.logpdf_with_trans(dist, ri, !isinverse)
+    end
+
+    # Transform _all_ values.
+    is_trans_uniques = unique(istrans.((vi,), vns))
+    @assert length(is_trans_uniques) == 1 "LazyTransformationContext only supports transforming all variables"
+    is_trans = first(is_trans_uniques)
+    if is_trans
+        @assert isinverse "Trying to link already transformed variables"
+    else
+        @assert !isinverse "Trying to invlink non-transformed variables"
+    end
+
+    b = bijector(dist)
+    for (vn, ri) in zip(vns, eachcol(r))
+        # Only transform if `!isinverse` since `vi[vn, right]`
+        # already performs the inverse transformation if it's transformed.
+        vi = DynamicPPL.setindex!!(vi, isinverse ? ri : b(ri), vn)
+    end
+
+    return r, lp, vi
 end
 
 link!!(vi::AbstractVarInfo, model::Model) = link!!(vi, SampleFromPrior(), model)
@@ -38,29 +91,11 @@ end
 function link!!(
     t::DefaultTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
-    # TODO: Implement this properly, e.g. using a context or something.
-    # Fall back to `Bijectors.Stacked` but then we act like we're using
-    # the `DefaultTransformation` by setting the transformation accordingly.
-    return settrans!!(
-        link!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model), t
-    )
+    return settrans!!(last(evaluate!!(model, vi, LazyTransformationContext{false}())), t)
 end
 function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
-    # TODO: Implement this properly, e.g. using a context or something.
-    DynamicPPL.link!(vi, spl)
-    # TODO: Add `logabsdet_jacobian` correction to `logp`!
+    link!(vi, spl)
     return vi
-end
-function link!!(
-    t::BijectorTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
-)
-    b = t.bijector
-    x = vi[spl]
-    y, logjac = with_logabsdet_jacobian(b, x)
-
-    lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(unflatten(vi, spl, y), lp_new)
-    return settrans!!(vi_new, t)
 end
 
 invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), model)
@@ -74,22 +109,42 @@ end
 function invlink!!(
     ::DefaultTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
-    # TODO: Implement this properly, e.g. using a context or something.
-    return invlink!!(BijectorTransformation(Bijectors.Stacked(model)), vi, spl, model)
+    return settrans!!(
+        last(evaluate!!(model, vi, LazyTransformationContext{true}())), NoTransformation()
+    )
 end
 function invlink!!(::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
-    # TODO: Implement this properly, e.g. using a context or something.
-    DynamicPPL.invlink!(vi, spl)
+    invlink!(vi, spl)
     return vi
 end
+
+# BijectorTransformation
+function link!!(
+    t::BijectorTransformation{<:Bijectors.Bijector{1}},
+    vi::AbstractVarInfo,
+    spl::AbstractSampler,
+    model::Model,
+)
+    b = t.bijector
+    x = vi[spl]
+    y, logjac = with_logabsdet_jacobian(b, x)
+
+    lp_new = getlogp(vi) - logjac
+    vi_new = setlogp!!(unflatten(vi, spl, y), lp_new)
+    return settrans!!(vi_new, t)
+end
+
 function invlink!!(
-    t::BijectorTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::BijectorTransformation{<:Bijectors.Bijector{1}},
+    vi::AbstractVarInfo,
+    spl::AbstractSampler,
+    model::Model,
 )
     b = t.bijector
     ib = inverse(b)
     y = vi[spl]
     x, logjac = with_logabsdet_jacobian(ib, y)
-    # TODO: Do we need this?
+
     lp_new = getlogp(vi) - logjac
     vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
