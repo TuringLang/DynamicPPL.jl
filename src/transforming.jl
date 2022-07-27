@@ -155,10 +155,7 @@ function maybe_invlink_before_eval!!(
     return maybe_invlink_before_eval!!(transformation(vi), vi, context, model)
 end
 function maybe_invlink_before_eval!!(
-    t::AbstractTransformation,
-    vi::AbstractVarInfo,
-    context::AbstractContext,
-    model::Model,
+    t::AbstractTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
 )
     # Default behavior is to _not_ transform.
     return vi
