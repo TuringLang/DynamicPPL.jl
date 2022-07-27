@@ -556,7 +556,7 @@ end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
-    return settrans!!(vi, trans ? DefaultTransformation() : NoTransformation())
+    return settrans!!(vi, trans ? LazyTransformation() : NoTransformation())
 end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
     return Setfield.@set vi.transformation = transformation
@@ -687,7 +687,7 @@ Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarIn
 
 # Allow usage of `NamedBijector` too.
 function link!!(
-    t::BijectorTransformation{<:Bijectors.NamedBijector},
+    t::StaticTransformation{<:Bijectors.NamedBijector},
     vi::SimpleVarInfo{<:NamedTuple},
     spl::AbstractSampler,
     model::Model,
@@ -702,7 +702,7 @@ function link!!(
 end
 
 function invlink!!(
-    t::BijectorTransformation{<:Bijectors.NamedBijector},
+    t::StaticTransformation{<:Bijectors.NamedBijector},
     vi::SimpleVarInfo{<:NamedTuple},
     spl::AbstractSampler,
     model::Model,

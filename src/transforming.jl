@@ -89,11 +89,11 @@ function link!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
     return link!!(default_transformation(model, vi), vi, spl, model)
 end
 function link!!(
-    t::DefaultTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::LazyTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     return settrans!!(last(evaluate!!(model, vi, LazyTransformationContext{false}())), t)
 end
-function link!!(t::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function link!!(t::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     link!(vi, spl)
     return vi
 end
@@ -107,25 +107,25 @@ function invlink!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
     return invlink!!(transformation(vi), vi, spl, model)
 end
 function invlink!!(
-    ::DefaultTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    ::LazyTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     return settrans!!(
         last(evaluate!!(model, vi, LazyTransformationContext{true}())), NoTransformation()
     )
 end
-function invlink!!(::DefaultTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function invlink!!(::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     invlink!(vi, spl)
     return vi
 end
 
-# BijectorTransformation
+# Vector-based ones.
 function link!!(
-    t::BijectorTransformation{<:Bijectors.Bijector{1}},
+    t::StaticTransformation{<:Bijectors.Bijector{1}},
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
 )
-    b = t.bijector
+    b = inverse(t.bijector)
     x = vi[spl]
     y, logjac = with_logabsdet_jacobian(b, x)
 
@@ -135,15 +135,14 @@ function link!!(
 end
 
 function invlink!!(
-    t::BijectorTransformation{<:Bijectors.Bijector{1}},
+    t::StaticTransformation{<:Bijectors.Bijector{1}},
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
 )
     b = t.bijector
-    ib = inverse(b)
     y = vi[spl]
-    x, logjac = with_logabsdet_jacobian(ib, y)
+    x, logjac = with_logabsdet_jacobian(b, y)
 
     lp_new = getlogp(vi) - logjac
     vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
