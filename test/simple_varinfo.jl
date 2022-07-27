@@ -58,6 +58,54 @@
         end
     end
 
+    @testset "link!! & invlink!! on $(nameof(model))" for model in
+                                                          DynamicPPL.TestUtils.DEMO_MODELS
+        values_constrained = rand(NamedTuple, model)
+        @testset "$(typeof(vi))" for vi in (
+            SimpleVarInfo(Dict()), SimpleVarInfo(values_constrained), VarInfo(model)
+        )
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
+            end
+            vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
+            lp_orig = getlogp(vi)
+
+            # `link!!`
+            vi_linked = link!!(deepcopy(vi), model)
+            lp_linked = getlogp(vi_linked)
+            values_unconstrained, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                model, values_constrained...
+            )
+            # Should result in the correct logjoint.
+            @test lp_linked ≈ lp_linked_true
+            # Should be approx. the same as the "lazy" transformation.
+            @test logjoint(model, vi_linked) ≈ lp_linked
+
+            # TODO: Should not `VarInfo` also error here? The current implementation
+            # only warns and acts as a no-op.
+            if vi isa SimpleVarInfo
+                @test_throws AssertionError link!!(vi_linked, model)
+            end
+
+            # `invlink!!`
+            vi_invlinked = invlink!!(deepcopy(vi_linked), model)
+            lp_invlinked = getlogp(vi_invlinked)
+            lp_invlinked_true = DynamicPPL.TestUtils.logjoint_true(
+                model, values_constrained...
+            )
+            # Should result in the correct logjoint.
+            @test lp_invlinked ≈ lp_invlinked_true
+            # Should be approx. the same as the "lazy" transformation.
+            @test logjoint(model, vi_invlinked) ≈ lp_invlinked
+
+            # Should result in same values.
+            @test all(
+                DynamicPPL.getindex_raw(vi_invlinked, vn) ≈ get(values_constrained, vn) for
+                vn in DynamicPPL.TestUtils.varnames(model)
+            )
+        end
+    end
+
     @testset "SimpleVarInfo on $(nameof(model))" for model in
                                                      DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
