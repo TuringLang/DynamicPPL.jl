@@ -62,68 +62,112 @@
                                                      DynamicPPL.TestUtils.DEMO_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        m = model().m
-        svi_nt = if m isa AbstractArray
-            SimpleVarInfo((m=similar(m),))
-        else
-            SimpleVarInfo()
-        end
+        svi_nt = SimpleVarInfo(rand(NamedTuple, model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
 
-        @testset "$(nameof(typeof(svi.values)))" for svi in (svi_nt, svi_dict)
+        @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
+            svi_nt,
+            svi_dict,
+            DynamicPPL.settrans!!(svi_nt, true),
+            DynamicPPL.settrans!!(svi_dict, true),
+        )
             # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
-            m = model().m
+            retval = model()
 
             ### Sampling ###
             # Sample a new varinfo!
             _, svi_new = DynamicPPL.evaluate!!(model, svi, SamplingContext())
 
-            # If the `m[1]` varname doesn't exist, this is a univariate model.
-            # TODO: Find a better way of dealing with this that is not dependent
-            # on knowledge of internals of `model`.
-            isunivariate = !haskey(svi_new, @varname(m[1]))
-
             # Realization for `m` should be different wp. 1.
-            if isunivariate
-                @test svi_new[@varname(m)] != m
-            else
-                @test svi_new[@varname(m[1])] != m[1]
-                @test svi_new[@varname(m[2])] != m[2]
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test svi_new[vn] != get(retval, vn)
             end
+
             # Logjoint should be non-zero wp. 1.
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            # Sample some random testing values.
-            m_eval = if m isa AbstractArray
-                randn!(similar(m))
+            values_eval_constrained = rand(NamedTuple, model)
+            if DynamicPPL.istrans(svi)
+                _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
+                values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, values_eval_constrained...
+                )
+                # Make sure that these two computation paths provide the same
+                # transformed values.
+                @test values_eval == _values_prior
             else
-                randn(eltype(m))
+                logpri_true = DynamicPPL.TestUtils.logprior_true(
+                    model, values_eval_constrained...
+                )
+                logπ_true = DynamicPPL.TestUtils.logjoint_true(
+                    model, values_eval_constrained...
+                )
+                values_eval = values_eval_constrained
             end
 
+            # No logabsdet-jacobian correction needed for the likelihood.
+            loglik_true = DynamicPPL.TestUtils.loglikelihood_true(
+                model, values_eval_constrained...
+            )
+
             # Update the realizations in `svi_new`.
-            svi_eval = if isunivariate
-                DynamicPPL.setindex!!(svi_new, m_eval, @varname(m))
-            else
-                DynamicPPL.setindex!!(svi_new, m_eval, [@varname(m[1]), @varname(m[2])])
+            svi_eval = svi_new
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
+
             # Reset the logp field.
             svi_eval = DynamicPPL.resetlogp!!(svi_eval)
 
             # Compute `logjoint` using the varinfo.
             logπ = logjoint(model, svi_eval)
-            # Extract the parameters from `svi_eval`.
-            m_vi = if isunivariate
-                svi_eval[@varname(m)]
-            else
-                svi_eval[[@varname(m[1]), @varname(m[2])]]
+            logpri = logprior(model, svi_eval)
+            loglik = loglikelihood(model, svi_eval)
+
+            # Values should not have changed.
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test svi_eval[vn] == get(values_eval, vn)
             end
-            # These should not have changed.
-            @test m_vi == m_eval
-            # Compute the true `logjoint` and compare.
-            logπ_true = DynamicPPL.TestUtils.logjoint_true(model, m_vi)
+
+            # Compare log-probability computations.
+            @test logpri ≈ logpri_true
+            @test loglik ≈ loglik_true
             @test logπ ≈ logπ_true
+        end
+    end
+
+    @testset "Dynamic constraints" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+
+        # Initialize.
+        svi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        svi = last(DynamicPPL.evaluate!!(model, svi, SamplingContext()))
+
+        # Sample with large variations in unconstrained space.
+        for i in 1:10
+            for vn in keys(svi)
+                svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+            end
+            retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
+            @test retval.m == svi[@varname(m)]  # `m` is unconstrained
+            @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
+
+            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                model, retval.m, retval.x
+            )
+
+            # Realizations from model should all be equal to the unconstrained realization.
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
+            end
+
+            # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
+            lp = getlogp(svi)
+            @test lp ≈ lp_true
         end
     end
 end

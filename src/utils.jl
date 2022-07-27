@@ -183,6 +183,7 @@ vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
 # otherwise we will have error for MatrixDistribution.
 # Note this is not the case for MultivariateDistribution so I guess this might be lack of
 # support for some types related to matrices (like PDMat).
+reconstruct(d::UnivariateDistribution, val::Real) = val
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
 reconstruct(::Tuple{}, val::AbstractVector) = val[1]
 reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
@@ -416,4 +417,12 @@ function splitlens(condition, lens)
     end
 
     return current_parent, current_child, condition(current_parent)
+end
+
+# HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
+) where {C<:AbstractMatrix,T<:AbstractVector}
+    return BangBang.implements(setindex!, C) &&
+           promote_type(eltype(C), eltype(T)) <: eltype(C)
 end

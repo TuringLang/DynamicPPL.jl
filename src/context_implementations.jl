@@ -55,7 +55,7 @@ end
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
 end
@@ -64,7 +64,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
 end
@@ -72,7 +72,7 @@ end
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
 end
@@ -86,7 +86,7 @@ function tilde_assume(
 )
     if haskey(context.vars, getsym(vn))
         vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
 end
@@ -194,7 +194,7 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    r = vi[vn]
+    r = vi[vn, dist]
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
 end
 
@@ -211,16 +211,21 @@ function assume(
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            vi[vn] = vectorize(dist, r)
-            settrans!(vi, false, vn)
+            vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r))
             setorder!(vi, vn, get_num_produce(vi))
         else
-            r = vi[vn]
+            # Otherwise we just extract it.
+            r = vi[vn, dist]
         end
     else
         r = init(rng, dist, sampler)
-        push!!(vi, vn, r, dist, sampler)
-        settrans!(vi, false, vn)
+        if istrans(vi)
+            push!!(vi, vn, link(dist, r), dist, sampler)
+            # By default `push!!` sets the transformed flag to `false`.
+            settrans!!(vi, true, vn)
+        else
+            push!!(vi, vn, r, dist, sampler)
+        end
     end
 
     return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
@@ -286,7 +291,7 @@ function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left,
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
     else
         dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
@@ -305,19 +310,20 @@ function dot_tilde_assume(
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
     else
         dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
     end
 end
+
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
-    return dot_assume(NoDist.(right), left, vn, vi)
+    return dot_assume(nodist(right), left, vn, vi)
 end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
-    return dot_assume(rng, sampler, NoDist.(right), vn, left, vi)
+    return dot_assume(rng, sampler, nodist(right), vn, left, vi)
 end
 
 # `PriorContext`
@@ -326,7 +332,7 @@ function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, 
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
     else
         dot_tilde_assume(PriorContext(), right, left, vn, vi)
@@ -345,7 +351,7 @@ function dot_tilde_assume(
         var = get(context.vars, vn)
         _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
         set_val!(vi, _vns, _right, _left)
-        settrans!.(Ref(vi), false, _vns)
+        settrans!!.((vi,), false, _vns)
         dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
     else
         dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
@@ -383,14 +389,14 @@ function dot_assume(
     vns::AbstractVector{<:VarName},
     vi::AbstractVarInfo,
 )
-    @assert length(dist) == size(var, 1)
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
     # NOTE: We cannot work with `var` here because we might have a model of the form
     #
     #     m = Vector{Float64}(undef, n)
     #     m .~ Normal()
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = vi[vns]
+    r = vi[vns, dist]
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
@@ -412,19 +418,21 @@ function dot_assume(
 end
 
 function dot_assume(
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
+    dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
+)
+    r = getindex.((vi,), vns, (dist,))
+    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
+    return r, lp, vi
+end
+
+function dot_assume(
+    dists::AbstractArray{<:Distribution},
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
     vi,
 )
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    r = reshape(vi[vec(vns)], size(vns))
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    r = getindex.((vi,), vns, dists)
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -438,7 +446,7 @@ function dot_assume(
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans(vi, vns[1])))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)
@@ -462,19 +470,23 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                vi[vn] = vectorize(dist, r[:, i])
-                settrans!(vi, false, vn)
+                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[:, i]))
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = vi[vns]
+            r = vi[vns, dist]
         end
     else
         r = init(rng, dist, spl, n)
         for i in 1:n
             vn = vns[i]
-            push!!(vi, vn, r[:, i], dist, spl)
-            settrans!(vi, false, vn)
+            if istrans(vi)
+                push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
+                # `push!!` sets the trans-flag to `false` by default.
+                settrans!!(vi, true, vn)
+            else
+                push!!(vi, vn, r[:, i], dist, spl)
+            end
         end
     end
     return r
@@ -496,12 +508,13 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, r[i])
-                settrans!(vi, false, vn)
+                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[i]))
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            r = reshape(vi[vec(vns)], size(vns))
+            # r = reshape(vi[vec(vns)], size(vns))
+            r_raw = getindex_raw(vi, vec(vns))
+            r = maybe_invlink.((vi,), vns, dists, reshape(r_raw, size(vns)))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
@@ -511,8 +524,13 @@ function get_and_set_val!(
         # 1. Figure out the broadcast size and use a `foreach`.
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
-        push!!.(Ref(vi), vns, r, dists, Ref(spl))
-        settrans!.(Ref(vi), false, vns)
+        if istrans(vi)
+            push!!.((vi,), vns, link.((vi,), vns, dists, r), dists, (spl,))
+            # `push!!` sets the trans-flag to `false` by default.
+            settrans!!.((vi,), true, vns)
+        else
+            push!!.((vi,), vns, r, dists, (spl,))
+        end
     end
     return r
 end
