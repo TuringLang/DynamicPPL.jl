@@ -128,6 +128,9 @@ end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 
+# NOTE: This is kind of weird, but it effectively preserves the "old"
+# behavior where we're allowed to call `link!` on the same `VarInfo`
+# multiple times.
 transformation(vi::VarInfo) = DefaultTransformation()
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
