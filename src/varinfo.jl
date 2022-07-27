@@ -807,11 +807,11 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
             @debug "X -> ℝ for $(vn)..."
             dist = getdist(vi, vn)
             # TODO: Use inplace versions to avoid allocations
-            setval!(
-                vi,
-                vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
-                vn,
-            )
+            b = bijector(dist)
+            x = reconstruct(dist, getval(vi, vn))
+            y, logjac = with_logabsdet_jacobian(b, x)
+            setval!(vi, vectorize(dist, y), vn)
+            acclogp!!(vi, -logjac)
             settrans!!(vi, true, vn)
         end
     else
@@ -844,14 +844,11 @@ end
                         for vn in f_vns
                             @debug "X -> R for $(vn)..."
                             dist = getdist(vi, vn)
-                            setval!(
-                                vi,
-                                vectorize(
-                                    dist,
-                                    Bijectors.link(dist, reconstruct(dist, getval(vi, vn))),
-                                ),
-                                vn,
-                            )
+                            x = reconstruct(dist, getval(vi, vn))
+                            b = bijector(dist)
+                            y, logjac = with_logabsdet_jacobian(b, x)
+                            setval!(vi, vectorize(dist, y), vn)
+                            acclogp!!(vi, -logjac)
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -882,11 +879,11 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
         for vn in vns
             @debug "ℝ -> X for $(vn)..."
             dist = getdist(vi, vn)
-            setval!(
-                vi,
-                vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
-                vn,
-            )
+            y = reconstruct(dist, getval(vi, vn))
+            b = bijector(dist)
+            x, logjac = with_logabsdet_jacobian(b, y)
+            setval!(vi, vectorize(dist, x), vn)
+            acclogp!!(vi, -logjac)
             settrans!!(vi, false, vn)
         end
     else
@@ -919,16 +916,11 @@ end
                         for vn in f_vns
                             @debug "ℝ -> X for $(vn)..."
                             dist = getdist(vi, vn)
-                            setval!(
-                                vi,
-                                vectorize(
-                                    dist,
-                                    Bijectors.invlink(
-                                        dist, reconstruct(dist, getval(vi, vn))
-                                    ),
-                                ),
-                                vn,
-                            )
+                            y = reconstruct(dist, getval(vi, vn))
+                            b = inv(bijector(dist))
+                            x, logjac = with_logabsdet_jacobian(b, y)
+                            setval!(vi, vectorize(dist, x), vn)
+                            acclogp!!(vi, -logjac)
                             settrans!!(vi, false, vn)
                         end
                     else
