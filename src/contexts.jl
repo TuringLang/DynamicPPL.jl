@@ -319,7 +319,7 @@ function getvalue(context::AbstractContext, vn)
     return error("context $(context) does not contain value for $vn")
 end
 getvalue(context::NamedConditionContext, vn) = get(context.values, vn)
-getvalue(context::DictConditionContext, vn) = nested_getindex(context.values, vn)
+getvalue(context::ConditionContext, vn) = nested_getindex(context.values, vn)
 
 """
     hasvalue_nested(context, vn)
