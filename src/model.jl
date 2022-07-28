@@ -296,14 +296,17 @@ end
 
 """
     decondition(model::Model)
-    decondition(model::Model, syms...)
+    decondition(model::Model, variables...)
 
-Return a `Model` for which `syms...` are _not_ considered observations.
-If no `syms` are provided, then all variables currently considered observations
+Return a `Model` for which `variables...` are _not_ considered observations.
+If no `variables` are provided, then all variables currently considered observations
 will no longer be.
 
 This is essentially the inverse of [`condition`](@ref). This also means that
 it suffers from the same limitiations.
+
+Note that currently we only support `variables` to take on explicit values
+provided to `condition.
 
 # Examples
 ```jldoctest decondition
@@ -364,6 +367,30 @@ julia> deconditioned_model_dict = decondition(conditioned_model_dict, @varname(m
 julia> deconditioned_model_dict(rng)
 (m = -0.7935128416361353, x = 10.0)
 ```
+
+But, as mentioned, `decondition` is only supported for variables explicitly
+provided to `condition` earlier;
+
+```jldocstest decondition
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 3 methods)
+
+julia> model = demo_mv();
+
+julia> conditioned_model = condition(model, @varname(m) => [1.0, 2.0]);
+
+julia> conditioned_model(rng)
+
+julia> deconditioned_model = decondition(conditioned_model, @varname(m[1]));
+
+julia> deconditioned_model(rng)
+```
+
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
