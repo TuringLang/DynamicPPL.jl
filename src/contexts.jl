@@ -395,7 +395,7 @@ function AbstractPPL.condition(
     return condition(context, (value, values...))
 end
 function AbstractPPL.condition(
-    context::AbstractContext, values::NTuple{Any,Pair{<:VarName}}
+    context::AbstractContext, values::NTuple{<:Any,Pair{<:VarName}}
 )
     return condition(context, Dict(values))
 end
