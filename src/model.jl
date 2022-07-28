@@ -395,6 +395,11 @@ julia> deconditioned_model(rng)  # (×) `m[1]` is still conditioned
 2-element Vector{Float64}:
  1.0
  2.0
+
+julia> (deconditioned_model | (@varname(m[1]) => missing))(rng)  # (✓) this works though
+2-element Vector{Float64}:
+ 1.7747246334368165
+ 2.0
 ```
 
 """
