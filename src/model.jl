@@ -146,7 +146,9 @@ julia> conditioned_model(rng)
 The above uses a `NamedTuple` to hold the conditioning variables, which allows us to perform some
 additional optimizations; in many cases, the above has zero runtime-overhead.
 
-But we can also use a `Dict`:
+But we can also use a `Dict`, which offers more flexibility in the conditioning
+(see examples further below) but generally has worse performance than the `NamedTuple`
+approach:
 
 ```jldoctest condition
 julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
@@ -187,7 +189,8 @@ julia> conditioned_model(rng) # (✓) `m[1]` sampled, `m[2]` is fixed
 ```
 
 Intuitively one might also expect to be able to write `model | (m[1] = 1.0, )`.
-Unfortunately this is not supported due to performance.
+Unfortunately this is not supported as it has the potential of increasing compilation
+times but without offering any benefit with respect to runtime:
 
 ```jldoctest condition
 julia> condition(model, var"m[2]" = 1.0)(rng) # (×) `m[2]` is not set to 1.0.
@@ -199,7 +202,10 @@ julia> condition(model, var"m[2]" = 1.0)(rng) # (×) `m[2]` is not set to 1.0.
 But you _can_ do this if you use a `Dict` as the underlying storage instead:
 
 ```jldoctest condition
-julia> condition(model, @varname(m[2]) => 1.0)(rng) # (✓) `m[2]` is set to 1.0.
+julia> # Alternatives:
+       # - `model | (@varname(m[2]) => 1.0,)`
+       # - `condition(model, Dict(@varname(m[2] => 1.0)))`
+       condition(model, @varname(m[2]) => 1.0)(rng) # (✓) `m[2]` is set to 1.0.
 2-element Vector{Float64}:
  1.2973461452176338
  1.0
@@ -255,6 +261,14 @@ julia> conditioned_model(rng)
 julia> # Note that the above `var"..."` is just standard Julia syntax:
        keys((var"inner.m" = 1.0, ))
 (Symbol("inner.m"),)
+```
+
+And similarly when using `Dict`:
+
+```jldoctest condition
+julia> conditioned_model_dict = demo_outer_prefix() | @varname(var"inner.m" => 1.0);
+
+julia> conditioned_model_dict(rng)
 ```
 
 The difference is maybe more obvious once we look at how these different
