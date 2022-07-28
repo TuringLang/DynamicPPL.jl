@@ -429,8 +429,9 @@ end
 
 # TODO(torfjelde): docstring
 function nested_getindex(values::AbstractDict, vn::VarName)
-    if haskey(values, vn)
-        return values[vn]
+    maybeval = get(values, vn, nothing)
+    if maybeval !== nothing
+        return maybeval
     end
 
     # Split the lens into the key / `parent` and the extraction lens / `child`.

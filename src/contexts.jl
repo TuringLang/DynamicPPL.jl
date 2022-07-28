@@ -374,10 +374,10 @@ otherwise return `context` which is [`DefaultContext`](@ref) by default.
 
 See also: [`decondition`](@ref)
 """
-AbstractPPL.condition(; values...) = condition(DefaultContext(), NamedTuple(values))
+AbstractPPL.condition(; values...) = condition(NamedTuple(values))
 AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
-AbstractPPL.condition(values::Pair{<:VarName}...) = condition(values)
-function AbstractPPL.condition(values::Tuple{Vararg{<:Pair{<:VarName}}})
+AbstractPPL.condition(value::Pair{<:VarName}, values:Pair{<:VarName}...) = condition((value, values...))
+function AbstractPPL.condition(values::NTuple{<:Any,<:Pair{<:VarName}})
     return condition(DefaultContext(), values)
 end
 AbstractPPL.condition(context::AbstractContext, values::NamedTuple{()}) = context
@@ -389,11 +389,11 @@ end
 function AbstractPPL.condition(context::AbstractContext; values...)
     return condition(context, NamedTuple(values))
 end
-function AbstractPPL.condition(context::AbstractContext, values::Pair{<:VarName}...)
-    return condition(context, values)
+function AbstractPPL.condition(context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...)
+    return condition(context, (value, values...))
 end
 function AbstractPPL.condition(
-    context::AbstractContext, values::Tuple{Vararg{<:Pair{<:VarName}}}
+    context::AbstractContext, values::NTuple{Any,Pair{<:VarName}}
 )
     return condition(context, Dict(values))
 end
