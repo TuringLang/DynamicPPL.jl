@@ -463,6 +463,6 @@ end
 function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
     return NamedTuple{names}(unflatten(values(original), x))
 end
-function unflatten(original::Dict, x::AbstractVector)
+function unflatten(original::AbstractDict, x::AbstractVector)
     return Dict(zip(keys(original), unflatten(collect(values(original)), x)))
 end
