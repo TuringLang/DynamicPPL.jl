@@ -376,7 +376,9 @@ See also: [`decondition`](@ref)
 """
 AbstractPPL.condition(; values...) = condition(NamedTuple(values))
 AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
-AbstractPPL.condition(value::Pair{<:VarName}, values:Pair{<:VarName}...) = condition((value, values...))
+function AbstractPPL.condition(value::Pair{<:VarName}, values:Pair{<:VarName}...)
+    return condition((value, values...))
+end
 function AbstractPPL.condition(values::NTuple{<:Any,<:Pair{<:VarName}})
     return condition(DefaultContext(), values)
 end
@@ -389,7 +391,9 @@ end
 function AbstractPPL.condition(context::AbstractContext; values...)
     return condition(context, NamedTuple(values))
 end
-function AbstractPPL.condition(context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...)
+function AbstractPPL.condition(
+    context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...
+)
     return condition(context, (value, values...))
 end
 function AbstractPPL.condition(
