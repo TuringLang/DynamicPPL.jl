@@ -371,7 +371,7 @@ julia> deconditioned_model_dict(rng)
 But, as mentioned, `decondition` is only supported for variables explicitly
 provided to `condition` earlier;
 
-```jldocstest decondition
+```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m = Vector{TV}(undef, 2)
            m[1] ~ Normal()
@@ -385,10 +385,16 @@ julia> model = demo_mv();
 julia> conditioned_model = condition(model, @varname(m) => [1.0, 2.0]);
 
 julia> conditioned_model(rng)
+2-element Vector{Float64}:
+ 1.0
+ 2.0
 
 julia> deconditioned_model = decondition(conditioned_model, @varname(m[1]));
 
-julia> deconditioned_model(rng)
+julia> deconditioned_model(rng)  # (×) `m[1]` is still conditioned
+2-element Vector{Float64}:
+ 1.0
+ 2.0
 ```
 
 """
