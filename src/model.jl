@@ -321,25 +321,34 @@ julia> conditioned_model = condition(demo(), m = 1.0, x = 10.0);
 julia> conditioned_model(rng)
 (m = 1.0, x = 10.0)
 
-julia> model = decondition(conditioned_model, :m);
+julia> # By specifying the `VarName` to `decondition`.
+       model = decondition(conditioned_model, @varname(m));
+
+julia> model(rng)
+(m = 0.4471218424633827, x = 10.0)
+
+julia> # When `NamedTuple` is used as the underlying, you can also provide
+       # the symbol directly (though the `@varname` approach is preferable if
+       # if the variable is known at compile-time).
+       model = decondition(conditioned_model, :m);
 
 julia> model(rng)
 (m = -0.6702516921145671, x = 10.0)
 
 julia> # `decondition` multiple at once:
        decondition(model, :m, :x)(rng)
-(m = 0.4471218424633827, x = 1.820752540446808)
+(m = 1.3736306979834252, x = 2.6831701936215335)
 
 julia> # `decondition` without any symbols will `decondition` all variables.
        decondition(model)(rng)
-(m = 1.3095394956381083, x = 1.4356095174474188)
+(m = 0.12607002180931043, x = 0.8100179528058515)
 
 julia> # Usage of `Val` to perform `decondition` at compile-time if possible
        # is also supported.
        model = decondition(conditioned_model, Val{:m}());
 
 julia> model(rng)
-(m = 0.683947930996541, x = 10.0)
+(m = -1.019202452456547, x = 10.0)
 ```
 
 Similarly when using a `Dict`:
@@ -353,9 +362,8 @@ julia> conditioned_model_dict(rng)
 julia> deconditioned_model_dict = decondition(conditioned_model_dict, @varname(m));
 
 julia> deconditioned_model_dict(rng)
-(m = -1.019202452456547, x = 10.0)
+(m = -0.7935128416361353, x = 10.0)
 ```
-
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
