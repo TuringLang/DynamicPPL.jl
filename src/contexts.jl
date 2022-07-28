@@ -433,13 +433,13 @@ function AbstractPPL.decondition(context::ConditionContext, sym, syms...)
 end
 
 function AbstractPPL.decondition(
-    context::ConditionContext{<:NamedTuple}, vn::VarName{sym}
+    context::NamedConditionContext, vn::VarName{sym}
 ) where {sym}
     return condition(
         decondition(childcontext(context), vn), BangBang.delete!!(context.values, sym)
     )
 end
-function AbstractPPL.decondition(context::ConditionContext{<:Dict}, vn::VarName)
+function AbstractPPL.decondition(context::DictConditionContext, vn::VarName)
     return condition(
         decondition(childcontext(context), vn), BangBang.delete!!(context.values, vn)
     )
