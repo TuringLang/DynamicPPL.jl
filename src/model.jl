@@ -306,7 +306,7 @@ This is essentially the inverse of [`condition`](@ref). This also means that
 it suffers from the same limitiations.
 
 # Examples
-```jldoctest
+```jldoctest decondition
 julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
 
 julia> @model function demo()
@@ -341,6 +341,21 @@ julia> # Usage of `Val` to perform `decondition` at compile-time if possible
 julia> model(rng)
 (m = 0.683947930996541, x = 10.0)
 ```
+
+Similarly when using a `Dict`:
+
+```jldoctest decondition
+julia> conditioned_model_dict = condition(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
+
+julia> conditioned_model_dict(rng)
+(m = 1.0, x = 10.0)
+
+julia> deconditioned_model_dict = decondition(conditioned_model_dict, @varname(m));
+
+julia> deconditioned_model_dict(rng)
+(m = -1.019202452456547, x = 10.0)
+```
+
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
