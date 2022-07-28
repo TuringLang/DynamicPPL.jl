@@ -251,7 +251,7 @@ julia> conditioned_model() == 1.0
 false
 
 julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
-       conditioned_model = demo_outer_prefix() | (var"inner.m" = true, );
+       conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
 
 julia> conditioned_model()
 1.0
