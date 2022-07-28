@@ -333,7 +333,7 @@ julia> # When `NamedTuple` is used as the underlying, you can also provide
        # if the variable is known at compile-time).
        model = decondition(conditioned_model, :m);
 
-julia> (m, x) = model(); (m ≠ 1.0 && x ≠ true)
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
 true
 
 julia> # `decondition` multiple at once:
