@@ -143,6 +143,25 @@ julia> conditioned_model(rng)
 (m = 1.3095394956381083, x = 100.0)
 ```
 
+The above uses a `NamedTuple` to hold the conditioning variables, which allows us to perform some
+additional optimizations; in many cases, the above has zero runtime-overhead.
+
+But we can also use a `Dict`:
+
+```jldoctest condition
+julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
+
+julia> conditioned_model_dict(rng)
+(m = 0.12607002180931043, x = 100.0)
+
+julia> # There's also an option using `|` by letting the right-hand side be a tuple
+       # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
+       conditioned_model_dict = model | (@varname(x) => 100.0, );
+
+julia> conditioned_model_dict(rng)
+(m = 0.683947930996541, x = 100.0)
+```
+
 ## Condition only a part of a multivariate variable
 
 Not only can be condition on multivariate random variables, but
@@ -161,24 +180,30 @@ demo_mv (generic function with 3 methods)
 julia> model = demo_mv();
 
 julia> conditioned_model = condition(model, m = [missing, 1.0]);
-
 julia> conditioned_model(rng) # (✓) `m[1]` sampled, `m[2]` is fixed
 2-element Vector{Float64}:
- 0.12607002180931043
- 1.0
+ -1.019202452456547
+  1.0
 ```
 
-Intuitively one might also expect to be able to write `model | (x[1] = 1.0, )`.
+Intuitively one might also expect to be able to write `model | (m[1] = 1.0, )`.
 Unfortunately this is not supported due to performance.
 
 ```jldoctest condition
-julia> condition(model, var"x[2]" = 1.0)(rng) # (×) `x[2]` is not set to 1.0.
+julia> condition(model, var"m[2]" = 1.0)(rng) # (×) `m[2]` is not set to 1.0.
 2-element Vector{Float64}:
-  0.683947930996541
- -1.019202452456547
+ -0.7935128416361353
+  1.7747246334368165
 ```
 
-We will likely provide some syntactic sugar for this in the future.
+But you _can_ do this if you use a `Dict` as the underlying storage instead:
+
+```jldoctest condition
+julia> condition(model, @varname(m[2]) => 1.0)(rng) # (✓) `m[2]` is set to 1.0.
+2-element Vector{Float64}:
+ 1.2973461452176338
+ 1.0
+```
 
 ## Nested models
 
@@ -198,7 +223,7 @@ demo_outer (generic function with 2 methods)
 julia> model = demo_outer();
 
 julia> model(rng)
--0.7935128416361353
+-1.6438528680920432
 
 julia> conditioned_model = model | (m = 1.0, );
 
@@ -219,7 +244,7 @@ julia> # This doesn't work now!
        conditioned_model = demo_outer_prefix() | (m = 1.0, );
 
 julia> conditioned_model(rng)
-1.7747246334368165
+0.7944393211208289
 
 julia> # `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
        conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
