@@ -109,7 +109,7 @@ This is done for the sake of backwards compatibility.
 # Examples
 ## Simple univariate model
 ```jldoctest condition
-julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
+julia> using Distributions
 
 julia> @model function demo()
            m ~ Normal()
@@ -120,27 +120,27 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> model(rng)
-(m = -0.6702516921145671, x = -0.22312984965118443)
+julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
+true
 
 julia> # Create a new instance which treats `x` as observed
        # with value `100.0`, and similarly for `m=1.0`.
        conditioned_model = condition(model, x=100.0, m=1.0);
 
-julia> conditioned_model(rng)
-(m = 1.0, x = 100.0)
+julia> m, x = conditioned_model(); (m == 1.0 && x == 100.0)
+true
 
 julia> # Let's only condition on `x = 100.0`.
        conditioned_model = condition(model, x = 100.0);
 
-julia> conditioned_model(rng)
-(m = 1.3736306979834252, x = 100.0)
+julia> m, x =conditioned_model(); (m ≠ 1.0 && x == 100.0)
+true
 
 julia> # We can also use the nicer `|` syntax.
        conditioned_model = model | (x = 100.0, );
 
-julia> conditioned_model(rng)
-(m = 1.3095394956381083, x = 100.0)
+julia> m, x = conditioned_model(); (m ≠ 1.0 && x == 100.0)
+true
 ```
 
 The above uses a `NamedTuple` to hold the conditioning variables, which allows us to perform some
@@ -153,15 +153,15 @@ approach:
 ```jldoctest condition
 julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
 
-julia> conditioned_model_dict(rng)
-(m = 0.12607002180931043, x = 100.0)
+julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
 
 julia> # There's also an option using `|` by letting the right-hand side be a tuple
        # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
        conditioned_model_dict = model | (@varname(x) => 100.0, );
 
-julia> conditioned_model_dict(rng)
-(m = 0.683947930996541, x = 100.0)
+julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
 ```
 
 ## Condition only a part of a multivariate variable
@@ -182,10 +182,10 @@ demo_mv (generic function with 3 methods)
 julia> model = demo_mv();
 
 julia> conditioned_model = condition(model, m = [missing, 1.0]);
-julia> conditioned_model(rng) # (✓) `m[1]` sampled, `m[2]` is fixed
-2-element Vector{Float64}:
- -1.019202452456547
-  1.0
+
+julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+       m = conditioned_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
 ```
 
 Intuitively one might also expect to be able to write `model | (m[1] = 1.0, )`.
@@ -193,10 +193,9 @@ Unfortunately this is not supported as it has the potential of increasing compil
 times but without offering any benefit with respect to runtime:
 
 ```jldoctest condition
-julia> condition(model, var"m[2]" = 1.0)(rng) # (×) `m[2]` is not set to 1.0.
-2-element Vector{Float64}:
- -0.7935128416361353
-  1.7747246334368165
+julia> # (×) `m[2]` is not set to 1.0.
+       m = condition(model, var"m[2]" = 1.0)(); m[2] == 1.0
+false
 ```
 
 But you _can_ do this if you use a `Dict` as the underlying storage instead:
@@ -205,10 +204,9 @@ But you _can_ do this if you use a `Dict` as the underlying storage instead:
 julia> # Alternatives:
        # - `model | (@varname(m[2]) => 1.0,)`
        # - `condition(model, Dict(@varname(m[2] => 1.0)))`
-       condition(model, @varname(m[2]) => 1.0)(rng) # (✓) `m[2]` is set to 1.0.
-2-element Vector{Float64}:
- 1.2973461452176338
- 1.0
+       # (✓) `m[2]` is set to 1.0.
+       m = condition(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
 ```
 
 ## Nested models
@@ -228,12 +226,12 @@ demo_outer (generic function with 2 methods)
 
 julia> model = demo_outer();
 
-julia> model(rng)
--1.6438528680920432
+julia> model() ≠ 1.0
+true
 
 julia> conditioned_model = model | (m = 1.0, );
 
-julia> conditioned_model(rng)
+julia> conditioned_model()
 1.0
 ```
 
@@ -246,16 +244,16 @@ julia> @model function demo_outer_prefix()
        end
 demo_outer_prefix (generic function with 2 methods)
 
-julia> # This doesn't work now!
+julia> # (×) This doesn't work now!
        conditioned_model = demo_outer_prefix() | (m = 1.0, );
 
-julia> conditioned_model(rng)
-0.7944393211208289
+julia> conditioned_model() == 1.0
+false
 
-julia> # `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
-       conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
+julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
+       conditioned_model = demo_outer_prefix() | (var"inner.m" = true, );
 
-julia> conditioned_model(rng)
+julia> conditioned_model()
 1.0
 
 julia> # Note that the above `var"..."` is just standard Julia syntax:
@@ -268,7 +266,7 @@ And similarly when using `Dict`:
 ```jldoctest condition
 julia> conditioned_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
 
-julia> conditioned_model_dict(rng)
+julia> conditioned_model_dict()
 1.0
 ```
 
