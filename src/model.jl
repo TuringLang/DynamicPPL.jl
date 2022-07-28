@@ -290,8 +290,8 @@ is in the two different models.
 
 """
 AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
-function AbstractPPL.condition(model::Model, values)
-    return contextualize(model, condition(model.context, values))
+function AbstractPPL.condition(model::Model, value, values...)
+    return contextualize(model, condition(model.context, value, values...))
 end
 
 """
