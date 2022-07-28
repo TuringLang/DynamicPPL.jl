@@ -374,7 +374,7 @@ See also: [`decondition`](@ref)
 """
 AbstractPPL.condition(; values...) = condition(NamedTuple(values))
 AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
-function AbstractPPL.condition(value::Pair{<:VarName}, values:Pair{<:VarName}...)
+function AbstractPPL.condition(value::Pair{<:VarName}, values::Pair{<:VarName}...)
     return condition((value, values...))
 end
 function AbstractPPL.condition(values::NTuple{<:Any,<:Pair{<:VarName}})
