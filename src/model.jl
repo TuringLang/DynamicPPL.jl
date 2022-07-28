@@ -266,9 +266,10 @@ julia> # Note that the above `var"..."` is just standard Julia syntax:
 And similarly when using `Dict`:
 
 ```jldoctest condition
-julia> conditioned_model_dict = demo_outer_prefix() | @varname(var"inner.m" => 1.0);
+julia> conditioned_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
 
 julia> conditioned_model_dict(rng)
+1.0
 ```
 
 The difference is maybe more obvious once we look at how these different
