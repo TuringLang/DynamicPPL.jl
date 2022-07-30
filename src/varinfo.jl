@@ -1642,7 +1642,6 @@ function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
 end
 function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
-    # TODO: Should we just use `ConstructionBase.constructorof` here instead?
     return Setfield.constructorof(D)(values_from_metadata(vi.metadata))
 end
 
