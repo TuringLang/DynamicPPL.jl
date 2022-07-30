@@ -530,17 +530,14 @@ istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
-"""
-    values_as(varinfo[, Type])
-
-Return the values/realizations in `varinfo` as `Type`, if implemented.
-
-If no `Type` is provided, return values as stored in `varinfo`.
-"""
 values_as(vi::SimpleVarInfo) = vi.values
-values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
-values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
-values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
+values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
+function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return Setfield.constructorof(D)(zip(keys(vi), values(vi.values)))
+end
+function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
+    return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
 
 """
     logjoint(model::Model, θ)
