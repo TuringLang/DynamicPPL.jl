@@ -427,7 +427,27 @@ function BangBang.possible(
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
 
-# TODO(torfjelde): docstring
+"""
+    nested_getindex(values::AbstractDict, vn::VarName)
+
+Return value corresponding to `vn` in `values` by also looking
+in the the actual values of the dict.
+
+# Examples
+
+```jldoctest
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x)) # same as `getindex`
+1-element Vector{Float64}:
+ 1.0
+
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[1])) # different from `getindex`
+1.0
+
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[2]))
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+```
+"""
 function nested_getindex(values::AbstractDict, vn::VarName)
     maybeval = get(values, vn, nothing)
     if maybeval !== nothing
@@ -454,7 +474,48 @@ function nested_getindex(values::AbstractDict, vn::VarName)
     return get(value, child)
 end
 
-# TODO(torfjelde): docstring
+"""
+    nested_haskey(x, vn::VarName)
+
+Determine whether `x` has a mapping for a given `vn`.
+
+# Examples
+With `x` as a `NamedTuple`:
+```jldoctest
+julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[1]))
+true
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[2]))
+false
+```
+
+With `x` as a `AbstractDict`:
+```jldoctest
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x[1]))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x[2]))
+false
+```
+"""
 function nested_haskey(nt::NamedTuple, vn::VarName{sym}) where {sym}
     # LHS: Ensure that `nt` indeed has the property we want.
     # RHS: Ensure that the lens can view into `nt`.
