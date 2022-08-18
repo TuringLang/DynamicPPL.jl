@@ -1642,7 +1642,7 @@ function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
 end
 function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
-    return Setfield.constructorof(D)(values_from_metadata(vi.metadata))
+    return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
 end
 
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
@@ -1654,7 +1654,7 @@ function values_as(
     vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
 ) where {names,D<:AbstractDict}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
-    return Setfield.constructorof(D)(iter)
+    return ConstructionBase.constructorof(D)(iter)
 end
 
 function values_from_metadata(md::Metadata)
