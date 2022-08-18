@@ -506,13 +506,13 @@ true
 julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x[1]))
 false
 
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x))
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x))
 true
 
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x[1]))
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[1]))
 true
 
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0,]), @varname(x[2]))
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[2]))
 false
 ```
 """
