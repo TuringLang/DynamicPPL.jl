@@ -1590,32 +1590,111 @@ function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
 end
 
 """
-    values_as(vi::AbstractVarInfo)
+    values_as(varinfo[, Type])
+
+Return the values/realizations in `varinfo` as `Type`, if implemented.
+
+If no `Type` is provided, return values as stored in `varinfo`.
+
+# Examples
+
+`SimpleVarInfo` with `NamedTuple`:
+
+```jldoctest
+julia> data = (x = 1.0, m = [2.0]);
+
+julia> values_as(SimpleVarInfo(data))
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), NamedTuple)
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+```
+
+`SimpleVarInfo` with `OrderedDict`:
+
+```jldoctest
+julia> data = OrderedDict{Any,Any}(@varname(x) => 1.0, @varname(m) => [2.0]);
+
+julia> values_as(SimpleVarInfo(data))
+OrderedDict{Any, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+
+julia> values_as(SimpleVarInfo(data), NamedTuple)
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), OrderedDict)
+OrderedDict{Any, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+```
+
+`TypedVarInfo`:
+
+```jldoctest
+julia> # Just use an example model to construct the `VarInfo` because we're lazy.
+       vi = VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+
+julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+
+julia> # For the sake of brevity, let's just check the type.
+       md = values_as(vi); md.s isa DynamicPPL.Metadata
+true
+
+julia> values_as(vi, NamedTuple)
+(s = 1.0, m = 2.0)
+
+julia> values_as(vi, OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+  s => 1.0
+  m => 2.0
+```
+
+`UntypedVarInfo`:
+
+```jldoctest
+julia> # Just use an example model to construct the `VarInfo` because we're lazy.
+       vi = VarInfo(); DynamicPPL.TestUtils.demo_assume_dot_observe()(vi);
+
+julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+
+julia> # For the sake of brevity, let's just check the type.
+       values_as(vi) isa DynamicPPL.Metadata
+true
+
+julia> values_as(vi, NamedTuple)
+(s = 1.0, m = 2.0)
+
+julia> values_as(vi, OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+  s => 1.0
+  m => 2.0
+```
 """
 values_as(vi::VarInfo) = vi.metadata
-
-"""
-    values_as(vi::AbstractVarInfo, ::Type{NamedTuple})
-    values_as(vi::AbstractVarInfo, ::Type{Dict})
-    values_as(vi::AbstractVarInfo, ::Type{Vector})
-
-Return values in `vi` as the specified type.
-"""
-values_as(vi::VarInfo, ::Type{Vector}) = copy(getall(vi))
 function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
 end
-values_as(vi::UntypedVarInfo, ::Type{Dict}) = Dict(values_from_metadata(vi.metadata))
+function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
+end
 
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
 end
 
-function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{Dict}) where {names}
+function values_as(
+    vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
+) where {names,D<:AbstractDict}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
-    return Dict(iter)
+    return ConstructionBase.constructorof(D)(iter)
 end
 
 function values_from_metadata(md::Metadata)

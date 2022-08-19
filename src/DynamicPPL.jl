@@ -10,6 +10,7 @@ using AbstractMCMC: AbstractMCMC
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
+using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 
@@ -62,6 +63,7 @@ export AbstractVarInfo,
     invlink!,
     invlink!!,
     tonamedtuple,
+    values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
     inspace,

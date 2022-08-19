@@ -1,3 +1,23 @@
+# TODO: Should all this go somewhere else? Seems useful for more tests.
+short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) = short_varinfo_name(vi.varinfo)
+short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
+short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
+short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
+
+function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
+    end
+    return vi
+end
+
+function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        @test vi[vn] == get(vals, vn)
+    end
+end
+
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
@@ -314,5 +334,55 @@
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+    end
+
+    @testset "values_as" begin
+        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            example_values = rand(NamedTuple, model)
+            vns = DynamicPPL.TestUtils.varnames(model)
+
+            vi_untyped = VarInfo()
+            model(vi_untyped)
+            vi_typed = TypedVarInfo(vi_untyped)
+            svi_typed = SimpleVarInfo(example_values)
+            svi_untyped = SimpleVarInfo(OrderedDict())
+
+            varinfos = map((vi_untyped, vi_typed, svi_typed, svi_untyped)) do vi
+                # Set them all to the same values.
+                update_values!!(vi, example_values, vns)
+            end
+
+            @testset "$(short_varinfo_name(vi))" for vi in varinfos
+                # Just making sure.
+                test_values(vi, example_values, vns)
+
+                @testset "NamedTuple" begin
+                    vals = values_as(vi, NamedTuple)
+                    for vn in vns
+                        if haskey(vals, Symbol(vn))
+                            # Assumed to be of form `(var"m[1]" = 1.0, ...)`.
+                            @test getindex(vals, Symbol(vn)) == getindex(vi, vn)
+                        else
+                            # Assumed to be of form `(m = [1.0, ...], ...)`.
+                            @test get(vals, vn) == getindex(vi, vn)
+                        end
+                    end
+                end
+
+                @testset "OrderedDict" begin
+                    vals = values_as(vi, OrderedDict)
+                    # All varnames in `vns` should be subsumed by one of `keys(vals)`.
+                    @test all(vns) do vn
+                        any(DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals))
+                    end
+                    # Iterate over `keys(vals)` because we might have scenarios such as
+                    # `vals = OrderedDict(@varname(m) => [1.0])` but `@varname(m[1])` is
+                    # the varname present in `vns`, not `@varname(m)`.
+                    for vn in keys(vals)
+                        @test getindex(vals, vn) == getindex(vi, vn)
+                    end
+                end
+            end
+        end
     end
 end

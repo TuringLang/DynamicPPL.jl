@@ -530,7 +530,7 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
     x = last(
         evaluate!!(
             model,
-            SimpleVarInfo{Float64}(),
+            SimpleVarInfo{Float64}(OrderedDict()),
             SamplingContext(rng, SampleFromPrior(), DefaultContext()),
         ),
     )
