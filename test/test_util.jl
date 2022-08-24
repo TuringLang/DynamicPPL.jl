@@ -108,3 +108,24 @@ function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
         @test vi[vn] == get(vals, vn)
     end
 end
+
+"""
+    setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+
+Return a tuple of instances for different implementations of `AbstractVarInfo` with
+each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
+"""
+function setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+    # <:VarInfo
+    vi_untyped = VarInfo()
+    model(vi_untyped)
+    vi_typed = TypedVarInfo(vi_untyped)
+    # <:SimpleVarInfo
+    svi_typed = SimpleVarInfo(example_values)
+    svi_untyped = SimpleVarInfo(OrderedDict())
+
+    return map((vi_untyped, vi_typed, svi_typed, svi_untyped)) do vi
+        # Set them all to the same values.
+        update_values!!(vi, example_values, varnames)
+    end
+end

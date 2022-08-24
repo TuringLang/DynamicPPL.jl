@@ -320,17 +320,8 @@
             example_values = rand(NamedTuple, model)
             vns = DynamicPPL.TestUtils.varnames(model)
 
-            vi_untyped = VarInfo()
-            model(vi_untyped)
-            vi_typed = TypedVarInfo(vi_untyped)
-            svi_typed = SimpleVarInfo(example_values)
-            svi_untyped = SimpleVarInfo(OrderedDict())
-
-            varinfos = map((vi_untyped, vi_typed, svi_typed, svi_untyped)) do vi
-                # Set them all to the same values.
-                update_values!!(vi, example_values, vns)
-            end
-
+            # Set up the different instances of `AbstractVarInfo` with the desired values.
+            varinfos = setup_varinfos(model, example_values, vns)
             @testset "$(short_varinfo_name(vi))" for vi in varinfos
                 # Just making sure.
                 test_values(vi, example_values, vns)
