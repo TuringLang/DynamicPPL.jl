@@ -74,3 +74,37 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
         end
     end
 end
+
+"""
+    short_varinfo_name(vi::AbstractVarInfo)
+
+Return string representing a short description of `vi`.
+"""
+short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) = short_varinfo_name(vi.varinfo)
+short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
+short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
+short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
+
+"""
+    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+
+Return instance similar to `vi` but with `vns` set to values from `vals`.
+"""
+function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
+    end
+    return vi
+end
+
+"""
+    test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
+
+Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
+"""
+function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        @test vi[vn] == get(vals, vn)
+    end
+end

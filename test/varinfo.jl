@@ -1,23 +1,3 @@
-# TODO: Should all this go somewhere else? Seems useful for more tests.
-short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) = short_varinfo_name(vi.varinfo)
-short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
-short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
-short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
-short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
-
-function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-    for vn in vns
-        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
-    end
-    return vi
-end
-
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
-    for vn in vns
-        @test vi[vn] == get(vals, vn)
-    end
-end
-
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
