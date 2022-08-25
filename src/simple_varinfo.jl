@@ -632,3 +632,13 @@ julia> # Truth.
 ```
 """
 Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+
+
+# Threadsafe stuff.
+# For `SimpleVarInfo` we don't really need `Ref` so let's not use it.
+function ThreadSafeVarInfo(vi::SimpleVarInfo)
+    return ThreadSafeVarInfo(vi, [zero(getlogp(vi)) for _ in 1:Threads.nthreads()])
+end
+function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
+    return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
+end
