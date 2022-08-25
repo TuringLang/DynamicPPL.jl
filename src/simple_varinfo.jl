@@ -209,7 +209,9 @@ function SimpleVarInfo(; kwargs...)
     return SimpleVarInfo{Float64}(NamedTuple(kwargs))
 end
 SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
-SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict}) = SimpleVarInfo{promote_type(map(eltype, values(θ))...)}(θ)
+function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
+    return SimpleVarInfo{promote_type(map(eltype, values(θ))...)}(θ)
+end
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
