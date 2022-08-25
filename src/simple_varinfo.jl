@@ -533,7 +533,7 @@ istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinf
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
-    return Setfield.constructorof(D)(zip(keys(vi), values(vi.values)))
+    return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))
 end
 function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
     return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
