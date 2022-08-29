@@ -358,12 +358,31 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
 
 Set the `trans` flag value of `vn` in `vi`.
 """
-function settrans!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
-    return trans ? set_flag!(vi, vn, "trans") : unset_flag!(vi, vn, "trans")
+function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+    if trans
+        set_flag!(vi, vn, "trans")
+    else
+        unset_flag!(vi, vn, "trans")
+    end
+
+    return vi
+end
+
+"""
+    settrans!!(vi::AbstractVarInfo, trans)
+
+Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
+"""
+function settrans!!(vi::VarInfo, trans::Bool)
+    for vn in keys(vi)
+        settrans!!(vi, trans, vn)
+    end
+
+    return vi
 end
 
 """
@@ -588,16 +607,16 @@ end
 TypedVarInfo(vi::TypedVarInfo) = vi
 
 """
-    empty!(vi::VarInfo)
+    empty!!(vi::VarInfo)
 
 Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
 zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """
-function empty!(vi::VarInfo)
+function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    resetlogp!(vi)
+    resetlogp!!(vi)
     reset_num_produce!(vi)
     return vi
 end
@@ -639,12 +658,23 @@ function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 end
 
 """
+    istrans(vi::AbstractVarInfo)
+
+Return `true` if `vi` is working in unconstrained space, and `false`
+if `vi` is assuming realizations to be in support of the corresponding distributions.
+"""
+istrans(vi::AbstractVarInfo) = false # `VarInfo` works in constrained space by default.
+
+"""
     istrans(vi::VarInfo, vn::VarName)
 
 Return true if `vn`'s values in `vi` are transformed to Euclidean space, and false if
 they are in the support of `vn`'s distribution.
 """
 istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
+function istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
+    return all(Base.Fix1(istrans, vi), vns)
+end
 
 """
     getlogp(vi::VarInfo)
@@ -655,34 +685,34 @@ Return the log of the joint probability of the observed data and parameters samp
 getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
-    setlogp!(vi::VarInfo, logp)
+    setlogp!!(vi::VarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
-`vi` to `logp`.
+`vi` to `logp`, mutating if it makes sense.
 """
-function setlogp!(vi::VarInfo, logp)
+function setlogp!!(vi::VarInfo, logp)
     vi.logp[] = logp
     return vi
 end
 
 """
-    acclogp!(vi::VarInfo, logp)
+    acclogp!!(vi::VarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
-parameters sampled in `vi`.
+parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!(vi::VarInfo, logp)
+function acclogp!!(vi::VarInfo, logp)
     vi.logp[] += logp
     return vi
 end
 
 """
-    resetlogp!(vi::AbstractVarInfo)
+    resetlogp!!(vi::AbstractVarInfo)
 
 Reset the value of the log of the joint probability of the observed data and parameters
-sampled in `vi` to 0.
+sampled in `vi` to 0, mutating if it makes sense.
 """
-resetlogp!(vi::AbstractVarInfo) = setlogp!(vi, zero(getlogp(vi)))
+resetlogp!!(vi::AbstractVarInfo) = setlogp!!(vi, zero(getlogp(vi)))
 
 """
     get_num_produce(vi::VarInfo)
@@ -749,7 +779,7 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
                 vectorize(dist, Bijectors.link(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, true, vn)
+            settrans!!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -785,7 +815,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, true, vn)
+                            settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -816,7 +846,7 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
                 vectorize(dist, Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))),
                 vn,
             )
-            settrans!(vi, false, vn)
+            settrans!!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -854,7 +884,7 @@ end
                                 ),
                                 vn,
                             )
-                            settrans!(vi, false, vn)
+                            settrans!!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -865,6 +895,9 @@ end
     end
     return expr
 end
+
+maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.link(dist, val) : val
+maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.invlink(dist, val) : val
 
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
@@ -904,23 +937,37 @@ distribution(s).
 If the value(s) is (are) transformed to the Euclidean space, it is
 (they are) transformed back.
 """
-function getindex(vi::AbstractVarInfo, vn::VarName)
+getindex(vi::AbstractVarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
+function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vn)
-    return if istrans(vi, vn)
-        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vn)))
-    else
-        reconstruct(dist, getval(vi, vn))
-    end
+    val = getindex_raw(vi, vn, dist)
+    return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
+    # such as `x .~ [Normal(), Exponential()]`.
+    # BUT we also can't fix this here because this will lead to "incorrect"
+    # behavior if `vns` arose from something like `x .~ MvNormal(zeros(2), I)`,
+    # where by "incorrect" we mean there exists pieces of code expecting this behavior.
+    return getindex(vi, vns, getdist(vi, first(vns)))
+end
+function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    dist = getdist(vi, vns[1])
-    return if istrans(vi, vns[1])
-        Bijectors.invlink(dist, reconstruct(dist, getval(vi, vns), length(vns)))
-    else
-        reconstruct(dist, getval(vi, vns), length(vns))
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
     end
+    return reconstruct(dist, vals_linked, length(vns))
+end
+
+getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
+function getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
+    return reconstruct(dist, getval(vi, vn))
+end
+function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    return getindex_raw(vi, vns, getdist(vi, first(vns)))
+end
+function getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return reconstruct(dist, getval(vi, vns), length(vns))
 end
 
 """
@@ -955,7 +1002,10 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::AbstractVarInfo, val, vn::VarName) = setval!(vi, val, vn)
+setindex!(vi::AbstractVarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
+function BangBang.setindex!!(vi::AbstractVarInfo, val, vn::VarName)
+    return (setindex!(vi, val, vn); return vi)
+end
 
 """
     setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
@@ -970,8 +1020,14 @@ function setindex!(vi::TypedVarInfo, val, spl::Sampler)
     # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
     ranges = _getranges(vi, spl)
     _setindex!(vi.metadata, val, ranges)
-    return val
+    return nothing
 end
+
+function BangBang.setindex!!(vi::AbstractVarInfo, val, spl::AbstractSampler)
+    setindex!(vi, val, spl)
+    return vi
+end
+
 # Recursively writes the entries of `val` to the `vals` fields of all the symbols as if they were a contiguous vector.
 @generated function _setindex!(metadata, val, ranges::NamedTuple{names}) where {names}
     expr = Expr(:block)
@@ -1088,46 +1144,52 @@ function Base.show(io::IO, vi::UntypedVarInfo)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
 
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
-the `VarInfo` `vi`.
+the `VarInfo` `vi`, mutating if it makes sense.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-    return push!(vi, vn, r, dist, Set{Selector}([]))
+function BangBang.push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
+    return BangBang.push!!(vi, vn, r, dist, Set{Selector}([]))
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler `spl`
-from a distribution `dist` to `VarInfo` `vi`.
+from a distribution `dist` to `VarInfo` `vi`, if it makes sense.
 
 The sampler is passed here to invalidate its cache where defined.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler)
-    return push!(vi, vn, r, dist, spl.selector)
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler
+)
+    return BangBang.push!!(vi, vn, r, dist, spl.selector)
 end
-function push!(
+function BangBang.push!!(
     vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
 )
-    return push!(vi, vn, r, dist)
+    return BangBang.push!!(vi, vn, r, dist)
 end
 
 """
-    push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
 
 Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
 selector `gid` from a distribution `dist` to `VarInfo` `vi`.
 """
-function push!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-    return push!(vi, vn, r, dist, Set([gid]))
+function BangBang.push!!(
+    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
+)
+    return BangBang.push!!(vi, vn, r, dist, Set([gid]))
 end
-function push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector})
+function BangBang.push!!(
+    vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+)
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
     val = vectorize(dist, r)
@@ -1181,7 +1243,8 @@ end
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
 function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    return vi
 end
 
 """
@@ -1390,12 +1453,12 @@ function setval!(
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     end
 
     return indices
@@ -1471,12 +1534,12 @@ function setval_and_resample!(
     return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, keys)
+function _setval_and_resample_kernel!(vi::VarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!(vi, false, vn)
+        settrans!!(vi, false, vn)
     else
         # Ensures that we'll resample the variable corresponding to `vn` if we run
         # the model on `vi` again.
@@ -1484,4 +1547,119 @@ function _setval_and_resample_kernel!(vi::AbstractVarInfo, vn::VarName, values, 
     end
 
     return indices
+end
+
+"""
+    values_as(varinfo[, Type])
+
+Return the values/realizations in `varinfo` as `Type`, if implemented.
+
+If no `Type` is provided, return values as stored in `varinfo`.
+
+# Examples
+
+`SimpleVarInfo` with `NamedTuple`:
+
+```jldoctest
+julia> data = (x = 1.0, m = [2.0]);
+
+julia> values_as(SimpleVarInfo(data))
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), NamedTuple)
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+```
+
+`SimpleVarInfo` with `OrderedDict`:
+
+```jldoctest
+julia> data = OrderedDict{Any,Any}(@varname(x) => 1.0, @varname(m) => [2.0]);
+
+julia> values_as(SimpleVarInfo(data))
+OrderedDict{Any, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+
+julia> values_as(SimpleVarInfo(data), NamedTuple)
+(x = 1.0, m = [2.0])
+
+julia> values_as(SimpleVarInfo(data), OrderedDict)
+OrderedDict{Any, Any} with 2 entries:
+  x => 1.0
+  m => [2.0]
+```
+
+`TypedVarInfo`:
+
+```jldoctest
+julia> # Just use an example model to construct the `VarInfo` because we're lazy.
+       vi = VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+
+julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+
+julia> # For the sake of brevity, let's just check the type.
+       md = values_as(vi); md.s isa DynamicPPL.Metadata
+true
+
+julia> values_as(vi, NamedTuple)
+(s = 1.0, m = 2.0)
+
+julia> values_as(vi, OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+  s => 1.0
+  m => 2.0
+```
+
+`UntypedVarInfo`:
+
+```jldoctest
+julia> # Just use an example model to construct the `VarInfo` because we're lazy.
+       vi = VarInfo(); DynamicPPL.TestUtils.demo_assume_dot_observe()(vi);
+
+julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+
+julia> # For the sake of brevity, let's just check the type.
+       values_as(vi) isa DynamicPPL.Metadata
+true
+
+julia> values_as(vi, NamedTuple)
+(s = 1.0, m = 2.0)
+
+julia> values_as(vi, OrderedDict)
+OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+  s => 1.0
+  m => 2.0
+```
+"""
+values_as(vi::VarInfo) = vi.metadata
+function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
+    iter = values_from_metadata(vi.metadata)
+    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
+end
+function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
+end
+
+function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
+    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
+    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
+end
+
+function values_as(
+    vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
+) where {names,D<:AbstractDict}
+    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
+    return ConstructionBase.constructorof(D)(iter)
+end
+
+function values_from_metadata(md::Metadata)
+    return (
+        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
+        vn in md.vns
+    )
 end

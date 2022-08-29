@@ -1,15 +1,14 @@
 @testset "loglikelihoods.jl" begin
-    for m in DynamicPPL.TestUtils.DEMO_MODELS
-        vi = VarInfo(m)
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        example_values = rand(NamedTuple, m)
 
-        vns = vi.metadata.m.vns
-        if length(vns) == 1 && length(vi[vns[1]]) == 1
-            # Only have one latent variable.
-            DynamicPPL.setval!(vi, [1.0], ["m"])
-        else
-            DynamicPPL.setval!(vi, [1.0, 1.0], ["m[1]", "m[2]"])
+        # Instantiate a `VarInfo` with the example values.
+        vi = VarInfo(m)
+        for vn in DynamicPPL.TestUtils.varnames(m)
+            vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
         end
 
+        # Compute the pointwise loglikelihoods.
         lls = pointwise_loglikelihoods(m, vi)
 
         if isempty(lls)
@@ -17,14 +16,9 @@
             continue
         end
 
-        loglikelihood = if length(keys(lls)) == 1 && length(m.args.x) == 1
-            # Only have one observation, so we need to double it
-            # for comparison with other models.
-            2 * sum(lls[first(keys(lls))])
-        else
-            sum(sum, values(lls))
-        end
+        loglikelihood = sum(sum, values(lls))
+        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(m, example_values...)
 
-        @test loglikelihood ≈ -324.45158270528947
+        @test loglikelihood ≈ loglikelihood_true
     end
 end

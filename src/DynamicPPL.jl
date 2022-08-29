@@ -2,17 +2,19 @@ module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
-using Distributions
 using Bijectors
+using Distributions
+using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
+using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
-using ZygoteRules: ZygoteRules
-using BangBang: BangBang
-
+using ConstructionBase: ConstructionBase
 using Setfield: Setfield
-using BangBang: BangBang
+using ZygoteRules: ZygoteRules
+
+using DocStringExtensions
 
 using Random: Random
 
@@ -36,10 +38,14 @@ export AbstractVarInfo,
     VarInfo,
     UntypedVarInfo,
     TypedVarInfo,
+    SimpleVarInfo,
+    push!!,
+    empty!!,
     getlogp,
-    setlogp!,
-    acclogp!,
     resetlogp!,
+    setlogp!!,
+    acclogp!!,
+    resetlogp!!,
     get_num_produce,
     set_num_produce!,
     reset_num_produce!,
@@ -55,6 +61,7 @@ export AbstractVarInfo,
     link!,
     invlink!,
     tonamedtuple,
+    values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
     inspace,
@@ -69,6 +76,7 @@ export AbstractVarInfo,
     Sample,
     init,
     vectorize,
+    OrderedDict,
     # Model
     Model,
     getmissings,
@@ -128,7 +136,6 @@ log joint probability of the model.
 See also: [`VarInfo`](@ref)
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
-abstract type AbstractContext end
 
 include("utils.jl")
 include("selector.jl")
@@ -139,13 +146,13 @@ include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varinfo.jl")
 include("threadsafe.jl")
+include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
 include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
-
 include("test_utils.jl")
 
 end # module

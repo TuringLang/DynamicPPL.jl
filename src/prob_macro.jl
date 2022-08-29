@@ -146,8 +146,9 @@ function logprior(
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
     end
-    model(vi, SampleFromPrior(), PriorContext(left))
-    return getlogp(vi)
+    return getlogp(
+        last(DynamicPPL.evaluate!!(model, vi, SampleFromPrior(), PriorContext(left)))
+    )
 end
 
 @generated function make_prior_model(
@@ -178,7 +179,7 @@ end
     return quote
         $(warnings...)
         Model{$(Tuple(missings))}(
-            model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
+            model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
         )
     end
 end
@@ -236,6 +237,6 @@ end
     # `args` is inserted as properly typed NamedTuple expression;
     # `missings` is splatted into a tuple at compile time and inserted as literal
     return :(Model{$(Tuple(missings))}(
-        model.name, model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
+        model.f, $(to_namedtuple_expr(argnames, argvals)), model.defaults
     ))
 end

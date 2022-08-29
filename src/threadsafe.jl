@@ -15,7 +15,7 @@ ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
 # Instead of updating the log probability of the underlying variables we
 # just update the array of log probabilities.
-function acclogp!(vi::ThreadSafeVarInfo, logp)
+function acclogp!!(vi::ThreadSafeVarInfo, logp)
     vi.logps[Threads.threadid()][] += logp
     return vi
 end
@@ -26,17 +26,17 @@ getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(getindex, vi.logps)
 
 # TODO: Make remaining methods thread-safe.
 
-function resetlogp!(vi::ThreadSafeVarInfo)
+function resetlogp!!(vi::ThreadSafeVarInfo)
     for x in vi.logps
         x[] = zero(x[])
     end
-    return resetlogp!(vi.varinfo)
+    return ThreadSafeVarInfo(resetlogp!!(vi.varinfo), vi.logps)
 end
-function setlogp!(vi::ThreadSafeVarInfo, logp)
+function setlogp!!(vi::ThreadSafeVarInfo, logp)
     for x in vi.logps
         x[] = zero(x[])
     end
-    return setlogp!(vi.varinfo, logp)
+    return ThreadSafeVarInfo(setlogp!!(vi.varinfo, logp), vi.logps)
 end
 
 get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)
@@ -62,17 +62,40 @@ islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 getindex(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = getindex(vi.varinfo, spl)
 getindex(vi::ThreadSafeVarInfo, spl::SampleFromUniform) = getindex(vi.varinfo, spl)
-getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
-getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
 
-function setindex!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
-    return setindex!(vi.varinfo, val, spl)
+getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
+function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
+    return getindex(vi.varinfo, vn, dist)
 end
-function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
-    return setindex!(vi.varinfo, val, spl)
+getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
+function getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return getindex(vi.varinfo, vns, dist)
 end
-function setindex!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
-    return setindex!(vi.varinfo, val, spl)
+
+getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
+function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
+    return getindex_raw(vi.varinfo, vn, dist)
+end
+getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex_raw(vi.varinfo, vns)
+function getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    return getindex_raw(vi.varinfo, vns, dist)
+end
+
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
+end
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
+end
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
+end
+
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vn)
+end
+function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:VarName})
+    return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vns)
 end
 
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
@@ -80,16 +103,14 @@ function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
 end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
-function empty!(vi::ThreadSafeVarInfo)
-    empty!(vi.varinfo)
-    fill!(vi.logps, zero(getlogp(vi)))
-    return vi
+function BangBang.empty!!(vi::ThreadSafeVarInfo)
+    return resetlogp!(Setfield.@set!(vi.varinfo = empty!!(vi.varinfo)))
 end
 
-function push!(
+function BangBang.push!!(
     vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
-    return push!(vi.varinfo, vn, r, dist, gidset)
+    return Setfield.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
 end
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
