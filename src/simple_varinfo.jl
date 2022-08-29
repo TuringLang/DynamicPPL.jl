@@ -9,7 +9,7 @@ struct DefaultTransformation <: AbstractTransformation end
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
 
-Currently only implemented for `NT<:NamedTuple` and `NT<:Dict`.
+Currently only implemented for `NT<:NamedTuple` and `NT<:AbstractDict`.
 
 # Fields
 $(FIELDS)
@@ -69,8 +69,8 @@ julia> # (×) If we don't provide the container...
 ERROR: type NamedTuple has no field x
 [...]
 
-julia> # If one does not know the varnames, we can use a `Dict` instead.
-       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(Dict()), ctx);
+julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
+       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(OrderedDict()), ctx);
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -85,6 +85,11 @@ julia> vi[@varname(x[1:2])]
 ERROR: KeyError: key x[1:2] not found
 [...]
 ```
+
+_Technically_, it's possible to use any implementation of `AbstractDict` in place of
+`OrderedDict`, but `OrderedDict` ensures that certain operations, e.g. linearization/flattening
+of the values in the varinfo, are consistent between evaluations. Hence `OrderedDict` is
+the preferred implementation of `AbstractDict` to use here.
 
 You can also sample in _transformed_ space:
 
@@ -109,8 +114,8 @@ julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo()
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
-julia> # And with `Dict` of course!
-       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true), ctx);
+julia> # And with `OrderedDict` of course!
+       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true), ctx);
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
@@ -165,9 +170,9 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 
-Using `Dict` as underlying storage.
+Using `OrderedDict` as underlying storage.
 ```jldoctest
-julia> svi_dict = SimpleVarInfo(Dict(@varname(m) => (a = [1.0], )));
+julia> svi_dict = SimpleVarInfo(OrderedDict(@varname(m) => (a = [1.0], )));
 
 julia> svi_dict[@varname(m)]
 (a = [1.0],)
@@ -274,7 +279,7 @@ end
 
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
-# `Dict`
+# `AbstractDict`
 function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
     return nested_getindex(vi.values, vn)
 end
@@ -364,7 +369,7 @@ function BangBang.push!!(
     return Setfield.@set vi.values = set!!(vi.values, vn, value)
 end
 
-# `Dict`
+# `AbstractDict`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
@@ -473,17 +478,14 @@ istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
-"""
-    values_as(varinfo[, Type])
-
-Return the values/realizations in `varinfo` as `Type`, if implemented.
-
-If no `Type` is provided, return values as stored in `varinfo`.
-"""
 values_as(vi::SimpleVarInfo) = vi.values
-values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
-values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
-values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
+values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
+function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))
+end
+function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
+    return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
 
 """
     logjoint(model::Model, θ)

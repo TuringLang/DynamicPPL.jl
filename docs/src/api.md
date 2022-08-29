@@ -167,6 +167,10 @@ push!!
 empty!!
 ```
 
+```@docs
+values_as
+```
+
 #### `SimpleVarInfo`
 
 ```@docs

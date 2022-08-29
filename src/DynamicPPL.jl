@@ -4,11 +4,13 @@ using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
 using Bijectors
 using Distributions
+using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
+using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 
@@ -59,6 +61,7 @@ export AbstractVarInfo,
     link!,
     invlink!,
     tonamedtuple,
+    values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
     inspace,
@@ -73,6 +76,7 @@ export AbstractVarInfo,
     Sample,
     init,
     vectorize,
+    OrderedDict,
     # Model
     Model,
     getmissings,

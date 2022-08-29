@@ -1,3 +1,6 @@
+# FIXME: This fix should be in `AbstractPPL`.
+AbstractPPL.subsumes(::Setfield.IdentityLens, ::Setfield.IdentityLens) = true
+
 """
     subsumes_string(u::String, v::String[, u_indexing])
 
