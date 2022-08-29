@@ -276,28 +276,7 @@ Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
 # `Dict`
 function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    if haskey(vi.values, vn)
-        return vi.values[vn]
-    end
-
-    # Split the lens into the key / `parent` and the extraction lens / `child`.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(vi.values, VarName(vn, l))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
-
-    # If we found a valid split, then we can extract the value.
-    if !issuccess
-        # At this point we just throw an error since the key could not be found.
-        throw(KeyError(vn))
-    end
-
-    # TODO: Should we also check that we `canview` the extracted `value`
-    # rather than just let it fail upon `get` call?
-    value = vi.values[VarName(vn, keylens)]
-    return get(value, child)
+    return nested_getindex(vi.values, vn)
 end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
@@ -327,38 +306,7 @@ function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribut
     return reconstruct(dist, vals, length(vns))
 end
 
-Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
-function _haskey(nt::NamedTuple, vn::VarName)
-    # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    sym = getsym(vn)
-    return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
-end
-
-# For `dictlike` we need to check wether `vn` is "immediately" present, or
-# if some ancestor of `vn` is present in `dictlike`.
-function _haskey(dict::AbstractDict, vn::VarName)
-    # First we check if `vn` is present as is.
-    haskey(dict, vn) && return true
-
-    # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
-    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(dict, VarName(vn, l))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
-
-    # Return early if no such split could be found.
-    issuccess || return false
-
-    # At this point we just need to check that we `canview` the value.
-    value = dict[VarName(vn, keylens)]
-
-    return canview(child, value)
-end
+Base.haskey(vi::SimpleVarInfo, vn::VarName) = nested_haskey(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
