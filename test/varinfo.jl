@@ -314,4 +314,45 @@
         x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
     end
+
+    @testset "values_as" begin
+        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            example_values = rand(NamedTuple, model)
+            vns = DynamicPPL.TestUtils.varnames(model)
+
+            # Set up the different instances of `AbstractVarInfo` with the desired values.
+            varinfos = setup_varinfos(model, example_values, vns)
+            @testset "$(short_varinfo_name(vi))" for vi in varinfos
+                # Just making sure.
+                test_values(vi, example_values, vns)
+
+                @testset "NamedTuple" begin
+                    vals = values_as(vi, NamedTuple)
+                    for vn in vns
+                        if haskey(vals, Symbol(vn))
+                            # Assumed to be of form `(var"m[1]" = 1.0, ...)`.
+                            @test getindex(vals, Symbol(vn)) == getindex(vi, vn)
+                        else
+                            # Assumed to be of form `(m = [1.0, ...], ...)`.
+                            @test get(vals, vn) == getindex(vi, vn)
+                        end
+                    end
+                end
+
+                @testset "OrderedDict" begin
+                    vals = values_as(vi, OrderedDict)
+                    # All varnames in `vns` should be subsumed by one of `keys(vals)`.
+                    @test all(vns) do vn
+                        any(DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals))
+                    end
+                    # Iterate over `keys(vals)` because we might have scenarios such as
+                    # `vals = OrderedDict(@varname(m) => [1.0])` but `@varname(m[1])` is
+                    # the varname present in `vns`, not `@varname(m)`.
+                    for vn in keys(vals)
+                        @test getindex(vals, vn) == getindex(vi, vn)
+                    end
+                end
+            end
+        end
+    end
 end
