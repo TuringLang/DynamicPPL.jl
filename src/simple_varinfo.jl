@@ -218,7 +218,7 @@ function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
         SimpleVarInfo{Float64}(θ)
     else
         # Infer from `values`.
-        SimpleVarInfo{promote_type(map(float_type_with_fallback ∘ infer_nested_eltype, values(θ))...)}(θ)
+        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(θ))}(θ)
     end
 end
 
