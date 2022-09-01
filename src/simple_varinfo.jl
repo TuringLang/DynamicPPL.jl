@@ -202,6 +202,9 @@ struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
     transformation::C
 end
 
+# Makes things a bit more readable vs. putting `Float64` everywhere.
+const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
+
 # NOTE: This constructor is necessary so we can do things like `SimpleVarInfo{Real}((x = 1.0,))`
 # and have the resulting `logp` field be `Real` rather than `zero(T)` which would be an `Int`.
 SimpleVarInfo{NT,T}(values, logp) where {NT,T} = SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
@@ -211,11 +214,11 @@ function SimpleVarInfo{T}(θ) where {T<:Real}
     return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 end
 
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+SimpleVarInfo(θ) = SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
 function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
     return if isempty(θ)
         # Can't infer from values, so we just use default.
-        SimpleVarInfo{Float64}(θ)
+        SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
     else
         # Infer from `values`.
         SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(θ))}(θ)
