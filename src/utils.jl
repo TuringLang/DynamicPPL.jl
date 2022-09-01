@@ -558,7 +558,7 @@ float_type_with_fallback(x::Type) = float(x)
 float_type_with_fallback(::Type{Any}) = Real
 
 """
-    infer_number_type(x)
+    infer_nested_eltype(x)
 
 Recursively unwrap `typeof(x)`, returning the first type where `eltype(x) === typeof(x)`.
 
@@ -590,6 +590,14 @@ infer_nested_eltype(x) = infer_nested_eltype(typeof(x))
 function infer_nested_eltype(T::Type)
     ET = eltype(T)
     return ET === T ? T : infer_nested_eltype(ET)
+end
+
+infer_nested_eltype(::Type{Union{}}) = Any
+infer_nested_eltype(::Type{<:U}) where {U<:Union} = promote_type(U.a, infer_nested_eltype(U.b))
+
+function infer_nested_eltype(::Type{T}) where {T<:Tuple}
+    # Calling `infer_nested_eltype` on the result allows us to handle `Union`, etc.
+    return infer_nested_eltype(promote_type(map(infer_nested_eltype, T.parameters)...))
 end
 
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
