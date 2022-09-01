@@ -202,20 +202,31 @@ struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
     transformation::C
 end
 
+# NOTE: This constructor is necessary so we can do things like `SimpleVarInfo{Real}((x = 1.0,))`
+# and have the resulting `logp` field be `Real` rather than `zero(T)` which would be an `Int`.
+SimpleVarInfo{NT,T}(values, logp) where {NT,T} = SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
 SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
 
 function SimpleVarInfo{T}(θ) where {T<:Real}
-    return SimpleVarInfo(θ, zero(T))
+    return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 end
+
+SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
+    return if isempty(θ)
+        # Can't infer from values, so we just use default.
+        SimpleVarInfo{Float64}(θ)
+    else
+        # Infer from `values`.
+        SimpleVarInfo{promote_type(map(float_type_with_fallback ∘ infer_nested_eltype, values(θ))...)}(θ)
+    end
+end
+
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
     return SimpleVarInfo{T}(NamedTuple(kwargs))
 end
 function SimpleVarInfo(; kwargs...)
-    return SimpleVarInfo{Float64}(NamedTuple(kwargs))
-end
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
-function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
-    return SimpleVarInfo{promote_type(map(float ∘ eltype, values(θ))...)}(θ)
+    return SimpleVarInfo(NamedTuple(kwargs))
 end
 
 # Constructor from `Model`.

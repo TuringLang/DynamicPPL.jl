@@ -546,3 +546,51 @@ function nested_haskey(dict::AbstractDict, vn::VarName)
 
     return canview(child, value)
 end
+
+
+"""
+    float_type_with_fallback(x)
+
+Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
+"""
+float_type_with_fallback(x) = float_type_with_fallback(typeof(x))
+float_type_with_fallback(x::Type) = float(x)
+float_type_with_fallback(::Type{Any}) = Real
+
+"""
+    infer_number_type(x)
+
+Recursively unwrap `typeof(x)`, returning the first type where `eltype(x) === typeof(x)`.
+
+This is useful for obtaining a reasonable default `eltype` in deeply nested types.
+
+# Examples
+```jldoctest
+julia> # `AbstractArrary`
+       DynamicPPL.infer_nested_eltype([1])
+Int64
+
+julia> # `NamedTuple`
+       DynamicPPL.infer_nested_eltype((x = [1], ))
+Int64
+
+julia> # `AbstractDict`
+       DynamicPPL.infer_nested_eltype((Dict(:x => [1, ])))
+Int64
+
+julia> # Nesting of containers.
+       DynamicPPL.infer_nested_eltype([Dict(:x => 1.0,) ])
+Float64
+
+julia> DynamicPPL.infer_nested_eltype([Dict(:x => [1.0,],) ])
+Float64
+```
+"""
+infer_nested_eltype(x) = infer_nested_eltype(typeof(x))
+function infer_nested_eltype(T::Type)
+    ET = eltype(T)
+    return ET === T ? T : infer_nested_eltype(ET)
+end
+
+# Handle `AbstractDict` differently since `eltype` results in a `Pair`.
+infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
