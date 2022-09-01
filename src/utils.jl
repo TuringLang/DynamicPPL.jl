@@ -592,8 +592,14 @@ function infer_nested_eltype(T::Type)
     return ET === T ? T : infer_nested_eltype(ET)
 end
 
+# We can do a better job than just `Any` with `Union`.
 infer_nested_eltype(::Type{Union{}}) = Any
 infer_nested_eltype(::Type{<:U}) where {U<:Union} = promote_type(U.a, infer_nested_eltype(U.b))
+
+# Handle `NamedTuple` and `Tuple` specially given how prolific they are.
+function infer_nested_eltype(::Type{T}) where {V,T<:NamedTuple{<:Any,V}}
+    return infer_nested_eltype(V)
+end
 
 function infer_nested_eltype(::Type{T}) where {T<:Tuple}
     # Calling `infer_nested_eltype` on the result allows us to handle `Union`, etc.
@@ -602,3 +608,6 @@ end
 
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
 infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
+
+# No need + causes issues for some AD backends, e.g. Zygote.
+ChainRulesCore.@non_differentiable infer_nested_eltype(x)
