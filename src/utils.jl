@@ -553,8 +553,8 @@ end
 Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
 """
 float_type_with_fallback(x) = float_type_with_fallback(typeof(x))
-float_type_with_fallback(x::Type) = float(x)
-float_type_with_fallback(::Type{Any}) = Real
+float_type_with_fallback(::Type) = Real
+float_type_with_fallback(x::Type{T}) where {T<:Real} = float(x)
 
 """
     infer_nested_eltype(x)
@@ -583,6 +583,14 @@ Float64
 
 julia> DynamicPPL.infer_nested_eltype([Dict(:x => [1.0,],) ])
 Float64
+
+julia> # Empty `Tuple`.
+       Dynamicppl.infer_nested_eltype(())
+Any
+
+julia> # Empty `Dict`.
+       Dynamicppl.infer_nested_eltype(Dict())
+Any
 ```
 """
 infer_nested_eltype(x) = infer_nested_eltype(typeof(x))
