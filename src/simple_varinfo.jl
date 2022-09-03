@@ -207,7 +207,9 @@ const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
 
 # NOTE: This constructor is necessary so we can do things like `SimpleVarInfo{Real}((x = 1.0,))`
 # and have the resulting `logp` field be `Real` rather than `zero(T)` which would be an `Int`.
-SimpleVarInfo{NT,T}(values, logp) where {NT,T} = SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
+function SimpleVarInfo{NT,T}(values, logp) where {NT,T}
+    return SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
+end
 SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
 
 function SimpleVarInfo{T}(θ) where {T<:Real}

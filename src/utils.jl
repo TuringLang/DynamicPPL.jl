@@ -547,7 +547,6 @@ function nested_haskey(dict::AbstractDict, vn::VarName)
     return canview(child, value)
 end
 
-
 """
     float_type_with_fallback(x)
 
@@ -594,7 +593,9 @@ end
 
 # We can do a better job than just `Any` with `Union`.
 infer_nested_eltype(::Type{Union{}}) = Any
-infer_nested_eltype(::Type{<:U}) where {U<:Union} = promote_type(U.a, infer_nested_eltype(U.b))
+function infer_nested_eltype(::Type{<:U}) where {U<:Union}
+    return promote_type(U.a, infer_nested_eltype(U.b))
+end
 
 # Handle `NamedTuple` and `Tuple` specially given how prolific they are.
 function infer_nested_eltype(::Type{T}) where {V,T<:NamedTuple{<:Any,V}}
