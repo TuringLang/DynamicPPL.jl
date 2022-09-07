@@ -565,7 +565,7 @@ This is useful for obtaining a reasonable default `eltype` in deeply nested type
 # Examples
 ```jldoctest
 julia> # `AbstractArrary`
-       DynamicPPL.infer_nested_eltype(Int[])
+       DynamicPPL.infer_nested_eltype(typeof([1]))
 Int64
 
 julia> # `NamedTuple`
