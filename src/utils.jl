@@ -605,7 +605,7 @@ function infer_nested_eltype(::Type{U}) where {U<:Union}
 end
 
 # Handle `NamedTuple` and `Tuple` specially given how prolific they are.
-function infer_nested_eltype(::Type{T}) where {V,T<:NamedTuple{<:Any,V}}
+function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where V
     return infer_nested_eltype(V)
 end
 
