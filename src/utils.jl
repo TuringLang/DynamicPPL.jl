@@ -585,11 +585,11 @@ julia> DynamicPPL.infer_nested_eltype([Dict(:x => [1.0,],) ])
 Float64
 
 julia> # Empty `Tuple`.
-       Dynamicppl.infer_nested_eltype(())
+       DynamicPPL.infer_nested_eltype(())
 Any
 
 julia> # Empty `Dict`.
-       Dynamicppl.infer_nested_eltype(Dict())
+       DynamicPPL.infer_nested_eltype(Dict())
 Any
 ```
 """
