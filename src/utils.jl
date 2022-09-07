@@ -611,7 +611,10 @@ end
 # Recursively deal with `Tuple` so it has the potential of being compiled away.
 infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
 function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
-    return promote_type(infer_nested_eltype(Base.tuple_type_tail(T)), infer_nested_eltype(Base.tuple_type_head(T)))
+    return promote_type(
+        infer_nested_eltype(Base.tuple_type_tail(T)),
+        infer_nested_eltype(Base.tuple_type_head(T)),
+    )
 end
 
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
