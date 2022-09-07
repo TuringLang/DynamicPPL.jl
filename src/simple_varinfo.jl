@@ -205,17 +205,14 @@ end
 # Makes things a bit more readable vs. putting `Float64` everywhere.
 const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
 
-# NOTE: This constructor is necessary so we can do things like `SimpleVarInfo{Real}((x = 1.0,))`
-# and have the resulting `logp` field be `Real` rather than `zero(T)` which would be an `Int`.
 function SimpleVarInfo{NT,T}(values, logp) where {NT,T}
     return SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
 end
-SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
-
 function SimpleVarInfo{T}(θ) where {T<:Real}
     return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
 end
 
+# Constructors without type-specification.
 SimpleVarInfo(θ) = SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
 function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
     return if isempty(θ)
@@ -227,6 +224,9 @@ function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
     end
 end
 
+SimpleVarInfo(values, logp) = SimpleVarInfo{typeof(values),typeof(logp)}(values, logp)
+
+# Using `kwargs` to specify the values.
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
     return SimpleVarInfo{T}(NamedTuple(kwargs))
 end

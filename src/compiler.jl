@@ -684,10 +684,10 @@ For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
 """
 get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T} = T
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,floatof(eltype(vi, spl))}
+    return Union{Missing,float_type_with_fallback(eltype(vi, spl))}
 end
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:AbstractFloat})
-    return floatof(eltype(vi, spl))
+    return float_type_with_fallback(eltype(vi, spl))
 end
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T,N}}) where {T,N}
     return Array{get_matching_type(spl, vi, T),N}
@@ -695,6 +695,3 @@ end
 function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where {T}
     return Array{get_matching_type(spl, vi, T)}
 end
-
-floatof(::Type{T}) where {T<:Real} = typeof(one(T) / one(T))
-floatof(::Type) = Real # fallback if type inference failed
