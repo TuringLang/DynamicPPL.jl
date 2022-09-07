@@ -600,7 +600,7 @@ end
 
 # We can do a better job than just `Any` with `Union`.
 infer_nested_eltype(::Type{Union{}}) = Any
-function infer_nested_eltype(::Type{<:U}) where {U<:Union}
+function infer_nested_eltype(::Type{U}) where {U<:Union}
     return promote_type(U.a, infer_nested_eltype(U.b))
 end
 
