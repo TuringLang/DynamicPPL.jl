@@ -556,39 +556,39 @@ float_type_with_fallback(::Type) = Real
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
-    infer_nested_eltype(x)
+    infer_nested_eltype(x::Type)
 
-Recursively unwrap `typeof(x)`, returning the first type where `eltype(x) === typeof(x)`.
+Recursively unwrap the type, returning the first type where `eltype(x) === typeof(x)`.
 
 This is useful for obtaining a reasonable default `eltype` in deeply nested types.
 
 # Examples
 ```jldoctest
 julia> # `AbstractArrary`
-       DynamicPPL.infer_nested_eltype([1])
+       DynamicPPL.infer_nested_eltype(Int[])
 Int64
 
 julia> # `NamedTuple`
-       DynamicPPL.infer_nested_eltype((x = [1], ))
+       DynamicPPL.infer_nested_eltype(typeof((x = [1], )))
 Int64
 
 julia> # `AbstractDict`
-       DynamicPPL.infer_nested_eltype((Dict(:x => [1, ])))
+       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1, ])))
 Int64
 
 julia> # Nesting of containers.
-       DynamicPPL.infer_nested_eltype([Dict(:x => 1.0,) ])
+       DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
 Float64
 
-julia> DynamicPPL.infer_nested_eltype([Dict(:x => [1.0,],) ])
+julia> DynamicPPL.infer_nested_eltype(typeof([Dict(:x => [1.0,],) ]))
 Float64
 
 julia> # Empty `Tuple`.
-       DynamicPPL.infer_nested_eltype(())
+       DynamicPPL.infer_nested_eltype(typeof(()))
 Any
 
 julia> # Empty `Dict`.
-       DynamicPPL.infer_nested_eltype(Dict())
+       DynamicPPL.infer_nested_eltype(typeof(Dict()))
 Any
 ```
 """
