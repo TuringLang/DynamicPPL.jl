@@ -608,9 +608,10 @@ function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
     return infer_nested_eltype(V)
 end
 
-function infer_nested_eltype(::Type{T}) where {T<:Tuple}
-    # Calling `infer_nested_eltype` on the result allows us to handle `Union`, etc.
-    return infer_nested_eltype(promote_type(map(infer_nested_eltype, T.parameters)...))
+# Recursively deal with `Tuple` so it has the potential of being compiled away.
+infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
+function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
+    return promote_type(infer_nested_eltype(Base.tuple_type_tail(T)), infer_nested_eltype(Base.tuple_type_head(T)))
 end
 
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
