@@ -593,7 +593,6 @@ julia> # Empty `Dict`.
 Any
 ```
 """
-infer_nested_eltype(x) = infer_nested_eltype(typeof(x))
 function infer_nested_eltype(T::Type)
     ET = eltype(T)
     return ET === T ? T : infer_nested_eltype(ET)
