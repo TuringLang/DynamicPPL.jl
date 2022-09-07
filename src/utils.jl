@@ -592,7 +592,7 @@ julia> # Empty `Dict`.
 Any
 ```
 """
-function infer_nested_eltype(::Type{T}) where T
+function infer_nested_eltype(::Type{T}) where {T}
     ET = eltype(T)
     return ET === T ? T : infer_nested_eltype(ET)
 end
@@ -604,7 +604,7 @@ function infer_nested_eltype(::Type{U}) where {U<:Union}
 end
 
 # Handle `NamedTuple` and `Tuple` specially given how prolific they are.
-function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where V
+function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
     return infer_nested_eltype(V)
 end
 
