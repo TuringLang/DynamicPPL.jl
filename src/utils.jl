@@ -546,3 +546,79 @@ function nested_haskey(dict::AbstractDict, vn::VarName)
 
     return canview(child, value)
 end
+
+"""
+    float_type_with_fallback(x)
+
+Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
+"""
+float_type_with_fallback(::Type) = Real
+float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
+
+"""
+    infer_nested_eltype(x::Type)
+
+Recursively unwrap the type, returning the first type where `eltype(x) === typeof(x)`.
+
+This is useful for obtaining a reasonable default `eltype` in deeply nested types.
+
+# Examples
+```jldoctest
+julia> # `AbstractArrary`
+       DynamicPPL.infer_nested_eltype(typeof([1.0]))
+Float64
+
+julia> # `NamedTuple` with `Float32`
+       DynamicPPL.infer_nested_eltype(typeof((x = [1f0], )))
+Float32
+
+julia> # `AbstractDict`
+       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1.0, ])))
+Float64
+
+julia> # Nesting of containers.
+       DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
+Float64
+
+julia> DynamicPPL.infer_nested_eltype(typeof([Dict(:x => [1.0,],) ]))
+Float64
+
+julia> # Empty `Tuple`.
+       DynamicPPL.infer_nested_eltype(typeof(()))
+Any
+
+julia> # Empty `Dict`.
+       DynamicPPL.infer_nested_eltype(typeof(Dict()))
+Any
+```
+"""
+function infer_nested_eltype(::Type{T}) where {T}
+    ET = eltype(T)
+    return ET === T ? T : infer_nested_eltype(ET)
+end
+
+# We can do a better job than just `Any` with `Union`.
+infer_nested_eltype(::Type{Union{}}) = Any
+function infer_nested_eltype(::Type{U}) where {U<:Union}
+    return promote_type(U.a, infer_nested_eltype(U.b))
+end
+
+# Handle `NamedTuple` and `Tuple` specially given how prolific they are.
+function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
+    return infer_nested_eltype(V)
+end
+
+# Recursively deal with `Tuple` so it has the potential of being compiled away.
+infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
+function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
+    return promote_type(
+        infer_nested_eltype(Base.tuple_type_tail(T)),
+        infer_nested_eltype(Base.tuple_type_head(T)),
+    )
+end
+
+# Handle `AbstractDict` differently since `eltype` results in a `Pair`.
+infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
+
+# No need + causes issues for some AD backends, e.g. Zygote.
+ChainRulesCore.@non_differentiable infer_nested_eltype(x)
