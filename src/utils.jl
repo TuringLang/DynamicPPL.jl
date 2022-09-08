@@ -565,16 +565,16 @@ This is useful for obtaining a reasonable default `eltype` in deeply nested type
 # Examples
 ```jldoctest
 julia> # `AbstractArrary`
-       DynamicPPL.infer_nested_eltype(typeof([1]))
-Int64
+       DynamicPPL.infer_nested_eltype(typeof([1.0]))
+Float64
 
-julia> # `NamedTuple`
-       DynamicPPL.infer_nested_eltype(typeof((x = [1], )))
-Int64
+julia> # `NamedTuple` with `Float32`
+       DynamicPPL.infer_nested_eltype(typeof((x = [1f0], )))
+Float32
 
 julia> # `AbstractDict`
-       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1, ])))
-Int64
+       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1.0, ])))
+Float64
 
 julia> # Nesting of containers.
        DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
