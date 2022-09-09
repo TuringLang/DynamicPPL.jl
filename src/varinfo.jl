@@ -1695,6 +1695,7 @@ OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entri
 ```
 """
 values_as(vi::VarInfo) = vi.metadata
+values_as(vi::VarInfo, ::Type{Vector}) = copy(getall(vi))
 function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
