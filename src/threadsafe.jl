@@ -13,26 +13,40 @@ function ThreadSafeVarInfo(vi::AbstractVarInfo)
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
+const ThreadSafeVarInfoWithRef{V<:AbstractVarInfo} = ThreadSafeVarInfo{
+    V,<:AbstractArray{<:Ref}
+}
+
 # Instead of updating the log probability of the underlying variables we
 # just update the array of log probabilities.
 function acclogp!!(vi::ThreadSafeVarInfo, logp)
+    vi.logps[Threads.threadid()] += logp
+    return vi
+end
+function acclogp!!(vi::ThreadSafeVarInfoWithRef, logp)
     vi.logps[Threads.threadid()][] += logp
     return vi
 end
 
 # The current log probability of the variables has to be computed from
 # both the wrapped variables and the thread-specific log probabilities.
-getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(getindex, vi.logps)
+getlogp(vi::ThreadSafeVarInfo) = getlogp(vi.varinfo) + sum(vi.logps)
+getlogp(vi::ThreadSafeVarInfoWithRef) = getlogp(vi.varinfo) + sum(getindex, vi.logps)
 
 # TODO: Make remaining methods thread-safe.
-
 function resetlogp!!(vi::ThreadSafeVarInfo)
+    return ThreadSafeVarInfo(resetlogp!!(vi.varinfo), zero(vi.logps))
+end
+function resetlogp!!(vi::ThreadSafeVarInfoWithRef)
     for x in vi.logps
         x[] = zero(x[])
     end
     return ThreadSafeVarInfo(resetlogp!!(vi.varinfo), vi.logps)
 end
 function setlogp!!(vi::ThreadSafeVarInfo, logp)
+    return ThreadSafeVarInfo(setlogp!!(vi.varinfo, logp), zero(vi.logps))
+end
+function setlogp!!(vi::ThreadSafeVarInfoWithRef, logp)
     for x in vi.logps
         x[] = zero(x[])
     end
@@ -104,7 +118,7 @@ end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
-    return resetlogp!(Setfield.@set!(vi.varinfo = empty!!(vi.varinfo)))
+    return resetlogp!!(Setfield.@set!(vi.varinfo = empty!!(vi.varinfo)))
 end
 
 function BangBang.push!!(
