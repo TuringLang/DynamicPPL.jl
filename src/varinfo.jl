@@ -938,7 +938,7 @@ end
                             @debug "ℝ -> X for $(vn)..."
                             dist = getdist(vi, vn)
                             y = reconstruct(dist, getval(vi, vn))
-                            b = inv(bijector(dist))
+                            b = inverse(bijector(dist))
                             x, logjac = with_logabsdet_jacobian(b, y)
                             setval!(vi, vectorize(dist, x), vn)
                             acclogp!!(vi, -logjac)
