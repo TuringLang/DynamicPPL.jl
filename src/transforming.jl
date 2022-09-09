@@ -188,7 +188,9 @@ function invlink!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
     # Here we extract the `transformation` from `vi` rather than using the default one.
     return invlink!!(transformation(vi), vi, spl, model)
 end
-function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model)
+function invlink!!(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
     return invlink!!(t, vi.varinfo, spl, model)
 end
 function invlink!!(
