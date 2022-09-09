@@ -17,6 +17,8 @@ const ThreadSafeVarInfoWithRef{V<:AbstractVarInfo} = ThreadSafeVarInfo{
     V,<:AbstractArray{<:Ref}
 }
 
+transformation(vi::ThreadSafeVarInfo) = transformation(vi.varinfo)
+
 # Instead of updating the log probability of the underlying variables we
 # just update the array of log probabilities.
 function acclogp!!(vi::ThreadSafeVarInfo, logp)
