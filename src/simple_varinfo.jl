@@ -331,7 +331,7 @@ function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribut
     return reconstruct(dist, vals, length(vns))
 end
 
-Base.haskey(vi::SimpleVarInfo, vn::VarName) = nested_haskey(vi.values, vn)
+Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.

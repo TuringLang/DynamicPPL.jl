@@ -467,26 +467,172 @@ function unflatten(original::AbstractDict, x::AbstractVector)
     return Dict(zip(keys(original), unflatten(collect(values(original)), x)))
 end
 
+# TODO: Move `getvalue` and `hasvalue` to AbstractPPL.jl.
+"""
+    getvalue(vals, vn::VarName)
+
+Return the value(s) in `vals` represented by `vn`.
+
+Note that this method is different from `getindex`. See examples below.
+
+# Examples
+
+For `NamedTuple`:
+
+```jldoctest
+julia> vals = (x = [1.0],);
+
+julia> DynamicPPL.getvalue(vals, @varname(x)) # same as `getindex`
+1-element Vector{Float64}:
+ 1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[1])) # different from `getindex`
+1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[2]))
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+```
+
+For `AbstractDict`:
+
+```jldoctest
+julia> vals = Dict(@varname(x) => [1.0]);
+
+julia> DynamicPPL.getvalue(vals, @varname(x)) # same as `getindex`
+1-element Vector{Float64}:
+ 1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[1])) # different from `getindex`
+1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[2]))
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+```
+
+In the `AbstractDict` case we can also have keys such as `v[1]`:
+
+```jldoctest
+julia> vals = Dict(@varname(x[1]) => [1.0,]);
+
+julia> DynamicPPL.getvalue(vals, @varname(x[1])) # same as `getindex`
+1-element Vector{Float64}:
+ 1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[1][1])) # different from `getindex`
+1.0
+
+julia> DynamicPPL.getvalue(vals, @varname(x[1][2]))
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+
+julia> DynamicPPL.getvalue(vals, @varname(x[2][1]))
+ERROR: KeyError: key x[2][1] not found
+[...]
+```
+"""
+getvalue(vals::NamedTuple, vn::VarName) = get(vals, vn)
+getvalue(vals::AbstractDict, vn::VarName) = nested_getindex(vals, vn)
+
+"""
+    hasvalue(vals, vn::VarName)
+
+Determine whether `vals` has a mapping for a given `vn`, as compatible with [`getvalue`](@ref).
+
+# Examples
+With `x` as a `NamedTuple`:
+
+```jldoctest
+julia> DynamicPPL.hasvalue((x = 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.hasvalue((x = 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x))
+true
+
+julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x[1]))
+true
+
+julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x[2]))
+false
+```
+
+With `x` as a `AbstractDict`:
+
+```jldoctest
+julia> DynamicPPL.hasvalue(Dict(@varname(x) => 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.hasvalue(Dict(@varname(x) => 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x))
+true
+
+julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x[1]))
+true
+
+julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x[2]))
+false
+```
+
+In the `AbstractDict` case we can also have keys such as `v[1]`:
+
+```jldoctest
+julia> vals = Dict(@varname(x[1]) => [1.0,]);
+
+julia> DynamicPPL.hasvalue(vals, @varname(x[1])) # same as `haskey`
+true
+
+julia> DynamicPPL.hasvalue(vals, @varname(x[1][1])) # different from `haskey`
+true
+
+julia> DynamicPPL.hasvalue(vals, @varname(x[1][2]))
+false
+
+julia> DynamicPPL.hasvalue(vals, @varname(x[2][1]))
+false
+```
+"""
+function hasvalue(vals::NamedTuple, vn::VarName{sym}) where {sym}
+    # LHS: Ensure that `nt` indeed has the property we want.
+    # RHS: Ensure that the lens can view into `nt`.
+    return haskey(vals, sym) && canview(getlens(vn), getproperty(vals, sym))
+end
+
+# For `dictlike` we need to check wether `vn` is "immediately" present, or
+# if some ancestor of `vn` is present in `dictlike`.
+function hasvalue(vals::AbstractDict, vn::VarName)
+    # First we check if `vn` is present as is.
+    haskey(vals, vn) && return true
+
+    # If `vn` is not present, we check any parent-varnames by attempting
+    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(vals, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    # Return early if no such split could be found.
+    issuccess || return false
+
+    # At this point we just need to check that we `canview` the value.
+    value = vals[VarName(vn, keylens)]
+
+    return canview(child, value)
+end
+
 """
     nested_getindex(values::AbstractDict, vn::VarName)
 
 Return value corresponding to `vn` in `values` by also looking
 in the the actual values of the dict.
-
-# Examples
-
-```jldoctest
-julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x)) # same as `getindex`
-1-element Vector{Float64}:
- 1.0
-
-julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[1])) # different from `getindex`
-1.0
-
-julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[2]))
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
-[...]
-```
 """
 function nested_getindex(values::AbstractDict, vn::VarName)
     maybeval = get(values, vn, nothing)
@@ -512,79 +658,6 @@ function nested_getindex(values::AbstractDict, vn::VarName)
     # rather than just let it fail upon `get` call?
     value = values[VarName(vn, keylens)]
     return get(value, child)
-end
-
-"""
-    nested_haskey(x, vn::VarName)
-
-Determine whether `x` has a mapping for a given `vn`.
-
-# Examples
-With `x` as a `NamedTuple`:
-```jldoctest
-julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x))
-true
-
-julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x[1]))
-false
-
-julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x))
-true
-
-julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[1]))
-true
-
-julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[2]))
-false
-```
-
-With `x` as a `AbstractDict`:
-```jldoctest
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x))
-true
-
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x[1]))
-false
-
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x))
-true
-
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[1]))
-true
-
-julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[2]))
-false
-```
-"""
-function nested_haskey(nt::NamedTuple, vn::VarName{sym}) where {sym}
-    # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
-end
-
-# For `dictlike` we need to check wether `vn` is "immediately" present, or
-# if some ancestor of `vn` is present in `dictlike`.
-function nested_haskey(dict::AbstractDict, vn::VarName)
-    # First we check if `vn` is present as is.
-    haskey(dict, vn) && return true
-
-    # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
-    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(dict, VarName(vn, l))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
-
-    # Return early if no such split could be found.
-    issuccess || return false
-
-    # At this point we just need to check that we `canview` the value.
-    value = dict[VarName(vn, keylens)]
-
-    return canview(child, value)
 end
 
 """

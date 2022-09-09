@@ -298,34 +298,33 @@ childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
-    hasvalue(context, vn)
+    hasvalue(context::AbstractContext, vn::VarName)
 
 Return `true` if `vn` is found in `context`.
 """
-hasvalue(context, vn) = false
-hasvalue(context::ConditionContext, vn::VarName) = nested_haskey(context.values, vn)
+hasvalue(context::AbstractContext, vn::VarName) = false
+hasvalue(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
 function hasvalue(context::ConditionContext, vns::AbstractArray{<:VarName})
-    return all(Base.Fix1(nested_haskey, context.values), vns)
+    return all(Base.Fix1(hasvalue, context.values), vns)
 end
 
 """
-    getvalue(context, vn)
+    getvalue(context::AbstractContext, vn::VarName)
 
 Return value of `vn` in `context`.
 """
-function getvalue(context::AbstractContext, vn)
+function getvalue(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-getvalue(context::NamedConditionContext, vn) = get(context.values, vn)
-getvalue(context::ConditionContext, vn) = nested_getindex(context.values, vn)
+getvalue(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
 
 """
     hasvalue_nested(context, vn)
 
 Return `true` if `vn` is found in `context` or any of its descendants.
 
-This is contrast to [`hasvalue`](@ref) which only checks for `vn` in `context`,
-not recursively checking if `vn` is in any of its descendants.
+This is contrast to [`hasvalue(::AbstractContext, ::VarName)`](@ref) which only checks 
+for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
 function hasvalue_nested(context::AbstractContext, vn)
     return hasvalue_nested(NodeTrait(hasvalue_nested, context), context, vn)
