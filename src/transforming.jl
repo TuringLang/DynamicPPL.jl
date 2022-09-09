@@ -94,7 +94,8 @@ function link!!(
     return settrans!!(last(evaluate!!(model, vi, LazyTransformationContext{false}())), t)
 end
 function link!!(t::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
-    link!(vi, spl)
+    # Call `_link!` instead of `link!` to avoid deprecation warning.
+    _link!(vi, spl)
     return vi
 end
 
@@ -190,7 +191,8 @@ function invlink!!(
     )
 end
 function invlink!!(::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
-    invlink!(vi, spl)
+    # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
+    _invlink!(vi, spl)
     return vi
 end
 

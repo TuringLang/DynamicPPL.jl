@@ -798,11 +798,21 @@ Transform the values of the random variables sampled by `spl` in `vi` from the s
 of their distributions to the Euclidean space and set their corresponding `"trans"`
 flag values to `true`.
 """
-function link!(vi::UntypedVarInfo, spl::Sampler)
+function link!(vi::VarInfo, spl::AbstractSampler)
     Base.depwarn(
         "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
         :link!,
     )
+    return _link!(vi, spl)
+end
+function link!(vi::VarInfo, spl::AbstractSampler, spaceval::Val)
+    Base.depwarn(
+        "`link!(varinfo, sampler, spaceval)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
+        :link!,
+    )
+    return _link!(vi, spl, spaceval)
+end
+function _link!(vi::UntypedVarInfo, spl::Sampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
@@ -821,14 +831,14 @@ function link!(vi::UntypedVarInfo, spl::Sampler)
         @warn("[DynamicPPL] attempt to link a linked vi")
     end
 end
-function link!(vi::TypedVarInfo, spl::AbstractSampler)
+function _link!(vi::TypedVarInfo, spl::AbstractSampler)
     Base.depwarn(
         "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
         :link!,
     )
-    return link!(vi, spl, Val(getspace(spl)))
+    return _link!(vi, spl, Val(getspace(spl)))
 end
-function link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function _link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _link!(vi.metadata, vi, vns, spaceval)
 end
@@ -872,18 +882,30 @@ Transform the values of the random variables sampled by `spl` in `vi` from the
 Euclidean space back to the support of their distributions and sets their corresponding
 `"trans"` flag values to `false`.
 """
-function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
+function invlink!(vi::VarInfo, spl::AbstractSampler)
     Base.depwarn(
         "`invlink!(varinfo, sampler)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
         :invlink!,
     )
+    return _invlink!(vi, spl)
+end
+
+function invlink!(vi::VarInfo, spl::AbstractSampler, spaceval::Val)
+    Base.depwarn(
+        "`invlink!(varinfo, sampler, spaceval)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
+        :invlink!,
+    )
+    return _invlink!(vi, spl, spaceval)
+end
+
+function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
             @debug "ℝ -> X for $(vn)..."
             dist = getdist(vi, vn)
             y = reconstruct(dist, getval(vi, vn))
-            b = bijector(dist)
+            b = inverse(bijector(dist))
             x, logjac = with_logabsdet_jacobian(b, y)
             setval!(vi, vectorize(dist, x), vn)
             acclogp!!(vi, -logjac)
@@ -893,14 +915,10 @@ function invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
     end
 end
-function invlink!(vi::TypedVarInfo, spl::AbstractSampler)
-    Base.depwarn(
-        "`invlink!(varinfo, sampler)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
-        :invlink!,
-    )
-    return invlink!(vi, spl, Val(getspace(spl)))
+function _invlink!(vi::TypedVarInfo, spl::AbstractSampler)
+    return _invlink!(vi, spl, Val(getspace(spl)))
 end
-function invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
+function _invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
     vns = _getvns(vi, spl)
     return _invlink!(vi.metadata, vi, vns, spaceval)
 end
