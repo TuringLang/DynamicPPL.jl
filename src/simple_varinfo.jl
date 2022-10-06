@@ -248,8 +248,6 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
-SimpleVarInfo(svi::SimpleVarInfo, spl, x::AbstractVector) = unflatten(svi, x)
-
 unflatten(svi::SimpleVarInfo, spl, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     return Setfield.@set svi.values = unflatten(svi.values, x)
