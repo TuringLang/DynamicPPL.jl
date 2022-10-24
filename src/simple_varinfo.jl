@@ -526,7 +526,7 @@ end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
-    return settrans!!(vi, trans ? LazyTransformation() : NoTransformation())
+    return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
     return Setfield.@set vi.transformation = transformation

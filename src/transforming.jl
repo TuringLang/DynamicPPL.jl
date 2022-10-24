@@ -1,8 +1,8 @@
-struct LazyTransformationContext{isinverse} <: AbstractContext end
-NodeTrait(::LazyTransformationContext) = IsLeaf()
+struct DynamicTransformationContext{isinverse} <: AbstractContext end
+NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
 function tilde_assume(
-    ::LazyTransformationContext{isinverse}, right, vn, vi
+    ::DynamicTransformationContext{isinverse}, right, vn, vi
 ) where {isinverse}
     r = vi[vn, right]
     lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
@@ -20,7 +20,7 @@ function tilde_assume(
 end
 
 function dot_tilde_assume(
-    ::LazyTransformationContext{isinverse},
+    ::DynamicTransformationContext{isinverse},
     dist::Distribution,
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
@@ -30,7 +30,7 @@ function dot_tilde_assume(
     b = bijector(dist)
 
     is_trans_uniques = unique(istrans.((vi,), vns))
-    @assert length(is_trans_uniques) == 1 "LazyTransformationContext only supports transforming all variables"
+    @assert length(is_trans_uniques) == 1 "DynamicTransformationContext only supports transforming all variables"
     is_trans = first(is_trans_uniques)
     if is_trans
         @assert isinverse "Trying to link already transformed variables"
@@ -46,7 +46,7 @@ function dot_tilde_assume(
 end
 
 function dot_tilde_assume(
-    ::LazyTransformationContext{isinverse},
+    ::DynamicTransformationContext{isinverse},
     dist::MultivariateDistribution,
     var::AbstractMatrix,
     vns::AbstractVector{<:VarName},
@@ -62,7 +62,7 @@ function dot_tilde_assume(
 
     # Transform _all_ values.
     is_trans_uniques = unique(istrans.((vi,), vns))
-    @assert length(is_trans_uniques) == 1 "LazyTransformationContext only supports transforming all variables"
+    @assert length(is_trans_uniques) == 1 "DynamicTransformationContext only supports transforming all variables"
     is_trans = first(is_trans_uniques)
     if is_trans
         @assert isinverse "Trying to link already transformed variables"
@@ -94,11 +94,11 @@ function link!!(
     return link!!(t, vi.varinfo, spl, model)
 end
 function link!!(
-    t::LazyTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
-    return settrans!!(last(evaluate!!(model, vi, LazyTransformationContext{false}())), t)
+    return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
-function link!!(t::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
     _link!(vi, spl)
     return vi
@@ -111,7 +111,7 @@ Return a possibly invlinked version of `vi`.
 
 This will be called prior to `model` evaluation, allowing one to perform a single
 `invlink!!` _before_ evaluation rather lazyily evaluate the transforms on as-we-need
-basis as is done with [`LazyTransformation` ](@ref).
+basis as is done with [`DynamicTransformation` ](@ref).
 
 # Examples
 ```julia-repl
@@ -194,13 +194,14 @@ function invlink!!(
     return invlink!!(t, vi.varinfo, spl, model)
 end
 function invlink!!(
-    ::LazyTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    ::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
 )
     return settrans!!(
-        last(evaluate!!(model, vi, LazyTransformationContext{true}())), NoTransformation()
+        last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
+        NoTransformation(),
     )
 end
-function invlink!!(::LazyTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function invlink!!(::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi

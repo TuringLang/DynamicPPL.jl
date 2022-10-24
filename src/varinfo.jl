@@ -5,7 +5,7 @@
 abstract type AbstractTransformation end
 
 struct NoTransformation <: AbstractTransformation end
-struct LazyTransformation <: AbstractTransformation end
+struct DynamicTransformation <: AbstractTransformation end
 
 struct StaticTransformation{F} <: AbstractTransformation
     bijector::F
@@ -17,7 +17,7 @@ end
 Return the `AbstractTransformation` currently related to `model` and, potentially, `vi`.
 """
 default_transformation(model::Model, ::AbstractVarInfo) = default_transformation(model)
-default_transformation(::Model) = LazyTransformation()
+default_transformation(::Model) = DynamicTransformation()
 
 """
     transformation(vi::AbstractVarInfo)
@@ -131,7 +131,7 @@ const TypedVarInfo = VarInfo{<:NamedTuple}
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
 # multiple times.
-transformation(vi::VarInfo) = LazyTransformation()
+transformation(vi::VarInfo) = DynamicTransformation()
 
 function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     new_vi = deepcopy(old_vi)
