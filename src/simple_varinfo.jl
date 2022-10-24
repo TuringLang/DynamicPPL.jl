@@ -541,13 +541,6 @@ istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinf
 
 islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
 
-"""
-    values_as(varinfo[, Type])
-
-Return the values/realizations in `varinfo` as `Type`, if implemented.
-
-If no `Type` is provided, return values as stored in `varinfo`.
-"""
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}

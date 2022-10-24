@@ -163,6 +163,7 @@ resetlogp!!
 
 ```@docs
 getindex
+DynamicPPL.getindex_raw
 push!!
 empty!!
 ```

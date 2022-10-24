@@ -988,14 +988,13 @@ end
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
 """
-    getindex(vi::VarInfo, vn::VarName)
-    getindex(vi::VarInfo, vns::Vector{<:VarName})
+    getindex(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
+    getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
 
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s).
 
-If the value(s) is (are) transformed to the Euclidean space, it is
-(they are) transformed back.
+If `dist` is specified, the value(s) will be reshaped accordingly.
 """
 getindex(vi::AbstractVarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
 function getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
@@ -1019,6 +1018,20 @@ function getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}, dist::Distributio
     return reconstruct(dist, vals_linked, length(vns))
 end
 
+"""
+    getindex_raw(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
+    getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
+
+Return the current value(s) of `vn` (`vns`) in `vi`.
+
+If `dist` is specified, the value(s) will be reshaped accordingly.
+
+The difference between `getindex(vi, vn, dist)` and `getindex_raw` is that 
+`getindex` will also transform the value(s) to the support of the distribution(s). 
+This is _not_ the case for `getindex_raw`.
+
+See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
+"""
 getindex_raw(vi::AbstractVarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
 function getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)
     return reconstruct(dist, getval(vi, vn))
@@ -1633,6 +1646,11 @@ julia> values_as(SimpleVarInfo(data), OrderedDict)
 OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
   x => 1.0
   m => [2.0]
+
+julia> values_as(SimpleVarInfo(data), Vector)
+2-element Vector{Float64}:
+ 1.0
+ 2.0
 ```
 
 `SimpleVarInfo` with `OrderedDict`:
@@ -1652,6 +1670,11 @@ julia> values_as(SimpleVarInfo(data), OrderedDict)
 OrderedDict{Any, Any} with 2 entries:
   x => 1.0
   m => [2.0]
+
+julia> values_as(SimpleVarInfo(data), Vector)
+2-element Vector{Float64}:
+ 1.0
+ 2.0
 ```
 
 `TypedVarInfo`:
@@ -1673,6 +1696,11 @@ julia> values_as(vi, OrderedDict)
 OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
+
+julia> values_as(vi, Vector)
+2-element Vector{Float64}:
+ 1.0
+ 2.0
 ```
 
 `UntypedVarInfo`:
@@ -1694,6 +1722,11 @@ julia> values_as(vi, OrderedDict)
 OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
+
+julia> values_as(vi, Vector)
+2-element Vector{Real}:
+ 1.0
+ 2.0
 ```
 """
 values_as(vi::VarInfo) = vi.metadata
