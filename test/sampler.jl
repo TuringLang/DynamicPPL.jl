@@ -15,7 +15,7 @@
         @test length(chains) == N
 
         # Expected value of ``X`` where ``X ~ N(2, ...)`` is 2.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.15
 
         # Expected value of ``X`` where ``X ~ IG(2, 3)`` is 3.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.2
