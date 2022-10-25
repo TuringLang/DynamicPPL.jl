@@ -154,12 +154,16 @@ AbstractVarInfo
 
 ### Common API
 
+#### Accumulation of log-probabilities
+
 ```@docs
 getlogp
 setlogp!!
 acclogp!!
 resetlogp!!
 ```
+
+#### Variables and their realizations
 
 ```@docs
 getindex
@@ -170,6 +174,23 @@ empty!!
 
 ```@docs
 values_as
+```
+
+#### Transformations
+
+```@docs
+DynamicPPL.istrans
+DynamicPPL.settrans!!
+DynamicPPL.transformation
+DynamicPPL.link!!
+DynamicPPL.invlink!!
+DynamicPPL.default_transformation
+``` 
+
+#### Utils
+
+```@docs
+DynamicPPL.tonamedtuple
 ```
 
 #### `SimpleVarInfo`
@@ -190,10 +211,8 @@ TypedVarInfo
 One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
 
 ```@docs
-tonamedtuple
 link!
 invlink!
-istrans
 ```
 
 ```@docs

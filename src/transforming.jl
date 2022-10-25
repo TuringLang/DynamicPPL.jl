@@ -80,6 +80,16 @@ function dot_tilde_assume(
     return r, lp, vi
 end
 
+"""
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transforms the variables in `vi` to their linked space, using the transformatio `t`.
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
+"""
 link!!(vi::AbstractVarInfo, model::Model) = link!!(vi, SampleFromPrior(), model)
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return link!!(t, vi, SampleFromPrior(), model)
@@ -180,6 +190,17 @@ function _default_sampler(::IsParent, context::AbstractContext)
     return _default_sampler(childcontext(context))
 end
 
+"""
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transform the variables in `vi` to their constrained space, using the (inverse of) 
+transformation `t`.
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`link!!`](@ref).
+"""
 invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), model)
 function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, vi, SampleFromPrior(), model)

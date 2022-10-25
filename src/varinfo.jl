@@ -392,11 +392,13 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 """
-    settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
+    settrans!!(vi::VarInfo, trans::Bool[, vn::VarName])
 
-Set the `trans` flag value of `vn` in `vi`.
+Return `vi` with `istrans(vi, vn)` evaluating to `true`.
+
+If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variables.
 """
-function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
+function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
     if trans
         set_flag!(vi, vn, "trans")
     else
@@ -406,11 +408,6 @@ function settrans!!(vi::AbstractVarInfo, trans::Bool, vn::VarName)
     return vi
 end
 
-"""
-    settrans!!(vi::AbstractVarInfo, trans)
-
-Return new instance of `vi` but with `istrans(vi, trans)` now evaluating to `true`.
-"""
 function settrans!!(vi::VarInfo, trans::Bool)
     for vn in keys(vi)
         settrans!!(vi, trans, vn)
@@ -692,19 +689,19 @@ function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 end
 
 """
-    istrans(vi::AbstractVarInfo)
+    istrans(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
 
 Return `true` if `vi` is working in unconstrained space, and `false`
 if `vi` is assuming realizations to be in support of the corresponding distributions.
+
+If `vns` is provided, then only check if this/these varname(s) are transformed.
+
+!!! warning
+    Not all implementations of `AbstractVarInfo` support transforming only a subset of
+    the variables.
 """
 istrans(vi::AbstractVarInfo) = false # `VarInfo` works in constrained space by default.
-
-"""
-    istrans(vi::VarInfo, vn::VarName)
-
-Return true if `vn`'s values in `vi` are transformed to Euclidean space, and false if
-they are in the support of `vn`'s distribution.
-"""
+# TODO: Should this be restricted to `vi::VarInfo`? Requires explicit impl. for `ThreadSafeVarInfo`.
 istrans(vi::AbstractVarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
 function istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
     return all(Base.Fix1(istrans, vi), vns)
@@ -719,7 +716,7 @@ Return the log of the joint probability of the observed data and parameters samp
 getlogp(vi::AbstractVarInfo) = vi.logp[]
 
 """
-    setlogp!!(vi::VarInfo, logp)
+    setlogp!!(vi::AbstractVarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`, mutating if it makes sense.
@@ -735,7 +732,7 @@ end
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!!(vi::VarInfo, logp)
+function acclogp!!(vi::AbstractVarInfo, logp)
     vi.logp[] += logp
     return vi
 end
@@ -1118,7 +1115,7 @@ end
 end
 
 """
-    tonamedtuple(vi::VarInfo)
+    tonamedtuple(vi::AbstractVarInfo)
 
 Convert a `vi` into a `NamedTuple` where each variable symbol maps to the values and 
 indexing string of the variable.
