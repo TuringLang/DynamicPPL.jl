@@ -202,18 +202,37 @@ struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
     transformation::C
 end
 
-SimpleVarInfo(values, logp) = SimpleVarInfo(values, logp, NoTransformation())
+# Makes things a bit more readable vs. putting `Float64` everywhere.
+const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
 
-function SimpleVarInfo{T}(θ) where {T<:Real}
-    return SimpleVarInfo(θ, zero(T))
+function SimpleVarInfo{NT,T}(values, logp) where {NT,T}
+    return SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
 end
+function SimpleVarInfo{T}(θ) where {T<:Real}
+    return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
+end
+
+# Constructors without type-specification.
+SimpleVarInfo(θ) = SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
+function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
+    return if isempty(θ)
+        # Can't infer from values, so we just use default.
+        SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
+    else
+        # Infer from `values`.
+        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(typeof(θ)))}(θ)
+    end
+end
+
+SimpleVarInfo(values, logp) = SimpleVarInfo{typeof(values),typeof(logp)}(values, logp)
+
+# Using `kwargs` to specify the values.
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
     return SimpleVarInfo{T}(NamedTuple(kwargs))
 end
 function SimpleVarInfo(; kwargs...)
-    return SimpleVarInfo{Float64}(NamedTuple(kwargs))
+    return SimpleVarInfo(NamedTuple(kwargs))
 end
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
@@ -582,3 +601,12 @@ julia> # Truth.
 ```
 """
 Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+
+# Threadsafe stuff.
+# For `SimpleVarInfo` we don't really need `Ref` so let's not use it.
+function ThreadSafeVarInfo(vi::SimpleVarInfo)
+    return ThreadSafeVarInfo(vi, zeros(typeof(getlogp(vi)), Threads.nthreads()))
+end
+function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
+    return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
+end
