@@ -75,27 +75,32 @@ link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
 invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
-getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
-getindex(vi::ThreadSafeVarInfo, spl::SampleFromPrior) = getindex(vi.varinfo, spl)
-getindex(vi::ThreadSafeVarInfo, spl::SampleFromUniform) = getindex(vi.varinfo, spl)
+function link!!(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return link!!(t, vi.varinfo, spl, model)
+end
 
+function invlink!!(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink!!(t, vi.varinfo, spl, model)
+end
+
+# `getindex`
+getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
 function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
     return getindex(vi.varinfo, vn, dist)
 end
-getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex(vi.varinfo, vns)
-function getindex(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    return getindex(vi.varinfo, vns, dist)
-end
+getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 
+getindex_raw(vi::ThreadSafeVarInfo, ::Colon) = getindex_raw(vi.varinfo, Colon())
 getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
 function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
     return getindex_raw(vi.varinfo, vn, dist)
 end
-getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}) = getindex_raw(vi.varinfo, vns)
-function getindex_raw(vi::ThreadSafeVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    return getindex_raw(vi.varinfo, vns, dist)
-end
+getindex_raw(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex_raw(vi.varinfo, spl)
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
     return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
@@ -123,11 +128,7 @@ function BangBang.empty!!(vi::ThreadSafeVarInfo)
     return resetlogp!!(Setfield.@set!(vi.varinfo = empty!!(vi.varinfo)))
 end
 
-function BangBang.push!!(
-    vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
-)
-    return Setfield.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
-end
+values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return unset_flag!(vi.varinfo, vn, flag)
@@ -137,3 +138,14 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
 end
 
 tonamedtuple(vi::ThreadSafeVarInfo) = tonamedtuple(vi.varinfo)
+
+# Transformations.
+function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
+    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
+end
+function settrans!!(vi::ThreadSafeVarInfo, spl::AbstractSampler, dist::Distribution)
+    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, spl, dist)
+end
+
+istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
+istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)

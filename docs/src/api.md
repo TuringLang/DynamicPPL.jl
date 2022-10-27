@@ -166,10 +166,12 @@ resetlogp!!
 #### Variables and their realizations
 
 ```@docs
+keys
 getindex
 DynamicPPL.getindex_raw
 push!!
 empty!!
+isempty
 ```
 
 ```@docs
@@ -179,12 +181,20 @@ values_as
 #### Transformations
 
 ```@docs
+DynamicPPL.AbstractTransformation
+DynamicPPL.NoTransformation
+DynamicPPL.DynamicTransformation
+DynamicPPL.StaticTransformation
+```
+
+```@docs
 DynamicPPL.istrans
 DynamicPPL.settrans!!
 DynamicPPL.transformation
 DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.default_transformation
+DynamicPPL.maybe_invlink_before_eval!!
 ``` 
 
 #### Utils

@@ -131,7 +131,7 @@ julia> # (✓) Positive probability mass on negative numbers!
        getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
 -1.3678794411714423
 
-julia> # While if we forget to make indicate that it's transformed:
+julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
 SimpleVarInfo((x = -1.0,), 0.0)
 
@@ -481,10 +481,6 @@ function dot_assume(
     lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
     return value, lp, vi
 end
-
-# HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
-increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
-setgid!(vi::SimpleOrThreadSafeSimple, gid::Selector, vn::VarName) = nothing
 
 # We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
 # TODO: Move away from using these `tonamedtuple` methods.

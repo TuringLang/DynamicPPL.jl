@@ -127,7 +127,6 @@ export loglikelihood
 # Used here and overloaded in Turing
 function getspace end
 
-# Necessary forward declarations
 """
     AbstractVarInfo
 
@@ -135,10 +134,16 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref)
+See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
+const LEGACY_WARNING = """
+!!! warning
+    This method is considered legacy, and is likely to be deprecated in the future.
+"""
+
+# Necessary forward declarations
 include("utils.jl")
 include("selector.jl")
 include("model.jl")
@@ -146,8 +151,9 @@ include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
-include("varinfo.jl")
+include("abstract_varinfo.jl")
 include("threadsafe.jl")
+include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
