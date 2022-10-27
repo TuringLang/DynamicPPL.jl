@@ -197,7 +197,6 @@ function BangBang.push!!(
     return BangBang.push!!(vi, vn, r, dist, Set([gid]))
 end
 
-
 @doc """
     empty!!(vi::AbstractVarInfo)
 
