@@ -528,7 +528,6 @@ variables `x` would return
 """
 function tonamedtuple end
 
-
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
