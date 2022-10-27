@@ -103,7 +103,9 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
 end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
-const MaybeThreadSafeVarInfo{Tmeta} = Union{VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}}
+const MaybeThreadSafeVarInfo{Tmeta} = Union{
+    VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
+}
 
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
