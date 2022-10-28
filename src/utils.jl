@@ -426,3 +426,199 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
+
+"""
+    nested_getindex(values::AbstractDict, vn::VarName)
+
+Return value corresponding to `vn` in `values` by also looking
+in the the actual values of the dict.
+
+# Examples
+
+```jldoctest
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x)) # same as `getindex`
+1-element Vector{Float64}:
+ 1.0
+
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[1])) # different from `getindex`
+1.0
+
+julia> DynamicPPL.nested_getindex(Dict(@varname(x) => [1.0]), @varname(x[2]))
+ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+[...]
+```
+"""
+function nested_getindex(values::AbstractDict, vn::VarName)
+    maybeval = get(values, vn, nothing)
+    if maybeval !== nothing
+        return maybeval
+    end
+
+    # Split the lens into the key / `parent` and the extraction lens / `child`.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(values, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    # If we found a valid split, then we can extract the value.
+    if !issuccess
+        # At this point we just throw an error since the key could not be found.
+        throw(KeyError(vn))
+    end
+
+    # TODO: Should we also check that we `canview` the extracted `value`
+    # rather than just let it fail upon `get` call?
+    value = values[VarName(vn, keylens)]
+    return get(value, child)
+end
+
+"""
+    nested_haskey(x, vn::VarName)
+
+Determine whether `x` has a mapping for a given `vn`.
+
+# Examples
+With `x` as a `NamedTuple`:
+```jldoctest
+julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey((x = 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[1]))
+true
+
+julia> DynamicPPL.nested_haskey((x = [1.0],), @varname(x[2]))
+false
+```
+
+With `x` as a `AbstractDict`:
+```jldoctest
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => 1.0, ), @varname(x[1]))
+false
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[1]))
+true
+
+julia> DynamicPPL.nested_haskey(Dict(@varname(x) => [1.0]), @varname(x[2]))
+false
+```
+"""
+function nested_haskey(nt::NamedTuple, vn::VarName{sym}) where {sym}
+    # LHS: Ensure that `nt` indeed has the property we want.
+    # RHS: Ensure that the lens can view into `nt`.
+    return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
+end
+
+# For `dictlike` we need to check wether `vn` is "immediately" present, or
+# if some ancestor of `vn` is present in `dictlike`.
+function nested_haskey(dict::AbstractDict, vn::VarName)
+    # First we check if `vn` is present as is.
+    haskey(dict, vn) && return true
+
+    # If `vn` is not present, we check any parent-varnames by attempting
+    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
+    parent, child, issuccess = splitlens(getlens(vn)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        haskey(dict, VarName(vn, l))
+    end
+    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
+    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+
+    # Return early if no such split could be found.
+    issuccess || return false
+
+    # At this point we just need to check that we `canview` the value.
+    value = dict[VarName(vn, keylens)]
+
+    return canview(child, value)
+end
+
+"""
+    float_type_with_fallback(x)
+
+Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
+"""
+float_type_with_fallback(::Type) = Real
+float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
+
+"""
+    infer_nested_eltype(x::Type)
+
+Recursively unwrap the type, returning the first type where `eltype(x) === typeof(x)`.
+
+This is useful for obtaining a reasonable default `eltype` in deeply nested types.
+
+# Examples
+```jldoctest
+julia> # `AbstractArrary`
+       DynamicPPL.infer_nested_eltype(typeof([1.0]))
+Float64
+
+julia> # `NamedTuple` with `Float32`
+       DynamicPPL.infer_nested_eltype(typeof((x = [1f0], )))
+Float32
+
+julia> # `AbstractDict`
+       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1.0, ])))
+Float64
+
+julia> # Nesting of containers.
+       DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
+Float64
+
+julia> DynamicPPL.infer_nested_eltype(typeof([Dict(:x => [1.0,],) ]))
+Float64
+
+julia> # Empty `Tuple`.
+       DynamicPPL.infer_nested_eltype(typeof(()))
+Any
+
+julia> # Empty `Dict`.
+       DynamicPPL.infer_nested_eltype(typeof(Dict()))
+Any
+```
+"""
+function infer_nested_eltype(::Type{T}) where {T}
+    ET = eltype(T)
+    return ET === T ? T : infer_nested_eltype(ET)
+end
+
+# We can do a better job than just `Any` with `Union`.
+infer_nested_eltype(::Type{Union{}}) = Any
+function infer_nested_eltype(::Type{U}) where {U<:Union}
+    return promote_type(U.a, infer_nested_eltype(U.b))
+end
+
+# Handle `NamedTuple` and `Tuple` specially given how prolific they are.
+function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
+    return infer_nested_eltype(V)
+end
+
+# Recursively deal with `Tuple` so it has the potential of being compiled away.
+infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
+function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
+    return promote_type(
+        infer_nested_eltype(Base.tuple_type_tail(T)),
+        infer_nested_eltype(Base.tuple_type_head(T)),
+    )
+end
+
+# Handle `AbstractDict` differently since `eltype` results in a `Pair`.
+infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
+
+# No need + causes issues for some AD backends, e.g. Zygote.
+ChainRulesCore.@non_differentiable infer_nested_eltype(x)
