@@ -1358,9 +1358,7 @@ julia> var_info[@varname(x[1])] # [✓] unchanged
 """
 setval!(vi::VarInfo, x) = setval!(vi, values(x), keys(x))
 setval!(vi::VarInfo, values, keys) = _apply!(_setval_kernel!, vi, values, keys)
-function setval!(
-    vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
-)
+function setval!(vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
