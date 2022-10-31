@@ -55,6 +55,12 @@ function setlogp!!(vi::ThreadSafeVarInfoWithRef, logp)
     return ThreadSafeVarInfo(setlogp!!(vi.varinfo, logp), vi.logps)
 end
 
+function BangBang.push!!(
+    vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
+)
+    return Setfield.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
+end
+
 get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)
 increment_num_produce!(vi::ThreadSafeVarInfo) = increment_num_produce!(vi.varinfo)
 reset_num_produce!(vi::ThreadSafeVarInfo) = reset_num_produce!(vi.varinfo)
@@ -90,15 +96,27 @@ end
 # `getindex`
 getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
+getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = getindex(vi.varinfo, vns)
 function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
     return getindex(vi.varinfo, vn, dist)
+end
+function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
+    return getindex(vi.varinfo, vns, dist)
 end
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 
 getindex_raw(vi::ThreadSafeVarInfo, ::Colon) = getindex_raw(vi.varinfo, Colon())
 getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
+function getindex_raw(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
+    return getindex_raw(vi.varinfo, vns)
+end
 function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
     return getindex_raw(vi.varinfo, vn, dist)
+end
+function getindex_raw(
+    vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution
+)
+    return getindex_raw(vi.varinfo, vns, dist)
 end
 getindex_raw(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex_raw(vi.varinfo, spl)
 

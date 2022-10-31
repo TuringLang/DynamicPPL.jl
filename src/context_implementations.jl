@@ -204,14 +204,14 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::AbstractVarInfo,
+    vi::MaybeThreadSafeVarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r))
+            BangBang.setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r)), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
