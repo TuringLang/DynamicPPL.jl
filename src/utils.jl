@@ -236,22 +236,26 @@ istransformable(::Transformable) = true
 # Single-sample initialisations #
 #################################
 
-inittrans(rng, dist::UnivariateDistribution) = invlink(dist, randrealuni(rng))
+inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
 function inittrans(rng, dist::MultivariateDistribution)
-    return invlink(dist, randrealuni(rng, size(dist)[1]))
+    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1]))
 end
-inittrans(rng, dist::MatrixDistribution) = invlink(dist, randrealuni(rng, size(dist)...))
+function inittrans(rng, dist::MatrixDistribution)
+    return Bijectors.invlink(dist, randrealuni(rng, size(dist)...))
+end
 
 ################################
 # Multi-sample initialisations #
 ################################
 
-inittrans(rng, dist::UnivariateDistribution, n::Int) = invlink(dist, randrealuni(rng, n))
+function inittrans(rng, dist::UnivariateDistribution, n::Int)
+    return Bijectors.invlink(dist, randrealuni(rng, n))
+end
 function inittrans(rng, dist::MultivariateDistribution, n::Int)
-    return invlink(dist, randrealuni(rng, size(dist)[1], n))
+    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1], n))
 end
 function inittrans(rng, dist::MatrixDistribution, n::Int)
-    return invlink(dist, [randrealuni(rng, size(dist)...) for _ in 1:n])
+    return Bijectors.invlink(dist, [randrealuni(rng, size(dist)...) for _ in 1:n])
 end
 
 #######################

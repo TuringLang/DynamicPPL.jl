@@ -103,7 +103,9 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
 end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
-const MaybeThreadSafeVarInfo{Tmeta} = Union{VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}}
+const MaybeThreadSafeVarInfo{Tmeta} = Union{
+    VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
+}
 
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
@@ -874,8 +876,10 @@ end
     return expr
 end
 
-maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.link(dist, val) : val
-maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? Bijectors.invlink(dist, val) : val
+link(vi, vn, dist, val) = Bijectors.link(dist, val)
+invlink(vi, vn, dist, val) = Bijectors.invlink(dist, val)
+maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : val
+maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : val
 
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
@@ -1356,9 +1360,7 @@ julia> var_info[@varname(x[1])] # [✓] unchanged
 """
 setval!(vi::VarInfo, x) = setval!(vi, values(x), keys(x))
 setval!(vi::VarInfo, values, keys) = _apply!(_setval_kernel!, vi, values, keys)
-function setval!(
-    vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
-)
+function setval!(vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 

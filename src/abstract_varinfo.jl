@@ -197,7 +197,6 @@ function BangBang.push!!(
     return BangBang.push!!(vi, vn, r, dist, Set([gid]))
 end
 
-
 @doc """
     empty!!(vi::AbstractVarInfo)
 
@@ -353,7 +352,7 @@ If `vns` is provided, then only check if this/these varname(s) are transformed.
 """
 istrans(vi::AbstractVarInfo) = istrans(vi, collect(keys(vi)))
 function istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
-    return all(Base.Fix1(istrans, vi), vns)
+    return !isempty(vns) && all(Base.Fix1(istrans, vi), vns)
 end
 
 """
@@ -528,7 +527,6 @@ variables `x` would return
 ```
 """
 function tonamedtuple end
-
 
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
