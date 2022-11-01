@@ -388,6 +388,9 @@ function settrans!!(vi::VarInfo, trans::Bool)
     return vi
 end
 
+settrans!!(vi::VarInfo, trans::NoTransformation) = settrans!!(vi, false)
+settrans!!(vi::VarInfo, trans::AbstractTransformation) = settrans!!(vi, true)
+
 """
     syms(vi::VarInfo)
 
@@ -795,6 +798,14 @@ function invlink!!(::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, m
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi
+end
+
+function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
+    # Because `VarInfo` does not contain any information about what the transformation
+    # other than whether or not it has actually been transformed, the best we can do
+    # is just assume that `default_transformation` is the correct one if `istrans(vi)`.
+    t = istrans(vi) ? default_transformation(model, vi) : NoTransformation()
+    return maybe_invlink_before_eval!!(t, vi, context, model)
 end
 
 """
