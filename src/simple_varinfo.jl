@@ -654,7 +654,7 @@ function link!!(
     model::Model,
 )
     # TODO: Make sure that `spl` is respected.
-    b = t.bijector
+    b = inverse(t.bijector)
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     lp_new = getlogp(vi) - logjac
@@ -670,10 +670,9 @@ function invlink!!(
 )
     # TODO: Make sure that `spl` is respected.
     b = t.bijector
-    ib = inverse(b)
     y = vi.values
-    x, logjac = with_logabsdet_jacobian(ib, y)
-    lp_new = getlogp(vi) - logjac
+    x, logjac = with_logabsdet_jacobian(b, y)
+    lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end

@@ -429,7 +429,7 @@ function invlink!!(
     y = vi[spl]
     x, logjac = with_logabsdet_jacobian(b, y)
 
-    lp_new = getlogp(vi) - logjac
+    lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
