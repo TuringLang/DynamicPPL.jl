@@ -630,6 +630,9 @@ end
 # Functions defined only for UntypedVarInfo
 Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
 
+# HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
+# on other methods in the codebase which requires `Vector{<:VarName}`.
+Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
 @generated function Base.keys(vi::TypedVarInfo{<:NamedTuple{names}}) where {names}
     expr = Expr(:call)
     push!(expr.args, :vcat)
