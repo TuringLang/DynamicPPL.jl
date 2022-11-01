@@ -93,6 +93,17 @@ function invlink!!(
     return invlink!!(t, vi.varinfo, spl, model)
 end
 
+function maybe_invlink_before_eval!!(
+    vi::ThreadSafeVarInfo, context::AbstractContext, model::Model
+)
+    # Defer to the wrapped `AbstractVarInfo` object.
+    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the `getlogp(vi.varinfo)`
+    # hence the log-absdet-jacobian term will correctly be included in the `getlogp(vi)`.
+    return Setfield.@set vi.varinfo = maybe_invlink_before_eval!!(
+        vi.varinfo, context, model
+    )
+end
+
 # `getindex`
 getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)

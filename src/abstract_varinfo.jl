@@ -493,9 +493,14 @@ function maybe_invlink_before_eval!!(
     return maybe_invlink_before_eval!!(transformation(vi), vi, context, model)
 end
 function maybe_invlink_before_eval!!(
-    t::AbstractTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+    ::NoTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
 )
-    # Default behavior is to _not_ transform.
+    return vi
+end
+function maybe_invlink_before_eval!!(
+    ::DynamicTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+)
+    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we do nothing.
     return vi
 end
 function maybe_invlink_before_eval!!(
