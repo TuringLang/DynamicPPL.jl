@@ -218,4 +218,56 @@
             @test lp ≈ lp_true
         end
     end
+
+    @testset "Static transformation" begin
+        model = DynamicPPL.TestUtils.demo_static_transformation()
+
+        varinfos = setup_varinfos(
+            model, rand(NamedTuple, model), [@varname(s), @varname(m)]
+        )
+        @testset "$(short_varinfo_name(vi))" for vi in varinfos
+            # Initialize varinfo and link.
+            vi_linked = DynamicPPL.link!!(vi, model)
+
+            # Make sure `maybe_invlink_before_eval!!` results in `invlink!!`.
+            @test !DynamicPPL.istrans(
+                DynamicPPL.maybe_invlink_before_eval!!(
+                    deepcopy(vi), SamplingContext(), model
+                ),
+            )
+
+            # Resulting varinfo should no longer be transformed.
+            vi_result = last(DynamicPPL.evaluate!!(model, deepcopy(vi), SamplingContext()))
+            @test !DynamicPPL.istrans(vi_result)
+
+            # Set the values to something that is out of domain if we're in constrained space.
+            for vn in keys(vi)
+                vi_linked = DynamicPPL.setindex!!(vi_linked, -rand(), vn)
+            end
+
+            retval, vi_linked_result = DynamicPPL.evaluate!!(
+                model, deepcopy(vi_linked), DefaultContext()
+            )
+
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≠ retval.s  # `s` is unconstrained in original
+            @test DynamicPPL.getindex_raw(vi_linked_result, @varname(s)) == retval.s  # `s` is constrained in result
+
+            # `m` should not be transformed.
+            @test vi_linked[@varname(m)] == retval.m
+            @test vi_linked_result[@varname(m)] == retval.m
+
+            # Compare to truth.
+            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                model, retval.s, retval.m
+            )
+
+            # Realizations in `vi_linked` should all be equal to the unconstrained realization.
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≈ retval_unconstrained.s
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(m)) ≈ retval_unconstrained.m
+
+            # The resulting varinfo should hold the correct logp.
+            lp = getlogp(vi_linked_result)
+            @test lp ≈ lp_true
+        end
+    end
 end

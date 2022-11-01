@@ -644,6 +644,39 @@ const DEMO_MODELS = (
     demo_dot_assume_matrix_dot_observe_matrix(),
 )
 
+# Model to test `StaticTransformation` with.
+"""
+    demo_static_transformation()
+
+Simple model for which [`default_transformation`](@ref) returns a [`StaticTransformation`](@ref).
+"""
+@model function demo_static_transformation()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+
+    return (; s, m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+end
+
+function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
+    b = Bijectors.stack(Bijectors.Exp{0}(), Bijectors.Identity{0}())
+    return DynamicPPL.StaticTransformation(b)
+end
+
+posterior_mean(::Model{typeof(demo_static_transformation)}) = (s=49 / 24, m=7 / 6)
+function logprior_true(::Model{typeof(demo_static_transformation)}, s, m)
+    return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
+end
+function loglikelihood_true(::Model{typeof(demo_static_transformation)}, s, m)
+    return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_static_transformation)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
+
 """
     marginal_mean_of_samples(chain, varname)
 
