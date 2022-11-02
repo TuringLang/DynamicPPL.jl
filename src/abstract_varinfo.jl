@@ -351,7 +351,7 @@ If `vns` is provided, then only check if this/these varname(s) are transformed.
     the variables.
 """
 istrans(vi::AbstractVarInfo) = istrans(vi, collect(keys(vi)))
-function istrans(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
+function istrans(vi::AbstractVarInfo, vns::AbstractVector)
     return !isempty(vns) && all(Base.Fix1(istrans, vi), vns)
 end
 
