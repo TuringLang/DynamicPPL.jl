@@ -468,7 +468,8 @@ function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
     return NamedTuple{names}(unflatten(values(original), x))
 end
 function unflatten(original::AbstractDict, x::AbstractVector)
-    return Dict(zip(keys(original), unflatten(collect(values(original)), x)))
+    D = ConstructionBase.constructorof(typeof(original))
+    return D(zip(keys(original), unflatten(collect(values(original)), x)))
 end
 
 # TODO: Move `getvalue` and `hasvalue` to AbstractPPL.jl.
