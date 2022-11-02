@@ -571,8 +571,8 @@ julia> # Using a `NamedTuple`.
        logjoint(demo([1.0]), (m = 100.0, ))
 -9902.33787706641
 
-julia> # Using a `Dict`.
-       logjoint(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -9902.33787706641
 
 julia> # Truth.
@@ -603,8 +603,8 @@ julia> # Using a `NamedTuple`.
        logprior(demo([1.0]), (m = 100.0, ))
 -5000.918938533205
 
-julia> # Using a `Dict`.
-       logprior(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -5000.918938533205
 
 julia> # Truth.
@@ -635,8 +635,8 @@ julia> # Using a `NamedTuple`.
        loglikelihood(demo([1.0]), (m = 100.0, ))
 -4901.418938533205
 
-julia> # Using a `Dict`.
-       loglikelihood(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -4901.418938533205
 
 julia> # Truth.
