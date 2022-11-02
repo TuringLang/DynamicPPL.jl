@@ -519,6 +519,16 @@ end
 
 # Utilities
 """
+    unflatten(vi::AbstractVarInfo[, spl::AbstractSampler], x::AbstractVector)
+
+Return a new instance of `vi` with the values of `x` assigned to the variables.
+
+If `spl` is provided, `x` is assumed to be realizations only for variables related 
+to `spl`.
+"""
+function unflatten end
+
+"""
     tonamedtuple(vi::AbstractVarInfo)
 
 Convert a `vi` into a `NamedTuple` where each variable symbol maps to the values and 

@@ -200,6 +200,7 @@ DynamicPPL.maybe_invlink_before_eval!!
 #### Utils
 
 ```@docs
+DynamicPPL.unflatten
 DynamicPPL.tonamedtuple
 ```
 
