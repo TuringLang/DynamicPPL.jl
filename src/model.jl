@@ -458,7 +458,7 @@ julia> conditioned(cm).var"a.m"
 1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
-Any[]
+VarName[]
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
