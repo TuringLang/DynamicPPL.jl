@@ -389,6 +389,11 @@ function settrans!!(vi::VarInfo, trans::Bool)
 end
 
 settrans!!(vi::VarInfo, trans::NoTransformation) = settrans!!(vi, false)
+# HACK: This is necessary to make something like `link!!(transformation, vi, model)`
+# work properly, which will transform the variables according to `transformation`
+# and then call `settrans!!(vi, transformation)`. An alternative would be to add
+# the `transformation` to the `VarInfo` object, but at the moment doesn't seem
+# worth it as `VarInfo` has its own way of handling transformations.
 settrans!!(vi::VarInfo, trans::AbstractTransformation) = settrans!!(vi, true)
 
 """
