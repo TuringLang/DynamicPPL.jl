@@ -1464,7 +1464,9 @@ function setval_and_resample!(
     return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_and_resample_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys)
+function _setval_and_resample_kernel!(
+    vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys
+)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
