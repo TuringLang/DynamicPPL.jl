@@ -592,6 +592,10 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         )
         model.f(
             model,
+            # Maybe perform `invlink!!` once prior to evaluation to avoid
+            # lazy `invlink`-ing of the parameters. This can be useful for
+            # speeding up computation. See docs for `maybe_invlink_before_eval!!`
+            # for more information.
             maybe_invlink_before_eval!!(varinfo, context_new, model),
             context_new,
             $(unwrap_args...),
