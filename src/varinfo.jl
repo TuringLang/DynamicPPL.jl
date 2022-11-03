@@ -103,7 +103,7 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
 end
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
-const MaybeThreadSafeVarInfo{Tmeta} = Union{
+const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
 
@@ -1252,7 +1252,7 @@ end
 
 Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
-function _apply!(kernel!, vi::MaybeThreadSafeVarInfo, values, keys)
+function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
     keys_strings = map(string, collectmaybe(keys))
     num_indices_seen = 0
 
@@ -1310,7 +1310,7 @@ end
     end
 end
 
-function _find_missing_keys(vi::MaybeThreadSafeVarInfo, keys)
+function _find_missing_keys(vi::VarInfoOrThreadSafeVarInfo, keys)
     string_vns = map(string, collectmaybe(Base.keys(vi)))
     # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
     missing_keys = filter(keys) do key
@@ -1383,7 +1383,7 @@ function setval!(vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_kernel!(vi::MaybeThreadSafeVarInfo, vn::VarName, values, keys)
+function _setval_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
@@ -1452,19 +1452,19 @@ julia> var_info[@varname(x[1])] # [✓] changed
 ## See also
 - [`setval!`](@ref)
 """
-function setval_and_resample!(vi::MaybeThreadSafeVarInfo, x)
+function setval_and_resample!(vi::VarInfoOrThreadSafeVarInfo, x)
     return setval_and_resample!(vi, values(x), keys(x))
 end
-function setval_and_resample!(vi::MaybeThreadSafeVarInfo, values, keys)
+function setval_and_resample!(vi::VarInfoOrThreadSafeVarInfo, values, keys)
     return _apply!(_setval_and_resample_kernel!, vi, values, keys)
 end
 function setval_and_resample!(
-    vi::MaybeThreadSafeVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
+    vi::VarInfoOrThreadSafeVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
 )
     return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_and_resample_kernel!(vi::MaybeThreadSafeVarInfo, vn::VarName, values, keys)
+function _setval_and_resample_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])
