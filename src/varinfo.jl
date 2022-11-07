@@ -1240,7 +1240,7 @@ end
 Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
 and `vn`'s symbol is in the space of `spl`.
 """
-function updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
+function updategid!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
     end
