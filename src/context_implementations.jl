@@ -204,14 +204,14 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r))
+            BangBang.setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r)), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -526,6 +526,8 @@ function get_and_set_val!(
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
             push!!.((vi,), vns, link.((vi,), vns, dists, r), dists, (spl,))
+            # NOTE: Need to add the correction.
+            acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
