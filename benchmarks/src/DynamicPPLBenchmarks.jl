@@ -45,7 +45,9 @@ function benchmark_simple_varinfo_namedtuple!(suite, m)
 
     # Evaluate.
     suite["evaluation_simple_varinfo_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
-    suite["evaluation_simple_varinfo_componentarrays"] = @benchmarkable $m($vi_ca, $(DefaultContext()))
+    suite["evaluation_simple_varinfo_componentarrays"] = @benchmarkable $m(
+        $vi_ca, $(DefaultContext())
+    )
     return suite
 end
 
@@ -64,7 +66,9 @@ function benchmark_simple_varinfo_dict!(suite, m)
     vi = SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
 
     # Evaluate.
-    suite["evaluation_simple_varinfo_dict_from_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
+    suite["evaluation_simple_varinfo_dict_from_nt"] = @benchmarkable $m(
+        $vi, $(DefaultContext())
+    )
 
     return suite
 end
@@ -202,7 +206,7 @@ function weave_benchmarks(
         :benchmarkbody => benchmarkbody,
         :name => name,
         :include_typed_code => include_typed_code,
-        :seconds => seconds
+        :seconds => seconds,
     )
     if !isnothing(name_old)
         args[:name_old] = name_old
@@ -215,25 +219,31 @@ end
 function display_environment()
     display("text/markdown", "Computer Information:")
     vinfo = sprint(InteractiveUtils.versioninfo)
-    display("text/markdown",  """
-        ```
-        $(vinfo)
-        ```
-        """)
+    display(
+        "text/markdown",
+        """
+```
+$(vinfo)
+```
+""",
+    )
 
     ctx = Pkg.API.Context()
 
     pkg_status = let io = IOBuffer()
-        Pkg.status(Pkg.API.Context(); io = io)
+        Pkg.status(Pkg.API.Context(); io=io)
         String(take!(io))
     end
 
-    display("text/markdown","""
-        Package Information:
-        """)
+    display(
+        "text/markdown",
+        """
+Package Information:
+""",
+    )
 
     md = "```\n$(pkg_status)\n```"
-    display("text/markdown", md)
+    return display("text/markdown", md)
 end
 
 include("tables.jl")
