@@ -457,7 +457,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -470,7 +470,7 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[:, i]))
+                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[:, i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -494,7 +494,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -508,7 +508,7 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[i]))
+                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -538,19 +538,19 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     val::AbstractMatrix,
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
-        vi[vn] = val[:, i]
+        setindex!!(vi, val[:, i], vn)
     end
     return val
 end
 function set_val!(
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     val::AbstractArray,
@@ -558,7 +558,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        vi[vns[ind]] = vectorize(dist, val[ind])
+        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
     end
     return val
 end
