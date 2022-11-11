@@ -759,10 +759,6 @@ function _link!(vi::UntypedVarInfo, spl::Sampler)
     end
 end
 function _link!(vi::TypedVarInfo, spl::AbstractSampler)
-    Base.depwarn(
-        "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
-        :link!,
-    )
     return _link!(vi, spl, Val(getspace(spl)))
 end
 function _link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
