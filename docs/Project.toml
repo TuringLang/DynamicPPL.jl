@@ -11,5 +11,5 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 [compat]
 Distributions = "0.25"
 Documenter = "0.27"
-Setfield = "0.7.1, 0.8"
+Setfield = "0.7.1, 0.8, 1"
 StableRNGs = "1"

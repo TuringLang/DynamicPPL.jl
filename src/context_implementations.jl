@@ -204,14 +204,14 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r))
+            BangBang.setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r)), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -457,7 +457,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -470,7 +470,7 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[:, i]))
+                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[:, i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -494,7 +494,7 @@ end
 
 function get_and_set_val!(
     rng,
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     spl::Union{SampleFromPrior,SampleFromUniform},
@@ -508,7 +508,7 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                vi[vn] = vectorize(dist, maybe_link(vi, vn, dist, r[i]))
+                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -526,6 +526,8 @@ function get_and_set_val!(
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
             push!!.((vi,), vns, link.((vi,), vns, dists, r), dists, (spl,))
+            # NOTE: Need to add the correction.
+            acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
@@ -536,19 +538,19 @@ function get_and_set_val!(
 end
 
 function set_val!(
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractVector{<:VarName},
     dist::MultivariateDistribution,
     val::AbstractMatrix,
 )
     @assert size(val, 2) == length(vns)
     foreach(enumerate(vns)) do (i, vn)
-        vi[vn] = val[:, i]
+        setindex!!(vi, val[:, i], vn)
     end
     return val
 end
 function set_val!(
-    vi::AbstractVarInfo,
+    vi::VarInfoOrThreadSafeVarInfo,
     vns::AbstractArray{<:VarName},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     val::AbstractArray,
@@ -556,7 +558,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        vi[vns[ind]] = vectorize(dist, val[ind])
+        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
     end
     return val
 end

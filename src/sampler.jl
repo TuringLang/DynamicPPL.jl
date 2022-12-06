@@ -67,6 +67,19 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
+function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
+    return default_varinfo(rng, model, sampler, DefaultContext())
+end
+function default_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler,
+    context::AbstractContext,
+)
+    init_sampler = initialsampler(sampler)
+    return VarInfo(rng, model, init_sampler, context)
+end
+
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
@@ -82,23 +95,17 @@ function AbstractMCMC.step(
     end
 
     # Sample initial values.
-    _spl = initialsampler(spl)
-    vi = VarInfo(rng, model, _spl)
+    vi = default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
     if init_params !== nothing
-        vi = initialize_parameters!!(vi, init_params, spl)
+        vi = initialize_parameters!!(vi, init_params, spl, model)
 
         # Update joint log probability.
-        # TODO: fix properly by using sampler and evaluation contexts
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
-        if _spl isa SampleFromUniform
-            model(rng, vi, SampleFromPrior())
-        else
-            model(rng, vi, _spl)
-        end
+        vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
     return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
@@ -121,7 +128,9 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
+function initialize_parameters!!(
+    vi::AbstractVarInfo, init_params, spl::Sampler, model::Model
+)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
@@ -132,8 +141,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Get all values.
     linked = islinked(vi, spl)
     if linked
-        # TODO: Make work with immutable `vi`.
-        invlink!(vi, spl)
+        vi = invlink!!(vi, spl, model)
     end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
@@ -150,8 +158,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, init_params, spl::Sampler)
     # Update in `vi`.
     vi = setindex!!(vi, theta, spl)
     if linked
-        # TODO: Make work with immutable `vi`.
-        link!(vi, spl)
+        vi = link!!(vi, spl, model)
     end
 
     return vi

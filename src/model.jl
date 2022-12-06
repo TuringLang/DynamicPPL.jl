@@ -458,7 +458,7 @@ julia> conditioned(cm).var"a.m"
 1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
-Any[]
+VarName[]
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
@@ -590,7 +590,16 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         context_new = setleafcontext(
             context, setleafcontext(model.context, leafcontext(context))
         )
-        model.f(model, varinfo, context_new, $(unwrap_args...))
+        model.f(
+            model,
+            # Maybe perform `invlink!!` once prior to evaluation to avoid
+            # lazy `invlink`-ing of the parameters. This can be useful for
+            # speeding up computation. See docs for `maybe_invlink_before_eval!!`
+            # for more information.
+            maybe_invlink_before_eval!!(varinfo, context_new, model),
+            context_new,
+            $(unwrap_args...),
+        )
     end
 end
 
@@ -629,7 +638,7 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
             SamplingContext(rng, SampleFromPrior(), DefaultContext()),
         ),
     )
-    return DynamicPPL.values_as(x, T)
+    return values_as(x, T)
 end
 
 # Default RNG and type
