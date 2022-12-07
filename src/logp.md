@@ -81,8 +81,7 @@ function DynamicPPL.loglikelihood(model, data, chain)
     return lls_dict
 end
 
-## 2. evaluate log posterior at sample parameter positions
-using DynamicPPL
+## 3. evaluate log posterior at sample parameter positions
 function DynamicPPL.logjoint(model, data, chain)
     """
     This function evaluates the `log posterior` for chain.
