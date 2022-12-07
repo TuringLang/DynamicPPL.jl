@@ -13,7 +13,7 @@ For all 3 functions, the inputs are a model instance and a chain; the output is 
 """
 
 ```julia
-# functions for evaluating logp: log-prior, log-likelihood and log-posterior.
+# functions for evaluating logp: log posterior and log prior
 using Turing, DynamicPPL, MCMCChains, StatsBase
 
 ## 1. evaluate log prior at sample parameter positions
@@ -78,7 +78,7 @@ function DynamicPPL.logjoint(model_instance::Model, chain::Chains)
     This function evaluates the `log posterior` for chain.
     -- Inputs 
         model: the probabilistic model instance;
-        chain: either an MCMC chain (i.e. an array of sample parameter values) or a single data point.
+        chain: an MCMC chain object.
     -- Outputs
         lls_dict: a dictionary with the data point as its key, and the `log posterior` as its value.
     """
@@ -98,7 +98,49 @@ function DynamicPPL.logjoint(model_instance::Model, chain::Chains)
         end
     end
     return lls
-end
+ end
+
+ function DynamicPPL.logjoint(model_instance::Model, arr::AbstractArray)
+    """
+    This function evaluates the `log posterior` for chain.
+    -- Inputs 
+        model: the probabilistic model instance;
+        arr: an array of sample parameter values, without parameter names.
+    -- Outputs
+        lls_dict: a dictionary with the data point as its key, and the `log posterior` as its value.
+    """
+    varinfo = VarInfo(model_instance) # extract variables info from the model
+    lls = Array{Float64}(undef, size(arr, 1)) # initialize a matrix to store the evaluated log posterior
+    for param_idx = 1:size(arr, 1)
+        # Extract sample parameter values using `varinfo` from the chain.
+        # TODO: This does not work for cases where the model has dynamic support, i.e. some of the iterations might have differently sized parameter space.
+        argvals_dict = OrderedDict(
+            vn => arr[param_idx]
+            for vn_parent in keys(varinfo)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, varinfo[vn_parent])
+        )
+        # Compute and store.
+        lls[param_idx] = StatsBase.loglikelihood(model_instance, argvals_dict) + DynamicPPL.logprior(model_instance, argvals_dict)
+    end
+    return lls
+ end
+
+ function DynamicPPL.logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
+    """
+    This function evaluates the `log posterior` for chain.
+    -- Inputs 
+        model: the probabilistic model instance;
+        nt_array: an array of NamedTuple of sample parameter values.
+    -- Outputs
+        lls_dict: a dictionary with the data point as its key, and the `log posterior` as its value.
+    """
+    lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
+    for param_idx = 1:size(nt_arr, 1)
+        # Compute and store.
+        lls[param_idx] = StatsBase.loglikelihood(model_instance, nt_arr[param_idx]) + DynamicPPL.logprior(model_instance, nt_arr[param_idx])
+    end
+    return lls
+ end
 
 ## Test 
 @model function demo_model(x)
@@ -123,5 +165,5 @@ chain = sample(demo_model(x), NUTS(0.65), 3_000) # chain: 1st index is the itera
 demo_model_instance = demo_model(x[1:10])
 lls = DynamicPPL.logprior(demo_model_instance, chain) 
 lls = DynamicPPL.loglikelihood(demo_model_instance, chain) 
-lls = DynamicPPL.logjoint(demo_model_instance, chain) 
+lls = DynamicPPL.logjoint(demo_model_instance, chain)  
 ```
