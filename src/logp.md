@@ -21,7 +21,7 @@ function DynamicPPL.logjoint(model, data, chain)
     """
     This function evaluates the `log posterior`.
     -- Inputs 
-        model: the probabilistic model;
+        model: the probabilistic model structure (not an model instance);
         data: the data, can be a single data point or an array;
         chain: a MCMCChain object.
     -- Outputs
@@ -55,7 +55,7 @@ function DynamicPPL.logprior(model, data, chain)
     """
     This function evaluates the `log prior`.
     -- Inputs 
-        model: the probabilistic model;
+        model: the probabilistic model structure (not an model instance);
         data: the data, can be a single data point or an array;
         chain: a MCMCChain object.
     -- Outputs
