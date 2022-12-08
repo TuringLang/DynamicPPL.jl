@@ -49,7 +49,9 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain::Chains)
                 vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, varinfo[vn_parent])
             )
             # Compute and store.
-            lls[iteration_idx, chain_idx] = StatsBase.loglikelihood(model_instance, argvals_dict)
+            lls[iteration_idx, chain_idx] = StatsBase.loglikelihood(
+                model_instance, argvals_dict
+            )
         end
     end
     return lls
