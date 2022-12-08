@@ -106,7 +106,9 @@ function DynamicPPL.logjoint(model_instance::Model, arr::AbstractArray)
             vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, varinfo[vn_parent])
         )
         # Compute and store.
-        lls[param_idx] = StatsBase.loglikelihood(model_instance, argvals_dict) + DynamicPPL.logprior(model_instance, argvals_dict)
+        lls[param_idx] =
+            StatsBase.loglikelihood(model_instance, argvals_dict) +
+            DynamicPPL.logprior(model_instance, argvals_dict)
     end
     return lls
 end
