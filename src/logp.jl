@@ -59,7 +59,7 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain <: AbstractChains
 end
 
 ## 3. evaluate log posterior at sample parameter positions
-function DynamicPPL.logjoint(model_instance::Model, chain<:AbstractChains)
+function DynamicPPL.logjoint(model_instance::Model, chain <: AbstractChains)
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
