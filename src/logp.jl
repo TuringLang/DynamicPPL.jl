@@ -3,7 +3,7 @@
 using DynamicPPL, AbstractMCMC, StatsBase
 
 ## 1. evaluate log prior at sample parameter positions
-function DynamicPPL.logprior(model_instance::Model, chain<:AbstractChains)
+function DynamicPPL.logprior(model_instance::Model, chain <: AbstractChains)
     """
     This function evaluates the `log prior` for chain.
     -- Inputs 
