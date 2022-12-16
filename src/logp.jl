@@ -3,7 +3,7 @@
 using DynamicPPL, AbstractMCMC, StatsBase
 
 ## 1. evaluate log prior at sample parameter positions
-function DynamicPPL.logprior(model_instance::Model, chain::AbstractChains)
+function DynamicPPL.logprior(model_instance::Model, chain<:AbstractChains)
     """
     This function evaluates the `log prior` for chain.
     -- Inputs 
@@ -31,7 +31,7 @@ function DynamicPPL.logprior(model_instance::Model, chain::AbstractChains)
 end
 
 ## 2. evaluate log likelihood at sample parameter positions
-function DynamicPPL.loglikelihood(model_instance::Model, chain::AbstractChains)
+function DynamicPPL.loglikelihood(model_instance::Model, chain<:AbstractChains)
     """
     This function evaluates the `log likelihood` for chain.
     -- Inputs 
@@ -59,7 +59,7 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain::AbstractChains)
 end
 
 ## 3. evaluate log posterior at sample parameter positions
-function DynamicPPL.logjoint(model_instance::Model, chain::AbstractChains)
+function DynamicPPL.logjoint(model_instance::Model, chain<:AbstractChains)
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
@@ -131,7 +131,3 @@ demo_model_instance = demo_model(x[1:10])
 lls = DynamicPPL.logprior(demo_model_instance, chain)
 lls = DynamicPPL.loglikelihood(demo_model_instance, chain)
 lls = DynamicPPL.logjoint(demo_model_instance, chain)
-
-# final comments:
-# 1. this script is doing similar to `pointwise_loglikelihoods` ("https://beta.turing.ml/DynamicPPL.jl/stable/api/#DynamicPPL.pointwise_loglikelihoods")
-# 2. if the probabilistic model has a return statement for the log likelihood you would like to calculate, you can use `generated_quantities(model, chain)` to evaluate the likelihoods at sample positions.
