@@ -1,12 +1,13 @@
 # functions for evaluating logp: log posterior, log likelihood and log prior
-using Turing, DynamicPPL, MCMCChains, StatsBase
+
+using DynamicPPL, AbstractMCMC, StatsBase
 
 ## 1. evaluate log prior at sample parameter positions
-function DynamicPPL.logprior(model_instance::Model, chain::Chains)
+function DynamicPPL.logprior(model_instance::Model, chain::AbstractChains)
     """
     This function evaluates the `log prior` for chain.
     -- Inputs 
-        model: the probabilistic model instance;
+        model_instance: the probabilistic model instance;
         chain: an MCMC chain.
     -- Outputs
         lls: a Vector of log prior values.
@@ -30,7 +31,7 @@ function DynamicPPL.logprior(model_instance::Model, chain::Chains)
 end
 
 ## 2. evaluate log likelihood at sample parameter positions
-function DynamicPPL.loglikelihood(model_instance::Model, chain::Chains)
+function DynamicPPL.loglikelihood(model_instance::Model, chain::AbstractChains)
     """
     This function evaluates the `log likelihood` for chain.
     -- Inputs 
@@ -58,7 +59,7 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain::Chains)
 end
 
 ## 3. evaluate log posterior at sample parameter positions
-function DynamicPPL.logjoint(model_instance::Model, chain::Chains)
+function DynamicPPL.logjoint(model_instance::Model, chain::AbstractChains)
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
@@ -83,32 +84,6 @@ function DynamicPPL.logjoint(model_instance::Model, chain::Chains)
                 StatsBase.loglikelihood(model_instance, argvals_dict) +
                 DynamicPPL.logprior(model_instance, argvals_dict)
         end
-    end
-    return lls
-end
-
-function DynamicPPL.logjoint(model_instance::Model, arr::AbstractArray)
-    """
-    This function evaluates the `log posterior` for chain.
-    -- Inputs 
-        model: the probabilistic model instance;
-        arr: an un-named array of sample parameter values.
-    -- Outputs
-        lls: a Vector of log posterior values.
-    """
-    varinfo = VarInfo(model_instance) # extract variables info from the model
-    lls = Array{Float64}(undef, size(arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(arr, 1)
-        # Extract sample parameter values using `varinfo` from the chain.
-        # TODO: This does not work for cases where the model has dynamic support, i.e. some of the iterations might have differently sized parameter space.
-        argvals_dict = OrderedDict(
-            vn => arr[param_idx] for vn_parent in keys(varinfo) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, varinfo[vn_parent])
-        )
-        # Compute and store.
-        lls[param_idx] =
-            StatsBase.loglikelihood(model_instance, argvals_dict) +
-            DynamicPPL.logprior(model_instance, argvals_dict)
     end
     return lls
 end
@@ -156,3 +131,7 @@ demo_model_instance = demo_model(x[1:10])
 lls = DynamicPPL.logprior(demo_model_instance, chain)
 lls = DynamicPPL.loglikelihood(demo_model_instance, chain)
 lls = DynamicPPL.logjoint(demo_model_instance, chain)
+
+# final comments:
+# 1. this script is doing similar to `pointwise_loglikelihoods`: https://beta.turing.ml/DynamicPPL.jl/stable/api/#DynamicPPL.pointwise_loglikelihoods
+# 2. if the probabilistic model has a return statement for the log likelihood you would like to calculate, you can use `generated_quantities(model, chain)` to evaluate the likelihoods at sample positions.
