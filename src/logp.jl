@@ -31,7 +31,7 @@ function DynamicPPL.logprior(model_instance::Model, chain <: AbstractChains)
 end
 
 ## 2. evaluate log likelihood at sample parameter positions
-function DynamicPPL.loglikelihood(model_instance::Model, chain<:AbstractChains)
+function DynamicPPL.loglikelihood(model_instance::Model, chain <: AbstractChains)
     """
     This function evaluates the `log likelihood` for chain.
     -- Inputs 
