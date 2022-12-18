@@ -4,16 +4,15 @@ The easiest way to manipulate and query DynamicPPL models is via the DynamicPPL 
 interface.
 
 Let's use a simple model of normally-distributed data as an example.
-```julia
+```@example probinterface
 using DynamicPPL, Distributions, Random
-rng = Xoshiro(1776);  # Set seed for reproducibility
+rng = Xoshiro(1776)  # Set seed for reproducibility
 n = 100
 
-DynamicPPL.@model function gdemo(n)
+@model function gdemo(n)
    μ ~ Normal(0, 1)
    σ ~ Exponential(1)
-   x = Vector{Float64}(undef, n)
-   x .~ Normal(μ, σ)
+   x ~ MvNormal(Fill(μ, n), σ^2 * I)
    return nothing
 end
 
