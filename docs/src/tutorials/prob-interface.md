@@ -65,7 +65,7 @@ In cross-validation, we split the dataset into several equal parts.
 Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).
 See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation.
-```julia
+``` @example probinterface
 training_loss = zero(logjoint(model, x1))
 for (train, validation) in kfolds(dataset, 5)
    # First, we train the model on the training set using Turing.jl
