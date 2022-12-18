@@ -1,9 +1,7 @@
 # functions for evaluating logp: log posterior, log likelihood and log prior
 
-using DynamicPPL, AbstractMCMC, StatsBase
-
 ## 1. evaluate log prior at sample parameter positions
-function DynamicPPL.logprior(model_instance::Model, chain <: AbstractChains)
+function logprior(model_instance::Model, chain::T) where {T <: AbstractMCMC.AbstractChains}
     """
     This function evaluates the `log prior` for chain.
     -- Inputs 
@@ -31,7 +29,7 @@ function DynamicPPL.logprior(model_instance::Model, chain <: AbstractChains)
 end
 
 ## 2. evaluate log likelihood at sample parameter positions
-function DynamicPPL.loglikelihood(model_instance::Model, chain <: AbstractChains)
+function loglikelihood(model_instance::Model, chain::T) where {T <: AbstractMCMC.AbstractChains}
     """
     This function evaluates the `log likelihood` for chain.
     -- Inputs 
@@ -50,7 +48,7 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain <: AbstractChains
                 vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, varinfo[vn_parent])
             )
             # Compute and store.
-            lls[iteration_idx, chain_idx] = StatsBase.loglikelihood(
+            lls[iteration_idx, chain_idx] = Distributions.loglikelihood(
                 model_instance, argvals_dict
             )
         end
@@ -59,7 +57,7 @@ function DynamicPPL.loglikelihood(model_instance::Model, chain <: AbstractChains
 end
 
 ## 3. evaluate log posterior at sample parameter positions
-function DynamicPPL.logjoint(model_instance::Model, chain <: AbstractChains)
+function logjoint(model_instance::Model, chain::T) where {T <: AbstractMCMC.AbstractChains}
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
@@ -81,14 +79,14 @@ function DynamicPPL.logjoint(model_instance::Model, chain <: AbstractChains)
             )
             # Compute and store.
             lls[iteration_idx, chain_idx] =
-                StatsBase.loglikelihood(model_instance, argvals_dict) +
+                Distributions.loglikelihood(model_instance, argvals_dict) +
                 DynamicPPL.logprior(model_instance, argvals_dict)
         end
     end
     return lls
 end
 
-function DynamicPPL.logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
+function logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
@@ -101,33 +99,8 @@ function DynamicPPL.logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
     for param_idx in 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] =
-            StatsBase.loglikelihood(model_instance, nt_arr[param_idx]) +
+            Distributions.loglikelihood(model_instance, nt_arr[param_idx]) +
             DynamicPPL.logprior(model_instance, nt_arr[param_idx])
     end
     return lls
 end
-
-## Test 
-@model function demo_model(x)
-    s ~ InverseGamma(2, 3)
-    m ~ Normal(0, sqrt(s))
-    for i in 1:length(x)
-        x[i] ~ Normal(m, sqrt(s))
-    end
-end
-
-# generate data
-using StableRNGs
-rng = StableRNG(111)
-using Random, Distributions
-Random.seed!(111)
-x = rand(Normal(1.0, 1.0), 1000)
-
-# MCMC sampling 
-chain = sample(demo_model(x), NUTS(0.65), 3_000) # chain: 1st index is the iteration no, 3rd index is the chain no.
-
-# evaluate logp
-demo_model_instance = demo_model(x[1:10])
-lls = DynamicPPL.logprior(demo_model_instance, chain)
-lls = DynamicPPL.loglikelihood(demo_model_instance, chain)
-lls = DynamicPPL.logjoint(demo_model_instance, chain)
