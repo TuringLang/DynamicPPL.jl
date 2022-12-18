@@ -5,9 +5,14 @@ interface.
 
 Let's use a simple model of normally-distributed data as an example.
 ```@example probinterface
-using DynamicPPL, Distributions, Random
-rng = Xoshiro(1776)  # Set seed for reproducibility
-n = 100
+using DynamicPPL
+using Distributions
+using FillArrays
+
+using LinearAlgebra
+using Random
+
+Random.seed!(1776) # Set seed for reproducibility
 
 @model function gdemo(n)
    μ ~ Normal(0, 1)
@@ -15,10 +20,15 @@ n = 100
    x ~ MvNormal(Fill(μ, n), σ^2 * I)
    return nothing
 end
-
-dataset = randn(rng, n)
+nothing # hide
 ```
 
+We generate some data using `μ = 0` and `σ = 1`:
+
+```@example probinterface
+dataset = randn(100)
+nothing # hide
+```
 
 ## Conditioning and Deconditioning
 
@@ -26,19 +36,21 @@ Bayesian models can be transformed with two main operations, conditioning and de
 Conditioning takes a variable and fixes its value as known.
 We do this by passing a model and a named tuple of conditioned variables to `|`:
 ```@example probinterface
-model = gdemo(n) | (x=dataset, μ=0, σ=1)
+model = gdemo(length(dataset)) | (x=dataset, μ=0, σ=1)
+nothing # hide
 ```
 
 This operation can be reversed by applying `decondition`:
 ```@example probinterface
 decondition(model)
+nothing # hide
 ```
 
 We can also decondition only some of the variables:
 ```@example probinterface
 decondition(model, :μ, :σ)
+nothing # hide
 ```
-
 
 ## Probabilities and Densities
 
@@ -47,8 +59,8 @@ This probability might be a prior, a likelihood, or a posterior (joint) density.
 DynamicPPL provides convenient functions for this.
 For example, if we wanted to calculate the probability of a draw from the prior:
 ```@example probinterface
-model = gdemo(n) | (x=dataset,)
-x1 = rand(rng, model)
+model = gdemo(length(dataset)) | (x=dataset,)
+x1 = rand(model)
 logjoint(model, x1)
 ```
 
@@ -56,7 +68,6 @@ For convenience, we provide the functions `loglikelihood` and `logjoint` to calc
 ```@example probinterface
 @assert logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ```
-
 
 ## Example: Cross-validation
 
@@ -70,7 +81,6 @@ training_loss = zero(logjoint(model, x1))
 for (train, validation) in kfolds(dataset, 5)
    # First, we train the model on the training set using Turing.jl
    trained_posterior = sample(
-      rng,
       gdemo(length(train)) | (x = train,),
       NUTS(),
       1000,
