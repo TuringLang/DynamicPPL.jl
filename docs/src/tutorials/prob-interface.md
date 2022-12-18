@@ -60,28 +60,26 @@ For convenience, we provide the functions `loglikelihood` and `logjoint` to calc
 
 ## Example: Cross-validation
 
-To give an example of the probability interface in use, we can write a function to test the performance of our model using cross-validation.
+To give an example of the probability interface in use, we can use it to estimate the performance of our model using cross-validation.
 In cross-validation, we split the dataset into several equal parts.
-Then, we choose one of these sets to serve as the test set.
+Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).
 See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation.
 ```julia
-using MLUtils
 training_loss = zero(logjoint(model, x1))
-for (train, test) in kfolds(dataset, 5)
+for (train, validation) in kfolds(dataset, 5)
    # First, we train the model on the training set using Turing.jl
    trained_posterior = sample(
       rng,
       gdemo(length(train)) | (x = train,),
       NUTS(),
-      1000;
-      chain_type=StructArray
+      1000,
    )
    # Extract posterior samples
-   samples = map.(only∘first, getproperty.(trained_posterior, :θ))
-   training_loss += sum(samples) do sample
-      model = gdemo(length(test))
-      logjoint(model | (x = test,), sample)
+   model_validation = gdemo(length(test)) | (x = validation,)
+   training_loss += sum(trained_posterior) do sample
+      params = map(only∘first, sample.θ)
+      logjoint(model_validation, params)
    end
 end
 training_loss
