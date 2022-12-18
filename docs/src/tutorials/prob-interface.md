@@ -1,12 +1,12 @@
 ---
-title: The Basic Interface
+title: The Probability Interface
 ---
 
 The easiest way to manipulate and query DynamicPPL models is via the DynamicPPL probability
 interface.
 
 Let's use a simple model (fitting a normal distribution to data) as an example.
-```@example
+```
 using DynamicPPL, Distributions, Random
 rng = Xoshiro(1776);  # Set seed for reproducibility
 n = 100
@@ -26,17 +26,17 @@ dataset = randn(rng, n)
 ## Conditioning and Deconditioning
 
 Bayesian models can be transformed with two main operations, conditioning and deconditioning (also known as marginalization). Conditioning takes a variable and fixes its value as known. We do this by passing a model and a named tuple of conditioned variables to `|`:
-```@example
+```
 model = gdemo(n) | (x=dataset, μ=0, σ=1)
 ```
 
 This operation can be reversed by applying `decondition`:
-```@example
+```
 decondition(model)
 ```
 
 We can also decondition only some of the variables:
-```@example
+```
 decondition(model, :μ, :σ)
 ```
 
@@ -47,14 +47,14 @@ We often want to calculate the (unnormalized) probability density for an event. 
 probability might be a prior, a likelihood, or a posterior (joint) density. DynamicPPL
 provides convenient functions for this.
 For example, if we wanted to calculate the probability of a draw from the prior:
-```@example
+```
 model = gdemo(n) | (x=dataset,)
 x1 = rand(rng, model)
 logjoint(model, x1)
 ```
 
 For convenience, we provide the functions `loglikelihood` and `logjoint` to calculate probabilities for a named tuple, given a model:
-```@example
+```
 logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ```
 
@@ -62,7 +62,7 @@ logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ## Example: Cross-validation
 
 To give an example of the probability interface in use, we can write a function to test the performance of our model using cross-validation. In cross-validation, we split the dataset into several equal parts. Then, we choose one of these sets to serve as the test set. Here, we measure fit using the cross entropy (Bayes loss). (See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation.)
-```@example
+```
 using MLUtils, Turing
 training_loss = zero(logjoint(model, x1))
 for (train, test) in kfolds(dataset, 5)
