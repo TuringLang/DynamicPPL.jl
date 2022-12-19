@@ -71,6 +71,7 @@ logjoint(model, x1)
 ```
 
 For convenience, we provide the functions `loglikelihood` and `logjoint` to calculate probabilities for a named tuple, given a model:
+
 ```@example probinterface
 logjoint(model, x1) ≈ loglikelihood(model, x1) + logprior(model, x1)
 ```
