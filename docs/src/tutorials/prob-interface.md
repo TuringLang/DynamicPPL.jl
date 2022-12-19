@@ -3,6 +3,7 @@
 The easiest way to manipulate and query DynamicPPL models is via the DynamicPPL probability interface.
 
 Let's use a simple model of normally-distributed data as an example.
+
 ```@example probinterface
 using DynamicPPL
 using Distributions
@@ -32,12 +33,14 @@ nothing # hide
 Bayesian models can be transformed with two main operations, conditioning and deconditioning (also known as marginalization).
 Conditioning takes a variable and fixes its value as known.
 We do this by passing a model and a collection of conditioned variables to [`|`](@ref) or its alias [`condition`](@ref):
+
 ```@example probinterface
 model = gdemo(length(dataset)) | (x=dataset, μ=0, σ=1)
 nothing # hide
 ```
 
 This operation can be reversed by applying [`decondition`](@ref):
+
 ```@example probinterface
 decondition(model)
 nothing # hide
@@ -50,13 +53,14 @@ nothing # hide
 ```
 
 !!! note
+    
     Sometimes it is helpful to define convenience functions for conditioning on some variable(s).
     For instance, in this example we might want to define a version of `gdemo` that conditions on some observations of `x`:
-
+    
     ```julia
     gdemo(x::AbstractVector{<:Real}) = gdemo(length(x)) | (; x)
     ```
-
+    
     For illustrative purposes, however, we do not use this function in the examples below.
 
 ## Probabilities and Densities
@@ -76,6 +80,7 @@ logjoint(model, sample)
 
 For models with many variables `rand(model)` can be prohibitively slow since it returns a `NamedTuple` of samples from the prior distribution of the unconditioned variables.
 We recommend working with samples of type `DataStructures.DOrderedDict` in this case:
+
 ```@example probinterface
 using DataStructures
 
@@ -91,7 +96,8 @@ logjoint(model, sample) ≈ loglikelihood(model, sample) + logprior(model, sampl
 ```
 
 ```@example probinterface
-logjoint(model, sample_dict) ≈ loglikelihood(model, sample_dict) + logprior(model, sample_dict)
+logjoint(model, sample_dict) ≈
+loglikelihood(model, sample_dict) + logprior(model, sample_dict)
 ```
 
 ## Example: Cross-validation
