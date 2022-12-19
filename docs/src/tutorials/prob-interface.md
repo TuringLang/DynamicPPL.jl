@@ -8,7 +8,6 @@ Let's use a simple model of normally-distributed data as an example.
 using DynamicPPL
 using Distributions
 using FillArrays
-
 using LinearAlgebra
 using Random
 
@@ -16,8 +15,7 @@ Random.seed!(1776) # Set seed for reproducibility
 
 @model function gdemo(n)
    μ ~ Normal(0, 1)
-   σ ~ Exponential(1)
-   x ~ MvNormal(Fill(μ, n), σ^2 * I)
+   x ~ MvNormal(Fill(μ, n), I)
    return nothing
 end
 nothing # hide
@@ -48,7 +46,7 @@ nothing # hide
 
 We can also decondition only some of the variables:
 ```@example probinterface
-decondition(model, :μ, :σ)
+decondition(model, :μ)
 nothing # hide
 ```
 
@@ -71,26 +69,30 @@ For convenience, we provide the functions `loglikelihood` and `logjoint` to calc
 
 ## Example: Cross-validation
 
-To give an example of the probability interface in use, we can use it to estimate the performance of our model using cross-validation.
-In cross-validation, we split the dataset into several equal parts.
-Then, we choose one of these sets to serve as the validation set.
-Here, we measure fit using the cross entropy (Bayes loss).
-See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation.
+To give an example of the probability interface in use, we can use it to estimate the performance of our model using cross-validation. In cross-validation, we split the dataset into several equal parts. Then, we choose one of these sets to serve as the validation set. Here, we measure fit using the cross entropy (Bayes loss).¹
 ``` @example probinterface
-training_loss = zero(logjoint(model, x1))
-for (train, validation) in kfolds(dataset, 5)
-   # First, we train the model on the training set using Turing.jl
-   trained_posterior = sample(
-      gdemo(length(train)) | (x = train,),
-      NUTS(),
-      1000,
-   )
-   # Extract posterior samples
-   model_validation = gdemo(length(test)) | (x = validation,)
-   training_loss += sum(trained_posterior) do sample
-      params = map(only∘first, sample.θ)
-      logjoint(model_validation, params)
+function cross_val(model, dataset)
+   training_loss = zero(logjoint(model, rand(model)))
+
+   # Partition our dataset into 5 folds with 20 observations:
+   test_folds = collect(Iterators.partition(dataset, 20))
+   train_folds = setdiff.((dataset,), test_folds)
+
+   for (train, test) in zip(train_folds, test_folds)
+      # First, we train the model on the training set.
+      # For normally-distributed data, the posterior can be solved in closed form:
+      posterior = Normal(mean(train), 1)
+      # Sample from the posterior
+      samples = NamedTuple{(:μ,)}.(rand(posterior, 1000))
+      # Test
+      testing_model = gdemo(length(test)) | (x = test,)
+      training_loss += sum(samples) do sample
+         logjoint(testing_model, sample)
+      end
    end
+   return training_loss
 end
-training_loss
+cross_val(model, dataset)
 ```
+
+¹See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation than the one provided here.
