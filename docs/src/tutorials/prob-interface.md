@@ -18,7 +18,6 @@ Random.seed!(1776) # Set seed for reproducibility
    x ~ MvNormal(Fill(μ, n), I)
    return nothing
 end
-nothing # hide
 ```
 
 We generate some data using `μ = 0` and `σ = 1`:
