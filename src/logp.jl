@@ -1,7 +1,7 @@
 # functions for evaluating logp: log posterior, log likelihood and log prior
 
 ## 1. evaluate log prior at sample parameter positions
-function logprior(model_instance::Model, chain::T) where {T<:AbstractMCMC.AbstractChains}
+function logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     """
     This function evaluates the `log prior` for chain.
     -- Inputs 
