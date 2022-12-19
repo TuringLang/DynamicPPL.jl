@@ -52,6 +52,7 @@ nothing # hide
 
 Sometimes it is helpful to define convenience functions for conditioning on some variable(s).
 For instance, in this example we might want to define a version of `gdemo` that conditions on some observations of `x`:
+
 ```@example probinterface
 gdemo(x::AbstractVector{<:Real}) = gdemo(length(x)) | (; x)
 ```
