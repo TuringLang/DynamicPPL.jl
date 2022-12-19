@@ -91,25 +91,25 @@ function cross_val(
     nsamples::Int=1_000,
     rng::Random.AbstractRNG=Random.default_rng(),
 )
-   # Initialize `loss` in a way such that the loop below does not change its type
-   model = gdemo([first(dataset)])
-   loss = zero(logjoint(model, rand(rng, model)))
+    # Initialize `loss` in a way such that the loop below does not change its type
+    model = gdemo([first(dataset)])
+    loss = zero(logjoint(model, rand(rng, model)))
 
-   for (train, validation) in kfolds(dataset, nfolds)
-      # First, we train the model on the training set, i.e., we obtain samples from the posterior.
-      # For normally-distributed data, the posterior can be computed in closed form.
-      # For general models, however, typically samples will be generated using MCMC with Turing.
-      posterior = Normal(mean(train), 1)
-      samples = rand(rng, posterior, nsamples)
+    for (train, validation) in kfolds(dataset, nfolds)
+        # First, we train the model on the training set, i.e., we obtain samples from the posterior.
+        # For normally-distributed data, the posterior can be computed in closed form.
+        # For general models, however, typically samples will be generated using MCMC with Turing.
+        posterior = Normal(mean(train), 1)
+        samples = rand(rng, posterior, nsamples)
 
-      # Evaluation on the validation set.
-      validation_model = gdemo(validation)
-      loss += sum(samples) do sample
-         logjoint(validation_model, (μ = sample,))
-      end
-   end
+        # Evaluation on the validation set.
+        validation_model = gdemo(validation)
+        loss += sum(samples) do sample
+            logjoint(validation_model, (μ=sample,))
+        end
+    end
 
-   return loss
+    return loss
 end
 
 cross_val(dataset)
