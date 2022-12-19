@@ -59,7 +59,7 @@ function Distributions.loglikelihood(
 end
 
 ## 3. evaluate log posterior at sample parameter positions
-function logjoint(model_instance::Model, chain::T) where {T<:AbstractMCMC.AbstractChains}
+function logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     """
     This function evaluates the `log posterior` for chain.
     -- Inputs 
