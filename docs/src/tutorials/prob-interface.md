@@ -50,6 +50,12 @@ decondition(model, :μ)
 nothing # hide
 ```
 
+Sometimes it is helpful to define convenience functions for conditioning on some variable(s).
+For instance, in this example we might want to define a version of `gdemo` that conditions on some observations of `x`:
+```@example probinterface
+gdemo(x::AbstractVector{<:Real}) = gdemo(length(x)) | (; x)
+```
+
 ## Probabilities and Densities
 
 We often want to calculate the (unnormalized) probability density for an event.
@@ -57,7 +63,7 @@ This probability might be a prior, a likelihood, or a posterior (joint) density.
 DynamicPPL provides convenient functions for this.
 For example, if we wanted to calculate the probability of a draw from the prior:
 ```@example probinterface
-model = gdemo(length(dataset)) | (x=dataset,)
+model = gdemo(dataset)
 x1 = rand(model)
 logjoint(model, x1)
 ```
@@ -69,30 +75,41 @@ For convenience, we provide the functions `loglikelihood` and `logjoint` to calc
 
 ## Example: Cross-validation
 
-To give an example of the probability interface in use, we can use it to estimate the performance of our model using cross-validation. In cross-validation, we split the dataset into several equal parts. Then, we choose one of these sets to serve as the validation set. Here, we measure fit using the cross entropy (Bayes loss).¹
-``` @example probinterface
-function cross_val(model, dataset)
-   training_loss = zero(logjoint(model, rand(model)))
+To give an example of the probability interface in use, we can use it to estimate the performance of our model using cross-validation.
+In cross-validation, we split the dataset into several equal parts.
+Then, we choose one of these sets to serve as the validation set.
+Here, we measure fit using the cross entropy (Bayes loss).[^1]
+```@example probinterface
+using MLUtils
 
-   # Partition our dataset into 5 folds with 20 observations:
-   test_folds = collect(Iterators.partition(dataset, 20))
-   train_folds = setdiff.((dataset,), test_folds)
+function cross_val(
+   dataset::AbstractVector{<:Real};
+   nfolds::Int=5,
+   nsamples::Int=1_000,
+   rng::Random.AbstractRNG=Random.default_rng,
+)
+   # Initialize `loss` in a way such that the loop below does not change its type
+   model = gdemo([first(dataset)])
+   loss = zero(logjoint(model, rand(rng, model)))
 
-   for (train, test) in zip(train_folds, test_folds)
-      # First, we train the model on the training set.
-      # For normally-distributed data, the posterior can be solved in closed form:
+   for (train, validation) in kfolds(dataset, nfolds)
+      # First, we train the model on the training set, i.e., we obtain samples from the posterior.
+      # For normally-distributed data, the posterior can be computed in closed form.
+      # For general models, however, typically samples will be generated using MCMC with Turing.
       posterior = Normal(mean(train), 1)
-      # Sample from the posterior
-      samples = NamedTuple{(:μ,)}.(rand(posterior, 1000))
-      # Test
-      testing_model = gdemo(length(test)) | (x = test,)
-      training_loss += sum(samples) do sample
-         logjoint(testing_model, sample)
+      samples = rand(rng, posterior, nsamples)
+
+      # Evaluation on the validation set.
+      validation_model = gdemo(validation)
+      loss += sum(samples) do sample
+         logjoint(validation_model, (μ = sample,))
       end
    end
-   return training_loss
+
+   return loss
 end
-cross_val(model, dataset)
+
+cross_val(dataset)
 ```
 
-¹See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation than the one provided here.
+[^1]: See [ParetoSmooth.jl](https://github.com/TuringLang/ParetoSmooth.jl) for a faster and more accurate implementation of cross-validation than the one provided here.
