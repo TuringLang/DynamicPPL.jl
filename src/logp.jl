@@ -29,9 +29,9 @@ function logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
 end
 
 ## 2. evaluate log likelihood at sample parameter positions
-function loglikelihood(
-    model_instance::Model, chain::T
-) where {T<:AbstractMCMC.AbstractChains}
+function Distributions.loglikelihood(
+    model_instance::Model, chain::AbstractMCMC.AbstractChains
+)
     """
     This function evaluates the `log likelihood` for chain.
     -- Inputs 
