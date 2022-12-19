@@ -79,7 +79,7 @@ logjoint(model, sample)
 ```
 
 For models with many variables `rand(model)` can be prohibitively slow since it returns a `NamedTuple` of samples from the prior distribution of the unconditioned variables.
-We recommend working with samples of type `DataStructures.DOrderedDict` in this case:
+We recommend working with samples of type `DataStructures.OrderedDict` in this case:
 
 ```@example probinterface
 using DataStructures
