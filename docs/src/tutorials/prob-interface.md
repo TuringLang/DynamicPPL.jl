@@ -81,6 +81,7 @@ To give an example of the probability interface in use, we can use it to estimat
 In cross-validation, we split the dataset into several equal parts.
 Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).[^1]
+
 ```@example probinterface
 using MLUtils
 
