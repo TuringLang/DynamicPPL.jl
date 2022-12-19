@@ -83,10 +83,10 @@ Here, we measure fit using the cross entropy (Bayes loss).[^1]
 using MLUtils
 
 function cross_val(
-   dataset::AbstractVector{<:Real};
-   nfolds::Int=5,
-   nsamples::Int=1_000,
-   rng::Random.AbstractRNG=Random.default_rng(),
+    dataset::AbstractVector{<:Real};
+    nfolds::Int=5,
+    nsamples::Int=1_000,
+    rng::Random.AbstractRNG=Random.default_rng(),
 )
    # Initialize `loss` in a way such that the loop below does not change its type
    model = gdemo([first(dataset)])
