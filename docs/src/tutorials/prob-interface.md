@@ -63,6 +63,7 @@ We often want to calculate the (unnormalized) probability density for an event.
 This probability might be a prior, a likelihood, or a posterior (joint) density.
 DynamicPPL provides convenient functions for this.
 For example, if we wanted to calculate the probability of a draw from the prior:
+
 ```@example probinterface
 model = gdemo(dataset)
 x1 = rand(model)
