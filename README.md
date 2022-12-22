@@ -11,11 +11,20 @@
 [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://colprac.sciml.ai/)
 [![Bors enabled](https://bors.tech/images/badge_small.svg)](https://app.bors.tech/repositories/24589)
 
-A domain-specific language and backend for probabilistic programming languages, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).
+*A domain-specific language and backend for probabilistic programming, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).*
+
+DynamicPPL is the part of Turing.jl that deals with defining, running, and manipulating models. DynamicPPL provides:
+* General-purpose probabilistic programming with an intuitive syntax.
+* The `@model` syntax and macro for easily specifying probabilistic generative models.
+* A tracing data-structure for tracking random variables in dynamic probabilistic models.
+* A rich contextual dispatch system allowing for tailored behaviour during model execution.
+* A user-friendly syntax for probabilistic queries.
+
+Information on how to use the DynamicPPL frontend to build Bayesian models can be found on the [Turing website](https://turing.ml/). Tutorials explaining how to use the backend can be found [alongside the documentation](https://turinglang.github.io/DynamicPPL.jl/stable/). More information can be found in our paper [DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models](https://arxiv.org/pdf/2002.02702.pdf).
 
 ## Do you want to contribute?
 
-If you feel you have some relevant skills and are interested in contributing then please do get in touch and open an issue on Github.
+If you feel you have some relevant skills and are interested in contributing, please get in touch! You can find us in the #turing channel on the [Julia Slack](https://julialang.org/slack/) or [Discourse](discourse.julialang.org). If you're having any problems, please open a Github issue, even if the problem seems small, like figuring out what an error message means. Every issue you open helps us improve the library!
 
 ### Contributor's Guide
 
