@@ -24,7 +24,7 @@ Information on how to use the DynamicPPL frontend to build Bayesian models can b
 
 ## Do you want to contribute?
 
-If you feel you have some relevant skills and are interested in contributing, please get in touch! You can find us in the #turing channel on the [Julia Slack](https://julialang.org/slack/) or [Discourse](discourse.julialang.org). If you're having any problems, please open a Github issue, even if the problem seems small, like figuring out what an error message means. Every issue you open helps us improve the library!
+If you feel you have some relevant skills and are interested in contributing, please get in touch! You can find us in the #turing channel on the [Julia Slack](https://julialang.org/slack/) or [Discourse](discourse.julialang.org). If you're having any problems, please open a Github issue, even if the problem seems small (like help figuring out an error message). Every issue you open helps us improve the library!
 
 ### Contributor's Guide
 
