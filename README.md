@@ -14,11 +14,12 @@
 *A domain-specific language and backend for probabilistic programming, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).*
 
 DynamicPPL is the part of Turing.jl that deals with defining, running, and manipulating models. DynamicPPL provides:
-* General-purpose probabilistic programming with an intuitive syntax.
-* The `@model` syntax and macro for easily specifying probabilistic generative models.
-* A tracing data-structure for tracking random variables in dynamic probabilistic models.
-* A rich contextual dispatch system allowing for tailored behaviour during model execution.
-* A user-friendly syntax for probabilistic queries.
+
+  - General-purpose probabilistic programming with an intuitive syntax.
+  - The `@model` syntax and macro for easily specifying probabilistic generative models.
+  - A tracing data-structure for tracking random variables in dynamic probabilistic models.
+  - A rich contextual dispatch system allowing for tailored behaviour during model execution.
+  - A user-friendly syntax for probabilistic queries.
 
 Information on how to use the DynamicPPL frontend to build Bayesian models can be found on the [Turing website](https://turing.ml/). Tutorials explaining how to use the backend can be found [alongside the documentation](https://turinglang.github.io/DynamicPPL.jl/stable/). More information can be found in our paper [DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models](https://arxiv.org/pdf/2002.02702.pdf).
 
