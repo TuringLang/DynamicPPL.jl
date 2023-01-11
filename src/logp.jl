@@ -140,9 +140,8 @@ function chain_logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChain
             # Extract sample parameter values using `varinfo` from the chain.
             # TODO: This does not work for cases where the model has dynamic support, i.e. some of the iterations might have differently sized parameter space.
             argvals_dict = OrderedDict(
-                vn => chain[iteration_idx, Symbol(vn), chain_idx] for
-                vn_parent in keys(vi) for
-                vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+                vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+                for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
             )
             # Compute and store.
             lls[iteration_idx, chain_idx] =
