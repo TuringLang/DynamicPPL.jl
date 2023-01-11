@@ -61,7 +61,6 @@ function chain_logprior(model_instance::Model, nt_arr::Vector{Any})
     return lls
 end
 
-
 #### 2. loglikelihood ####
 """
     This function evaluates the `log likelihood` for chain.
