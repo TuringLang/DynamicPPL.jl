@@ -23,7 +23,9 @@
             # calculate the true pointwise likelihood
             logprior_true = DynamicPPL.TestUtils.logprior_true(m, example_values...)
             logpriors_true[i] = logprior_true
-            loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(m, example_values...)
+            loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
+                m, example_values...
+            )
             loglikelihoods_true[i] = loglikelihood_true
             logposterior_true = logprior_true + loglikelihood_true
             logposteriors_true[i] = logposterior_true
