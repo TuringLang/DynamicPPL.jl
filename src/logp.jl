@@ -15,9 +15,8 @@ function chain_logprior(model_instance::Model, chain::AbstractMCMC.AbstractChain
     for chain_idx in 1:size(chain, 3)
         for iteration_idx in 1:size(chain, 1)
             argvals_dict = OrderedDict(
-                vn => chain[iteration_idx, Symbol(vn), chain_idx] for
-                vn_parent in keys(vi) for
-                vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+                vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+                for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
             )
             # Compute and store.
             lls[iteration_idx, chain_idx] = DynamicPPL.logprior(
