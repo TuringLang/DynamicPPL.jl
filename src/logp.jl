@@ -225,7 +225,8 @@ function logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
             vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
-        Distributions.loglikelihood(model_instance, argvals_dict) + DynamicPPL.logprior(model_instance, argvals_dict)
+        Distributions.loglikelihood(model_instance, argvals_dict) +
+        DynamicPPL.logprior(model_instance, argvals_dict)
     end
 end
 function logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
