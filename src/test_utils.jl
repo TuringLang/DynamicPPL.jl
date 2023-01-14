@@ -48,9 +48,9 @@ end
 
 Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
 """
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
+function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal, kwargs...)
     for vn in vns
-        @test vi[vn] == get(vals, vn)
+        @test isequal(vi[vn], get(vals, vn); kwargs...)
     end
 end
 
