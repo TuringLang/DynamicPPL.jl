@@ -1,6 +1,50 @@
+"""
+    LogDensityFunction
+
+A callable representing a log density function of a `model`.
+
+# Fields
+$(FIELDS)
+
+# Examples
+```jldoctest
+julia> using Distributions
+
+julia> @model function demo(x)
+           m ~ Normal()
+           x ~ Normal(m, 1)
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo(1.0);
+
+julia> f = LogDensityFunction(model);
+
+julia> f([0.0])  # it's a callable
+-2.3378770664093453
+
+julia> # And it implements the interface of LogDensityProblems.jl.
+       using LogDensityProblems
+
+julia> LogDensityProblems.logdensity(f, [0.0])
+-2.3378770664093453
+
+julia> LogDensityProblems.dimension(f)
+1
+
+julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
+       f = LogDensityFunction(model, SimpleVarInfo(model));
+
+julia> f([0.0])
+-2.3378770664093453
+```
+"""
 struct LogDensityFunction{V,M,C}
+    "varinfo used for evaluation"
     varinfo::V
+    "model used for evaluation"
     model::M
+    "context used for evaluation"
     context::C
 end
 

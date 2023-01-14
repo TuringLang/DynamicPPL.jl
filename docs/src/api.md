@@ -58,6 +58,14 @@ loglikelihood
 logjoint
 ```
 
+### LogDensityProblems.jl interface
+
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping the a [`Model`](@ref) in a `LogDensityFunction`:
+
+```@docs
+LogDensityFunction
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
