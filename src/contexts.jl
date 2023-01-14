@@ -164,7 +164,7 @@ function setchildcontext(parent::SamplingContext, child)
 end
 
 """
-    hsasampler(context)
+    hassampler(context)
 
 Return `true` if `context` has a sampler.
 """
