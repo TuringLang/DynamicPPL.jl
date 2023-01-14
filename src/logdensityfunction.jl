@@ -52,7 +52,7 @@ function LogDensityFunction(
     varinfo::AbstractVarInfo,
     model::Model,
     sampler::AbstractSampler,
-    context::AbstractContext
+    context::AbstractContext,
 )
     return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
 end
