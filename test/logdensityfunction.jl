@@ -10,6 +10,7 @@ using Test, DynamicPPL, LogDensityProblems
             logdensity = LogDensityFunction(model, varinfo)
             θ = varinfo[:]
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
+            @test LogDensityProblems.dimension(logdensity) == length(θ)
         end
     end
 end
