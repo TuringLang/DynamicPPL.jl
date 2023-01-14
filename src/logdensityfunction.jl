@@ -10,6 +10,8 @@ $(FIELDS)
 ```jldoctest
 julia> using Distributions
 
+julia> using DynamicPPL: LogDensityFunction
+
 julia> @model function demo(x)
            m ~ Normal()
            x ~ Normal(m, 1)
@@ -33,7 +35,7 @@ julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
        f = LogDensityFunction(model, SimpleVarInfo(model));
 
 julia> LogDensityProblems.logdensity(f, [0.0])
--2.3378770664093453
+-2.373971226648868
 ```
 """
 struct LogDensityFunction{V,M,C}
@@ -58,7 +60,6 @@ end
 function LogDensityFunction(
     model::Model,
     varinfo::AbstractVarInfo = VarInfo(model),
-    sampler::AbstractSampler = SampleFromPrior(),
     context::AbstractContext = DefaultContext(),
 )
     return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
