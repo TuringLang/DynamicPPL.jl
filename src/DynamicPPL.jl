@@ -119,8 +119,7 @@ export AbstractVarInfo,
     decondition,
     # Convenience macros
     @addlogprob!,
-    @submodel,
-    # LogDensityProblems
+    @submodel
 
 # Reexport
 using Distributions: loglikelihood
