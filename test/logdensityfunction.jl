@@ -7,7 +7,7 @@ using Test, DynamicPPL, LogDensityProblems
         varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
 
         @testset "$(varinfo)" for varinfo in varinfos
-            logdensity = LogDensityFunction(model, varinfo)
+            logdensity = DynamicPPL.LogDensityFunction(model, varinfo)
             θ = varinfo[:]
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
