@@ -35,7 +35,7 @@ julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
        f = LogDensityFunction(model, SimpleVarInfo(model));
 
 julia> LogDensityProblems.logdensity(f, [0.0])
--2.373971226648868
+-2.3378770664093453
 ```
 """
 struct LogDensityFunction{V,M,C}
