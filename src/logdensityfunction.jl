@@ -8,7 +8,7 @@ function LogDensityFunction(
     varinfo::AbstractVarInfo,
     model::Model,
     sampler::AbstractSampler,
-    context::AbstractContext
+    context::AbstractContext,
 )
     return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
 end
@@ -52,4 +52,3 @@ Return the parameters of the wrapped varinfo as a vector.
 getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(f.context)]
 
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
-
