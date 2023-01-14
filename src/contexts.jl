@@ -164,6 +164,28 @@ function setchildcontext(parent::SamplingContext, child)
 end
 
 """
+    hsasampler(context)
+
+Return `true` if `context` has a sampler.
+"""
+hassampler(::SamplingContext) = true
+hassampler(context::AbstractContext) = hassampler(NodeTrait(context), context)
+hassampler(::IsLeaf, context::AbstractContext) = false
+hassampler(::IsParent, context::AbstractContext) = hassampler(childcontext(context))
+
+"""
+    getsampler(context)
+
+Return the sampler of the context `context`.
+
+This will traverse the context tree until it reaches the first [`SamplingContext`](@ref),
+at which point it will return the sampler of that context.
+"""
+getsampler(context::SamplingContext) = context.sampler
+getsampler(context::AbstractContext) = getsampler(NodeTrait(context), context)
+getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(context))
+
+"""
     struct DefaultContext <: AbstractContext end
 
 The `DefaultContext` is used by default to compute log the joint probability of the data 
