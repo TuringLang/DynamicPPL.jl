@@ -133,6 +133,9 @@ Finally, the following methods can also be of use:
 ```@docs
 DynamicPPL.TestUtils.varnames
 DynamicPPL.TestUtils.posterior_mean
+DynamicPPL.TestUtils.setup_varinfos
+DynamicPPL.TestUtils.update_values!!
+DynamicPPL.TestUtils.test_values
 ```
 
 ## Advanced
