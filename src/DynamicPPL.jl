@@ -121,7 +121,7 @@ export AbstractVarInfo,
     @addlogprob!,
     @submodel,
     # LogDensityProblems
-    LogDensityFunction
+    LogDensityProblems
 
 # Reexport
 using Distributions: loglikelihood

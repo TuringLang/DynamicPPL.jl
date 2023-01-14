@@ -57,6 +57,10 @@ function LogDensityFunction(
     return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
 end
 
+logjoint(model::Model, ::Type{T} = VarInfo) where {T<:AbstractVarInfo} = LogDensityFunction(T(model), model, DefaultContext())
+logprior(model::Model, ::Type{T} = VarInfo) where {T<:AbstractVarInfo} = LogDensityFunction(T(model), model, PriorContext())
+Distributions.loglikelihood(model::Model, ::Type{T} = VarInfo) where {T<:AbstractVarInfo} = LogDensityFunction(T(model), model, LikelihoodContext())
+
 # Convenient for end-user.
 function LogDensityFunction(
     model::Model,
@@ -71,18 +75,6 @@ end
 getsampler(f::LogDensityFunction) = getsampler(f.context)
 hassampler(f::LogDensityFunction) = hassampler(f.context)
 
-# Evaluator.
-function (f::LogDensityFunction)(θ::AbstractVector)
-    vi_new = unflatten(f.varinfo, f.context, θ)
-    return getlogp(last(evaluate!!(f.model, vi_new, f.context)))
-end
-
-# LogDensityProblems interface
-LogDensityProblems.logdensity(f::LogDensityFunction, θ) = f(θ)
-function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
-    return LogDensityProblems.LogDensityOrder{0}()
-end
-
 _get_indexer(ctx::AbstractContext) = _get_indexer(NodeTrait(ctx), ctx)
 _get_indexer(ctx::SamplingContext) = ctx.sampler
 _get_indexer(::IsParent, ctx::AbstractContext) = _get_indexer(childcontext(ctx))
@@ -95,5 +87,12 @@ Return the parameters of the wrapped varinfo as a vector.
 """
 getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(f.context)]
 
+# LogDensityProblems interface
+function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
+    vi_new = unflatten(f.varinfo, f.context, θ)
+    return getlogp(last(evaluate!!(f.model, vi_new, f.context)))
+end
+function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
+    return LogDensityProblems.LogDensityOrder{0}()
+end
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
-
