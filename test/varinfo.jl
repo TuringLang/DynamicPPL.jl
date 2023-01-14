@@ -322,10 +322,10 @@
             vns = DynamicPPL.TestUtils.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
-            varinfos = setup_varinfos(model, example_values, vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
             @testset "$(short_varinfo_name(vi))" for vi in varinfos
                 # Just making sure.
-                test_values(vi, example_values, vns)
+                DynamicPPL.TestUtils.test_values(vi, example_values, vns)
 
                 @testset "NamedTuple" begin
                     vals = values_as(vi, NamedTuple)
