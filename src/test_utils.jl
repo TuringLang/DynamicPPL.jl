@@ -55,7 +55,7 @@ function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal
 end
 
 """
-    DynamicPPL.TestUtils.setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+    setup_varinfos(model::Model, example_values::NamedTuple, varnames)
 
 Return a tuple of instances for different implementations of `AbstractVarInfo` with
 each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
