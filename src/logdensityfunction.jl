@@ -62,7 +62,7 @@ function LogDensityFunction(
     varinfo::AbstractVarInfo = VarInfo(model),
     context::AbstractContext = DefaultContext(),
 )
-    return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
+    return LogDensityFunction(varinfo, model, context)
 end
 
 # HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
