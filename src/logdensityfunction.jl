@@ -59,8 +59,8 @@ end
 
 function LogDensityFunction(
     model::Model,
-    varinfo::AbstractVarInfo = VarInfo(model),
-    context::AbstractContext = DefaultContext(),
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext(),
 )
     return LogDensityFunction(varinfo, model, context)
 end
