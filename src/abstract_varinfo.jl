@@ -519,14 +519,25 @@ end
 
 # Utilities
 """
-    unflatten(vi::AbstractVarInfo[, spl::AbstractSampler], x::AbstractVector)
+    unflatten(vi::AbstractVarInfo[, context::AbstractContext], x::AbstractVector)
 
 Return a new instance of `vi` with the values of `x` assigned to the variables.
 
-If `spl` is provided, `x` is assumed to be realizations only for variables related 
-to `spl`.
+If `context` is provided, `x` is assumed to be realizations only for variables not
+filtered out by `context`.
 """
-function unflatten end
+function unflatten(varinfo::AbstractVarInfo, context::AbstractContext, θ)
+    if hassampler(context)
+        unflatten(getsampler(context), varinfo, context, θ)
+    else
+        DynamicPPL.unflatten(varinfo, θ)
+    end
+end
+
+# TODO: deprecate this once `sampler` is no longer the main way of filtering out variables.
+function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::AbstractContext, θ)
+    return unflatten(varinfo, sampler, θ)
+end
 
 """
     tonamedtuple(vi::AbstractVarInfo)
