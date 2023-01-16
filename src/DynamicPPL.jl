@@ -13,6 +13,7 @@ using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
+using LogDensityProblems: LogDensityProblems
 
 using DocStringExtensions
 

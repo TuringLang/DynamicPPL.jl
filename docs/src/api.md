@@ -58,6 +58,14 @@ loglikelihood
 logjoint
 ```
 
+### LogDensityProblems.jl interface
+
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`:
+
+```@docs
+DynamicPPL.LogDensityFunction
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
@@ -133,6 +141,9 @@ Finally, the following methods can also be of use:
 ```@docs
 DynamicPPL.TestUtils.varnames
 DynamicPPL.TestUtils.posterior_mean
+DynamicPPL.TestUtils.setup_varinfos
+DynamicPPL.TestUtils.update_values!!
+DynamicPPL.TestUtils.test_values
 ```
 
 ## Advanced
