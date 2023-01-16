@@ -31,9 +31,9 @@
             logposteriors_true[i] = logposterior_true
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
-        logpriors_new = chain_logprior(m, chain)
-        loglikelihoods_new = chain_loglikelihoods(m, chain)
-        logposteriors_new = chain_logjoint(m, chain)
+        logpriors_new = logprior(m, chain)
+        loglikelihoods_new = loglikelihoods(m, chain)
+        logposteriors_new = logjoint(m, chain)
         # compare the likelihoods
         @test logpriors_new ≈ logpriors_true
         @test loglikelihoods_new ≈ loglikelihoods_true
