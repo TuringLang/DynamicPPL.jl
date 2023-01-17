@@ -7,7 +7,7 @@
         logpriors_true = Vector(undef, N)
         loglikelihoods_true = Vector(undef, N)
         logposteriors_true = Vector(undef, N)
-        for i = 1:N
+        for i in 1:N
             # generate samples and extrac vi
             example_values = rand(NamedTuple, m)
             print(example_values)
