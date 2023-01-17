@@ -74,7 +74,7 @@ function logprior(model_instance::Model, nt_arr::Vector{NamedTuple})
 end
 function logprior(model_instance::Model, nt_arr::Vector{Any})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx = 1:size(nt_arr, 1)
+    for param_idx in 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] = DynamicPPL.logprior(model_instance, nt_arr[param_idx])
     end
