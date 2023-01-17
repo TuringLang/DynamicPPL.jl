@@ -58,15 +58,15 @@ function logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     vi = VarInfo(model_instance) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         DynamicPPL.logprior(model_instance, argvals_dict)
     end
 end
 function logprior(model_instance::Model, nt_arr::Vector{NamedTuple})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] = DynamicPPL.logprior(model_instance, nt_arr[param_idx])
     end
@@ -74,7 +74,7 @@ function logprior(model_instance::Model, nt_arr::Vector{NamedTuple})
 end
 function logprior(model_instance::Model, nt_arr::Vector{Any})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] = DynamicPPL.logprior(model_instance, nt_arr[param_idx])
     end
@@ -140,15 +140,15 @@ function loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChain
     vi = VarInfo(model_instance) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         Distributions.loglikelihood(model_instance, argvals_dict)
     end
 end
 function loglikelihoods(model_instance::Model, nt_arr::Vector{NamedTuple})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] = Distributions.loglikelihood(model_instance, nt_arr[param_idx])
     end
@@ -156,7 +156,7 @@ function loglikelihoods(model_instance::Model, nt_arr::Vector{NamedTuple})
 end
 function loglikelihoods(model_instance::Model, nt_arr::Vector{Any})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] = Distributions.loglikelihood(model_instance, nt_arr[param_idx])
     end
@@ -222,8 +222,8 @@ function logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     vi = VarInfo(model_instance) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         Distributions.loglikelihood(model_instance, argvals_dict) +
         DynamicPPL.logprior(model_instance, argvals_dict)
@@ -231,7 +231,7 @@ function logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
 end
 function logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] =
             Distributions.loglikelihood(model_instance, nt_arr[param_idx]) +
@@ -241,7 +241,7 @@ function logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
 end
 function logjoint(model_instance::Model, nt_arr::Vector{Any})
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
+    for param_idx = 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] =
             Distributions.loglikelihood(model_instance, nt_arr[param_idx]) +
