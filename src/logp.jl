@@ -1,6 +1,3 @@
-# functions for evaluating logp: log posterior, log likelihood and log prior
-
-# 1. logprior
 """
     logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     logprior(model_instance::Model, nt_arr::Vector{NamedTuple})
@@ -81,8 +78,6 @@ function logprior(model_instance::Model, nt_arr::Vector{Any})
     return lls
 end
 
-
-# 2. loglikelihood
 """
     loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     loglikelihoods(model_instance::Model, nt_arr::Vector{NamedTuple})
@@ -163,7 +158,6 @@ function loglikelihoods(model_instance::Model, nt_arr::Vector{Any})
     return lls
 end
 
-# 3. logjoint 
 """
     logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     logjoint(model_instance::Model, nt_arr::Vector{NamedTuple})
