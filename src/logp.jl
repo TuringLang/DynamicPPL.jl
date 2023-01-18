@@ -35,11 +35,9 @@ Example 2:
     
     ```julia
     # generate data
-    sample_array = Vector(undef, 100)
     m = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    for i in 1:100
-        example_values = rand(NamedTuple, m)
-        sample_array[i] = example_values
+    samples = map(1:100) do _
+        return rand(NamedTuple, m)
     end
     # calculate the pointwise loglikelihoods for the whole array.
     logprior(m, sample_array)
