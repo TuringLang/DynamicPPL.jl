@@ -1,5 +1,5 @@
 @testset "logp.jl" begin
-    Test.@testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         # generate a chain of sample parameter values.
         N = 100
         chain = Vector(undef, N)
