@@ -117,7 +117,6 @@ function logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
     end
 end
 
-
 """
     loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains)
 
