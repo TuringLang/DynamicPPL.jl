@@ -121,22 +121,6 @@ function loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChain
         Distributions.loglikelihood(model_instance, argvals_dict)
     end
 end
-function loglikelihoods(model_instance::Model, nt_arr::Vector{NamedTuple})
-    lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
-        # Compute and store.
-        lls[param_idx] = Distributions.loglikelihood(model_instance, nt_arr[param_idx])
-    end
-    return lls
-end
-function loglikelihoods(model_instance::Model, nt_arr::Vector{Any})
-    lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx in 1:size(nt_arr, 1)
-        # Compute and store.
-        lls[param_idx] = Distributions.loglikelihood(model_instance, nt_arr[param_idx])
-    end
-    return lls
-end
 
 """
     logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
