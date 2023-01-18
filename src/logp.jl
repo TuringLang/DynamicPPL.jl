@@ -236,7 +236,6 @@ function loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChain
     end
 end
 
-
 """
     logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
 
