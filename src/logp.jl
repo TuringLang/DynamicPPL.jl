@@ -1,5 +1,5 @@
 """
-    logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains)
+    logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
 Return an array of log priors evaluated at each sample in an MCMC chain or sample array.
 
@@ -111,7 +111,7 @@ end
 
 
 """
-    loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains)
+    loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
 Return an array of log likelihoods evaluated at each sample in an MCMC chain or sample array.
 
@@ -223,7 +223,7 @@ end
 
 
 """
-    logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains)
+    logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
 Return an array of log posteriors evaluated at each sample in an MCMC chain or sample array.
 
