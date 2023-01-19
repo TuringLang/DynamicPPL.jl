@@ -95,11 +95,13 @@ julia> logprior(demo_model(x), chain)
 ```   
 """
 function logprior(
-    model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
-        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
     ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
@@ -207,11 +209,13 @@ julia> loglikelihoods(demo_model(x), chain)
 ```  
 """
 function loglikelihoods(
-    model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
-        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
     ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
@@ -309,11 +313,13 @@ julia> logjoint(demo_model(x), chain, 2)
 ```   
 """
 function logjoint(
-    model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
-        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
     ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
