@@ -97,7 +97,7 @@ julia> logprior(demo_model(x), chain)
 function logprior(
     model_instance::Model,
     chain::AbstractMCMC.AbstractChains,
-    start_idx::Int = 1,
+    start_idx::Int = 1
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
@@ -211,7 +211,7 @@ julia> loglikelihoods(demo_model(x), chain)
 function loglikelihoods(
     model_instance::Model,
     chain::AbstractMCMC.AbstractChains,
-    start_idx::Int = 1,
+    start_idx::Int = 1
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
@@ -315,7 +315,7 @@ julia> logjoint(demo_model(x), chain, 2)
 function logjoint(
     model_instance::Model,
     chain::AbstractMCMC.AbstractChains,
-    start_idx::Int = 1,
+    start_idx::Int = 1
 )
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
