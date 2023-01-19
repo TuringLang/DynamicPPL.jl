@@ -4,9 +4,9 @@
         N = 200
         start_idx = 100
 
-        logpriors_true = Vector{Float64}[undef, N-start_idx]
-        loglikelihoods_true = Vector{Float64}[undef, N-start_idx]
-        logposteriors_true = Vector{Float64}[undef, N-start_idx]
+        logpriors_true = Vector{Float64}[undef, N - start_idx]
+        loglikelihoods_true = Vector{Float64}[undef, N - start_idx]
+        logposteriors_true = Vector{Float64}[undef, N - start_idx]
 
         chain = sample(m, NUTS(), N)
 
