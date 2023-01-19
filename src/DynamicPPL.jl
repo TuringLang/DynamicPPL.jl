@@ -1,6 +1,7 @@
 module DynamicPPL
 
 using AbstractMCMC: AbstractSampler, AbstractChains
+using MCMCChains
 using AbstractPPL
 using Bijectors
 using Distributions
@@ -18,6 +19,7 @@ using LogDensityProblems: LogDensityProblems
 using DocStringExtensions
 
 using Random: Random
+using StableRNGs
 
 import Base:
     Symbol,
