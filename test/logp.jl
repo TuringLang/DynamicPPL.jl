@@ -17,8 +17,9 @@
                 s = collect(Iterators.flatten(val.s)),
             )
             logpriors_true[i] = DynamicPPL.TestUtils.logprior_true(m, example_values...)
-            loglikelihoods_true[i] =
-                DynamicPPL.TestUtils.loglikelihood_true(m, example_values...)
+            loglikelihoods_true[i] = DynamicPPL.TestUtils.loglikelihood_true(
+                m, example_values...
+            )
             logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
