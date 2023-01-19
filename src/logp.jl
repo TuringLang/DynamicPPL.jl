@@ -94,12 +94,18 @@ julia> logprior(demo_model(x), chain)
 -20.5141    -2.53425   -4.41793
 ```   
 """
-function logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1)
+function logprior(
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
+)
     vi = VarInfo(model_instance) # extract variables info from the model
-    map(Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+    map(
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
+    ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         DynamicPPL.logprior(model_instance, argvals_dict)
     end
@@ -202,12 +208,18 @@ julia> loglikelihoods(demo_model(x), chain)
 -38045.7   -1813.85  -2283.61
 ```  
 """
-function loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1)
+function loglikelihoods(
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
+)
     vi = VarInfo(model_instance) # extract variables info from the model
-    map(Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+    map(
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
+    ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         Distributions.loglikelihood(model_instance, argvals_dict)
     end
@@ -300,12 +312,18 @@ julia> logjoint(demo_model(x), chain, 2)
     -2474.31  -1626.86  -2535.97
 ```   
 """
-function logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1)
+function logjoint(
+    model_instance::Model,
+    chain::AbstractMCMC.AbstractChains,
+    start_idx::Int = 1,
+)
     vi = VarInfo(model_instance) # extract variables info from the model
-    map(Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+    map(
+        Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3)),
+    ) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi)
+            for vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         Distributions.loglikelihood(model_instance, argvals_dict) +
         DynamicPPL.logprior(model_instance, argvals_dict)
