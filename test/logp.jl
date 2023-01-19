@@ -13,8 +13,7 @@
         map(start_idx:N) do i
             val = get_params(chain[i, :, :])
             example_values = (
-                m = collect(Iterators.flatten(val.m)),
-                s = collect(Iterators.flatten(val.s)),
+                m=collect(Iterators.flatten(val.m)), s=collect(Iterators.flatten(val.s))
             )
             logpriors_true[i] = DynamicPPL.TestUtils.logprior_true(m, example_values...)
             loglikelihoods_true[i] = DynamicPPL.TestUtils.loglikelihood_true(
