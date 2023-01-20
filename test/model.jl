@@ -161,7 +161,7 @@ end
         loglikelihoods_true = Vector{Float64}(undef, N - start_idx)
         logposteriors_true = Vector{Float64}(undef, N - start_idx)
 
-        chain = sample(m, NUTS(), N)
+        chain = sample(m, SampleFromPrior(), N)
 
         map((start_idx+1):N) do i
             val = get_params(chain[i, :, :])
