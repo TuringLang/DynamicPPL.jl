@@ -41,7 +41,6 @@ function logprior(
     end
 end
 
-
 """
 	loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
@@ -84,7 +83,6 @@ function loglikelihoods(
         Distributions.loglikelihood(model_instance, argvals_dict)
     end
 end
-
 
 """
 	logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
