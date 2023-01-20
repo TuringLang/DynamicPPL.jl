@@ -150,7 +150,7 @@ function cross_val(
         # For normally-distributed data, the posterior can be computed in closed form.
         # For general models, however, typically samples will be generated using MCMC with Turing.
         posterior = Normal(mean(train), 1)
-        samples = rand(rng, posterior, nsamples)
+        samples = NamedTuple{(:μ,)}.(rand(rng, posterior, nsamples))
 
         # Evaluation on the validation set.
         validation_model = gdemo(length(validation)) | (x=validation,)
