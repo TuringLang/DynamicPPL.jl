@@ -89,10 +89,12 @@ sample_dict = rand(OrderedDict, model)
 ```
 
 Here we work with sample in the format of `NamedTuple`.
-The prior probability and the likelihood of a set of samples (in the format `NaedTuple`) can be calculated with the following helper functions:
+The prior probability and the likelihood of a set of samples (in the format `NamedTuple`) can be calculated with the following helper functions:
 
 ```julia
-# Here we build two loosen/temporary helper functions which accept a model and a vector of named tuples (therefore a single NamedTuple needs to be square bracketed to be made a vector) as arguments, and output a vector of logjoints.
+# Here we build two loosen/temporary helper functions which:
+    # accept: a model and a vector of named tuples (therefore a single NamedTuple needs to be square bracketed to be made a vector) as arguments, and 
+    # output: a vector of log posteriors.
 function logjoint(model_instance, nt_arr)
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
     for param_idx in 1:size(nt_arr, 1)
