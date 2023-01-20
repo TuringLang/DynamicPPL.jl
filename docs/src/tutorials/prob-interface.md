@@ -115,6 +115,7 @@ function logprior(model_instance, nt_arr)
 end
 logjoint(model, [sample_nt])
 ```
+
 We can build similar interfaces for the two temporary functions to accept sample in the format of `OrderedDict`.
 
 ```@example probinterface
