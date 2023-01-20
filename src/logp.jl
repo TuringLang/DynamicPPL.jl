@@ -5,15 +5,15 @@ Return an array of log priors evaluated at each sample in an MCMC chain or sampl
 
 Example:
 	
-```jldoctest; setup = :(using MCMCChains, StableRNGs), strict=false
+```jldoctest; setup = :(using MCMCChains, StableRNGs)
 julia> #
-	   @model function demo_model(x)
-		   s ~ InverseGamma(2, 3)
-		   m ~ Normal(0, sqrt(s))
-		   for i in 1:length(x)
-		x[i] ~ Normal(m, sqrt(s))
-		   end
-	   end
+       @model function demo_model(x)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           for i in 1:length(x)
+        x[i] ~ Normal(m, sqrt(s))
+           end
+       end
 demo_model (generic function with 2 methods)
 
 julia> rng = StableRNG(123)
@@ -49,15 +49,15 @@ Return an array of log likelihoods evaluated at each sample in an MCMC chain or 
 
 Example:
 	
-```jldoctest; setup = :(using MCMCChains, StableRNGs), strict=false
+```jldoctest; setup = :(using MCMCChains, StableRNGs)
 julia> #
-	   @model function demo_model(x)
-		   s ~ InverseGamma(2, 3)
-		   m ~ Normal(0, sqrt(s))
-		   for i in 1:length(x)
-		x[i] ~ Normal(m, sqrt(s))
-		   end
-	   end
+       @model function demo_model(x)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           for i in 1:length(x)
+        x[i] ~ Normal(m, sqrt(s))
+           end
+       end
 demo_model (generic function with 2 methods)
 
 julia> rng = StableRNG(123)
@@ -93,15 +93,15 @@ Return an array of log posteriors evaluated at each sample in an MCMC chain or s
 
 Example:
 	
-```jldoctest; setup = :(using MCMCChains, StableRNGs), strict=false
+```jldoctest; setup = :(using MCMCChains, StableRNGs)
 julia> #
-	   @model function demo_model(x)
-		   s ~ InverseGamma(2, 3)
-		   m ~ Normal(0, sqrt(s))
-		   for i in 1:length(x)
-		x[i] ~ Normal(m, sqrt(s))
-		   end
-	   end
+       @model function demo_model(x)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           for i in 1:length(x)
+        x[i] ~ Normal(m, sqrt(s))
+           end
+       end
 demo_model (generic function with 2 methods)
 
 julia> rng = StableRNG(123)
