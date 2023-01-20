@@ -119,7 +119,8 @@ logjoint(model, [sample_nt])
 We can build similar interfaces for the two temporary functions to accept sample in the format of `OrderedDict`.
 
 ```@example probinterface
-logjoint(model, [sample_nt])[1] ≈ loglikelihood(model, sample_nt) + logprior(model, [sample_nt])[1]
+logjoint(model, [sample_nt])[1] ≈
+loglikelihood(model, sample_nt) + logprior(model, [sample_nt])[1]
 ```
 
 ## Example: Cross-validation
