@@ -155,7 +155,7 @@ function cross_val(
         # Evaluation on the validation set.
         validation_model = gdemo(length(validation)) | (x=validation,)
         loss += sum(samples) do sample
-            logjoint(validation_model, [(μ=sample,)])
+            logjoint(validation_model, [sample])
         end
     end
 
