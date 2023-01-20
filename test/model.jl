@@ -157,9 +157,9 @@ end
         N = 200
         start_idx = 100
 
-        logpriors_true = Vector{Float64}[undef, N - start_idx]
-        loglikelihoods_true = Vector{Float64}[undef, N - start_idx]
-        logposteriors_true = Vector{Float64}[undef, N - start_idx]
+        logpriors_true = Vector{Float64}(undef, N - start_idx)
+        loglikelihoods_true = Vector{Float64}(undef, N - start_idx)
+        logposteriors_true = Vector{Float64}(undef, N - start_idx)
 
         chain = sample(m, NUTS(), N)
 
@@ -176,7 +176,7 @@ end
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
         logpriors_new = logprior(m, chain, start_idx)
-        loglikelihoods_new = loglikelihoods(m, chain, start_idx)
+        loglikelihoods_new = loglikelihood(m, chain, start_idx)
         logposteriors_new = logjoint(m, chain, start_idx)
         # compare the likelihoods
         @test logpriors_new ≈ logpriors_true

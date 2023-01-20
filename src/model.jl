@@ -767,7 +767,7 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	loglikelihoods(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
+	loglikelihood(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
 Return an array of log likelihoods evaluated at each sample in an MCMC chain or sample array.
 
@@ -791,10 +791,10 @@ julia> val = rand(rng, 10, 2, 3);
 
 julia> chain = Chains(val, [:s, :m]); # construct a chain of samples using MCMCChains
 
-julia> DynamicPPL.loglikelihoods(demo_model([1., 2.]), chain);
+julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
 """
-function loglikelihoods(
+function Distributions.loglikelihood(
     model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
 )
     vi = VarInfo(model_instance) # extract variables info from the model
