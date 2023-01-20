@@ -165,6 +165,5 @@ include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
-include("logp.jl")
 
 end # module
