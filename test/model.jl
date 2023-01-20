@@ -163,21 +163,24 @@ end
 
         chain = sample(m, SampleFromPrior(), N)
 
-        map((start_idx+1):N) do i
+        map((start_idx + 1):N) do i
             val = get_params(chain[i, :, :])
             example_values = (
                 s=collect(Iterators.flatten(val.s)), m=collect(Iterators.flatten(val.m))
             )
-            logpriors_true[i-start_idx] = DynamicPPL.TestUtils.logprior_true(m, example_values...)
-            loglikelihoods_true[i-start_idx] = DynamicPPL.TestUtils.loglikelihood_true(
+            logpriors_true[i - start_idx] = DynamicPPL.TestUtils.logprior_true(
                 m, example_values...
             )
-            logposteriors_true[i-start_idx] = logpriors_true[i-start_idx] + loglikelihoods_true[i-start_idx]
+            loglikelihoods_true[i - start_idx] = DynamicPPL.TestUtils.loglikelihood_true(
+                m, example_values...
+            )
+            logposteriors_true[i - start_idx] =
+                logpriors_true[i - start_idx] + loglikelihoods_true[i - start_idx]
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
-        logpriors_new = logprior(m, chain, start_idx+1)
-        loglikelihoods_new = loglikelihood(m, chain, start_idx+1)
-        logposteriors_new = logjoint(m, chain, start_idx+1)
+        logpriors_new = logprior(m, chain, start_idx + 1)
+        loglikelihoods_new = loglikelihood(m, chain, start_idx + 1)
+        logposteriors_new = logjoint(m, chain, start_idx + 1)
         # compare the likelihoods
         @test logpriors_new ≈ logpriors_true
         @test loglikelihoods_new ≈ loglikelihoods_true
