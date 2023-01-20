@@ -13,9 +13,10 @@ using LinearAlgebra
 using Random
 
 @model function gdemo(n)
-    μ ~ Normal(0, 1)
-    x ~ MvNormal(Fill(μ, n), I)
-    return nothing
+   μ ~ Normal(0, 1)
+   σ=1
+   x ~ MvNormal(Fill(μ, n), σ*I)
+   return nothing
 end
 nothing # hide
 ```
@@ -68,36 +69,56 @@ nothing # hide
 We often want to calculate the (unnormalized) probability density for an event.
 This probability might be a prior, a likelihood, or a posterior (joint) density.
 DynamicPPL provides convenient functions for this.
-For example, we can calculate the joint probability of a set of samples (here drawn from the prior) with [`logjoint`](@ref):
+We first instantiate a model and sample from the prior:
 
 ```@example probinterface
 model = gdemo(length(dataset)) | (x=dataset,)
 
 Random.seed!(124)
-sample = rand(model)
-logjoint(model, sample)
+sample_nt = rand(model)
 ```
 
 For models with many variables `rand(model)` can be prohibitively slow since it returns a `NamedTuple` of samples from the prior distribution of the unconditioned variables.
-We recommend working with samples of type `DataStructures.OrderedDict` in this case:
+Alternatively, we can work with samples of type `DataStructures.OrderedDict`:
 
 ```@example probinterface
 using DataStructures
 
 Random.seed!(124)
 sample_dict = rand(OrderedDict, model)
-logjoint(model, sample_dict)
 ```
 
-The prior probability and the likelihood of a set of samples can be calculated with the functions [`loglikelihood`](@ref) and [`logjoint`](@ref), respectively:
+Here we work with sample in the format of `NamedTuple`.
+The prior probability and the likelihood of a set of samples (in the format `NaedTuple`) can be calculated with the following helper functions:
 
-```@example probinterface
-logjoint(model, sample) ≈ loglikelihood(model, sample) + logprior(model, sample)
+```julia
+# Here we build two loosen/temporary helper functions which accept a model and a vector of named tuples (therefore a single NamedTuple needs to be square bracketed to be made a vector) as arguments, and output a vector of logjoints.
+function logjoint(model_instance, nt_arr)
+    lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
+    for param_idx = 1:size(nt_arr, 1)
+        # Compute and store.
+        lls[param_idx] =
+            Distributions.loglikelihood(model_instance, nt_arr[param_idx]) +
+            DynamicPPL.logprior(model_instance, nt_arr[param_idx])
+    end
+    return lls
+end
+logprior(model, [x1])
+
+function logprior(model_instance, nt_arr)
+    lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
+    for param_idx = 1:size(nt_arr, 1)
+        # Compute and store.
+        lls[param_idx] = DynamicPPL.logprior(model_instance, nt_arr[param_idx])
+    end
+    return lls
+end
+logjoint(model, [sample_nt])
 ```
+We can build similar interfaces for the two temporary functions to accept sample in the format of `OrderedDict`.
 
 ```@example probinterface
-logjoint(model, sample_dict) ≈
-loglikelihood(model, sample_dict) + logprior(model, sample_dict)
+logjoint(model, [sample_nt])[1] ≈ loglikelihood(model, sample_nt) + logprior(model, [sample_nt])[1]
 ```
 
 ## Example: Cross-validation
@@ -118,9 +139,9 @@ function cross_val(
 )
     # Initialize `loss` in a way such that the loop below does not change its type
     model = gdemo(1) | (x=[first(dataset)],)
-    loss = zero(logjoint(model, rand(rng, model)))
+    loss = zero(logjoint(model, [rand(rng, model)]))
 
-    for (train, validation) in kfolds(dataset, nfolds)
+    for (train, validation) in MLUtils.kfolds(dataset, nfolds)
         # First, we train the model on the training set, i.e., we obtain samples from the posterior.
         # For normally-distributed data, the posterior can be computed in closed form.
         # For general models, however, typically samples will be generated using MCMC with Turing.
@@ -130,7 +151,7 @@ function cross_val(
         # Evaluation on the validation set.
         validation_model = gdemo(length(validation)) | (x=validation,)
         loss += sum(samples) do sample
-            logjoint(validation_model, (μ=sample,))
+            logjoint(validation_model, [(μ=sample,)])
         end
     end
 
