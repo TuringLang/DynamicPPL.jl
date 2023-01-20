@@ -13,10 +13,10 @@ using LinearAlgebra
 using Random
 
 @model function gdemo(n)
-   μ ~ Normal(0, 1)
-   σ=1
-   x ~ MvNormal(Fill(μ, n), σ*I)
-   return nothing
+    μ ~ Normal(0, 1)
+    σ = 1
+    x ~ MvNormal(Fill(μ, n), σ * I)
+    return nothing
 end
 nothing # hide
 ```
