@@ -95,7 +95,7 @@ The prior probability and the likelihood of a set of samples (in the format `Nae
 # Here we build two loosen/temporary helper functions which accept a model and a vector of named tuples (therefore a single NamedTuple needs to be square bracketed to be made a vector) as arguments, and output a vector of logjoints.
 function logjoint(model_instance, nt_arr)
     lls = Array{Float64}(undef, size(nt_arr, 1)) # initialize a matrix to store the evaluated log posterior
-    for param_idx = 1:size(nt_arr, 1)
+    for param_idx in 1:size(nt_arr, 1)
         # Compute and store.
         lls[param_idx] =
             Distributions.loglikelihood(model_instance, nt_arr[param_idx]) +
