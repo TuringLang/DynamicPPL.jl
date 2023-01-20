@@ -4,7 +4,7 @@ using DynamicPPL: AbstractPPL
 
 # Doctest setup
 DocMeta.setdocmeta!(
-    DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
+    DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions, StableRNGs, MCMCChains); recursive=true
 )
 
 makedocs(;
