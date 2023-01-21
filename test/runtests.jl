@@ -43,6 +43,7 @@ include("test_util.jl")
             include("distribution_wrappers.jl")
             include("contexts.jl")
             include("context_implementations.jl")
+            include("logdensityfunction.jl")
 
             include("threadsafe.jl")
 
