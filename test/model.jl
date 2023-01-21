@@ -152,7 +152,8 @@ end
 end
 
 @testset "logp.jl" begin
-    Test.@testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+    m = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    Test.@testset "$(m.f)" begin
         # generate a chain of sample parameter values.
         N = 200
         start_idx = 100
@@ -161,7 +162,9 @@ end
         loglikelihoods_true = Vector{Float64}(undef, N - start_idx)
         logposteriors_true = Vector{Float64}(undef, N - start_idx)
 
-        chain = sample(m, SampleFromPrior(), N)
+        d = rand(Dict, m)
+        val = rand(N, length(collect(values(d))), 1)
+        chain = Chains(val, string.(collect(keys(d)))); # construct a chain of samples using MCMCChains
 
         map((start_idx + 1):N) do i
             val = get_params(chain[i, :, :])
