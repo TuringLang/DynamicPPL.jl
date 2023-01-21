@@ -164,7 +164,7 @@ end
 
         d = rand(Dict, m)
         val = rand(N, length(collect(values(d))), 1)
-        chain = Chains(val, string.(collect(keys(d)))); # construct a chain of samples using MCMCChains
+        chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
 
         map((start_idx + 1):N) do i
             val = get_params(chain[i, :, :])
