@@ -671,8 +671,7 @@ julia> @model function demo_model(x)
            for i in 1:length(x)
                x[i] ~ Normal(m, sqrt(s))
            end
-       end
-demo_model (generic function with 2 methods)
+       end;
 
 julia> rng = StableRNG(123)
 StableRNGs.LehmerRNG(state=0x000000000000000000000000000000f7)
