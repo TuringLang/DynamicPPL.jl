@@ -660,7 +660,7 @@ end
 """
 	logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
 
-Return an array of log posteriors evaluated at each sample in an MCMC chain or sample array.
+Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
 
 Example:
 	
