@@ -665,8 +665,7 @@ Return an array of log joint probabilities evaluated at each sample in an MCMC `
 Example:
 	
 ```jldoctest; setup = :(using MCMCChains, StableRNGs)
-julia> #
-       @model function demo_model(x)
+julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
            m ~ Normal(0, sqrt(s))
            for i in 1:length(x)
