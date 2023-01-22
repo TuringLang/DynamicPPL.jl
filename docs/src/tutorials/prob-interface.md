@@ -20,7 +20,7 @@ end
 nothing # hide
 ```
 
-We generate some data using `μ = 0` and `σ = 1`:
+We generate some data using `μ = 0`:
 
 ```@example probinterface
 Random.seed!(1776)
@@ -35,7 +35,7 @@ Conditioning takes a variable and fixes its value as known.
 We do this by passing a model and a collection of conditioned variables to [`|`](@ref) or its alias [`condition`](@ref):
 
 ```@example probinterface
-model = gdemo(length(dataset)) | (x=dataset, μ=0, σ=1)
+model = gdemo(length(dataset)) | (x=dataset, μ=0)
 nothing # hide
 ```
 
