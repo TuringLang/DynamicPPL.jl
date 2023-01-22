@@ -682,7 +682,7 @@ julia> val = rand(rng, 10, 2, 3);
 
 julia> chain = Chains(val, [:s, :m]); # construct a chain of samples using MCMCChains
 
-julia> logjoint(demo_model([1., 2.]), chain, 2);
+julia> logjoint(demo_model([1., 2.]), chain);
 ```   
 """
 function logjoint(
