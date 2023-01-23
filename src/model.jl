@@ -714,7 +714,9 @@ Return an array of log prior probabilities evaluated at each sample in an MCMC `
 
 # Examples
 	
-```jldoctest; setup = :(using MCMCChains, StableRNGs)
+```jldoctest
+julia> using MCMCChains, StableRNGs
+
 julia> #
        @model function demo_model(x)
            s ~ InverseGamma(2, 3)
