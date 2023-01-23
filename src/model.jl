@@ -735,9 +735,7 @@ julia> chain = Chains(val, [:s, :m]); # construct a chain of samples using MCMCC
 julia> logprior(demo_model([1., 2.]), chain);
 ```   
 """
-function logprior(
-    model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
-)
+function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
     vi = VarInfo(model_instance) # extract variables info from the model
     map(
         Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))
