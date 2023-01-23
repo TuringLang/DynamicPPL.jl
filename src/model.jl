@@ -762,7 +762,7 @@ end
 
 Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 
-Example:
+# Examples
 	
 ```jldoctest; setup = :(using MCMCChains, StableRNGs)
 julia> #
