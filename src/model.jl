@@ -736,7 +736,7 @@ julia> logprior(demo_model([1., 2.]), chain);
 ```   
 """
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    vi = VarInfo(model_instance) # extract variables info from the model
+    vi = VarInfo(model) # extract variables info from the model
     map(
         Iterators.product(start_idx:size(chain, 1), 1:size(chain, 3))
     ) do (iteration_idx, chain_idx)
