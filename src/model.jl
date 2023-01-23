@@ -720,7 +720,7 @@ julia> using MCMCChains, StableRNGs
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
            m ~ Normal(0, sqrt(s))
-           for i in 1:length(x)
+           for i in eachindex(x)
                x[i] ~ Normal(m, sqrt(s))
            end
        end;
