@@ -153,7 +153,7 @@ end
 
 @testset "logp.jl" begin
     m = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    Test.@testset "$(m.f)" begin
+    @testset "$(m.f)" begin
         # generate a chain of sample parameter values.
         N = 200
         start_idx = 100
