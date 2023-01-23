@@ -10,7 +10,7 @@ $(FIELDS)
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: LogDensityFunction
+julia> using DynamicPPL: LogDensityFunction, contextualize
 
 julia> @model function demo(x)
            m ~ Normal()
@@ -36,6 +36,12 @@ julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
 
 julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
+
+julia> # This also respects the context in `model`.
+       f_prior = LogDensityFunction(contextualize(model, DynamicPPL.PriorContext()), VarInfo(model));
+
+julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
+true
 ```
 """
 struct LogDensityFunction{V,M,C}
