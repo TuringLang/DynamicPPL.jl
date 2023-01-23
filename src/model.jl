@@ -710,7 +710,7 @@ end
 """
 	logprior(model::Model, chain::AbstractMCMC.AbstractChains)
 
-Return an array of log priors evaluated at each sample in an MCMC chain or sample array.
+Return an array of log prior probabilities evaluated at each sample in an MCMC `chain`.
 
 Example:
 	
