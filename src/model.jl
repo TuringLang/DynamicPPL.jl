@@ -658,7 +658,7 @@ function logjoint(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	logjoint(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
+	logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
 
 Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
 
