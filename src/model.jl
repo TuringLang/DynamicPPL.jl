@@ -780,7 +780,7 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
             vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
-        Distributions.loglikelihood(model_instance, argvals_dict)
+        loglikelihood(model, argvals_dict)
     end
 end
 
