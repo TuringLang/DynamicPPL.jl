@@ -775,12 +775,8 @@ julia> @model function demo_model(x)
            end
        end;
 
-julia> rng = StableRNG(123)
-StableRNGs.LehmerRNG(state=0x000000000000000000000000000000f7)
-
-julia> val = rand(rng, 10, 2, 3);
-
-julia> chain = Chains(val, [:s, :m]); # construct a chain of samples using MCMCChains
+julia> # construct a chain of samples using MCMCChains
+       chain = Chains(rand(StableRNG(123), 10, 2, 3), [:s, :m]);
 
 julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
