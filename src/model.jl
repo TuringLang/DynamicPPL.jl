@@ -708,7 +708,7 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	logprior(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
+	logprior(model::Model, chain::AbstractMCMC.AbstractChains)
 
 Return an array of log priors evaluated at each sample in an MCMC chain or sample array.
 
