@@ -758,7 +758,7 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	loglikelihood(model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int)
+	loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
 
 Return an array of log likelihoods evaluated at each sample in an MCMC chain or sample array.
 
