@@ -774,7 +774,7 @@ julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
 """
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-    vi = VarInfo(model_instance) # extract variables info from the model
+    vi = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
