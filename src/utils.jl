@@ -744,26 +744,26 @@ ChainRulesCore.@non_differentiable infer_nested_eltype(x)
 """
     varname_leaves(vn::VarName, val)
 
-Return iterator over all varnames that are represented by `vn` on `val`,
+Return an iterator over all varnames that are represented by `vn` on `val`,
 e.g. `varname_leaves(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
 """
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_leaves(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
+            VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
         ) for I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = DynamicPPL.Setfield.PropertyLens{sym}()
+        lens = Setfield.PropertyLens{sym}()
         varname_leaves(vn ∘ lens, get(val, lens))
     end
     return Iterators.flatten(iter)
