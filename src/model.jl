@@ -773,9 +773,7 @@ julia> # construct a chain of samples using MCMCChains
 julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
 """
-function Distributions.loglikelihood(
-    model_instance::Model, chain::AbstractMCMC.AbstractChains, start_idx::Int=1
-)
+function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
     vi = VarInfo(model_instance) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
