@@ -662,7 +662,7 @@ end
 
 Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
 
-Example:
+# Examples
 	
 ```jldoctest
 julia> using MCMCChains, StableRNGs
