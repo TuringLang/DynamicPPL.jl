@@ -764,7 +764,9 @@ Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 
 # Examples
 	
-```jldoctest; setup = :(using MCMCChains, StableRNGs)
+```jldoctest
+julia> using MCMCChains, StableRNGs
+
 julia> #
        @model function demo_model(x)
            s ~ InverseGamma(2, 3)
