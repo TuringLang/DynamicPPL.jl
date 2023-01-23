@@ -721,7 +721,7 @@ julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
            m ~ Normal(0, sqrt(s))
            for i in 1:length(x)
-        x[i] ~ Normal(m, sqrt(s))
+               x[i] ~ Normal(m, sqrt(s))
            end
        end
 demo_model (generic function with 2 methods)
