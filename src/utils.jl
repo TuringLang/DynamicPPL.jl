@@ -744,8 +744,23 @@ ChainRulesCore.@non_differentiable infer_nested_eltype(x)
 """
     varname_leaves(vn::VarName, val)
 
-Return iterator over all varnames that are represented by `vn` on `val`,
-e.g. `varname_leaves(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
+Return iterator over all varnames that are represented by `vn` on `val`.
+
+# Examples
+```jldoctest
+julia> foreach(println, varname_leaves(@varname(x), rand(2)))
+x[1]
+x[2]
+
+julia> foreach(println, varname_leaves(@varname(x[1:2]), rand(2)))
+x[1:2][1]
+x[1:2][2]
+
+julia> foreach(println, varname_leaves(@varname(x), x))
+x.y
+x.z[1][1]
+x.z[2][1]
+```
 """
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
