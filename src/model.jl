@@ -742,7 +742,7 @@ function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
             vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
-        DynamicPPL.logprior(model_instance, argvals_dict)
+        logprior(model, argvals_dict)
     end
 end
 
