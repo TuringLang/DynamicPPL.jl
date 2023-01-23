@@ -690,7 +690,7 @@ function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in DynamicPPL.TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
         )
         Distributions.loglikelihood(model_instance, argvals_dict) +
         DynamicPPL.logprior(model_instance, argvals_dict)
