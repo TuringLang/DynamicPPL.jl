@@ -771,9 +771,8 @@ function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(
-            VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
-        ) for I in CartesianIndices(val)
+        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
+        I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
