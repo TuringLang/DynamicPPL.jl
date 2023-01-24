@@ -758,6 +758,8 @@ julia> foreach(println, varname_leaves(@varname(x[1:2]), rand(2)))
 x[1:2][1]
 x[1:2][2]
 
+julia> x = (y = 1, z = [[2.0], [3.0]])
+
 julia> foreach(println, varname_leaves(@varname(x), x))
 x.y
 x.z[1][1]
