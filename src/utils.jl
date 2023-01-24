@@ -748,6 +748,8 @@ Return an iterator over all varnames that are represented by `vn` on `val`.
 
 # Examples
 ```jldoctest
+julia> using DynamicPPL: varname_leaves
+
 julia> foreach(println, varname_leaves(@varname(x), rand(2)))
 x[1]
 x[2]
