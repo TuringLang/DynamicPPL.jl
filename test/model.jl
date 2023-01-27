@@ -153,37 +153,36 @@ end
 
 @testset "logp.jl" begin
     m = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    vi = VarInfo(m)
     @testset "$(m.f)" begin
         # generate a chain of sample parameter values.
         N = 200
-        start_idx = 100
 
-        logpriors_true = Vector{Float64}(undef, N - start_idx)
-        loglikelihoods_true = Vector{Float64}(undef, N - start_idx)
-        logposteriors_true = Vector{Float64}(undef, N - start_idx)
+        logpriors_true = Vector{Float64}(undef, N)
+        loglikelihoods_true = Vector{Float64}(undef, N)
+        logposteriors_true = Vector{Float64}(undef, N)
 
         d = rand(Dict, m)
         val = rand(N, length(collect(values(d))), 1)
         chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
 
-        map((start_idx + 1):N) do i
-            val = get_params(chain[i, :, :])
-            example_values = (
-                s=collect(Iterators.flatten(val.s)), m=collect(Iterators.flatten(val.m))
-            )
-            logpriors_true[i - start_idx] = DynamicPPL.TestUtils.logprior_true(
-                m, example_values...
-            )
-            loglikelihoods_true[i - start_idx] = DynamicPPL.TestUtils.loglikelihood_true(
-                m, example_values...
-            )
-            logposteriors_true[i - start_idx] =
-                logpriors_true[i - start_idx] + loglikelihoods_true[i - start_idx]
+        map(1:N) do i
+            argvals_dict = OrderedDict(
+                    vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
+                    vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+                )
+            setval!(vi, argvals_dict.vals, argvals_dict.keys)
+            argvals_dict_temp = Dict(vn_parent => collect(vi.metadata[vn_parent].vals) for vn_parent in propertynames(vi.metadata))
+            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((collect(values(argvals_dict_temp))...,))
+        
+            logpriors_true[i] = logprior_true(m, example_values)
+            loglikelihoods_true[i] = loglikelihood_true(m, example_values)
+            logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
-        logpriors_new = logprior(m, chain, start_idx + 1)
-        loglikelihoods_new = loglikelihood(m, chain, start_idx + 1)
-        logposteriors_new = logjoint(m, chain, start_idx + 1)
+        logpriors_new = logprior(m, chain)
+        loglikelihoods_new = loglikelihood(m, chain)
+        logposteriors_new = logjoint(m, chain)
         # compare the likelihoods
         @test logpriors_new ≈ logpriors_true
         @test loglikelihoods_new ≈ loglikelihoods_true
