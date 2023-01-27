@@ -36,6 +36,47 @@ end
         ljoint = logjoint(model, vi)
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
+
+        # logprior, logjoint, loglikelihood for MCMC chains 
+        m = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        vi = VarInfo(m)
+        # generate a chain of sample parameter values.
+        N = 200
+
+        logpriors_true = Vector{Float64}(undef, N)
+        loglikelihoods_true = Vector{Float64}(undef, N)
+        logposteriors_true = Vector{Float64}(undef, N)
+
+        d = rand(Dict, m)
+        val = rand(N, length(collect(values(d))), 1)
+        chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
+
+        map(1:N) do i
+            argvals_dict = OrderedDict(
+                vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
+                vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            )
+            DynamicPPL.setval!(vi, argvals_dict.vals, argvals_dict.keys)
+            argvals_dict_temp = Dict(
+                vn_parent => collect(vi.metadata[vn_parent].vals) for
+                vn_parent in propertynames(vi.metadata)
+            )
+            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((
+                collect(values(argvals_dict_temp))...,
+            ))
+
+            logpriors_true[i] = TestUtils.logprior_true(m, example_values)
+            loglikelihoods_true[i] = TestUtils.loglikelihood_true(m, example_values)
+            logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
+        end
+        # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
+        logpriors_new = logprior(m, chain)
+        loglikelihoods_new = loglikelihood(m, chain)
+        logposteriors_new = logjoint(m, chain)
+        # compare the likelihoods
+        @test logpriors_new ≈ logpriors_true
+        @test loglikelihoods_new ≈ loglikelihoods_true
+        @test logposteriors_new ≈ logposteriors_true
     end
 
     @testset "rng" begin
@@ -151,46 +192,3 @@ end
     end
 end
 
-@testset "logp.jl" begin
-    m = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    vi = VarInfo(m)
-    @testset "$(m.f)" begin
-        # generate a chain of sample parameter values.
-        N = 200
-
-        logpriors_true = Vector{Float64}(undef, N)
-        loglikelihoods_true = Vector{Float64}(undef, N)
-        logposteriors_true = Vector{Float64}(undef, N)
-
-        d = rand(Dict, m)
-        val = rand(N, length(collect(values(d))), 1)
-        chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
-
-        map(1:N) do i
-            argvals_dict = OrderedDict(
-                vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
-                vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
-            )
-            DynamicPPL.setval!(vi, argvals_dict.vals, argvals_dict.keys)
-            argvals_dict_temp = Dict(
-                vn_parent => collect(vi.metadata[vn_parent].vals) for
-                vn_parent in propertynames(vi.metadata)
-            )
-            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((
-                collect(values(argvals_dict_temp))...,
-            ))
-
-            logpriors_true[i] = TestUtils.logprior_true(m, example_values)
-            loglikelihoods_true[i] = TestUtils.loglikelihood_true(m, example_values)
-            logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
-        end
-        # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
-        logpriors_new = logprior(m, chain)
-        loglikelihoods_new = loglikelihood(m, chain)
-        logposteriors_new = logjoint(m, chain)
-        # compare the likelihoods
-        @test logpriors_new ≈ logpriors_true
-        @test loglikelihoods_new ≈ loglikelihoods_true
-        @test logposteriors_new ≈ logposteriors_true
-    end
-end
