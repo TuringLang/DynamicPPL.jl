@@ -171,7 +171,7 @@ end
                 vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
                 vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
             )
-            setval!(vi, argvals_dict.vals, argvals_dict.keys)
+            DynamicPPL.setval!(vi, argvals_dict.vals, argvals_dict.keys)
             argvals_dict_temp = Dict(
                 vn_parent => collect(vi.metadata[vn_parent].vals) for
                 vn_parent in propertynames(vi.metadata)
@@ -180,8 +180,8 @@ end
                 collect(values(argvals_dict_temp))...,
             ))
 
-            logpriors_true[i] = logprior_true(m, example_values)
-            loglikelihoods_true[i] = loglikelihood_true(m, example_values)
+            logpriors_true[i] = TestUtils.logprior_true(m, example_values)
+            loglikelihoods_true[i] = TestUtils.loglikelihood_true(m, example_values)
             logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
         end
         # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
