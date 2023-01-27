@@ -232,13 +232,13 @@ end
 function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
 end
-function logprior_true(model::Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{F}, Vector{F}}}) where {F<:AbstractFloat}
+function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{F}, Vector{F}}}) where {F<:AbstractFloat}
     return loglikelihood(InverseGamma(2, 3), nt[:s]) + sum(logpdf.(Normal.(0, sqrt.(nt[:s])), nt[:m]))
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
     return loglikelihood(MvNormal(m, Diagonal(s)), model.args.x)
 end
-function loglikelihood_true(model::Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{F}, Vector{F}}}) where {F<:AbstractFloat}
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{F}, Vector{F}}}) where {F<:AbstractFloat}
     return loglikelihood(MvNormal(nt[:m], Diagonal(nt[:s])), model.args.x)
 end
 function logprior_true_with_logabsdet_jacobian(
