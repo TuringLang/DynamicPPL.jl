@@ -232,7 +232,7 @@ end
 function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
 end
-function logprior_true(model::Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{Float64}, Vector{Float64}}})
+function logprior_true(model::Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_dot_observe)}, nt::NamedTuple{(:m, :s), Tuple{Vector{<:AbstractFloat}, Vector{<:AbstractFloat}}})
     return loglikelihood(InverseGamma(2, 3), nt[:s]) + sum(logpdf.(Normal.(0, sqrt.(nt[:s])), nt[:m]))
 end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
