@@ -168,9 +168,9 @@ end
 
         map(1:N) do i
             argvals_dict = OrderedDict(
-                    vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
-                    vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
-                )
+                vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
+                vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
+            )
             setval!(vi, argvals_dict.vals, argvals_dict.keys)
             argvals_dict_temp = Dict(vn_parent => collect(vi.metadata[vn_parent].vals) for vn_parent in propertynames(vi.metadata))
             example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((collect(values(argvals_dict_temp))...,))
