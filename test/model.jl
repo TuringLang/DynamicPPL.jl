@@ -172,9 +172,14 @@ end
                 vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
             )
             setval!(vi, argvals_dict.vals, argvals_dict.keys)
-            argvals_dict_temp = Dict(vn_parent => collect(vi.metadata[vn_parent].vals) for vn_parent in propertynames(vi.metadata))
-            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((collect(values(argvals_dict_temp))...,))
-        
+            argvals_dict_temp = Dict(
+                vn_parent => collect(vi.metadata[vn_parent].vals) for
+                vn_parent in propertynames(vi.metadata)
+            )
+            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((
+                collect(values(argvals_dict_temp))...,
+            ))
+
             logpriors_true[i] = logprior_true(m, example_values)
             loglikelihoods_true[i] = loglikelihood_true(m, example_values)
             logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
