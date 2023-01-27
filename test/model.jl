@@ -191,4 +191,3 @@ end
         @test rand(Dict, model) == sample_dict
     end
 end
-
