@@ -51,7 +51,7 @@ end
         val = rand(N, length(collect(values(d))), 1)
         chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
 
-        map(1:N) do i
+        for i in 1:N
             argvals_dict = OrderedDict(
                 vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
                 vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])

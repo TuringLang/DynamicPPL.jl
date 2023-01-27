@@ -665,7 +665,7 @@ Return an array of log joint probabilities evaluated at each sample in an MCMC `
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains, StableRNGs
+julia> using MCMCChains
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
@@ -676,7 +676,7 @@ julia> @model function demo_model(x)
        end;
 
 julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(StableRNG(123), 10, 2, 3), [:s, :m]);
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> logjoint(demo_model([1., 2.]), chain);
 ```   
@@ -711,7 +711,7 @@ Return an array of log prior probabilities evaluated at each sample in an MCMC `
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains, StableRNGs
+julia> using MCMCChains
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
@@ -722,7 +722,7 @@ julia> @model function demo_model(x)
        end;
 
 julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(StableRNG(123), 10, 2, 3), [:s, :m]);
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> logprior(demo_model([1., 2.]), chain);
 ```   
@@ -757,7 +757,7 @@ Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains, StableRNGs
+julia> using MCMCChains
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
@@ -768,7 +768,7 @@ julia> @model function demo_model(x)
        end;
 
 julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(StableRNG(123), 10, 2, 3), [:s, :m]);
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
