@@ -38,45 +38,28 @@ end
         @test ljoint ≈ lp
 
         # logprior, logjoint, loglikelihood for MCMC chains 
-        m = DynamicPPL.TestUtils.DEMO_MODELS[1]
-        vi = VarInfo(m)
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        vns = DynamicPPL.TestUtils.varnames(model)
+        syms = unique!(map(DynamicPPL.getsym, vns))
+        
         # generate a chain of sample parameter values.
         N = 200
-
-        logpriors_true = Vector{Float64}(undef, N)
-        loglikelihoods_true = Vector{Float64}(undef, N)
-        logposteriors_true = Vector{Float64}(undef, N)
-
-        d = rand(Dict, m)
-        val = rand(N, length(collect(values(d))), 1)
-        chain = Chains(val, string.(collect(keys(d)))) # construct a chain of samples using MCMCChains
-
-        for i in 1:N
-            argvals_dict = OrderedDict(
-                vn => chain[i, Symbol(vn), 1] for vn_parent in keys(vi) for
-                vn in TestUtils.varname_leaves(vn_parent, vi[vn_parent])
-            )
-            DynamicPPL.setval!(vi, argvals_dict.vals, argvals_dict.keys)
-            argvals_dict_temp = Dict(
-                vn_parent => collect(vi.metadata[vn_parent].vals) for
-                vn_parent in propertynames(vi.metadata)
-            )
-            example_values = NamedTuple{(collect(keys(argvals_dict_temp))...,)}((
-                collect(values(argvals_dict_temp))...,
-            ))
-
-            logpriors_true[i] = TestUtils.logprior_true(m, example_values)
-            loglikelihoods_true[i] = TestUtils.loglikelihood_true(m, example_values)
-            logposteriors_true[i] = logpriors_true[i] + loglikelihoods_true[i]
+        vals = mapreduce(hcat, 1:N) do _
+            samples = rand(Dict, model) # order of samples is fixed below
+            [samples[vn] for vn in vns]
         end
-        # calculate the pointwise loglikelihoods for the whole chain using custom logprior.
-        logpriors_new = logprior(m, chain)
-        loglikelihoods_new = loglikelihood(m, chain)
-        logposteriors_new = logjoint(m, chain)
-        # compare the likelihoods
-        @test logpriors_new ≈ logpriors_true
-        @test loglikelihoods_new ≈ loglikelihoods_true
-        @test logposteriors_new ≈ logposteriors_true
+        chain = Chains(vals', [Symbol(vn) for vn in vns])
+        # calculate the pointwise loglikelihoods for the whole chain
+        logpriors = logprior(model, chain)
+        loglikelihoods = loglikelihood(model, chain)
+        logjoints = logjoint(model, chain)
+        # compare them with true values
+        for i in 1:N
+            samples = [[chain[i, Symbol(vn), 1] for vn in vns if DynamicPPL.getsym(vn) === sym] for sym in syms]
+            @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples...)
+            @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(model, samples...)
+            @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples...)
+        end
     end
 
     @testset "rng" begin
