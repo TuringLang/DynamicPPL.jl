@@ -217,11 +217,6 @@ end
 function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
     return loglikelihood(MvNormal(m, Diagonal(s)), model.args.x)
 end
-
-# generic interfaces for namedtuple inputs; see https://github.com/TuringLang/DynamicPPL.jl/pull/438
-logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, nt::NamedTuple) = logprior_true(model, nt[:s], nt[:m])
-loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, nt::NamedTuple) = loglikelihood_true(model, nt[:s], nt[:m])
-
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_dot_assume_dot_observe)}, s, m
 )
