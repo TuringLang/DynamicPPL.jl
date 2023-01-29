@@ -41,7 +41,6 @@ end
         model = DynamicPPL.TestUtils.DEMO_MODELS[1]
         vns = DynamicPPL.TestUtils.varnames(model)
         syms = unique!(map(DynamicPPL.getsym, vns))
-        
         # generate a chain of sample parameter values.
         N = 200
         vals = mapreduce(hcat, 1:N) do _
@@ -55,9 +54,13 @@ end
         logjoints = logjoint(model, chain)
         # compare them with true values
         for i in 1:N
-            samples = [[chain[i, Symbol(vn), 1] for vn in vns if DynamicPPL.getsym(vn) === sym] for sym in syms]
+            samples = [
+                [chain[i, Symbol(vn), 1] for vn in vns if DynamicPPL.getsym(vn) === sym] for
+                sym in syms
+            ]
             @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples...)
-            @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(model, samples...)
+            @test loglikelihoods[i] ≈
+                DynamicPPL.TestUtils.loglikelihood_true(model, samples...)
             @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples...)
         end
     end
