@@ -10,6 +10,8 @@ on:
       # Build the master branch.
       - master
   pull_request:
+    branches:
+      - master
 
 jobs:
   test:
