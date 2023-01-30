@@ -40,7 +40,7 @@ end
         # logprior, logjoint, loglikelihood for MCMC chains 
         model = DynamicPPL.TestUtils.DEMO_MODELS[1]
         vns = DynamicPPL.TestUtils.varnames(model)
-        syms = unique!(map(DynamicPPL.getsym, vns))
+        syms = unique(DynamicPPL.getsym, vns)
         # generate a chain of sample parameter values.
         N = 200
         vals = mapreduce(hcat, 1:N) do _
