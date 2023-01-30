@@ -44,8 +44,7 @@ end
         # generate a chain of sample parameter values.
         N = 200
         vals = mapreduce(hcat, 1:N) do _
-            samples = rand(Dict, model) # order of samples is fixed below
-            [samples[vn] for vn in vns]
+            samples = rand(OrderedDict, model)
         end
         chain = Chains(vals', [Symbol(vn) for vn in vns])
         # calculate the pointwise loglikelihoods for the whole chain

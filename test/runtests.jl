@@ -19,7 +19,7 @@ using Random
 using Serialization
 using Test
 
-using DynamicPPL: getargs_dottilde, getargs_tilde, Selector, TestUtils
+using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
