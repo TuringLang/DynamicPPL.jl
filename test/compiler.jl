@@ -312,6 +312,18 @@ end
         @test vi2.metadata.y.vns[1] == @varname(y[2][:, 1])
         @test haskey(vi3.metadata, :y)
         @test vi3.metadata.y.vns[1] == @varname(y[1])
+
+        # Conditioning
+        f1_c = f1() | (y=1,)
+        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][:, 1])) => 1,))
+        f3_c = f3() | NamedTuple((Symbol(@varname(y[1])) => 1,))
+        @test f1_c() == 1
+        # TODO(torfjelde): We need conditioning for `Dict`.
+        @test_broken f2_c() == 1
+        @test_broken f3_c() == 1
+        @test_broken getlogp(VarInfo(f1_c)) ==
+            getlogp(VarInfo(f2_c)) ==
+            getlogp(VarInfo(f3_c))
     end
     @testset "custom tilde" begin
         @model demo() = begin
@@ -420,8 +432,8 @@ end
         end
 
         @model function demo_useval(x, y)
-            x1 = @submodel sub1 demo_return(x)
-            x2 = @submodel sub2 demo_return(y)
+            @submodel prefix = "sub1" x1 = demo_return(x)
+            @submodel prefix = "sub2" x2 = demo_return(y)
 
             return z ~ Normal(x1 + x2 + 100, 1.0)
         end
@@ -455,7 +467,7 @@ end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x = @submodel $(Symbol("ar1_$i")) AR1(num_steps, α, μ, σ)
+                @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
@@ -543,5 +555,69 @@ end
         # Set it to `false` again.
         f(::Model{typeof(demo),()}) = false
         @test !f(demo())
+    end
+
+    @testset "return value" begin
+        # Make sure that a return-value of `x = 1` isn't combined into
+        # an attempt at a `NamedTuple` of the form `(x = 1, __varinfo__)`.
+        @model empty_model() = return x = 1
+        empty_vi = VarInfo()
+        retval_and_vi = DynamicPPL.evaluate!!(empty_model(), empty_vi, SamplingContext())
+        @test retval_and_vi isa Tuple{Int,typeof(empty_vi)}
+
+        # Even if the return-value is `AbstractVarInfo`, we should return
+        # a `Tuple` with `AbstractVarInfo` in the second component too.
+        @model demo() = return __varinfo__
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+        @test svi == SimpleVarInfo()
+        if Threads.nthreads() > 1
+            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
+            @test retval.varinfo == svi
+        else
+            @test retval == svi
+        end
+
+        # We should not be altering return-values other than at top-level.
+        @model function demo()
+            # If we also replaced this `return` inside of `f`, then the
+            # final `return` would be include `__varinfo__`.
+            f(x) = return x^2
+            return f(1.0)
+        end
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+        @test retval isa Float64
+
+        @model demo() = x ~ Normal()
+        retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
+
+        # Return-value when using `@submodel`
+        @model inner() = x ~ Normal()
+        # Without assignment.
+        @model outer() = @submodel inner()
+        @test outer()() isa Real
+
+        # With assignment.
+        @model outer() = @submodel x = inner()
+        @test outer()() isa Real
+    end
+
+    @testset "issue #368: hasmissing dispatch" begin
+        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
+
+        # (nested) arrays with `Missing` eltypes
+        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
+        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
+        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
+
+        # no `Missing`
+        @test !DynamicPPL.hasmissing(Vector{Float64})
+        @test !DynamicPPL.hasmissing(Matrix{Real})
+        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
+    end
+
+    @testset "issue #393: anonymous argument with type parameter" begin
+        @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
+        @test f_393()() == 1
+        @test f_393(Val(true))() == 0
     end
 end

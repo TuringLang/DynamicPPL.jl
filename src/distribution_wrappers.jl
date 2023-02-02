@@ -13,11 +13,33 @@ end
 
 NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
 
+Base.length(dist::NamedDist) = Base.length(dist.dist)
+Base.size(dist::NamedDist) = Base.size(dist.dist)
+
+Distributions.logpdf(dist::NamedDist, x::Real) = Distributions.logpdf(dist.dist, x)
+function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})
+    return Distributions.logpdf(dist.dist, x)
+end
+function Distributions.loglikelihood(dist::NamedDist, x::Real)
+    return Distributions.loglikelihood(dist.dist, x)
+end
+function Distributions.loglikelihood(dist::NamedDist, x::AbstractArray{<:Real})
+    return Distributions.loglikelihood(dist.dist, x)
+end
+
+Bijectors.bijector(d::NamedDist) = Bijectors.bijector(d.dist)
+
 struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
        Distribution{variate,support}
     dist::Td
 end
 NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
+
+nodist(dist::Distribution) = NoDist(dist)
+nodist(dists::AbstractArray) = nodist.(dists)
+
+Base.length(dist::NoDist) = Base.length(dist.dist)
+Base.size(dist::NoDist) = Base.size(dist.dist)
 
 Distributions.rand(rng::Random.AbstractRNG, d::NoDist) = rand(rng, d.dist)
 Distributions.logpdf(d::NoDist{<:Univariate}, ::Real) = 0
@@ -29,9 +51,21 @@ Distributions.logpdf(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
 Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
-Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real) = 0
-Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
-function Bijectors.logpdf_with_trans(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
+Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real, ::Bool) = 0
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool
+)
+    return 0
+end
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
+)
     return zeros(Int, size(x, 2))
 end
-Bijectors.logpdf_with_trans(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
+function Bijectors.logpdf_with_trans(
+    d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool
+)
+    return 0
+end
+
+Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)

@@ -43,12 +43,7 @@ function test_model_ad(model, logp_manual)
 
     y, back = Zygote.pullback(logp_model, x)
     @test y ≈ lp
-    # will be fixed by https://github.com/FluxML/Zygote.jl/pull/1104
-    if Threads.nthreads() > 1
-        @test_broken back(1)[1] ≈ grad
-    else
-        @test back(1)[1] ≈ grad
-    end
+    @test back(1)[1] ≈ grad
 end
 
 """
@@ -79,3 +74,14 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
         end
     end
 end
+
+"""
+    short_varinfo_name(vi::AbstractVarInfo)
+
+Return string representing a short description of `vi`.
+"""
+short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) = short_varinfo_name(vi.varinfo)
+short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
+short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
+short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"

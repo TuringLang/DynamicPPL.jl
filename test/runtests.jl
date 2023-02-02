@@ -10,6 +10,7 @@ using MacroTools
 using MCMCChains
 using Tracker
 using Zygote
+using Setfield
 
 using Distributed
 using LinearAlgebra
@@ -34,6 +35,7 @@ include("test_util.jl")
             include("utils.jl")
             include("compiler.jl")
             include("varinfo.jl")
+            include("simple_varinfo.jl")
             include("model.jl")
             include("sampler.jl")
             include("prob_macro.jl")
@@ -41,6 +43,7 @@ include("test_util.jl")
             include("distribution_wrappers.jl")
             include("contexts.jl")
             include("context_implementations.jl")
+            include("logdensityfunction.jl")
 
             include("threadsafe.jl")
 
@@ -64,6 +67,9 @@ include("test_util.jl")
                 r"(Array{.+,\s?1}|Vector{.+})",
                 # Older versions will show "Array{...,2}" instead of "Matrix{...}".
                 r"(Array{.+,\s?2}|Matrix{.+})",
+                # Errors from macros sometimes result in `LoadError: LoadError:`
+                # rather than `LoadError:`, depending on Julia version.
+                r"ERROR: (LoadError:\s)+",
             ]
             doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
         end

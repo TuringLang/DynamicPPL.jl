@@ -67,9 +67,27 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
+function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
+    return default_varinfo(rng, model, sampler, DefaultContext())
+end
+function default_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler,
+    context::AbstractContext,
+)
+    init_sampler = initialsampler(sampler)
+    return VarInfo(rng, model, init_sampler, context)
+end
+
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; resume_from=nothing, kwargs...
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Sampler;
+    resume_from=nothing,
+    init_params=nothing,
+    kwargs...,
 )
     if resume_from !== nothing
         state = loadstate(resume_from)
@@ -77,26 +95,20 @@ function AbstractMCMC.step(
     end
 
     # Sample initial values.
-    _spl = initialsampler(spl)
-    vi = VarInfo(rng, model, _spl)
+    vi = default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
-    if haskey(kwargs, :init_params)
-        initialize_parameters!(vi, kwargs[:init_params], spl)
+    if init_params !== nothing
+        vi = initialize_parameters!!(vi, init_params, spl, model)
 
         # Update joint log probability.
-        # TODO: fix properly by using sampler and evaluation contexts
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
-        if _spl isa SampleFromUniform
-            model(rng, vi, SampleFromPrior())
-        else
-            model(rng, vi, _spl)
-        end
+        vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
-    return initialstep(rng, model, spl, vi; kwargs...)
+    return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
 end
 
 """
@@ -116,7 +128,9 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
+function initialize_parameters!!(
+    vi::AbstractVarInfo, init_params, spl::Sampler, model::Model
+)
     @debug "Using passed-in initial variable values" init_params
 
     # Flatten parameters.
@@ -126,7 +140,9 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
 
     # Get all values.
     linked = islinked(vi, spl)
-    linked && invlink!(vi, spl)
+    if linked
+        vi = invlink!!(vi, spl, model)
+    end
     theta = vi[spl]
     length(theta) == length(init_theta) ||
         error("Provided initial value doesn't match the dimension of the model")
@@ -140,10 +156,12 @@ function initialize_parameters!(vi::AbstractVarInfo, init_params, spl::Sampler)
     end
 
     # Update in `vi`.
-    vi[spl] = theta
-    linked && link!(vi, spl)
+    vi = setindex!!(vi, theta, spl)
+    if linked
+        vi = link!!(vi, spl, model)
+    end
 
-    return nothing
+    return vi
 end
 
 """

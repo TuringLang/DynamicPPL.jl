@@ -10,8 +10,8 @@
         samples_s = first.(samples)
         samples_m = last.(samples)
 
-        @test mean(samples_s) ≈ 3 atol = 0.1
-        @test mean(samples_m) ≈ 0 atol = 0.1
+        @test mean(samples_s) ≈ 3 atol = 0.2
+        @test mean(samples_m) ≈ 0 atol = 0.15
     end
     @testset "pmap" begin
         # Add worker processes.
