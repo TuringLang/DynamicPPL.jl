@@ -222,7 +222,7 @@
     @testset "Static transformation" begin
         model = DynamicPPL.TestUtils.demo_static_transformation()
 
-        varinfos = setup_varinfos(
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, rand(NamedTuple, model), [@varname(s), @varname(m)]
         )
         @testset "$(short_varinfo_name(vi))" for vi in varinfos

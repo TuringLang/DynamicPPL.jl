@@ -11,7 +11,11 @@ makedocs(;
     sitename="DynamicPPL",
     format=Documenter.HTML(),
     modules=[DynamicPPL],
-    pages=["Home" => "index.md", "API" => "api.md"],
+    pages=[
+        "Home" => "index.md",
+        "API" => "api.md",
+        "Tutorials" => ["tutorials/prob-interface.md"],
+    ],
     strict=true,
     checkdocs=:exports,
 )

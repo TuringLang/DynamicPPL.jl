@@ -740,3 +740,49 @@ infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_
 
 # No need + causes issues for some AD backends, e.g. Zygote.
 ChainRulesCore.@non_differentiable infer_nested_eltype(x)
+
+"""
+    varname_leaves(vn::VarName, val)
+
+Return an iterator over all varnames that are represented by `vn` on `val`.
+
+# Examples
+```jldoctest
+julia> using DynamicPPL: varname_leaves
+
+julia> foreach(println, varname_leaves(@varname(x), rand(2)))
+x[1]
+x[2]
+
+julia> foreach(println, varname_leaves(@varname(x[1:2]), rand(2)))
+x[1:2][1]
+x[1:2][2]
+
+julia> x = (y = 1, z = [[2.0], [3.0]]);
+
+julia> foreach(println, varname_leaves(@varname(x), x))
+x.y
+x.z[1][1]
+x.z[2][1]
+```
+"""
+varname_leaves(vn::VarName, ::Real) = [vn]
+function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
+    return (
+        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::VarName, val::AbstractArray)
+    return Iterators.flatten(
+        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
+    iter = Iterators.map(keys(val)) do sym
+        lens = Setfield.PropertyLens{sym}()
+        varname_leaves(vn ∘ lens, get(val, lens))
+    end
+    return Iterators.flatten(iter)
+end

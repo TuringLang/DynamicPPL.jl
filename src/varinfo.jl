@@ -140,7 +140,7 @@ VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
 # TODO: deprecate.
-unflatten(vi::VarInfo, spl, x::AbstractVector) = VarInfo(vi, spl, x)
+unflatten(vi::VarInfo, spl::AbstractSampler, x::AbstractVector) = VarInfo(vi, spl, x)
 
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
@@ -759,10 +759,6 @@ function _link!(vi::UntypedVarInfo, spl::Sampler)
     end
 end
 function _link!(vi::TypedVarInfo, spl::AbstractSampler)
-    Base.depwarn(
-        "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
-        :link!,
-    )
     return _link!(vi, spl, Val(getspace(spl)))
 end
 function _link!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
@@ -1240,7 +1236,7 @@ end
 Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
 and `vn`'s symbol is in the space of `spl`.
 """
-function updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
+function updategid!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, spl::Sampler)
     if inspace(vn, getspace(spl))
         setgid!(vi, spl.selector, vn)
     end
