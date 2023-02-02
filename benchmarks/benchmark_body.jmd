@@ -8,7 +8,7 @@ m = time_model_def(model_def, data...);
 
 ```julia
 suite = make_suite(m);
-results = run(suite, seconds=WEAVE_ARGS[:seconds]);
+results = run(suite; seconds=WEAVE_ARGS[:seconds]);
 ```
 
 ```julia
@@ -44,7 +44,9 @@ end
 ```
 
 ```julia; echo=false; results="hidden";
-BenchmarkTools.save(joinpath("results", WEAVE_ARGS[:name], "$(nameof(m))_benchmarks.json"), results)
+BenchmarkTools.save(
+    joinpath("results", WEAVE_ARGS[:name], "$(nameof(m))_benchmarks.json"), results
+)
 ```
 
 ```julia; wrap=false; echo=false
