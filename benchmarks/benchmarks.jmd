@@ -40,7 +40,7 @@ weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 #### `demo2`
 
 ```julia
-@model function demo2(y) 
+@model function demo2(y)
     # Our prior belief about the probability of heads in a coin.
     p ~ Beta(1, 1)
 
