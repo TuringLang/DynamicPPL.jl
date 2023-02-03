@@ -686,7 +686,7 @@ Simple model for which [`default_transformation`](@ref) returns a [`StaticTransf
 end
 
 function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
-    b = Bijectors.stack(exp, identity)
+    b = Bijectors.stack(Bijectors.elementwise(exp), identity)
     return DynamicPPL.StaticTransformation(b)
 end
 
