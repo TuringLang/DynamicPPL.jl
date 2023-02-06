@@ -271,14 +271,19 @@ getmetadata(vi::TypedVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
 
 Return the index of `vn` in the metadata of `vi` corresponding to `vn`.
 """
-getidx(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).idcs[vn]
+getidx(vi::VarInfo, vn::VarName) = getidx(getmetadata(vi, vn), vn)
+getidx(md::Metadata, vn::VarName) = md.idcs[vn]
 
 """
     getrange(vi::VarInfo, vn::VarName)
 
 Return the index range of `vn` in the metadata of `vi`.
 """
-getrange(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).ranges[getidx(vi, vn)]
+getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
+getrange(md::Metadata, vn::VarName) = md.ranges[getidx(md, vn)]
+
+setrange!(vi::VarInfo, vn::VarName, range) = setrange!(getmetadata(vi, vn), vn, range)
+setrange!(md::Metadata, vn::VarName, range) = md.ranges[getidx(md, vn)] = range
 
 """
     getranges(vi::VarInfo, vns::Vector{<:VarName})
@@ -294,7 +299,8 @@ end
 
 Return the distribution from which `vn` was sampled in `vi`.
 """
-getdist(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).dists[getidx(vi, vn)]
+getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
+getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
 
 """
     getval(vi::VarInfo, vn::VarName)
@@ -303,7 +309,8 @@ Return the value(s) of `vn`.
 
 The values may or may not be transformed to Euclidean space.
 """
-getval(vi::VarInfo, vn::VarName) = view(getmetadata(vi, vn).vals, getrange(vi, vn))
+getval(vi::VarInfo, vn::VarName) = getval(getmetadata(vi, vn), vn)
+getval(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
 
 """
     setval!(vi::VarInfo, val, vn::VarName)
@@ -312,7 +319,8 @@ Set the value(s) of `vn` in the metadata of `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-setval!(vi::VarInfo, val, vn::VarName) = getmetadata(vi, vn).vals[getrange(vi, vn)] = [val;]
+setval!(vi::VarInfo, val, vn::VarName) = setval!(getmetadata(vi, vn), val, vn)
+setval!(md::Metadata, val, vn::VarName) = md.vals[getrange(md, vn)] = [val;]
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
@@ -321,9 +329,7 @@ Return the value(s) of `vns`.
 
 The values may or may not be transformed to Euclidean space.
 """
-function getval(vi::VarInfo, vns::Vector{<:VarName})
-    return mapreduce(vn -> getval(vi, vn), vcat, vns)
-end
+getval(vi::VarInfo, vns::Vector{<:VarName}) = mapreduce(Base.Fix1(getval, vi), vcat, vns)
 
 """
     getall(vi::VarInfo)
