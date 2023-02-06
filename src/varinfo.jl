@@ -902,8 +902,12 @@ link(vi, vn, dist, val) = link(dist, val)
 invlink(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
 invlink(vi, vn, dist, val) = invlink(dist, val)
 
-maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
-maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
+function maybe_link(vi, vn, dist, val)
+    return istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
+end
+function maybe_invlink(vi, vn, dist, val)
+    return istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
+end
 
 # Special cases.
 function invlink(dist::LKJ, val::AbstractVector{<:Real})
