@@ -513,6 +513,8 @@ function get_and_set_val!(
             end
         else
             # r = reshape(vi[vec(vns)], size(vns))
+            # FIXME: Remove `reconstruct` in `getindex_raw(::VarInfo, ...)`
+            # and fix the lines below.
             r_raw = getindex_raw(vi, vec(vns))
             r = maybe_invlink.((vi,), vns, dists, reshape(r_raw, size(vns)))
         end
