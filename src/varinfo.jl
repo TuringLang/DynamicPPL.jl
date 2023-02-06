@@ -897,22 +897,17 @@ function with_logabsdet_jacobian_and_reconstruct(
     return with_logabsdet_jacobian(f, x)
 end
 
-link(dist, val) = Bijectors.link(dist, val)
+# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
+link(dist, val) = Bijectors.link(dist, reconstruct(dist, val))
 link(vi, vn, dist, val) = link(dist, val)
-invlink(dist, val) = Bijectors.invlink(dist, val)
+
+invlink(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
 invlink(vi, vn, dist, val) = invlink(dist, val)
+
 maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
 maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
 
-# Assumes we're receiving the raw value from the varinfo
-link(vi::VarInfo, vn, dist, val::AbstractVector{<:Real}) = link(dist, reconstruct(dist, val))
-
-# Assumes we're receiving the raw value from the varinfo
-function invlink(dist, val::AbstractVector{<:Real})
-    linked_val = Bijectors.invlink(dist, reconstruct(dist, val))
-    return linked_val
-end
-
+# Special cases.
 function invlink(dist::LKJ, val::AbstractVector{<:Real})
     # Reconstruction already occurs in `invlink` here.
     return Bijectors.invlink(dist, val)
