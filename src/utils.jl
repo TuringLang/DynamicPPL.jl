@@ -190,7 +190,6 @@ reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = val
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = val
 # TODO: Implement no-op `reconstruct` for general array variates.
 
-
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
 reconstruct(::Tuple{}, val::AbstractVector) = val[1]
 reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)

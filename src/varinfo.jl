@@ -874,7 +874,7 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     # Determine the new range.
     start = first(getrange(vi, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
-    setrange!(vi, vn, start:start + length(yvec) - 1)
+    setrange!(vi, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(vi, yvec, vn)
     acclogp!!(vi, -logjac)
@@ -889,9 +889,7 @@ function with_logabsdet_jacobian_and_reconstruct(dist, f, x)
 end
 
 function with_logabsdet_jacobian_and_reconstruct(
-    ::LKJ,
-    f::Bijectors.Inverse{Bijectors.VecCorrBijector},
-    x::AbstractVector
+    ::LKJ, f::Bijectors.Inverse{Bijectors.VecCorrBijector}, x::AbstractVector
 )
     # "Reconstruction" occurs in the `LKJ` bijector.
     return with_logabsdet_jacobian(f, x)
