@@ -873,7 +873,7 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     yvec = vectorize(dist, y)
     # Determine the new range.
     start = first(getrange(vi, vn))
-    # NOTE: `length(yvec)` should always be longer than `getrange(vi, vn)`.
+    # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
     setrange!(vi, vn, start:start + length(yvec) - 1)
     # Set the new value.
     setval!(vi, yvec, vn)
