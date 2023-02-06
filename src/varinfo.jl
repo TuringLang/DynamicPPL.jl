@@ -338,15 +338,9 @@ Return the values of all the variables in `vi`.
 
 The values may or may not be transformed to Euclidean space.
 """
-getall(vi::UntypedVarInfo) = vi.metadata.vals
-getall(vi::TypedVarInfo) = vcat(_getall(vi.metadata)...)
-@generated function _getall(metadata::NamedTuple{names}) where {names}
-    exprs = []
-    for f in names
-        push!(exprs, :(metadata.$f.vals))
-    end
-    return :($(exprs...),)
-end
+getall(vi::UntypedVarInfo) = getall(vi.metadata)
+getall(vi::TypedVarInfo) = mapreduce(getall, vcat, vi.metadata)
+getall(md::Metadata) = mapreduce(Base.Fix1(getval, md), vcat, md.vns)
 
 """
     setall!(vi::VarInfo, val)
