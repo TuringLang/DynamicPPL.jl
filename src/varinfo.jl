@@ -874,7 +874,7 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     # Determine the new range.
     start = first(getrange(vi, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
-    setrange!(vi, vn, start:start + length(yvec) - 1)
+    setrange!(vi, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(vi, yvec, vn)
     acclogp!!(vi, -logjac)
@@ -889,9 +889,7 @@ function with_logabsdet_jacobian_and_reconstruct(dist, f, x)
 end
 
 function with_logabsdet_jacobian_and_reconstruct(
-    ::LKJ,
-    f::Bijectors.Inverse{Bijectors.VecCorrBijector},
-    x::AbstractVector
+    ::LKJ, f::Bijectors.Inverse{Bijectors.VecCorrBijector}, x::AbstractVector
 )
     # "Reconstruction" occurs in the `LKJ` bijector.
     return with_logabsdet_jacobian(f, x)
@@ -901,11 +899,17 @@ link(dist, val) = Bijectors.link(dist, val)
 link(vi, vn, dist, val) = link(dist, val)
 invlink(dist, val) = Bijectors.invlink(dist, val)
 invlink(vi, vn, dist, val) = invlink(dist, val)
-maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
-maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
+function maybe_link(vi, vn, dist, val)
+    return istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
+end
+function maybe_invlink(vi, vn, dist, val)
+    return istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
+end
 
 # Assumes we're receiving the raw value from the varinfo
-link(vi::VarInfo, vn, dist, val::AbstractVector{<:Real}) = link(dist, reconstruct(dist, val))
+function link(vi::VarInfo, vn, dist, val::AbstractVector{<:Real})
+    return link(dist, reconstruct(dist, val))
+end
 
 # Assumes we're receiving the raw value from the varinfo
 function invlink(dist, val::AbstractVector{<:Real})
