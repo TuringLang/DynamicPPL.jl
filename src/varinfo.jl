@@ -750,15 +750,8 @@ function _link!(vi::UntypedVarInfo, spl::Sampler)
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
-            @debug "X -> ℝ for $(vn)..."
             dist = getdist(vi, vn)
-            # TODO: Use inplace versions to avoid allocations
-            b = bijector(dist)
-            x = reconstruct(dist, getval(vi, vn))
-            y, logjac = with_logabsdet_jacobian(b, x)
-            setval!(vi, vectorize(dist, y), vn)
-            acclogp!!(vi, -logjac)
-            settrans!!(vi, true, vn)
+            _inner_transform!(vi, vn, dist, bijector(dist))
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -784,14 +777,8 @@ end
                     if ~istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            @debug "X -> R for $(vn)..."
                             dist = getdist(vi, vn)
-                            x = reconstruct(dist, getval(vi, vn))
-                            b = bijector(dist)
-                            y, logjac = with_logabsdet_jacobian(b, x)
-                            setval!(vi, vectorize(dist, y), vn)
-                            acclogp!!(vi, -logjac)
-                            settrans!!(vi, true, vn)
+                            _inner_transform!(vi, vn, dist, bijector(dist))
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -845,14 +832,8 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
-            @debug "ℝ -> X for $(vn)..."
             dist = getdist(vi, vn)
-            y = reconstruct(dist, getval(vi, vn))
-            b = inverse(bijector(dist))
-            x, logjac = with_logabsdet_jacobian(b, y)
-            setval!(vi, vectorize(dist, x), vn)
-            acclogp!!(vi, -logjac)
-            settrans!!(vi, false, vn)
+            _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -878,14 +859,8 @@ end
                     if istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            @debug "ℝ -> X for $(vn)..."
                             dist = getdist(vi, vn)
-                            y = reconstruct(dist, getval(vi, vn))
-                            b = inverse(bijector(dist))
-                            x, logjac = with_logabsdet_jacobian(b, y)
-                            setval!(vi, vectorize(dist, x), vn)
-                            acclogp!!(vi, -logjac)
-                            settrans!!(vi, false, vn)
+                            _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -897,10 +872,57 @@ end
     return expr
 end
 
-link(vi, vn, dist, val) = Bijectors.link(dist, val)
-invlink(vi, vn, dist, val) = Bijectors.invlink(dist, val)
-maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : val
-maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : val
+function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
+    @debug "X -> ℝ for $(vn)..."
+    # TODO: Use inplace versions to avoid allocations
+    y, logjac = with_logabsdet_jacobian_and_reconstruct(dist, f, getval(vi, vn))
+    yvec = vectorize(dist, y)
+    # Determine the new range.
+    start = first(getrange(vi, vn))
+    # NOTE: `length(yvec)` should always be longer than `getrange(vi, vn)`.
+    setrange!(vi, vn, start:start + length(yvec) - 1)
+    # Set the new value.
+    setval!(vi, yvec, vn)
+    acclogp!!(vi, -logjac)
+    settrans!!(vi, true, vn)
+    return vi
+end
+
+# TODO: Clean up all this linking stuff once and for all!
+function with_logabsdet_jacobian_and_reconstruct(dist, f, x)
+    x_recon = reconstruct(dist, x)
+    return with_logabsdet_jacobian(f, x_recon)
+end
+
+function with_logabsdet_jacobian_and_reconstruct(
+    ::LKJ,
+    f::Bijectors.Inverse{Bijectors.VecCorrBijector},
+    x::AbstractVector
+)
+    # "Reconstruction" occurs in the `LKJ` bijector.
+    return with_logabsdet_jacobian(f, x)
+end
+
+link(dist, val) = Bijectors.link(dist, val)
+link(vi, vn, dist, val) = link(dist, val)
+invlink(dist, val) = Bijectors.invlink(dist, val)
+invlink(vi, vn, dist, val) = invlink(dist, val)
+maybe_link(vi, vn, dist, val) = istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
+maybe_invlink(vi, vn, dist, val) = istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
+
+# Assumes we're receiving the raw value from the varinfo
+link(vi::VarInfo, vn, dist, val::AbstractVector{<:Real}) = link(dist, reconstruct(dist, val))
+
+# Assumes we're receiving the raw value from the varinfo
+function invlink(dist, val::AbstractVector{<:Real})
+    linked_val = Bijectors.invlink(dist, reconstruct(dist, val))
+    return linked_val
+end
+
+function invlink(dist::LKJ, val::AbstractVector{<:Real})
+    # Reconstruction already occurs in `invlink` here.
+    return Bijectors.invlink(dist, val)
+end
 
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
@@ -933,7 +955,7 @@ end
 getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
 function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    val = getindex_raw(vi, vn, dist)
+    val = getval(vi, vn)
     return maybe_invlink(vi, vn, dist, val)
 end
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
