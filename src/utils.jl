@@ -791,7 +791,9 @@ function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
     # HACK: If it's not an array, we fall back to just returning the first value.
     return first(chain[iteration_idx, Symbol(vn_parent), chain_idx])
 end
-function values_from_chain(x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx) where {sym}
+function values_from_chain(
+    x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
+) where {sym}
     # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
     # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
     # to extract the value from the `chain`.
@@ -801,7 +803,7 @@ function values_from_chain(x::AbstractArray, vn_parent::VarName{sym}, chain, cha
         Setfield.set(
             x,
             BangBang.prefermutation(l),
-            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx]
+            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx],
         )
     end
 end
