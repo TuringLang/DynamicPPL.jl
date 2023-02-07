@@ -789,7 +789,7 @@ end
 
 function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
     # HACK: If it's not an array, we fall back to just returning the first value.
-    return first(chain[iteration_idx, Symbol(vn_parent), chain_idx])
+    return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
 end
 function values_from_chain(
     x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
