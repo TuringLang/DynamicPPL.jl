@@ -779,7 +779,7 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx)
+            vn_parent => values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx)
             for vn_parent in keys(var_info)
         )
         loglikelihood(model, argvals_dict)
