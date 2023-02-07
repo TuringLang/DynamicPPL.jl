@@ -682,11 +682,10 @@ julia> logjoint(demo_model([1., 2.]), chain);
 ```   
 """
 function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-    vi = VarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in varname_leaves(vn_parent, vi[vn_parent])
+            vn_parent => values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for vn_parent in keys(var_info)
         )
         loglikelihood(model, argvals_dict) + logprior(model, argvals_dict)
     end
@@ -728,11 +727,10 @@ julia> logprior(demo_model([1., 2.]), chain);
 ```   
 """
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    vi = VarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in varname_leaves(vn_parent, vi[vn_parent])
+            vn_parent => values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for vn_parent in keys(var_info)
         )
         logprior(model, argvals_dict)
     end
@@ -774,11 +772,10 @@ julia> loglikelihood(demo_model([1., 2.]), chain);
 ```  
 """
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-    vi = VarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
-            vn => chain[iteration_idx, Symbol(vn), chain_idx] for vn_parent in keys(vi) for
-            vn in varname_leaves(vn_parent, vi[vn_parent])
+            vn => values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for vn_parent in keys(var_info)
         )
         loglikelihood(model, argvals_dict)
     end

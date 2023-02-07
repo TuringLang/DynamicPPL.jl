@@ -786,3 +786,26 @@ function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     end
     return Iterators.flatten(iter)
 end
+
+function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
+    # HACK: If it's not an array, we fall back to just returning the first value.
+    return first(chain[iteration_idx, Symbol(vn_parent), chain_idx])
+end
+function values_from_chain(x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx) where {sym}
+    # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
+    # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
+    # to extract the value from the `chain`.
+    return reduce(varname_leaves(VarName{sym}(), x); init=similar(x)) do x, vn
+        # Update `x`, possibly in place, and return.
+        l = AbstractPPL.getlens(vn)
+        Setfield.set(
+            x,
+            BangBang.prefermutation(l),
+            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx]
+        )
+    end
+end
+function values_from_chain(vi::AbstractVarInfo, vn_parent, chain, chain_idx, iteration_idx)
+    # Use the value `vi[vn_parent]` to obtain a buffer.
+    return values_from_chain(vi[vn_parent], vn_parent, chain, chain_idx, iteration_idx)
+end
