@@ -13,11 +13,8 @@ function test_model_ad(model, logp_manual)
     x = DynamicPPL.getall(vi)
 
     # Log probabilities using the model.
-    function logp_model(x)
-        new_vi = VarInfo(vi, SampleFromPrior(), x)
-        model(new_vi)
-        return getlogp(new_vi)
-    end
+    ℓ = DynamicPPL.LogDensityFunction(model, vi)
+    logp_model = Base.Fix1(LogDensityProblems.logdensity, ℓ)
 
     # Check that both functions return the same values.
     lp = logp_manual(x)
