@@ -211,7 +211,7 @@ function assume(
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            BangBang.setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r)), vn)
+            BangBang.setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r)), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -220,7 +220,7 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            push!!(vi, vn, link(dist, r), dist, sampler)
+            push!!(vi, vn, link_and_reconstruct(dist, r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
@@ -470,7 +470,7 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[:, i])), vn)
+                setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[:, i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -508,7 +508,7 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                setindex!!(vi, vectorize(dist, maybe_link(vi, vn, dist, r[i])), vn)
+                setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[i])), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -516,7 +516,7 @@ function get_and_set_val!(
             # FIXME: Remove `reconstruct` in `getindex_raw(::VarInfo, ...)`
             # and fix the lines below.
             r_raw = getindex_raw(vi, vec(vns))
-            r = maybe_invlink.((vi,), vns, dists, reshape(r_raw, size(vns)))
+            r = maybe_invlink_and_reconstruct.((vi,), vns, dists, reshape(r_raw, size(vns)))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
@@ -527,7 +527,7 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, link.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, link_and_reconstruct.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.

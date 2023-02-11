@@ -869,7 +869,7 @@ end
 function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     @debug "X -> ℝ for $(vn)..."
     # TODO: Use inplace versions to avoid allocations
-    y, logjac = with_logabsdet_jacobian_and_reconstruct(dist, f, getval(vi, vn))
+    y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
     yvec = vectorize(dist, y)
     # Determine the new range.
     start = first(getrange(vi, vn))
@@ -880,39 +880,6 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     acclogp!!(vi, -logjac)
     settrans!!(vi, true, vn)
     return vi
-end
-
-# TODO: Clean up all this linking stuff once and for all!
-function with_logabsdet_jacobian_and_reconstruct(dist, f, x)
-    x_recon = reconstruct(dist, x)
-    return with_logabsdet_jacobian(f, x_recon)
-end
-
-function with_logabsdet_jacobian_and_reconstruct(
-    ::LKJ, f::Bijectors.Inverse{Bijectors.VecCorrBijector}, x::AbstractVector
-)
-    # "Reconstruction" occurs in the `LKJ` bijector.
-    return with_logabsdet_jacobian(f, x)
-end
-
-# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
-link(dist, val) = Bijectors.link(dist, reconstruct(dist, val))
-link(vi, vn, dist, val) = link(dist, val)
-
-invlink(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
-invlink(vi, vn, dist, val) = invlink(dist, val)
-
-function maybe_link(vi, vn, dist, val)
-    return istrans(vi, vn) ? link(vi, vn, dist, val) : reconstruct(dist, val)
-end
-function maybe_invlink(vi, vn, dist, val)
-    return istrans(vi, vn) ? invlink(vi, vn, dist, val) : reconstruct(dist, val)
-end
-
-# Special cases.
-function invlink(dist::LKJ, val::AbstractVector{<:Real})
-    # Reconstruction already occurs in `invlink` here.
-    return Bijectors.invlink(dist, val)
 end
 
 """
@@ -947,7 +914,7 @@ getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
 function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getval(vi, vn)
-    return maybe_invlink(vi, vn, dist, val)
+    return maybe_invlink_and_reconstruct(vi, vn, dist, val)
 end
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
     # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases

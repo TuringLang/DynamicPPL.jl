@@ -553,7 +553,72 @@ variables `x` would return
 """
 function tonamedtuple end
 
+# TODO: Clean up all this linking stuff once and for all!
+"""
+    with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+
+Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
+value is reconstructed to the correct type and shape according to `dist`.
+"""
+function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+    x_recon = reconstruct(dist, x)
+    return with_logabsdet_jacobian(f, x_recon)
+end
+
+function with_logabsdet_jacobian_and_reconstruct(
+    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, x::AbstractVector
+)
+    # "Reconstruction" occurs in the `LKJ` bijector.
+    return with_logabsdet_jacobian(f, x)
+end
+
+# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
+"""
+    link_and_reconstruct(dist, val)
+    link_and_reconstruct(vi::AbstractVarInfo, vi::VarName, dist, val)
+
+Return linked and reconstructed `val`.
+"""
+link_and_reconstruct(dist, val) = Bijectors.link(dist, reconstruct(dist, val))
+link_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val) = link_and_reconstruct(dist, val)
+
+"""
+    invlink_and_reconstruct(dist, val)
+    invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return invlinked and reconstructed `val`.
+
+See also: [`reconstruct`](@ref).
+"""
+invlink_and_reconstruct(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
+invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val) = invlink_and_reconstruct(dist, val)
+
+"""
+    maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
+"""
+function maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    return istrans(vi, vn) ? link_and_reconstruct(vi, vn, dist, val) : reconstruct(dist, val)
+end
+
+"""
+    maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
+"""
+function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    return istrans(vi, vn) ? invlink_and_reconstruct(vi, vn, dist, val) : reconstruct(dist, val)
+end
+
+# Special cases.
+function invlink_and_reconstruct(dist::LKJ, val::AbstractVector{<:Real})
+    # Reconstruction already occurs in `invlink` here.
+    return Bijectors.invlink(dist, val)
+end
+
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
 setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
+
