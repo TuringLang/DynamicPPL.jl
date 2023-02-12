@@ -282,6 +282,11 @@ Return the index range of `vn` in the metadata of `vi`.
 getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
 getrange(md::Metadata, vn::VarName) = md.ranges[getidx(md, vn)]
 
+"""
+    setrange!(vi::VarInfo, vn::VarName, range)
+
+Set the index range of `vn` in the metadata of `vi` to `range`.
+"""
 setrange!(vi::VarInfo, vn::VarName, range) = setrange!(getmetadata(vi, vn), vn, range)
 setrange!(md::Metadata, vn::VarName, range) = md.ranges[getidx(md, vn)] = range
 
