@@ -580,7 +580,9 @@ end
 Return linked and reconstructed `val`.
 """
 link_and_reconstruct(dist, val) = Bijectors.link(dist, reconstruct(dist, val))
-link_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val) = link_and_reconstruct(dist, val)
+function link_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
+    return link_and_reconstruct(dist, val)
+end
 
 """
     invlink_and_reconstruct(dist, val)
@@ -591,7 +593,9 @@ Return invlinked and reconstructed `val`.
 See also: [`reconstruct`](@ref).
 """
 invlink_and_reconstruct(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
-invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val) = invlink_and_reconstruct(dist, val)
+function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
+    return invlink_and_reconstruct(dist, val)
+end
 
 """
     maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
@@ -599,7 +603,11 @@ invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val) = invlink_and_r
 Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
 function maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return istrans(vi, vn) ? link_and_reconstruct(vi, vn, dist, val) : reconstruct(dist, val)
+    return if istrans(vi, vn)
+        link_and_reconstruct(vi, vn, dist, val)
+    else
+        reconstruct(dist, val)
+    end
 end
 
 """
@@ -608,7 +616,11 @@ end
 Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
 """
 function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return istrans(vi, vn) ? invlink_and_reconstruct(vi, vn, dist, val) : reconstruct(dist, val)
+    return if istrans(vi, vn)
+        invlink_and_reconstruct(vi, vn, dist, val)
+    else
+        reconstruct(dist, val)
+    end
 end
 
 # Special cases.
@@ -621,4 +633,3 @@ end
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
 setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
-

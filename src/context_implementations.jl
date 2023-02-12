@@ -211,7 +211,9 @@ function assume(
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            BangBang.setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r)), vn)
+            BangBang.setindex!!(
+                vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r)), vn
+            )
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -470,7 +472,11 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[:, i])), vn)
+                setindex!!(
+                    vi,
+                    vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[:, i])),
+                    vn,
+                )
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -508,7 +514,9 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                setindex!!(vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[i])), vn)
+                setindex!!(
+                    vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[i])), vn
+                )
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else

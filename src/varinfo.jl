@@ -340,7 +340,9 @@ The values may or may not be transformed to Euclidean space.
 """
 getall(vi::UntypedVarInfo) = getall(vi.metadata)
 getall(vi::TypedVarInfo) = mapreduce_tuple(getall, vcat, vi.metadata)
-getall(md::Metadata) = mapreduce(Base.Fix1(getval, md), vcat, md.vns; init=similar(md.vals, 0))
+function getall(md::Metadata)
+    return mapreduce(Base.Fix1(getval, md), vcat, md.vns; init=similar(md.vals, 0))
+end
 
 """
     setall!(vi::VarInfo, val)

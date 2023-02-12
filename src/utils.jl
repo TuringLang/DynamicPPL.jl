@@ -793,7 +793,6 @@ function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     return Iterators.flatten(iter)
 end
 
-
 """
     mapreduce_tuple(f, op, tup[, init])
 
