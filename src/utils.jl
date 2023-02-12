@@ -173,6 +173,7 @@ end
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
+vectorize(d, r) = vec(r)
 vectorize(d::UnivariateDistribution, r::Real) = [r]
 vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
 vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))

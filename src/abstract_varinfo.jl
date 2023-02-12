@@ -554,8 +554,14 @@ variables `x` would return
 function tonamedtuple end
 
 # TODO: Clean up all this linking stuff once and for all!
+link_transform(dist) = bijector(dist)
+link_transform(::LKJ) = Bijectors.VecCorrBijector()
+
+invlink_transform(dist) = inverse(bijector(dist))
+invlink_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
+
 """
-    with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+    with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
 
 Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
 value is reconstructed to the correct type and shape according to `dist`.
@@ -581,7 +587,8 @@ end
 
 Return linked and reconstructed `val`.
 """
-link_and_reconstruct(dist, val) = Bijectors.link(dist, reconstruct(dist, val))
+link_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
+link_and_reconstruct(dist, val) = link_and_reconstruct(link_transform(dist), dist, val)
 function link_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
     return link_and_reconstruct(dist, val)
 end
@@ -594,7 +601,8 @@ Return invlinked and reconstructed `val`.
 
 See also: [`reconstruct`](@ref).
 """
-invlink_and_reconstruct(dist, val) = Bijectors.invlink(dist, reconstruct(dist, val))
+invlink_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
+invlink_and_reconstruct(dist, val) = invlink_and_reconstruct(invlink_transform(dist), dist, val)
 function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
     return invlink_and_reconstruct(dist, val)
 end
@@ -626,9 +634,9 @@ function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, v
 end
 
 # Special cases.
-function invlink_and_reconstruct(dist::LKJ, val::AbstractVector{<:Real})
+function invlink_and_reconstruct(f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector{<:Real})
     # Reconstruction already occurs in `invlink` here.
-    return Bijectors.invlink(dist, val)
+    return f(val)
 end
 
 # Legacy code that is currently overloaded for the sake of simplicity.

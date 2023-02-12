@@ -752,7 +752,7 @@ function _link!(vi::UntypedVarInfo, spl::Sampler)
     if ~istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, bijector(dist))
+            _inner_transform!(vi, vn, dist, link_transform(dist))
             settrans!!(vi, true, vn)
         end
     else
@@ -780,7 +780,7 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist, bijector(dist))
+                            _inner_transform!(vi, vn, dist, link_transform(dist))
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -836,7 +836,7 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     if istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
+            _inner_transform!(vi, vn, dist, invlink_transform(dist))
             settrans!!(vi, false, vn)
         end
     else
@@ -864,7 +864,7 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
+                            _inner_transform!(vi, vn, dist, invlink_transform(dist))
                             settrans!!(vi, false, vn)
                         end
                     else
