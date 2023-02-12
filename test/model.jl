@@ -59,7 +59,10 @@ end
                     print(key)
                     if length(vals_OrderedDict[1][key]) > 1
                         # splat the key
-                        spatted_key_names = [Symbol(String(Symbol(key))*"[$kk]") for kk in 1:length(vals_OrderedDict[1][key])]
+                        spatted_key_names = [
+                            Symbol(String(Symbol(key)) * "[$kk]") for
+                            kk in 1:length(vals_OrderedDict[1][key])
+                        ]
                         push!(symbol_names, Symbol.(spatted_key_names)...)
                     else
                         push!(symbol_names, Symbol(key))
@@ -68,14 +71,21 @@ end
             else
                 symbol_names = keys(var_info)
             end
-            if typeof(model) <: Union{Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)}} # some parameter names need to be splatted
-                symbol_names = [Symbol(String(Symbol(vns[k]))*"[$kk]") for k in 1:length(vns) for kk in 1:size(vals_mat[k,1],1)]
+            if typeof(model) <: Union{
+                Model{
+                    typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)
+                },
+            } # some parameter names need to be splatted
+                symbol_names = [
+                    Symbol(String(Symbol(vns[k])) * "[$kk]") for k in 1:length(vns) for
+                    kk in 1:size(vals_mat[k, 1], 1)
+                ]
             end
             chain = Chains(chain_mat, symbol_names)
             # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
             reps = Dict()
             for sym in syms
-                reps[sym] =  count(i->contains(String(i), String(sym)), keys(chain))
+                reps[sym] = count(i -> contains(String(i), String(sym)), keys(chain))
             end
             # calculate the pointwise loglikelihoods for the whole chain
             logpriors = logprior(model, chain)
@@ -87,16 +97,25 @@ end
                 samples_dict = Dict()
                 for sym in syms
                     if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
-                        chain_param_names = [key for key in keys(chain) if contains(String(key), String(sym))]
-                        samples_dict[sym] = [chain[i, chain_param_name, 1] for chain_param_name in chain_param_names]
+                        chain_param_names = [
+                            key for key in keys(chain) if contains(String(key), String(sym))
+                        ]
+                        samples_dict[sym] = [
+                            chain[i, chain_param_name, 1] for
+                            chain_param_name in chain_param_names
+                        ]
                     else
                         samples_dict[sym] = chain[i, Symbol(sym), 1]
                     end
                 end
                 samples = (; samples_dict...)
-                @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
-                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(model, samples[:s], samples[:m])
-                @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+                @test logpriors[i] ≈
+                    DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
+                    model, samples[:s], samples[:m]
+                )
+                @test logjoints[i] ≈
+                    DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
         end
     end
