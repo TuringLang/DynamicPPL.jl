@@ -746,6 +746,7 @@ function _link!(vi::UntypedVarInfo, spl::Sampler)
         for vn in vns
             dist = getdist(vi, vn)
             _inner_transform!(vi, vn, dist, bijector(dist))
+            settrans!!(vi, true, vn)
         end
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -773,6 +774,7 @@ end
                         for vn in f_vns
                             dist = getdist(vi, vn)
                             _inner_transform!(vi, vn, dist, bijector(dist))
+                            settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -828,6 +830,7 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
         for vn in vns
             dist = getdist(vi, vn)
             _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
+            settrans!!(vi, false, vn)
         end
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -855,6 +858,7 @@ end
                         for vn in f_vns
                             dist = getdist(vi, vn)
                             _inner_transform!(vi, vn, dist, inverse(bijector(dist)))
+                            settrans!!(vi, false, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -878,7 +882,6 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     # Set the new value.
     setval!(vi, yvec, vn)
     acclogp!!(vi, -logjac)
-    settrans!!(vi, true, vn)
     return vi
 end
 
