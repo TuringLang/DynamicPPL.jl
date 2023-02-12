@@ -38,30 +38,66 @@ end
         @test ljoint ≈ lp
 
         # logprior, logjoint, loglikelihood for MCMC chains 
-        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
-        vns = DynamicPPL.TestUtils.varnames(model)
-        syms = unique(DynamicPPL.getsym, vns)
-        # generate a chain of sample parameter values.
-        N = 200
-        vals = mapreduce(hcat, 1:N) do _
-            samples = rand(OrderedDict, model)
-        end
-        chain = Chains(vals', [Symbol(vn) for vn in vns])
-        # calculate the pointwise loglikelihoods for the whole chain
-        logpriors = logprior(model, chain)
-        loglikelihoods = loglikelihood(model, chain)
-        logjoints = logjoint(model, chain)
-        # compare them with true values
-        for i in 1:N
-            samples = [
-                [chain[i, Symbol(vn), 1] for vn in vns if DynamicPPL.getsym(vn) === sym] for
-                sym in syms
-            ]
-            @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples...)
-            @test loglikelihoods[i] ≈
-                DynamicPPL.TestUtils.loglikelihood_true(model, samples...)
-            @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples...)
-        end
+        for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            syms = unique(DynamicPPL.getsym.(vns))
+            # generate a chain of sample parameter values.
+            N = 200
+            vals_OrderedDict = mapreduce(hcat, 1:N) do _
+                rand(OrderedDict, model)
+            end
+            vals_mat = mapreduce(hcat, 1:N) do i
+                [vals_OrderedDict[i][vn] for vn in vns]
+            end
+            vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
+            chain_mat = vcat(vec_of_vec...)
+            # devise parameter names for chain
+            symbol_names = []
+            if size(chain_mat, 2) != length(keys(var_info)) # some parameter names need to be splatted
+                # examine each vn in vns, and create splatted new variable symbol_names.
+                for key in keys(vals_OrderedDict[1])
+                    print(key)
+                    if length(vals_OrderedDict[1][key]) > 1
+                        # splat the key
+                        spatted_key_names = [Symbol(String(Symbol(key))*"[$kk]") for kk in 1:length(vals_OrderedDict[1][key])]
+                        push!(symbol_names, Symbol.(spatted_key_names)...)
+                    else
+                        push!(symbol_names, Symbol(key))
+                    end
+                end
+            else
+                symbol_names = keys(var_info)
+            end
+            if typeof(model) <: Union{Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)}} # some parameter names need to be splatted
+                symbol_names = [Symbol(String(Symbol(vns[k]))*"[$kk]") for k in 1:length(vns) for kk in 1:size(vals_mat[k,1],1)]
+            end
+            chain = Chains(chain_mat, symbol_names)
+            # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
+            reps = Dict()
+            for sym in syms
+                reps[sym] =  count(i->contains(String(i), String(sym)), keys(chain))
+            end
+            # calculate the pointwise loglikelihoods for the whole chain
+            logpriors = logprior(model, chain)
+            loglikelihoods = loglikelihood(model, chain)
+            logjoints = logjoint(model, chain)
+            # compare them with true values
+            for i in 1:N
+                # extract parameter values from chain: we need to aggregate the values belonging to the same parameter into a vector. 
+                samples_dict = Dict()
+                for sym in syms
+                    if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
+                        chain_param_names = [key for key in keys(chain) if contains(String(key), String(sym))]
+                        samples_dict[sym] = [chain[i, chain_param_name, 1] for chain_param_name in chain_param_names]
+                    else
+                        samples_dict[sym] = chain[i, Symbol(sym), 1]
+                    end
+                end
+                samples = (; samples_dict...)
+                @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(model, samples[:s], samples[:m])
+                @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+            end
     end
 
     @testset "rng" begin
@@ -142,7 +178,7 @@ end
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         spl = SampleFromPrior()
-        link!(vi, spl)
+        link!!(vi, spl, model) # `link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.
 
         for i in 1:10
             # Sample with large variations.

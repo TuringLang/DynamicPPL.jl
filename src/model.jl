@@ -689,7 +689,8 @@ function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        logjoint(model, argvals_dict)
+        # logjoint(model, argvals_dict)
+        loglikelihood(model, argvals_mat_dict) + logprior(model, argvals_mat_dict)
     end
 end
 
