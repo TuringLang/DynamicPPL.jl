@@ -39,7 +39,7 @@ end
 
         # logprior, logjoint, loglikelihood for MCMC chains 
         for model in DynamicPPL.TestUtils.DEMO_MODELS
-            var_info = VarInfo(model) 
+            var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
             # generate a chain of sample parameter values.
