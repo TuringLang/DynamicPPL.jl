@@ -572,6 +572,8 @@ function with_logabsdet_jacobian_and_reconstruct(
     return with_logabsdet_jacobian(f, x)
 end
 
+# TODO: Once we `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
+# just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
 """
     link_and_reconstruct(dist, val)
