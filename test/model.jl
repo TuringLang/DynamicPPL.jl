@@ -98,6 +98,7 @@ end
                 @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(model, samples[:s], samples[:m])
                 @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
+        end
     end
 
     @testset "rng" begin
