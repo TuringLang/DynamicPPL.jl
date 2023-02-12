@@ -339,8 +339,8 @@ Return the values of all the variables in `vi`.
 The values may or may not be transformed to Euclidean space.
 """
 getall(vi::UntypedVarInfo) = getall(vi.metadata)
-getall(vi::TypedVarInfo) = mapreduce(getall, vcat, vi.metadata)
-getall(md::Metadata) = mapreduce(Base.Fix1(getval, md), vcat, md.vns)
+getall(vi::TypedVarInfo) = mapreduce_tuple(getall, vcat, vi.metadata)
+getall(md::Metadata) = mapreduce(Base.Fix1(getval, md), vcat, md.vns; init=similar(md.vals, 0))
 
 """
     setall!(vi::VarInfo, val)

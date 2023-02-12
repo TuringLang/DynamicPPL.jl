@@ -792,3 +792,24 @@ function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     end
     return Iterators.flatten(iter)
 end
+
+
+"""
+    mapreduce_tuple(f, op, tup[, init])
+
+Apply function `f` to each element(s) in `tup` and reduce the results using `op`.
+
+This is in effect the same as `mapreduce` but specialized for tuples.
+
+In particular, this is generally more type-stable than standard `mapreduce`.
+"""
+mapreduce_tuple(f, op, ::Tuple{()}, acc) = acc
+mapreduce_tuple(f, op, ::NamedTuple{()}, acc) = acc
+function mapreduce_tuple(f, op, itr::NamedTuple, acc)
+    return mapreduce_tuple(f, op, Base.tail(itr), op(acc, f(first(itr))))
+end
+
+# Without initial value.
+function mapreduce_tuple(f, op, itr)
+    return mapreduce_tuple(f, op, Base.tail(itr), f(first(itr)))
+end
