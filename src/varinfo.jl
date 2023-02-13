@@ -155,7 +155,7 @@ end
     for f in names
         mdf = :(metadata.$f)
         if inspace(f, space) || length(space) == 0
-            len = :(length($mdf.vals))
+            len = :(sum(length, $mdf.ranges))
             push!(
                 exprs,
                 :(
