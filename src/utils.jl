@@ -805,7 +805,7 @@ In particular, this is generally more type-stable than standard `mapreduce`.
 """
 mapreduce_tuple(f, op, ::Tuple{()}, acc) = acc
 mapreduce_tuple(f, op, ::NamedTuple{()}, acc) = acc
-function mapreduce_tuple(f, op, itr::NamedTuple, acc)
+function mapreduce_tuple(f, op, itr, acc)
     return mapreduce_tuple(f, op, Base.tail(itr), op(acc, f(first(itr))))
 end
 
