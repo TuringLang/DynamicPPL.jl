@@ -77,10 +77,7 @@ end
             end
             chain = Chains(chain_mat, symbol_names)
             # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
-            reps = Dict()
-            for sym in syms
-                reps[sym] = count(i -> contains(String(i), String(sym)), keys(chain))
-            end
+            reps = Dict(sym => count(i -> contains(String(i), String(sym)), keys(chain)) for sym in syms)
             # calculate the pointwise loglikelihoods for the whole chain
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
