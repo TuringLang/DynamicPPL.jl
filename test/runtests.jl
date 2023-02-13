@@ -58,17 +58,7 @@ include("test_util.jl")
 
         @testset "doctests" begin
             DocMeta.setdocmeta!(
-                DynamicPPL,
-                :DocTestSetup,
-                :(using DynamicPPL,
-                    AbstractPPL,
-                    Distributions,
-                    MCMCChains,
-                    AbstractMCMC,
-                    LinearAlgebra,
-                    StableRNGs,
-                    Setfield);
-                recursive=true,
+                DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
             )
             doctestfilters = [
                 # Older versions will show "0 element Array" instead of "Type[]".

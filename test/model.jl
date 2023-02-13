@@ -53,18 +53,14 @@ end
             vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
             chain_mat = vcat(vec_of_vec...)
             # devise parameter names for chain
-            symbol_names = []
+            symbol_names = Symbol[]
             if size(chain_mat, 2) != length(keys(var_info)) # some parameter names need to be splatted
                 # examine each vn in vns, and create splatted new variable symbol_names.
-                for key in keys(vals_OrderedDict[1])
-                    print(key)
-                    if length(vals_OrderedDict[1][key]) > 1
-                        # splat the key
-                        spatted_key_names = [
-                            Symbol(String(Symbol(key)) * "[$kk]") for
-                            kk in 1:length(vals_OrderedDict[1][key])
-                        ]
-                        push!(symbol_names, Symbol.(spatted_key_names)...)
+                for (key, val) in vals_OrderedDict[1]
+                    if length(val) > 1
+                        for kk in 1:length(val)
+                            push!(symbol_names, Symbol(key, "[", kk, "]"))
+                        end
                     else
                         push!(symbol_names, Symbol(key))
                     end
@@ -72,14 +68,11 @@ end
             else
                 symbol_names = keys(var_info)
             end
-            if typeof(model) <: Union{
-                Model{
-                    typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)
-                },
-            } # some parameter names need to be splatted
+            if model isa Model{
+                typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)
+            }
                 symbol_names = [
-                    Symbol(String(Symbol(vns[k])) * "[$kk]") for k in 1:length(vns) for
-                    kk in 1:size(vals_mat[k, 1], 1)
+                    Symbol(vns[k], "[", kk, "]) for k in 1:length(vns) for kk in 1:size(vals_mat[k, 1], 1)
                 ]
             end
             chain = Chains(chain_mat, symbol_names)
@@ -199,7 +192,7 @@ end
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         spl = SampleFromPrior()
-        link!!(vi, spl, model) # `link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.
+        link!!(vi, spl, model)
 
         for i in 1:10
             # Sample with large variations.
