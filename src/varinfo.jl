@@ -344,7 +344,9 @@ Return the values of all the variables in `vi`.
 The values may or may not be transformed to Euclidean space.
 """
 getall(vi::UntypedVarInfo) = getall(vi.metadata)
-getall(vi::TypedVarInfo) = mapreduce_tuple(getall, vcat, vi.metadata)
+# NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
+# See for example https://github.com/JuliaLang/julia/pull/46381.
+getall(vi::TypedVarInfo) = reduce(vcat, map(getall, vi.metadata))
 function getall(md::Metadata)
     return mapreduce(Base.Fix1(getval, md), vcat, md.vns; init=similar(md.vals, 0))
 end
