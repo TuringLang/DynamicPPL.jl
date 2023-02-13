@@ -562,7 +562,6 @@ Returns the constrained-to-unconstrained bijector for distribution `dist`.
 By default, this is just `Bijectors.bijector(dist)`.
 """
 link_transform(dist) = bijector(dist)
-link_transform(::LKJ) = Bijectors.VecCorrBijector()
 
 """
     invlink_transform(dist)
@@ -572,7 +571,6 @@ Returns the unconstrained-to-constrained bijector for distribution `dist`.
 By default, this is just `inverse(Bijectors.bijector(dist))`.
 """
 invlink_transform(dist) = inverse(bijector(dist))
-invlink_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
 
 """
     with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
@@ -585,26 +583,25 @@ function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
 end
 
-function with_logabsdet_jacobian_and_reconstruct(
-    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, x::AbstractVector
-)
-    # "Reconstruction" occurs in the `LKJ` bijector.
-    return with_logabsdet_jacobian(f, x)
-end
-
 # TODO: Once we `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
 # just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
 """
-    link_and_reconstruct(dist, val)
-    link_and_reconstruct(vi::AbstractVarInfo, vi::VarName, dist, val)
+    reconstruct_and_link(dist, val)
+    reconstruct_and_link(vi::AbstractVarInfo, vi::VarName, dist, val)
 
-Return linked and reconstructed `val`.
+Return linked `val` but reconstruct before linking, if necessary.
+
+Note that unlike [`invlink_and_reconstruct`](@ref), this does not necessarily
+return a reconstructed value, i.e. a value of the same type and shape as expected
+by `dist`.
+
+See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
 """
-link_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
-link_and_reconstruct(dist, val) = link_and_reconstruct(link_transform(dist), dist, val)
-function link_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
-    return link_and_reconstruct(dist, val)
+reconstruct_and_link(f, dist, val) = f(reconstruct(dist, val))
+reconstruct_and_link(dist, val) = reconstruct_and_link(link_transform(dist), dist, val)
+function reconstruct_and_link(::AbstractVarInfo, ::VarName, dist, val)
+    return reconstruct_and_link(dist, val)
 end
 
 """
@@ -613,7 +610,7 @@ end
 
 Return invlinked and reconstructed `val`.
 
-See also: [`reconstruct`](@ref).
+See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
 """
 invlink_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
 function invlink_and_reconstruct(dist, val)
@@ -630,7 +627,7 @@ Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
 function maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
     return if istrans(vi, vn)
-        link_and_reconstruct(vi, vn, dist, val)
+        reconstruct_and_link(vi, vn, dist, val)
     else
         reconstruct(dist, val)
     end
@@ -650,6 +647,16 @@ function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, v
 end
 
 # Special cases.
+link_transform(::LKJ) = Bijectors.VecCorrBijector()
+invlink_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
+
+function with_logabsdet_jacobian_and_reconstruct(
+    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, x::AbstractVector
+)
+    # "Reconstruction" occurs in the `LKJ` bijector.
+    return with_logabsdet_jacobian(f, x)
+end
+
 function invlink_and_reconstruct(
     f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector{<:Real}
 )

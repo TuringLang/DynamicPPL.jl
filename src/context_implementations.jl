@@ -222,7 +222,7 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            push!!(vi, vn, link_and_reconstruct(dist, r), dist, sampler)
+            push!!(vi, vn, reconstruct_and_link(dist, r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
@@ -535,7 +535,7 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, link_and_reconstruct.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, reconstruct_and_link.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
