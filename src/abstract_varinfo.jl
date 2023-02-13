@@ -554,9 +554,23 @@ variables `x` would return
 function tonamedtuple end
 
 # TODO: Clean up all this linking stuff once and for all!
+"""
+    link_transform(dist)
+
+Returns the constrained-to-unconstrained bijector for distribution `dist`.
+
+By default, this is just `Bijectors.bijector(dist)`.
+"""
 link_transform(dist) = bijector(dist)
 link_transform(::LKJ) = Bijectors.VecCorrBijector()
 
+"""
+    invlink_transform(dist)
+
+Returns the unconstrained-to-constrained bijector for distribution `dist`.
+
+By default, this is just `inverse(Bijectors.bijector(dist))`.
+"""
 invlink_transform(dist) = inverse(bijector(dist))
 invlink_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
 
