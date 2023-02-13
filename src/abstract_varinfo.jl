@@ -568,9 +568,9 @@ link_transform(dist) = bijector(dist)
 
 Returns the unconstrained-to-constrained bijector for distribution `dist`.
 
-By default, this is just `inverse(Bijectors.bijector(dist))`.
+By default, this is just `inverse(link_transform(dist))`.
 """
-invlink_transform(dist) = inverse(bijector(dist))
+invlink_transform(dist) = inverse(link_transform(dist))
 
 """
     with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
@@ -648,7 +648,6 @@ end
 
 # Special cases.
 link_transform(::LKJ) = Bijectors.VecCorrBijector()
-invlink_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
 
 function with_logabsdet_jacobian_and_reconstruct(
     f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, x::AbstractVector
