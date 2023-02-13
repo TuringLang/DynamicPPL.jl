@@ -602,7 +602,9 @@ Return invlinked and reconstructed `val`.
 See also: [`reconstruct`](@ref).
 """
 invlink_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
-invlink_and_reconstruct(dist, val) = invlink_and_reconstruct(invlink_transform(dist), dist, val)
+function invlink_and_reconstruct(dist, val)
+    return invlink_and_reconstruct(invlink_transform(dist), dist, val)
+end
 function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
     return invlink_and_reconstruct(dist, val)
 end
@@ -634,7 +636,9 @@ function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, v
 end
 
 # Special cases.
-function invlink_and_reconstruct(f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector{<:Real})
+function invlink_and_reconstruct(
+    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector{<:Real}
+)
     # Reconstruction already occurs in `invlink` here.
     return f(val)
 end
