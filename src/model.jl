@@ -665,7 +665,7 @@ Return an array of log joint probabilities evaluated at each sample in an MCMC `
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains
+julia> using MCMCChains, Distributions
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
@@ -712,7 +712,7 @@ Return an array of log prior probabilities evaluated at each sample in an MCMC `
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains
+julia> using MCMCChains, Distributions
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
@@ -759,7 +759,7 @@ Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 # Examples
 	
 ```jldoctest
-julia> using MCMCChains
+julia> using MCMCChains, Distributions
 
 julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)

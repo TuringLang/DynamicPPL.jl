@@ -72,7 +72,7 @@ end
                 typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)
             }
                 symbol_names = [
-                    Symbol(vns[k], "[", kk, "]) for k in 1:length(vns) for kk in 1:size(vals_mat[k, 1], 1)
+                    Symbol(vns[k], "[", kk, "]") for k in 1:length(vns) for kk in 1:size(vals_mat[k, 1], 1)
                 ]
             end
             chain = Chains(chain_mat, symbol_names)
@@ -101,12 +101,12 @@ end
                 end
                 samples = (; samples_dict...)
                 @test logpriors[i] ≈
-                    DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                    DynamicPPL.TestUtils.logprior_true(model, [samples[sym] for sym in syms]...)
                 @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
-                    model, samples[:s], samples[:m]
+                    model, [samples[sym] for sym in syms]...
                 )
                 @test logjoints[i] ≈
-                    DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+                    DynamicPPL.TestUtils.logjoint_true(model, [samples[sym] for sym in syms]...)
             end
         end
     end
