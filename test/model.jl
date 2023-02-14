@@ -68,16 +68,19 @@ end
             else
                 symbol_names = keys(var_info)
             end
-            if model isa Model{
-                typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)
-            }
+            if model isa
+                Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)}
                 symbol_names = [
-                    Symbol(vns[k], "[", kk, "]") for k in 1:length(vns) for kk in 1:size(vals_mat[k, 1], 1)
+                    Symbol(vns[k], "[", kk, "]") for k in 1:length(vns) for
+                    kk in 1:size(vals_mat[k, 1], 1)
                 ]
             end
             chain = Chains(chain_mat, symbol_names)
             # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
-            reps = Dict(sym => count(i -> contains(String(i), String(sym)), keys(chain)) for sym in syms)
+            reps = Dict(
+                sym => count(i -> contains(String(i), String(sym)), keys(chain)) for
+                sym in syms
+            )
             # calculate the pointwise loglikelihoods for the whole chain
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
@@ -100,13 +103,15 @@ end
                     end
                 end
                 samples = (; samples_dict...)
-                @test logpriors[i] ≈
-                    DynamicPPL.TestUtils.logprior_true(model, [samples[sym] for sym in syms]...)
+                @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(
+                    model, [samples[sym] for sym in syms]...
+                )
                 @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
                     model, [samples[sym] for sym in syms]...
                 )
-                @test logjoints[i] ≈
-                    DynamicPPL.TestUtils.logjoint_true(model, [samples[sym] for sym in syms]...)
+                @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(
+                    model, [samples[sym] for sym in syms]...
+                )
             end
         end
     end
