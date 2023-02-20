@@ -28,6 +28,9 @@ DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
 InferenceObjects = "b5cf5a8d-e756-4ee3-b014-01d49d192c00"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
+[extensions]
+DynamicPPLInferenceObjectsExt = ["DimensionalData", "InferenceObjects", "StatsBase"]
+
 [compat]
 AbstractMCMC = "2, 3.0, 4"
 AbstractPPL = "0.5.3"
