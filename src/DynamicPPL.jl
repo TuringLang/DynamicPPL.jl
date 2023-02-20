@@ -34,6 +34,8 @@ import Base:
     keys,
     haskey
 
+const EXTENSIONS_SUPPORTED = isdefined(Base, :get_extension)
+
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
@@ -165,5 +167,9 @@ include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
+
+if !EXTENSIONS_SUPPORTED
+    include("../ext/DynamicPPLInferenceObjectsExt/DynamicPPLInferenceObjectsExt.jl")
+end
 
 end # module
