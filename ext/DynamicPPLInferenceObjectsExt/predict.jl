@@ -25,7 +25,7 @@ end
 function StatsBase.predict(
     model::DynamicPPL.Model, data::InferenceObjects.Dataset; kwargs...
 )
-    return StatsBase.predict(Random.GLOBAL_RNG, model, data; kwargs...)
+    return StatsBase.predict(Random.default_rng(), model, data; kwargs...)
 end
 
 function StatsBase.predict(
@@ -68,5 +68,5 @@ end
 function StatsBase.predict(
     model::DynamicPPL.Model, data::InferenceObjects.InferenceData; kwargs...
 )
-    return StatsBase.predict(Random.GLOBAL_RNG, model, data; kwargs...)
+    return StatsBase.predict(Random.default_rng(), model, data; kwargs...)
 end
