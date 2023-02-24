@@ -405,7 +405,7 @@ end
 
 # Vector-based ones.
 function link!!(
-    t::StaticTransformation{<:Bijectors.Bijector{1}},
+    t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
@@ -420,7 +420,7 @@ function link!!(
 end
 
 function invlink!!(
-    t::StaticTransformation{<:Bijectors.Bijector{1}},
+    t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
     spl::AbstractSampler,
     model::Model,
@@ -452,9 +452,8 @@ julia> using DynamicPPL, Distributions, Bijectors
 julia> @model demo() = x ~ Normal()
 demo (generic function with 2 methods)
 
-julia> # By subtyping `Bijector{1}`, we inherit the `(inv)link!!` defined for
-       # bijectors which acts on 1-dimensional arrays, i.e. vectors.
-       struct MyBijector <: Bijectors.Bijector{1} end
+julia> # By subtyping `Transform`, we inherit the `(inv)link!!`.
+       struct MyBijector <: Bijectors.Transform end
 
 julia> # Define some dummy `inverse` which will be used in the `link!!` call.
        Bijectors.inverse(f::MyBijector) = identity
