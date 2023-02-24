@@ -78,7 +78,7 @@ end
             chain = Chains(chain_mat, symbol_names)
             # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
             reps = Dict(
-                sym => count(i -> contains(String(i), String(sym)), keys(chain)) for
+                sym => count(i -> subsumes(@varname(sym), @varname(i)), keys(chain)) for
                 sym in syms
             )
             # calculate the pointwise loglikelihoods for the whole chain
@@ -92,7 +92,7 @@ end
                 for sym in syms
                     if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
                         chain_param_names = [
-                            key for key in keys(chain) if contains(String(key), String(sym))
+                            key for key in keys(chain) if subsumes(@varname(sym), @varname(key))
                         ]
                         samples_dict[sym] = [
                             chain[i, chain_param_name, 1] for
