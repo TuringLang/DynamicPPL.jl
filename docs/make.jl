@@ -6,7 +6,7 @@ using DynamicPPL: AbstractPPL
 DocMeta.setdocmeta!(
     DynamicPPL,
     :DocTestSetup,
-    :(using DynamicPPL, Distributions, StableRNGs, MCMCChains);
+    :(using DynamicPPL);
     recursive=true,
 )
 
