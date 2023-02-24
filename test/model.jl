@@ -92,7 +92,8 @@ end
                 for sym in syms
                     if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
                         chain_param_names = [
-                            key for key in keys(chain) if subsumes(@varname(sym), @varname(key))
+                            key for
+                            key in keys(chain) if subsumes(@varname(sym), @varname(key))
                         ]
                         samples_dict[sym] = [
                             chain[i, chain_param_name, 1] for
