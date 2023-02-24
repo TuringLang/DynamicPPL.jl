@@ -3,12 +3,7 @@ using DynamicPPL
 using DynamicPPL: AbstractPPL
 
 # Doctest setup
-DocMeta.setdocmeta!(
-    DynamicPPL,
-    :DocTestSetup,
-    :(using DynamicPPL);
-    recursive=true,
-)
+DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
 
 makedocs(;
     sitename="DynamicPPL",
