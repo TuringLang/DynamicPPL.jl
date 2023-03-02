@@ -63,7 +63,7 @@
         DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
-            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
+            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
@@ -72,7 +72,7 @@
         @time DynamicPPL.evaluate_threadsafe!!(
             wthreads(x),
             vi,
-            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
+            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
 
         @model function wothreads(x)
@@ -102,7 +102,7 @@
         DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
-            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
+            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
         @test getlogp(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
@@ -111,7 +111,7 @@
         @time DynamicPPL.evaluate_threadunsafe!!(
             wothreads(x),
             vi,
-            SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext()),
+            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
     end
 end
