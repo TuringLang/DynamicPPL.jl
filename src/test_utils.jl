@@ -10,26 +10,8 @@ using Random: Random
 using Bijectors: Bijectors
 using Setfield: Setfield
 
-"""
-    varname_leaves(vn::VarName, val)
-
-Return iterator over all varnames that are represented by `vn` on `val`,
-e.g. `varname_leaves(@varname(x), rand(2))` results in an iterator over `[@varname(x[1]), @varname(x[2])]`.
-"""
-varname_leaves(vn::VarName, val::Real) = [vn]
-function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
-    return (
-        VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
-        I in CartesianIndices(val)
-    )
-end
-function varname_leaves(vn::VarName, val::AbstractArray)
-    return Iterators.flatten(
-        varname_leaves(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]
-        ) for I in CartesianIndices(val)
-    )
-end
+# For backwards compat.
+using DynamicPPL: varname_leaves
 
 """
     update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
@@ -704,7 +686,7 @@ Simple model for which [`default_transformation`](@ref) returns a [`StaticTransf
 end
 
 function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
-    b = Bijectors.stack(Bijectors.Exp{0}(), Bijectors.Identity{0}())
+    b = Bijectors.stack(Bijectors.elementwise(exp), identity)
     return DynamicPPL.StaticTransformation(b)
 end
 

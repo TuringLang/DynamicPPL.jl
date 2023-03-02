@@ -648,7 +648,7 @@ Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarIn
 
 # Allow usage of `NamedBijector` too.
 function link!!(
-    t::StaticTransformation{<:Bijectors.NamedBijector},
+    t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
     spl::AbstractSampler,
     model::Model,
@@ -663,7 +663,7 @@ function link!!(
 end
 
 function invlink!!(
-    t::StaticTransformation{<:Bijectors.NamedBijector},
+    t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
     spl::AbstractSampler,
     model::Model,
