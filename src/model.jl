@@ -520,7 +520,7 @@ function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
 end
 
 function AbstractPPL.evaluate!!(model::Model, args...)
-    return evaluate!!(model, Random.GLOBAL_RNG, args...)
+    return evaluate!!(model, Random.default_rng(), args...)
 end
 
 # without VarInfo
@@ -626,7 +626,7 @@ Base.nameof(model::Model) = Symbol(model.f)
 Base.nameof(model::Model{<:Function}) = nameof(model.f)
 
 """
-    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
+    rand([rng=Random.default_rng()], [T=NamedTuple], model::Model)
 
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
@@ -643,8 +643,8 @@ end
 
 # Default RNG and type
 Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
-Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
-Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
+Base.rand(::Type{T}, model::Model) where {T} = rand(Random.default_rng(), T, model)
+Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 """
     logjoint(model::Model, varinfo::AbstractVarInfo)
