@@ -194,7 +194,6 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    # r = vi[vn, dist]
     r, logp = invlink_with_logpdf(vi, vn, dist)
     return r, logp, vi
 end
