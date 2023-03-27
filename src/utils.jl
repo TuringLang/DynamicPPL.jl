@@ -169,6 +169,24 @@ function to_namedtuple_expr(syms, vals=syms)
     return :(NamedTuple{$names_expr}($vals_expr))
 end
 
+"""
+    link_transform(dist)
+
+Returns the constrained-to-unconstrained bijector for distribution `dist`.
+
+By default, this is just `Bijectors.bijector(dist)`.
+"""
+link_transform(dist) = bijector(dist)
+
+"""
+    invlink_transform(dist)
+
+Returns the unconstrained-to-constrained bijector for distribution `dist`.
+
+By default, this is just `inverse(link_transform(dist))`.
+"""
+invlink_transform(dist) = inverse(link_transform(dist))
+
 #####################################################
 # Helper functions for vectorize/reconstruct values #
 #####################################################

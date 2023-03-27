@@ -329,6 +329,9 @@ function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribut
     return reconstruct(dist, vals, length(vns))
 end
 
+# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
+getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
+
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)

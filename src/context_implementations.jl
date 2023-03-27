@@ -195,8 +195,8 @@ end
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
     # r = vi[vn, dist]
-    r, logjac = invlink_with_logpdf(vi, vn, dist)
-    return r, logpdf(dist, r) - logjac, vi
+    r, logp = invlink_with_logpdf(vi, vn, dist)
+    return r, logp, vi
 end
 
 # SampleFromPrior and SampleFromUniform

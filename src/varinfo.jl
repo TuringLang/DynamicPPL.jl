@@ -748,7 +748,7 @@ function link!(vi::VarInfo, spl::AbstractSampler, spaceval::Val)
     )
     return _link!(vi, spl, spaceval)
 end
-function _link!(vi::UntypedVarInfo, spl::Sampler)
+function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
