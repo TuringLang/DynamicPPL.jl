@@ -579,7 +579,7 @@ Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
 value is reconstructed to the correct type and shape according to `dist`.
 """
 function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
-    x_recon = reconstruct(dist, x)
+    x_recon = reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
 end
 
@@ -598,7 +598,7 @@ by `dist`.
 
 See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
 """
-reconstruct_and_link(f, dist, val) = f(reconstruct(dist, val))
+reconstruct_and_link(f, dist, val) = f(reconstruct(f, dist, val))
 reconstruct_and_link(dist, val) = reconstruct_and_link(link_transform(dist), dist, val)
 function reconstruct_and_link(::AbstractVarInfo, ::VarName, dist, val)
     return reconstruct_and_link(dist, val)
@@ -612,7 +612,7 @@ Return invlinked and reconstructed `val`.
 
 See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
 """
-invlink_and_reconstruct(f, dist, val) = f(reconstruct(dist, val))
+invlink_and_reconstruct(f, dist, val) = f(reconstruct(f, dist, val))
 function invlink_and_reconstruct(dist, val)
     return invlink_and_reconstruct(invlink_transform(dist), dist, val)
 end
@@ -646,21 +646,27 @@ function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, v
     end
 end
 
-# Special cases.
-link_transform(::LKJ) = Bijectors.VecCorrBijector()
-
-function with_logabsdet_jacobian_and_reconstruct(
-    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, x::AbstractVector
-)
-    # "Reconstruction" occurs in the `LKJ` bijector.
-    return with_logabsdet_jacobian(f, x)
+function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
+    return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
+end
+function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
+    # NOTE: Will this cause type-instabilities or will union-splitting save us?
+    f = istrans(vi, vn) ? invlink_transform(dist) : identity
+    # TODO: Don't use `getval` but instead use `getindex_raw` and override for `VarInfo`.
+    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+    return x, logpdf(dist, x) + logjac
 end
 
-function invlink_and_reconstruct(
-    f::Bijectors.Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector{<:Real}
-)
-    # Reconstruction already occurs in `invlink` here.
-    return f(val)
+# HACK: This is a hack to make sure that we're using the `link_transform` rather than
+# `Bijectors.bijector`, _but_ we really should just be using `invlink_with_logpdf`
+# to ensure that we're taking the fastest computation path (i.e. both transformation
+# and the log-absdet-jacobian correction are computed together).
+function _logpdf_with_trans(d, x, trans)
+    lp = logpdf(d, x)
+    if trans
+        lp = lp - logabsdetjac(link_transform(d), x)
+    end
+    return lp
 end
 
 # Legacy code that is currently overloaded for the sake of simplicity.

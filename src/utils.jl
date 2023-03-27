@@ -185,6 +185,16 @@ vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
 # Note this is not the case for MultivariateDistribution so I guess this might be lack of
 # support for some types related to matrices (like PDMat).
 
+"""
+    reconstruct([f, ]dist, val)
+
+Reconstruct `val` so that it's compatible with `dist`.
+
+If `f` is also provided, the reconstruct value will be
+such that `f(reconstruct_val)` is compatible with `dist`.
+"""
+reconstruct(f, dist, val) = reconstruct(dist, val)
+
 # No-op versions.
 reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = val
