@@ -194,8 +194,9 @@ end
 
 # fallback without sampler
 function assume(dist::Distribution, vn::VarName, vi)
-    r = vi[vn, dist]
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
+    # r = vi[vn, dist]
+    r, logjac = invlink_with_logpdf(vi, vn, dist)
+    return r, logpdf(dist, r) - logjac, vi
 end
 
 # SampleFromPrior and SampleFromUniform
@@ -230,7 +231,9 @@ function assume(
         end
     end
 
-    return r, Bijectors.logpdf_with_trans(dist, r, istrans(vi, vn)), vi
+    # HACK: The above code might involve an `invlink` somewhere, etc. so we need to correct.
+    logjac = logabsdetjac(istrans(vi, vn) ? link_transform(dist) : identity, r)
+    return r, logpdf(dist, r) - logjac, vi
 end
 
 # default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
@@ -400,7 +403,7 @@ function dot_assume(
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = vi[vns, dist]
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
-        return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
+        return _logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
     return r, lp, vi
 end
@@ -415,7 +418,7 @@ function dot_assume(
 )
     @assert length(dist) == size(var, 1)
     r = get_and_set_val!(rng, vi, vns, dist, spl)
-    lp = sum(Bijectors.logpdf_with_trans(dist, r, istrans(vi, vns[1])))
+    lp = sum(_logpdf_with_trans(dist, r, istrans(vi, vns[1])))
     return r, lp, vi
 end
 
@@ -423,7 +426,7 @@ function dot_assume(
     dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
 )
     r = getindex.((vi,), vns, (dist,))
-    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
+    lp = sum(_logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -434,7 +437,7 @@ function dot_assume(
     vi,
 )
     r = getindex.((vi,), vns, dists)
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
+    lp = sum(_logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 
@@ -448,7 +451,7 @@ function dot_assume(
 )
     r = get_and_set_val!(rng, vi, vns, dists, spl)
     # Make sure `r` is not a matrix for multivariate distributions
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
+    lp = sum(_logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
     return r, lp, vi
 end
 function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any, ::Any)

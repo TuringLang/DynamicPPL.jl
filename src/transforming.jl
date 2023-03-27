@@ -5,7 +5,7 @@ function tilde_assume(
     ::DynamicTransformationContext{isinverse}, right, vn, vi
 ) where {isinverse}
     r = vi[vn, right]
-    lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
+    lp = _logpdf_with_trans(right, r, !isinverse)
 
     if istrans(vi, vn)
         @assert isinverse "Trying to link already transformed variables"
@@ -41,7 +41,7 @@ function dot_tilde_assume(
     # Only transform if `!isinverse` since `vi[vn, right]`
     # already performs the inverse transformation if it's transformed.
     r_transformed = isinverse ? r : b.(r)
-    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, (!isinverse,)))
+    lp = sum(_logpdf_with_trans.((dist,), r, (!isinverse,)))
     return r, lp, setindex!!(vi, r_transformed, vns)
 end
 
@@ -57,7 +57,7 @@ function dot_tilde_assume(
 
     # Compute `logpdf` with logabsdet-jacobian correction.
     lp = sum(zip(vns, eachcol(r))) do (vn, ri)
-        return Bijectors.logpdf_with_trans(dist, ri, !isinverse)
+        return _logpdf_with_trans(dist, ri, !isinverse)
     end
 
     # Transform _all_ values.
