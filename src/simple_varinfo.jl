@@ -429,7 +429,7 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    value_raw = maybe_link_and_reconstruct(vi, vn, dist, value)
+    value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
     return value, _logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
@@ -447,9 +447,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        maybe_link_and_reconstruct.((vi,), vns, (dists,), value)
+        maybe_reconstruct_and_link.((vi,), vns, (dists,), value)
     else
-        maybe_link_and_reconstruct.((vi,), vns, dists, value)
+        maybe_reconstruct_and_link.((vi,), vns, dists, value)
     end
 
     # Update `vi`
@@ -476,7 +476,7 @@ function dot_assume(
 
     # Update `vi`.
     for (vn, val) in zip(vns, eachcol(value))
-        val_linked = maybe_link_and_reconstruct(vi, vn, dist, val)
+        val_linked = maybe_reconstruct_and_link(vi, vn, dist, val)
         vi = BangBang.setindex!!(vi, val_linked, vn)
     end
 

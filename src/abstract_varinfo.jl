@@ -607,7 +607,7 @@ end
 
 Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
-function maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+function maybe_reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
     return if istrans(vi, vn)
         reconstruct_and_link(vi, vn, dist, val)
     else

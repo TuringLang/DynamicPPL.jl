@@ -213,7 +213,7 @@ function assume(
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
             BangBang.setindex!!(
-                vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r)), vn
+                vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r)), vn
             )
             setorder!(vi, vn, get_num_produce(vi))
         else
@@ -477,7 +477,7 @@ function get_and_set_val!(
                 vn = vns[i]
                 setindex!!(
                     vi,
-                    vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[:, i])),
+                    vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
                     vn,
                 )
                 setorder!(vi, vn, get_num_produce(vi))
@@ -518,7 +518,7 @@ function get_and_set_val!(
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
                 setindex!!(
-                    vi, vectorize(dist, maybe_link_and_reconstruct(vi, vn, dist, r[i])), vn
+                    vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
                 )
                 setorder!(vi, vn, get_num_produce(vi))
             end
