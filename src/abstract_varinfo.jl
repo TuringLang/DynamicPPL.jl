@@ -646,6 +646,14 @@ function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, v
     end
 end
 
+"""
+    invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist[, x])
+
+Invlink `x` and compute the logpdf under `dist` including correction from
+the invlink-transformation.
+
+If `x` is not provided, `getval(vi, vn)` will be used.
+"""
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
     return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
 end
