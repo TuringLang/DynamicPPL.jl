@@ -642,7 +642,6 @@ end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     # NOTE: Will this cause type-instabilities or will union-splitting save us?
     f = istrans(vi, vn) ? invlink_transform(dist) : identity
-    # TODO: Don't use `getval` but instead use `getindex_raw` and override for `VarInfo`.
     x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
     return x, logpdf(dist, x) + logjac
 end

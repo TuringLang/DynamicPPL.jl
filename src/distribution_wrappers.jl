@@ -52,19 +52,13 @@ Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
 _logpdf_with_trans(d::NoDist{<:Univariate}, ::Real, ::Bool) = 0
-function _logpdf_with_trans(
-    d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool
-)
+function _logpdf_with_trans(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool)
     return 0
 end
-function _logpdf_with_trans(
-    d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
-)
+function _logpdf_with_trans(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool)
     return zeros(Int, size(x, 2))
 end
-function _logpdf_with_trans(
-    d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool
-)
+function _logpdf_with_trans(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool)
     return 0
 end
 

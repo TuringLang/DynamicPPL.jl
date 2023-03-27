@@ -68,11 +68,9 @@ DynamicPPL.reconstruct(::TrilFromVec, ::MyMatrixDistribution, x::AbstractVector{
         # Evaluate once to ensure we have `logp` value.
         vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
         vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
-    
         # Difference should just be the log-absdet-jacobian "correction".
         @test DynamicPPL.getlogp(vi) - DynamicPPL.getlogp(vi_linked) ≈ log(2)
         @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
-    
         # Linked one should be working with a lower-dimensional representation.
         @test length(vi_linked[:]) < length(vi[:])
     end
