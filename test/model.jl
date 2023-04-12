@@ -77,8 +77,21 @@ end
             end
             chain = Chains(chain_mat, symbol_names)
             # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
+            # a dispatched `subsumes(parent::Symbol, child::Symbol)` method has been created in PR#83 for AbstractPPL.jl; here we temporary replicate it here - just for tesing purpose.
+            # This 'subsumes_sym(parent::Symbol, child::Symbol)' method can be removed from here, once PR#83 in AbstractPPL has been merged.
+            function subsumes_sym(parent::Symbol, child::Symbol)
+                parent_str = string(parent)
+                child_str = string(child)
+                if parent_str == child_str
+                    return true
+                end
+                if length(parent_str) > length(child_str)
+                    return false
+                end
+                return child_str[1:length(parent_str)] == parent_str
+            end
             reps = Dict(
-                sym => count(i -> contains(String(i), String(sym)), keys(chain)) for
+                sym => count(i->subsumes_sym(Symbol(sym), Symbol(i)), keys(chain)) for
                 sym in syms
             )
             # calculate the pointwise loglikelihoods for the whole chain
@@ -92,7 +105,7 @@ end
                 for sym in syms
                     if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
                         chain_param_names = [
-                            key for key in keys(chain) if contains(String(key), String(sym))
+                            key for key in keys(chain) if subsumes_sym(Symbol(sym), Symbol(key))
                         ]
                         samples_dict[sym] = [
                             chain[i, chain_param_name, 1] for
