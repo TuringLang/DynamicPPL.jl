@@ -91,7 +91,7 @@ end
                 return child_str[1:length(parent_str)] == parent_str
             end
             reps = Dict(
-                sym => count(i->subsumes_sym(Symbol(sym), Symbol(i)), keys(chain)) for
+                sym => count(i -> subsumes_sym(Symbol(sym), Symbol(i)), keys(chain)) for
                 sym in syms
             )
             # calculate the pointwise loglikelihoods for the whole chain
