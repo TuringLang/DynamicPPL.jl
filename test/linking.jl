@@ -1,5 +1,4 @@
-using InverseFunctions: InverseFunctions
-using ChangesOfVariables: ChangesOfVariables
+using Bijectors
 
 # Simple transformations which alters the "dimension" of the variable.
 struct TrilToVec{S}
@@ -10,8 +9,8 @@ struct TrilFromVec{S}
     size::S
 end
 
-InverseFunctions.inverse(f::TrilToVec) = TrilFromVec(f.size)
-InverseFunctions.inverse(f::TrilFromVec) = TrilToVec(f.size)
+Bijectors.inverse(f::TrilToVec) = TrilFromVec(f.size)
+Bijectors.inverse(f::TrilFromVec) = TrilToVec(f.size)
 
 function (v::TrilToVec)(x)
     mask = tril(ones(Bool, v.size))
@@ -26,8 +25,8 @@ end
 
 # Just some dummy values so we can make sure that the log-prob computation
 # has been altered correctly.
-ChangesOfVariables.with_logabsdet_jacobian(f::TrilToVec, x) = (f(x), eltype(x)(log(2)))
-ChangesOfVariables.with_logabsdet_jacobian(f::TrilFromVec, x) = (f(x), -eltype(x)(log(2)))
+Bijectors.with_logabsdet_jacobian(f::TrilToVec, x) = (f(x), eltype(x)(log(2)))
+Bijectors.with_logabsdet_jacobian(f::TrilFromVec, x) = (f(x), -eltype(x)(log(2)))
 
 # Dummy example.
 struct MyMatrixDistribution <: ContinuousMatrixDistribution
@@ -44,10 +43,19 @@ function Distributions._logpdf(::MyMatrixDistribution, x::AbstractMatrix{<:Real}
     return -0.5 * sum(abs2, LowerTriangular(x))
 end
 
-# Specify the link-transform to use.
-DynamicPPL.link_transform(dist::MyMatrixDistribution) = TrilToVec((dist.dim, dist.dim))
 # Skip reconstruction in the inverse-map since it's no longer needed.
 DynamicPPL.reconstruct(::TrilFromVec, ::MyMatrixDistribution, x::AbstractVector{<:Real}) = x
+
+# Specify the link-transform to use.
+Bijectors.bijector(dist::MyMatrixDistribution) = TrilToVec((dist.dim, dist.dim))
+function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, istrans::Bool)
+    lp = logpdf(dist, x)
+    if istrans
+        lp = lp - logabsdetjac(bijector(dist), x)
+    end
+
+    return lp
+end
 
 @testset "Linking" begin
     # Just making sure the transformations are okay.

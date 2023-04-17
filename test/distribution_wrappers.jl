@@ -9,5 +9,5 @@
     @test minimum(nd) == -Inf
     @test maximum(nd) == Inf
     @test logpdf(nd, 15.0) == 0
-    @test Bijectors.logpdf_with_trans(nd, 30, true) == 0
+    @test Bijectors.Bijectors.logpdf_with_trans(nd, 30, true) == 0
 end

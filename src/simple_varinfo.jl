@@ -431,7 +431,7 @@ function assume(
     # Transform if we're working in unconstrained space.
     value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
-    return value, _logpdf_with_trans(dist, value, istrans(vi, vn)), vi
+    return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
 function dot_assume(
@@ -456,7 +456,7 @@ function dot_assume(
     vi = BangBang.setindex!!(vi, value_raw, vns)
 
     # Compute logp.
-    lp = sum(_logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
     return value, lp, vi
 end
 
@@ -481,7 +481,7 @@ function dot_assume(
     end
 
     # Compute logp.
-    lp = sum(_logpdf_with_trans(dist, value, istrans(vi)))
+    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
     return value, lp, vi
 end
 

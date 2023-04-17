@@ -646,18 +646,6 @@ function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     return x, logpdf(dist, x) + logjac
 end
 
-# HACK: This is a hack to make sure that we're using the `link_transform` rather than
-# `Bijectors.bijector`, _but_ we really should just be using `invlink_with_logpdf`
-# to ensure that we're taking the fastest computation path (i.e. both transformation
-# and the log-absdet-jacobian correction are computed together).
-function _logpdf_with_trans(d, x, trans)
-    lp = logpdf(d, x)
-    if trans
-        lp = lp - logabsdetjac(link_transform(d), x)
-    end
-    return lp
-end
-
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
