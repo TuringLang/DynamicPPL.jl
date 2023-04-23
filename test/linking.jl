@@ -81,5 +81,6 @@ end
         @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
         # Linked one should be working with a lower-dimensional representation.
         @test length(vi_linked[:]) < length(vi[:])
+        @test length(vi_linked[:]) == 3
     end
 end
