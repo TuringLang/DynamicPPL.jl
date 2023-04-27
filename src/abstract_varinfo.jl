@@ -565,7 +565,7 @@ function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
 end
 
-# TODO: Once we `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
+# TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
 # just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
 """
@@ -641,7 +641,7 @@ function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
 end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     # NOTE: Will this cause type-instabilities or will union-splitting save us?
-    f = istrans(vi, vn) ? invlink_transform(dist) : identity
+    x = istrans(vi, vn) ? reconstruct(invlink_transform(dist), y) : y
     x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
     return x, logpdf(dist, x) + logjac
 end
