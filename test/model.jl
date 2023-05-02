@@ -151,7 +151,7 @@ end
     end
 
     @testset "default arguments" begin
-        @model test_defaults(x, n=length(x)) = x ~ MvNormal(Zeros(n), I)
+        @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
         @test length(test_defaults(missing, 2)()) == 2
     end
 end
