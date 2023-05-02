@@ -287,7 +287,7 @@ function build_model_info(input_expr)
     end
 
     # Build named tuple expression of the argument symbols with default values.
-    defaults_namedtuple = to_namedtuple_expr(default_syms, default_vals)
+    defaults_namedtuple = to_namedtuple_expr(default_syms)
 
     modelinfo = Dict(
         :allargs_exprs => allargs_exprs,
