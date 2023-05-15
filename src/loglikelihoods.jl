@@ -179,25 +179,25 @@ julia> model = demo(randn(3), randn());
 julia> chain = sample(model, MH(), 10);
 
 julia> pointwise_loglikelihoods(model, chain)
-Dict{String,Array{Float64,2}} with 4 entries:
-  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
+OrderedDict{String,Array{Float64,2}} with 4 entries:
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
+  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
 julia> pointwise_loglikelihoods(model, chain, String)
-Dict{String,Array{Float64,2}} with 4 entries:
-  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
+OrderedDict{String,Array{Float64,2}} with 4 entries:
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
+  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
 julia> pointwise_loglikelihoods(model, chain, VarName)
-Dict{VarName,Array{Float64,2}} with 4 entries:
-  xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-  y     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+OrderedDict{VarName,Array{Float64,2}} with 4 entries:
   xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
+  xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
+  y     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 ```
 
 ## Broadcasting
