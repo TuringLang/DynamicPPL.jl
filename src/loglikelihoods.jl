@@ -30,7 +30,9 @@ function Base.push!(
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{VarName,Float64}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{<:AbstractDict{VarName,Float64}},
+    vn::VarName,
+    logp::Real,
 )
     return context.loglikelihoods[vn] = logp
 end
@@ -46,7 +48,9 @@ function Base.push!(
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}}, vn::VarName, logp::Real
+    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}},
+    vn::VarName,
+    logp::Real,
 )
     return context.loglikelihoods[string(vn)] = logp
 end
@@ -62,7 +66,9 @@ function Base.push!(
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}}, vn::String, logp::Real
+    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}},
+    vn::String,
+    logp::Real,
 )
     return context.loglikelihoods[vn] = logp
 end
