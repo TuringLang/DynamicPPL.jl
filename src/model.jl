@@ -181,7 +181,7 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 3 methods)
+demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
@@ -380,7 +380,7 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 3 methods)
+demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
