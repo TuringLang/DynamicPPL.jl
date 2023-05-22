@@ -67,11 +67,15 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple=NamedTuple(),
+    defaults::NamedTuple,
     context::AbstractContext=DefaultContext(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
     return :(Model{$missings}(f, args, defaults, context))
+end
+
+function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
+    return Model(f, args, NamedTuple(kwargs), context)
 end
 
 function contextualize(model::Model, context::AbstractContext)
@@ -577,7 +581,12 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
     model::Model{_F,argnames}, varinfo, context
 ) where {_F,argnames}
     unwrap_args = [
-        :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
+        if is_splat_symbol(var)
+            :($matchingvalue(context_new, varinfo, model.args.$var)...)
+        else
+            :($matchingvalue(context_new, varinfo, model.args.$var))
+        end
+        for var in argnames
     ]
     # We want to give `context` precedence over `model.context` while also
     # preserving the leaf context of `context`. We can do this by
@@ -598,7 +607,8 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
             # for more information.
             maybe_invlink_before_eval!!(varinfo, context_new, model),
             context_new,
-            $(unwrap_args...),
+            $(unwrap_args...);
+            model.defaults...
         )
     end
 end
