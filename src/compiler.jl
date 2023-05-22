@@ -508,6 +508,7 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
+splitarg_to_expr(x) = splitarg_to_expr(x...)
 function splitarg_to_expr(arg_name, arg_type, is_splat, default)
     return is_splat ? :($arg_name...) : arg_name
 end
@@ -573,7 +574,7 @@ function build_output(modeldef, linenumbernode)
     args_split = map(MacroTools.splitarg, args)
     kwargs_split = map(MacroTools.splitarg, kwargs)
     args_nt = namedtuple_from_splitargs(args_split)
-    kwargs_inclusion = map(splat(splitarg_to_expr), kwargs_split)
+    kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
 
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
