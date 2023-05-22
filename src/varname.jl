@@ -22,7 +22,9 @@ Statically check whether the variable of name `varname` is an argument of the `m
 
 Possibly existing indices of `varname` are neglected.
 """
-@generated function inargnames(::VarName{s}, ::Model{_F,argnames,defaultnames}) where {s,argnames,defaultnames,_F}
+@generated function inargnames(
+    ::VarName{s}, ::Model{_F,argnames,defaultnames}
+) where {s,argnames,defaultnames,_F}
     return s in argnames || s in defaultnames
 end
 

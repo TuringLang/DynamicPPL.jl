@@ -585,8 +585,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
             :($matchingvalue(context_new, varinfo, model.args.$var)...)
         else
             :($matchingvalue(context_new, varinfo, model.args.$var))
-        end
-        for var in argnames
+        end for var in argnames
     ]
     # We want to give `context` precedence over `model.context` while also
     # preserving the leaf context of `context`. We can do this by
@@ -608,7 +607,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
             maybe_invlink_before_eval!!(varinfo, context_new, model),
             context_new,
             $(unwrap_args...);
-            model.defaults...
+            model.defaults...,
         )
     end
 end

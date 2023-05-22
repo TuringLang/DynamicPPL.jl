@@ -647,6 +647,5 @@ end
         # Empty `args...` and empty `kwargs...`.
         res = f_splat_test_2(1)()
         @test res == (1, (), 1, Int, NamedTuple())
-
     end
 end

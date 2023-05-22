@@ -508,7 +508,9 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
-splitarg_to_expr(arg_name, arg_type, is_splat, default) = is_splat ? :($arg_name...) : arg_name
+function splitarg_to_expr(arg_name, arg_type, is_splat, default)
+    return is_splat ? :($arg_name...) : arg_name
+end
 
 function namedtuple_from_splitargs(splitargs)
     names = map(splitargs) do (arg_name, arg_type, is_splat, default)
