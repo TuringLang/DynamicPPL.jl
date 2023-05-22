@@ -92,6 +92,8 @@ function probtype(
             return getfield(right, arg)
         elseif arg in defaultnames
             return getfield(defaults, arg)
+        elseif arg in argnames
+            return getfield(model.args, arg)
         else
             return nothing
         end
@@ -170,7 +172,7 @@ end
             push!(argvals, :(model.defaults.$argname))
         else
             push!(warnings, :(@warn($(warn_msg(argname)))))
-            push!(argvals, :(nothing))
+            push!(argvals, :(model.args.$argname))
         end
     end
 
@@ -184,7 +186,7 @@ end
     end
 end
 
-warn_msg(arg) = "Argument $arg is not defined. A value of `nothing` is used."
+warn_msg(arg) = "Argument $arg is not defined. Using the value from the model."
 
 function Distributions.loglikelihood(
     left::NamedTuple, right::NamedTuple, _model::Model, _vi::Union{Nothing,VarInfo}
@@ -227,6 +229,8 @@ end
             push!(missings, argname)
         elseif argname in defaultnames
             push!(argvals, :(model.defaults.$argname))
+        elseif argname in argnames
+            push!(argvals, :(model.args.$argname))
         else
             throw(
                 "This point should not be reached. Please open an issue in the DynamicPPL.jl repository.",
