@@ -240,16 +240,16 @@ end
     end
 
     @testset "SamplingContext" begin
-        context = SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), DefaultContext())
+        context = SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext())
         @test context isa SamplingContext
 
         # convenience constructors
         @test SamplingContext() == context
-        @test SamplingContext(Random.GLOBAL_RNG) == context
+        @test SamplingContext(Random.default_rng()) == context
         @test SamplingContext(SampleFromPrior()) == context
         @test SamplingContext(DefaultContext()) == context
-        @test SamplingContext(Random.GLOBAL_RNG, SampleFromPrior()) == context
-        @test SamplingContext(Random.GLOBAL_RNG, DefaultContext()) == context
+        @test SamplingContext(Random.default_rng(), SampleFromPrior()) == context
+        @test SamplingContext(Random.default_rng(), DefaultContext()) == context
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
     end

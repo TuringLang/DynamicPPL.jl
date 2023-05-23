@@ -135,7 +135,7 @@ function VarInfo(
     model(rng, varinfo, sampler, context)
     return TypedVarInfo(varinfo)
 end
-VarInfo(model::Model, args...) = VarInfo(Random.GLOBAL_RNG, model, args...)
+VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
