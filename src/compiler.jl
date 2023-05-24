@@ -209,7 +209,7 @@ macro model(expr, warn=false)
 end
 
 function model(mod, linenumbernode, expr, warn)
-    modeldef = build_model_info(expr)
+    modeldef = build_model_definition(expr)
 
     # Generate main body
     modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn)
@@ -218,11 +218,11 @@ function model(mod, linenumbernode, expr, warn)
 end
 
 """
-    build_model_info(input_expr)
+    build_model_definition(input_expr)
 
 Builds the `modeldef` dictionary from the model's expression.
 """
-function build_model_info(input_expr)
+function build_model_definition(input_expr)
     # Break up the model definition and extract its name, arguments, and function body
     modeldef = MacroTools.splitdef(input_expr)
 
