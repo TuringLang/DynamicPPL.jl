@@ -582,15 +582,14 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractCo
     return model.f(args...; kwargs...)
 end
 
-
 """
     make_evaluate_args_and_kwargs(model, varinfo, context)
 
 Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F, argnames}, varinfo::AbstractVarInfo, context::AbstractContext
-) where {_F, argnames}
+    model::Model{_F,argnames}, varinfo::AbstractVarInfo, context::AbstractContext
+) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
             :($matchingvalue(context_new, varinfo, model.args.$var)...)
@@ -618,13 +617,12 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             # for more information.
             maybe_invlink_before_eval!!(varinfo, context_new, model),
             context_new,
-            $(unwrap_args...)
+            $(unwrap_args...),
         )
         kwargs = model.defaults
         return args, kwargs
     end
 end
-
 
 """
     getargnames(model::Model)
