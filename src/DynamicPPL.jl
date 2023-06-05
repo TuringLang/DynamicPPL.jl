@@ -119,7 +119,8 @@ export AbstractVarInfo,
     decondition,
     # Convenience macros
     @addlogprob!,
-    @submodel
+    @submodel,
+    value_iterator_from_chain
 
 # Reexport
 using Distributions: loglikelihood
@@ -165,5 +166,6 @@ include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
+include("model_utils.jl")
 
 end # module
