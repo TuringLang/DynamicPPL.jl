@@ -220,7 +220,8 @@ end
 """
     build_model_definition(input_expr)
 
-Builds the `modeldef` dictionary from the model's expression.
+Builds the `modeldef` dictionary from the model's expression, where
+`modeldef` is a dictionary compatible with `MacroTools.combinedef`.
 """
 function build_model_definition(input_expr)
     # Break up the model definition and extract its name, arguments, and function body
