@@ -13,11 +13,11 @@ Bijectors.inverse(f::TrilToVec) = TrilFromVec(f.size)
 Bijectors.inverse(f::TrilFromVec) = TrilToVec(f.size)
 
 function (v::TrilToVec)(x)
-    mask = tril(ones(Bool, v.size))
+    mask = tril(trues(v.size))
     return vec(x[mask])
 end
 function (v::TrilFromVec)(y)
-    mask = tril(ones(Bool, v.size))
+    mask = tril(trues(v.size))
     x = similar(y, v.size)
     x[mask] .= y
     return LowerTriangular(x)
@@ -25,7 +25,7 @@ end
 
 # Just some dummy values so we can make sure that the log-prob computation
 # has been altered correctly.
-Bijectors.with_logabsdet_jacobian(f::TrilToVec, x) = (f(x), eltype(x)(log(2)))
+Bijectors.with_logabsdet_jacobian(f::TrilToVec, x) = (f(x), log(eltype(x)(2)))
 Bijectors.with_logabsdet_jacobian(f::TrilFromVec, x) = (f(x), -eltype(x)(log(2)))
 
 # Dummy example.
@@ -37,10 +37,10 @@ Base.size(d::MyMatrixDistribution) = (d.dim, d.dim)
 function Distributions._rand!(
     rng::AbstractRNG, d::MyMatrixDistribution, x::AbstractMatrix{<:Real}
 )
-    return x .= randn(rng, d.dim, d.dim)
+    return randn!(rng, x)
 end
 function Distributions._logpdf(::MyMatrixDistribution, x::AbstractMatrix{<:Real})
-    return -0.5 * sum(abs2, LowerTriangular(x))
+    return - sum(abs2, LowerTriangular(x)) / 2
 end
 
 # Skip reconstruction in the inverse-map since it's no longer needed.
@@ -81,5 +81,6 @@ end
         @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
         # Linked one should be working with a lower-dimensional representation.
         @test length(vi_linked[:]) < length(vi[:])
+        @test length(vi_linked[:]) == 3
     end
 end

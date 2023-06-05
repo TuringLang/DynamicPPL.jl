@@ -172,12 +172,12 @@ end
 """
     link_transform(dist)
 
-Returns the constrained-to-unconstrained bijector for distribution `dist`.
+Return the constrained-to-unconstrained bijector for distribution `dist`.
 
 By default, this is just `Bijectors.bijector(dist)`.
 
 !!! warning
-    Note that this is not current used by `Bijectors.logpdf_with_trans`,
+    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
     hence that needs to be overloaded separately if the intention is
     to change behavior of an existing distribution.
 """
@@ -186,12 +186,12 @@ link_transform(dist) = bijector(dist)
 """
     invlink_transform(dist)
 
-Returns the unconstrained-to-constrained bijector for distribution `dist`.
+Return the unconstrained-to-constrained bijector for distribution `dist`.
 
 By default, this is just `inverse(link_transform(dist))`.
 
 !!! warning
-    Note that this is not current used by `Bijectors.logpdf_with_trans`,
+    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
     hence that needs to be overloaded separately if the intention is
     to change behavior of an existing distribution.
 """
