@@ -40,7 +40,7 @@ function Distributions._rand!(
     return randn!(rng, x)
 end
 function Distributions._logpdf(::MyMatrixDistribution, x::AbstractMatrix{<:Real})
-    return - sum(abs2, LowerTriangular(x)) / 2
+    return -sum(abs2, LowerTriangular(x)) / 2
 end
 
 # Skip reconstruction in the inverse-map since it's no longer needed.
