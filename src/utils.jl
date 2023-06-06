@@ -233,7 +233,7 @@ reconstruct(f, dist, val) = reconstruct(dist, val)
 
 # No-op versions.
 reconstruct(::UnivariateDistribution, val::Real) = val
-reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = val
+reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = val
 # TODO: Implement no-op `reconstruct` for general array variates.
 
