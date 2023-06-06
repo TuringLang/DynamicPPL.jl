@@ -67,11 +67,15 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple=NamedTuple(),
+    defaults::NamedTuple,
     context::AbstractContext=DefaultContext(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
     return :(Model{$missings}(f, args, defaults, context))
+end
+
+function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
+    return Model(f, args, NamedTuple(kwargs), context)
 end
 
 function contextualize(model::Model, context::AbstractContext)
@@ -177,7 +181,7 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 3 methods)
+demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
@@ -376,7 +380,7 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 3 methods)
+demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
@@ -573,12 +577,27 @@ end
 
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
-@generated function _evaluate!!(
-    model::Model{_F,argnames}, varinfo, context
+function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+    args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
+    return model.f(args...; kwargs...)
+end
+
+"""
+    make_evaluate_args_and_kwargs(model, varinfo, context)
+
+Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
+"""
+@generated function make_evaluate_args_and_kwargs(
+    model::Model{_F,argnames}, varinfo::AbstractVarInfo, context::AbstractContext
 ) where {_F,argnames}
     unwrap_args = [
-        :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
+        if is_splat_symbol(var)
+            :($matchingvalue(context_new, varinfo, model.args.$var)...)
+        else
+            :($matchingvalue(context_new, varinfo, model.args.$var))
+        end for var in argnames
     ]
+
     # We want to give `context` precedence over `model.context` while also
     # preserving the leaf context of `context`. We can do this by
     # 1. Set the leaf context of `model.context` to `leafcontext(context)`.
@@ -590,7 +609,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         context_new = setleafcontext(
             context, setleafcontext(model.context, leafcontext(context))
         )
-        model.f(
+        args = (
             model,
             # Maybe perform `invlink!!` once prior to evaluation to avoid
             # lazy `invlink`-ing of the parameters. This can be useful for
@@ -600,6 +619,8 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
             context_new,
             $(unwrap_args...),
         )
+        kwargs = model.defaults
+        return args, kwargs
     end
 end
 
