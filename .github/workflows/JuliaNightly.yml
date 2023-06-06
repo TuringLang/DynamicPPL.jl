@@ -3,11 +3,9 @@ name: JuliaNightly
 on:
   push:
     branches:
-      # This is where pull requests from "bors r+" are built.
-      - staging
-      # This is where pull requests from "bors try" are built.
-      - trying
-      # Build the master branch.
+      - master
+  pull_request:
+    branches:
       - master
 
 jobs:

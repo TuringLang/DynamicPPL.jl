@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.22.2"
+version = "0.23.0"
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -24,7 +24,7 @@ ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 AbstractMCMC = "2, 3.0, 4"
 AbstractPPL = "0.5.3"
 BangBang = "0.3"
-Bijectors = "0.11, 0.12"
+Bijectors = "0.12.4"
 ChainRulesCore = "0.9.7, 0.10, 1"
 ConstructionBase = "1"
 Distributions = "0.23.8, 0.24, 0.25"

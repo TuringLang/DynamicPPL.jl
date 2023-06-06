@@ -149,4 +149,9 @@ end
         Random.seed!(1776)
         @test rand(Dict, model) == sample_dict
     end
+
+    @testset "default arguments" begin
+        @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
+        @test length(test_defaults(missing, 2)()) == 2
+    end
 end

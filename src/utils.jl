@@ -161,7 +161,15 @@ function getargs_assignment(expr::Expr)
     end
 end
 
-function to_namedtuple_expr(syms, vals=syms)
+function to_namedtuple_expr(syms)
+    length(syms) == 0 && return :(NamedTuple())
+
+    names_expr = Expr(:tuple, QuoteNode.(syms)...)
+    return :(NamedTuple{$names_expr}(($(syms...),)))
+end
+
+# FIXME: the prob macro still uses this.
+function to_namedtuple_expr(syms, vals)
     length(syms) == 0 && return :(NamedTuple())
 
     names_expr = Expr(:tuple, QuoteNode.(syms)...)
