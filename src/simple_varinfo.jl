@@ -491,7 +491,7 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {
     nt_vals = map(keys(vi)) do vn
         val = vi[vn]
         vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(Base.Fix1(getindex, vi), vns)
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
         (vals, map(string, vns))
     end
 
@@ -504,7 +504,7 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
         # Extract the leaf varnames and values.
         val = vi[vn]
         vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(Base.Fix1(getindex, vi), vns)
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
 
         # Determine the corresponding symbol.
         sym = only(unique(map(getsym, vns)))

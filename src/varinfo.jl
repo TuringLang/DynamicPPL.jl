@@ -1027,19 +1027,20 @@ end
     return expr
 end
 
-function tonamedtuple(vi::VarInfo)
-    return tonamedtuple(vi.metadata, vi)
-end
-@generated function tonamedtuple(metadata::NamedTuple{names}, vi::VarInfo) where {names}
-    length(names) === 0 && return :(NamedTuple())
-    expr = Expr(:tuple)
-    map(names) do f
-        push!(
-            expr.args,
-            Expr(:(=), f, :(getindex.(Ref(vi), metadata.$f.vns), string.(metadata.$f.vns))),
-        )
+# TODO: Remove this completely.
+tonamedtuple(varinfo::VarInfo) = tonamedtuple(varinfo.metadata, varinfo)
+function tonamedtuple(metadata::NamedTuple{names}, varinfo::VarInfo) where {names}
+    length(names) === 0 && return NamedTuple()
+
+    vals_tuple = map(values(metadata)) do x
+        # NOTE: `tonamedtuple` is really only used in Turing.jl to convert to
+        # a "transition". This means that we really don't mutations of the values
+        # in `varinfo` to propoagate the previous samples. Hence we `copy.`
+        vals = map(copy ∘ Base.Fix1(getindex, varinfo), x.vns)
+        return vals, map(string, x.vns)
     end
-    return expr
+
+    return NamedTuple{names}(vals_tuple)
 end
 
 @inline function findvns(vi, f_vns)
