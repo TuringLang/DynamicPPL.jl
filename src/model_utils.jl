@@ -149,7 +149,7 @@ end
 Return an iterator over the values in `chain` for each variable in `model`/`varinfo`.
 
 # Example
-```jldoctest
+```julia
 julia> using MCMCChains, DynamicPPL, Distributions, StableRNGs
 
 julia> rng = StableRNG(42);
