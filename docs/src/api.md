@@ -112,7 +112,6 @@ value_iterator_from_chain
 NamedDist
 ```
 
-
 ## Testing Utilities
 
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
