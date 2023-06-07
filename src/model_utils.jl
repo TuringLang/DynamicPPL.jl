@@ -162,7 +162,8 @@ julia> @model function demo_model(x)
            end
 
            return s, m
-       end;
+       end
+demo_model (generic function with 2 methods)
 
 julia> model = demo_model([1.0, 2.0]);
 
