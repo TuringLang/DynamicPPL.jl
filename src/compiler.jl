@@ -678,14 +678,8 @@ function make_inlined_kwcall(modeldef)
     kwargs = gensym(:kwargs)
     names = gensym(:names)
     # Insert the kwargs at the beginning of the argument list.
-    modeldef[:args] = vcat(
-        [:($kwargs::NamedTuple{$names})],
-        modeldef[:args],
-    )
-    modeldef[:whereparams] = vcat(
-        [:($names)],
-        [modeldef[:whereparams]...],
-    )
+    modeldef[:args] = vcat([:($kwargs::NamedTuple{$names})], modeldef[:args])
+    modeldef[:whereparams] = vcat([:($names)], [modeldef[:whereparams]...])
 
     # Create body with the inlined kwargs.
     modeldef[:body] = MacroTools.@q begin
@@ -693,21 +687,17 @@ function make_inlined_kwcall(modeldef)
         for n in $names
             push!(
                 kwargs_unwrapped.args,
-                Expr(:(=), n, Expr(:call, :getproperty, $(QuoteNode(kwargs)), QuoteNode(n)))
+                Expr(
+                    :(=), n, Expr(:call, :getproperty, $(QuoteNode(kwargs)), QuoteNode(n))
+                ),
             )
         end
 
-        return Expr(
-            :block,
-            kwargs_unwrapped,
-            $(Meta.quot(modeldef[:body]))
-        )
+        return Expr(:block, kwargs_unwrapped, $(Meta.quot(modeldef[:body])))
     end
 
     return :(@generated $(MacroTools.combinedef(modeldef)))
 end
-
-
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
