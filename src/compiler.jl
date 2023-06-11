@@ -595,7 +595,7 @@ function build_output(modeldef, linenumbernode)
     end
 end
 
-"""
+@doc raw"""
     make_inlined_kwcall(modeldef)
 
 Transforms the function definition `modeldef` into a function definition that
