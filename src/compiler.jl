@@ -535,6 +535,7 @@ function build_output(modeldef, linenumbernode)
 
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = deepcopy(modeldef)
+    evaluatordef[:kwargs] = []
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -558,6 +559,9 @@ function build_output(modeldef, linenumbernode)
         $(linenumbernode)
         $(replace_returns(make_returns_explicit!(modeldef[:body])))
     end
+
+    # Add the kwargs as the first argument to the evaluator.
+    evaluatordef_combined = make_inlined_kwcall(evaluatordef)
 
     ## Build the model function.
 
@@ -586,10 +590,124 @@ function build_output(modeldef, linenumbernode)
     end
 
     return MacroTools.@q begin
-        $(MacroTools.combinedef(evaluatordef))
+        $(evaluatordef_combined)
         $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
 end
+
+"""
+    make_inlined_kwcall(modeldef)
+
+Transforms the function definition `modeldef` into a function definition that
+takes a `NamedTuple` of keyword arguments as the first argument and unwraps
+the keyword arguments into the function body.
+
+This is similar to how `Base.kwcall` on Julia 1.9+, but with inlining of the
+extraction of the keyword arguments into the corresponding variables, and
+without any checking of the validity of the keyword arguments.
+
+# Examples
+
+This method effectively want to transform the following:
+```julia
+function f(args...)
+    ...
+end
+```
+
+into
+
+```julia
+@generated function f(__kwargs__::NamedTuple{__names__}, args...) where {__names__}
+    kwargs_unwrapped = [:($n = getproperty(__kwargs__, $n)) for n in __names__]
+    return quote
+        $(kwargs_unwrapped...)
+        ...
+    end
+end
+```
+
+For example:
+```julia
+julia> using MacroTools
+
+julia> expr = :(f(x) = x + y)  # `y` isn't defined!
+:(f(x) = begin
+          #= REPL[40]:1 =#
+          x + y
+      end)
+
+julia> modeldef = MacroTools.splitdef(expr);
+
+julia> # This is pretty ugly, but what can we do.
+       expr_result = DynamicPPL.make_inlined_kwcall(MacroTools.splitdef(expr))
+:(#= /home/tor/Projects/public/DynamicPPL.jl/src/compiler.jl:667 =# @generated function f(var"##kwargs#467"::NamedTuple{var"##names#468"}, x; ) where var"##names#468"
+          kwargs_unwrapped = Expr(:block)
+          for n = var"##names#468"
+              push!(kwargs_unwrapped.args, Expr(:(=), n, Expr(:call, :getproperty, Symbol("##kwargs#467"), QuoteNode(n))))
+          end
+          return Expr(:block, kwargs_unwrapped, $(Expr(:quote, quote
+    #= REPL[40]:1 =#
+    x + y
+end)))
+      end)
+
+julia> # Let's evaluate it and check that it indeed does what we expect.
+       eval(expr_result)
+f (generic function with 1 method)
+
+julia> f((y=100,), 1)  # (✓) Works!
+101
+
+julia> f(NamedTuple(), 1)  # (×) Fails!
+ERROR: UndefVarError: `y` not defined
+Stacktrace:
+ [1] macro expansion
+   @ ./REPL[40]:1 [inlined]
+ [2] macro expansion
+   @ ./none:0 [inlined]
+ [3] f(kwargs#473::NamedTuple{(), Tuple{}}, x::Int64)
+   @ Main ./none:0
+ [4] top-level scope
+   @ REPL[51]:1
+```
+"""
+function make_inlined_kwcall(modeldef)
+    modeldef = deepcopy(modeldef)
+    # Generate some unique symbols to avoid name clashes.
+    kwargs = gensym(:kwargs)
+    names = gensym(:names)
+    # Insert the kwargs at the beginning of the argument list.
+    modeldef[:args] = vcat(
+        [:($kwargs::NamedTuple{$names})],
+        modeldef[:args],
+    )
+    modeldef[:whereparams] = vcat(
+        [:($names)],
+        [modeldef[:whereparams]...],
+    )
+
+    # Create body with the inlined kwargs.
+    modeldef[:body] = MacroTools.@q begin
+        kwargs_unwrapped = Expr(:block)
+        for n in $names
+            push!(
+                kwargs_unwrapped.args,
+                Expr(:(=), n, Expr(:call, :getproperty, $(QuoteNode(kwargs)), QuoteNode(n)))
+            )
+        end
+
+        return Expr(
+            :block,
+            kwargs_unwrapped,
+            $(Meta.quot(modeldef[:body]))
+        )
+    end
+
+    return :(@generated $(MacroTools.combinedef(modeldef)))
+end
+
+
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)

@@ -579,7 +579,7 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
-    return model.f(args...; kwargs...)
+    return model.f(NamedTuple(kwargs), args...)
 end
 
 """
