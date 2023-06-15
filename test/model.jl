@@ -116,7 +116,7 @@ end
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         spl = SampleFromPrior()
-        link!(vi, spl)
+        link!!(vi, spl, model)
 
         for i in 1:10
             # Sample with large variations.
