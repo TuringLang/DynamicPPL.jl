@@ -29,7 +29,7 @@
     end
     @testset "vector" begin
         n = 5
-        @model function demo(x, n=n)
+        @model function demo(x, n)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, I)
         end
@@ -41,12 +41,12 @@
         loglike = logpdf(MvNormal(mval, I), xval)
         logjoint = logprior + loglike
 
-        model = demo(xval)
+        model = demo(xval, n)
         @test logprob"m = mval | model = model" == logprior
         @test logprob"x = xval | m = mval, model = model" == loglike
         @test logprob"x = xval, m = mval | model = model" == logjoint
 
-        varinfo = VarInfo(demo(xval))
+        varinfo = VarInfo(demo(xval, n))
         @test logprob"m = mval | model = model, varinfo = varinfo" == logprior
         @test logprob"x = xval | m = mval, model = model, varinfo = varinfo" == loglike
         # Currently, we cannot easily pre-allocate `VarInfo` for vector data
