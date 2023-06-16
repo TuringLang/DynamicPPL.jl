@@ -44,7 +44,7 @@
     end
 
     @testset "vectorize" begin
-        dist = LKJCholesky(2,1)
+        dist = LKJCholesky(2, 1)
         x = rand(dist)
         @test vectorize(dist, x) == vec(x.UL)
     end
