@@ -206,8 +206,7 @@ DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.default_transformation
 DynamicPPL.maybe_invlink_before_eval!!
-DynamicPPL.reconstruct
-```
+``` 
 
 #### Utils
 

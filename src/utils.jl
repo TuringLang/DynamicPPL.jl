@@ -177,39 +177,10 @@ function to_namedtuple_expr(syms, vals)
     return :(NamedTuple{$names_expr}($vals_expr))
 end
 
-"""
-    link_transform(dist)
-
-Return the constrained-to-unconstrained bijector for distribution `dist`.
-
-By default, this is just `Bijectors.bijector(dist)`.
-
-!!! warning
-    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
-    hence that needs to be overloaded separately if the intention is
-    to change behavior of an existing distribution.
-"""
-link_transform(dist) = bijector(dist)
-
-"""
-    invlink_transform(dist)
-
-Return the unconstrained-to-constrained bijector for distribution `dist`.
-
-By default, this is just `inverse(link_transform(dist))`.
-
-!!! warning
-    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
-    hence that needs to be overloaded separately if the intention is
-    to change behavior of an existing distribution.
-"""
-invlink_transform(dist) = inverse(link_transform(dist))
-
 #####################################################
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-vectorize(d, r) = vec(r)
 vectorize(d::UnivariateDistribution, r::Real) = [r]
 vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
 vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
@@ -220,23 +191,7 @@ vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
 # otherwise we will have error for MatrixDistribution.
 # Note this is not the case for MultivariateDistribution so I guess this might be lack of
 # support for some types related to matrices (like PDMat).
-
-"""
-    reconstruct([f, ]dist, val)
-
-Reconstruct `val` so that it's compatible with `dist`.
-
-If `f` is also provided, the reconstruct value will be
-such that `f(reconstruct_val)` is compatible with `dist`.
-"""
-reconstruct(f, dist, val) = reconstruct(dist, val)
-
-# No-op versions.
-reconstruct(::UnivariateDistribution, val::Real) = val
-reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
-reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
-# TODO: Implement no-op `reconstruct` for general array variates.
-
+reconstruct(d::UnivariateDistribution, val::Real) = val
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
 reconstruct(::Tuple{}, val::AbstractVector) = val[1]
 reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)

@@ -15,7 +15,7 @@ function tilde_assume(
 
     # Only transform if `!isinverse` since `vi[vn, right]`
     # already performs the inverse transformation if it's transformed.
-    r_transformed = isinverse ? r : link_transform(right)(r)
+    r_transformed = isinverse ? r : bijector(right)(r)
     return r, lp, setindex!!(vi, r_transformed, vn)
 end
 
@@ -27,7 +27,7 @@ function dot_tilde_assume(
     vi,
 ) where {isinverse}
     r = getindex.((vi,), vns, (dist,))
-    b = link_transform(dist)
+    b = bijector(dist)
 
     is_trans_uniques = unique(istrans.((vi,), vns))
     @assert length(is_trans_uniques) == 1 "DynamicTransformationContext only supports transforming all variables"
@@ -70,7 +70,7 @@ function dot_tilde_assume(
         @assert !isinverse "Trying to invlink non-transformed variables"
     end
 
-    b = link_transform(dist)
+    b = bijector(dist)
     for (vn, ri) in zip(vns, eachcol(r))
         # Only transform if `!isinverse` since `vi[vn, right]`
         # already performs the inverse transformation if it's transformed.
