@@ -76,7 +76,7 @@ function contextual_isassumption(context::ConditionContext, vn)
         end
     end
 
-    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # We might have nested contexts, e.g. `ConditionContext{.., <:PrefixContext{..., <:ConditionContext}}`
     # so we defer to `childcontext` if we haven't concluded that anything yet.
     return contextual_isassumption(childcontext(context), vn)
 end
@@ -92,7 +92,32 @@ isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context
 
 Return `true` if `vn` is considered fixed by `context`.
 """
-contextual_isfixed(context, vn) = has_fixed_value_nested(context, vn)
+contextual_isfixed(::IsLeaf, context, vn) = false
+function contextual_isfixed(::IsParent, context, vn)
+    return contextual_isfixed(childcontext(context), vn)
+end
+function contextual_isfixed(context::AbstractContext, vn)
+    return contextual_isfixed(NodeTrait(context), context, vn)
+end
+function contextual_isfixed(context::PrefixContext, vn)
+    return contextual_isfixed(childcontext(context), prefix(context, vn))
+end
+function contextual_isfixed(context::FixedContext, vn)
+    if has_fixed_value(context, vn)
+        val = get_fixed_value(context, vn)
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return false
+        else
+            return true
+        end
+    end
+
+    # We might have nested contexts, e.g. `FixedContext{.., <:PrefixContext{..., <:FixedContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isfixed(childcontext(context), vn)
+end
+
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
