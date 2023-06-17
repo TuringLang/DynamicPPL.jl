@@ -84,6 +84,16 @@ function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
 
+isfixed(expr, vn) = false
+isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context__, $vn))
+
+"""
+    contextual_isfixed(context, vn)
+
+Return `true` if `vn` is considered fixed by `context`.
+"""
+contextual_isfixed(context, vn) = has_fixed_value_nested(context, vn)
+
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
 maybe_view(x::Expr) = :(@views($x))
@@ -341,7 +351,9 @@ function generate_tilde(left, right)
             $(AbstractPPL.drop_escape(varname(left))), $dist
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left = $(DynamicPPL.get_fixed_value_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
