@@ -531,7 +531,7 @@ Not only can be condition on multivariate random variables, but
 we can also use the standard mechanism of setting something to `missing`
 in the call to `condition` to only condition on a part of the variable.
 
-```jldoctest condition
+```jldoctest fix
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m = Vector{TV}(undef, 2)
            m[1] ~ Normal()
