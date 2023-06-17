@@ -11,10 +11,10 @@ using DynamicPPL:
     PointwiseLikelihoodContext,
     contextual_isassumption,
     ConditionContext,
-    has_conditioned_value,
-    get_conditioned_value,
-    has_conditioned_value_nested,
-    get_conditioned_value_nested
+    hasconditioned,
+    getconditioned,
+    hasconditioned_nested,
+    getconditioned_nested
 
 # Dummy context to test nested behaviors.
 struct ParentContext{C<:AbstractContext} <: AbstractContext
@@ -178,11 +178,11 @@ end
         end
     end
 
-    @testset "get_conditioned_value_nested & has_conditioned_value_nested" begin
+    @testset "getconditioned_nested & hasconditioned_nested" begin
         @testset "$context" for context in contexts
             fake_vn = VarName{gensym(:x)}()
-            @test !has_conditioned_value_nested(context, fake_vn)
-            @test_throws ErrorException get_conditioned_value_nested(context, fake_vn)
+            @test !hasconditioned_nested(context, fake_vn)
+            @test_throws ErrorException getconditioned_nested(context, fake_vn)
 
             if any(Base.Fix2(isa, ConditionContext), context)
                 # `ConditionContext` specific.
@@ -201,9 +201,9 @@ end
                     for vn_child in
                         DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
-                        @test has_conditioned_value_nested(context, vn_child)
+                        @test hasconditioned_nested(context, vn_child)
                         # Value should be the same as extracted above.
-                        @test get_conditioned_value_nested(context, vn_child) ===
+                        @test getconditioned_nested(context, vn_child) ===
                             get(val, getlens(vn_child))
                     end
                 end
@@ -260,30 +260,30 @@ end
             s, m = retval.s, retval.m
 
             # Keword approach.
-            model_fixed = fix(model, s=s)
+            model_fixed = fix(model; s=s)
             @test model_fixed().s == s
             @test model_fixed().m != m
             # A fixed variable should not contribute at all to the logjoint.
             # Assuming `condition` is correctly implemented, the following should hold.
-            @test logprior(model_fixed, (; m)) == logprior(condition(model, s=s), (; m))
+            @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Positional approach.
             model_fixed = fix(model, (; s))
             @test model_fixed().s == s
             @test model_fixed().m != m
-            @test logprior(model_fixed, (; m)) == logprior(condition(model, s=s), (; m))
+            @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Pairs approach.
             model_fixed = fix(model, @varname(s) => s)
             @test model_fixed().s == s
             @test model_fixed().m != m
-            @test logprior(model_fixed, (; m)) == logprior(condition(model, s=s), (; m))
+            @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Dictionary approach.
             model_fixed = fix(model, Dict(@varname(s) => s))
             @test model_fixed().s == s
             @test model_fixed().m != m
-            @test logprior(model_fixed, (; m)) == logprior(condition(model, s=s), (; m))
+            @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
         end
     end
 end

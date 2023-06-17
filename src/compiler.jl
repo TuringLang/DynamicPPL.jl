@@ -66,8 +66,8 @@ function contextual_isassumption(context::AbstractContext, vn)
     return contextual_isassumption(NodeTrait(context), context, vn)
 end
 function contextual_isassumption(context::ConditionContext, vn)
-    if has_conditioned_value(context, vn)
-        val = get_conditioned_value(context, vn)
+    if hasconditioned(context, vn)
+        val = getconditioned(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
@@ -103,8 +103,8 @@ function contextual_isfixed(context::PrefixContext, vn)
     return contextual_isfixed(childcontext(context), prefix(context, vn))
 end
 function contextual_isfixed(context::FixedContext, vn)
-    if has_fixed_value(context, vn)
-        val = get_fixed_value(context, vn)
+    if hasfixed(context, vn)
+        val = getfixed(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return false
@@ -117,7 +117,6 @@ function contextual_isfixed(context::FixedContext, vn)
     # so we defer to `childcontext` if we haven't concluded that anything yet.
     return contextual_isfixed(childcontext(context), vn)
 end
-
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
@@ -377,13 +376,13 @@ function generate_tilde(left, right)
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
-            $left = $(DynamicPPL.get_fixed_value_nested)(__context__, $vn)
+            $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.get_conditioned_value_nested)(__context__, $vn)
+                $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
@@ -438,13 +437,13 @@ function generate_dot_tilde(left, right)
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
-            $left .= $(DynamicPPL.get_fixed_value_nested)(__context__, $vn)
+            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
         elseif $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.get_conditioned_value_nested)(__context__, $vn)
+                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(

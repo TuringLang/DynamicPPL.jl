@@ -320,67 +320,67 @@ childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
-    has_conditioned_value(context::AbstractContext, vn::VarName)
+    hasconditioned(context::AbstractContext, vn::VarName)
 
 Return `true` if `vn` is found in `context`.
 """
-has_conditioned_value(context::AbstractContext, vn::VarName) = false
-has_conditioned_value(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
-function has_conditioned_value(context::ConditionContext, vns::AbstractArray{<:VarName})
+hasconditioned(context::AbstractContext, vn::VarName) = false
+hasconditioned(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
+function hasconditioned(context::ConditionContext, vns::AbstractArray{<:VarName})
     return all(Base.Fix1(hasvalue, context.values), vns)
 end
 
 """
-    get_conditioned_value(context::AbstractContext, vn::VarName)
+    getconditioned(context::AbstractContext, vn::VarName)
 
 Return value of `vn` in `context`.
 """
-function get_conditioned_value(context::AbstractContext, vn::VarName)
+function getconditioned(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-get_conditioned_value(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
+getconditioned(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
 
 """
-    has_conditioned_value_nested(context, vn)
+    hasconditioned_nested(context, vn)
 
 Return `true` if `vn` is found in `context` or any of its descendants.
 
-This is contrast to [`has_conditioned_value(::AbstractContext, ::VarName)`](@ref) which only checks
+This is contrast to [`hasconditioned(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-function has_conditioned_value_nested(context::AbstractContext, vn)
-    return has_conditioned_value_nested(NodeTrait(has_conditioned_value_nested, context), context, vn)
+function hasconditioned_nested(context::AbstractContext, vn)
+    return hasconditioned_nested(NodeTrait(hasconditioned_nested, context), context, vn)
 end
-has_conditioned_value_nested(::IsLeaf, context, vn) = has_conditioned_value(context, vn)
-function has_conditioned_value_nested(::IsParent, context, vn)
-    return has_conditioned_value(context, vn) || has_conditioned_value_nested(childcontext(context), vn)
+hasconditioned_nested(::IsLeaf, context, vn) = hasconditioned(context, vn)
+function hasconditioned_nested(::IsParent, context, vn)
+    return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
-function has_conditioned_value_nested(context::PrefixContext, vn)
-    return has_conditioned_value_nested(childcontext(context), prefix(context, vn))
+function hasconditioned_nested(context::PrefixContext, vn)
+    return hasconditioned_nested(childcontext(context), prefix(context, vn))
 end
 
 """
-    get_conditioned_value_nested(context, vn)
+    getconditioned_nested(context, vn)
 
 Return the value of the parameter corresponding to `vn` from `context` or its descendants.
 
-This is contrast to [`get_conditioned_value`](@ref) which only returns the value `vn` in `context`,
+This is contrast to [`getconditioned`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
 """
-function get_conditioned_value_nested(context::AbstractContext, vn)
-    return get_conditioned_value_nested(NodeTrait(get_conditioned_value_nested, context), context, vn)
+function getconditioned_nested(context::AbstractContext, vn)
+    return getconditioned_nested(NodeTrait(getconditioned_nested, context), context, vn)
 end
-function get_conditioned_value_nested(::IsLeaf, context, vn)
+function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
-function get_conditioned_value_nested(context::PrefixContext, vn)
-    return get_conditioned_value_nested(childcontext(context), prefix(context, vn))
+function getconditioned_nested(context::PrefixContext, vn)
+    return getconditioned_nested(childcontext(context), prefix(context, vn))
 end
-function get_conditioned_value_nested(::IsParent, context, vn)
-    return if has_conditioned_value(context, vn)
-        get_conditioned_value(context, vn)
+function getconditioned_nested(::IsParent, context, vn)
+    return if hasconditioned(context, vn)
+        getconditioned(context, vn)
     else
-        get_conditioned_value_nested(childcontext(context), vn)
+        getconditioned_nested(childcontext(context), vn)
     end
 end
 
@@ -515,67 +515,67 @@ childcontext(context::FixedContext) = context.context
 setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
 
 """
-    has_fixed_value(context::AbstractContext, vn::VarName)
+    hasfixed(context::AbstractContext, vn::VarName)
 
 Return `true` if a fixed value for `vn` is found in `context`.
 """
-has_fixed_value(context::AbstractContext, vn::VarName) = false
-has_fixed_value(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
-function has_fixed_value(context::FixedContext, vns::AbstractArray{<:VarName})
+hasfixed(context::AbstractContext, vn::VarName) = false
+hasfixed(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
+function hasfixed(context::FixedContext, vns::AbstractArray{<:VarName})
     return all(Base.Fix1(hasvalue, context.values), vns)
 end
 
 """
-    get_fixed_value(context::AbstractContext, vn::VarName)
+    getfixed(context::AbstractContext, vn::VarName)
 
 Return the fixed value of `vn` in `context`.
 """
-function get_fixed_value(context::AbstractContext, vn::VarName)
+function getfixed(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-get_fixed_value(context::FixedContext, vn::VarName) = getvalue(context.values, vn)
+getfixed(context::FixedContext, vn::VarName) = getvalue(context.values, vn)
 
 """
-    has_fixed_value_nested(context, vn)
+    hasfixed_nested(context, vn)
 
 Return `true` if a fixed value for `vn` is found in `context` or any of its descendants.
 
-This is contrast to [`has_fixed_value(::AbstractContext, ::VarName)`](@ref) which only checks
+This is contrast to [`hasfixed(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-function has_fixed_value_nested(context::AbstractContext, vn)
-    return has_fixed_value_nested(NodeTrait(has_fixed_value_nested, context), context, vn)
+function hasfixed_nested(context::AbstractContext, vn)
+    return hasfixed_nested(NodeTrait(hasfixed_nested, context), context, vn)
 end
-has_fixed_value_nested(::IsLeaf, context, vn) = has_fixed_value(context, vn)
-function has_fixed_value_nested(::IsParent, context, vn)
-    return has_fixed_value(context, vn) || has_fixed_value_nested(childcontext(context), vn)
+hasfixed_nested(::IsLeaf, context, vn) = hasfixed(context, vn)
+function hasfixed_nested(::IsParent, context, vn)
+    return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
 end
-function has_fixed_value_nested(context::PrefixContext, vn)
-    return has_fixed_value_nested(childcontext(context), prefix(context, vn))
+function hasfixed_nested(context::PrefixContext, vn)
+    return hasfixed_nested(childcontext(context), prefix(context, vn))
 end
 
 """
-    get_fixed_value_nested(context, vn)
+    getfixed_nested(context, vn)
 
 Return the fixed value of the parameter corresponding to `vn` from `context` or its descendants.
 
-This is contrast to [`get_fixed_value`](@ref) which only returns the value `vn` in `context`,
+This is contrast to [`getfixed`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
 """
-function get_fixed_value_nested(context::AbstractContext, vn)
-    return get_fixed_value_nested(NodeTrait(get_fixed_value_nested, context), context, vn)
+function getfixed_nested(context::AbstractContext, vn)
+    return getfixed_nested(NodeTrait(getfixed_nested, context), context, vn)
 end
-function get_fixed_value_nested(::IsLeaf, context, vn)
+function getfixed_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
-function get_fixed_value_nested(context::PrefixContext, vn)
-    return get_fixed_value_nested(childcontext(context), prefix(context, vn))
+function getfixed_nested(context::PrefixContext, vn)
+    return getfixed_nested(childcontext(context), prefix(context, vn))
 end
-function get_fixed_value_nested(::IsParent, context, vn)
-    return if has_fixed_value(context, vn)
-        get_fixed_value(context, vn)
+function getfixed_nested(::IsParent, context, vn)
+    return if hasfixed(context, vn)
+        getfixed(context, vn)
     else
-        get_fixed_value_nested(childcontext(context), vn)
+        getfixed_nested(childcontext(context), vn)
     end
 end
 
