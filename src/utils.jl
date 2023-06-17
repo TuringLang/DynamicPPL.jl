@@ -291,10 +291,20 @@ istransformable(::Transformable) = true
 
 inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
 function inittrans(rng, dist::MultivariateDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1]))
+    # Get the length of the unconstrained vector
+    # TODO: Replace this by `length(transformed(dist))` or something similar
+    # once we Bijectors.jl has proper support for `length`.
+    b = link_transform(dist)
+    d = length(b(rand(dist)))
+    return Bijectors.invlink(dist, randrealuni(rng, d))
 end
 function inittrans(rng, dist::MatrixDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)...))
+    # TODO: Replace this by `size(transformed(dist))` or something similar
+    # once we Bijectors.jl has proper support for `size`.
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = size(b(rand(dist)))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
 
 ################################
