@@ -82,6 +82,23 @@ Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, 
 decondition
 ```
 
+## Fixing and unfixing
+
+We can also fix a collection of variables in a [`Model`](@ref) to certain values using [`fix`](@ref):
+
+```@docs
+fix
+fixed
+```
+
+The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
+
+Similarly, we can "unfix" variables, i.e. return them to their original meaning, using [`unfix`](@ref)
+
+```@docs
+unfix
+```
+
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
@@ -321,4 +338,3 @@ dot_tilde_assume
 tilde_observe
 dot_tilde_observe
 ```
-
