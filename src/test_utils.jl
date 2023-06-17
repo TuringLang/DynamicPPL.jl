@@ -560,9 +560,7 @@ end
 
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
 end
-function logprior_true(
-    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
-)
+function logprior_true(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m)
     n = length(model.args.x)
     s_vec = vec(s)
     return loglikelihood(InverseGamma(2, 3), s_vec) +
@@ -582,7 +580,6 @@ function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
 end
 
-
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
     Model{typeof(demo_assume_index_observe)},
@@ -596,7 +593,7 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_observe_submodel)},
     Model{typeof(demo_dot_assume_dot_observe_matrix)},
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
-    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)},
 }
 
 # We require demo models to have explict impleentations of `rand` since we want
