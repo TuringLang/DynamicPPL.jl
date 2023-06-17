@@ -275,15 +275,7 @@ end
 randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
 randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
 
-const Transformable = Union{
-    PositiveDistribution,
-    UnitDistribution,
-    TransformDistribution,
-    SimplexDistribution,
-    PDMatDistribution,
-}
-istransformable(dist) = false
-istransformable(::Transformable) = true
+istransformable(dist) = bijector(dist) !== identity
 
 #################################
 # Single-sample initialisations #
