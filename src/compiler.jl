@@ -412,7 +412,9 @@ function generate_dot_tilde(left, right)
             $(AbstractPPL.drop_escape(varname(left))), $right
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left .= $(DynamicPPL.get_fixed_value_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
