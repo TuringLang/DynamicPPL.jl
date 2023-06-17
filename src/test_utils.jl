@@ -581,7 +581,9 @@ function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
 end
 
 function Random.rand(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+    rng::Random.AbstractRNG,
+    ::Type{NamedTuple},
+    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)},
 )
     n = length(model.args.x)
     s = reshape(rand(rng, fillInverseGamma(2, 3), n), 2, n ÷ 2)
