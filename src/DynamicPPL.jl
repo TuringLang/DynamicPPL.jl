@@ -116,6 +116,8 @@ export AbstractVarInfo,
     pointwise_loglikelihoods,
     condition,
     decondition,
+    fix,
+    unfix,
     # Convenience macros
     @addlogprob!,
     @submodel
