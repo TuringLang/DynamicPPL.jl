@@ -488,3 +488,181 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return merge(context.values, conditioned(childcontext(context)))
 end
+
+struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
+    values::Values
+    context::Ctx
+end
+
+const NamedFixedContext{Names} = FixedContext{<:NamedTuple{Names}}
+const DictFixedContext = FixedContext{<:AbstractDict}
+
+FixedContext(values) = FixedContext(values, DefaultContext())
+
+# Try to avoid nested `FixedContext`.
+function FixedContext(values::NamedTuple, context::NamedFixedContext)
+    # Note that this potentially overrides values from `context`, thus giving
+    # precedence to the outmost `FixedContext`.
+    return FixedContext(merge(context.values, values), childcontext(context))
+end
+
+function Base.show(io::IO, context::FixedContext)
+    return print(io, "FixedContext($(context.values), $(childcontext(context)))")
+end
+
+NodeTrait(::FixedContext) = IsParent()
+childcontext(context::FixedContext) = context.context
+setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
+
+"""
+    has_fixed_value(context::AbstractContext, vn::VarName)
+
+Return `true` if `vn` is found in `context`.
+"""
+has_fixed_value(context::AbstractContext, vn::VarName) = false
+has_fixed_value(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
+function has_fixed_value(context::FixedContext, vns::AbstractArray{<:VarName})
+    return all(Base.Fix1(hasvalue, context.values), vns)
+end
+
+"""
+    get_fixed_value(context::AbstractContext, vn::VarName)
+
+Return value of `vn` in `context`.
+"""
+function get_fixed_value(context::AbstractContext, vn::VarName)
+    return error("context $(context) does not contain value for $vn")
+end
+get_fixed_value(context::FixedContext, vn::VarName) = getvalue(context.values, vn)
+
+"""
+    has_fixed_value_nested(context, vn)
+
+Return `true` if `vn` is found in `context` or any of its descendants.
+
+This is contrast to [`has_fixed_value(::AbstractContext, ::VarName)`](@ref) which only checks
+for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
+"""
+function has_fixed_value_nested(context::AbstractContext, vn)
+    return has_fixed_value_nested(NodeTrait(has_fixed_value_nested, context), context, vn)
+end
+has_fixed_value_nested(::IsLeaf, context, vn) = has_fixed_value(context, vn)
+function has_fixed_value_nested(::IsParent, context, vn)
+    return has_fixed_value(context, vn) || has_fixed_value_nested(childcontext(context), vn)
+end
+function has_fixed_value_nested(context::PrefixContext, vn)
+    return has_fixed_value_nested(childcontext(context), prefix(context, vn))
+end
+
+"""
+    get_fixed_value_nested(context, vn)
+
+Return the value of the parameter corresponding to `vn` from `context` or its descendants.
+
+This is contrast to [`get_fixed_value`](@ref) which only returns the value `vn` in `context`,
+not recursively looking into its descendants.
+"""
+function get_fixed_value_nested(context::AbstractContext, vn)
+    return get_fixed_value_nested(NodeTrait(get_fixed_value_nested, context), context, vn)
+end
+function get_fixed_value_nested(::IsLeaf, context, vn)
+    return error("context $(context) does not contain value for $vn")
+end
+function get_fixed_value_nested(context::PrefixContext, vn)
+    return get_fixed_value_nested(childcontext(context), prefix(context, vn))
+end
+function get_fixed_value_nested(::IsParent, context, vn)
+    return if has_fixed_value(context, vn)
+        get_fixed_value(context, vn)
+    else
+        get_fixed_value_nested(childcontext(context), vn)
+    end
+end
+
+"""
+    fix([context::AbstractContext,] values::NamedTuple)
+    fix([context::AbstractContext]; values...)
+
+Return `FixedContext` with `values` and `context` if `values` is non-empty,
+otherwise return `context` which is [`DefaultContext`](@ref) by default.
+
+See also: [`unfix`](@ref)
+"""
+fix(; values...) = fix(NamedTuple(values))
+fix(values::NamedTuple) = fix(DefaultContext(), values)
+function fix(value::Pair{<:VarName}, values::Pair{<:VarName}...)
+    return fix((value, values...))
+end
+function fix(values::NTuple{<:Any,<:Pair{<:VarName}})
+    return fix(DefaultContext(), values)
+end
+fix(context::AbstractContext, values::NamedTuple{()}) = context
+function fix(context::AbstractContext, values::Union{AbstractDict,NamedTuple})
+    return FixedContext(values, context)
+end
+function fix(context::AbstractContext; values...)
+    return fix(context, NamedTuple(values))
+end
+function fix(context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...)
+    return fix(context, (value, values...))
+end
+function fix(context::AbstractContext, values::NTuple{<:Any,Pair{<:VarName}})
+    return fix(context, Dict(values))
+end
+
+"""
+    unfix(context::AbstractContext, syms...)
+
+Return `context` but with `syms` no longer fixed on.
+
+Note that this recursively traverses contexts, unfixing all along the way.
+
+See also: [`fix`](@ref)
+"""
+unfix(::IsLeaf, context, args...) = context
+function unfix(::IsParent, context, args...)
+    return setchildcontext(context, unfix(childcontext(context), args...))
+end
+function unfix(context, args...)
+    return unfix(NodeTrait(context), context, args...)
+end
+function unfix(context::FixedContext)
+    return unfix(childcontext(context))
+end
+function unfix(context::FixedContext, sym)
+    return fix(unfix(childcontext(context), sym), BangBang.delete!!(context.values, sym))
+end
+function unfix(context::FixedContext, sym, syms...)
+    return unfix(
+        fix(unfix(childcontext(context), syms...), BangBang.delete!!(context.values, sym)),
+        syms...,
+    )
+end
+
+function unfix(context::NamedFixedContext, vn::VarName{sym}) where {sym}
+    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, sym))
+end
+function unfix(context::FixedContext, vn::VarName)
+    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, vn))
+end
+
+"""
+    fixed(context::AbstractContext)
+
+Return `NamedTuple` of values that are fixed on under context`.
+
+Note that this will recursively traverse the context stack and return
+a merged version of the fix values.
+"""
+function fixed(context::AbstractContext)
+    return fixed(NodeTrait(fixed, context), context)
+end
+fixed(::IsLeaf, context) = ()
+fixed(::IsParent, context) = fixed(childcontext(context))
+function fixed(context::FixedContext)
+    # Note the order of arguments to `merge`. The behavior of the rest of DPPL
+    # is that the outermost `context` takes precendence, hence when resolving
+    # the `fixed` variables we need to ensure that `context.values` takes
+    # precedence over decendants of `context`.
+    return merge(context.values, fixed(childcontext(context)))
+end

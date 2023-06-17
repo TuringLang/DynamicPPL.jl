@@ -467,6 +467,13 @@ VarName[]
 """
 conditioned(model::Model) = conditioned(model.context)
 
+fix(model::Model; values...) = contextualize(model, fix(model.context; values...))
+function fix(model::Model, value, values...)
+    return contextualize(model, fix(model.context, value, values...))
+end
+
+unfix(model::Model, syms...) = contextualize(model, unfix(model.context, syms...))
+
 """
     (model::Model)([rng, varinfo, sampler, context])
 
