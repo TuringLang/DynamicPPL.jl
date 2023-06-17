@@ -550,7 +550,7 @@ end
     x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
 ) where {TV}
     n = length(x)
-    d = length(x) ÷ 2
+    d = n ÷ 2
     s ~ reshape(product_distribution(fill(InverseGamma(2, 3), n)), d, 2)
     s_vec = vec(s)
     m ~ MvNormal(zeros(n), Diagonal(s_vec))
@@ -579,6 +579,18 @@ end
 function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
 end
+
+function Random.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+)
+    n = length(model.args.x)
+    s = reshape(rand(rng, fillInverseGamma(2, 3), n), 2, n ÷ 2)
+    s_vec = vec(s)
+    m = rand(rng, MvNormal(zeros(n), Diagonal(s_vec)))
+
+    return (s=s, m=m)
+end
+
 
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
