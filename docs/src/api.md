@@ -88,7 +88,7 @@ We can also fix a collection of variables in a [`Model`](@ref) to certain values
 
 ```@docs
 fix
-fixed
+DynamicPPL.fixed
 ```
 
 The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
