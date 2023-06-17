@@ -657,7 +657,7 @@ real difference here is as follows:
   This means thhat it's log-probability is _completely removed_ from the
     model, and thus not included in any of the above.
 
-```julia fix
+```juliadoctest fix
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
