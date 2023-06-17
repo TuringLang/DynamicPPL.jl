@@ -24,8 +24,9 @@
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
-        # Expected value of ``X`` where ``X ~ U[-2, 2]`` is ≈ 0.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 0 atol = 0.1
+        # `m` is Gaussian, i.e. no transformation is used, so it
+        # should have a mean equal to its prior, i.e. 2.
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
 
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
