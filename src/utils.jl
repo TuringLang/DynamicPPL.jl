@@ -275,7 +275,7 @@ end
 randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
 randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
 
-istransformable(dist) = bijector(dist) !== identity
+istransformable(dist) = link_transform(dist) !== identity
 
 #################################
 # Single-sample initialisations #

@@ -546,6 +546,43 @@ function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)
     return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
 end
 
+@model function demo_assume_matrix_dot_observe_matrix(
+    x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
+) where {TV}
+    n = length(x)
+    d = length(x) ÷ 2
+    s ~ reshape(product_distribution(fill(InverseGamma(2, 3), n)), d, 2)
+    s_vec = vec(s)
+    m ~ MvNormal(zeros(n), Diagonal(s_vec))
+
+    # Dotted observe for `Matrix`.
+    x .~ MvNormal(m, Diagonal(s_vec))
+
+    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+end
+function logprior_true(
+    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
+)
+    n = length(model.args.x)
+    s_vec = vec(s)
+    return loglikelihood(InverseGamma(2, 3), s_vec) +
+           logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m)
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
+)
+    return loglikelihood(MvNormal(m, Diagonal(vec(s))), model.args.x)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
+function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
+    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
+end
+
+
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
     Model{typeof(demo_assume_index_observe)},
@@ -559,6 +596,7 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_observe_submodel)},
     Model{typeof(demo_dot_assume_dot_observe_matrix)},
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
 }
 
 # We require demo models to have explict impleentations of `rand` since we want
@@ -668,6 +706,7 @@ const DEMO_MODELS = (
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_dot_observe_matrix(),
     demo_dot_assume_matrix_dot_observe_matrix(),
+    demo_assume_matrix_dot_observe_matrix(),
 )
 
 # Model to test `StaticTransformation` with.
