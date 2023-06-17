@@ -517,7 +517,7 @@ setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child
 """
     has_fixed_value(context::AbstractContext, vn::VarName)
 
-Return `true` if `vn` is found in `context`.
+Return `true` if a fixed value for `vn` is found in `context`.
 """
 has_fixed_value(context::AbstractContext, vn::VarName) = false
 has_fixed_value(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
@@ -528,7 +528,7 @@ end
 """
     get_fixed_value(context::AbstractContext, vn::VarName)
 
-Return value of `vn` in `context`.
+Return the fixed value of `vn` in `context`.
 """
 function get_fixed_value(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
@@ -538,7 +538,7 @@ get_fixed_value(context::FixedContext, vn::VarName) = getvalue(context.values, v
 """
     has_fixed_value_nested(context, vn)
 
-Return `true` if `vn` is found in `context` or any of its descendants.
+Return `true` if a fixed value for `vn` is found in `context` or any of its descendants.
 
 This is contrast to [`has_fixed_value(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
@@ -557,7 +557,7 @@ end
 """
     get_fixed_value_nested(context, vn)
 
-Return the value of the parameter corresponding to `vn` from `context` or its descendants.
+Return the fixed value of the parameter corresponding to `vn` from `context` or its descendants.
 
 This is contrast to [`get_fixed_value`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
@@ -613,7 +613,7 @@ end
 """
     unfix(context::AbstractContext, syms...)
 
-Return `context` but with `syms` no longer fixed on.
+Return `context` but with `syms` no longer fixed.
 
 Note that this recursively traverses contexts, unfixing all along the way.
 
@@ -649,14 +649,12 @@ end
 """
     fixed(context::AbstractContext)
 
-Return `NamedTuple` of values that are fixed on under context`.
+Return the values that are fixed under `context`.
 
 Note that this will recursively traverse the context stack and return
 a merged version of the fix values.
 """
-function fixed(context::AbstractContext)
-    return fixed(NodeTrait(fixed, context), context)
-end
+fixed(context::AbstractContext) = fixed(NodeTrait(fixed, context), context)
 fixed(::IsLeaf, context) = ()
 fixed(::IsParent, context) = fixed(childcontext(context))
 function fixed(context::FixedContext)
