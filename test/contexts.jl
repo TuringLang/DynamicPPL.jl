@@ -11,10 +11,10 @@ using DynamicPPL:
     PointwiseLikelihoodContext,
     contextual_isassumption,
     ConditionContext,
-    hasvalue,
-    getvalue,
-    hasvalue_nested,
-    getvalue_nested
+    has_conditioned_value,
+    get_conditioned_value,
+    has_conditioned_value_nested,
+    get_conditioned_value_nested
 
 # Dummy context to test nested behaviors.
 struct ParentContext{C<:AbstractContext} <: AbstractContext
@@ -178,11 +178,11 @@ end
         end
     end
 
-    @testset "getvalue_nested & hasvalue_nested" begin
+    @testset "get_conditioned_value_nested & has_conditioned_value_nested" begin
         @testset "$context" for context in contexts
             fake_vn = VarName{gensym(:x)}()
-            @test !hasvalue_nested(context, fake_vn)
-            @test_throws ErrorException getvalue_nested(context, fake_vn)
+            @test !has_conditioned_value_nested(context, fake_vn)
+            @test_throws ErrorException get_conditioned_value_nested(context, fake_vn)
 
             if any(Base.Fix2(isa, ConditionContext), context)
                 # `ConditionContext` specific.
@@ -201,9 +201,9 @@ end
                     for vn_child in
                         DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
-                        @test hasvalue_nested(context, vn_child)
+                        @test has_conditioned_value_nested(context, vn_child)
                         # Value should be the same as extracted above.
-                        @test getvalue_nested(context, vn_child) ===
+                        @test get_conditioned_value_nested(context, vn_child) ===
                             get(val, getlens(vn_child))
                     end
                 end
