@@ -577,7 +577,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
-    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 function Random.rand(
@@ -586,7 +586,7 @@ function Random.rand(
     model::Model{typeof(demo_assume_matrix_dot_observe_matrix)},
 )
     n = length(model.args.x)
-    s = reshape(rand(rng, InverseGamma(2, 3), n), 2, n ÷ 2)
+    s = reshape(rand(rng, InverseGamma(2, 3), n), n ÷ 2, 2)
     s_vec = vec(s)
     m = rand(rng, MvNormal(zeros(n), Diagonal(s_vec)))
 
