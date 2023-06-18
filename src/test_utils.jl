@@ -593,7 +593,6 @@ function Random.rand(
     return (s=s, m=m)
 end
 
-
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
     Model{typeof(demo_assume_index_observe)},
