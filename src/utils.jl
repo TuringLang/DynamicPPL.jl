@@ -236,6 +236,9 @@ reconstruct(f, dist, val) = reconstruct(dist, val)
 reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
+reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+reconstruct(::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector) = copy(val)
+
 # TODO: Implement no-op `reconstruct` for general array variates.
 
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
