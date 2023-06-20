@@ -275,15 +275,7 @@ end
 randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
 randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
 
-const Transformable = Union{
-    PositiveDistribution,
-    UnitDistribution,
-    TransformDistribution,
-    SimplexDistribution,
-    PDMatDistribution,
-}
-istransformable(dist) = false
-istransformable(::Transformable) = true
+istransformable(dist) = link_transform(dist) !== identity
 
 #################################
 # Single-sample initialisations #
@@ -291,10 +283,16 @@ istransformable(::Transformable) = true
 
 inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
 function inittrans(rng, dist::MultivariateDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1]))
+    # Get the length of the unconstrained vector
+    b = link_transform(dist)
+    d = Bijectors.output_length(b, length(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, d))
 end
 function inittrans(rng, dist::MatrixDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)...))
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = Bijectors.output_size(b, size(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
 
 ################################
