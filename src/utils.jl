@@ -284,15 +284,11 @@ istransformable(dist) = link_transform(dist) !== identity
 inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
 function inittrans(rng, dist::MultivariateDistribution)
     # Get the length of the unconstrained vector
-    # TODO: Replace this by `length(transformed(dist))` or something similar
-    # once we Bijectors.jl has proper support for `length`.
     b = link_transform(dist)
     d = Bijectors.output_length(b, length(dist))
     return Bijectors.invlink(dist, randrealuni(rng, d))
 end
 function inittrans(rng, dist::MatrixDistribution)
-    # TODO: Replace this by `size(transformed(dist))` or something similar
-    # once we Bijectors.jl has proper support for `size`.
     # Get the size of the unconstrained vector
     b = link_transform(dist)
     sz = Bijectors.output_size(b, size(dist))
