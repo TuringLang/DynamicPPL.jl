@@ -287,7 +287,7 @@ function inittrans(rng, dist::MultivariateDistribution)
     # TODO: Replace this by `length(transformed(dist))` or something similar
     # once we Bijectors.jl has proper support for `length`.
     b = link_transform(dist)
-    d = length(b(rand(dist)))
+    d = Bijectors.output_length(b, length(dist))
     return Bijectors.invlink(dist, randrealuni(rng, d))
 end
 function inittrans(rng, dist::MatrixDistribution)
@@ -295,7 +295,7 @@ function inittrans(rng, dist::MatrixDistribution)
     # once we Bijectors.jl has proper support for `size`.
     # Get the size of the unconstrained vector
     b = link_transform(dist)
-    sz = size(b(rand(dist)))
+    sz = Bijectors.output_size(b, size(dist))
     return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
 
