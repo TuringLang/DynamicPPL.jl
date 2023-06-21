@@ -32,7 +32,7 @@
     end
     @testset "vector" begin
         n = 5
-        @model function demo(x, n=n)
+        @model function demo(x; n)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, I)
         end
@@ -40,7 +40,7 @@
         xval = rand(n)
         iters = 1000
 
-        model = demo(xval)
+        model = demo(xval; n)
         varinfo = VarInfo(model)
         chain = MCMCChains.get_sections(
             sample(model, HMC(0.5, 1), iters; save_state=true), :parameters
