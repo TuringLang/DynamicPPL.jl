@@ -21,6 +21,8 @@ _lkj_atol(::Model{typeof(lkj_chol_prior_demo)}) = 0.25
     # `SampleFromUniform` will sample in unconstrained space.
     @testset "SampleFromUniform" begin
         samples = sample(model, SampleFromUniform(), 1_000)
-        @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean(model) atol=_lkj_atol(model)
+        @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean(model) atol = _lkj_atol(
+            model
+        )
     end
 end
