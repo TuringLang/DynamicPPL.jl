@@ -14,7 +14,14 @@ end
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default
+        @model function gdemo_d()
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
+            1.5 ~ Normal(m, sqrt(s))
+            2.0 ~ Normal(m, sqrt(s))
+            return s, m
+        end
+        gdemo_default = gdemo_d()
 
         # sample from model and extract variables
         vi = VarInfo(model)
