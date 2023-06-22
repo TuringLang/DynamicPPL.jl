@@ -302,7 +302,12 @@ function inittrans(rng, dist::MatrixDistribution)
     sz = Bijectors.output_size(b, size(dist))
     return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
-
+function inittrans(rng, dist::Distribution{CholeskyVariate})
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = Bijectors.output_size(b, size(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
+end
 ################################
 # Multi-sample initialisations #
 ################################
