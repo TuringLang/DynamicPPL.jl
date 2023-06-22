@@ -37,7 +37,20 @@ end
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
 
-        # logprior, logjoint, loglikelihood for MCMC chains 
+        #### logprior, logjoint, loglikelihood for MCMC chains ####
+        # Function to modify the representation of values based on their length
+        function modify_value_representation(nt::NamedTuple)
+            modified_nt = NamedTuple()
+            for (key, value) in zip(keys(samples), values(samples))
+                if length(value) == 1  # Scalar value
+                    modified_value = value[1]
+                else  # Non-scalar value
+                    modified_value = value
+                end
+                modified_nt = merge(modified_nt, (key => modified_value,))
+            end
+            return modified_nt
+        end
         for model in DynamicPPL.TestUtils.DEMO_MODELS
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
@@ -53,79 +66,39 @@ end
             vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
             chain_mat = vcat(vec_of_vec...)
             # devise parameter names for chain
-            symbol_names = Symbol[]
-            if size(chain_mat, 2) != length(keys(var_info)) # some parameter names need to be splatted
-                # examine each vn in vns, and create splatted new variable symbol_names.
-                for (key, val) in vals_OrderedDict[1]
-                    if length(val) > 1
-                        for kk in 1:length(val)
-                            push!(symbol_names, Symbol(key, "[", kk, "]"))
-                        end
-                    else
-                        push!(symbol_names, Symbol(key))
-                    end
+            sample_values_vec = collect(values(vals_OrderedDict[1]))
+            symbol_names = []
+            chain_sym_map = Dict()
+            for k in 1:length(keys(var_info))
+                vn_parent = keys(var_info)[k]
+                sym = DynamicPPL.getsym(vn_parent)
+                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k])
+                for vn_child in vn_children
+                    chain_sym_map[Symbol(vn_child)] = sym
+                    symbol_names = [symbol_names; Symbol(vn_child)]
                 end
-            else
-                symbol_names = keys(var_info)
-            end
-            if model isa
-                Model{typeof(DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix)}
-                symbol_names = [
-                    Symbol(vns[k], "[", kk, "]") for k in 1:length(vns) for
-                    kk in 1:size(vals_mat[k, 1], 1)
-                ]
             end
             chain = Chains(chain_mat, symbol_names)
-            # count repeatitions of parameter names in keys(chain), for laster use in constructing samples_dict in tests below.
-            # a dispatched `subsumes(parent::Symbol, child::Symbol)` method has been created in PR#83 for AbstractPPL.jl; here we temporary replicate it here - just for tesing purpose.
-            # This 'subsumes_sym(parent::Symbol, child::Symbol)' method can be removed from here, once PR#83 in AbstractPPL has been merged.
-            function subsumes_sym(parent::Symbol, child::Symbol)
-                parent_str = string(parent)
-                child_str = string(child)
-                if parent_str == child_str
-                    return true
-                end
-                if length(parent_str) > length(child_str)
-                    return false
-                end
-                return child_str[1:length(parent_str)] == parent_str
-            end
-            reps = Dict(
-                sym => count(i -> subsumes_sym(Symbol(sym), Symbol(i)), keys(chain)) for
-                sym in syms
-            )
-            # calculate the pointwise loglikelihoods for the whole chain
+            # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
             logjoints = logjoint(model, chain)
             # compare them with true values
             for i in 1:N
-                # extract parameter values from chain: we need to aggregate the values belonging to the same parameter into a vector. 
                 samples_dict = Dict()
-                for sym in syms
-                    if reps[sym] > 1 # collect all the values from chain which belong to the same parameter
-                        chain_param_names = [
-                            key for
-                            key in keys(chain) if subsumes_sym(Symbol(sym), Symbol(key))
-                        ]
-                        samples_dict[sym] = [
-                            chain[i, chain_param_name, 1] for
-                            chain_param_name in chain_param_names
-                        ]
-                    else
-                        samples_dict[sym] = chain[i, Symbol(sym), 1]
-                    end
+                for chain_key in keys(chain)
+                    value = chain[i, chain_key, 1]
+                    key = chain_sym_map[chain_key]
+                    existing_value = get(samples_dict, key, Float64[])
+                    push!(existing_value, value)
+                    samples_dict[key] = existing_value
                 end
                 samples = (; samples_dict...)
-                @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(
-                    model, [samples[sym] for sym in syms]...
-                )
-                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
-                    model, [samples[sym] for sym in syms]...
-                )
-                @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(
-                    model, [samples[sym] for sym in syms]...
-                )
+                samples = modify_value_representation(samples)
+                @test logpriors[i] ≈ DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈
+                    DynamicPPL.TestUtils.loglikelihood_true(model, samples[:s], samples[:m])
+                @test logjoints[i] ≈ DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
         end
     end
