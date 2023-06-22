@@ -21,7 +21,7 @@ end
             2.0 ~ Normal(m, sqrt(s))
             return s, m
         end
-        gdemo_default = gdemo_d()
+        model = gdemo_d()
 
         # sample from model and extract variables
         vi = VarInfo(model)
