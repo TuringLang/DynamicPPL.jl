@@ -41,7 +41,7 @@ end
         # Function to modify the representation of values based on their length
         function modify_value_representation(nt::NamedTuple)
             modified_nt = NamedTuple()
-            for (key, value) in zip(keys(samples), values(samples))
+            for (key, value) in zip(keys(nt), values(nt))
                 if length(value) == 1  # Scalar value
                     modified_value = value[1]
                 else  # Non-scalar value
