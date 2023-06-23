@@ -34,7 +34,7 @@ end
         samples = sample(model, SampleFromPrior(), 1_000)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
-            M = float.(reshape(s.metadata.vals, (2, 2)))
+            M = reshape(s.metadata.vals, (2, 2))
             pd_from_triangular(M, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
@@ -45,7 +45,7 @@ end
         samples = sample(model, SampleFromUniform(), 1_000)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
-            M = float.(reshape(s.metadata.vals, (2, 2)))
+            M = reshape(s.metadata.vals, (2, 2))
             pd_from_triangular(M, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
