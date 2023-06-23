@@ -11,57 +11,59 @@ struct MyZeroModel end
     m ~ Normal(0, 1)
     return x ~ Normal(m, 1)
 end
+@model function gdemo_d()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+    return s, m
+end
+gdemo_default = gdemo_d()
+# function to modify the representation of values based on their length
+function modify_value_representation(nt::NamedTuple)
+    modified_nt = NamedTuple()
+    for (key, value) in zip(keys(nt), values(nt))
+        if length(value) == 1  # Scalar value
+            modified_value = value[1]
+        else  # Non-scalar value
+            modified_value = value
+        end
+        modified_nt = merge(modified_nt, (key => modified_value,))
+    end
+    return modified_nt
+end
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        # @model function gdemo_d()
-        #     s ~ InverseGamma(2, 3)
-        #     m ~ Normal(0, sqrt(s))
-        #     1.5 ~ Normal(m, sqrt(s))
-        #     2.0 ~ Normal(m, sqrt(s))
-        #     return s, m
-        # end
-        # model = gdemo_d()
+        model = gdemo_default
 
-        # # sample from model and extract variables
-        # vi = VarInfo(model)
-        # s = vi[@varname(s)]
-        # m = vi[@varname(m)]
+        # sample from model and extract variables
+        vi = VarInfo(model)
+        s = vi[@varname(s)]
+        m = vi[@varname(m)]
 
-        # # extract log pdf of variable object
-        # lp = getlogp(vi)
+        # extract log pdf of variable object
+        lp = getlogp(vi)
 
-        # # log prior probability
-        # lprior = logprior(model, vi)
-        # @test lprior ≈ logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
+        # log prior probability
+        lprior = logprior(model, vi)
+        @test lprior ≈ logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 
-        # # log likelihood
-        # llikelihood = loglikelihood(model, vi)
-        # @test llikelihood ≈ loglikelihood(Normal(m, sqrt(s)), [1.5, 2.0])
+        # log likelihood
+        llikelihood = loglikelihood(model, vi)
+        @test llikelihood ≈ loglikelihood(Normal(m, sqrt(s)), [1.5, 2.0])
 
-        # # log joint probability
-        # ljoint = logjoint(model, vi)
-        # @test ljoint ≈ lprior + llikelihood
-        # @test ljoint ≈ lp
+        # log joint probability
+        ljoint = logjoint(model, vi)
+        @test ljoint ≈ lprior + llikelihood
+        @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        # Function to modify the representation of values based on their length
-        function modify_value_representation(nt::NamedTuple)
-            modified_nt = NamedTuple()
-            for (key, value) in zip(keys(nt), values(nt))
-                if length(value) == 1  # Scalar value
-                    modified_value = value[1]
-                else  # Non-scalar value
-                    modified_value = value
-                end
-                modified_nt = merge(modified_nt, (key => modified_value,))
-            end
-            return modified_nt
-        end
         for model in DynamicPPL.TestUtils.DEMO_MODELS
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
+
             # generate a chain of sample parameter values.
             N = 200
             vals_OrderedDict = mapreduce(hcat, 1:N) do _
@@ -72,6 +74,7 @@ end
             end
             vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
             chain_mat = vcat(vec_of_vec...)
+
             # devise parameter names for chain
             sample_values_vec = collect(values(vals_OrderedDict[1]))
             symbol_names = []
@@ -79,17 +82,19 @@ end
             for k in 1:length(keys(var_info))
                 vn_parent = keys(var_info)[k]
                 sym = DynamicPPL.getsym(vn_parent)
-                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k])
+                vn_children = varname_leaves(vn_parent, sample_values_vec[k])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
                     symbol_names = [symbol_names; Symbol(vn_child)]
                 end
             end
             chain = Chains(chain_mat, symbol_names)
+
             # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
-            logpriors = logprior(model, chain)
+            logpriors = logprior_temp(model, chain)
             loglikelihoods = loglikelihood(model, chain)
-            logjoints = logjoint(model, chain)
+            logjoints = logjoint_temp(model, chain)
+            
             # compare them with true values
             for i in 1:N
                 samples_dict = Dict()
