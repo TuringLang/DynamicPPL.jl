@@ -26,7 +26,7 @@ _lkj_atol = 0.05
 end
 
 @testset "Sample from x ~ LKJCholesky(2, 1, $(chol_char))" for chol_char in ['L', 'U']
-    model = lkj_chol_prior_demo()
+    model = lkj_chol_prior_demo(chol_char)
     # `SampleFromPrior` will sample in unconstrained space.
     @testset "SampleFromPrior" begin
         samples = sample(model, SampleFromPrior(), 1_000)
