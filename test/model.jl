@@ -107,7 +107,9 @@ end
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
+        model_no = 0
         for model in DynamicPPL.TestUtils.DEMO_MODELS
+            model_no += 1; println("model $model_no")
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
@@ -120,8 +122,11 @@ end
             vals_mat = mapreduce(hcat, 1:N) do i
                 [vals_OrderedDict[i][vn] for vn in vns]
             end
+            println("vals_mat: ", size(vals_mat))
             vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
+            println("vec_of_vec: ", size(vec_of_vec))
             chain_mat = vcat(vec_of_vec...)
+            println("chain_mat: ", size(chain_mat))
 
             # devise parameter names for chain
             sample_values_vec = collect(values(vals_OrderedDict[1]))
