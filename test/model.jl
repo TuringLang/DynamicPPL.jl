@@ -109,7 +109,8 @@ end
         #### logprior, logjoint, loglikelihood for MCMC chains ####
         model_no = 0
         for model in DynamicPPL.TestUtils.DEMO_MODELS
-            model_no += 1; println("\n model $model_no \n")
+            model_no += 1
+            println("\n model $model_no \n")
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
