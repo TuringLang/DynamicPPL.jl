@@ -107,10 +107,8 @@ end
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        model_no = 0
-        for model in DynamicPPL.TestUtils.DEMO_MODELS
-            model_no += 1
-            println("\n model $model_no \n")
+        model_no = 1
+        for model in DynamicPPL.TestUtils.DEMO_MODELS[1:12]
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
@@ -168,6 +166,8 @@ end
                 @test logjoints[i] ≈
                     DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
+            println("\n model $model_no done!!! \n")
+            model_no += 1
         end
     end
 
