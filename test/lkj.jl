@@ -1,6 +1,8 @@
 using Bijectors: pd_from_upper, pd_from_lower
 
-pd_from_triangular(X::AbstractMatrix, uplo::Char) = uplo == 'U' ? pd_from_upper(X) : pd_from_lower(X)
+function pd_from_triangular(X::AbstractMatrix, uplo::Char)
+    return uplo == 'U' ? pd_from_upper(X) : pd_from_lower(X)
+end
 
 @model lkj_prior_demo() = x ~ LKJ(2, 1)
 @model lkj_chol_prior_demo(uplo) = x ~ LKJCholesky(2, 1, uplo)
