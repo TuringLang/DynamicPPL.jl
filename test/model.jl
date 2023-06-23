@@ -94,7 +94,6 @@ end
             logpriors = logprior_temp(model, chain)
             loglikelihoods = loglikelihood(model, chain)
             logjoints = logjoint_temp(model, chain)
-            
             # compare them with true values
             for i in 1:N
                 samples_dict = Dict()
