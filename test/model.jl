@@ -1,3 +1,51 @@
+# helper functions for testing (both varname_leaves and values_from_chain are in utils.jl, for some reason they are not loaded)
+varname_leaves(vn::VarName, ::Real) = [vn]
+function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
+    return (
+        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::VarName, val::AbstractArray)
+    return Iterators.flatten(
+        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
+    iter = Iterators.map(keys(val)) do sym
+        lens = Setfield.PropertyLens{sym}()
+        varname_leaves(vn ∘ lens, get(val, lens))
+    end
+    return Iterators.flatten(iter)
+end
+
+#481
+function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
+    # HACK: If it's not an array, we fall back to just returning the first value.
+    return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
+end
+function values_from_chain(
+    x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
+) where {sym}
+    # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
+    # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
+    # to extract the value from the `chain`.
+    return reduce(varname_leaves(VarName{sym}(), x); init=similar(x)) do x, vn
+        # Update `x`, possibly in place, and return.
+        l = AbstractPPL.getlens(vn)
+        Setfield.set(
+            x,
+            BangBang.prefermutation(l),
+            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx],
+        )
+    end
+end
+function values_from_chain(vi::AbstractVarInfo, vn_parent, chain, chain_idx, iteration_idx)
+    # Use the value `vi[vn_parent]` to obtain a buffer.
+    return values_from_chain(vi[vn_parent], vn_parent, chain, chain_idx, iteration_idx)
+end
+
 # some functors (#367)
 struct MyModel
     a::Int
@@ -91,9 +139,9 @@ end
             chain = Chains(chain_mat, symbol_names)
 
             # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
-            logpriors = logprior_temp(model, chain)
+            logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
-            logjoints = logjoint_temp(model, chain)
+            logjoints = logjoint(model, chain)
             # compare them with true values
             for i in 1:N
                 samples_dict = Dict()
