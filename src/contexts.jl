@@ -121,7 +121,7 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 # Contexts
 """
     SamplingContext(
-            [rng::Random.AbstractRNG=Random.GLOBAL_RNG],
+            [rng::Random.AbstractRNG=Random.default_rng()],
             [sampler::AbstractSampler=SampleFromPrior()],
             [context::AbstractContext=DefaultContext()],
     )
@@ -138,7 +138,7 @@ struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractConte
 end
 
 function SamplingContext(
-    rng::Random.AbstractRNG=Random.GLOBAL_RNG, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG=Random.default_rng(), sampler::AbstractSampler=SampleFromPrior()
 )
     return SamplingContext(rng, sampler, DefaultContext())
 end
@@ -146,7 +146,7 @@ end
 function SamplingContext(
     sampler::AbstractSampler, context::AbstractContext=DefaultContext()
 )
-    return SamplingContext(Random.GLOBAL_RNG, sampler, context)
+    return SamplingContext(Random.default_rng(), sampler, context)
 end
 
 function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
@@ -154,7 +154,7 @@ function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
 end
 
 function SamplingContext(context::AbstractContext)
-    return SamplingContext(Random.GLOBAL_RNG, SampleFromPrior(), context)
+    return SamplingContext(Random.default_rng(), SampleFromPrior(), context)
 end
 
 NodeTrait(context::SamplingContext) = IsParent()

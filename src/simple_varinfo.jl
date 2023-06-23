@@ -290,7 +290,7 @@ end
 
 # `NamedTuple`
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return maybe_invlink(vi, vn, dist, getindex(vi, vn))
+    return maybe_invlink_and_reconstruct(vi, vn, dist, getindex(vi, vn))
 end
 function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
@@ -328,6 +328,9 @@ function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribut
     vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
     return reconstruct(dist, vals, length(vns))
 end
+
+# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
+getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
@@ -426,7 +429,7 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    value_raw = maybe_link(vi, vn, dist, value)
+    value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
@@ -444,9 +447,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        maybe_link.((vi,), vns, (dists,), value)
+        maybe_reconstruct_and_link.((vi,), vns, (dists,), value)
     else
-        maybe_link.((vi,), vns, dists, value)
+        maybe_reconstruct_and_link.((vi,), vns, dists, value)
     end
 
     # Update `vi`
@@ -473,7 +476,7 @@ function dot_assume(
 
     # Update `vi`.
     for (vn, val) in zip(vns, eachcol(value))
-        val_linked = maybe_link(vi, vn, dist, val)
+        val_linked = maybe_reconstruct_and_link(vi, vn, dist, val)
         vi = BangBang.setindex!!(vi, val_linked, vn)
     end
 
@@ -488,7 +491,7 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {
     nt_vals = map(keys(vi)) do vn
         val = vi[vn]
         vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(Base.Fix1(getindex, vi), vns)
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
         (vals, map(string, vns))
     end
 
@@ -501,7 +504,7 @@ function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
         # Extract the leaf varnames and values.
         val = vi[vn]
         vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(Base.Fix1(getindex, vi), vns)
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
 
         # Determine the corresponding symbol.
         sym = only(unique(map(getsym, vns)))

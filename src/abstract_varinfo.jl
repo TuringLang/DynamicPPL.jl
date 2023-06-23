@@ -553,6 +553,99 @@ variables `x` would return
 """
 function tonamedtuple end
 
+# TODO: Clean up all this linking stuff once and for all!
+"""
+    with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
+
+Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
+value is reconstructed to the correct type and shape according to `dist`.
+"""
+function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+    x_recon = reconstruct(f, dist, x)
+    return with_logabsdet_jacobian(f, x_recon)
+end
+
+# TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
+# just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
+# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
+"""
+    reconstruct_and_link(dist, val)
+    reconstruct_and_link(vi::AbstractVarInfo, vi::VarName, dist, val)
+
+Return linked `val` but reconstruct before linking, if necessary.
+
+Note that unlike [`invlink_and_reconstruct`](@ref), this does not necessarily
+return a reconstructed value, i.e. a value of the same type and shape as expected
+by `dist`.
+
+See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
+"""
+reconstruct_and_link(f, dist, val) = f(reconstruct(f, dist, val))
+reconstruct_and_link(dist, val) = reconstruct_and_link(link_transform(dist), dist, val)
+function reconstruct_and_link(::AbstractVarInfo, ::VarName, dist, val)
+    return reconstruct_and_link(dist, val)
+end
+
+"""
+    invlink_and_reconstruct(dist, val)
+    invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return invlinked and reconstructed `val`.
+
+See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
+"""
+invlink_and_reconstruct(f, dist, val) = f(reconstruct(f, dist, val))
+function invlink_and_reconstruct(dist, val)
+    return invlink_and_reconstruct(invlink_transform(dist), dist, val)
+end
+function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
+    return invlink_and_reconstruct(dist, val)
+end
+
+"""
+    maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
+"""
+function maybe_reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
+    return if istrans(vi, vn)
+        reconstruct_and_link(vi, vn, dist, val)
+    else
+        reconstruct(dist, val)
+    end
+end
+
+"""
+    maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+
+Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
+"""
+function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    return if istrans(vi, vn)
+        invlink_and_reconstruct(vi, vn, dist, val)
+    else
+        reconstruct(dist, val)
+    end
+end
+
+"""
+    invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist[, x])
+
+Invlink `x` and compute the logpdf under `dist` including correction from
+the invlink-transformation.
+
+If `x` is not provided, `getval(vi, vn)` will be used.
+"""
+function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
+    return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
+end
+function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
+    # NOTE: Will this cause type-instabilities or will union-splitting save us?
+    f = istrans(vi, vn) ? invlink_transform(dist) : identity
+    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+    return x, logpdf(dist, x) + logjac
+end
+
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing

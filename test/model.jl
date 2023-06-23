@@ -124,12 +124,12 @@ end
             for i in 1:10
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.GLOBAL_RNG, vi, sampler)
+                model(Random.default_rng(), vi, sampler)
                 vals = DynamicPPL.getall(vi)
 
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.GLOBAL_RNG, vi, sampler)
+                model(Random.default_rng(), vi, sampler)
                 @test DynamicPPL.getall(vi) == vals
             end
         end
@@ -142,7 +142,7 @@ end
         s, m = model()
 
         Random.seed!(100)
-        @test model(Random.GLOBAL_RNG) == (s, m)
+        @test model(Random.default_rng()) == (s, m)
     end
 
     @testset "nameof" begin
@@ -227,5 +227,10 @@ end
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
         @test rand(Dict, model) == sample_dict
+    end
+
+    @testset "default arguments" begin
+        @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
+        @test length(test_defaults(missing, 2)()) == 2
     end
 end
