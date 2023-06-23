@@ -13,7 +13,8 @@ _lkj_atol = 0.05
     # `SampleFromPrior` will sample in constrained space.
     @testset "SampleFromPrior" begin
         samples = sample(model, SampleFromPrior(), 1_000)
-        @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol = _lkj_atol
+        @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
+            _lkj_atol
     end
 
     # `SampleFromUniform` will sample in unconstrained space.
