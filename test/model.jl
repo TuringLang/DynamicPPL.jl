@@ -20,7 +20,7 @@ function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     return Iterators.flatten(iter)
 end
 
-#481
+# dependency: this is part of PR#481
 function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
     # HACK: If it's not an array, we fall back to just returning the first value.
     return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
@@ -108,7 +108,7 @@ end
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
         model_no = 1
-        for model in DynamicPPL.TestUtils.DEMO_MODELS[1:12]
+        for model in DynamicPPL.TestUtils.DEMO_MODELS[1:12] # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
@@ -121,11 +121,8 @@ end
             vals_mat = mapreduce(hcat, 1:N) do i
                 [vals_OrderedDict[i][vn] for vn in vns]
             end
-            println("\n vals_mat: ", size(vals_mat))
             vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
-            println("\n vec_of_vec: ", size(vec_of_vec))
             chain_mat = vcat(vec_of_vec...)
-            println("\n chain_mat: ", size(chain_mat))
 
             # devise parameter names for chain
             sample_values_vec = collect(values(vals_OrderedDict[1]))
@@ -166,7 +163,7 @@ end
                 @test logjoints[i] ≈
                     DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
-            println("\n model $model_no done!!! \n")
+            println("\n model $model_no passed !!! \n")
             model_no += 1
         end
     end
