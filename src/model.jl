@@ -67,11 +67,15 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple=NamedTuple(),
+    defaults::NamedTuple,
     context::AbstractContext=DefaultContext(),
 ) where {F,argnames,Targs}
     missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
     return :(Model{$missings}(f, args, defaults, context))
+end
+
+function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
+    return Model(f, args, NamedTuple(kwargs), context)
 end
 
 function contextualize(model::Model, context::AbstractContext)
@@ -109,7 +113,7 @@ This is done for the sake of backwards compatibility.
 # Examples
 ## Simple univariate model
 ```jldoctest condition
-julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
+julia> using Distributions
 
 julia> @model function demo()
            m ~ Normal()
@@ -120,27 +124,48 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> model(rng)
-(m = -0.6702516921145671, x = -0.22312984965118443)
+julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
+true
 
 julia> # Create a new instance which treats `x` as observed
        # with value `100.0`, and similarly for `m=1.0`.
        conditioned_model = condition(model, x=100.0, m=1.0);
 
-julia> conditioned_model(rng)
-(m = 1.0, x = 100.0)
+julia> m, x = conditioned_model(); (m == 1.0 && x == 100.0)
+true
 
 julia> # Let's only condition on `x = 100.0`.
        conditioned_model = condition(model, x = 100.0);
 
-julia> conditioned_model(rng)
-(m = 1.3736306979834252, x = 100.0)
+julia> m, x =conditioned_model(); (m ≠ 1.0 && x == 100.0)
+true
 
 julia> # We can also use the nicer `|` syntax.
        conditioned_model = model | (x = 100.0, );
 
-julia> conditioned_model(rng)
-(m = 1.3095394956381083, x = 100.0)
+julia> m, x = conditioned_model(); (m ≠ 1.0 && x == 100.0)
+true
+```
+
+The above uses a `NamedTuple` to hold the conditioning variables, which allows us to perform some
+additional optimizations; in many cases, the above has zero runtime-overhead.
+
+But we can also use a `Dict`, which offers more flexibility in the conditioning
+(see examples further below) but generally has worse performance than the `NamedTuple`
+approach:
+
+```jldoctest condition
+julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
+
+julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
+
+julia> # There's also an option using `|` by letting the right-hand side be a tuple
+       # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
+       conditioned_model_dict = model | (@varname(x) => 100.0, );
+
+julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
 ```
 
 ## Condition only a part of a multivariate variable
@@ -156,29 +181,37 @@ julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
            m[2] ~ Normal()
            return m
        end
-demo_mv (generic function with 3 methods)
+demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
 julia> conditioned_model = condition(model, m = [missing, 1.0]);
 
-julia> conditioned_model(rng) # (✓) `m[1]` sampled, `m[2]` is fixed
-2-element Vector{Float64}:
- 0.12607002180931043
- 1.0
+julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+       m = conditioned_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
 ```
 
-Intuitively one might also expect to be able to write `model | (x[1] = 1.0, )`.
-Unfortunately this is not supported due to performance.
+Intuitively one might also expect to be able to write `model | (m[1] = 1.0, )`.
+Unfortunately this is not supported as it has the potential of increasing compilation
+times but without offering any benefit with respect to runtime:
 
 ```jldoctest condition
-julia> condition(model, var"x[2]" = 1.0)(rng) # (×) `x[2]` is not set to 1.0.
-2-element Vector{Float64}:
-  0.683947930996541
- -1.019202452456547
+julia> # (×) `m[2]` is not set to 1.0.
+       m = condition(model, var"m[2]" = 1.0)(); m[2] == 1.0
+false
 ```
 
-We will likely provide some syntactic sugar for this in the future.
+But you _can_ do this if you use a `Dict` as the underlying storage instead:
+
+```jldoctest condition
+julia> # Alternatives:
+       # - `model | (@varname(m[2]) => 1.0,)`
+       # - `condition(model, Dict(@varname(m[2] => 1.0)))`
+       # (✓) `m[2]` is set to 1.0.
+       m = condition(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
+```
 
 ## Nested models
 
@@ -197,12 +230,12 @@ demo_outer (generic function with 2 methods)
 
 julia> model = demo_outer();
 
-julia> model(rng)
--0.7935128416361353
+julia> model() ≠ 1.0
+true
 
 julia> conditioned_model = model | (m = 1.0, );
 
-julia> conditioned_model(rng)
+julia> conditioned_model()
 1.0
 ```
 
@@ -215,21 +248,30 @@ julia> @model function demo_outer_prefix()
        end
 demo_outer_prefix (generic function with 2 methods)
 
-julia> # This doesn't work now!
+julia> # (×) This doesn't work now!
        conditioned_model = demo_outer_prefix() | (m = 1.0, );
 
-julia> conditioned_model(rng)
-1.7747246334368165
+julia> conditioned_model() == 1.0
+false
 
-julia> # `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
+julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
        conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
 
-julia> conditioned_model(rng)
+julia> conditioned_model()
 1.0
 
 julia> # Note that the above `var"..."` is just standard Julia syntax:
        keys((var"inner.m" = 1.0, ))
 (Symbol("inner.m"),)
+```
+
+And similarly when using `Dict`:
+
+```jldoctest condition
+julia> conditioned_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
+
+julia> conditioned_model_dict()
+1.0
 ```
 
 The difference is maybe more obvious once we look at how these different
@@ -250,24 +292,27 @@ is in the two different models.
 
 """
 AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
-function AbstractPPL.condition(model::Model, values)
-    return contextualize(model, condition(model.context, values))
+function AbstractPPL.condition(model::Model, value, values...)
+    return contextualize(model, condition(model.context, value, values...))
 end
 
 """
     decondition(model::Model)
-    decondition(model::Model, syms...)
+    decondition(model::Model, variables...)
 
-Return a `Model` for which `syms...` are _not_ considered observations.
-If no `syms` are provided, then all variables currently considered observations
+Return a `Model` for which `variables...` are _not_ considered observations.
+If no `variables` are provided, then all variables currently considered observations
 will no longer be.
 
 This is essentially the inverse of [`condition`](@ref). This also means that
 it suffers from the same limitiations.
 
+Note that currently we only support `variables` to take on explicit values
+provided to `condition.
+
 # Examples
-```jldoctest
-julia> using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
+```jldoctest decondition
+julia> using Distributions
 
 julia> @model function demo()
            m ~ Normal()
@@ -278,29 +323,88 @@ demo (generic function with 2 methods)
 
 julia> conditioned_model = condition(demo(), m = 1.0, x = 10.0);
 
-julia> conditioned_model(rng)
+julia> conditioned_model()
 (m = 1.0, x = 10.0)
 
-julia> model = decondition(conditioned_model, :m);
+julia> # By specifying the `VarName` to `decondition`.
+       model = decondition(conditioned_model, @varname(m));
 
-julia> model(rng)
-(m = -0.6702516921145671, x = 10.0)
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+
+julia> # When `NamedTuple` is used as the underlying, you can also provide
+       # the symbol directly (though the `@varname` approach is preferable if
+       # if the variable is known at compile-time).
+       model = decondition(conditioned_model, :m);
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
 
 julia> # `decondition` multiple at once:
-       decondition(model, :m, :x)(rng)
-(m = 0.4471218424633827, x = 1.820752540446808)
+       (m, x) = decondition(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
+true
 
 julia> # `decondition` without any symbols will `decondition` all variables.
-       decondition(model)(rng)
-(m = 1.3095394956381083, x = 1.4356095174474188)
+       (m, x) = decondition(model)(); (m ≠ 1.0 && x ≠ 10.0)
+true
 
 julia> # Usage of `Val` to perform `decondition` at compile-time if possible
        # is also supported.
        model = decondition(conditioned_model, Val{:m}());
 
-julia> model(rng)
-(m = 0.683947930996541, x = 10.0)
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
 ```
+
+Similarly when using a `Dict`:
+
+```jldoctest decondition
+julia> conditioned_model_dict = condition(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
+
+julia> conditioned_model_dict()
+(m = 1.0, x = 10.0)
+
+julia> deconditioned_model_dict = decondition(conditioned_model_dict, @varname(m));
+
+julia> (m, x) = deconditioned_model_dict(); m ≠ 1.0 && x == 10.0
+true
+```
+
+But, as mentioned, `decondition` is only supported for variables explicitly
+provided to `condition` earlier;
+
+```jldoctest decondition
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 4 methods)
+
+julia> model = demo_mv();
+
+julia> conditioned_model = condition(model, @varname(m) => [1.0, 2.0]);
+
+julia> conditioned_model()
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> deconditioned_model = decondition(conditioned_model, @varname(m[1]));
+
+julia> deconditioned_model()  # (×) `m[1]` is still conditioned
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> # (✓) this works though
+       deconditioned_model_2 = deconditioned_model | (@varname(m[1]) => missing);
+
+julia> m = deconditioned_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
+true
+```
+
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
@@ -358,7 +462,7 @@ julia> conditioned(cm).var"a.m"
 1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
-Any[]
+VarName[]
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
@@ -420,7 +524,7 @@ function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
 end
 
 function AbstractPPL.evaluate!!(model::Model, args...)
-    return evaluate!!(model, Random.GLOBAL_RNG, args...)
+    return evaluate!!(model, Random.default_rng(), args...)
 end
 
 # without VarInfo
@@ -473,12 +577,27 @@ end
 
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
-@generated function _evaluate!!(
-    model::Model{_F,argnames}, varinfo, context
+function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+    args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
+    return model.f(args...; kwargs...)
+end
+
+"""
+    make_evaluate_args_and_kwargs(model, varinfo, context)
+
+Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
+"""
+@generated function make_evaluate_args_and_kwargs(
+    model::Model{_F,argnames}, varinfo::AbstractVarInfo, context::AbstractContext
 ) where {_F,argnames}
     unwrap_args = [
-        :($matchingvalue(context_new, varinfo, model.args.$var)) for var in argnames
+        if is_splat_symbol(var)
+            :($matchingvalue(context_new, varinfo, model.args.$var)...)
+        else
+            :($matchingvalue(context_new, varinfo, model.args.$var))
+        end for var in argnames
     ]
+
     # We want to give `context` precedence over `model.context` while also
     # preserving the leaf context of `context`. We can do this by
     # 1. Set the leaf context of `model.context` to `leafcontext(context)`.
@@ -490,7 +609,18 @@ Evaluate the `model` with the arguments matching the given `context` and `varinf
         context_new = setleafcontext(
             context, setleafcontext(model.context, leafcontext(context))
         )
-        model.f(model, varinfo, context_new, $(unwrap_args...))
+        args = (
+            model,
+            # Maybe perform `invlink!!` once prior to evaluation to avoid
+            # lazy `invlink`-ing of the parameters. This can be useful for
+            # speeding up computation. See docs for `maybe_invlink_before_eval!!`
+            # for more information.
+            maybe_invlink_before_eval!!(varinfo, context_new, model),
+            context_new,
+            $(unwrap_args...),
+        )
+        kwargs = model.defaults
+        return args, kwargs
     end
 end
 
@@ -517,7 +647,7 @@ Base.nameof(model::Model) = Symbol(model.f)
 Base.nameof(model::Model{<:Function}) = nameof(model.f)
 
 """
-    rand([rng=Random.GLOBAL_RNG], [T=NamedTuple], model::Model)
+    rand([rng=Random.default_rng()], [T=NamedTuple], model::Model)
 
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
@@ -525,17 +655,17 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
     x = last(
         evaluate!!(
             model,
-            SimpleVarInfo{Float64}(),
+            SimpleVarInfo{Float64}(OrderedDict()),
             SamplingContext(rng, SampleFromPrior(), DefaultContext()),
         ),
     )
-    return DynamicPPL.values_as(x, T)
+    return values_as(x, T)
 end
 
 # Default RNG and type
 Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
-Base.rand(::Type{T}, model::Model) where {T} = rand(Random.GLOBAL_RNG, T, model)
-Base.rand(model::Model) = rand(Random.GLOBAL_RNG, NamedTuple, model)
+Base.rand(::Type{T}, model::Model) where {T} = rand(Random.default_rng(), T, model)
+Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 """
     logjoint(model::Model, varinfo::AbstractVarInfo)

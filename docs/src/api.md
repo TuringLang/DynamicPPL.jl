@@ -58,6 +58,14 @@ loglikelihood
 logjoint
 ```
 
+### LogDensityProblems.jl interface
+
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`:
+
+```@docs
+DynamicPPL.LogDensityFunction
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
@@ -103,8 +111,14 @@ NamedDist
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
-DynamicPPL.TestUtils.test_sampler_demo_models
+DynamicPPL.TestUtils.test_sampler
+DynamicPPL.TestUtils.test_sampler_on_demo_models
 DynamicPPL.TestUtils.test_sampler_continuous
+DynamicPPL.TestUtils.marginal_mean_of_samples
+```
+
+```@docs
+DynamicPPL.TestUtils.DEMO_MODELS
 ```
 
 For every demo model, one can define the true log prior, log likelihood, and log joint probabilities.
@@ -113,6 +127,23 @@ For every demo model, one can define the true log prior, log likelihood, and log
 DynamicPPL.TestUtils.logprior_true
 DynamicPPL.TestUtils.loglikelihood_true
 DynamicPPL.TestUtils.logjoint_true
+```
+
+And in the case where the model includes constrained variables, it can also be useful to define
+
+```@docs
+DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian
+DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian
+```
+
+Finally, the following methods can also be of use:
+
+```@docs
+DynamicPPL.TestUtils.varnames
+DynamicPPL.TestUtils.posterior_mean
+DynamicPPL.TestUtils.setup_varinfos
+DynamicPPL.TestUtils.update_values!!
+DynamicPPL.TestUtils.test_values
 ```
 
 ## Advanced
@@ -134,6 +165,8 @@ AbstractVarInfo
 
 ### Common API
 
+#### Accumulation of log-probabilities
+
 ```@docs
 getlogp
 setlogp!!
@@ -141,10 +174,46 @@ acclogp!!
 resetlogp!!
 ```
 
+#### Variables and their realizations
+
 ```@docs
+keys
 getindex
+DynamicPPL.getindex_raw
 push!!
 empty!!
+isempty
+```
+
+```@docs
+values_as
+```
+
+#### Transformations
+
+```@docs
+DynamicPPL.AbstractTransformation
+DynamicPPL.NoTransformation
+DynamicPPL.DynamicTransformation
+DynamicPPL.StaticTransformation
+```
+
+```@docs
+DynamicPPL.istrans
+DynamicPPL.settrans!!
+DynamicPPL.transformation
+DynamicPPL.link!!
+DynamicPPL.invlink!!
+DynamicPPL.default_transformation
+DynamicPPL.maybe_invlink_before_eval!!
+DynamicPPL.reconstruct
+```
+
+#### Utils
+
+```@docs
+DynamicPPL.unflatten
+DynamicPPL.tonamedtuple
 ```
 
 #### `SimpleVarInfo`
@@ -165,10 +234,8 @@ TypedVarInfo
 One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
 
 ```@docs
-tonamedtuple
 link!
 invlink!
-istrans
 ```
 
 ```@docs

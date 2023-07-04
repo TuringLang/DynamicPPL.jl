@@ -13,11 +13,8 @@ function test_model_ad(model, logp_manual)
     x = DynamicPPL.getall(vi)
 
     # Log probabilities using the model.
-    function logp_model(x)
-        new_vi = VarInfo(vi, SampleFromPrior(), x)
-        model(new_vi)
-        return getlogp(new_vi)
-    end
+    ℓ = DynamicPPL.LogDensityFunction(model, vi)
+    logp_model = Base.Fix1(LogDensityProblems.logdensity, ℓ)
 
     # Check that both functions return the same values.
     lp = logp_manual(x)
@@ -74,3 +71,14 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
         end
     end
 end
+
+"""
+    short_varinfo_name(vi::AbstractVarInfo)
+
+Return string representing a short description of `vi`.
+"""
+short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) = short_varinfo_name(vi.varinfo)
+short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
+short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
+short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"

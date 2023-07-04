@@ -3,13 +3,19 @@ using DynamicPPL
 using DynamicPPL: AbstractPPL
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
+DocMeta.setdocmeta!(
+    DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
+)
 
 makedocs(;
     sitename="DynamicPPL",
     format=Documenter.HTML(),
     modules=[DynamicPPL],
-    pages=["Home" => "index.md", "API" => "api.md"],
+    pages=[
+        "Home" => "index.md",
+        "API" => "api.md",
+        "Tutorials" => ["tutorials/prob-interface.md"],
+    ],
     strict=true,
     checkdocs=:exports,
 )

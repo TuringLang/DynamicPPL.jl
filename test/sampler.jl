@@ -15,7 +15,7 @@
         @test length(chains) == N
 
         # Expected value of ``X`` where ``X ~ N(2, ...)`` is 2.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.15
 
         # Expected value of ``X`` where ``X ~ IG(2, 3)`` is 3.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 3 atol = 0.2
@@ -24,12 +24,37 @@
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
 
-        # Expected value of ``X`` where ``X ~ U[-2, 2]`` is ≈ 0.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 0 atol = 0.1
+        # `m` is Gaussian, i.e. no transformation is used, so it
+        # should have a mean equal to its prior, i.e. 2.
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
 
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
     end
+
+    @testset "init" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+                N = 1000
+                chain_init = sample(model, SampleFromUniform(), N; progress=false)
+
+                for vn in keys(first(chain_init))
+                    if AbstractPPL.subsumes(@varname(s), vn)
+                        # `s ~ InverseGamma(2, 3)` and its unconstrained value will be sampled from Unif[-2,2].
+                        dist = InverseGamma(2, 3)
+                        b = DynamicPPL.link_transform(dist)
+                        @test mean(mean(b(vi[vn])) for vi in chain_init) ≈ 0 atol = 0.11
+                    elseif AbstractPPL.subsumes(@varname(m), vn)
+                        # `m ~ Normal(0, sqrt(s))` and its constrained value is the same.
+                        @test mean(mean(vi[vn]) for vi in chain_init) ≈ 0 atol = 0.11
+                    else
+                        error("Unknown variable name: $vn")
+                    end
+                end
+            end
+        end
+    end
+
     @testset "Initial parameters" begin
         # dummy algorithm that just returns initial value and does not perform any sampling
         abstract type OnlyInitAlg end

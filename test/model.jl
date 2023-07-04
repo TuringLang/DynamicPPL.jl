@@ -45,12 +45,12 @@ end
             for i in 1:10
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.GLOBAL_RNG, vi, sampler)
+                model(Random.default_rng(), vi, sampler)
                 vals = DynamicPPL.getall(vi)
 
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.GLOBAL_RNG, vi, sampler)
+                model(Random.default_rng(), vi, sampler)
                 @test DynamicPPL.getall(vi) == vals
             end
         end
@@ -63,7 +63,7 @@ end
         s, m = model()
 
         Random.seed!(100)
-        @test model(Random.GLOBAL_RNG) == (s, m)
+        @test model(Random.default_rng()) == (s, m)
     end
 
     @testset "nameof" begin
@@ -112,13 +112,29 @@ end
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
+    @testset "Dynamic constraints" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        vi = VarInfo(model)
+        spl = SampleFromPrior()
+        link!!(vi, spl, model)
+
+        for i in 1:10
+            # Sample with large variations.
+            r_raw = randn(length(vi[spl])) * 10
+            vi[spl] = r_raw
+            @test vi[@varname(m)] == r_raw[1]
+            @test vi[@varname(x)] != r_raw[2]
+            model(vi)
+        end
+    end
+
     @testset "rand" begin
         model = gdemo_default
 
         Random.seed!(1776)
         s, m = model()
         sample_namedtuple = (; s=s, m=m)
-        sample_dict = Dict(:s => s, :m => m)
+        sample_dict = Dict(@varname(s) => s, @varname(m) => m)
 
         # With explicit RNG
         @test rand(Random.seed!(1776), model) == sample_namedtuple
@@ -132,5 +148,10 @@ end
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
         @test rand(Dict, model) == sample_dict
+    end
+
+    @testset "default arguments" begin
+        @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
+        @test length(test_defaults(missing, 2)()) == 2
     end
 end

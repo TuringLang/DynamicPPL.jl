@@ -1,10 +1,13 @@
 """
-    SimpleVarInfo{NT,T} <: AbstractVarInfo
+    $(TYPEDEF)
 
 A simple wrapper of the parameters with a `logp` field for
 accumulation of the logdensity.
 
-Currently only implemented for `NT<:NamedTuple` and `NT<:Dict`.
+Currently only implemented for `NT<:NamedTuple` and `NT<:AbstractDict`.
+
+# Fields
+$(FIELDS)
 
 # Notes
 The major differences between this and `TypedVarInfo` are:
@@ -16,7 +19,7 @@ The major differences between this and `TypedVarInfo` are:
 
 # Examples
 ## General usage
-```jldoctest; setup=:(using Distributions)
+```jldoctest simplevarinfo-general; setup=:(using Distributions)
 julia> using StableRNGs
 
 julia> @model function demo()
@@ -61,8 +64,8 @@ julia> # (×) If we don't provide the container...
 ERROR: type NamedTuple has no field x
 [...]
 
-julia> # If one does not know the varnames, we can use a `Dict` instead.
-       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(Dict()), ctx);
+julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
+       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(OrderedDict()), ctx);
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -76,6 +79,65 @@ ERROR: KeyError: key x not found
 julia> vi[@varname(x[1:2])]
 ERROR: KeyError: key x[1:2] not found
 [...]
+```
+
+_Technically_, it's possible to use any implementation of `AbstractDict` in place of
+`OrderedDict`, but `OrderedDict` ensures that certain operations, e.g. linearization/flattening
+of the values in the varinfo, are consistent between evaluations. Hence `OrderedDict` is
+the preferred implementation of `AbstractDict` to use here.
+
+You can also sample in _transformed_ space:
+
+```jldoctest simplevarinfo-general
+julia> @model demo_constrained() = x ~ Exponential()
+demo_constrained (generic function with 2 methods)
+
+julia> m = demo_constrained();
+
+julia> _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx);
+
+julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
+1.8632965762164932
+
+julia> _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+-0.21080155351918753
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
+true
+
+julia> # And with `OrderedDict` of course!
+       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true), ctx);
+
+julia> vi[@varname(x)] # (✓) -∞ < x < ∞
+0.6225185067787314
+
+julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+
+julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
+true
+```
+
+Evaluation in transformed space of course also works:
+
+```jldoctest simplevarinfo-general
+julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
+Transformed SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) Positive probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-1.3678794411714423
+
+julia> # While if we forget to indicate that it's transformed:
+       vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
+SimpleVarInfo((x = -1.0,), 0.0)
+
+julia> # (✓) No probability mass on negative numbers!
+       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+-Inf
 ```
 
 ## Indexing
@@ -103,9 +165,9 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 
-Using `Dict` as underlying storage.
+Using `OrderedDict` as underlying storage.
 ```jldoctest
-julia> svi_dict = SimpleVarInfo(Dict(@varname(m) => (a = [1.0], )));
+julia> svi_dict = SimpleVarInfo(OrderedDict(@varname(m) => (a = [1.0], )));
 
 julia> svi_dict[@varname(m)]
 (a = [1.0],)
@@ -126,15 +188,48 @@ ERROR: type NamedTuple has no field b
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T} <: AbstractVarInfo
+struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
+    "underlying representation of the realization represented"
     values::NT
+    "holds the accumulated log-probability"
     logp::T
+    "represents whether it assumes variables to be transformed"
+    transformation::C
 end
 
-SimpleVarInfo{T}(θ) where {T<:Real} = SimpleVarInfo{typeof(θ),T}(θ, zero(T))
-SimpleVarInfo{T}(; kwargs...) where {T<:Real} = SimpleVarInfo{T}(NamedTuple(kwargs))
-SimpleVarInfo(; kwargs...) = SimpleVarInfo{Float64}(NamedTuple(kwargs))
-SimpleVarInfo(θ) = SimpleVarInfo{Float64}(θ)
+transformation(vi::SimpleVarInfo) = vi.transformation
+
+# Makes things a bit more readable vs. putting `Float64` everywhere.
+const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
+
+function SimpleVarInfo{NT,T}(values, logp) where {NT,T}
+    return SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
+end
+function SimpleVarInfo{T}(θ) where {T<:Real}
+    return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
+end
+
+# Constructors without type-specification.
+SimpleVarInfo(θ) = SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
+function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
+    return if isempty(θ)
+        # Can't infer from values, so we just use default.
+        SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
+    else
+        # Infer from `values`.
+        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(typeof(θ)))}(θ)
+    end
+end
+
+SimpleVarInfo(values, logp) = SimpleVarInfo{typeof(values),typeof(logp)}(values, logp)
+
+# Using `kwargs` to specify the values.
+function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
+    return SimpleVarInfo{T}(NamedTuple(kwargs))
+end
+function SimpleVarInfo(; kwargs...)
+    return SimpleVarInfo(NamedTuple(kwargs))
+end
 
 # Constructor from `Model`.
 SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
@@ -153,13 +248,19 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
-function BangBang.empty!!(vi::SimpleVarInfo)
-    Setfield.@set resetlogp!!(vi).values = empty!!(vi.values)
+unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
+function unflatten(svi::SimpleVarInfo, x::AbstractVector)
+    return Setfield.@set svi.values = unflatten(svi.values, x)
 end
 
+function BangBang.empty!!(vi::SimpleVarInfo)
+    return resetlogp!!(Setfield.@set vi.values = empty!!(vi.values))
+end
+Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
+
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, logp)
-acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp)
+setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 
 """
     keys(vi::SimpleVarInfo)
@@ -167,6 +268,7 @@ acclogp!!(vi::SimpleVarInfo, logp) = SimpleVarInfo(vi.values, getlogp(vi) + logp
 Return an iterator of keys present in `vi`.
 """
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -179,36 +281,29 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
+    if !(svi.transformation isa NoTransformation)
+        print(io, "Transformed ")
+    end
+
     return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
 # `NamedTuple`
+function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return maybe_invlink_and_reconstruct(vi, vn, dist, getindex(vi, vn))
+end
+function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    vals_linked = mapreduce(vcat, vns) do vn
+        getindex(vi, vn, dist)
+    end
+    return reconstruct(dist, vals_linked, length(vns))
+end
+
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 
-# `Dict`
+# `AbstractDict`
 function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    if haskey(vi.values, vn)
-        return vi.values[vn]
-    end
-
-    # Split the lens into the key / `parent` and the extraction lens / `child`.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(vi.values, VarName(vn, l))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
-
-    # If we found a valid split, then we can extract the value.
-    if !issuccess
-        # At this point we just throw an error since the key could not be found.
-        throw(KeyError(vn))
-    end
-
-    # TODO: Should we also check that we `canview` the extracted `value`
-    # rather than just let it fail upon `get` call?
-    value = vi.values[VarName(vn, keylens)]
-    return get(value, child)
+    return nested_getindex(vi.values, vn)
 end
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
@@ -219,47 +314,33 @@ end
 # HACK: Needed to disambiguiate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromPrior) = vi.values
-Base.getindex(vi::SimpleVarInfo, spl::SampleFromUniform) = vi.values
-# TODO: Should we do better?
-Base.getindex(vi::SimpleVarInfo, spl::Sampler) = vi.values
+Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
-Base.haskey(vi::SimpleVarInfo, vn::VarName) = _haskey(vi.values, vn)
-function _haskey(nt::NamedTuple, vn::VarName)
-    # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    sym = getsym(vn)
-    return haskey(nt, sym) && canview(getlens(vn), getproperty(nt, sym))
+# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
+# we simply call `getindex` in `getindex_raw`.
+getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
+function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
+    return reconstruct(dist, getindex_raw(vi, vn))
+end
+getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
+function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
+    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
+    return reconstruct(dist, vals, length(vns))
 end
 
-# For `dictlike` we need to check wether `vn` is "immediately" present, or
-# if some ancestor of `vn` is present in `dictlike`.
-function _haskey(dict::AbstractDict, vn::VarName)
-    # First we check if `vn` is present as is.
-    haskey(dict, vn) && return true
+# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
+getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
-    # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
-    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(dict, VarName(vn, l))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
-
-    # Return early if no such split could be found.
-    issuccess || return false
-
-    # At this point we just need to check that we `canview` the value.
-    value = dict[VarName(vn, keylens)]
-
-    return canview(child, value)
-end
+Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return SimpleVarInfo(set!!(vi.values, vn, val), vi.logp)
+    return Setfield.@set vi.values = set!!(vi.values, vn, val)
+end
+
+function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
+    return unflatten(vi, spl, val)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
@@ -290,7 +371,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
         vn_key = VarName(vn, keylens)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return SimpleVarInfo(dict_new, vi.logp)
+    return Setfield.@set vi.values = dict_new
 end
 
 # `NamedTuple`
@@ -313,7 +394,7 @@ function BangBang.push!!(
     return Setfield.@set vi.values = set!!(vi.values, vn, value)
 end
 
-# `Dict`
+# `AbstractDict`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
@@ -325,8 +406,8 @@ function BangBang.push!!(
     return vi
 end
 
-const SimpleOrThreadSafeSimple{T,V} = Union{
-    SimpleVarInfo{T,V},ThreadSafeVarInfo{<:SimpleVarInfo{T,V}}
+const SimpleOrThreadSafeSimple{T,V,C} = Union{
+    SimpleVarInfo{T,V,C},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,C}}
 }
 
 # Necessary for `matchingvalue` to work properly.
@@ -337,58 +418,20 @@ function Base.eltype(
 end
 
 # Context implementations
-function assume(dist::Distribution, vn::VarName, vi::SimpleOrThreadSafeSimple)
-    left = vi[vn]
-    return left, Distributions.loglikelihood(dist, left), vi
-end
-
+# NOTE: Evaluations, i.e. those without `rng` are shared with other
+# implementations of `AbstractVarInfo`.
 function assume(
     rng::Random.AbstractRNG,
-    sampler::SampleFromPrior,
+    sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
     vi::SimpleOrThreadSafeSimple,
 )
     value = init(rng, dist, sampler)
-    vi = BangBang.push!!(vi, vn, value, dist, sampler)
-    return value, Distributions.loglikelihood(dist, value), vi
-end
-
-function dot_assume(
-    dist::MultivariateDistribution,
-    var::AbstractMatrix,
-    vns::AbstractVector{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    @assert length(dist) == size(var, 1)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(zip(vns, eachcol(value))) do (vn, val)
-        return Distributions.logpdf(dist, val)
-    end
-    return value, lp, vi
-end
-
-function dot_assume(
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    var::AbstractArray,
-    vns::AbstractArray{<:VarName},
-    vi::SimpleOrThreadSafeSimple,
-)
-    # NOTE: We cannot work with `var` here because we might have a model of the form
-    #
-    #     m = Vector{Float64}(undef, n)
-    #     m .~ Normal()
-    #
-    # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
-    value = vi[vns]
-    lp = sum(Distributions.logpdf.(dists, value))
-    return value, lp, vi
+    # Transform if we're working in unconstrained space.
+    value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
+    vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
+    return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
 function dot_assume(
@@ -401,27 +444,114 @@ function dot_assume(
 )
     f = (vn, dist) -> init(rng, dist, spl)
     value = f.(vns, dists)
-    vi = BangBang.setindex!!(vi, value, vns)
-    lp = sum(Distributions.logpdf.(dists, value))
+
+    # Transform if we're working in transformed space.
+    value_raw = if dists isa Distribution
+        maybe_reconstruct_and_link.((vi,), vns, (dists,), value)
+    else
+        maybe_reconstruct_and_link.((vi,), vns, dists, value)
+    end
+
+    # Update `vi`
+    vi = BangBang.setindex!!(vi, value_raw, vns)
+
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
     return value, lp, vi
 end
 
-# HACK: Allows us to re-use the implementation of `dot_tilde`, etc. for literals.
-increment_num_produce!(::SimpleOrThreadSafeSimple) = nothing
-settrans!(vi::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName) = nothing
-istrans(::SimpleVarInfo, vn::VarName) = false
+function dot_assume(
+    rng,
+    spl::Union{SampleFromPrior,SampleFromUniform},
+    dist::MultivariateDistribution,
+    vns::AbstractVector{<:VarName},
+    var::AbstractMatrix,
+    vi::SimpleOrThreadSafeSimple,
+)
+    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
 
-"""
-    values_as(varinfo[, Type])
+    # r = get_and_set_val!(rng, vi, vns, dist, spl)
+    n = length(vns)
+    value = init(rng, dist, spl, n)
 
-Return the values/realizations in `varinfo` as `Type`, if implemented.
+    # Update `vi`.
+    for (vn, val) in zip(vns, eachcol(value))
+        val_linked = maybe_reconstruct_and_link(vi, vn, dist, val)
+        vi = BangBang.setindex!!(vi, val_linked, vn)
+    end
 
-If no `Type` is provided, return values as stored in `varinfo`.
-"""
+    # Compute logp.
+    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
+    return value, lp, vi
+end
+
+# We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
+# TODO: Move away from using these `tonamedtuple` methods.
+function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
+    nt_vals = map(keys(vi)) do vn
+        val = vi[vn]
+        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
+        (vals, map(string, vns))
+    end
+
+    return NamedTuple{names}(nt_vals)
+end
+
+function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
+    syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
+    for vn in keys(vi)
+        # Extract the leaf varnames and values.
+        val = vi[vn]
+        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
+        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
+
+        # Determine the corresponding symbol.
+        sym = only(unique(map(getsym, vns)))
+
+        # Initialize entry if not yet initialized.
+        if !haskey(syms_to_result, sym)
+            syms_to_result[sym] = (Real[], String[])
+        end
+
+        # Combine with old result.
+        old_vals, old_string_vns = syms_to_result[sym]
+        syms_to_result[sym] = (vcat(old_vals, vals), vcat(old_string_vns, map(string, vns)))
+    end
+
+    # Construct `NamedTuple`.
+    return NamedTuple(pairs(syms_to_result))
+end
+
+# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
+function settrans!!(vi::SimpleVarInfo, trans)
+    return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
+end
+function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
+    return Setfield.@set vi.transformation = transformation
+end
+function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
+    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+end
+
+istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
+istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
+
+islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
+
 values_as(vi::SimpleVarInfo) = vi.values
-values_as(vi::SimpleVarInfo, ::Type{Dict}) = Dict(pairs(vi.values))
-values_as(vi::SimpleVarInfo, ::Type{NamedTuple}) = NamedTuple(pairs(vi.values))
-values_as(vi::SimpleVarInfo{<:NamedTuple}, ::Type{NamedTuple}) = vi.values
+values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
+function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
+    isempty(vi) && return T[]
+    return mapreduce(v -> vec([v;]), vcat, values(vi.values))
+end
+function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))
+end
+function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
+    return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
 
 """
     logjoint(model::Model, θ)
@@ -444,8 +574,8 @@ julia> # Using a `NamedTuple`.
        logjoint(demo([1.0]), (m = 100.0, ))
 -9902.33787706641
 
-julia> # Using a `Dict`.
-       logjoint(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -9902.33787706641
 
 julia> # Truth.
@@ -476,8 +606,8 @@ julia> # Using a `NamedTuple`.
        logprior(demo([1.0]), (m = 100.0, ))
 -5000.918938533205
 
-julia> # Using a `Dict`.
-       logprior(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -5000.918938533205
 
 julia> # Truth.
@@ -508,8 +638,8 @@ julia> # Using a `NamedTuple`.
        loglikelihood(demo([1.0]), (m = 100.0, ))
 -4901.418938533205
 
-julia> # Using a `Dict`.
-       loglikelihood(demo([1.0]), Dict(@varname(m) => 100.0))
+julia> # Using a `OrderedDict`.
+       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
 -4901.418938533205
 
 julia> # Truth.
@@ -518,3 +648,43 @@ julia> # Truth.
 ```
 """
 Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+
+# Allow usage of `NamedBijector` too.
+function link!!(
+    t::StaticTransformation{<:Bijectors.NamedTransform},
+    vi::SimpleVarInfo{<:NamedTuple},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # TODO: Make sure that `spl` is respected.
+    b = inverse(t.bijector)
+    x = vi.values
+    y, logjac = with_logabsdet_jacobian(b, x)
+    lp_new = getlogp(vi) - logjac
+    vi_new = setlogp!!(Setfield.@set(vi.values = y), lp_new)
+    return settrans!!(vi_new, t)
+end
+
+function invlink!!(
+    t::StaticTransformation{<:Bijectors.NamedTransform},
+    vi::SimpleVarInfo{<:NamedTuple},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # TODO: Make sure that `spl` is respected.
+    b = t.bijector
+    y = vi.values
+    x, logjac = with_logabsdet_jacobian(b, y)
+    lp_new = getlogp(vi) + logjac
+    vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
+    return settrans!!(vi_new, NoTransformation())
+end
+
+# Threadsafe stuff.
+# For `SimpleVarInfo` we don't really need `Ref` so let's not use it.
+function ThreadSafeVarInfo(vi::SimpleVarInfo)
+    return ThreadSafeVarInfo(vi, zeros(typeof(getlogp(vi)), Threads.nthreads()))
+end
+function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
+    return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
+end

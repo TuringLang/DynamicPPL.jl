@@ -4,13 +4,20 @@ using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
 using Bijectors
 using Distributions
+using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
+using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using ZygoteRules: ZygoteRules
+using LogDensityProblems: LogDensityProblems
+
+using LinearAlgebra: Cholesky
+
+using DocStringExtensions
 
 using Random: Random
 
@@ -38,9 +45,6 @@ export AbstractVarInfo,
     push!!,
     empty!!,
     getlogp,
-    setlogp!,
-    acclogp!,
-    resetlogp!,
     setlogp!!,
     acclogp!!,
     resetlogp!!,
@@ -57,8 +61,11 @@ export AbstractVarInfo,
     setorder!,
     istrans,
     link!,
+    link!!,
     invlink!,
+    invlink!!,
     tonamedtuple,
+    values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
     inspace,
@@ -73,6 +80,7 @@ export AbstractVarInfo,
     Sample,
     init,
     vectorize,
+    OrderedDict,
     # Model
     Model,
     getmissings,
@@ -121,7 +129,6 @@ export loglikelihood
 # Used here and overloaded in Turing
 function getspace end
 
-# Necessary forward declarations
 """
     AbstractVarInfo
 
@@ -129,10 +136,16 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref)
+See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
+const LEGACY_WARNING = """
+!!! warning
+    This method is considered legacy, and is likely to be deprecated in the future.
+"""
+
+# Necessary forward declarations
 include("utils.jl")
 include("selector.jl")
 include("model.jl")
@@ -140,8 +153,9 @@ include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
-include("varinfo.jl")
+include("abstract_varinfo.jl")
 include("threadsafe.jl")
+include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
@@ -150,5 +164,7 @@ include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
+include("transforming.jl")
+include("logdensityfunction.jl")
 
 end # module

@@ -3,12 +3,12 @@ name: IntegrationTest
 on:
   push:
     branches:
-      # This is where pull requests from "bors r+" are built.
-      - staging
-      # This is where pull requests from "bors try" are built.
-      - trying
-      # Build the master branch.
       - master
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    branches: [master]
+    types: [auto_merge_enabled]
 
 jobs:
   test:
@@ -40,7 +40,7 @@ jobs:
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
-            Pkg.test()  # resolver may fail with test time deps
+            Pkg.test(julia_args=["--depwarn=no"])  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine
