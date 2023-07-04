@@ -164,7 +164,6 @@ end
                     DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
             println("\n model $model_no passed !!! \n")
-            model_no += 1
         end
     end
 
