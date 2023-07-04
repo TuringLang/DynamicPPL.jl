@@ -50,6 +50,8 @@ include("test_util.jl")
             include("serialization.jl")
 
             include("loglikelihoods.jl")
+
+            include("lkj.jl")
         end
 
         @testset "compat" begin

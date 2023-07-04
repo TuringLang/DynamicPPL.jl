@@ -161,7 +161,15 @@ function getargs_assignment(expr::Expr)
     end
 end
 
-function to_namedtuple_expr(syms, vals=syms)
+function to_namedtuple_expr(syms)
+    length(syms) == 0 && return :(NamedTuple())
+
+    names_expr = Expr(:tuple, QuoteNode.(syms)...)
+    return :(NamedTuple{$names_expr}(($(syms...),)))
+end
+
+# FIXME: the prob macro still uses this.
+function to_namedtuple_expr(syms, vals)
     length(syms) == 0 && return :(NamedTuple())
 
     names_expr = Expr(:tuple, QuoteNode.(syms)...)
@@ -169,13 +177,43 @@ function to_namedtuple_expr(syms, vals=syms)
     return :(NamedTuple{$names_expr}($vals_expr))
 end
 
+"""
+    link_transform(dist)
+
+Return the constrained-to-unconstrained bijector for distribution `dist`.
+
+By default, this is just `Bijectors.bijector(dist)`.
+
+!!! warning
+    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
+    hence that needs to be overloaded separately if the intention is
+    to change behavior of an existing distribution.
+"""
+link_transform(dist) = bijector(dist)
+
+"""
+    invlink_transform(dist)
+
+Return the unconstrained-to-constrained bijector for distribution `dist`.
+
+By default, this is just `inverse(link_transform(dist))`.
+
+!!! warning
+    Note that currently this is not used by `Bijectors.logpdf_with_trans`,
+    hence that needs to be overloaded separately if the intention is
+    to change behavior of an existing distribution.
+"""
+invlink_transform(dist) = inverse(link_transform(dist))
+
 #####################################################
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
+vectorize(d, r) = vec(r)
 vectorize(d::UnivariateDistribution, r::Real) = [r]
 vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
 vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
+vectorize(d::Distribution{CholeskyVariate}, r::Cholesky) = copy(vec(r.UL))
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
@@ -183,7 +221,30 @@ vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
 # otherwise we will have error for MatrixDistribution.
 # Note this is not the case for MultivariateDistribution so I guess this might be lack of
 # support for some types related to matrices (like PDMat).
-reconstruct(d::UnivariateDistribution, val::Real) = val
+
+"""
+    reconstruct([f, ]dist, val)
+
+Reconstruct `val` so that it's compatible with `dist`.
+
+If `f` is also provided, the reconstruct value will be
+such that `f(reconstruct_val)` is compatible with `dist`.
+"""
+reconstruct(f, dist, val) = reconstruct(dist, val)
+
+# No-op versions.
+reconstruct(::UnivariateDistribution, val::Real) = val
+reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
+reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
+reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+function reconstruct(
+    ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
+)
+    return copy(val)
+end
+
+# TODO: Implement no-op `reconstruct` for general array variates.
+
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
 reconstruct(::Tuple{}, val::AbstractVector) = val[1]
 reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
@@ -222,15 +283,7 @@ end
 randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
 randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
 
-const Transformable = Union{
-    PositiveDistribution,
-    UnitDistribution,
-    TransformDistribution,
-    SimplexDistribution,
-    PDMatDistribution,
-}
-istransformable(dist) = false
-istransformable(::Transformable) = true
+istransformable(dist) = link_transform(dist) !== identity
 
 #################################
 # Single-sample initialisations #
@@ -238,12 +291,23 @@ istransformable(::Transformable) = true
 
 inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
 function inittrans(rng, dist::MultivariateDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1]))
+    # Get the length of the unconstrained vector
+    b = link_transform(dist)
+    d = Bijectors.output_length(b, length(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, d))
 end
 function inittrans(rng, dist::MatrixDistribution)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)...))
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = Bijectors.output_size(b, size(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
-
+function inittrans(rng, dist::Distribution{CholeskyVariate})
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = Bijectors.output_size(b, size(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
+end
 ################################
 # Multi-sample initialisations #
 ################################

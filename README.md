@@ -9,7 +9,6 @@
 [![Codecov](https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/TuringLang/DynamicPPL.jl)
 [![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
 [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://colprac.sciml.ai/)
-[![Bors enabled](https://bors.tech/images/badge_small.svg)](https://app.bors.tech/repositories/24589)
 
 *A domain-specific language and backend for probabilistic programming, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).*
 
@@ -29,24 +28,21 @@ If you feel you have some relevant skills and are interested in contributing, pl
 
 ### Contributor's Guide
 
-This project follows the [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://colprac.sciml.ai/), apart from the following slight variation:
+This project follows the [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://colprac.sciml.ai/), apart from the following slight variation:
 
-- The master branch contains the most recent release at any point in time. All non-breaking changes (bug fixes etc.) are merged directly into master and a new patch version is released immediately.
-- A separate dev branch contains all breaking changes, and is merged into master when a minor version release happens.
+  - The master branch contains the most recent release at any point in time. All non-breaking changes (bug fixes etc.) are merged directly into master and a new patch version is released immediately.
+  - A separate dev branch contains all breaking changes, and is merged into master when a minor version release happens.
 
 For instance, suppose we are currently on version 0.13.5.
 
-- If someone produces a bug fix, it is merged directly into master and bumps the version to 0.13.6. This change is also merged into dev so that it remains up-to-date with master.
-- If someone is working on a new feature that is not breaking (performance-related, fancy new syntax that is backwards-compatible etc.), the same happens.
-- New breaking changes are merged into dev until a release is ready to go, at which point dev is merged into master and version 0.14 is released.
+  - If someone produces a bug fix, it is merged directly into master and bumps the version to 0.13.6. This change is also merged into dev so that it remains up-to-date with master.
+  - If someone is working on a new feature that is not breaking (performance-related, fancy new syntax that is backwards-compatible etc.), the same happens.
+  - New breaking changes are merged into dev until a release is ready to go, at which point dev is merged into master and version 0.14 is released.
 
-### Bors
+### Merge Queue
 
-This project uses [Bors](https://bors.tech/) for merging PRs. Bors is a Github bot that prevents merge skew / semantic merge conflicts by testing
-the exact integration of pull requests before merging them.
+This project uses a [merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) for merging PRs.
+In this way, merge skew / semantic merge conflicts are prevented by testing the exact integration of pull requests before merging them.
 
-When a PR is good enough for merging and has been approved by at least one reviewer, instead of merging immediately, it is added to the merge queue
-by commenting with `bors r+`. The Bors bot merges the pull request into a staging area, and runs the CI tests. If tests pass, the commit in the staging
-area is copied to the target branch (i.e., usually master).
-
-PRs can be tested by adding a comment with `bors try`. Additional commands can be found in the [Bors documentation](https://bors.tech/documentation/).
+When a PR is good enough for merging and has been approved by at least one reviewer, instead of merging immediately, it is added to the merge queue.
+If the CI tests pass, including downstream tests of Turing, the PR is merged into the main branch.

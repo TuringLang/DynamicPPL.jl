@@ -52,7 +52,7 @@ end
             x ~ Normal()
             return x
         end
-        @test length(methods(testmodel01)) == 3
+        @test length(methods(testmodel01)) == 4
         f0_mm = testmodel01()
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
@@ -65,7 +65,7 @@ end
             x[2] ~ Normal()
             return x
         end
-        @test length(methods(testmodel02)) == 3
+        @test length(methods(testmodel02)) == 4
         f0_mm = testmodel02()
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
@@ -74,7 +74,7 @@ end
             return x
         end
         f01_mm = testmodel03()
-        @test length(methods(testmodel03)) == 3
+        @test length(methods(testmodel03)) == 4
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -619,5 +619,33 @@ end
         @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
         @test f_393()() == 1
         @test f_393(Val(true))() == 0
+    end
+
+    @testset "splatting of args and kwargs" begin
+        @model function f_splat_test_1(x; y::T=1, kwargs...) where {T}
+            x ~ Normal(y, 1)
+            return x, y, T, NamedTuple(kwargs)
+        end
+
+        # Non-empty `kwargs...`.
+        res = f_splat_test_1(1; z=2, w=3)()
+        @test res == (1, 1, Int, (z=2, w=3))
+
+        # Empty `kwargs...`.
+        res = f_splat_test_1(1)()
+        @test res == (1, 1, Int, NamedTuple())
+
+        @model function f_splat_test_2(x, args...; y::T=1, kwargs...) where {T}
+            x ~ Normal(y, 1)
+            return x, args, y, T, NamedTuple(kwargs)
+        end
+
+        # Non-empty `args...` and non-empty `kwargs...`.
+        res = f_splat_test_2(1, 2, 3; z=2, w=3)()
+        @test res == (1, (2, 3), 1, Int, (z=2, w=3))
+
+        # Empty `args...` and empty `kwargs...`.
+        res = f_splat_test_2(1)()
+        @test res == (1, (), 1, Int, NamedTuple())
     end
 end

@@ -108,6 +108,8 @@
 
     @testset "SimpleVarInfo on $(nameof(model))" for model in
                                                      DynamicPPL.TestUtils.DEMO_MODELS
+        model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix()
+
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(rand(NamedTuple, model))
