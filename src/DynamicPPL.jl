@@ -16,6 +16,8 @@ using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 using LogDensityProblems: LogDensityProblems
 
+using LinearAlgebra: Cholesky
+
 using DocStringExtensions
 
 using Random: Random
@@ -44,7 +46,6 @@ export AbstractVarInfo,
     push!!,
     empty!!,
     getlogp,
-    resetlogp!,
     setlogp!!,
     acclogp!!,
     resetlogp!!,

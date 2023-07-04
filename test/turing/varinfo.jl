@@ -285,7 +285,7 @@
         #= g = Sampler(Gibbs(PG(10, :x, :y, :z), HMC(0.4, 8, :w, :u)), g_demo_f)
         vi = VarInfo()
         g_demo_f(vi, SampleFromPrior())
-        _, state = @inferred AbstractMCMC.step(Random.GLOBAL_RNG, g_demo_f, g)
+        _, state = @inferred AbstractMCMC.step(Random.default_rng(), g_demo_f, g)
         pg, hmc = state.states
         @test pg isa TypedVarInfo
         @test hmc isa Turing.Inference.HMCState
@@ -302,7 +302,7 @@
         vi = empty!!(TypedVarInfo(vi))
         @inferred g_demo_f(vi, SampleFromPrior())
         pg.state.vi = vi
-        step!(Random.GLOBAL_RNG, g_demo_f, pg, 1)
+        step!(Random.default_rng(), g_demo_f, pg, 1)
         vi = pg.state.vi
         @inferred g_demo_f(vi, hmc)
         @test vi.metadata.x.gids[1] == Set([pg.selector])

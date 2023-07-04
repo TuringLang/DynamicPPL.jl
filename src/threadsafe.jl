@@ -178,3 +178,5 @@ end
 
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
 istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
+
+getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
