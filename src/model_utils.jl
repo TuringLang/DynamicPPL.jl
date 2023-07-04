@@ -1,3 +1,128 @@
+### Yong ############################################################## 
+# Yong added the below new functions on 2023-07-04, they are doing the some functionalities as Tor's functions. Some redundancy needs to be removed?
+using Turing, Distributions, DynamicPPL, MCMCChains, Test
+
+#### 1. varname_in_chain ####
+# here we just check if vn and its leaves are present in the chain; we are not checking its presence in model. So we don't need to pass model or varinfo to this function.
+"""
+    varname_in_chain(vn::VarName, chain, chain_idx, iteration_idx)
+
+Return `true` if `vn` or any of `vn_child` is in `chain` at `chain_idx` and `iteration_idx`; also returned is the dictionary containing the names related to `vn` presented in the chain, if any.
+"""
+function varname_in_chain(vn::VarName, chain, chain_idx=1, iteration_idx=1)
+    out = OrderedDict{Symbol,Bool}()
+    for vn_child in namesingroup(chain, Symbol(vn)) # namesingroup: https://github.com/TuringLang/MCMCChains.jl/blob/master/src/chains.jl
+        # print("\n $vn_child of $vn is in chain")
+        out[vn_child] = Symbol(vn_child) ∈ names(chain) && !ismissing(chain[iteration_idx, Symbol(vn_child), chain_idx])
+    end
+    return !isempty(out), out
+end
+
+#### 2. varnames_in_chain ####
+# we iteratively test whether each of keys(VarInfo(model)) is present in the chain or not
+"""
+    varnames_in_chain(model:::Model, chain)
+    varnames_in_chain(varinfo::VarInfo, chain)
+
+Return `true` if all variable names in `model`/`varinfo` are in `chain`; also returned is the dictionary containing the names related to `vn` presented in the chain, if any.
+"""
+varnames_in_chain(model::Model, chain) = varnames_in_chain(VarInfo(model), chain)
+function varnames_in_chain(varinfo::VarInfo, chain)
+    out_logical = OrderedDict()
+    out = OrderedDict()
+    for vn in keys(varinfo)
+        out_logical[Symbol(vn)], out[Symbol(vn)] = varname_in_chain(vn, chain, 1, 1)
+    end
+    return all(values(out_logical)), out
+end
+
+#### 3. values_from_chain ####
+"""
+    vn_values_from_chain(vn, chain, chain_idx, iteration_idx)
+
+Return `true` if `vn` or any of its leaves is in `chain`; also returned is the dictionary containing the names related to `vn` presented in the chain, if any.
+"""
+function vn_values_from_chain(vn::VarName, chain, chain_idx, iteration_idx)
+    out = OrderedDict()
+    # no need to test if varname_in_chain(vn, chain)[1] - if vn is not in chain, then out will be empty.
+    for vn_child in namesingroup(chain, Symbol(vn))
+        try
+            out[vn_child] = chain[iteration_idx, Symbol(vn_child), chain_idx]
+        catch
+            println("Error: retrieve value for $vn_child using chain[$iteration_idx, Symbol($vn_child), $chain_idx] not successful!")
+        end
+    end
+    return !isempty(out), out
+end
+
+"""
+    values_from_chain(model:::Model, chain)
+    values_from_chain(varinfo::VarInfo, chain)
+
+Return a dictionary containing the values of all variables in `model`/`varinfo` presented in `chain`, if any.
+"""
+values_from_chain(model::Model, chain, chain_idx, iteration_idx) = values_from_chain(VarInfo(model), chain, chain_idx, iteration_idx)
+function values_from_chain(varinfo::VarInfo, chain, chain_idx, iteration_idx)
+    out = OrderedDict()
+    for vn in keys(varinfo)
+        _, out_vn = vn_values_from_chain(vn, chain, chain_idx, iteration_idx)
+        merge!(out, out_vn)
+    end
+    return out
+end
+
+"""
+    values_from_chain(varinfo, chain, chain_idx, iteration_idx_range)
+
+Return a dictionary containing the values of all variables in `model`/`varinfo` presented in `chain`,  as per iteration_idx_range.
+"""
+values_from_chain(model::Model, chain, chain_idx_range, iteration_idx_range) = values_from_chain(VarInfo(model), chain, chain_idx_range, iteration_idx_range)
+function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::UnitRange)
+    all_out = OrderedDict()
+    for chain_idx in chain_idx_range
+        out = OrderedDict()
+        for vn in keys(varinfo)
+            for iteration_idx in iteration_idx_range
+                _, out_vn = vn_values_from_chain(vn, chain, chain_idx, iteration_idx)
+                for key in keys(out_vn)
+                    if haskey(out, key)
+                        out[key] = vcat(out[key], out_vn[key])
+                    else
+                        out[key] = out_vn[key]
+                    end
+                end
+            end
+        end
+        all_out["chain_idx_"*string(chain_idx)] = out
+    end
+    return all_out
+end
+function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::UnitRange)
+    return values_from_chain(varinfo, chain, chain_idx_range:chain_idx_range, iteration_idx_range)
+end
+function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::Int)
+    return values_from_chain(varinfo, chain, chain_idx_range, iteration_idx_range:iteration_idx_range)
+end
+function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::Int) #  this is equivalent to values_from_chain(varinfo::VarInfo, chain, chain_idx, iteration_idx)
+    return values_from_chain(varinfo, chain, chain_idx_range:chain_idx_range, iteration_idx_range:iteration_idx_range)
+end
+## if either chain_idx_range and iteration_idx_range not specified, then all chains will be included.
+function values_from_chain(varinfo::VarInfo, chain, chain_idx_range, iteration_idx_range)
+    if chain_idx_range === nothing
+        print("chain_idx_range is missing!")
+        chain_idx_range = 1:size(chain)[3]
+    end
+    if iteration_idx_range === nothing
+        print("iteration_idx_range is missing!")    
+        iteration_idx_range = 1:size(chain)[1]
+    end
+    return values_from_chain(varinfo, chain, chain_idx_range, iteration_idx_range)
+end
+
+### Tor ##############################################################
+
+"""
+    Tor(model::Model, chain, chain_idx, iteration_idx)
 """
     varnames_in_chain(model:::Model, chain)
     varnames_in_chain(varinfo::VarInfo, chain)
