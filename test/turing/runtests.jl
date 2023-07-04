@@ -1,5 +1,6 @@
 using DynamicPPL
 using Turing
+using LinearAlgebra
 
 using Random
 using Test

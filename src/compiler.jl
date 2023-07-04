@@ -209,20 +209,21 @@ macro model(expr, warn=false)
 end
 
 function model(mod, linenumbernode, expr, warn)
-    modelinfo = build_model_info(expr)
+    modeldef = build_model_definition(expr)
 
     # Generate main body
-    modelinfo[:body] = generate_mainbody(mod, modelinfo[:modeldef][:body], warn)
+    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn)
 
-    return build_output(modelinfo, linenumbernode)
+    return build_output(modeldef, linenumbernode)
 end
 
 """
-    build_model_info(input_expr)
+    build_model_definition(input_expr)
 
-Builds the `model_info` dictionary from the model's expression.
+Builds the `modeldef` dictionary from the model's expression, where
+`modeldef` is a dictionary compatible with `MacroTools.combinedef`.
 """
-function build_model_info(input_expr)
+function build_model_definition(input_expr)
     # Break up the model definition and extract its name, arguments, and function body
     modeldef = MacroTools.splitdef(input_expr)
 
@@ -238,66 +239,13 @@ function build_model_info(input_expr)
 
     # Shortcut if the model does not have any arguments
     if !haskey(modeldef, :args) && !haskey(modeldef, :kwargs)
-        modelinfo = Dict(
-            :allargs_exprs => [],
-            :allargs_syms => [],
-            :allargs_namedtuple => NamedTuple(),
-            :defaults_namedtuple => NamedTuple(),
-            :modeldef => modeldef,
-        )
-        return modelinfo
+        return modeldef
     end
 
     # Ensure that all arguments have a name, i.e., are of the form `name` or `name::T`
     addargnames!(modeldef[:args])
 
-    # Extract the positional and keyword arguments from the model definition.
-    allargs = vcat(modeldef[:args], modeldef[:kwargs])
-
-    # Split the argument expressions and the default values.
-    allargs_exprs_defaults = map(allargs) do arg
-        MacroTools.@match arg begin
-            (x_ = val_) => (x, val)
-            x_ => (x, NO_DEFAULT)
-        end
-    end
-
-    # Extract the expressions of the arguments, without default values.
-    allargs_exprs = first.(allargs_exprs_defaults)
-
-    # Extract the names of the arguments.
-    allargs_syms = map(allargs_exprs) do arg
-        MacroTools.@match arg begin
-            (name_::_) => name
-            x_ => x
-        end
-    end
-
-    # Build named tuple expression of the argument symbols and variables of the same name.
-    allargs_namedtuple = to_namedtuple_expr(allargs_syms)
-
-    # Extract default values of the positional and keyword arguments.
-    default_syms = []
-    default_vals = []
-    for (sym, (expr, val)) in zip(allargs_syms, allargs_exprs_defaults)
-        if val !== NO_DEFAULT
-            push!(default_syms, sym)
-            push!(default_vals, val)
-        end
-    end
-
-    # Build named tuple expression of the argument symbols with default values.
-    defaults_namedtuple = to_namedtuple_expr(default_syms, default_vals)
-
-    modelinfo = Dict(
-        :allargs_exprs => allargs_exprs,
-        :allargs_syms => allargs_syms,
-        :allargs_namedtuple => allargs_namedtuple,
-        :defaults_namedtuple => defaults_namedtuple,
-        :modeldef => modeldef,
-    )
-
-    return modelinfo
+    return modeldef
 end
 
 """
@@ -561,14 +509,32 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
+function splitarg_to_expr((arg_name, arg_type, is_splat, default))
+    return is_splat ? :($arg_name...) : arg_name
+end
+
+function namedtuple_from_splitargs(splitargs)
+    names = map(splitargs) do (arg_name, arg_type, is_splat, default)
+        is_splat ? Symbol("#splat#$(arg_name)") : arg_name
+    end
+    names_expr = Expr(:tuple, map(QuoteNode, names)...)
+    vals = Expr(:tuple, map(first, splitargs)...)
+    return :(NamedTuple{$names_expr}($vals))
+end
+
+is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
+
 """
-    build_output(modelinfo, linenumbernode)
+    build_output(modeldef, linenumbernode)
 
 Builds the output expression.
 """
-function build_output(modelinfo, linenumbernode)
+function build_output(modeldef, linenumbernode)
+    args = modeldef[:args]
+    kwargs = modeldef[:kwargs]
+
     ## Build the anonymous evaluator from the user-provided model definition.
-    evaluatordef = deepcopy(modelinfo[:modeldef])
+    evaluatordef = deepcopy(modeldef)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -577,11 +543,8 @@ function build_output(modelinfo, linenumbernode)
             :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
             :(__context__::$(DynamicPPL.AbstractContext)),
         ],
-        modelinfo[:allargs_exprs],
+        args,
     )
-
-    # Delete the keyword arguments.
-    evaluatordef[:kwargs] = []
 
     # Replace the user-provided function body with the version created by DynamicPPL.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
@@ -593,18 +556,13 @@ function build_output(modelinfo, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(replace_returns(make_returns_explicit!(modelinfo[:body])))
+        $(replace_returns(make_returns_explicit!(modeldef[:body])))
     end
 
     ## Build the model function.
 
-    # Extract the named tuple expression of all arguments and the default values.
-    allargs_namedtuple = modelinfo[:allargs_namedtuple]
-    defaults_namedtuple = modelinfo[:defaults_namedtuple]
-
     # Obtain or generate the name of the model to support functors:
     # https://github.com/TuringLang/DynamicPPL.jl/issues/367
-    modeldef = modelinfo[:modeldef]
     if MacroTools.@capture(modeldef[:name], ::T_)
         name = gensym(:f)
         modeldef[:name] = Expr(:(::), name, T)
@@ -613,13 +571,18 @@ function build_output(modelinfo, linenumbernode)
         throw(ArgumentError("unsupported format of model function"))
     end
 
+    args_split = map(MacroTools.splitarg, args)
+    kwargs_split = map(MacroTools.splitarg, kwargs)
+    args_nt = namedtuple_from_splitargs(args_split)
+    kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
+
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model)($name, $allargs_namedtuple, $defaults_namedtuple)
+        return $(DynamicPPL.Model)($name, $args_nt; $(kwargs_inclusion...))
     end
 
     return MacroTools.@q begin
