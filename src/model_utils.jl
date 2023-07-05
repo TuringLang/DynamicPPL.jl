@@ -120,9 +120,6 @@ function values_from_chain(varinfo::VarInfo, chain, chain_idx_range, iteration_i
 end
 
 ### Tor ##############################################################
-
-"""
-    Tor(model::Model, chain, chain_idx, iteration_idx)
 """
     varnames_in_chain(model:::Model, chain)
     varnames_in_chain(varinfo::VarInfo, chain)
