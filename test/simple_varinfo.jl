@@ -64,7 +64,6 @@
         @testset "$(typeof(vi))" for vi in (
             SimpleVarInfo(Dict()), SimpleVarInfo(values_constrained), VarInfo(model)
         )
-            vi = SimpleVarInfo(values_constrained)
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end

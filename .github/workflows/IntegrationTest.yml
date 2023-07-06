@@ -6,6 +6,9 @@ on:
       - master
   merge_group:
     types: [checks_requested]
+  pull_request:
+    branches: [master]
+    types: [auto_merge_enabled]
 
 jobs:
   test:

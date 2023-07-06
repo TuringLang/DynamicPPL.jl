@@ -42,4 +42,10 @@
         @test getargs_tilde(:(@. x ~ Normal(μ, $(Expr(:$, :(sqrt(v))))))) === nothing
         @test getargs_tilde(:(@~ Normal.(μ, σ))) === nothing
     end
+
+    @testset "vectorize" begin
+        dist = LKJCholesky(2, 1)
+        x = rand(dist)
+        @test vectorize(dist, x) == vec(x.UL)
+    end
 end
