@@ -120,6 +120,7 @@ function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
     return Iterators.flatten(iter)
 end
 
+# values_from_chain
 # TODO: remove after PR#481 is merged
 function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
     # HACK: If it's not an array, we fall back to just returning the first value.
