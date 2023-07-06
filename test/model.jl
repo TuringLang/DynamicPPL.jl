@@ -58,7 +58,9 @@ end
                 if i == 1
                     chain_mat = Matrix(reshape(col_flattened, 1, length(col_flattened)))
                 else
-                    chain_mat = vcat(chain_mat, reshape(col_flattened, 1, length(col_flattened)))
+                    chain_mat = vcat(
+                        chain_mat, reshape(col_flattened, 1, length(col_flattened))
+                    )
                 end
                 i += 1
             end
