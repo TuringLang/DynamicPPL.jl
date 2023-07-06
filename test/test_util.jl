@@ -82,3 +82,66 @@ short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
+
+# convenient functions for testing model.jl
+# function to modify the representation of values based on their length
+function modify_value_representation(nt::NamedTuple)
+    modified_nt = NamedTuple()
+    for (key, value) in zip(keys(nt), values(nt))
+        if length(value) == 1  # Scalar value
+            modified_value = value[1]
+        else  # Non-scalar value
+            modified_value = value
+        end
+        modified_nt = merge(modified_nt, (key => modified_value,))
+    end
+    return modified_nt
+end
+
+# helper functions for testing (both varname_leaves and values_from_chain are in utils.jl, for some reason they are not loaded)
+varname_leaves(vn::VarName, ::Real) = [vn]
+function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
+    return (
+        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::VarName, val::AbstractArray)
+    return Iterators.flatten(
+        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
+        I in CartesianIndices(val)
+    )
+end
+function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
+    iter = Iterators.map(keys(val)) do sym
+        lens = Setfield.PropertyLens{sym}()
+        varname_leaves(vn ∘ lens, get(val, lens))
+    end
+    return Iterators.flatten(iter)
+end
+
+# TODO: remove after PR#481 is merged
+function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
+    # HACK: If it's not an array, we fall back to just returning the first value.
+    return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
+end
+function values_from_chain(
+    x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
+) where {sym}
+    # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
+    # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
+    # to extract the value from the `chain`.
+    return reduce(varname_leaves(VarName{sym}(), x); init=similar(x)) do x, vn
+        # Update `x`, possibly in place, and return.
+        l = AbstractPPL.getlens(vn)
+        Setfield.set(
+            x,
+            BangBang.prefermutation(l),
+            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx],
+        )
+    end
+end
+function values_from_chain(vi::AbstractVarInfo, vn_parent, chain, chain_idx, iteration_idx)
+    # Use the value `vi[vn_parent]` to obtain a buffer.
+    return values_from_chain(vi[vn_parent], vn_parent, chain, chain_idx, iteration_idx)
+end

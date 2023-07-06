@@ -1,51 +1,3 @@
-# helper functions for testing (both varname_leaves and values_from_chain are in utils.jl, for some reason they are not loaded)
-varname_leaves(vn::VarName, ::Real) = [vn]
-function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
-    return (
-        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
-        I in CartesianIndices(val)
-    )
-end
-function varname_leaves(vn::VarName, val::AbstractArray)
-    return Iterators.flatten(
-        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
-        I in CartesianIndices(val)
-    )
-end
-function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
-    iter = Iterators.map(keys(val)) do sym
-        lens = Setfield.PropertyLens{sym}()
-        varname_leaves(vn ∘ lens, get(val, lens))
-    end
-    return Iterators.flatten(iter)
-end
-
-# TODO: remove after PR#481 is merged
-function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
-    # HACK: If it's not an array, we fall back to just returning the first value.
-    return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
-end
-function values_from_chain(
-    x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
-) where {sym}
-    # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
-    # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
-    # to extract the value from the `chain`.
-    return reduce(varname_leaves(VarName{sym}(), x); init=similar(x)) do x, vn
-        # Update `x`, possibly in place, and return.
-        l = AbstractPPL.getlens(vn)
-        Setfield.set(
-            x,
-            BangBang.prefermutation(l),
-            chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx],
-        )
-    end
-end
-function values_from_chain(vi::AbstractVarInfo, vn_parent, chain, chain_idx, iteration_idx)
-    # Use the value `vi[vn_parent]` to obtain a buffer.
-    return values_from_chain(vi[vn_parent], vn_parent, chain, chain_idx, iteration_idx)
-end
-
 # some functors (#367)
 struct MyModel
     a::Int
@@ -59,31 +11,10 @@ struct MyZeroModel end
     m ~ Normal(0, 1)
     return x ~ Normal(m, 1)
 end
-@model function gdemo_d()
-    s ~ InverseGamma(2, 3)
-    m ~ Normal(0, sqrt(s))
-    1.5 ~ Normal(m, sqrt(s))
-    2.0 ~ Normal(m, sqrt(s))
-    return s, m
-end
-gdemo_default = gdemo_d()
-# function to modify the representation of values based on their length
-function modify_value_representation(nt::NamedTuple)
-    modified_nt = NamedTuple()
-    for (key, value) in zip(keys(nt), values(nt))
-        if length(value) == 1  # Scalar value
-            modified_value = value[1]
-        else  # Non-scalar value
-            modified_value = value
-        end
-        modified_nt = merge(modified_nt, (key => modified_value,))
-    end
-    return modified_nt
-end
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default
+        model = gdemo_default # defined in test/test_util.jl
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -107,7 +38,7 @@ end
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        for model in DynamicPPL.TestUtils.DEMO_MODELS[1:12] # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
+        for model in DynamicPPL.TestUtils.DEMO_MODELS # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
             var_info = VarInfo(model)
             vns = DynamicPPL.TestUtils.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
@@ -120,8 +51,18 @@ end
             vals_mat = mapreduce(hcat, 1:N) do i
                 [vals_OrderedDict[i][vn] for vn in vns]
             end
-            vec_of_vec = [vcat(x...)' for x in eachcol(vals_mat)]
-            chain_mat = vcat(vec_of_vec...)
+            i = 1
+            for col in eachcol(vals_mat)
+                col_flattened = []
+                [push!(col_flattened, x...) for x in col]
+                if i == 1
+                    chain_mat = Matrix(reshape(col_flattened, 1, length(col_flattened)))
+                else
+                    chain_mat = vcat(chain_mat, reshape(col_flattened, 1, length(col_flattened)))
+                end
+                i += 1
+            end
+            chain_mat = convert(Matrix{Float64}, chain_mat)
 
             # devise parameter names for chain
             sample_values_vec = collect(values(vals_OrderedDict[1]))
@@ -130,7 +71,7 @@ end
             for k in 1:length(keys(var_info))
                 vn_parent = keys(var_info)[k]
                 sym = DynamicPPL.getsym(vn_parent)
-                vn_children = varname_leaves(vn_parent, sample_values_vec[k])
+                vn_children = varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in test/test_util.jl
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
                     symbol_names = [symbol_names; Symbol(vn_child)]
@@ -153,7 +94,7 @@ end
                     samples_dict[key] = existing_value
                 end
                 samples = (; samples_dict...)
-                samples = modify_value_representation(samples)
+                samples = modify_value_representation(samples) # `modify_value_representation` defined in test/test_util.jl
                 @test logpriors[i] ≈
                     DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
                 @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
