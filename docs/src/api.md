@@ -93,7 +93,7 @@ DynamicPPL.fixed
 
 The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
 
-Similarly, we can "unfix" variables, i.e. return them to their original meaning, using [`unfix`](@ref)
+Similarly, we can "unfix" variables, i.e. return them to their original meaning, using [`unfix`](@ref):
 
 ```@docs
 unfix

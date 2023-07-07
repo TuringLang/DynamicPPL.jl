@@ -525,11 +525,11 @@ julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
 true
 ```
 
-## Condition only a part of a multivariate variable
+## Fix only a part of a multivariate variable
 
-Not only can be condition on multivariate random variables, but
+We can not only fix multivariate random variables, but
 we can also use the standard mechanism of setting something to `missing`
-in the call to `condition` to only condition on a part of the variable.
+in the call to `fix` to only fix a part of the variable.
 
 ```jldoctest fix
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -763,7 +763,7 @@ true
 ```
 
 But, as mentioned, `unfix` is only supported for variables explicitly
-provided to `fix` earlier;
+provided to `fix` earlier:
 
 ```jldoctest unfix
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
