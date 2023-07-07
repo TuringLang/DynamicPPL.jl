@@ -29,7 +29,13 @@ evaluates to a `VarName`, and this will be used in the subsequent checks.
 If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))))
+function isassumption(
+    expr::Union{Expr,Symbol},
+    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
+)
+    expr::Union{Expr,Symbol},
+    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
+)
     return quote
         if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
             # Considered an assumption by `__context__` which means either:
@@ -401,7 +407,8 @@ Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
     isliteral(left) && return generate_tilde_literal(left, right)
-
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
+            $right,
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
     @gensym vn isassumption value
