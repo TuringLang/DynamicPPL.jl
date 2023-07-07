@@ -96,21 +96,33 @@ chn_3 = Chains(chain_mat, symbol_names)
         @test length(output["chain_idx_1"]) == 4
 
         output = values_from_chain(model_2, chn_2, 1, 1:10)
-        @test length(output["chain_idx_1"]) == 3 && all([length(vals) == 10 for vals in values(output["chain_idx_1"])])
+        @test length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 10 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_3, chn_3, 1, 1:10)
-        @test length(output["chain_idx_1"]) == 4 && all([length(vals) == 10 for vals in values(output["chain_idx_1"])])
+        @test length(output["chain_idx_1"]) == 4 &&
+            all([length(vals) == 10 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_2, chn_2, 1, 1)
-        @test length(output["chain_idx_1"]) == 3 && all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
+        @test length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_2, chn_2, 1:1, 1)
-        @test length(keys(output))==1 && length(output["chain_idx_1"]) == 3 && all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
+        @test length(keys(output)) == 1 &&
+            length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_2, chn_2, 1, 1:1)
-        @test length(output["chain_idx_1"]) == 3 && all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
+        @test length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_2, chn_2, 1:1, 1:1)
-        @test length(keys(output))==1 && length(output["chain_idx_1"]) == 3 && all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
+        @test length(keys(output)) == 1 &&
+            length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 1 for vals in values(output["chain_idx_1"])])
 
         output = values_from_chain(model_2, chn_2, nothing, nothing)
-        @test length(keys(output))==1 && length(output["chain_idx_1"]) == 3 && all([length(vals) == 100 for vals in values(output["chain_idx_1"])])
+        @test length(keys(output)) == 1 &&
+            length(output["chain_idx_1"]) == 3 &&
+            all([length(vals) == 100 for vals in values(output["chain_idx_1"])])
         output = values_from_chain(model_3, chn_3, nothing, nothing)
-        @test length(keys(output))==1 && length(output["chain_idx_1"]) == 4 && all([length(vals) == 100 for vals in values(output["chain_idx_1"])])
+        @test length(keys(output)) == 1 &&
+            length(output["chain_idx_1"]) == 4 &&
+            all([length(vals) == 100 for vals in values(output["chain_idx_1"])])
     end
 end

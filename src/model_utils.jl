@@ -44,7 +44,9 @@ function varname_in_chain(vn::VarName, chain, chain_idx=1, iteration_idx=1)
     out = OrderedDict{Symbol,Bool}()
     for vn_child in namesingroup(chain, Symbol(vn)) # namesingroup: https://github.com/TuringLang/MCMCChains.jl/blob/master/src/chains.jl
         # print("\n $vn_child of $vn is in chain")
-        out[vn_child] = Symbol(vn_child) ∈ names(chain) && !ismissing(chain[iteration_idx, Symbol(vn_child), chain_idx])
+        out[vn_child] =
+            Symbol(vn_child) ∈ names(chain) &&
+            !ismissing(chain[iteration_idx, Symbol(vn_child), chain_idx])
     end
     return !isempty(out), out
 end
@@ -136,7 +138,9 @@ function vn_values_from_chain(vn::VarName, chain, chain_idx, iteration_idx)
         try
             out[vn_child] = chain[iteration_idx, Symbol(vn_child), chain_idx]
         catch
-            println("Error: retrieve value for $vn_child using chain[$iteration_idx, Symbol($vn_child), $chain_idx] not successful!")
+            println(
+                "Error: retrieve value for $vn_child using chain[$iteration_idx, Symbol($vn_child), $chain_idx] not successful!",
+            )
         end
     end
     return !isempty(out), out
@@ -174,7 +178,9 @@ OrderedDict{Any, Any} with 2 entries:
 
 ```
 """
-values_from_chain(model::Model, chain, chain_idx, iteration_idx) = values_from_chain(VarInfo(model), chain, chain_idx, iteration_idx)
+function values_from_chain(model::Model, chain, chain_idx, iteration_idx)
+    return values_from_chain(VarInfo(model), chain, chain_idx, iteration_idx)
+end
 function values_from_chain(varinfo::VarInfo, chain, chain_idx, iteration_idx)
     out = OrderedDict()
     for vn in keys(varinfo)
@@ -235,8 +241,12 @@ OrderedDict{Any, Any} with 2 entries:
 
 ```
 """
-values_from_chain(model::Model, chain, chain_idx_range, iteration_idx_range) = values_from_chain(VarInfo(model), chain, chain_idx_range, iteration_idx_range)
-function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::UnitRange)
+function values_from_chain(model::Model, chain, chain_idx_range, iteration_idx_range)
+    return values_from_chain(VarInfo(model), chain, chain_idx_range, iteration_idx_range)
+end
+function values_from_chain(
+    varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::UnitRange
+)
     all_out = OrderedDict()
     for chain_idx in chain_idx_range
         out = OrderedDict()
@@ -252,18 +262,33 @@ function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::UnitRange, 
                 end
             end
         end
-        all_out["chain_idx_"*string(chain_idx)] = out
+        all_out["chain_idx_" * string(chain_idx)] = out
     end
     return all_out
 end
-function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::UnitRange)
-    return values_from_chain(varinfo, chain, chain_idx_range:chain_idx_range, iteration_idx_range)
+function values_from_chain(
+    varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::UnitRange
+)
+    return values_from_chain(
+        varinfo, chain, chain_idx_range:chain_idx_range, iteration_idx_range
+    )
 end
-function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::Int)
-    return values_from_chain(varinfo, chain, chain_idx_range, iteration_idx_range:iteration_idx_range)
+function values_from_chain(
+    varinfo::VarInfo, chain, chain_idx_range::UnitRange, iteration_idx_range::Int
+)
+    return values_from_chain(
+        varinfo, chain, chain_idx_range, iteration_idx_range:iteration_idx_range
+    )
 end
-function values_from_chain(varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::Int) #  this is equivalent to values_from_chain(varinfo::VarInfo, chain, chain_idx, iteration_idx)
-    return values_from_chain(varinfo, chain, chain_idx_range:chain_idx_range, iteration_idx_range:iteration_idx_range)
+function values_from_chain(
+    varinfo::VarInfo, chain, chain_idx_range::Int, iteration_idx_range::Int
+) #  this is equivalent to values_from_chain(varinfo::VarInfo, chain, chain_idx, iteration_idx)
+    return values_from_chain(
+        varinfo,
+        chain,
+        chain_idx_range:chain_idx_range,
+        iteration_idx_range:iteration_idx_range,
+    )
 end
 # if either chain_idx_range or iteration_idx_range is specified as `nothing`, then all chains will be included.
 function values_from_chain(varinfo::VarInfo, chain, chain_idx_range, iteration_idx_range)
@@ -272,7 +297,7 @@ function values_from_chain(varinfo::VarInfo, chain, chain_idx_range, iteration_i
         chain_idx_range = 1:size(chain)[3]
     end
     if iteration_idx_range === nothing
-        print("iteration_idx_range is missing!")    
+        print("iteration_idx_range is missing!")
         iteration_idx_range = 1:size(chain)[1]
     end
     return values_from_chain(varinfo, chain, chain_idx_range, iteration_idx_range)
