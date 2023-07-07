@@ -33,9 +33,6 @@ function isassumption(
     expr::Union{Expr,Symbol},
     vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
 )
-    expr::Union{Expr,Symbol},
-    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
-)
     return quote
         if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
             # Considered an assumption by `__context__` which means either:
@@ -407,15 +404,15 @@ Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
     isliteral(left) && return generate_tilde_literal(left, right)
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
-            $right,
+    $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
+    $right,
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
     @gensym vn isassumption value
     return quote
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
-            # $(AbstractPPL.drop_escape(varname(left, true))), $right
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
+            $right,
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $isassumption
