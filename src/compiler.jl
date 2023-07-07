@@ -404,8 +404,7 @@ Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
     isliteral(left) && return generate_tilde_literal(left, right)
-    $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
-    $right,
+
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
     @gensym vn isassumption value

@@ -543,7 +543,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
-    s = zeros(2) # used for varname concretization only
+    s = zeros(1, 2) # used for varname concretization only
     return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
 end
 
