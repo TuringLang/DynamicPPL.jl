@@ -21,6 +21,8 @@ using DocStringExtensions
 
 using Random: Random
 
+using Turing
+
 import Base:
     Symbol,
     ==,
