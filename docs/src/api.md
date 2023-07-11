@@ -84,7 +84,17 @@ decondition
 
 ## Fixing and unfixing
 
-We can also fix a collection of variables in a [`Model`](@ref) to certain values using [`fix`](@ref):
+We can also _fix_ a collection of variables in a [`Model`](@ref) to certain using [`fix`](@ref).
+
+This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
+but they are indeed different operations:
+- `condition`ed variables are considered to be _observations_, and are thus
+  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+  but not in [`logprior`](@ref).
+- `fix`ed variables are considered to be _constant_, and are thus not included
+  in any log-probability computations.
+
+The differences are more clearly spelled out in the docstring of [`fix`](@ref) below.
 
 ```@docs
 fix
@@ -93,7 +103,7 @@ DynamicPPL.fixed
 
 The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
 
-Similarly, we can "unfix" variables, i.e. return them to their original meaning, using [`unfix`](@ref):
+Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original meaning:
 
 ```@docs
 unfix
