@@ -399,16 +399,22 @@ function DynamicPPL.dot_tilde_assume(context::PriorExtractorContext, right, left
 end
 
 function setprior!(context::PriorExtractorContext, vn::VarName, dist::Distribution)
-    context.priors[vn] = dist
+    return context.priors[vn] = dist
 end
 
-function setprior!(context::PriorExtractorContext, vns::AbstractArray{<:VarName}, dist::Distribution)
+function setprior!(
+    context::PriorExtractorContext, vns::AbstractArray{<:VarName}, dist::Distribution
+)
     for vn in vns
         context.priors[vn] = dist
     end
 end
 
-function setprior!(context::PriorExtractorContext, vns::AbstractArray{<:VarName}, dists::AbstractArray{<:Distribution})
+function setprior!(
+    context::PriorExtractorContext,
+    vns::AbstractArray{<:VarName},
+    dists::AbstractArray{<:Distribution},
+)
     # TODO: Support broadcasted expressions properly.
     for (vn, dist) in zip(vns, dists)
         context.priors[vn] = dist

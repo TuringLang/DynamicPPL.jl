@@ -490,10 +490,12 @@ function conditioned(context::ConditionContext)
 end
 
 Base.@kwdef struct PriorExtractorContext{D,Ctx} <: AbstractContext
-    priors::D=OrderedDict{VarName,Any}()
-    context::Ctx=SamplingContext()
+    priors::D = OrderedDict{VarName,Any}()
+    context::Ctx = SamplingContext()
 end
 
 NodeTrait(::PriorExtractorContext) = IsParent()
 childcontext(context::PriorExtractorContext) = context.context
-setchildcontext(parent::PriorExtractorContext, child) = PriorExtractorContext(parent.priors, child)
+function setchildcontext(parent::PriorExtractorContext, child)
+    return PriorExtractorContext(parent.priors, child)
+end
