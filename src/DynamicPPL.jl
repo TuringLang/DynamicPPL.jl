@@ -97,6 +97,7 @@ export AbstractVarInfo,
     PriorContext,
     MiniBatchContext,
     PrefixContext,
+    PriorExtractorContext
     ConditionContext,
     assume,
     dot_assume,
