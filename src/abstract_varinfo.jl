@@ -570,7 +570,7 @@ end
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
 """
     reconstruct_and_link(dist, val)
-    reconstruct_and_link(vi::AbstractVarInfo, vi::VarName, dist, val)
+    reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return linked `val` but reconstruct before linking, if necessary.
 

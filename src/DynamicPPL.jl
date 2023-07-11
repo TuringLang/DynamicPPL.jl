@@ -15,6 +15,8 @@ using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 using LogDensityProblems: LogDensityProblems
 
+using LinearAlgebra: Cholesky
+
 using DocStringExtensions
 
 using Random: Random
