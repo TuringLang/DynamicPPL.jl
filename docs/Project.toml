@@ -7,7 +7,6 @@ LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
 MLUtils = "f1d291b0-491e-4a28-83b9-f70985020b54"
 Setfield = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
-Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
 DataStructures = "0.18"
