@@ -649,13 +649,12 @@ is in the two different models.
 
 A very similar functionality is also provided by [`condition`](@ref) which,
 not surprisingly, _conditions_ variables instead of fixing them. The only
-real difference here is as follows:
-- `condition` results in the variable being considered an observation.
-  This means that it's log-probability is now included both in [`logjoint`](@ref)
-  and [`loglikelihood`](@ref), but not longer in [`logprior`](@ref).
-- `fix` results in the variable being considered a constant value.
-  This means thhat it's log-probability is _completely removed_ from the
-    model, and thus not included in any of the above.
+difference between fixing and conditioning is as follows:
+- `condition`ed variables are considered to be observations, and are thus
+  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+  but not in [`logprior`](@ref).
+- `fix`ed variables are considered to be constant, and are thus not included
+  in any log-probability computations.
 
 ```juliadoctest fix
 julia> @model function demo()
