@@ -1,6 +1,7 @@
 ### Yong ############################################################## 
 # Yong added the below new functions on 2023-07-04, they are doing the some functionalities as Tor's functions. Some redundancy needs to be removed?
-using Distributions, DynamicPPL, MCMCChains, Random, Test
+# using Turing, Distributions, DynamicPPL, MCMCChains, Random, Test
+using Distributions, Random, Test
 
 #### 1. varname_in_chain ####
 # here we just check if vn and its leaves are present in the chain; we are not checking its presence in model. So we don't need to pass model or varinfo to this function.
