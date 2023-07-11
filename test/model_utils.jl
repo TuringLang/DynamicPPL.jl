@@ -10,7 +10,7 @@ chn_1 = Chains(val, [:s, :m])
 # (2) sample a Turing model to create a chain
 @model function gdemo(x)
     mu ~ MvNormal([0, 0, 0], [1 0 0; 0 1 0; 0 0 1])
-    x ~ MvNormal(mu, [1 0 0; 0 1 0; 0 0 1])
+    return x ~ MvNormal(mu, [1 0 0; 0 1 0; 0 0 1])
 end
 model_2 = gdemo([0, 0, 0])  # provide an initial value for `x`
 chn_2 = sample(model_2, NUTS(), 100) # NB: the parameter names in an MCMCChains can be retrieved using `namechn_2.name_map[:parameters]_map`: https://github.com/TuringLang/MCMCChains.jl/blob/master/src/chains.jl
