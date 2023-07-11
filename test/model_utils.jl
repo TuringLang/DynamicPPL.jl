@@ -1,6 +1,3 @@
-using Turing, Distributions, DynamicPPL, MCMCChains, Random, Test
-Random.seed!(111)
-
 #### prepare the models and chains for testing ####
 # (1) manually create a chain using MCMCChains - we know what parameter names are in the chain
 val = [1 2; 3 4; 5 6; 7 8; 9 10; 11 12; 13 14; 15 16; 17 18; 19 20]
