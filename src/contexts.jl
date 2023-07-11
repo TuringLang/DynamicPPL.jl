@@ -488,3 +488,12 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return merge(context.values, conditioned(childcontext(context)))
 end
+
+Base.@kwdef struct PriorExtractorContext{D,Ctx} <: AbstractContext
+    priors::D=OrderedDict{VarName,Any}()
+    context::Ctx=SamplingContext()
+end
+
+NodeTrait(::PriorExtractorContext) = IsParent()
+childcontext(context::PriorExtractorContext) = context.context
+setchildcontext(parent::PriorExtractorContext, child) = PriorExtractorContext(parent.priors, child)
