@@ -88,11 +88,12 @@ We can also _fix_ a collection of variables in a [`Model`](@ref) to certain usin
 
 This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
 but they are indeed different operations:
-- `condition`ed variables are considered to be _observations_, and are thus
-  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
-  but not in [`logprior`](@ref).
-- `fix`ed variables are considered to be _constant_, and are thus not included
-  in any log-probability computations.
+
+  - `condition`ed variables are considered to be _observations_, and are thus
+    included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+    but not in [`logprior`](@ref).
+  - `fix`ed variables are considered to be _constant_, and are thus not included
+    in any log-probability computations.
 
 The differences are more clearly spelled out in the docstring of [`fix`](@ref) below.
 
