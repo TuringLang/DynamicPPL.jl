@@ -386,18 +386,6 @@ function dot_tilde_assume!!(context, right, left, vn, vi)
     return value, acclogp!!(vi, logp), vi
 end
 
-# `PriorExtractorContext`
-
-function DynamicPPL.tilde_assume(context::PriorExtractorContext, right, vn, vi)
-    setprior!(context, vn, right)
-    return DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
-end
-
-function DynamicPPL.dot_tilde_assume(context::PriorExtractorContext, right, left, vn, vi)
-    setprior!(context, vn, right)
-    return DynamicPPL.dot_tilde_assume(childcontext(context), right, left, vn, vi)
-end
-
 # `dot_assume`
 function dot_assume(
     dist::MultivariateDistribution,
