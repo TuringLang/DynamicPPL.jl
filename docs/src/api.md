@@ -103,6 +103,7 @@ pointwise_loglikelihoods
 ```
 
 Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
+
 ```@docs
 extract_priors
 ```
