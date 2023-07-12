@@ -495,6 +495,7 @@ struct PriorExtractorContext{D<:OrderedDict{VarName,Any},Ctx<:AbstractContext} <
 end
 
 PriorExtractorContext(priors) = PriorExtractorContext(priors, SamplingContext())
+PriorExtractorContext() = PriorExtractorContext(OrderedDict{VarName,Any}(), SamplingContext())
 
 NodeTrait(::PriorExtractorContext) = IsParent()
 childcontext(context::PriorExtractorContext) = context.context

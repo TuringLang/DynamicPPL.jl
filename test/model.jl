@@ -154,4 +154,11 @@ end
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
         @test length(test_defaults(missing, 2)()) == 2
     end
+
+    @testset "extra priors" begin
+        m = DynamicPPL.TestUtils.demo_assume_dot_observe()
+        priors = extract_priors(m)
+        @test collect(keys(priors)) == [VarName(:s),VarName(:m)]
+        @test typeof.(collect(values(priors))) == [InverseGamma{Float64}, Normal{Float64}]
+    end
 end
