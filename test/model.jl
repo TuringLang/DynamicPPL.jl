@@ -12,6 +12,17 @@ struct MyZeroModel end
     return x ~ Normal(m, 1)
 end
 
+innermost_distribution_type(d::Distribution) = typeof(d)
+innermost_distribution_type(d::Distributions.ReshapedDistribution) = innermost_distribution_type(d.dist)
+function innermost_distribution_type(d::Distributions.Product)
+    dists = map(innermost_distribution_type, d.v)
+    if any(!=(dists[1]), dists)
+        error("Cannot extract innermost distribution type from $d")
+    end
+
+    return dists[1]
+end
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
         model = gdemo_default
@@ -155,18 +166,21 @@ end
         @test length(test_defaults(missing, 2)()) == 2
     end
 
-    @testset "extra priors" begin
-        m = DynamicPPL.TestUtils.demo_assume_dot_observe()
-        priors = extract_priors(m)
-        @test collect(keys(priors)) == [VarName(:s), VarName(:m)]
-        @test typeof.(collect(values(priors))) == [InverseGamma{Float64}, Normal{Float64}]
+    @testset "extract priors" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            priors = extract_priors(model)
 
-        m = DynamicPPL.TestUtils.demo_dot_assume_observe_submodel()
-        priors = extract_priors(m)
-        @test collect(keys(priors)) ==
-            [VarName(:s[1]), VarName(:s[2]), VarName(:m[1]), VarName(:m[2])]
-        @test typeof.(collect(values(priors))) == [
-            InverseGamma{Float64}, InverseGamma{Float64}, Normal{Float64}, Normal{Float64}
-        ]
+            # We know that any variable starting with `s` should have `InverseGamma`
+            # and any variable starting with `m` should have `Normal`.
+            for (vn, prior) in priors
+                if DynamicPPL.getsym(vn) == :s
+                    @test innermost_distribution_type(prior) <: InverseGamma
+                elseif DynamicPPL.getsym(vn) == :m
+                    @test innermost_distribution_type(prior) <: Union{Normal,MvNormal}
+                else
+                    error("Unexpected variable name: $vn")
+                end
+            end
+        end
     end
 end
