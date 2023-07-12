@@ -83,10 +83,10 @@ julia> @model function model_dynamic_parameters()
 julia> model = model_dynamic_parameters();
 
 julia> extract_priors(rng, model)[@varname(y)]
-Distributions.Normal{Float64}(μ=-0.6702516921145671, σ=1.0)
+Normal{Float64}(μ=-0.6702516921145671, σ=1.0)
 
 julia> extract_priors(rng, model)[@varname(y)]
-Distributions.Normal{Float64}(μ=1.3736306979834252, σ=1.0)
+Normal{Float64}(μ=1.3736306979834252, σ=1.0)
 ```
 
 ## Changing support
