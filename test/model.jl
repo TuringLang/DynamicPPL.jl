@@ -13,7 +13,9 @@ struct MyZeroModel end
 end
 
 innermost_distribution_type(d::Distribution) = typeof(d)
-innermost_distribution_type(d::Distributions.ReshapedDistribution) = innermost_distribution_type(d.dist)
+function innermost_distribution_type(d::Distributions.ReshapedDistribution)
+    return innermost_distribution_type(d.dist)
+end
 function innermost_distribution_type(d::Distributions.Product)
     dists = map(innermost_distribution_type, d.v)
     if any(!=(dists[1]), dists)
