@@ -415,14 +415,14 @@ function setprior!(
     vns::AbstractArray{<:VarName},
     dists::AbstractArray{<:Distribution},
 )
-    # TODO: Support broadcasted expressions properly.
     for (vn, dist) in zip(vns, dists)
         context.priors[vn] = dist
     end
 end
 
-function extract_priors(model::Model)
-    context = PriorExtractorContext()
+extract_priors(model::Model) = extract_priors(Random.default_rng(), model)
+function extract_priors(rng::Random.AbstractRNG, model::Model)
+    context = PriorExtractorContext(SamplingContext(rng))
     evaluate!!(model, VarInfo(), context)
     return context.priors
 end
