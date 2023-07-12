@@ -489,7 +489,7 @@ function conditioned(context::ConditionContext)
     return merge(context.values, conditioned(childcontext(context)))
 end
 
-Base.@kwdef struct PriorExtractorContext{D,Ctx} <: AbstractContext
+struct PriorExtractorContext{D,Ctx} <: AbstractContext
     priors::D = OrderedDict{VarName,Any}()
     context::Ctx = SamplingContext()
 end
