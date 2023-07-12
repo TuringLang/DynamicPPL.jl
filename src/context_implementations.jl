@@ -421,6 +421,12 @@ function setprior!(
     end
 end
 
+function extract_priors(model::Model)
+    context = PriorExtractorContext()
+    evaluate!!(model, VarInfo(), context)
+    return context.priors
+end
+
 # `dot_assume`
 function dot_assume(
     dist::MultivariateDistribution,
