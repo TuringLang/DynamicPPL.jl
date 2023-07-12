@@ -158,7 +158,7 @@ end
     @testset "extra priors" begin
         m = DynamicPPL.TestUtils.demo_assume_dot_observe()
         priors = extract_priors(m)
-        @test collect(keys(priors)) == [VarName(:s),VarName(:m)]
+        @test collect(keys(priors)) == [VarName(:s), VarName(:m)]
         @test typeof.(collect(values(priors))) == [InverseGamma{Float64}, Normal{Float64}]
 
         m = DynamicPPL.TestUtils.demo_dot_assume_observe_submodel()
