@@ -489,9 +489,10 @@ function conditioned(context::ConditionContext)
     return merge(context.values, conditioned(childcontext(context)))
 end
 
-struct PriorExtractorContext{D<:OrderedDict{VarName,Any},Ctx<:AbstractContext} <: AbstractContext
+struct PriorExtractorContext{D<:OrderedDict{VarName,Any},Ctx<:AbstractContext} <:
+       AbstractContext
     priors::D
-    context::Ctx 
+    context::Ctx
 end
 
 PriorExtractorContext(priors) = PriorExtractorContext(priors, SamplingContext())
