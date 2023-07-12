@@ -11,7 +11,7 @@ using Distributions
 
 # Doctest setup
 DocMeta.setdocmeta!(
-    DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
+    DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
 )
 
 makedocs(;
