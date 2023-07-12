@@ -160,5 +160,12 @@ end
         priors = extract_priors(m)
         @test collect(keys(priors)) == [VarName(:s),VarName(:m)]
         @test typeof.(collect(values(priors))) == [InverseGamma{Float64}, Normal{Float64}]
+
+        m = DynamicPPL.TestUtils.demo_dot_assume_observe_submodel()
+        priors = extract_priors(m)
+        @test collect(keys(priors)) == [VarName(:s[1]), VarName(:s[1]),
+            VarName(:m[1]), VarName(:m[1])]
+        @test typeof.(collect(values(priors))) == [InverseGamma{Float64}, InverseGamma{Float64},
+            Normal{Float64}, Normal{Float64}]
     end
 end
