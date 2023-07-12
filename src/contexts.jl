@@ -488,17 +488,3 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return merge(context.values, conditioned(childcontext(context)))
 end
-
-struct PriorExtractorContext{D<:OrderedDict{VarName,Any},Ctx<:AbstractContext} <:
-       AbstractContext
-    priors::D
-    context::Ctx
-end
-
-PriorExtractorContext(context) = PriorExtractorContext(OrderedDict{VarName,Any}(), context)
-
-NodeTrait(::PriorExtractorContext) = IsParent()
-childcontext(context::PriorExtractorContext) = context.context
-function setchildcontext(parent::PriorExtractorContext, child)
-    return PriorExtractorContext(parent.priors, child)
-end
