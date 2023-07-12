@@ -489,10 +489,12 @@ function conditioned(context::ConditionContext)
     return merge(context.values, conditioned(childcontext(context)))
 end
 
-struct PriorExtractorContext{D,Ctx} <: AbstractContext
-    priors::D = OrderedDict{VarName,Any}()
-    context::Ctx = SamplingContext()
+struct PriorExtractorContext{D<:OrderedDict{VarName,Any},Ctx<:AbstractContext} <: AbstractContext
+    priors::D
+    context::Ctx 
 end
+
+PriorExtractorContext(priors) = PriorExtractorContext(priors, SamplingContext())
 
 NodeTrait(::PriorExtractorContext) = IsParent()
 childcontext(context::PriorExtractorContext) = context.context
