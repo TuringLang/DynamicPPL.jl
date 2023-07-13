@@ -86,6 +86,7 @@ export AbstractVarInfo,
     getmissings,
     getargnames,
     generated_quantities,
+    extract_priors,
     # Samplers
     Sampler,
     SampleFromPrior,
@@ -166,5 +167,6 @@ include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
+include("extract_priors.jl")
 
 end # module

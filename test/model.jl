@@ -12,6 +12,19 @@ struct MyZeroModel end
     return x ~ Normal(m, 1)
 end
 
+innermost_distribution_type(d::Distribution) = typeof(d)
+function innermost_distribution_type(d::Distributions.ReshapedDistribution)
+    return innermost_distribution_type(d.dist)
+end
+function innermost_distribution_type(d::Distributions.Product)
+    dists = map(innermost_distribution_type, d.v)
+    if any(!=(dists[1]), dists)
+        error("Cannot extract innermost distribution type from $d")
+    end
+
+    return dists[1]
+end
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
         model = gdemo_default
@@ -153,5 +166,23 @@ end
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
         @test length(test_defaults(missing, 2)()) == 2
+    end
+
+    @testset "extract priors" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            priors = extract_priors(model)
+
+            # We know that any variable starting with `s` should have `InverseGamma`
+            # and any variable starting with `m` should have `Normal`.
+            for (vn, prior) in priors
+                if DynamicPPL.getsym(vn) == :s
+                    @test innermost_distribution_type(prior) <: InverseGamma
+                elseif DynamicPPL.getsym(vn) == :m
+                    @test innermost_distribution_type(prior) <: Union{Normal,MvNormal}
+                else
+                    error("Unexpected variable name: $vn")
+                end
+            end
+        end
     end
 end

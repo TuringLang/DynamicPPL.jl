@@ -102,6 +102,12 @@ For a chain of samples, one can compute the pointwise log-likelihoods of each ob
 pointwise_loglikelihoods
 ```
 
+Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
+
+```@docs
+extract_priors
+```
+
 ```@docs
 NamedDist
 ```
