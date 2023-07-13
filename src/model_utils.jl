@@ -84,7 +84,6 @@ function varname_in_chain!(
     for vn in varname_leaves(VarName{sym}(), x)
         # Update `out`, possibly in place, and return.
         l = AbstractPPL.getlens(vn)
-        println(vn_parent ∘ l)
         vn_in_chain(vn_parent ∘ l, chain, chain_idx, iteration_idx, out)
     end
     return out
