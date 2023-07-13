@@ -6,7 +6,7 @@ Return `true` if all variable names in `model`/`varinfo` are in `chain`.
 """
 varnames_in_chain(model::Model, chain) = varnames_in_chain(VarInfo(model), chain)
 function varnames_in_chain(varinfo::VarInfo, chain)
-    return all(vn -> varname_in_chain(varinfo, vn, chain), keys(varinfo))
+    return all(vn -> varname_in_chain(varinfo, vn, chain, 1, 1), keys(varinfo))
 end
 
 """
@@ -15,10 +15,10 @@ end
 
 Return `out` with `true` for all variable names in `model` that are in `chain`.
 """
-function varnames_in_chain!(model::Model, chain, out)
+function varnames_in_chain!(model::Model, chain, out::OrderedDict)
     return varnames_in_chain!(VarInfo(model), chain, out)
 end
-function varnames_in_chain!(varinfo::VarInfo, chain, out)
+function varnames_in_chain!(varinfo::VarInfo, chain, out::OrderedDict)
     for vn in keys(varinfo)
         varname_in_chain!(varinfo, vn, chain, 1, 1, out)
     end
@@ -43,7 +43,7 @@ end
 
 function varname_in_chain(x, vn, chain, chain_idx, iteration_idx)
     out = OrderedDict{VarName,Bool}()
-    varname_in_chain!(x, vn, chain, out, chain_idx, iteration_idx)
+    varname_in_chain!(x, vn, chain, chain_idx, iteration_idx, out)
     return all(values(out))
 end
 
@@ -59,24 +59,24 @@ If `chain_idx` and `iteration_idx` are not provided, then they default to `1`.
 This differs from [`varname_in_chain`](@ref) in that it returns a dictionary
 rather than a single boolean. This can be quite useful for debugging purposes.
 """
-function varname_in_chain!(model::Model, vn, chain, out, chain_idx, iteration_idx)
+function varname_in_chain!(model::Model, vn, chain, chain_idx, iteration_idx, out::OrderedDict)
     return varname_in_chain!(VarInfo(model), vn, chain, chain_idx, iteration_idx, out)
 end
 
 function varname_in_chain!(
-    vi::AbstractVarInfo, vn_parent, chain, out, chain_idx, iteration_idx
+    vi::AbstractVarInfo, vn_parent, chain, chain_idx, iteration_idx, out::OrderedDict
 )
-    return varname_in_chain!(vi[vn_parent], vn_parent, chain, out, chain_idx, iteration_idx)
+    return varname_in_chain!(vi[vn_parent], vn_parent, chain, chain_idx, iteration_idx, out)
 end
 
-function varname_in_chain!(x, vn_parent, chain, out, chain_idx, iteration_idx)
-    sym = Symbol(vn_parent)
-    out[vn_parent] = sym ∈ names(chain) && !ismissing(chain[iteration_idx, sym, chain_idx])
+function vn_in_chain(vn_child, chain, chain_idx, iteration_idx, out::OrderedDict)
+    sym = Symbol(vn_child)
+    out[vn_child] = sym ∈ names(chain) && !ismissing(chain[iteration_idx, sym, chain_idx])
     return out
 end
 
 function varname_in_chain!(
-    x::AbstractArray, vn_parent::VarName{sym}, chain, out, chain_idx, iteration_idx
+    x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx, out::OrderedDict
 ) where {sym}
     # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the lens.
     # This way we can use `getlens(vn)` to extract the value from `x` and use `vn_parent ∘ getlens(vn)`
@@ -84,7 +84,8 @@ function varname_in_chain!(
     for vn in varname_leaves(VarName{sym}(), x)
         # Update `out`, possibly in place, and return.
         l = AbstractPPL.getlens(vn)
-        varname_in_chain!(x, vn_parent ∘ l, chain, out, chain_idx, iteration_idx)
+        println(vn_parent ∘ l)
+        vn_in_chain(vn_parent ∘ l, chain, chain_idx, iteration_idx, out)
     end
     return out
 end
@@ -96,9 +97,9 @@ end
 Return a dictionary mapping each variable name in `model`/`varinfo` to its
 value in `chain` at `chain_idx` and `iteration_idx`.
 """
-function values_from_chain(x, vn_parent, chain, chain_idx, iteration_idx)
+function values_from_chain(vn_child, chain, chain_idx, iteration_idx)
     # HACK: If it's not an array, we fall back to just returning the first value.
-    return only(chain[iteration_idx, Symbol(vn_parent), chain_idx])
+    return only(chain[iteration_idx, Symbol(vn_child), chain_idx])
 end
 function values_from_chain(
     x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
@@ -131,11 +132,11 @@ end
 Mutate `out` to map each variable name in `model`/`varinfo` to its value in
 `chain` at `chain_idx` and `iteration_idx`.
 """
-function values_from_chain!(model::DynamicPPL.Model, chain, out, chain_idx, iteration_idx)
-    return values_from_chain(VarInfo(model), chain, out, chain_idx, iteration_idx)
+function values_from_chain!(model::DynamicPPL.Model, chain, chain_idx, iteration_idx, out::OrderedDict)
+    return values_from_chain!(VarInfo(model), chain, chain_idx, iteration_idx, out::OrderedDict)
 end
 
-function values_from_chain!(vi::AbstractVarInfo, chain, out, chain_idx, iteration_idx)
+function values_from_chain!(vi::AbstractVarInfo, chain, chain_idx, iteration_idx, out::OrderedDict)
     for vn in keys(vi)
         out[vn] = values_from_chain(vi, vn, chain, chain_idx, iteration_idx)
     end
@@ -204,6 +205,6 @@ function value_iterator_from_chain(vi::AbstractVarInfo, chain)
     return Iterators.map(
         Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     ) do (iteration_idx, chain_idx)
-        values_from_chain!(vi, chain, OrderedDict{VarName,Any}(), chain_idx, iteration_idx)
+        values_from_chain!(vi, chain, chain_idx, iteration_idx, OrderedDict())
     end
 end
