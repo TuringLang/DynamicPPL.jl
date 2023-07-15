@@ -791,9 +791,10 @@ function test_sampler(
     varnames_filter=Returns(true),
     atol=1e-1,
     rtol=1e-3,
+    sampler_name=typeof(sampler),
     kwargs...,
 )
-    @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
+    @testset "$(sampler_name) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean(model)
         for vn in filter(varnames_filter, varnames(model))
