@@ -791,7 +791,7 @@ function test_sampler(
     varnames_filter=Returns(true),
     atol=1e-1,
     rtol=1e-3,
-    sampler_name = typeof(sampler),
+    sampler_name=typeof(sampler),
     kwargs...,
 )
     @testset "$(sampler_name) on $(nameof(model))" for model in models
