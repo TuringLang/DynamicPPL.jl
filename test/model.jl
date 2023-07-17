@@ -194,9 +194,14 @@ end
             @test loglikelihood(model, x) ≈
                 DynamicPPL.TestUtils.loglikelihood_true(model, x...)
             @test logjoint(model, x) ≈ DynamicPPL.TestUtils.logjoint_true(model, x...)
-            @test logjoint(model, x) != DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
+            @test logjoint(model, x) !=
+                DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.evaluate!!(model, SimpleVarInfo(OrderedDict()), SamplingContext()))
+            vi = last(
+                DynamicPPL.evaluate!!(
+                    model, SimpleVarInfo(OrderedDict()), SamplingContext()
+                ),
+            )
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
