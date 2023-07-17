@@ -670,7 +670,7 @@ function Random.rand(
 end
 
 const MatrixvariateAssumeDemoModels = Union{
-    Model{typeof(demo_assume_matrix_dot_observe_matrix)},
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
 }
 function posterior_mean(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
