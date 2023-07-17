@@ -6,7 +6,7 @@ Return `true` if all variable names in `model`/`varinfo` are in `chain`.
 """
 varnames_in_chain(model::Model, chain) = varnames_in_chain(VarInfo(model), chain)
 function varnames_in_chain(varinfo::VarInfo, chain)
-    return all(vn -> varname_in_chain(varinfo, vn, chain), keys(varinfo))
+    return all(vn -> varname_in_chain(varinfo, vn, chain, 1, 1), keys(varinfo))
 end
 
 """
