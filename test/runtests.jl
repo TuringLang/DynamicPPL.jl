@@ -50,6 +50,8 @@ include("test_util.jl")
             include("serialization.jl")
 
             include("loglikelihoods.jl")
+
+            include("lkj.jl")
         end
 
         @testset "compat" begin
@@ -58,7 +60,10 @@ include("test_util.jl")
 
         @testset "doctests" begin
             DocMeta.setdocmeta!(
-                DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
+                DynamicPPL,
+                :DocTestSetup,
+                :(using DynamicPPL, Distributions);
+                recursive=true,
             )
             doctestfilters = [
                 # Older versions will show "0 element Array" instead of "Type[]".
