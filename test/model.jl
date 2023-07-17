@@ -191,7 +191,8 @@ end
             x = rand(model)
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
-            @test loglikelihood(model, x) ≈ DynamicPPL.TestUtils.loglikelihood_true(model, x...)
+            @test loglikelihood(model, x) ≈
+                DynamicPPL.TestUtils.loglikelihood_true(model, x...)
             @test logjoint(model, x) ≈ DynamicPPL.TestUtils.logjoint_true(model, x...)
             @test logjoint(model, x) != DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
