@@ -679,7 +679,7 @@ function posterior_mean(model::MatrixvariateAssumeDemoModels)
     vals.s[1, 1] = 19 / 8
     vals.m[1] = 3 / 4
 
-    vals.s[2, 2] = 8 / 3
+    vals.s[1, 2] = 8 / 3
     vals.m[2] = 1
 
     return vals
