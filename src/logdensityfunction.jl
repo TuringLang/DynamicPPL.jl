@@ -93,8 +93,13 @@ function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector
     vi_new = unflatten(f.varinfo, f.context, θ)
     return getlogp(last(evaluate!!(f.model, vi_new, f.context)))
 end
+
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
     return LogDensityProblems.LogDensityOrder{0}()
 end
+
+# Allos Logdensity to take a NamedTuple
+function LogDensityProblems.logdensity(f::LogDensityFunction, θ::NamedTuple) = logjoint(f, θ)
+
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
