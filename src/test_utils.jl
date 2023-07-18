@@ -670,6 +670,36 @@ function Random.rand(
     return vals
 end
 
+const MatrixvariateAssumeDemoModels = Union{
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+}
+function posterior_mean(model::MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    vals.s[1, 1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[1, 2] = 8 / 3
+    vals.m[2] = 1
+
+    return vals
+end
+function Base.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MatrixvariateAssumeDemoModels
+)
+    # Get template values from `model`.
+    retval = model(rng)
+    vals = (s=retval.s, m=retval.m)
+    # Fill containers with realizations from prior.
+    for i in LinearIndices(vals.s)
+        vals.s[i] = rand(rng, InverseGamma(2, 3))
+        vals.m[i] = rand(rng, Normal(0, sqrt(vals.s[i])))
+    end
+
+    return vals
+end
+
 """
 A collection of models corresponding to the posterior distribution defined by
 the generative process
@@ -792,9 +822,10 @@ function test_sampler(
     varnames_filter=Returns(true),
     atol=1e-1,
     rtol=1e-3,
+    sampler_name=typeof(sampler),
     kwargs...,
 )
-    @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
+    @testset "$(sampler_name) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean(model)
         for vn in filter(varnames_filter, varnames(model))

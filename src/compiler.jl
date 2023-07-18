@@ -79,8 +79,8 @@ function contextual_isassumption(context::AbstractContext, vn)
     return contextual_isassumption(NodeTrait(context), context, vn)
 end
 function contextual_isassumption(context::ConditionContext, vn)
-    if hasvalue(context, vn)
-        val = getvalue(context, vn)
+    if hasconditioned(context, vn)
+        val = getconditioned(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
@@ -89,12 +89,46 @@ function contextual_isassumption(context::ConditionContext, vn)
         end
     end
 
-    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # We might have nested contexts, e.g. `ConditionContext{.., <:PrefixContext{..., <:ConditionContext}}`
     # so we defer to `childcontext` if we haven't concluded that anything yet.
     return contextual_isassumption(childcontext(context), vn)
 end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
+end
+
+isfixed(expr, vn) = false
+isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context__, $vn))
+
+"""
+    contextual_isfixed(context, vn)
+
+Return `true` if `vn` is considered fixed by `context`.
+"""
+contextual_isfixed(::IsLeaf, context, vn) = false
+function contextual_isfixed(::IsParent, context, vn)
+    return contextual_isfixed(childcontext(context), vn)
+end
+function contextual_isfixed(context::AbstractContext, vn)
+    return contextual_isfixed(NodeTrait(context), context, vn)
+end
+function contextual_isfixed(context::PrefixContext, vn)
+    return contextual_isfixed(childcontext(context), prefix(context, vn))
+end
+function contextual_isfixed(context::FixedContext, vn)
+    if hasfixed(context, vn)
+        val = getfixed(context, vn)
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return false
+        else
+            return true
+        end
+    end
+
+    # We might have nested contexts, e.g. `FixedContext{.., <:PrefixContext{..., <:FixedContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isfixed(childcontext(context), vn)
 end
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
@@ -354,12 +388,14 @@ function generate_tilde(left, right)
             $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
+                $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
@@ -413,12 +449,14 @@ function generate_dot_tilde(left, right)
             $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
+                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
