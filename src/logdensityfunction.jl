@@ -99,7 +99,7 @@ function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
 end
 
 # Allos Logdensity to take a NamedTuple
-function LogDensityProblems.logdensity(f::LogDensityFunction, θ::NamedTuple) = logjoint(f, θ)
+LogDensityProblems.logdensity(f::LogDensityFunction, θ::NamedTuple) = logjoint(f, θ)
 
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
