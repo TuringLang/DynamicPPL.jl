@@ -494,6 +494,12 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractPPL.ConcretizedSlice, ::Integer
+) where {C<:AbstractMatrix,T<:AbstractVector}
+    return BangBang.implements(setindex!, C) &&
+           promote_type(eltype(C), eltype(T)) <: eltype(C)
+end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
 # TODO(torfjelde): Do better.
