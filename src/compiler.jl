@@ -1,9 +1,28 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
+"""
+    need_concretize(expr)
+
+Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
+requires a dynamic lens.
+
+# Examples
+
+```jldoctest; setup=:(using Setfield)
+julia> DynamicPPL.need_concretize(:(x[1, :]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, end]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, 1]))
+false
+"""
 function need_concretize(expr)
     return Setfield.need_dynamic_lens(expr) || begin
         flag = false
-        MacroTools.postwalk(expr) do ex # flag in closure, not ideal
+        MacroTools.postwalk(expr) do ex
+            # Concretise colon by default
             ex == :(:) && (flag = true) && return ex
         end
         flag
