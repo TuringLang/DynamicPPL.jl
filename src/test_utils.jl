@@ -622,11 +622,11 @@ function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
 function likelihood_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
-    return (s=1/16, m=7/4)
+    return (s=1 / 16, m=7 / 4)
 end
 function posterior_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
     # TODO: Figure out exact for `s`.
-    return (s=0.907407, m=7/6)
+    return (s=0.907407, m=7 / 6)
 end
 function Random.rand(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
@@ -681,7 +681,7 @@ function posterior_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoMode
     # TODO: Figure out exact for `s[1]`.
     vals.s[1] = 0.890625
     vals.s[2] = 1
-    vals.m[1] = 3/4
+    vals.m[1] = 3 / 4
     vals.m[2] = 1
 
     return vals
@@ -736,7 +736,7 @@ function posterior_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoMod
     # TODO: Figure out exact for `s[1]`.
     vals.s[1, 1] = 0.890625
     vals.s[1, 2] = 1
-    vals.m[1] = 3/4
+    vals.m[1] = 3 / 4
     vals.m[2] = 1
 
     return vals
