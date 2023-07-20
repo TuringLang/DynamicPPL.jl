@@ -243,6 +243,12 @@ function reconstruct(
     return copy(val)
 end
 
+function reconstruct(
+    ::Inverse{Bijectors.PDVecBijector}, ::MatrixDistribution, val::AbstractVector
+)
+    return copy(val)
+end
+
 # TODO: Implement no-op `reconstruct` for general array variates.
 
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
