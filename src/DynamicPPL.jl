@@ -15,6 +15,8 @@ using Setfield: Setfield
 using ZygoteRules: ZygoteRules
 using LogDensityProblems: LogDensityProblems
 
+using LinearAlgebra: Cholesky
+
 using DocStringExtensions
 
 using Random: Random
@@ -84,6 +86,7 @@ export AbstractVarInfo,
     getmissings,
     getargnames,
     generated_quantities,
+    extract_priors,
     # Samplers
     Sampler,
     SampleFromPrior,
@@ -116,9 +119,12 @@ export AbstractVarInfo,
     pointwise_loglikelihoods,
     condition,
     decondition,
+    fix,
+    unfix,
     # Convenience macros
     @addlogprob!,
-    @submodel
+    @submodel,
+    value_iterator_from_chain
 
 # Reexport
 using Distributions: loglikelihood
@@ -164,5 +170,7 @@ include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
+include("model_utils.jl")
+include("extract_priors.jl")
 
 end # module

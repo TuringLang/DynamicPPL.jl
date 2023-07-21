@@ -55,7 +55,7 @@
         @test inspace(@varname(z[1][:]), space)
         @test inspace(@varname(z[1][2:3:10]), space)
         @test inspace(@varname(M[[2, 3], 1]), space)
-        @test inspace(@varname(M[:, 1:4]), space)
+        @test_throws ErrorException inspace(@varname(M[:, 1:4]), space)
         @test inspace(@varname(M[1, [2, 4, 6]]), space)
         @test !inspace(@varname(z[2]), space)
         @test !inspace(@varname(z), space)

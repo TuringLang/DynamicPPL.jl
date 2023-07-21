@@ -308,7 +308,7 @@ This is essentially the inverse of [`condition`](@ref). This also means that
 it suffers from the same limitiations.
 
 Note that currently we only support `variables` to take on explicit values
-provided to `condition.
+provided to `condition`.
 
 # Examples
 ```jldoctest decondition
@@ -404,7 +404,6 @@ julia> # (✓) this works though
 julia> m = deconditioned_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
 true
 ```
-
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
@@ -420,7 +419,7 @@ observations(model::Model) = conditioned(model)
 """
     conditioned(model::Model)
 
-Return `NamedTuple` of values that are conditioned on under `model`.
+Return the conditioned values in `model`.
 
 # Examples
 ```jldoctest
@@ -466,6 +465,388 @@ VarName[]
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
+
+"""
+    fix(model::Model; values...)
+    fix(model::Model, values::NamedTuple)
+
+Return a `Model` which now treats the variables in `values` as fixed.
+
+See also: [`unfix`](@ref), [`fixed`](@ref)
+
+# Examples
+## Simple univariate model
+```jldoctest fix
+julia> using Distributions
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
+true
+
+julia> # Create a new instance which treats `x` as observed
+       # with value `100.0`, and similarly for `m=1.0`.
+       fixed_model = fix(model, x=100.0, m=1.0);
+
+julia> m, x = fixed_model(); (m == 1.0 && x == 100.0)
+true
+
+julia> # Let's only fix on `x = 100.0`.
+       fixed_model = fix(model, x = 100.0);
+
+julia> m, x = fixed_model(); (m ≠ 1.0 && x == 100.0)
+true
+```
+
+The above uses a `NamedTuple` to hold the fixed variables, which allows us to perform some
+additional optimizations; in many cases, the above has zero runtime-overhead.
+
+But we can also use a `Dict`, which offers more flexibility in the fixing
+(see examples further below) but generally has worse performance than the `NamedTuple`
+approach:
+
+```jldoctest fix
+julia> fixed_model_dict = fix(model, Dict(@varname(x) => 100.0));
+
+julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
+
+julia> # Alternative: pass `Pair{<:VarName}` as positional argument.
+       fixed_model_dict = fix(model, @varname(x) => 100.0, );
+
+julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
+```
+
+## Fix only a part of a multivariate variable
+
+We can not only fix multivariate random variables, but
+we can also use the standard mechanism of setting something to `missing`
+in the call to `fix` to only fix a part of the variable.
+
+```jldoctest fix
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 4 methods)
+
+julia> model = demo_mv();
+
+julia> fixed_model = fix(model, m = [missing, 1.0]);
+
+julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+       m = fixed_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
+```
+
+Intuitively one might also expect to be able to write something like `fix(model, var\"m[1]\" = 1.0, )`.
+Unfortunately this is not supported as it has the potential of increasing compilation
+times but without offering any benefit with respect to runtime:
+
+```jldoctest fix
+julia> # (×) `m[2]` is not set to 1.0.
+       m = fix(model, var"m[2]" = 1.0)(); m[2] == 1.0
+false
+```
+
+But you _can_ do this if you use a `Dict` as the underlying storage instead:
+
+```jldoctest fix
+julia> # Alternative: `fix(model, Dict(@varname(m[2] => 1.0)))`
+       # (✓) `m[2]` is set to 1.0.
+       m = fix(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
+```
+
+## Nested models
+
+`fix` of course also supports the use of nested models through
+the use of [`@submodel`](@ref).
+
+```jldoctest fix
+julia> @model demo_inner() = m ~ Normal()
+demo_inner (generic function with 2 methods)
+
+julia> @model function demo_outer()
+           @submodel m = demo_inner()
+           return m
+       end
+demo_outer (generic function with 2 methods)
+
+julia> model = demo_outer();
+
+julia> model() ≠ 1.0
+true
+
+julia> fixed_model = model | (m = 1.0, );
+
+julia> fixed_model()
+1.0
+```
+
+But one needs to be careful when prefixing variables in the nested models:
+
+```jldoctest fix
+julia> @model function demo_outer_prefix()
+           @submodel prefix="inner" m = demo_inner()
+           return m
+       end
+demo_outer_prefix (generic function with 2 methods)
+
+julia> # (×) This doesn't work now!
+       fixed_model = demo_outer_prefix() | (m = 1.0, );
+
+julia> fixed_model() == 1.0
+false
+
+julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
+       fixed_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
+
+julia> fixed_model()
+1.0
+
+julia> # Note that the above `var"..."` is just standard Julia syntax:
+       keys((var"inner.m" = 1.0, ))
+(Symbol("inner.m"),)
+```
+
+And similarly when using `Dict`:
+
+```jldoctest fix
+julia> fixed_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
+
+julia> fixed_model_dict()
+1.0
+```
+
+The difference is maybe more obvious once we look at how these different
+in their trace/`VarInfo`:
+
+```jldoctest fix
+julia> keys(VarInfo(demo_outer()))
+1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+ m
+
+julia> keys(VarInfo(demo_outer_prefix()))
+1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
+ inner.m
+```
+
+From this we can tell what the correct way to fix `m` within `demo_inner`
+is in the two different models.
+
+## Difference from `condition`
+
+A very similar functionality is also provided by [`condition`](@ref) which,
+not surprisingly, _conditions_ variables instead of fixing them. The only
+difference between fixing and conditioning is as follows:
+- `condition`ed variables are considered to be observations, and are thus
+  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+  but not in [`logprior`](@ref).
+- `fix`ed variables are considered to be constant, and are thus not included
+  in any log-probability computations.
+
+```juliadoctest fix
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> model_fixed = fix(model, m = 1.0);
+
+julia> model_conditioned = condition(model, m = 1.0);
+
+julia> logjoint(model_fixed, (x=1.0,))
+-0.9189385332046728
+
+julia> # Different!
+       logjoint(model_conditioned, (x=1.0,))
+-2.3378770664093453
+
+julia> # And the difference is the missing log-probability of `m`:
+       logjoint(model_fixed, (x=1.0,)) + logpdf(Normal(), 1.0) == logjoint(model_conditioned, (x=1.0,))
+true
+```
+"""
+fix(model::Model; values...) = contextualize(model, fix(model.context; values...))
+function fix(model::Model, value, values...)
+    return contextualize(model, fix(model.context, value, values...))
+end
+
+"""
+    unfix(model::Model)
+    unfix(model::Model, variables...)
+
+Return a `Model` for which `variables...` are _not_ considered fixed.
+If no `variables` are provided, then all variables currently considered fixed
+will no longer be.
+
+This is essentially the inverse of [`fix`](@ref). This also means that
+it suffers from the same limitiations.
+
+Note that currently we only support `variables` to take on explicit values
+provided to `fix`.
+
+# Examples
+```jldoctest unfix
+julia> using Distributions
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> fixed_model = fix(demo(), m = 1.0, x = 10.0);
+
+julia> fixed_model()
+(m = 1.0, x = 10.0)
+
+julia> # By specifying the `VarName` to `unfix`.
+       model = unfix(fixed_model, @varname(m));
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+
+julia> # When `NamedTuple` is used as the underlying, you can also provide
+       # the symbol directly (though the `@varname` approach is preferable if
+       # if the variable is known at compile-time).
+       model = unfix(fixed_model, :m);
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+
+julia> # `unfix` multiple at once:
+       (m, x) = unfix(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
+true
+
+julia> # `unfix` without any symbols will `unfix` all variables.
+       (m, x) = unfix(model)(); (m ≠ 1.0 && x ≠ 10.0)
+true
+
+julia> # Usage of `Val` to perform `unfix` at compile-time if possible
+       # is also supported.
+       model = unfix(fixed_model, Val{:m}());
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+```
+
+Similarly when using a `Dict`:
+
+```jldoctest unfix
+julia> fixed_model_dict = fix(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
+
+julia> fixed_model_dict()
+(m = 1.0, x = 10.0)
+
+julia> unfixed_model_dict = unfix(fixed_model_dict, @varname(m));
+
+julia> (m, x) = unfixed_model_dict(); m ≠ 1.0 && x == 10.0
+true
+```
+
+But, as mentioned, `unfix` is only supported for variables explicitly
+provided to `fix` earlier:
+
+```jldoctest unfix
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 4 methods)
+
+julia> model = demo_mv();
+
+julia> fixed_model = fix(model, @varname(m) => [1.0, 2.0]);
+
+julia> fixed_model()
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> unfixed_model = unfix(fixed_model, @varname(m[1]));
+
+julia> unfixed_model()  # (×) `m[1]` is still fixed
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> # (✓) this works though
+       unfixed_model_2 = fix(unfixed_model, @varname(m[1]) => missing);
+
+julia> m = unfixed_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
+true
+```
+"""
+unfix(model::Model, syms...) = contextualize(model, unfix(model.context, syms...))
+
+"""
+    fixed(model::Model)
+
+Return the fixed values in `model`.
+
+# Examples
+```jldoctest
+julia> using Distributions
+
+julia> using DynamicPPL: fixed, contextualize
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+       end
+demo (generic function with 2 methods)
+
+julia> m = demo();
+
+julia> # Returns all the variables we have fixed on + their values.
+       fixed(fix(m, x=100.0, m=1.0))
+(x = 100.0, m = 1.0)
+
+julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(m=1.0))), x=100.0);
+
+julia> fixed(cm)
+(x = 100.0, m = 1.0)
+
+julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
+       # `a.m` is treated as a random variable.
+       keys(VarInfo(cm))
+1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+ a.m
+
+julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(var"a.m"=1.0))), x=100.0);
+
+julia> fixed(cm).x
+100.0
+
+julia> fixed(cm).var"a.m"
+1.0
+
+julia> keys(VarInfo(cm)) # <= no variables are sampled
+VarName[]
+```
+"""
+fixed(model::Model) = fixed(model.context)
 
 """
     (model::Model)([rng, varinfo, sampler, context])

@@ -543,7 +543,8 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
-    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
+    s = zeros(1, 2) # used for varname concretization only
+    return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
 end
 
 @model function demo_assume_matrix_dot_observe_matrix(
@@ -621,6 +622,13 @@ const UnivariateAssumeDemoModels = Union{
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
+function likelihood_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+    return (s=1 / 16, m=7 / 4)
+end
+function posterior_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+    # TODO: Figure out exact for `s`.
+    return (s=0.907407, m=7 / 6)
+end
 function Random.rand(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
 )
@@ -654,8 +662,88 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
+function likelihood_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1] = 1e-32
+    vals.s[2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1] = 0.890625
+    vals.s[2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
 function Random.rand(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
+)
+    # Get template values from `model`.
+    retval = model(rng)
+    vals = (s=retval.s, m=retval.m)
+    # Fill containers with realizations from prior.
+    for i in LinearIndices(vals.s)
+        vals.s[i] = rand(rng, InverseGamma(2, 3))
+        vals.m[i] = rand(rng, Normal(0, sqrt(vals.s[i])))
+    end
+
+    return vals
+end
+
+const MatrixvariateAssumeDemoModels = Union{
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+}
+function posterior_mean(model::MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    vals.s[1, 1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[1, 2] = 8 / 3
+    vals.m[2] = 1
+
+    return vals
+end
+function likelihood_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1, 1] = 1e-32
+    vals.s[1, 2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1, 1] = 0.890625
+    vals.s[1, 2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
+function Base.rand(
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MatrixvariateAssumeDemoModels
 )
     # Get template values from `model`.
     retval = model(rng)
@@ -791,9 +879,10 @@ function test_sampler(
     varnames_filter=Returns(true),
     atol=1e-1,
     rtol=1e-3,
+    sampler_name=typeof(sampler),
     kwargs...,
 )
-    @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
+    @testset "$(sampler_name) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean(model)
         for vn in filter(varnames_filter, varnames(model))

@@ -213,6 +213,7 @@ vectorize(d, r) = vec(r)
 vectorize(d::UnivariateDistribution, r::Real) = [r]
 vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
 vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
+vectorize(d::Distribution{CholeskyVariate}, r::Cholesky) = copy(vec(r.UL))
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
@@ -235,6 +236,19 @@ reconstruct(f, dist, val) = reconstruct(dist, val)
 reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
+reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+function reconstruct(
+    ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
+)
+    return copy(val)
+end
+
+function reconstruct(
+    ::Inverse{Bijectors.PDVecBijector}, ::MatrixDistribution, val::AbstractVector
+)
+    return copy(val)
+end
+
 # TODO: Implement no-op `reconstruct` for general array variates.
 
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
@@ -294,7 +308,12 @@ function inittrans(rng, dist::MatrixDistribution)
     sz = Bijectors.output_size(b, size(dist))
     return Bijectors.invlink(dist, randrealuni(rng, sz...))
 end
-
+function inittrans(rng, dist::Distribution{CholeskyVariate})
+    # Get the size of the unconstrained vector
+    b = link_transform(dist)
+    sz = Bijectors.output_size(b, size(dist))
+    return Bijectors.invlink(dist, randrealuni(rng, sz...))
+end
 ################################
 # Multi-sample initialisations #
 ################################
@@ -477,6 +496,12 @@ end
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
 function BangBang.possible(
     ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
+) where {C<:AbstractMatrix,T<:AbstractVector}
+    return BangBang.implements(setindex!, C) &&
+           promote_type(eltype(C), eltype(T)) <: eltype(C)
+end
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractPPL.ConcretizedSlice, ::Integer
 ) where {C<:AbstractMatrix,T<:AbstractVector}
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
