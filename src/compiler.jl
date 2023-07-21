@@ -1,6 +1,35 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
+    need_concretize(expr)
+
+Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
+requires a dynamic lens.
+
+# Examples
+
+```jldoctest; setup=:(using Setfield)
+julia> DynamicPPL.need_concretize(:(x[1, :]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, end]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, 1]))
+false
+"""
+function need_concretize(expr)
+    return Setfield.need_dynamic_lens(expr) || begin
+        flag = false
+        MacroTools.postwalk(expr) do ex
+            # Concretise colon by default
+            ex == :(:) && (flag = true) && return ex
+        end
+        flag
+    end
+end
+
+"""
     isassumption(expr[, vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
@@ -16,10 +45,13 @@ When `expr` is not an expression or symbol (i.e., a literal), this expands to `f
 
 If `vn` is specified, it will be assumed to refer to a expression which
 evaluates to a `VarName`, and this will be used in the subsequent checks.
-If `vn` is not specified, `AbstractPPL.drop_escape(varname(expr))` will be
+If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr)))
+function isassumption(
+    expr::Union{Expr,Symbol},
+    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
+)
     return quote
         if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
             # Considered an assumption by `__context__` which means either:
@@ -194,7 +226,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return vn ∘ Setfield.IndexLens((Colon(), i))
+        return AbstractPPL.concretize(vn ∘ Setfield.IndexLens((Colon(), i)), left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -372,7 +404,7 @@ function generate_tilde(left, right)
     return quote
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left))), $dist
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
@@ -433,7 +465,7 @@ function generate_dot_tilde(left, right)
     @gensym vn isassumption value
     return quote
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left))), $right
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
