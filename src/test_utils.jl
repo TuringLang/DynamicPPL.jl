@@ -622,6 +622,13 @@ const UnivariateAssumeDemoModels = Union{
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
+function likelihood_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+    return (s=1 / 16, m=7 / 4)
+end
+function posterior_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+    # TODO: Figure out exact for `s`.
+    return (s=0.907407, m=7 / 6)
+end
 function Random.rand(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
 )
@@ -655,6 +662,31 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
+function likelihood_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1] = 1e-32
+    vals.s[2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1] = 0.890625
+    vals.s[2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
 function Random.rand(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
 )
@@ -681,6 +713,31 @@ function posterior_mean(model::MatrixvariateAssumeDemoModels)
     vals.m[1] = 3 / 4
 
     vals.s[1, 2] = 8 / 3
+    vals.m[2] = 1
+
+    return vals
+end
+function likelihood_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1, 1] = 1e-32
+    vals.s[1, 2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = Random.rand(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1, 1] = 0.890625
+    vals.s[1, 2] = 1
+    vals.m[1] = 3 / 4
     vals.m[2] = 1
 
     return vals
