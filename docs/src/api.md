@@ -130,6 +130,13 @@ For a chain of samples, one can compute the pointwise log-likelihoods of each ob
 pointwise_loglikelihoods
 ```
 
+For converting a chain into a format that can more easily be fed into a `Model` again, for example using `condition`, you can use [`value_iterator_from_chain`](@ref).
+
+```@docs
+value_iterator_from_chain
+
+```
+
 Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
 
 ```@docs
