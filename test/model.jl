@@ -86,7 +86,7 @@ end
             for k in 1:length(keys(var_info))
                 vn_parent = keys(var_info)[k]
                 sym = DynamicPPL.getsym(vn_parent)
-                vn_children = varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in test/test_util.jl
+                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in src/utils.jl
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
                     symbol_names = [symbol_names; Symbol(vn_child)]
