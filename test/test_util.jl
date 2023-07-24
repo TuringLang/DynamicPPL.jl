@@ -82,3 +82,18 @@ short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
+
+# convenient functions for testing model.jl
+# function to modify the representation of values based on their length
+function modify_value_representation(nt::NamedTuple)
+    modified_nt = NamedTuple()
+    for (key, value) in zip(keys(nt), values(nt))
+        if length(value) == 1  # Scalar value
+            modified_value = value[1]
+        else  # Non-scalar value
+            modified_value = value
+        end
+        modified_nt = merge(modified_nt, (key => modified_value,))
+    end
+    return modified_nt
+end

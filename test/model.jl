@@ -27,7 +27,7 @@ end
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default
+        model = gdemo_default # defined in test/test_util.jl
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -49,6 +49,77 @@ end
         ljoint = logjoint(model, vi)
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
+
+        #### logprior, logjoint, loglikelihood for MCMC chains ####
+        for model in DynamicPPL.TestUtils.DEMO_MODELS # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
+            var_info = VarInfo(model)
+            vns = DynamicPPL.TestUtils.varnames(model)
+            syms = unique(DynamicPPL.getsym.(vns))
+
+            # generate a chain of sample parameter values.
+            N = 200
+            vals_OrderedDict = mapreduce(hcat, 1:N) do _
+                rand(OrderedDict, model)
+            end
+            vals_mat = mapreduce(hcat, 1:N) do i
+                [vals_OrderedDict[i][vn] for vn in vns]
+            end
+            i = 1
+            for col in eachcol(vals_mat)
+                col_flattened = []
+                [push!(col_flattened, x...) for x in col]
+                if i == 1
+                    chain_mat = Matrix(reshape(col_flattened, 1, length(col_flattened)))
+                else
+                    chain_mat = vcat(
+                        chain_mat, reshape(col_flattened, 1, length(col_flattened))
+                    )
+                end
+                i += 1
+            end
+            chain_mat = convert(Matrix{Float64}, chain_mat)
+
+            # devise parameter names for chain
+            sample_values_vec = collect(values(vals_OrderedDict[1]))
+            symbol_names = []
+            chain_sym_map = Dict()
+            for k in 1:length(keys(var_info))
+                vn_parent = keys(var_info)[k]
+                sym = DynamicPPL.getsym(vn_parent)
+                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in src/utils.jl
+                for vn_child in vn_children
+                    chain_sym_map[Symbol(vn_child)] = sym
+                    symbol_names = [symbol_names; Symbol(vn_child)]
+                end
+            end
+            chain = Chains(chain_mat, symbol_names)
+
+            # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
+            logpriors = logprior(model, chain)
+            loglikelihoods = loglikelihood(model, chain)
+            logjoints = logjoint(model, chain)
+            # compare them with true values
+            for i in 1:N
+                samples_dict = Dict()
+                for chain_key in keys(chain)
+                    value = chain[i, chain_key, 1]
+                    key = chain_sym_map[chain_key]
+                    existing_value = get(samples_dict, key, Float64[])
+                    push!(existing_value, value)
+                    samples_dict[key] = existing_value
+                end
+                samples = (; samples_dict...)
+                samples = modify_value_representation(samples) # `modify_value_representation` defined in test/test_util.jl
+                @test logpriors[i] ≈
+                    DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
+                    model, samples[:s], samples[:m]
+                )
+                @test logjoints[i] ≈
+                    DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+            end
+            println("\n model $(model) passed !!! \n")
+        end
     end
 
     @testset "rng" begin
