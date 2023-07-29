@@ -191,12 +191,12 @@ end
 prefix_submodel_context(prefix, left, ctx) = prefix_submodel_context(prefix, ctx)
 function prefix_submodel_context(prefix, ctx)
     # E.g. `prefix="asd[$i]"` or `prefix=asd` with `asd` to be evaluated.
-    return :($(DynamicPPL.PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
+    return :($(PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, ctx)
     # E.g. `prefix="asd"`.
-    return :($(DynamicPPL.PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
+    return :($(PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Bool, ctx)
@@ -225,7 +225,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
             $retval
@@ -241,7 +241,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
             $(esc(L)) = $retval

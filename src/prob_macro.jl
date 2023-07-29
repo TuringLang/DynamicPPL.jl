@@ -149,7 +149,7 @@ function logprior(
         @assert n in keys(left) "Variable $n is not defined."
     end
     return getlogp(
-        last(DynamicPPL.evaluate!!(model, vi, SampleFromPrior(), PriorContext(left)))
+        last(evaluate!!(model, vi, SampleFromPrior(), PriorContext(left)))
     )
 end
 
