@@ -131,7 +131,7 @@ end
 Mutate `out` to map each variable name in `model`/`varinfo` to its value in
 `chain` at `chain_idx` and `iteration_idx`.
 """
-function values_from_chain!(model::DynamicPPL.Model, chain, chain_idx, iteration_idx, out)
+function values_from_chain!(model::Model, chain, chain_idx, iteration_idx, out)
     return values_from_chain(VarInfo(model), chain, chain_idx, iteration_idx, out)
 end
 
@@ -196,7 +196,7 @@ julia> conditioned_model()  # <= results in same values as the `first(iter)` abo
 (0.5805148626851955, 0.7393275279160691)
 ```
 """
-function value_iterator_from_chain(model::DynamicPPL.Model, chain)
+function value_iterator_from_chain(model::Model, chain)
     return value_iterator_from_chain(VarInfo(model), chain)
 end
 

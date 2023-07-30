@@ -609,10 +609,10 @@ const UnivariateAssumeDemoModels = Union{
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
-function likelihood_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+function likelihood_optima(::UnivariateAssumeDemoModels)
     return (s=1 / 16, m=7 / 4)
 end
-function posterior_optima(::DynamicPPL.TestUtils.UnivariateAssumeDemoModels)
+function posterior_optima(::UnivariateAssumeDemoModels)
     # TODO: Figure out exact for `s`.
     return (s=0.907407, m=7 / 6)
 end
@@ -649,7 +649,7 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function likelihood_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+function likelihood_optima(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
     vals = Random.rand(model)
 
@@ -662,7 +662,7 @@ function likelihood_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoMod
 
     return vals
 end
-function posterior_optima(model::DynamicPPL.TestUtils.MultivariateAssumeDemoModels)
+function posterior_optima(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
     vals = Random.rand(model)
 
@@ -704,7 +704,7 @@ function posterior_mean(model::MatrixvariateAssumeDemoModels)
 
     return vals
 end
-function likelihood_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+function likelihood_optima(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
     vals = Random.rand(model)
 
@@ -717,7 +717,7 @@ function likelihood_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoMo
 
     return vals
 end
-function posterior_optima(model::DynamicPPL.TestUtils.MatrixvariateAssumeDemoModels)
+function posterior_optima(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
     vals = Random.rand(model)
 

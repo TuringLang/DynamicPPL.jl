@@ -74,7 +74,7 @@ function dot_tilde_assume(
     for (vn, ri) in zip(vns, eachcol(r))
         # Only transform if `!isinverse` since `vi[vn, right]`
         # already performs the inverse transformation if it's transformed.
-        vi = DynamicPPL.setindex!!(vi, isinverse ? ri : b(ri), vn)
+        vi = setindex!!(vi, isinverse ? ri : b(ri), vn)
     end
 
     return r, lp, vi

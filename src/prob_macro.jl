@@ -148,9 +148,7 @@ function logprior(
     foreach(keys(vi.metadata)) do n
         @assert n in keys(left) "Variable $n is not defined."
     end
-    return getlogp(
-        last(DynamicPPL.evaluate!!(model, vi, SampleFromPrior(), PriorContext(left)))
-    )
+    return getlogp(last(evaluate!!(model, vi, SampleFromPrior(), PriorContext(left))))
 end
 
 @generated function make_prior_model(

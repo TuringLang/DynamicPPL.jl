@@ -1091,7 +1091,7 @@ function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        DynamicPPL.logjoint(model, argvals_dict)
+        logjoint(model, argvals_dict)
     end
 end
 
@@ -1138,7 +1138,7 @@ function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        DynamicPPL.logprior(model, argvals_dict)
+        logprior(model, argvals_dict)
     end
 end
 

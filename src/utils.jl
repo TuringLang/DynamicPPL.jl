@@ -855,7 +855,7 @@ function varname_leaves(vn::VarName, val::AbstractArray)
         I in CartesianIndices(val)
     )
 end
-function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
+function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         lens = Setfield.PropertyLens{sym}()
         varname_leaves(vn ∘ lens, get(val, lens))
