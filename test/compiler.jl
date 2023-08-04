@@ -617,6 +617,15 @@ end
 
         model_false = demo_ret_in_last_stmt(false)
         @test model_false() === missing
+
+        # `return` with `return`
+        @model function demo_ret_with_ret()
+            return begin
+                return nothing
+                missing
+            end
+        end
+        @test demo_ret_with_ret()() === nothing
     end
 
     @testset "issue #368: hasmissing dispatch" begin

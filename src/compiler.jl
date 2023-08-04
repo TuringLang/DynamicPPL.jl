@@ -552,7 +552,7 @@ function replace_returns(e::Expr)
         # and is not our intent).
         @gensym retval
         return quote
-            $retval = $(e.args...)
+            $retval = $(map(replace_returns, e.args)...)
             return $retval, __varinfo__
         end
     end
@@ -565,7 +565,7 @@ function add_return_to_last_statment!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
     # Otherwise we replace the last statement with an altered `return`.
     if !Meta.isexpr(body.args[end], :return)
-        body.args[end] = replace_returns(Expr(:return, body.args[end]))
+        body.args[end] = Expr(:return, body.args[end])
     end
     return body
 end
@@ -623,7 +623,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(add_return_to_last_statment!(replace_returns(modeldef[:body])))
+        $(replace_returns(add_return_to_last_statment!(modeldef[:body])))
     end
 
     ## Build the model function.
