@@ -541,9 +541,7 @@ definitions. This is checked using [`isfuncdef`](@ref).
 """
 replace_returns(e) = e
 function replace_returns(e::Expr)
-    if isfuncdef(e)
-        return e
-    end
+    isfuncdef(e) && return e
 
     if Meta.isexpr(e, :return)
         # We capture the original return-value in `retval` and return
@@ -562,13 +560,12 @@ function replace_returns(e::Expr)
     return Expr(e.head, map(replace_returns, e.args)...)
 end
 
-# If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
-make_returns_explicit!(body) = Expr(:return, body)
-function make_returns_explicit!(body::Expr)
+add_return_to_last_statment!(body) = Expr(:return, body)
+function add_return_to_last_statment!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
-    # Otherwise we replace the last statement with a `return` statement.
+    # Otherwise we replace the last statement with an altered `return`.
     if !Meta.isexpr(body.args[end], :return)
-        body.args[end] = Expr(:return, body.args[end])
+        body.args[end] = replace_returns(Expr(:return, body.args[end]))
     end
     return body
 end
@@ -626,7 +623,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(replace_returns(make_returns_explicit!(modeldef[:body])))
+        $(add_return_to_last_statment!(replace_returns(modeldef[:body])))
     end
 
     ## Build the model function.
