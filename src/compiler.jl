@@ -560,6 +560,7 @@ function replace_returns(e::Expr)
     return Expr(e.head, map(replace_returns, e.args)...)
 end
 
+# If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
 add_return_to_last_statment!(body) = Expr(:return, body)
 function add_return_to_last_statment!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
