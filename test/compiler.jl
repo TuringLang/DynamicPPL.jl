@@ -606,26 +606,26 @@ end
         @model function demo_ret_in_last_stmt(x::Bool)
             # Two different values not supporting `iterate`.
             if x
-                return nothing
+                return Val(1)
             else
-                return missing
+                return Val(2)
             end
         end
 
         model_true = demo_ret_in_last_stmt(true)
-        @test model_true() === nothing
+        @test model_true() === Val(1)
 
         model_false = demo_ret_in_last_stmt(false)
-        @test model_false() === missing
+        @test model_false() === Val(2)
 
         # `return` with `return`
         @model function demo_ret_with_ret()
             return begin
-                return nothing
-                missing
+                return Val(1)
+                Val(2)
             end
         end
-        @test demo_ret_with_ret()() === nothing
+        @test demo_ret_with_ret()() === Val(1)
     end
 
     @testset "issue #368: hasmissing dispatch" begin
