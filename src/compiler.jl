@@ -564,7 +564,7 @@ end
 add_return_to_last_statment!(body) = Expr(:return, body)
 function add_return_to_last_statment!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
-    # Otherwise we replace the last statement with an altered `return`.
+    # Otherwise we replace the last statement with a `return` statement.
     if !Meta.isexpr(body.args[end], :return)
         body.args[end] = Expr(:return, body.args[end])
     end
