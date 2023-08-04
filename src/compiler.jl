@@ -541,9 +541,7 @@ definitions. This is checked using [`isfuncdef`](@ref).
 """
 replace_returns(e) = e
 function replace_returns(e::Expr)
-    if isfuncdef(e)
-        return e
-    end
+    isfuncdef(e) && return e
 
     if Meta.isexpr(e, :return)
         # We capture the original return-value in `retval` and return
@@ -554,7 +552,7 @@ function replace_returns(e::Expr)
         # and is not our intent).
         @gensym retval
         return quote
-            $retval = $(e.args...)
+            $retval = $(map(replace_returns, e.args)...)
             return $retval, __varinfo__
         end
     end
@@ -563,8 +561,8 @@ function replace_returns(e::Expr)
 end
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
-make_returns_explicit!(body) = Expr(:return, body)
-function make_returns_explicit!(body::Expr)
+add_return_to_last_statment!(body) = Expr(:return, body)
+function add_return_to_last_statment!(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
     # Otherwise we replace the last statement with a `return` statement.
     if !Meta.isexpr(body.args[end], :return)
@@ -626,7 +624,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(replace_returns(make_returns_explicit!(modeldef[:body])))
+        $(replace_returns(add_return_to_last_statment!(modeldef[:body])))
     end
 
     ## Build the model function.

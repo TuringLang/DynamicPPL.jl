@@ -599,6 +599,33 @@ end
         # With assignment.
         @model outer() = @submodel x = inner()
         @test outer()() isa Real
+
+        # Edge-cases.
+        # `return` in the last statement.
+        # Ref: issue #511.
+        @model function demo_ret_in_last_stmt(x::Bool)
+            # Two different values not supporting `iterate`.
+            if x
+                return Val(1)
+            else
+                return Val(2)
+            end
+        end
+
+        model_true = demo_ret_in_last_stmt(true)
+        @test model_true() === Val(1)
+
+        model_false = demo_ret_in_last_stmt(false)
+        @test model_false() === Val(2)
+
+        # `return` with `return`
+        @model function demo_ret_with_ret()
+            return begin
+                return Val(1)
+                Val(2)
+            end
+        end
+        @test demo_ret_with_ret()() === Val(1)
     end
 
     @testset "issue #368: hasmissing dispatch" begin
