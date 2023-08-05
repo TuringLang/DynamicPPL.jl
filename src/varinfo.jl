@@ -364,7 +364,7 @@ setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
     expr = Expr(:block)
     start = :(1)
     for f in names
-        length = :(length(metadata.$f.vals))
+        length = :(sum(length, metadata.$f.ranges))
         finish = :($start + $length - 1)
         push!(expr.args, :(metadata.$f.vals .= val[($start):($finish)]))
         start = :($start + $length)
