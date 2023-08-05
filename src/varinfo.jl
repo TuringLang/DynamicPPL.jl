@@ -360,7 +360,7 @@ The values may or may not be transformed to Euclidean space.
 """
 setall!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
 setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
-@generated function _setall!(metadata::NamedTuple{names}, val, start=0) where {names}
+@generated function _setall!(metadata::NamedTuple{names}, val) where {names}
     expr = Expr(:block)
     start = :(1)
     for f in names
