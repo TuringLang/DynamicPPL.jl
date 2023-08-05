@@ -44,6 +44,7 @@ include("test_util.jl")
             include("contexts.jl")
             include("context_implementations.jl")
             include("logdensityfunction.jl")
+            include("linking.jl")
 
             include("threadsafe.jl")
 
