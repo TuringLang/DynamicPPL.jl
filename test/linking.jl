@@ -83,6 +83,11 @@ end
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
             @test length(vi_linked[:]) == length(y)
+            # Invlinked.
+            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+            @test length(vi_invlinked[:]) == length(vi[:])
+            @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            @test DynamicPPL.getlogp(vi_invlinked) ≈ DynamicPPL.getlogp(vi)
         end
     end
 
