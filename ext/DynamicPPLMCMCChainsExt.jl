@@ -3,9 +3,7 @@ module DynamicPPLMCMCChainsExt
 using DynamicPPL: DynamicPPL
 using MCMCChains: MCMCChains
 
-function DynamicPPL.generated_quantities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
-)
+function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     chain_parameters = MCMCChains.get_sections(chain, :parameters)
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
