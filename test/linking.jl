@@ -97,15 +97,15 @@ end
         vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(x),))
         @testset "$(short_varinfo_name(vi))" for vi in vis
             @test length(vi[:]) == 2
-            @test getlogp(vi) ≈ 0
+            @test iszero(getlogp(vi))
             # Linked.
             vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
             @test length(vi_linked[:]) == 1
-            @test !(getlogp(vi_linked) ≈ 0) # should now include the log-absdet-jacobian correction
+            @test !iszero(getlogp(vi_linked)) # should now include the log-absdet-jacobian correction
             # Invlinked.
             vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
             @test length(vi_invlinked[:]) == 2
-            @test getlogp(vi_invlinked) ≈ 0
+            @test iszero(getlogp(vi_invlinked))
         end
     end
 end
