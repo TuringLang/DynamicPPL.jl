@@ -35,7 +35,7 @@ end
 
 Base.size(d::MyMatrixDistribution) = (d.dim, d.dim)
 function Distributions._rand!(
-    rng::AbstractRNG, d::MyMatrixDistribution, x::AbstractMatrix{<:Real}
+    rng::Random.AbstractRNG, d::MyMatrixDistribution, x::AbstractMatrix{<:Real}
 )
     return randn!(rng, x)
 end
@@ -58,29 +58,54 @@ function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, istrans::Boo
 end
 
 @testset "Linking" begin
-    # Just making sure the transformations are okay.
-    x = randn(3, 3)
-    f = TrilToVec((3, 3))
-    f_inv = inverse(f)
-    y = f(x)
-    @test y isa AbstractVector
-    @test f_inv(f(x)) == LowerTriangular(x)
+    @testset "simple matrix distribution" begin
+        # Just making sure the transformations are okay.
+        x = randn(3, 3)
+        f = TrilToVec((3, 3))
+        f_inv = inverse(f)
+        y = f(x)
+        @test y isa AbstractVector
+        @test f_inv(f(x)) == LowerTriangular(x)
 
-    # Within a model.
-    dist = MyMatrixDistribution(3)
-    @model demo() = m ~ dist
-    model = demo()
+        # Within a model.
+        dist = MyMatrixDistribution(3)
+        @model demo() = m ~ dist
+        model = demo()
 
-    vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(m),))
-    @testset "$(short_varinfo_name(vi))" for vi in vis
-        # Evaluate once to ensure we have `logp` value.
-        vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
-        vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
-        # Difference should just be the log-absdet-jacobian "correction".
-        @test DynamicPPL.getlogp(vi) - DynamicPPL.getlogp(vi_linked) ≈ log(2)
-        @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
-        # Linked one should be working with a lower-dimensional representation.
-        @test length(vi_linked[:]) < length(vi[:])
-        @test length(vi_linked[:]) == 3
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(m),))
+        @testset "$(short_varinfo_name(vi))" for vi in vis
+            # Evaluate once to ensure we have `logp` value.
+            vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
+            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+            # Difference should just be the log-absdet-jacobian "correction".
+            @test DynamicPPL.getlogp(vi) - DynamicPPL.getlogp(vi_linked) ≈ log(2)
+            @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
+            # Linked one should be working with a lower-dimensional representation.
+            @test length(vi_linked[:]) < length(vi[:])
+            @test length(vi_linked[:]) == length(y)
+            # Invlinked.
+            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+            @test length(vi_invlinked[:]) == length(vi[:])
+            @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            @test DynamicPPL.getlogp(vi_invlinked) ≈ DynamicPPL.getlogp(vi)
+        end
+    end
+
+    @testset "dirichlet" begin
+        @model demo_dirichlet() = x ~ Dirichlet(2, 1.0)
+        model = demo_dirichlet()
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(x),))
+        @testset "$(short_varinfo_name(vi))" for vi in vis
+            @test length(vi[:]) == 2
+            @test iszero(getlogp(vi))
+            # Linked.
+            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+            @test length(vi_linked[:]) == 1
+            @test !iszero(getlogp(vi_linked)) # should now include the log-absdet-jacobian correction
+            # Invlinked.
+            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+            @test length(vi_invlinked[:]) == 2
+            @test iszero(getlogp(vi_invlinked))
+        end
     end
 end
