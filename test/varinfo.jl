@@ -276,33 +276,33 @@
     # See https://github.com/TuringLang/DynamicPPL.jl/issues/504
     @testset "Dimentionality checks" begin
         @model function demo2d()
-            x ~ Dirichlet(2, 1.0)                                
+            return x ~ Dirichlet(2, 1.0)
         end
         model = demo2d()
-        vi    = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
+        vi = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
         getlogp(vi) ≈ 0.0                                        # zero because Dirichlet(1) == Uniform over Simplex
-        spl   = SampleFromPrior()                                # create dummy sampler for linking
+        spl = SampleFromPrior()                                # create dummy sampler for linking
         DynamicPPL.link!!(vi, spl, model)                        # transform to unconstrained space
         !(0.0 ≈ getlogp(last(DynamicPPL.evaluate!!(model, vi)))) # non-zero now due to log(abs(determinant(jacobian)))
         x = vi[spl]                                              # extract unconstrained values
-        newx  = deepcopy(x)                                      # simulate making a change to x
+        newx = deepcopy(x)                                      # simulate making a change to x
         vinew = deepcopy(vi)
-        vinew[spl] = newx;
+        vinew[spl] = newx
         @test vinew[spl] == newx
 
         @model function demo3d()
-            x ~ Dirichlet(3, 1.0)                                 # increase K to 3
+            return x ~ Dirichlet(3, 1.0)                                 # increase K to 3
         end
         model = demo3d()
-        vi    = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
+        vi = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
         getlogp(vi) ≈ 0.0                                        # zero because Dirichlet(1) == Uniform over Simplex
-        spl   = SampleFromPrior()                                # create dummy sampler for linking
+        spl = SampleFromPrior()                                # create dummy sampler for linking
         DynamicPPL.link!!(vi, spl, model)                        # transform to unconstrained space
         !(0.0 ≈ getlogp(last(DynamicPPL.evaluate!!(model, vi)))) # non-zero now due to log(abs(determinant(jacobian)))
         x = vi[spl]                                              # extract unconstrained values
-        newx  = deepcopy(x)                                      # simulate making a change to x
+        newx = deepcopy(x)                                      # simulate making a change to x
         vinew = deepcopy(vi)
-        vinew[spl] = newx;
+        vinew[spl] = newx
 
         @test vinew[spl] == newx
     end
