@@ -59,6 +59,10 @@ include("test_util.jl")
             include(joinpath("compat", "ad.jl"))
         end
 
+        @testset "extensions" begin
+            include("ext/DynamicPPLMCMCChainsExt.jl")
+        end
+
         @testset "doctests" begin
             DocMeta.setdocmeta!(
                 DynamicPPL,
