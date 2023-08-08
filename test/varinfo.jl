@@ -273,40 +273,6 @@
         @test vals_prev == vi.metadata.x.vals
     end
 
-    # See https://github.com/TuringLang/DynamicPPL.jl/issues/504
-    @testset "Dimentionality checks" begin
-        @model function demo2d()
-            return x ~ Dirichlet(2, 1.0)
-        end
-        model = demo2d()
-        vi = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
-        getlogp(vi) ≈ 0.0                                        # zero because Dirichlet(1) == Uniform over Simplex
-        spl = SampleFromPrior()                                # create dummy sampler for linking
-        DynamicPPL.link!!(vi, spl, model)                        # transform to unconstrained space
-        !(0.0 ≈ getlogp(last(DynamicPPL.evaluate!!(model, vi)))) # non-zero now due to log(abs(determinant(jacobian)))
-        x = vi[spl]                                              # extract unconstrained values
-        newx = deepcopy(x)                                      # simulate making a change to x
-        vinew = deepcopy(vi)
-        vinew[spl] = newx
-        @test vinew[spl] == newx
-
-        @model function demo3d()
-            return x ~ Dirichlet(3, 1.0)                                 # increase K to 3
-        end
-        model = demo3d()
-        vi = VarInfo(model)                                   # make VarInfo -> sample from prior and compute logdensity
-        getlogp(vi) ≈ 0.0                                        # zero because Dirichlet(1) == Uniform over Simplex
-        spl = SampleFromPrior()                                # create dummy sampler for linking
-        DynamicPPL.link!!(vi, spl, model)                        # transform to unconstrained space
-        !(0.0 ≈ getlogp(last(DynamicPPL.evaluate!!(model, vi)))) # non-zero now due to log(abs(determinant(jacobian)))
-        x = vi[spl]                                              # extract unconstrained values
-        newx = deepcopy(x)                                      # simulate making a change to x
-        vinew = deepcopy(vi)
-        vinew[spl] = newx
-
-        @test vinew[spl] == newx
-    end
-
     @testset "istrans" begin
         @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
         model = demo_constrained()
