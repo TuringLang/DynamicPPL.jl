@@ -91,21 +91,26 @@ end
         end
     end
 
+    # Related: https://github.com/TuringLang/DynamicPPL.jl/issues/504
     @testset "dirichlet" begin
-        @model demo_dirichlet() = x ~ Dirichlet(2, 1.0)
-        model = demo_dirichlet()
-        vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(x),))
-        @testset "$(short_varinfo_name(vi))" for vi in vis
-            @test length(vi[:]) == 2
-            @test iszero(getlogp(vi))
-            # Linked.
-            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
-            @test length(vi_linked[:]) == 1
-            @test !iszero(getlogp(vi_linked)) # should now include the log-absdet-jacobian correction
-            # Invlinked.
-            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
-            @test length(vi_invlinked[:]) == 2
-            @test iszero(getlogp(vi_invlinked))
+        @model demo_dirichlet(d::Int) = x ~ Dirichlet(d, 1.0)
+        @testset "d=$d" for d in [2, 3, 5]
+            model = demo_dirichlet(d)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(x),))
+            @testset "$(short_varinfo_name(vi))" for vi in vis
+                lp = logpdf(Dirichlet(d, 1.0), vi[:])
+                @test length(vi[:]) == d
+                @test getlogp(vi) ≈ lp
+                # Linked.
+                vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+                @test length(vi_linked[:]) == d - 1
+                # Should now include the log-absdet-jacobian correction.
+                @test !(getlogp(vi_linked) ≈ lp)
+                # Invlinked.
+                vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+                @test length(vi_invlinked[:]) == d
+                @test getlogp(vi_invlinked) ≈ lp
+            end
         end
     end
 end
