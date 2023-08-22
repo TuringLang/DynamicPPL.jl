@@ -249,6 +249,8 @@ function reconstruct(
     return copy(val)
 end
 
+reconstruct(d::Distribution, val) = copy(val)
+
 # TODO: Implement no-op `reconstruct` for general array variates.
 
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
