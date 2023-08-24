@@ -236,6 +236,15 @@ reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+
+function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
+    return reconstruct(dist, reshape(val, size(dist)))
+end
+function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
+    return Cholesky(val, dist.uplo, 0)
+end
+reconstruct(::LKJCholesky, val::Cholesky) = val
+
 function reconstruct(
     ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
 )
