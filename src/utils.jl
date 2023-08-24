@@ -209,11 +209,10 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-vectorize(d, r) = vec(r)
-vectorize(d::UnivariateDistribution, r::Real) = [r]
-vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
-vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
-vectorize(d::Distribution{CholeskyVariate}, r::Cholesky) = copy(vec(r.UL))
+vectorize(d, r) = vectorize(r)
+vectorize(r::Real) = [r]
+vectorize(r::AbstractArray{<:Real}) = copy(vec(r))
+vectorize(r::Cholesky) = copy(vec(r.UL))
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
