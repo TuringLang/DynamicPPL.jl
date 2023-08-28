@@ -63,7 +63,9 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
         for (n, v) in zip(names, vals)
             if Symbol(n) ∉ keys(chain)
                 # Assume it's a group
-                chain_val = vec(MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx])
+                chain_val = vec(
+                    MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx]
+                )
                 v_true = vec(v)
             else
                 chain_val = chain[sample_idx, n, chain_idx]
