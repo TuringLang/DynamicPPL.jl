@@ -326,10 +326,10 @@ The values may or may not be transformed to Euclidean space.
 """
 setval!(vi::VarInfo, val, vn::VarName) = setval!(getmetadata(vi, vn), val, vn)
 function setval!(md::Metadata, val::AbstractVector, vn::VarName)
-    md.vals[getrange(md, vn)] = val
+    return md.vals[getrange(md, vn)] = val
 end
 function setval!(md::Metadata, val, vn::VarName)
-    md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
+    return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
 end
 
 """
