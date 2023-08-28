@@ -67,7 +67,7 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
             else
                 chain[sample_idx, n, chain_idx]
             end
-            @test v == chain_val
+            @test all(v .== chain_val)
         end
     end
 end
