@@ -61,13 +61,18 @@ function test_setval!(model, chain; sample_idx=1, chain_idx=1)
     nt = DynamicPPL.tonamedtuple(var_info)
     for (k, (vals, names)) in pairs(nt)
         for (n, v) in zip(names, vals)
-            chain_val = if Symbol(n) ∉ keys(chain)
+            if Symbol(n) ∉ keys(chain)
                 # Assume it's a group
-                vec(MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx])
+                chain_val = vec(
+                    MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx]
+                )
+                v_true = vec(v)
             else
-                chain[sample_idx, n, chain_idx]
+                chain_val = chain[sample_idx, n, chain_idx]
+                v_true = v
             end
-            @test v == chain_val
+
+            @test v_true == chain_val
         end
     end
 end

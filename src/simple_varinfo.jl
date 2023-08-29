@@ -544,7 +544,7 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
     isempty(vi) && return T[]
-    return mapreduce(v -> vec([v;]), vcat, values(vi.values))
+    return mapreduce(vectorize, vcat, values(vi.values))
 end
 function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))

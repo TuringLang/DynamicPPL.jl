@@ -325,7 +325,12 @@ Set the value(s) of `vn` in the metadata of `vi` to `val`.
 The values may or may not be transformed to Euclidean space.
 """
 setval!(vi::VarInfo, val, vn::VarName) = setval!(getmetadata(vi, vn), val, vn)
-setval!(md::Metadata, val, vn::VarName) = md.vals[getrange(md, vn)] = [val;]
+function setval!(md::Metadata, val::AbstractVector, vn::VarName)
+    return md.vals[getrange(md, vn)] = val
+end
+function setval!(md::Metadata, val, vn::VarName)
+    return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
+end
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
