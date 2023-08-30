@@ -10,6 +10,7 @@ setprogress!(false)
 Random.seed!(100)
 
 # load test utilities
+include(joinpath(pathof(DynamicPPL), "..", "..", "test", "test_util.jl"))
 include(joinpath(pathof(Turing), "..", "..", "test", "test_utils", "numerical_tests.jl"))
 
 @testset "Turing" begin

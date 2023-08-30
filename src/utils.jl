@@ -209,11 +209,10 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-vectorize(d, r) = vec(r)
-vectorize(d::UnivariateDistribution, r::Real) = [r]
-vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
-vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
-vectorize(d::Distribution{CholeskyVariate}, r::Cholesky) = copy(vec(r.UL))
+vectorize(d, r) = vectorize(r)
+vectorize(r::Real) = [r]
+vectorize(r::AbstractArray{<:Real}) = copy(vec(r))
+vectorize(r::Cholesky) = copy(vec(r.UL))
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
@@ -237,6 +236,15 @@ reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+
+function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
+    return reconstruct(dist, reshape(val, size(dist)))
+end
+function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
+    return Cholesky(val, dist.uplo, 0)
+end
+reconstruct(::LKJCholesky, val::Cholesky) = val
+
 function reconstruct(
     ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
 )
