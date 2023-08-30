@@ -257,7 +257,7 @@ function reconstruct(
     return copy(val)
 end
 
-reconstruct(d::Distribution, val) = copy(val)
+reconstruct(d::Distribution, val) = deepcopy(val)
 
 # TODO: Implement no-op `reconstruct` for general array variates.
 
