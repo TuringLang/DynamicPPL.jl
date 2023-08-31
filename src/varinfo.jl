@@ -363,7 +363,11 @@ Set the values of all the variables in `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-setall!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
+function setall!(vi::UntypedVarInfo, val)
+    for r in vi.metadata.ranges
+        vi.metadata.vals[r] .= val[r]
+    end
+end
 setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 @generated function _setall!(metadata::NamedTuple{names}, val) where {names}
     expr = Expr(:block)
