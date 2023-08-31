@@ -898,9 +898,7 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     return vi
 end
 
-function link(
-    ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
-)
+function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
     return _link(varinfo)
 end
 
