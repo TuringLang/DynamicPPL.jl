@@ -356,4 +356,35 @@
             end
         end
     end
+
+    @testset "unflatten + linking" begin
+        @testset "Model: $(model.f)" for model in [
+            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints()
+        ]
+            original_value = rand(model)
+            varnames = DynamicPPL.TestUtils.varnames(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, original_value, varnames)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                if varinfo isa SimpleVarInfo{<:NamedTuple}
+                    # NOTE: this is broken since we'll end up trying to set
+                    #
+                    #    varinfo[@varname(x[4:5])] = [x[4],]
+                    #
+                    # upon linking (since `x[4:5]` will be projected onto a 1-dimensional
+                    # space). In the case of `SimpleVarInfo{<:NamedTuple}`, this results in
+                    # calling `setindex!!(varinfo.values, [x[4],], @varname(x[4:5]))`, which
+                    # in turn attempts to call `setindex!(varinfo.values.x, [x[4],], 4:5)`,
+                    # i.e. a vector of length 1 (`[x[4],]`) being assigned to 2 indices (`4:5`).
+                    @test_broken false
+                    continue
+                end
+                varinfo_linked = DynamicPPL.link!!(deepcopy(varinfo), model)
+                @test length(varinfo[:]) > length(varinfo_linked[:])
+                varinfo_linked_unflattened = DynamicPPL.unflatten(
+                    varinfo_linked, varinfo_linked[:]
+                )
+                @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
+            end
+        end
+    end
 end
