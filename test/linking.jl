@@ -57,7 +57,7 @@ function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, istrans::Boo
     return lp
 end
 
-@testset "Linking" begin
+@testset "Linking (mutable=$mutable)" for mutable in [false, true]
     @testset "simple matrix distribution" begin
         # Just making sure the transformations are okay.
         x = randn(3, 3)
@@ -76,7 +76,11 @@ end
         @testset "$(short_varinfo_name(vi))" for vi in vis
             # Evaluate once to ensure we have `logp` value.
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
-            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+            vi_linked = if mutable
+                DynamicPPL.link!!(deepcopy(vi), model)
+            else
+                DynamicPPL.link(vi, model)
+            end
             # Difference should just be the log-absdet-jacobian "correction".
             @test DynamicPPL.getlogp(vi) - DynamicPPL.getlogp(vi_linked) ≈ log(2)
             @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
@@ -84,7 +88,11 @@ end
             @test length(vi_linked[:]) < length(vi[:])
             @test length(vi_linked[:]) == length(y)
             # Invlinked.
-            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+            vi_invlinked = if mutable
+                DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+            else
+                DynamicPPL.invlink(vi_linked, model)
+            end
             @test length(vi_invlinked[:]) == length(vi[:])
             @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
             @test DynamicPPL.getlogp(vi_invlinked) ≈ DynamicPPL.getlogp(vi)
@@ -112,12 +120,20 @@ end
                     lp_model = logjoint(model, vi)
                     @test lp_model ≈ lp
                     # Linked.
-                    vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+                    vi_linked = if mutable
+                        DynamicPPL.link!!(deepcopy(vi), model)
+                    else
+                        DynamicPPL.link(vi, model)
+                    end
                     @test length(vi_linked[:]) == d * (d - 1) ÷ 2
                     # Should now include the log-absdet-jacobian correction.
                     @test !(getlogp(vi_linked) ≈ lp)
                     # Invlinked.
-                    vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+                    vi_invlinked = if mutable
+                        DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+                    else
+                        DynamicPPL.invlink(vi_linked, model)
+                    end
                     @test length(vi_invlinked[:]) == d^2
                     @test getlogp(vi_invlinked) ≈ lp
                 end
@@ -137,12 +153,20 @@ end
                 lp_model = logjoint(model, vi)
                 @test lp_model ≈ lp
                 # Linked.
-                vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+                vi_linked = if mutable
+                    DynamicPPL.link!!(deepcopy(vi), model)
+                else
+                    DynamicPPL.link(vi, model)
+                end
                 @test length(vi_linked[:]) == d - 1
                 # Should now include the log-absdet-jacobian correction.
                 @test !(getlogp(vi_linked) ≈ lp)
                 # Invlinked.
-                vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+                vi_invlinked = if mutable
+                    DynamicPPL.invlink!!(deepcopy(vi_linked), model)
+                else
+                    DynamicPPL.invlink(vi_linked, model)
+                end
                 @test length(vi_invlinked[:]) == d
                 @test getlogp(vi_invlinked) ≈ lp
             end
