@@ -239,9 +239,11 @@ function logprior_true_with_logabsdet_jacobian(
     b_x4 = Bijectors.bijector(Dirichlet([1.0, 2.0]))
     x_unconstrained = vcat(x[1], b_x2(x[2]), b_x3(x[3]), b_x4(x[4:5]))
     Δlogp = (
-        logabsdetjac(b_x2, x[2]) + logabsdetjac(b_x3, x[3]) + logabsdetjac(b_x4, x[4:5])
+        Bijectors.logabsdetjac(b_x2, x[2]) +
+        Bijectors.logabsdetjac(b_x3, x[3]) +
+        Bijectors.logabsdetjac(b_x4, x[4:5])
     )
-    return (x=x_unconstrained,), logprior_true(model, m, x) - Δlogp
+    return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
 
 function Random.rand(
