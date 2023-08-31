@@ -885,7 +885,6 @@ end
 end
 
 function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
-    @debug "X -> ℝ for $(vn)..."
     # TODO: Use inplace versions to avoid allocations
     y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
     yvec = vectorize(dist, y)
