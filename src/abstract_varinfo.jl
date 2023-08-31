@@ -394,13 +394,13 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
-link(vi::AbstractVarInfo, model::Model) = link!!(deepcopy(vi), SampleFromPrior(), model)
+link(vi::AbstractVarInfo, model::Model) = link(deepcopy(vi), SampleFromPrior(), model)
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link!!(t, deepcopy(vi), SampleFromPrior(), model)
+    return link(t, deepcopy(vi), SampleFromPrior(), model)
 end
 function link(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
     # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link!!(default_transformation(model, vi), deepcopy(vi), spl, model)
+    return link(default_transformation(model, vi), deepcopy(vi), spl, model)
 end
 
 """
