@@ -93,6 +93,18 @@ function invlink!!(
     return invlink!!(t, vi.varinfo, spl, model)
 end
 
+function link(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return link(t, vi.varinfo, spl, model)
+end
+
+function invlink(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink(t, vi.varinfo, spl, model)
+end
+
 function maybe_invlink_before_eval!!(
     vi::ThreadSafeVarInfo, context::AbstractContext, model::Model
 )
