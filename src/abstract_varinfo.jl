@@ -473,7 +473,6 @@ function invlink(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
     return invlink(transformation(vi), vi, spl, model)
 end
 
-
 """
     maybe_invlink_before_eval!!([t::Transformation,] vi, context, model)
 

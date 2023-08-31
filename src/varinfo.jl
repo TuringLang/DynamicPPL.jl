@@ -898,13 +898,19 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     return vi
 end
 
-function invlink(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
+function invlink(
+    ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
+)
     return _invlink(varinfo)
 end
 
 function _invlink(varinfo::UntypedVarInfo)
     varinfo = deepcopy(varinfo)
-    return VarInfo(_invlink_metadata!(varinfo, varinfo.metadata), Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+    return VarInfo(
+        _invlink_metadata!(varinfo, varinfo.metadata),
+        Base.Ref(getlogp(varinfo)),
+        Ref(get_num_produce(varinfo)),
+    )
 end
 
 function _invlink(varinfo::TypedVarInfo)
@@ -957,7 +963,7 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
         metadata.dists,
         metadata.gids,
         metadata.orders,
-        metadata.flags
+        metadata.flags,
     )
 end
 
