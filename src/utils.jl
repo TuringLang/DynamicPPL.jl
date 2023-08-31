@@ -514,6 +514,13 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
+# NOTE: Makes it possible to use ranges, etc. for setting a vector.
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractVector{<:Integer}
+) where {C<:AbstractVector,T<:AbstractVector}
+    return BangBang.implements(setindex!, C) &&
+           promote_type(eltype(C), eltype(T)) <: eltype(C)
+end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
 # TODO(torfjelde): Do better.
