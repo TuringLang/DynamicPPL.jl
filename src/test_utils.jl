@@ -191,6 +191,72 @@ function logprior_true_with_logabsdet_jacobian(
     return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
 end
 
+"""
+    demo_one_variable_multiple_constraints()
+
+A model with a single multivariate `x` whose components have multiple different constraints.
+
+# Model
+```julia
+x[1] ~ Normal()
+x[2] ~ InverseGamma(2, 3)
+x[3] ~ truncated(Normal(), -5, 20)
+x[4:5] ~ Dirichlet([1.0, 2.0])
+```
+
+"""
+@model function demo_one_variable_multiple_constraints(
+    ::Type{TV}=Vector{Float64}
+) where {TV}
+    x = TV(undef, 5)
+    x[1] ~ Normal()
+    x[2] ~ InverseGamma(2, 3)
+    x[3] ~ truncated(Normal(), -5, 20)
+    x[4:5] ~ Dirichlet([1.0, 2.0])
+
+    return (x=x,)
+end
+
+function logprior_true(model::Model{typeof(demo_one_variable_multiple_constraints)}, x)
+    return (
+        logpdf(Normal(), x[1]) +
+        logpdf(InverseGamma(2, 3), x[2]) +
+        logpdf(truncated(Normal(), -5, 20), x[3]) +
+        logpdf(Dirichlet([1.0, 2.0]), x[4:5])
+    )
+end
+function loglikelihood_true(model::Model{typeof(demo_one_variable_multiple_constraints)}, x)
+    return zero(float(eltype(x)))
+end
+function varnames(model::Model{typeof(demo_one_variable_multiple_constraints)})
+    return [@varname(x[1]), @varname(x[2]), @varname(x[3]), @varname(x[4:5])]
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_one_variable_multiple_constraints)}, x
+)
+    b_x2 = Bijectors.bijector(InverseGamma(2, 3))
+    b_x3 = Bijectors.bijector(truncated(Normal(), -5, 20))
+    b_x4 = Bijectors.bijector(Dirichlet([1.0, 2.0]))
+    x_unconstrained = vcat(x[1], b_x2(x[2]), b_x3(x[3]), b_x4(x[4:5]))
+    Δlogp = (
+        logabsdetjac(b_x2, x[2]) + logabsdetjac(b_x3, x[3]) + logabsdetjac(b_x4, x[4:5])
+    )
+    return (x=x_unconstrained,), logprior_true(model, m, x) - Δlogp
+end
+
+function Random.rand(
+    rng::Random.AbstractRNG,
+    ::Type{NamedTuple},
+    model::Model{typeof(demo_one_variable_multiple_constraints)},
+)
+    x = Vector{Float64}(undef, 5)
+    x[1] = rand(rng, Normal())
+    x[2] = rand(rng, InverseGamma(2, 3))
+    x[3] = rand(rng, truncated(Normal(), -5, 20))
+    x[4:5] = rand(rng, Dirichlet([1.0, 2.0]))
+    return (x=x,)
+end
+
 # A collection of models for which the posterior should be "similar".
 # Some utility methods for these.
 function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
