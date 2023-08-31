@@ -931,18 +931,18 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
         end
 
         # Transform to constrained space.
-        x = getval(varinfo, vn)
+        y = getval(varinfo, vn)
         dist = getdist(varinfo, vn)
         f = invlink_transform(dist)
-        y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+        x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
         # Vectorize value.
-        yvec = vectorize(dist, y)
+        xvec = vectorize(dist, x)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
         settrans!!(varinfo, false, vn)
         # Return the vectorized transformed value.
-        return yvec
+        return xvec
     end
 
     # Determine new ranges.
