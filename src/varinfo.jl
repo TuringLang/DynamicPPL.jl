@@ -898,12 +898,16 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     return vi
 end
 
-function invlink(varinfo::UntypedVarInfo)
+function invlink(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
+    return _invlink(varinfo)
+end
+
+function _invlink(varinfo::UntypedVarInfo)
     varinfo = deepcopy(varinfo)
     return VarInfo(_invlink_metadata!(varinfo, varinfo.metadata), Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
-function invlink(varinfo::TypedVarInfo)
+function _invlink(varinfo::TypedVarInfo)
     varinfo = deepcopy(varinfo)
     md = map(Base.Fix1(_invlink_metadata!, varinfo), varinfo.metadata)
     # TODO: Update logp, etc.
@@ -914,19 +918,19 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
     vns = metadata.vns
 
     # Construct the new transformed values, and keep track of their lengths.
-    lengths_new = Int[]
-    vals_new = mapreduce(vcat, vns) do vn
+    vals_new = map(vns) do vn
+        # Return early if we're not in unconstrained space.
+        if !istrans(varinfo, vn)
+            return metadata.vals[getrange(metadata, vn)]
+        end
+
+        # Transform to constrained space.
         x = getval(varinfo, vn)
         dist = getdist(varinfo, vn)
-        # Return early if we're not transforming.
-        !istrans(varinfo, vn) && vectorize(dist, x)
-        # Transform to constrained space.
         f = invlink_transform(dist)
         y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
         # Vectorize value.
         yvec = vectorize(dist, y)
-        # Add it to the new metadata.
-        push!(lengths_new, length(yvec))
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -936,12 +940,12 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
     end
 
     # Determine new ranges.
-    ranges_new = similar(metadata.ranges, 0)
+    ranges_new = similar(metadata.ranges)
     offset = 0
-    for l in lengths_new
-        r_start, r_end = offset + 1, l + offset
+    for (i, v) in enumerate(vals_new)
+        r_start, r_end = offset + 1, length(v) + offset
         offset = r_end
-        push!(ranges_new, r_start:r_end)
+        ranges_new[i] = r_start:r_end
     end
 
     # Now we just create a new metadata with the new `vals` and `ranges`.
@@ -949,7 +953,7 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
         metadata.idcs,
         metadata.vns,
         ranges_new,
-        vals_new,
+        reduce(vcat, vals_new),
         metadata.dists,
         metadata.gids,
         metadata.orders,
