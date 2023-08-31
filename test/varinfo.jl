@@ -359,7 +359,8 @@
 
     @testset "unflatten + linking" begin
         @testset "Model: $(model.f)" for model in [
-            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints()
+            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
+            DynamicPPL.TestUtils.demo_lkjchol()
         ]
             @testset "mutating=$mutating" for mutating in [false, true]
                 value_true = rand(model)

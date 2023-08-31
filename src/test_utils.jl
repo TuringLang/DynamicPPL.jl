@@ -259,6 +259,51 @@ function Random.rand(
     return (x=x,)
 end
 
+"""
+    demo_lkjchol(d=2)
+
+A model with a single variable `x` with support on the Cholesky factor of a
+LKJ distribution.
+
+# Model
+```julia
+x ~ LKJCholesky(d, 1.0)
+```
+"""
+@model function demo_lkjchol(d::Int=2)
+    x ~ LKJCholesky(d, 1.0)
+    return (x=x,)
+end
+
+function logprior_true(model::Model{typeof(demo_lkjchol)}, x)
+    return logpdf(LKJCholesky(model.args.d, 1.0), x)
+end
+
+function loglikelihood_true(model::Model{typeof(demo_lkjchol)}, x)
+    return zero(float(eltype(x)))
+end
+
+function varnames(model::Model{typeof(demo_lkjchol)})
+    return [@varname(x)]
+end
+
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_lkjchol)}, x
+)
+    b_x = Bijectors.bijector(LKJCholesky(model.args.d, 1.0))
+    x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
+    return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
+end
+
+function Random.rand(
+    rng::Random.AbstractRNG,
+    ::Type{NamedTuple},
+    model::Model{typeof(demo_lkjchol)},
+)
+    x = rand(rng, LKJCholesky(model.args.d, 1.0))
+    return (x=x,)
+end
+
 # A collection of models for which the posterior should be "similar".
 # Some utility methods for these.
 function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
