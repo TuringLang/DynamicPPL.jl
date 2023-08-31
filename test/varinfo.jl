@@ -359,45 +359,64 @@
 
     @testset "unflatten + linking" begin
         @testset "Model: $(model.f)" for model in [
-            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
+            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints()
         ]
-            value_true = rand(model)
-            varnames = DynamicPPL.TestUtils.varnames(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                if varinfo isa SimpleVarInfo{<:NamedTuple}
-                    # NOTE: this is broken since we'll end up trying to set
-                    #
-                    #    varinfo[@varname(x[4:5])] = [x[4],]
-                    #
-                    # upon linking (since `x[4:5]` will be projected onto a 1-dimensional
-                    # space). In the case of `SimpleVarInfo{<:NamedTuple}`, this results in
-                    # calling `setindex!!(varinfo.values, [x[4],], @varname(x[4:5]))`, which
-                    # in turn attempts to call `setindex!(varinfo.values.x, [x[4],], 4:5)`,
-                    # i.e. a vector of length 1 (`[x[4],]`) being assigned to 2 indices (`4:5`).
-                    @test_broken false
-                    continue
+            @testset "mutating=$mutating" for mutating in [false, true]
+                value_true = rand(model)
+                varnames = DynamicPPL.TestUtils.varnames(model)
+                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
+                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                    if varinfo isa SimpleVarInfo{<:NamedTuple}
+                        # NOTE: this is broken since we'll end up trying to set
+                        #
+                        #    varinfo[@varname(x[4:5])] = [x[4],]
+                        #
+                        # upon linking (since `x[4:5]` will be projected onto a 1-dimensional
+                        # space). In the case of `SimpleVarInfo{<:NamedTuple}`, this results in
+                        # calling `setindex!!(varinfo.values, [x[4],], @varname(x[4:5]))`, which
+                        # in turn attempts to call `setindex!(varinfo.values.x, [x[4],], 4:5)`,
+                        # i.e. a vector of length 1 (`[x[4],]`) being assigned to 2 indices (`4:5`).
+                        @test_broken false
+                        continue
+                    end
+
+                    # Evaluate the model once to update the logp of the varinfo.
+                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()))
+
+                    varinfo_linked = if mutating
+                        DynamicPPL.link!!(deepcopy(varinfo), model)
+                    else
+                        DynamicPPL.link(varinfo, model)
+                    end
+                    @test length(varinfo[:]) > length(varinfo_linked[:])
+                    varinfo_linked_unflattened = DynamicPPL.unflatten(
+                        varinfo_linked, varinfo_linked[:]
+                    )
+                    @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
+
+                    lp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
+                    value_linked_true, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                        model, value_true...
+                    )
+
+                    lp = logjoint(model, varinfo)
+                    @test lp ≈ lp_true
+                    @test getlogp(varinfo) ≈ lp_true
+                    lp_linked = getlogp(varinfo_linked)
+                    @test lp_linked ≈ lp_linked_true
+
+                    # TODO: Compare values once we are no longer working with `NamedTuple` for
+                    # the true values, e.g. `value_true`.
+
+                    if !mutating
+                        # This is also compatible with invlinking of unflattened varinfo.
+                        varinfo_invlinked = DynamicPPL.invlink(
+                            varinfo_linked_unflattened, model
+                        )
+                        @test length(varinfo_invlinked[:]) == length(varinfo[:])
+                        @test getlogp(varinfo_invlinked) ≈ lp_true
+                    end
                 end
-
-                varinfo_linked = DynamicPPL.link!!(deepcopy(varinfo), model)
-                @test length(varinfo[:]) > length(varinfo_linked[:])
-                varinfo_linked_unflattened = DynamicPPL.unflatten(
-                    varinfo_linked, varinfo_linked[:]
-                )
-                @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
-
-                lp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
-                value_linked_true, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
-                    model, value_true...
-                )
-
-                lp = logjoint(model, varinfo)
-                @test lp ≈ lp_true
-                lp_linked = logjoint(model, varinfo_linked)
-                @test lp_linked ≈ lp_linked_true
-
-                # TODO: Compare values once we are no longer working with `NamedTuple` for
-                # the true values, e.g. `value_true`.
             end
         end
     end
