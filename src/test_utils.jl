@@ -287,18 +287,14 @@ function varnames(model::Model{typeof(demo_lkjchol)})
     return [@varname(x)]
 end
 
-function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_lkjchol)}, x
-)
+function logprior_true_with_logabsdet_jacobian(model::Model{typeof(demo_lkjchol)}, x)
     b_x = Bijectors.bijector(LKJCholesky(model.args.d, 1.0))
     x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
     return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
 
 function Random.rand(
-    rng::Random.AbstractRNG,
-    ::Type{NamedTuple},
-    model::Model{typeof(demo_lkjchol)},
+    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::Model{typeof(demo_lkjchol)}
 )
     x = rand(rng, LKJCholesky(model.args.d, 1.0))
     return (x=x,)
