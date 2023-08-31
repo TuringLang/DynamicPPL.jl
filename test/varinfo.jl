@@ -359,11 +359,11 @@
 
     @testset "unflatten + linking" begin
         @testset "Model: $(model.f)" for model in [
-            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints()
+            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
         ]
-            original_value = rand(model)
+            value_true = rand(model)
             varnames = DynamicPPL.TestUtils.varnames(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, original_value, varnames)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 if varinfo isa SimpleVarInfo{<:NamedTuple}
                     # NOTE: this is broken since we'll end up trying to set
@@ -378,12 +378,26 @@
                     @test_broken false
                     continue
                 end
+
                 varinfo_linked = DynamicPPL.link!!(deepcopy(varinfo), model)
                 @test length(varinfo[:]) > length(varinfo_linked[:])
                 varinfo_linked_unflattened = DynamicPPL.unflatten(
                     varinfo_linked, varinfo_linked[:]
                 )
                 @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
+
+                lp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
+                value_linked_true, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, value_true...
+                )
+
+                lp = logjoint(model, varinfo)
+                @test lp ≈ lp_true
+                lp_linked = logjoint(model, varinfo_linked)
+                @test lp_linked ≈ lp_linked_true
+
+                # TODO: Compare values once we are no longer working with `NamedTuple` for
+                # the true values, e.g. `value_true`.
             end
         end
     end
