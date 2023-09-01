@@ -949,8 +949,12 @@ Leaf(xs...) = Leaf(xs)
 # will _not_ unflatten `Leaf`s.
 # Note that this is similar to how `Base.iterate` is implemented for `Real`::
 #
-#    julia> Base.iterate(1)
+#    julia> iterate(1)
 #    (1, nothing)
+#
+# One immediate example where this becomes in our scenario is that we might
+# have `missing` values in our data, which does _not_ have an `iterate`
+# implemented. Calling `Iterators.flatten` on this would cause an error.
 Base.iterate(leaf::Leaf) = leaf, nothing
 Base.iterate(::Leaf, _) = nothing
 
