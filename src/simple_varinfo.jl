@@ -259,6 +259,8 @@ end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
+getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
+
 setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
 acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 
