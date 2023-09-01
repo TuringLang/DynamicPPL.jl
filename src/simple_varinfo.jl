@@ -264,14 +264,6 @@ getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
 setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
 acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
 
-"""
-    keys(vi::SimpleVarInfo)
-
-Return an iterator of keys present in `vi`.
-"""
-Base.keys(vi::SimpleVarInfo) = keys(vi.values)
-Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
-
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
     return vi
@@ -281,6 +273,14 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] += logp
     return vi
 end
+
+"""
+    keys(vi::SimpleVarInfo)
+
+Return an iterator of keys present in `vi`.
+"""
+Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     if !(svi.transformation isa NoTransformation)
