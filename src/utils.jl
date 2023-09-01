@@ -914,6 +914,18 @@ julia> # `UpperTriangular`
 (x[1,1], 1)
 (x[1,2], 3)
 (x[2,2], 4)
+
+julia> # `Cholesky` with lower-triangular
+       foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'L', 0)))
+(x[1,1], 1.0)
+(x[2,1], 0.0)
+(x[2,2], 1.0)
+
+julia> # `Cholesky` with upper-triangular
+       foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'U', 0)))
+(x[1,1], 1.0)
+(x[1,2], 0.0)
+(x[2,2], 1.0)
 ```
 """
 function varname_and_value_leaves(vn::VarName, x)
