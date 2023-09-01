@@ -388,7 +388,7 @@ end
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their linked space, using the transformation `t`.
+Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`. 
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -458,7 +458,7 @@ end
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their constrained space, using the (inverse of)
+Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
 transformation `t`.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
