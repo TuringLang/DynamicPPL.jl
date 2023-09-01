@@ -501,6 +501,8 @@ function splitlens(condition, lens)
     return current_parent, current_child, condition(current_parent)
 end
 
+# HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
+# and https://github.com/JuliaFolds/BangBang.jl/pull/238.
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
 function BangBang.possible(
     ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
