@@ -94,3 +94,15 @@ function invlink!!(
         NoTransformation(),
     )
 end
+
+function link(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return link!!(t, deepcopy(vi), spl, model)
+end
+
+function invlink(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink!!(t, deepcopy(vi), spl, model)
+end

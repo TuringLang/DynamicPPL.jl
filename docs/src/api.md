@@ -243,6 +243,8 @@ DynamicPPL.StaticTransformation
 DynamicPPL.istrans
 DynamicPPL.settrans!!
 DynamicPPL.transformation
+DynamicPPL.link
+DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.default_transformation

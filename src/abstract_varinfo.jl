@@ -368,7 +368,8 @@ function settrans!! end
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transforms the variables in `vi` to their linked space, using the transformation `t`.
+Transform the variables in `vi` to their linked space, using the transformation `t`,
+mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -384,11 +385,30 @@ function link!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 end
 
 """
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`. 
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`invlink`](@ref).
+"""
+link(vi::AbstractVarInfo, model::Model) = link(deepcopy(vi), SampleFromPrior(), model)
+function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
+    return link(t, deepcopy(vi), SampleFromPrior(), model)
+end
+function link(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    # Use `default_transformation` to decide which transformation to use if none is specified.
+    return link(default_transformation(model, vi), deepcopy(vi), spl, model)
+end
+
+"""
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space, using the (inverse of) 
-transformation `t`.
+transformation `t`, mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -432,6 +452,25 @@ function invlink!!(
     lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
+end
+
+"""
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
+transformation `t`.
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`link`](@ref).
+"""
+invlink(vi::AbstractVarInfo, model::Model) = invlink(vi, SampleFromPrior(), model)
+function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
+    return invlink(t, vi, SampleFromPrior(), model)
+end
+function invlink(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    return invlink(transformation(vi), vi, spl, model)
 end
 
 """

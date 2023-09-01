@@ -363,7 +363,11 @@ Set the values of all the variables in `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-setall!(vi::UntypedVarInfo, val) = vi.metadata.vals .= val
+function setall!(vi::UntypedVarInfo, val)
+    for r in vi.metadata.ranges
+        vi.metadata.vals[r] .= val[r]
+    end
+end
 setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
 @generated function _setall!(metadata::NamedTuple{names}, val) where {names}
     expr = Expr(:block)
@@ -885,7 +889,6 @@ end
 end
 
 function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
-    @debug "X -> ℝ for $(vn)..."
     # TODO: Use inplace versions to avoid allocations
     y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
     yvec = vectorize(dist, y)
@@ -897,6 +900,142 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     setval!(vi, yvec, vn)
     acclogp!!(vi, -logjac)
     return vi
+end
+
+function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
+    return _link(varinfo)
+end
+
+function _link(varinfo::UntypedVarInfo)
+    varinfo = deepcopy(varinfo)
+    return VarInfo(
+        _link_metadata!(varinfo, varinfo.metadata),
+        Base.Ref(getlogp(varinfo)),
+        Ref(get_num_produce(varinfo)),
+    )
+end
+
+function _link(varinfo::TypedVarInfo)
+    varinfo = deepcopy(varinfo)
+    md = map(Base.Fix1(_link_metadata!, varinfo), varinfo.metadata)
+    # TODO: Update logp, etc.
+    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+end
+
+function _link_metadata!(varinfo::VarInfo, metadata::Metadata)
+    vns = metadata.vns
+
+    # Construct the new transformed values, and keep track of their lengths.
+    vals_new = map(vns) do vn
+        # Return early if we're already in unconstrained space.
+        if istrans(varinfo, vn)
+            return metadata.vals[getrange(metadata, vn)]
+        end
+
+        # Transform to constrained space.
+        x = getval(varinfo, vn)
+        dist = getdist(varinfo, vn)
+        f = link_transform(dist)
+        y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+        # Vectorize value.
+        yvec = vectorize(dist, y)
+        # Accumulate the log-abs-det jacobian correction.
+        acclogp!!(varinfo, -logjac)
+        # Mark as no longer transformed.
+        settrans!!(varinfo, true, vn)
+        # Return the vectorized transformed value.
+        return yvec
+    end
+
+    # Determine new ranges.
+    ranges_new = similar(metadata.ranges)
+    offset = 0
+    for (i, v) in enumerate(vals_new)
+        r_start, r_end = offset + 1, length(v) + offset
+        offset = r_end
+        ranges_new[i] = r_start:r_end
+    end
+
+    # Now we just create a new metadata with the new `vals` and `ranges`.
+    return Metadata(
+        metadata.idcs,
+        metadata.vns,
+        ranges_new,
+        reduce(vcat, vals_new),
+        metadata.dists,
+        metadata.gids,
+        metadata.orders,
+        metadata.flags,
+    )
+end
+
+function invlink(
+    ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
+)
+    return _invlink(varinfo)
+end
+
+function _invlink(varinfo::UntypedVarInfo)
+    varinfo = deepcopy(varinfo)
+    return VarInfo(
+        _invlink_metadata!(varinfo, varinfo.metadata),
+        Base.Ref(getlogp(varinfo)),
+        Ref(get_num_produce(varinfo)),
+    )
+end
+
+function _invlink(varinfo::TypedVarInfo)
+    varinfo = deepcopy(varinfo)
+    md = map(Base.Fix1(_invlink_metadata!, varinfo), varinfo.metadata)
+    # TODO: Update logp, etc.
+    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+end
+
+function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
+    vns = metadata.vns
+
+    # Construct the new transformed values, and keep track of their lengths.
+    vals_new = map(vns) do vn
+        # Return early if we're already in constrained space.
+        if !istrans(varinfo, vn)
+            return metadata.vals[getrange(metadata, vn)]
+        end
+
+        # Transform to constrained space.
+        y = getval(varinfo, vn)
+        dist = getdist(varinfo, vn)
+        f = invlink_transform(dist)
+        x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+        # Vectorize value.
+        xvec = vectorize(dist, x)
+        # Accumulate the log-abs-det jacobian correction.
+        acclogp!!(varinfo, -logjac)
+        # Mark as no longer transformed.
+        settrans!!(varinfo, false, vn)
+        # Return the vectorized transformed value.
+        return xvec
+    end
+
+    # Determine new ranges.
+    ranges_new = similar(metadata.ranges)
+    offset = 0
+    for (i, v) in enumerate(vals_new)
+        r_start, r_end = offset + 1, length(v) + offset
+        offset = r_end
+        ranges_new[i] = r_start:r_end
+    end
+
+    # Now we just create a new metadata with the new `vals` and `ranges`.
+    return Metadata(
+        metadata.idcs,
+        metadata.vns,
+        ranges_new,
+        reduce(vcat, vals_new),
+        metadata.dists,
+        metadata.gids,
+        metadata.orders,
+        metadata.flags,
+    )
 end
 
 """
