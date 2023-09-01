@@ -514,7 +514,17 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
-# NOTE: Makes it possible to use ranges, etc. for setting a vector.
+# HACK: Makes it possible to use ranges, etc. for setting a vector.
+# For example, without this hack, BangBang.jl will consider
+#
+#    x[1:2] = [1, 2]
+#
+# as NOT supported. This results is calling the immutable
+# `BangBang.setindex` instead, which also ends up expanding the
+# type of the containing array (`x` in the above scenario) to
+# have element type `Any`.
+# The below code just, correctly, marks this as possible and
+# thus we hit the mutable `setindex!` instead.
 function BangBang.possible(
     ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractVector{<:Integer}
 ) where {C<:AbstractVector,T<:AbstractVector}
