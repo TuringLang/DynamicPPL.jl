@@ -932,7 +932,6 @@ function varname_and_value_leaves(vn::VarName, x)
     return Iterators.map(value, Iterators.flatten(varname_and_value_leaves_inner(vn, x)))
 end
 
-
 """
     Leaf{T}
 
