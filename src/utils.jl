@@ -940,8 +940,18 @@ end
 
 Leaf(xs...) = Leaf(xs)
 
-# Allows us to just use `Leaf` to "terminate" recursion in `Iterators.flatten`.
-Base.iterate(leaf::Leaf) = leaf, leaf
+# Allow us to treat `Leaf` as an iterator containing a single element.
+# Something like an `[x]` would also be an iterator with a single element,
+# but when we call `flatten` on this, it would also iterate over `x`,
+# unflattening that too. By making `Leaf` a single-element iterator, which
+# returns itself, we can call `iterate` on this as many times as we like
+# without causing any change. The result is that `Iterators.flatten`
+# will _not_ unflatten `Leaf`s.
+# Note that this is similar to how `Base.iterate` is implemented for `Real`::
+#
+#    julia> Base.iterate(1)
+#    (1, nothing)
+Base.iterate(leaf::Leaf) = leaf, nothing
 Base.iterate(::Leaf, _) = nothing
 
 # Convenience.
