@@ -43,16 +43,22 @@ Return a tuple of instances for different implementations of `AbstractVarInfo` w
 each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
 """
 function setup_varinfos(model::Model, example_values::NamedTuple, varnames)
-    # <:VarInfo
+    # VarInfo
     vi_untyped = VarInfo()
     model(vi_untyped)
     vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
-    # <:SimpleVarInfo
+    # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
 
+    # SimpleVarInfo{<:Any,<:Ref}
+    svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
+    svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
+
     lp = getlogp(vi_typed)
-    return map((vi_untyped, vi_typed, svi_typed, svi_untyped)) do vi
+    return map((
+        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
+    )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
     end
