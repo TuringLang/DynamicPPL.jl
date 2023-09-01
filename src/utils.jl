@@ -932,8 +932,16 @@ function varname_and_value_leaves(vn::VarName, x)
     return Iterators.map(value, Iterators.flatten(varname_and_value_leaves_inner(vn, x)))
 end
 
-# Simple struct used to represent a varname-value pair even if we use
-# something like `Iterators.flatten`.
+
+"""
+    Leaf{T}
+
+A container that represents the leaf of a nested structure, implementing
+`iterate` to return itself.
+
+This is particularly useful in conjunction with `Iterators.flatten` to
+prevent flattening of nested structures.
+"""
 struct Leaf{T}
     value::T
 end
