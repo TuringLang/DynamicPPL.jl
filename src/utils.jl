@@ -1019,7 +1019,11 @@ end
 # Special types.
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
-    return varname_and_value_leaves_inner(vn, x.UL)
+    return if x.uplo == 'L'
+        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:L}(), x.L)
+    else
+        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:U}(), x.U)
+    end
 end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
