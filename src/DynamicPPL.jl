@@ -9,6 +9,7 @@ using OrderedCollections: OrderedDict
 using AbstractMCMC: AbstractMCMC
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using ChainRulesCore: ChainRulesCore
+using DensityInterface: DensityInterface
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
