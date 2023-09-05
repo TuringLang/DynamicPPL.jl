@@ -1064,6 +1064,57 @@ end
     return Expr(:||, false, out...)
 end
 
+"""
+    nested_getindex(vi::VarInfo, vn)
+
+Return the value corresponding to `vn` in `vi`.
+"""
+nested_getindex(vi::VarInfo, vn::VarName) = _nested_getindex(vi, getmetadata(vi, vn), vn)
+function _nested_getindex(varinfo::VarInfo, md::Metadata, vn::VarName)
+    # Check if `vn` is in `md.vns`.
+    vns = md.vns
+    vn in vns && return getindex(varinfo, vn)
+
+    # If that's not the case, we check if `vn` is subsumed by any of `md.vns`.
+    i = findfirst(Base.Fix2(subsumes, vn), vns)
+    i === nothing && error(KeyError(vn))
+
+    # If `vn` is subsumed, we reconstruct the value from `md`, and act
+    # on the reconstructed value.
+    vn_parent = vns[i]
+    dist = getdist(md, vn_parent)
+    val = getindex(varinfo, vn_parent, dist)
+    # Split the varname into its tail lens.
+    lens = remove_parent_lens(vn_parent, vn)
+    # Get the value using `lens`.
+    return get(val, lens)
+end
+
+nested_setindex!(vi::VarInfo, val, vn::VarName) = _nested_setindex!(vi, getmetadata(vi, vn), val, vn)
+function _nested_setindex!(vi::VarInfo, md::Metadata, val, vn::VarName)
+    # If `vn` is in `vns`, then we can just use the standard `setindex!`.
+    vns = md.vns
+    vn in vns && return setindex!(vi, val, vn)
+
+    # Otherwise, we need to check if either of the `vns` subsumes `vn`.
+    i = findfirst(Base.Fix2(subsumes, vn), vns)
+    i === nothing && error(KeyError(vn))
+
+    vn_parent = vns[i]
+    dist = getdist(md, vn_parent)
+    val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
+    # Split the varname into its tail lens.
+    lens = remove_parent_lens(vn_parent, vn)
+    # Update the value for the parent.
+    val_parent_updated = set!!(val_parent, lens, val)
+    return setindex!(vi, val_parent_updated, vn_parent)
+end
+
+function nested_setindex!!(vi::VarInfo, val, vn::VarName)
+    nested_setindex!(vi, val, vn)
+    return vi
+end
+
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
 getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
