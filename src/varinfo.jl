@@ -1182,7 +1182,8 @@ The value(s) may or may not be transformed to Euclidean space.
 """
 setindex!(vi::VarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
 function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
-    return (setindex!(vi, val, vn); return vi)
+    setindex!(vi, val, vn)
+    return vi
 end
 
 """
