@@ -1058,3 +1058,26 @@ function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTrian
         for I in CartesianIndices(x) if I[1] <= I[2]
     )
 end
+
+# HACK: This should not be here.
+@generated function ConstructionBase.setproperties(
+    C::LinearAlgebra.Cholesky,
+    patch::NamedTuple{names}
+) where {names}
+    # Return early if we need be.
+    (:L in names && :U in names) && return :(error("Cannot set both L and U"))
+    UL_expr = if :L in names
+        :(uplo === 'U' ? transpose(patch.L) : patch.L)
+    elseif :U in names
+        :(uplo === 'L' ? transpose(patch.U) : patch.U)
+    else
+        :(C.UL)
+    end
+
+    return quote
+        uplo = $(:uplo in names ? :(patch.uplo) : :(C.uplo))
+        UL = $UL_expr
+
+        return LinearAlgebra.Cholesky(UL, uplo, C.info)
+    end
+end
