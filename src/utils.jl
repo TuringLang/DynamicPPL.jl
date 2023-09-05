@@ -501,6 +501,19 @@ function splitlens(condition, lens)
     return current_parent, current_child, condition(current_parent)
 end
 
+function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
+    _, child, issuccess = splitlens(getlens(vn_child)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        VarName(vn_child, l) == vn_parent
+    end
+
+    if !issuccess
+        error("Could not find $vn_parent in $vn_child")
+    end
+
+    return child
+end
+
 # HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
 # and https://github.com/JuliaFolds/BangBang.jl/pull/238.
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
