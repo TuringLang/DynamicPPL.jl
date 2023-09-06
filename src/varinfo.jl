@@ -1064,37 +1064,6 @@ end
     return Expr(:||, false, out...)
 end
 
-"""
-    nested_getindex(vi::VarInfo, vn)
-
-Return the value corresponding to `vn` in `vi`.
-"""
-nested_getindex(vi::VarInfo, vn::VarName) = _nested_getindex(vi, getmetadata(vi, vn), vn)
-function _nested_getindex(varinfo::VarInfo, md::Metadata, vn::VarName)
-    # Check if `vn` is in `md.vns`.
-    vns = md.vns
-    vn in vns && return getindex(varinfo, vn)
-
-    # If that's not the case, we check if `vn` is subsumed by any of `md.vns`.
-    i = findfirst(Base.Fix2(subsumes, vn), vns)
-    i === nothing && error(KeyError(vn))
-
-    # If `vn` is subsumed, we reconstruct the value from `md`, and act
-    # on the reconstructed value.
-    vn_parent = vns[i]
-    dist = getdist(md, vn_parent)
-    val = getindex(varinfo, vn_parent, dist)
-    # Split the varname into its tail lens.
-    lens = remove_parent_lens(vn_parent, vn)
-    # Get the value using `lens`.
-    return get(val, lens)
-end
-
-function nested_setindex!(vi::VarInfo, val, vn::VarName)
-    res, vn_updated = nested_setindex_maybe!(vi, val, vn)
-    vn_updated !== nothing || error(KeyError(vn))
-    return res
-end
 function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
     return _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
 end
@@ -1128,11 +1097,6 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     val_parent_updated = set!!(val_parent, lens, val)
     setindex!(vi, val_parent_updated, vn_parent)
     return vn_parent
-end
-
-function nested_setindex!!(vi::VarInfo, val, vn::VarName)
-    nested_setindex!(vi, val, vn)
-    return vi
 end
 
 # The default getindex & setindex!() for get & set values
