@@ -1091,16 +1091,31 @@ function _nested_getindex(varinfo::VarInfo, md::Metadata, vn::VarName)
 end
 
 function nested_setindex!(vi::VarInfo, val, vn::VarName)
-    return _nested_setindex!(vi, getmetadata(vi, vn), val, vn)
+    res, vn_updated = nested_setindex_maybe!(vi, val, vn)
+    vn_updated !== nothing || error(KeyError(vn))
+    return res
 end
-function _nested_setindex!(vi::VarInfo, md::Metadata, val, vn::VarName)
+function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
+    return _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
+end
+function nested_setindex_maybe!(vi::VarInfo{<:NamedTuple{names}}, val, vn::VarName{sym}) where {names,sym}
+    return if sym in names
+        _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
+    else
+        nothing
+    end
+end
+function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     # If `vn` is in `vns`, then we can just use the standard `setindex!`.
     vns = md.vns
-    vn in vns && return setindex!(vi, val, vn)
+    if vn in vns
+        setindex!(vi, val, vn)
+        return vn
+    end
 
     # Otherwise, we need to check if either of the `vns` subsumes `vn`.
     i = findfirst(Base.Fix2(subsumes, vn), vns)
-    i === nothing && error(KeyError(vn))
+    i === nothing && return nothing
 
     vn_parent = vns[i]
     dist = getdist(md, vn_parent)
@@ -1109,7 +1124,8 @@ function _nested_setindex!(vi::VarInfo, md::Metadata, val, vn::VarName)
     lens = remove_parent_lens(vn_parent, vn)
     # Update the value for the parent.
     val_parent_updated = set!!(val_parent, lens, val)
-    return setindex!(vi, val_parent_updated, vn_parent)
+    setindex!(vi, val_parent_updated, vn_parent)
+    return vn_parent
 end
 
 function nested_setindex!!(vi::VarInfo, val, vn::VarName)

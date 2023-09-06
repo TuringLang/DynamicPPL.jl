@@ -21,12 +21,21 @@ function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain::MCMCCha
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
         if DynamicPPL.supports_varname_indexing(chain)
+            # First we need to set every variable to be resampled.
+            for vn in keys(varinfo)
+                DynamicPPL.set_flag!(varinfo, vn, "del")
+            end
+            # Then we set the variables in `varinfo` from `chain`.
             for vn in keys(chain.info.varname_to_symbol)
-                # FIXME: Make it so we can support `chain[sample_idx, vn, chain_idx]`
-                # indexing instead of the `chain[vn][sample_idx, chain_idx]` below.
-                DynamicPPL.nested_setindex!(
+                vn_updated = DynamicPPL.nested_setindex_maybe!(
                     varinfo, _getindex(chain, sample_idx, vn, chain_idx), vn
                 )
+
+                # Unset the `del` flag if we found something.
+                if vn_updated !== nothing
+                    # NOTE: This will be triggered even if only a subset of a variable has been set!
+                    DynamicPPL.unset_flag!(varinfo, vn_updated, "del")
+                end
             end
         else
             # NOTE: This can be quite unreliable (but will warn the uesr in that case).

@@ -296,7 +296,7 @@ end
 
         # Construct the chain.
         syms = map(Symbol, vns)
-        vns_to_syms = OrderedDict(zip(vns, syms))
+        vns_to_syms = OrderedDict{VarName,Any}(zip(vns, syms))
 
         chain = MCMCChains.Chains(
             permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
@@ -305,6 +305,25 @@ end
 
         # Test!
         results = generated_quantities(model, chain)
+        for (x_true, result) in zip(xs, results)
+            @test x_true.UL == result.x.UL
+        end
+
+        # With variables that aren't in the `model`.
+        vns_to_syms_with_extra = let d = deepcopy(vns_to_syms)
+            d[@varname(y)] = :y
+            d
+        end
+        vals_with_extra = map(enumerate(vals)) do (i, v)
+            vcat(v, i)
+        end
+        chain_with_extra = MCMCChains.Chains(
+            permutedims(stack(vals_with_extra)), vcat(syms, [:y]);
+            info=(varname_to_symbol=vns_to_syms_with_extra,)
+        )
+        display(chain_with_extra)
+        # Test!
+        results = generated_quantities(model, chain_with_extra)
         for (x_true, result) in zip(xs, results)
             @test x_true.UL == result.x.UL
         end
