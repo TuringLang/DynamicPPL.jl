@@ -1098,7 +1098,9 @@ end
 function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
     return _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
 end
-function nested_setindex_maybe!(vi::VarInfo{<:NamedTuple{names}}, val, vn::VarName{sym}) where {names,sym}
+function nested_setindex_maybe!(
+    vi::VarInfo{<:NamedTuple{names}}, val, vn::VarName{sym}
+) where {names,sym}
     return if sym in names
         _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
     else
