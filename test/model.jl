@@ -318,8 +318,9 @@ end
             vcat(v, i)
         end
         chain_with_extra = MCMCChains.Chains(
-            permutedims(stack(vals_with_extra)), vcat(syms, [:y]);
-            info=(varname_to_symbol=vns_to_syms_with_extra,)
+            permutedims(stack(vals_with_extra)),
+            vcat(syms, [:y]);
+            info=(varname_to_symbol=vns_to_syms_with_extra,),
         )
         display(chain_with_extra)
         # Test!
