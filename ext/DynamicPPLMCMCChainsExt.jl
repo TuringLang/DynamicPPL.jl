@@ -8,6 +8,12 @@ function DynamicPPL.supports_varname_indexing(chain::MCMCChains.Chains)
     return _has_varname_to_symbol(chain.info)
 end
 
+# TODO: Add proper overload of `Base.getindex` to Turing.jl?
+function _getindex(c::MCMCChains.Chains, sample_idx, vn::DynamicPPL.VarName, chain_idx)
+    DynamicPPL.supports_varname_indexing(c) || error("Chains do not support indexing using $vn.")
+    return c[sample_idx, c.info.varname_to_symbol[vn], chain_idx]
+end
+
 function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     chain_parameters = MCMCChains.get_sections(chain, :parameters)
     varinfo = DynamicPPL.VarInfo(model)
@@ -17,7 +23,7 @@ function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain::MCMCCha
             for vn in keys(chain.info.varname_to_symbol)
                 # FIXME: Make it so we can support `chain[sample_idx, vn, chain_idx]`
                 # indexing instead of the `chain[vn][sample_idx, chain_idx]` below.
-                DynamicPPL.nested_setindex!(varinfo, chain[vn][sample_idx, chain_idx], vn)
+                DynamicPPL.nested_setindex!(varinfo, _getindex(chain, sample_idx, vn, chain_idx), vn)
             end
         else
             # NOTE: This can be quite unreliable (but will warn the uesr in that case).
