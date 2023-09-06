@@ -1,13 +1,3 @@
-# HACK: Don't do this.
-function Base.getindex(c::MCMCChains.Chains, vn::VarName)
-    DynamicPPL.supports_varname_indexing(c) || error("Chains do not support indexing using $vn.")
-    return c[:, c.info.varname_to_symbol[vn], :]
-end
-function Base.getindex(c::MCMCChains.Chains, vns::AbstractVector{<:VarName})
-    DynamicPPL.supports_varname_indexing(c) || error("Chains do not support indexing using $vn.")
-    return c[:, map(Base.Fix1(getindex, c.info.varname_to_symbol), vns), :]
-end
-
 @testset "generated_quantities" begin
     n = 10
     d = 2
