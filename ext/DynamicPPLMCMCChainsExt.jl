@@ -15,8 +15,8 @@ function _getindex(c::MCMCChains.Chains, sample_idx, vn::DynamicPPL.VarName, cha
     return c[sample_idx, c.info.varname_to_symbol[vn], chain_idx]
 end
 
-function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    chain_parameters = MCMCChains.get_sections(chain, :parameters)
+function DynamicPPL.generated_quantities(model::DynamicPPL.Model, chain_full::MCMCChains.Chains)
+    chain = MCMCChains.get_sections(chain_full, :parameters)
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
