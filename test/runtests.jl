@@ -11,6 +11,7 @@ using MCMCChains
 using Tracker
 using Zygote
 using Setfield
+using Compat
 
 using Distributed
 using LinearAlgebra
