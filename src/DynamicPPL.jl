@@ -175,4 +175,14 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 
+if !isdefined(Base, :get_extension)
+    using Requires
+end
+
+function __init__()
+    @static if !isdefined(Base, :get_extension)
+        @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include("../ext/DynamicPPLMCMCChainsExt.jl")
+    end
+end
+
 end # module

@@ -1,7 +1,12 @@
 module DynamicPPLMCMCChainsExt
 
-using DynamicPPL: DynamicPPL
-using MCMCChains: MCMCChains
+if isdefined(Base, :get_extension)
+    using DynamicPPL: DynamicPPL
+    using MCMCChains: MCMCChains
+else
+    using ..DynamicPPL: DynamicPPL
+    using ..MCMCChains: MCMCChains
+end
 
 _has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
 function DynamicPPL.supports_varname_indexing(chain::MCMCChains.Chains)
