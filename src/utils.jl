@@ -522,11 +522,9 @@ julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1].b))
 
 julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a))
 ERROR: Could not find x.a in x.a
-...
 
 julia> DynamicPPL.remove_parent_lens(@varname(x.a[2]), @varname(x.a[1]))
 ERROR: Could not find x.a[2] in x.a[1]
-...
 ```
 """
 function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
