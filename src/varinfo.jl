@@ -1090,7 +1090,9 @@ function _nested_getindex(varinfo::VarInfo, md::Metadata, vn::VarName)
     return get(val, lens)
 end
 
-nested_setindex!(vi::VarInfo, val, vn::VarName) = _nested_setindex!(vi, getmetadata(vi, vn), val, vn)
+function nested_setindex!(vi::VarInfo, val, vn::VarName)
+    return _nested_setindex!(vi, getmetadata(vi, vn), val, vn)
+end
 function _nested_setindex!(vi::VarInfo, md::Metadata, val, vn::VarName)
     # If `vn` is in `vns`, then we can just use the standard `setindex!`.
     vns = md.vns

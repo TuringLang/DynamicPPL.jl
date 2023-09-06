@@ -1061,8 +1061,7 @@ end
 
 # HACK: This should not be here.
 @generated function ConstructionBase.setproperties(
-    C::LinearAlgebra.Cholesky,
-    patch::NamedTuple{names}
+    C::LinearAlgebra.Cholesky, patch::NamedTuple{names}
 ) where {names}
     # Return early if we need be.
     (:L in names && :U in names) && return :(error("Cannot set both L and U"))

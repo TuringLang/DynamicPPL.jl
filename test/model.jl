@@ -299,9 +299,7 @@ end
         vns_to_syms = OrderedDict(zip(vns, syms))
 
         chain = MCMCChains.Chains(
-            permutedims(stack(vals)),
-            syms;
-            info = (varname_to_symbol = vns_to_syms,)
+            permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
         )
         display(chain)
 
