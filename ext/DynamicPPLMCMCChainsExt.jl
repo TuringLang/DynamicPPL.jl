@@ -11,7 +11,7 @@ end
 _has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
 function _check_varname_indexing(c::MCMCChains.Chains)
     return DynamicPPL.supports_varname_indexing(c) ||
-        error("Chains do not support indexing using $vn.")
+           error("Chains do not support indexing using $vn.")
 end
 
 # A few methods needed.
