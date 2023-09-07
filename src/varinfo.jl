@@ -1636,7 +1636,26 @@ end
 function setval_and_resample!(
     vi::VarInfoOrThreadSafeVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
 )
-    return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+    if supports_varname_indexing(chains)
+        # First we need to set every variable to be resampled.
+        for vn in keys(vi)
+            set_flag!(vi, vn, "del")
+        end
+        # Then we set the variables in `varinfo` from `chain`.
+        for vn in varnames(chains)
+            vn_updated = nested_setindex_maybe!(
+                vi, getindex_varname(chains, sample_idx, vn, chain_idx), vn
+            )
+
+            # Unset the `del` flag if we found something.
+            if vn_updated !== nothing
+                # NOTE: This will be triggered even if only a subset of a variable has been set!
+                unset_flag!(vi, vn_updated, "del")
+            end
+        end
+    else
+        setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+    end
 end
 
 function _setval_and_resample_kernel!(

@@ -1257,9 +1257,6 @@ function generated_quantities(model::Model, chain::AbstractChains)
     end
 end
 
-# HACK: Be better.
-supports_varname_indexing(chain::AbstractChains) = false
-
 """
     generated_quantities(model::Model, parameters::NamedTuple)
     generated_quantities(model::Model, values, keys)

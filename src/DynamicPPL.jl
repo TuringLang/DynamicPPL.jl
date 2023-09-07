@@ -154,6 +154,7 @@ const LEGACY_WARNING = """
 # Necessary forward declarations
 include("utils.jl")
 include("selector.jl")
+include("chains.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
