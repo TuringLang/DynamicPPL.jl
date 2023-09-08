@@ -1064,6 +1064,41 @@ end
     return Expr(:||, false, out...)
 end
 
+function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
+    return _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
+end
+function nested_setindex_maybe!(
+    vi::VarInfo{<:NamedTuple{names}}, val, vn::VarName{sym}
+) where {names,sym}
+    return if sym in names
+        _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
+    else
+        nothing
+    end
+end
+function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
+    # If `vn` is in `vns`, then we can just use the standard `setindex!`.
+    vns = md.vns
+    if vn in vns
+        setindex!(vi, val, vn)
+        return vn
+    end
+
+    # Otherwise, we need to check if either of the `vns` subsumes `vn`.
+    i = findfirst(Base.Fix2(subsumes, vn), vns)
+    i === nothing && return nothing
+
+    vn_parent = vns[i]
+    dist = getdist(md, vn_parent)
+    val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
+    # Split the varname into its tail lens.
+    lens = remove_parent_lens(vn_parent, vn)
+    # Update the value for the parent.
+    val_parent_updated = set!!(val_parent, lens, val)
+    setindex!(vi, val_parent_updated, vn_parent)
+    return vn_parent
+end
+
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
 getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
@@ -1131,7 +1166,8 @@ The value(s) may or may not be transformed to Euclidean space.
 """
 setindex!(vi::VarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
 function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
-    return (setindex!(vi, val, vn); return vi)
+    setindex!(vi, val, vn)
+    return vi
 end
 
 """
@@ -1600,7 +1636,26 @@ end
 function setval_and_resample!(
     vi::VarInfoOrThreadSafeVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
 )
-    return setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+    if supports_varname_indexing(chains)
+        # First we need to set every variable to be resampled.
+        for vn in keys(vi)
+            set_flag!(vi, vn, "del")
+        end
+        # Then we set the variables in `varinfo` from `chain`.
+        for vn in varnames(chains)
+            vn_updated = nested_setindex_maybe!(
+                vi, getindex_varname(chains, sample_idx, vn, chain_idx), vn
+            )
+
+            # Unset the `del` flag if we found something.
+            if vn_updated !== nothing
+                # NOTE: This will be triggered even if only a subset of a variable has been set!
+                unset_flag!(vi, vn_updated, "del")
+            end
+        end
+    else
+        setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
+    end
 end
 
 function _setval_and_resample_kernel!(

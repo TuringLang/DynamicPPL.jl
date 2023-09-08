@@ -501,6 +501,42 @@ function splitlens(condition, lens)
     return current_parent, current_child, condition(current_parent)
 end
 
+"""
+    remove_parent_lens(vn_parent::VarName, vn_child::VarName)
+
+Remove the parent lens `vn_parent` from `vn_child`.
+
+# Examples
+```jldoctest
+julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a))
+(@lens _.a)
+
+julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a[1]))
+(@lens _.a[1])
+
+julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1]))
+(@lens _[1])
+
+julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1].b))
+(@lens _[1].b)
+
+julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a))
+ERROR: Could not find x.a in x.a
+
+julia> DynamicPPL.remove_parent_lens(@varname(x.a[2]), @varname(x.a[1]))
+ERROR: Could not find x.a[2] in x.a[1]
+```
+"""
+function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
+    _, child, issuccess = splitlens(getlens(vn_child)) do lens
+        l = lens === nothing ? Setfield.IdentityLens() : lens
+        VarName(vn_child, l) == vn_parent
+    end
+
+    issuccess || error("Could not find $vn_parent in $vn_child")
+    return child
+end
+
 # HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
 # and https://github.com/JuliaFolds/BangBang.jl/pull/238.
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
