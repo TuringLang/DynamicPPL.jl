@@ -1,5 +1,5 @@
 """
-    supports_chain_indexing(chain::AbstractChains)
+    supports_varname_indexing(chain::AbstractChains)
 
 Return `true` if `chain` supports indexing using `VarName` in place of the
 variable name index.
