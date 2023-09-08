@@ -1081,26 +1081,3 @@ function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTrian
         for I in CartesianIndices(x) if I[1] <= I[2]
     )
 end
-
-# TODO: Remove as soon as https://github.com/JuliaObjects/ConstructionBase.jl/pull/80 goes through.
-ConstructionBase.setproperties(C::LinearAlgebra.Cholesky, ::NamedTuple{()}) = C
-function ConstructionBase.setproperties(C::LinearAlgebra.Cholesky, patch::NamedTuple{(:L,)})
-    return LinearAlgebra.Cholesky(
-        C.uplo === 'U' ? permutedims(patch.L) : patch.L, C.uplo, C.info
-    )
-end
-function ConstructionBase.setproperties(C::LinearAlgebra.Cholesky, patch::NamedTuple{(:U,)})
-    return LinearAlgebra.Cholesky(
-        C.uplo === 'L' ? permutedims(patch.U) : patch.U, C.uplo, C.info
-    )
-end
-function ConstructionBase.setproperties(
-    C::LinearAlgebra.Cholesky, patch::NamedTuple{(:UL,)}
-)
-    return LinearAlgebra.Cholesky(patch.UL, C.uplo, C.info)
-end
-@nospecialize function ConstructionBase.setproperties(
-    C::LinearAlgebra.Cholesky, patch::NamedTuple
-)
-    return error("Can only patch one of :L, :U, :UL at the time")
-end
