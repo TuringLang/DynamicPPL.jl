@@ -678,7 +678,6 @@ module Issue537 end
         @test res == (1, (), 1, Int, NamedTuple())
     end
 
-
     @testset "issue #537: model with logging" begin
         # Make sure `Module` is valid to put in a model.
         @model demo_with_module() = Issue537
