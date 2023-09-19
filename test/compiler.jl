@@ -33,6 +33,8 @@ struct MyCoolStruct{T}
     a::T
 end
 
+module Issue537 end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
@@ -674,5 +676,17 @@ end
         # Empty `args...` and empty `kwargs...`.
         res = f_splat_test_2(1)()
         @test res == (1, (), 1, Int, NamedTuple())
+    end
+
+    @testset "issue #537: model with logging" begin
+        # Make sure `Module` is valid to put in a model.
+        @model demo_with_module() = Issue537
+        model = demo_with_module()
+        @test model() === Issue537
+
+        # And one explicit test for logging so know that is working.
+        @model demo_with_logging() = @info "hi"
+        model = demo_with_logging()
+        @test model() == nothing
     end
 end

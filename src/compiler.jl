@@ -561,14 +561,15 @@ function replace_returns(e::Expr)
 end
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
-add_return_to_last_statment!(body) = Expr(:return, body)
-function add_return_to_last_statment!(body::Expr)
+add_return_to_last_statment(body) = Expr(:return, body)
+function add_return_to_last_statment(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
     # Otherwise we replace the last statement with a `return` statement.
-    if !Meta.isexpr(body.args[end], :return)
-        body.args[end] = Expr(:return, body.args[end])
-    end
-    return body
+    Meta.isexpr(body.args[end], :return) && return body
+    # We need to copy the arguments since we are modifying them.
+    new_args = copy(body.args)
+    new_args[end] = Expr(:return, body.args[end])
+    return Expr(body.head, new_args...)
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -602,7 +603,7 @@ function build_output(modeldef, linenumbernode)
     kwargs = modeldef[:kwargs]
 
     ## Build the anonymous evaluator from the user-provided model definition.
-    evaluatordef = deepcopy(modeldef)
+    evaluatordef = copy(modeldef)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -624,7 +625,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(replace_returns(add_return_to_last_statment!(modeldef[:body])))
+        $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
     ## Build the model function.
