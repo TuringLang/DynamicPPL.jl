@@ -21,6 +21,9 @@ using DocStringExtensions
 
 using Random: Random
 
+# TODO: Remove these when it's possible.
+import Bijectors: link, invlink
+
 import Base:
     Symbol,
     ==,
