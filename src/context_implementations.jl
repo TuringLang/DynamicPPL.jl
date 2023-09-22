@@ -104,19 +104,6 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
-function tilde_assume(context::DebugContext, right, vn, vi)
-    record_pre_tilde!(context, vn, right, vi)
-    value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
-    record_post_tilde!(context, vn, right, value, logp, vi)
-    return value, logp, vi
-end
-function tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
-    record_pre_tilde!(context, vn, right, vi)
-    value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
-    record_post_tilde!(context, vn, right, value, logp, vi)
-    return value, logp, vi
-end
-
 """
     tilde_assume!!(context, right, vn, vi)
 
@@ -384,24 +371,6 @@ function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn,
     return dot_tilde_assume(
         rng, context.context, sampler, right, prefix.(Ref(context), vn), vi
     )
-end
-
-function dot_tilde_assume(context::DebugContext, right, left, vn, vi)
-    record_pre_dot_tilde!(context, vn, left, right, vi)
-    value, logp, vi = dot_tilde_assume(
-        childcontext(context), right, left, vn, vi
-    )
-    record_post_dot_tilde!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
-end
-
-function dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
-    record_pre_dot_tilde!(context, vn, left, right, vi)
-    value, logp, vi = dot_tilde_assume(
-        rng, childcontext(context), sampler, right, left, vn, vi
-    )
-    record_post_dot_tilde!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
 end
 
 """
