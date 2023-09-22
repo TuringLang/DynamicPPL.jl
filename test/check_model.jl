@@ -1,6 +1,8 @@
 @testset "check_model" begin
     @testset "context interface" begin
-        context = DynamicPPL.DebugContext()
+        # HACK: Require a model to instantiate it, so let's just grab one.
+        model = first(DynamicPPL.TestUtils.DEMO_MODELS)
+        context = DynamicPPL.DebugContext(model)
         DynamicPPL.TestUtils.test_context_interface(context)
     end
 
@@ -21,21 +23,50 @@
         end
     end
 
-    @testset "buggy model" begin
-        @model function buggy_demo_model()
-            x ~ Normal()
-            x ~ Normal()
-            return y ~ Normal()
-        end
-        buggy_model = buggy_demo_model()
+    @testset "multiple usage of same variable" begin
+        @testset "simple" begin
+            @model function buggy_demo_model()
+                x ~ Normal()
+                x ~ Normal()
+                return y ~ Normal()
+            end
+            buggy_model = buggy_demo_model()
 
-        @test_logs (:warn,) (:warn,) DynamicPPL.check_model(buggy_model)
-        issuccess, (trace, varnames_seen) = DynamicPPL.check_model(
-            buggy_model; context=SamplingContext(), record_varinfo=false
-        )
-        @test !issuccess
-        @test_throws ErrorException DynamicPPL.check_model(
-            buggy_model; error_on_failure=true
-        )
+            @test_logs (:warn,) (:warn,) DynamicPPL.check_model(buggy_model)
+            issuccess, (trace, varnames_seen) = DynamicPPL.check_model(
+                buggy_model; context=SamplingContext(), record_varinfo=false
+            )
+            @test !issuccess
+            @test_throws ErrorException DynamicPPL.check_model(
+                buggy_model; error_on_failure=true
+            )
+        end
+
+        @testset "submodel" begin
+            @model ModelInner() = x ~ Normal()
+            @model function ModelOuterBroken()
+                @submodel z = ModelInner()
+                x ~ Normal()
+            end
+            model = ModelOuterBroken()
+            @test_throws ErrorException check_model(model; error_on_failure=true)
+            
+            @model function ModelOuterWorking()
+                @submodel prefix=true z = ModelInner()
+                x ~ Normal()
+                return z
+            end
+            model = ModelOuterWorking()
+            @test first(check_model(model; error_on_failure=true))
+        end
+    end
+
+    @testset "incorrect use of condition" begin
+        @model function demo(x)
+            x ~ MvNormal(zeros(length(x)), I)
+        end
+        model = demo([1.0, missing])
+        model()
+        # @test_throws ErrorException model()
     end
 end

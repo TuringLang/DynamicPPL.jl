@@ -82,7 +82,6 @@ export AbstractVarInfo,
     vectorize,
     reconstruct,
     reconstruct!,
-    Sample,
     init,
     vectorize,
     OrderedDict,
@@ -129,7 +128,8 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     @submodel,
-    value_iterator_from_chain
+    value_iterator_from_chain,
+    check_model
 
 # Reexport
 using Distributions: loglikelihood
