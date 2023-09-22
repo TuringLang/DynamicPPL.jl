@@ -666,30 +666,118 @@ function fixed(context::FixedContext)
 end
 
 
-struct DebugContext{C,D<:AbstractDict} <: AbstractContext
+"""
+    DebugContext <: AbstractContext
+
+A context used for checking validity of a model.
+
+This context is used by [`check_model`](@ref) to check that a model is valid.
+"""
+struct DebugContext{C} <: AbstractContext
     context::C
-    varnames_seen::D
+    varnames_seen::OrderedDict{VarName,Int}
+    tildes_seen::Vector{Any}
+    error_on_failure::Bool
+    record_varinfo::Bool
 end
 
-function DebugContext(context::AbstractContext=DefaultContext(); varnames_seen=OrderedDict{VarName,Int}())
-    return DebugContext(context, varnames_seen)
+function DebugContext(
+    context::AbstractContext=DefaultContext();
+    varnames_seen=OrderedDict{VarName,Int}(),
+    tildes_seen=Vector{Any}(),
+    error_on_failure=false,
+    record_varinfo=false,
+)
+    return DebugContext(context, varnames_seen, tildes_seen, error_on_failure, record_varinfo)
 end
 
 NodeTrait(context::DebugContext) = IsParent()
 childcontext(context::DebugContext) = context.context
-setchildcontext(context::DebugContext, child) = DebugContext(child, context.varnames_seen)
+setchildcontext(context::DebugContext, child) = Setfield.@set context.context = child
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
     if haskey(context.varnames_seen, varname)
+        if context.error_on_failure
+            error("varname $varname used multiple times in model")
+        else
+            @warn "varname $varname used multiple times in model"
+        end
         context.varnames_seen[varname] += 1
     else
         context.varnames_seen[varname] = 1
     end
 end
 
-function check_model(model::Model, varinfo=VarInfo(model); context=DefaultContext(), error_on_failure=false)
+# tilde
+function record_pre_tilde!(context::DebugContext, vn, dist, varinfo)
+    record_varname!(context, vn, dist)
+    return nothing
+end
+
+function record_post_tilde!(context::DebugContext, vn, dist, value, logp, varinfo)
+    record = (varname=vn, right=dist, value=value, logp=logp)
+    if context.record_varinfo
+        record = merge(record, (varinfo=deepcopy(varinfo),))
+    end
+    push!(context.tildes_seen, record)
+    return nothing
+end
+
+# dot-tilde
+
+function record_pre_dot_tilde!(context::DebugContext, vn, left, right, varinfo)
+    # TODO: Can we do without the memory allocation here?
+    splat(record_varname!).(tuple.(broadcast_safe(context), vn, broadcast_safe(right)))
+    return nothing
+end
+
+_to_collection_maybe(x::Real) = [x]
+_to_collection_maybe(x) = x
+
+function record_post_dot_tilde!(
+    context::DebugContext, vns, left, right, value, logp, varinfo
+)
+    record = (varname=vns, left=left, right=right, value=value, logp=logp)
+    if context.record_varinfo
+        record = merge(record, (varinfo=deepcopy(varinfo),))
+    end
+    push!(context.tildes_seen, record)
+
+    return nothing
+end
+
+
+
+"""
+    check_model(model::Model[, varinfo]; context=DefaultContext(), error_on_failure=false)
+
+Check that `model` is valid, warning about any potential issues.
+
+This will check the model for the following issues:
+1. Repeated usage of the same varname in a model.
+2. Incorrectly treating a variable as random rather than fixed, and vice versa.
+
+# Arguments
+- `model::Model`: The model to check.
+- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+
+# Keyword Arguments
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
+
+# Returns
+- `trace::Vector{Any}`: The trace of the model.
+- `issuccess::Bool`: Whether the model check succeeded.
+"""
+function check_model(
+    model::Model,
+    varinfo=VarInfo(model);
+    context=DefaultContext(),
+    error_on_failure=false,
+    kwargs...
+)
     # Execute the model with the debug context.
-    debug_context = DebugContext(context)
+    debug_context = DebugContext(context; error_on_failure=error_on_failure, kwargs...)
     retval, varinfo_result = DynamicPPL.evaluate!!(model, varinfo, debug_context)
     # Verify that the number of times we've seen each varname is sensible.
     issuccess = check_varnames_seen(debug_context.varnames_seen)
@@ -698,7 +786,8 @@ function check_model(model::Model, varinfo=VarInfo(model); context=DefaultContex
         error("model check failed")
     end
 
-    return issuccess
+    trace = debug_context.tildes_seen
+    return issuccess, (trace=trace, varnames_seen=debug_context.varnames_seen)
 end
 
 function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})

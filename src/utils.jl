@@ -1081,3 +1081,7 @@ function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTrian
         for I in CartesianIndices(x) if I[1] <= I[2]
     )
 end
+
+broadcast_safe(x) = x
+broadcast_safe(x::Distribution) = (x,)
+broadcast_safe(x::AbstractContext) = (x,)
