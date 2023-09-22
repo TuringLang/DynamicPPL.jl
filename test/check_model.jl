@@ -66,7 +66,7 @@
             x ~ MvNormal(zeros(length(x)), I)
         end
         model = demo([1.0, missing])
-        model()
-        # @test_throws ErrorException model()
+        # model()
+        @test_throws MethodError model()
     end
 end
