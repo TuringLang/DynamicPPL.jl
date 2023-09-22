@@ -12,7 +12,8 @@
         @test issuccess
 
         # Check that the trace contains all the variables in the model.
-        vns_iter = mapreduce(vcat, trace) do record
+        assume_stmts = filter(Base.Fix2(hasproperty, :varname), trace)
+        vns_iter = mapreduce(vcat, assume_stmts) do record
             vec([record.varname;])
         end
         varnames_in_trace = Set(vns_iter)
