@@ -104,6 +104,15 @@ function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
+function tilde_assume(context::DebugContext, right, vn, vi)
+    record_varname!(context, vn, right)
+    return tilde_assume(childcontext(context), right, vn, vi)
+end
+function tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
+    record_varname!(context, vn, right)
+    return tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+end
+
 """
     tilde_assume!!(context, right, vn, vi)
 

@@ -664,3 +664,60 @@ function fixed(context::FixedContext)
     # precedence over decendants of `context`.
     return merge(context.values, fixed(childcontext(context)))
 end
+
+
+struct DebugContext{C,D<:AbstractDict} <: AbstractContext
+    context::C
+    varnames_seen::D
+end
+
+function DebugContext(context::AbstractContext=DefaultContext(); varnames_seen=OrderedDict{VarName,Int}())
+    return DebugContext(context, varnames_seen)
+end
+
+NodeTrait(context::DebugContext) = IsParent()
+childcontext(context::DebugContext) = context.context
+setchildcontext(context::DebugContext, child) = DebugContext(child, context.varnames_seen)
+
+function record_varname!(context::DebugContext, varname::VarName, dist)
+    if haskey(context.varnames_seen, varname)
+        context.varnames_seen[varname] += 1
+    else
+        context.varnames_seen[varname] = 1
+    end
+end
+
+function check_model(model::Model, varinfo=VarInfo(model); context=DefaultContext(), error_on_failure=false)
+    # Execute the model with the debug context.
+    debug_context = DebugContext(context)
+    retval, varinfo_result = DynamicPPL.evaluate!!(model, varinfo, debug_context)
+    # Verify that the number of times we've seen each varname is sensible.
+    issuccess = check_varnames_seen(debug_context.varnames_seen)
+
+    if !issuccess && error_on_failure
+        error("model check failed")
+    end
+
+    return issuccess
+end
+
+function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
+    issuccess = true
+    for (varname, count) in varnames_seen
+        if count == 0
+            @warn "varname $varname was never seen"
+            issuccess = false
+        elseif count > 1
+            @warn "varname $varname was seen $count times; it should only be seen once!"
+            issuccess = false
+        end
+    end
+
+    return issuccess
+end
+
+# Special behaviors.
+# 1. Chcek that we're not sampling the same variable twice.
+
+# 2. Heuristic checks to see if we're sampling something that the
+# user intended to be fixed or conditioned.
