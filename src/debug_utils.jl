@@ -236,10 +236,11 @@ end
 # observe
 function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
     # Check for `missing`s; these should not end up here.
-    @info "" left dist
     if _has_missings(left)
         error(
-            "Encountered missing value(s) in observe!\n"
+            "Encountered missing value(s) in observe!\n" *
+            "Remember that using `missing` to de-condition a variable is only " *
+            "supported for univariate distributions, not for $dist"
         )
     end
 end
