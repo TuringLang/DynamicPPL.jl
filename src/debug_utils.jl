@@ -9,6 +9,7 @@ using Distributions
 
 export check_model, DebugContext
 
+# Statements
 abstract type Stmt end
 
 function Base.show(io::IO, statements::Vector{Stmt})
@@ -147,12 +148,19 @@ A context used for checking validity of a model.
 This context is used by [`check_model`](@ref) to check that a model is valid.
 """
 struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
+    "model that is being run"
     model::M
+    "context used for running the model"
     context::C
+    "mapping from varnames to the number of times they have been seen"
     varnames_seen::OrderedDict{VarName,Int}
+    "tilde statements that have been executed"
     statements::Vector{Stmt}
+    "whether to throw an error if we encounter warnings"
     error_on_failure::Bool
+    "whether to record the tilde statements"
     record_statements::Bool
+    "whether to record the varinfo in every tilde statement"
     record_varinfo::Bool
 end
 
