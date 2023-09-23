@@ -104,7 +104,7 @@
             @model demo_observe(x) = x ~ Normal()
             isuccess, (trace, varnames_seen) = check_model(demo_observe(1.0))
             @test isuccess
-            @test startswith(string(trace), "observe: ")
+            @test occursin(r"observe: \d+\.\d+ ~ Normal", string(trace))
         end
     end
 end
