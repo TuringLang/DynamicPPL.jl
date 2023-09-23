@@ -1,3 +1,134 @@
+abstract type Stmt end
+
+function Base.show(io::IO, statements::Vector{Stmt})
+    for stmt in statements
+        println(io, stmt)
+    end
+end
+
+const RESULT_SYMBOL = "⟼"
+
+add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
+
+show_varname(io::IO, varname::VarName) = print(io, varname)
+function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
+    # TODO: Can we remove the `VarName` at the beginning of the show completely?
+    show(IOContext(io, :typeinfo => VarName), convert(Array{VarName,N}, varname))
+end
+
+function show_right(io::IO, d::Distribution)
+    pnames = fieldnames(typeof(d))
+    uml, namevals = Distributions._use_multline_show(d, pnames)
+    Distributions.show_oneline(io, d, namevals)
+end
+
+function show_right(io::IO, d::Distributions.ReshapedDistribution)
+    print(io, "reshape(")
+    show_right(io, d.dist)
+    print(io, ")")
+end
+
+function show_right(io::IO, d::Distributions.Product)
+    print(io, "product(")
+    for (i, dist) in enumerate(d.v)
+        if i > 1
+            print(io, ", ")
+        end
+        show_right(io, dist)
+    end
+    print(io, ")")
+end
+
+show_right(io::IO, d) = show(io, d)
+
+Base.@kwdef struct AssumeStmt <: Stmt
+    varname
+    right
+    value
+    logp
+    varinfo=nothing
+end
+
+function Base.show(io::IO, stmt::AssumeStmt)
+    io = add_io_context(io)
+    print(io, " assume: ")
+    show_varname(io, stmt.varname)
+    print(io, " ~ ")
+    show_right(io, stmt.right)
+    print(io, " ")
+    print(io, RESULT_SYMBOL)
+    print(io, " ")
+    print(io, stmt.value)
+    print(io, " (logprob = ")
+    print(io, stmt.logp)
+    print(io, ")")
+end
+
+Base.@kwdef struct ObserveStmt <: Stmt
+    right
+    logp
+    varinfo=nothing
+end
+
+function Base.show(io::IO, stmt::ObserveStmt)
+    io = add_io_context(io)
+    print(io, "observe: ")
+    show_right(io, stmt.right)
+    print(io, " (logprob = ")
+    print(io, stmt.logp)
+    print(io, ")")
+end
+
+Base.@kwdef struct DotAssumeStmt <: Stmt
+    varname
+    left
+    right
+    value
+    logp
+    varinfo=nothing
+end
+
+function Base.summary(io::IO, ::Array{<:VarName})
+    nothing
+end
+
+function Base.show(io::IO, stmt::DotAssumeStmt)
+    io = add_io_context(io)
+    print(io, " assume: ")
+    show_varname(io, stmt.varname)
+    print(io, " = ")
+    print(io, stmt.left)
+    print(io, " .~ ")
+    show_right(io, stmt.right)
+    print(io, " ")
+    print(io, RESULT_SYMBOL)
+    print(io, " ")
+    print(io, stmt.value)
+    print(io, " (logprob = ")
+    print(io, stmt.logp)
+    print(io, ")")
+end
+
+Base.@kwdef struct DotObserveStmt <: Stmt
+    left
+    right
+    logp
+    varinfo=nothing
+end
+
+function Base.show(io::IO, stmt::DotObserveStmt)
+    io = add_io_context(io)
+    print(io, "observe: ")
+    print(io, stmt.left)
+    print(io, " .~ ")
+    show_right(io, stmt.right)
+    print(io, " ")
+    print(io, RESULT_SYMBOL)
+    print(io, " (logprob = ")
+    print(io, stmt.logp)
+    print(io, ")")
+end
+
 """
     DebugContext <: AbstractContext
 
@@ -9,26 +140,29 @@ struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
     model::M
     context::C
     varnames_seen::OrderedDict{VarName,Int}
-    tildes_seen::Vector{Any}
+    statements::Vector{Stmt}
     error_on_failure::Bool
     record_varinfo::Bool
+    show_statements::Bool
 end
 
 function DebugContext(
     model::Model,
     context::AbstractContext=DefaultContext();
     varnames_seen=OrderedDict{VarName,Int}(),
-    tildes_seen=Vector{Any}(),
+    statements=Vector{Stmt}(),
     error_on_failure=false,
     record_varinfo=false,
+    show_statements=false
 )
     return DebugContext(
         model,
         context,
         varnames_seen,
-        tildes_seen,
+        statements,
         error_on_failure,
-        record_varinfo
+        record_varinfo,
+        show_statements
     )
 end
 
@@ -59,17 +193,33 @@ function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
 end
 
 function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp, varinfo)
-    record = (varname=vn, right=dist, value=value, logp=logp)
-    if context.record_varinfo
-        record = merge(record, (varinfo=deepcopy(varinfo),))
+    stmt = AssumeStmt(
+        varname=vn,
+        right=dist,
+        value=value,
+        logp=logp,
+        varinfo=context.record_varinfo ? varinfo : nothing,
+    )
+    push!(context.statements, stmt)
+    if context.show_statements
+        @info "$stmt"
     end
-    push!(context.tildes_seen, record)
     return nothing
 end
 
 function record_pre_tilde_observe!(context::DebugContext, vn, dist, varinfo) end
 
 function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varinfo)
+    stmt = ObserveStmt(
+        right=dist,
+        logp=logp,
+        varinfo=context.record_varinfo ? varinfo : nothing,
+    )
+    push!(context.statements, stmt)
+    if context.show_statements
+        @info "$stmt"
+    end
+    return nothing
 end
 
 # dot-tilde
@@ -94,23 +244,37 @@ end
 function record_post_dot_tilde_assume!(
     context::DebugContext, vns, left, right, value, logp, varinfo
 )
-    record = (varname=vns, left=left, right=right, value=value, logp=logp)
-    if context.record_varinfo
-        record = merge(record, (varinfo=deepcopy(varinfo),))
+    stmt = DotAssumeStmt(
+        varname=vns,
+        left=left,
+        right=right,
+        value=value,
+        logp=logp,
+        varinfo=context.record_varinfo ? deepcopy(varinfo) : nothing,
+    )
+    push!(context.statements, stmt)
+    if context.show_statements
+        @info "$stmt"
     end
-    push!(context.tildes_seen, record)
 
     return nothing
 end
 
 function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
-    record = (left=left, right=right)
-    push!(context.tildes_seen, record)
-
     return nothing
 end
 
 function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp, vi)
+    stmt = DotObserveStmt(
+        left=left,
+        right=right,
+        logp=logp,
+        varinfo=context.record_varinfo ? deepcopy(vi) : nothing,
+    )
+    push!(context.statements, stmt)
+    if context.show_statements
+        @info "$stmt"
+    end
     return nothing
 end
 
@@ -197,8 +361,15 @@ function check_model(
     kwargs...
 )
     # Execute the model with the debug context.
-    debug_context = DebugContext(model, context; error_on_failure=error_on_failure, kwargs...)
-    retval, varinfo_result = DynamicPPL.evaluate!!(model, varinfo, debug_context)
+    debug_context = DebugContext(
+        model, context;
+        error_on_failure=error_on_failure,
+        kwargs...
+    )
+    # Force single-threaded execution.
+    retval, varinfo_result = DynamicPPL.evaluate_threadunsafe!!(
+        model, varinfo, debug_context
+    )
     # Verify that the number of times we've seen each varname is sensible.
     issuccess = check_varnames_seen(debug_context.varnames_seen)
 
@@ -206,7 +377,7 @@ function check_model(
         error("model check failed")
     end
 
-    trace = debug_context.tildes_seen
+    trace = debug_context.statements
     return issuccess, (trace=trace, varnames_seen=debug_context.varnames_seen)
 end
 
@@ -226,7 +397,7 @@ function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
 end
 
 # Special behaviors.
-# 1. Chcek that we're not sampling the same variable twice.
+# 1. Check that we're not sampling the same variable twice.
 
 # 2. Heuristic checks to see if we're sampling something that the
 # user intended to be fixed or conditioned.
