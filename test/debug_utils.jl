@@ -7,12 +7,9 @@
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, (trace, varnames_seen) = check_model(model; show_statements=true)
+        issuccess, (trace, varnames_seen) = check_model(model)
         # These models should all work.
         @test issuccess
-
-        # @info "$(model.f)"
-        # println(trace)
 
         # Check that the trace contains all the variables in the model.
         assume_stmts = filter(Base.Fix2(hasproperty, :varname), trace)
@@ -36,11 +33,10 @@
             end
             buggy_model = buggy_demo_model()
 
-            # @test_logs (:warn,) (:warn,) check_model(buggy_model)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model)
             issuccess, (trace, varnames_seen) = check_model(
                 buggy_model; context=SamplingContext(), record_varinfo=false
             )
-            # @info "" trace
             
             @test !issuccess
             @test_throws ErrorException check_model(
