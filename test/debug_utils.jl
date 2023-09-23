@@ -64,16 +64,27 @@
     end
 
     @testset "incorrect use of condition" begin
-        @model function demo(x)
-            x ~ MvNormal(zeros(length(x)), I)
+        @testset "missing in multivariate" begin
+            @model function demo_missing_in_multivariate(x)
+                x ~ MvNormal(zeros(length(x)), I)
+            end
+            model = demo_missing_in_multivariate([1.0, missing])
+            @test_throws ErrorException check_model(model)
         end
-        model = demo([1.0, missing])
-        # model()
-        @test_throws MethodError model()
-    end
 
-    @testset "logging of statements" begin
-        @model demo() = x ~ Normal()
-        @test_logs (:info,) check_model(demo(); show_statements=true)
+        @testset "condition both in args and context" begin
+            @model function demo_condition_both_in_args_and_context(x)
+                x ~ Normal()
+            end
+            model = demo_condition_both_in_args_and_context(1.0)
+            for vals in [
+                (x = 2.0,),
+                OrderedDict(@varname(x) => 2.0,),
+                OrderedDict(@varname(x[1]) => 2.0,)
+            ]
+                conditioned_model = DynamicPPL.condition(model, vals)
+                @test_throws ErrorException check_model(conditioned_model; error_on_failure=true)
+            end
+        end
     end
 end

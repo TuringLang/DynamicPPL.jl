@@ -373,9 +373,48 @@ function DynamicPPL.dot_tilde_observe(context::DebugContext, right, left, vi)
     return logp, vi
 end
 
+_conditioned_varnames(d::AbstractDict) = keys(d)
+_conditioned_varnames(d) = map(sym -> VarName{sym}(), keys(d))
+function conditioned_varnames(context)
+    conditioned_values = DynamicPPL.conditioned(context)
+    return _conditioned_varnames(conditioned_values)
+end
+
+function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
+    issuccess = true
+    for (varname, count) in varnames_seen
+        if count == 0
+            @warn "varname $varname was never seen"
+            issuccess = false
+        elseif count > 1
+            @warn "varname $varname was seen $count times; it should only be seen once!"
+            issuccess = false
+        end
+    end
+
+    return issuccess
+end
+
 # A check we run on the model before evaluating it.
-function _check_model_pre_evaluation(context::DebugContext, model::Model)
-    
+function check_model_pre_evaluation(context::DebugContext, model::Model)
+    issuccess = true
+    # If something is in the model arguments, then it should NOT be in `condition`,
+    # nor should there be any symbol present in `condition` that has the same symbol.
+    for vn in conditioned_varnames(model.context)
+        if DynamicPPL.inargnames(vn, model)
+            @warn "Variable $(vn) is both in the model arguments and in the conditioning!\n" *
+                "Please use either conditioning through the model arguments, or through " *
+                "`condition` / `|`, not both."
+
+            issuccess = false
+        end
+    end
+
+    return issuccess
+end
+
+function check_model_post_evaluation(context::DebugContext, model::Model)
+    return check_varnames_seen(context.varnames_seen)
 end
 
 
@@ -397,13 +436,13 @@ This will check the model for the following issues:
 - `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
 
 # Returns
-- `trace::Vector{Stmt}`: The trace of the model.
 - `issuccess::Bool`: Whether the model check succeeded.
+- `trace::Vector{Stmt}`: The trace of the model.
 """
 function check_model(
     model::Model;
     varinfo=VarInfo(),
-    context=DefaultContext(),
+    context=SamplingContext(),
     error_on_failure=false,
     kwargs...
 )
@@ -413,12 +452,17 @@ function check_model(
         error_on_failure=error_on_failure,
         kwargs...
     )
+
+    # Perform checks before evaluating the model.
+    issuccess = check_model_pre_evaluation(debug_context, model)
+
     # Force single-threaded execution.
     retval, varinfo_result = DynamicPPL.evaluate_threadunsafe!!(
         model, varinfo, debug_context
     )
-    # Verify that the number of times we've seen each varname is sensible.
-    issuccess = check_varnames_seen(debug_context.varnames_seen)
+
+    # Perform checks after evaluating the model.
+    issuccess &= check_model_post_evaluation(debug_context, model)
 
     if !issuccess && error_on_failure
         error("model check failed")
@@ -427,26 +471,5 @@ function check_model(
     trace = debug_context.statements
     return issuccess, (trace=trace, varnames_seen=debug_context.varnames_seen)
 end
-
-function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
-    issuccess = true
-    for (varname, count) in varnames_seen
-        if count == 0
-            @warn "varname $varname was never seen"
-            issuccess = false
-        elseif count > 1
-            @warn "varname $varname was seen $count times; it should only be seen once!"
-            issuccess = false
-        end
-    end
-
-    return issuccess
-end
-
-# Special behaviors.
-# 1. Check that we're not sampling the same variable twice.
-
-# 2. Heuristic checks to see if we're sampling something that the
-# user intended to be fixed or conditioned.
 
 end
