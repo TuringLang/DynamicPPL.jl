@@ -152,7 +152,6 @@ struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
     error_on_failure::Bool
     record_statements::Bool
     record_varinfo::Bool
-    show_statements::Bool
 end
 
 function DebugContext(
@@ -163,7 +162,6 @@ function DebugContext(
     error_on_failure=false,
     record_statements=true,
     record_varinfo=false,
-    show_statements=false
 )
     return DebugContext(
         model,
@@ -173,7 +171,6 @@ function DebugContext(
         error_on_failure,
         record_statements,
         record_varinfo,
-        show_statements
     )
 end
 
@@ -215,9 +212,6 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp,
     if context.record_statements
         push!(context.statements, stmt)
     end
-    if context.show_statements
-        @info "$stmt"
-    end
     return nothing
 end
 
@@ -255,9 +249,6 @@ function record_post_tilde_observe!(context::DebugContext, left, right, logp, va
     )
     if context.record_statements
         push!(context.statements, stmt)
-    end
-    if context.show_statements
-        @info "$stmt"
     end
     return nothing
 end
@@ -307,9 +298,6 @@ function record_post_dot_tilde_assume!(
     if context.record_statements
         push!(context.statements, stmt)
     end
-    if context.show_statements
-        @info "$stmt"
-    end
 
     return nothing
 end
@@ -355,9 +343,6 @@ function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp
     )
     if context.record_statements
         push!(context.statements, stmt)
-    end
-    if context.show_statements
-        @info "$stmt"
     end
     return nothing
 end
