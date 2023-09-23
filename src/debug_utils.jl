@@ -5,6 +5,7 @@ using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
 using Setfield: Setfield
 
+using DocStringExtensions
 using Distributions
 
 export check_model, DebugContext
@@ -146,6 +147,9 @@ end
 A context used for checking validity of a model.
 
 This context is used by [`check_model`](@ref) to check that a model is valid.
+
+# Fields
+$(FIELDS)
 """
 struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
     "model that is being run"
