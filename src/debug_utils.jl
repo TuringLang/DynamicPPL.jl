@@ -99,10 +99,6 @@ Base.@kwdef struct DotAssumeStmt <: Stmt
     varinfo=nothing
 end
 
-function Base.summary(io::IO, ::Array{<:VarName})
-    nothing
-end
-
 function Base.show(io::IO, stmt::DotAssumeStmt)
     io = add_io_context(io)
     print(io, " assume: ")
@@ -223,7 +219,16 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp,
     return nothing
 end
 
-function record_pre_tilde_observe!(context::DebugContext, vn, dist, varinfo) end
+function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
+    # Check for `missing`s; these should not end up here.
+    if _has_missings(left)
+        error(
+            "Encountered missing value(s) in observe!\n" *
+            "This is not supported for dotted syntax, such as " *
+            "`@. x ~ dist` or `x .~ dist`"
+        )
+    end
+end
 
 function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varinfo)
     stmt = ObserveStmt(
@@ -243,17 +248,17 @@ end
 # dot-tilde
 
 function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, varinfo)
-    # TODO: Can we do without the memory allocation here?
-    splat(record_varname!).(tuple.(broadcast_safe(context), vn, broadcast_safe(right)))
-
     # Check for `missing`s; these should not end up here.
     if _has_missings(left)
         error(
             "Variable $(vn) has missing has missing value(s)!\n" *
-            "This is not supported for syntax dotted syntax, such as " *
+            "Usage of `missing` is not supported for dotted syntax, such as " *
             "`@. x ~ dist` or `x .~ dist`"
         )
     end
+
+    # TODO: Can we do without the memory allocation here?
+    record_varname!.(broadcast_safe(context), vn, broadcast_safe(right))
 
     # Check that `left` does not contain any ``
     return nothing
@@ -281,7 +286,16 @@ function record_post_dot_tilde_assume!(
 end
 
 function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
-    return nothing
+    # Check for `missing`s; these should not end up here.
+    if _has_missings(left)
+        # TODO: Once `observe` statements receive `vn`, refer to this in the
+        # error message.
+        error(
+            "Ecountered missing value(s) in observe!\n" *
+            "Usage of `missing` is not supported for dotted syntax, such as " *
+            "`@. x ~ dist` or `x .~ dist`"
+        )
+    end
 end
 
 function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp, vi)
