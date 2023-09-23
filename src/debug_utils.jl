@@ -360,7 +360,7 @@ end
 
 
 """
-    check_model(model::Model[, varinfo]; context=DefaultContext(), error_on_failure=false)
+    check_model(model::Model; kwargs...)
 
 Check that `model` is valid, warning about any potential issues.
 
@@ -370,9 +370,9 @@ This will check the model for the following issues:
 
 # Arguments
 - `model::Model`: The model to check.
-- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
+- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 - `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
 - `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
 
@@ -381,8 +381,8 @@ This will check the model for the following issues:
 - `issuccess::Bool`: Whether the model check succeeded.
 """
 function check_model(
-    model::Model,
-    varinfo=VarInfo(model);
+    model::Model;
+    varinfo=VarInfo(model),
     context=DefaultContext(),
     error_on_failure=false,
     kwargs...

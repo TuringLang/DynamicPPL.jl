@@ -74,6 +74,6 @@
 
     @testset "logging of statements" begin
         @model demo() = x ~ Normal()
-        @test_logs (:info,) check_model(demo; show_statements=true)
+        @test_logs (:info,) check_model(demo(); show_statements=true)
     end
 end
