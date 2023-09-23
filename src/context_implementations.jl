@@ -156,6 +156,9 @@ end
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
 end
+function tilde_observe(context::PrefixContext, sampler, right, left, vi)
+    return tilde_observe(context.context, sampler, right, left, vi)
+end
 
 """
     tilde_observe!!(context, right, left, vname, vi)
