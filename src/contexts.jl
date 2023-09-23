@@ -479,15 +479,20 @@ a merged version of the condition values.
 function conditioned(context::AbstractContext)
     return conditioned(NodeTrait(conditioned, context), context)
 end
-conditioned(::IsLeaf, context) = ()
+conditioned(::IsLeaf, context) = NamedTuple()
 conditioned(::IsParent, context) = conditioned(childcontext(context))
 function conditioned(context::ConditionContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
     # the `conditioned` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
-    return merge(context.values, conditioned(childcontext(context)))
+    return _merge(context.values, conditioned(childcontext(context)))
 end
+
+_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
+_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
+_merge(left::AbstractDict, right::NamedTuple{()}) = left
+_merge(left::NamedTuple{()}, right::AbstractDict) = right
 
 struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
