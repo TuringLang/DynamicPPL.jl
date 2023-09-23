@@ -67,6 +67,11 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp,
     return nothing
 end
 
+function record_pre_tilde_observe!(context::DebugContext, vn, dist, varinfo) end
+
+function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varinfo)
+end
+
 # dot-tilde
 
 function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, varinfo)
@@ -98,7 +103,19 @@ function record_post_dot_tilde_assume!(
     return nothing
 end
 
+function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
+    record = (left=left, right=right)
+    push!(context.tildes_seen, record)
+
+    return nothing
+end
+
+function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp, vi)
+    return nothing
+end
+
 # Tilde-implementations
+# tilde
 function tilde_assume(context::DebugContext, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
     value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
@@ -112,6 +129,14 @@ function tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
     return value, logp, vi
 end
 
+function tilde_observe(context::DebugContext, right, left, vi)
+    record_pre_tilde_observe!(context, left, right, vi)
+    logp, vi = tilde_observe(childcontext(context), right, left, vi)
+    record_post_tilde_observe!(context, left, right, logp, vi)
+    return logp, vi
+end
+
+# dot-tilde
 function dot_tilde_assume(context::DebugContext, right, left, vn, vi)
     record_pre_dot_tilde_assume!(context, vn, left, right, vi)
     value, logp, vi = dot_tilde_assume(
@@ -128,6 +153,13 @@ function dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, 
     )
     record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
     return value, logp, vi
+end
+
+function dot_tilde_observe(context::DebugContext, right, left, vi)
+    record_pre_dot_tilde_observe!(context, left, right, vi)
+    logp, vi = dot_tilde_observe(childcontext(context), right, left, vi)
+    record_post_dot_tilde_observe!(context, left, right, logp, vi)
+    return logp, vi
 end
 
 # A check we run on the model before evaluating it.
