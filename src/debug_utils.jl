@@ -76,6 +76,7 @@ function Base.show(io::IO, stmt::AssumeStmt)
 end
 
 Base.@kwdef struct ObserveStmt <: Stmt
+    left
     right
     logp
     varinfo=nothing
@@ -245,9 +246,10 @@ function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
     end
 end
 
-function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varinfo)
+function record_post_tilde_observe!(context::DebugContext, left, right, logp, varinfo)
     stmt = ObserveStmt(
-        right=dist,
+        left=left,
+        right=right,
         logp=logp,
         varinfo=context.record_varinfo ? varinfo : nothing,
     )
