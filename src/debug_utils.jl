@@ -197,6 +197,7 @@ end
 _has_missings(x) = ismissing(x)
 _has_missings(x::AbstractArray) = any(ismissing, x)
 
+# assume
 function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
     record_varname!(context, vn, dist)
     return nothing
@@ -219,13 +220,26 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp,
     return nothing
 end
 
+function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
+    record_pre_tilde_assume!(context, vn, right, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
+    record_post_tilde_assume!(context, vn, right, value, logp, vi)
+    return value, logp, vi
+end
+function DynamicPPL.tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
+    record_pre_tilde_assume!(context, vn, right, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    record_post_tilde_assume!(context, vn, right, value, logp, vi)
+    return value, logp, vi
+end
+
+# observe
 function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
     # Check for `missing`s; these should not end up here.
+    @info "" left dist
     if _has_missings(left)
         error(
-            "Encountered missing value(s) in observe!\n" *
-            "This is not supported for dotted syntax, such as " *
-            "`@. x ~ dist` or `x .~ dist`"
+            "Encountered missing value(s) in observe!\n"
         )
     end
 end
@@ -245,8 +259,20 @@ function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varin
     return nothing
 end
 
-# dot-tilde
+function DynamicPPL.tilde_observe(context::DebugContext, right, left, vi)
+    record_pre_tilde_observe!(context, left, right, vi)
+    logp, vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
+    record_post_tilde_observe!(context, left, right, logp, vi)
+    return logp, vi
+end
+function DynamicPPL.tilde_observe(context::DebugContext, sampler, right, left, vi)
+    record_pre_tilde_observe!(context, left, right, vi)
+    logp, vi = DynamicPPL.tilde_observe(childcontext(context), sampler, right, left, vi)
+    record_post_tilde_observe!(context, left, right, logp, vi)
+    return logp, vi
+end
 
+# dot-assume
 function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, varinfo)
     # Check for `missing`s; these should not end up here.
     if _has_missings(left)
@@ -285,6 +311,25 @@ function record_post_dot_tilde_assume!(
     return nothing
 end
 
+function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
+    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
+    value, logp, vi = DynamicPPL.dot_tilde_assume(
+        childcontext(context), right, left, vn, vi
+    )
+    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
+    return value, logp, vi
+end
+
+function DynamicPPL.dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
+    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
+    value, logp, vi = DynamicPPL.dot_tilde_assume(
+        rng, childcontext(context), sampler, right, left, vn, vi
+    )
+    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
+    return value, logp, vi
+end
+
+# dot-observe
 function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
     # Check for `missing`s; these should not end up here.
     if _has_missings(left)
@@ -313,48 +358,6 @@ function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp
     end
     return nothing
 end
-
-# Tilde-implementations
-# tilde
-function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
-    record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, logp, vi)
-    return value, logp, vi
-end
-function DynamicPPL.tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
-    record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, logp, vi)
-    return value, logp, vi
-end
-
-function DynamicPPL.tilde_observe(context::DebugContext, right, left, vi)
-    record_pre_tilde_observe!(context, left, right, vi)
-    logp, vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
-    record_post_tilde_observe!(context, left, right, logp, vi)
-    return logp, vi
-end
-
-# dot-tilde
-function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
-    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(
-        childcontext(context), right, left, vn, vi
-    )
-    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
-end
-
-function DynamicPPL.dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
-    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(
-        rng, childcontext(context), sampler, right, left, vn, vi
-    )
-    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
-end
-
 function DynamicPPL.dot_tilde_observe(context::DebugContext, right, left, vi)
     record_pre_dot_tilde_observe!(context, left, right, vi)
     logp, vi = DynamicPPL.dot_tilde_observe(
@@ -391,12 +394,12 @@ This will check the model for the following issues:
 - `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
 
 # Returns
-- `trace::Vector{Any}`: The trace of the model.
+- `trace::Vector{Stmt}`: The trace of the model.
 - `issuccess::Bool`: Whether the model check succeeded.
 """
 function check_model(
     model::Model;
-    varinfo=VarInfo(model),
+    varinfo=VarInfo(),
     context=DefaultContext(),
     error_on_failure=false,
     kwargs...
