@@ -85,6 +85,8 @@ end
 function Base.show(io::IO, stmt::ObserveStmt)
     io = add_io_context(io)
     print(io, "observe: ")
+    show_right(io, stmt.left)
+    print(io, " ~ ")
     show_right(io, stmt.right)
     print(io, " (logprob = ")
     print(io, stmt.logp)

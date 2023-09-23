@@ -22,6 +22,10 @@
             @test varnames_seen[vn] == 1
             @test vn in varnames_in_trace
         end
+
+        # Quick checks for `show` of trace.
+        @test occursin("assume: ", string(trace))
+        @test occursin("observe: ", string(trace))
     end
 
     @testset "multiple usage of same variable" begin
@@ -85,6 +89,22 @@
                 conditioned_model = DynamicPPL.condition(model, vals)
                 @test_throws ErrorException check_model(conditioned_model; error_on_failure=true)
             end
+        end
+    end
+
+    @testset "printing statements" begin
+        @testset "assume" begin
+            @model demo_assume() = x ~ Normal()
+            isuccess, (trace, varnames_seen) = check_model(demo_assume())
+            @test isuccess
+            @test startswith(string(trace), " assume: x ~ Normal")
+        end
+
+        @testset "observe" begin
+            @model demo_observe(x) = x ~ Normal()
+            isuccess, (trace, varnames_seen) = check_model(demo_observe(1.0))
+            @test isuccess
+            @test startswith(string(trace), "observe: ")
         end
     end
 end
