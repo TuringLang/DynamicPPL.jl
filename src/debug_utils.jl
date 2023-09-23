@@ -1,3 +1,14 @@
+module DebugUtils
+
+using ..DynamicPPL
+using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
+
+using Setfield: Setfield
+
+using Distributions
+
+export check_model, DebugContext
+
 abstract type Stmt end
 
 function Base.show(io::IO, statements::Vector{Stmt})
@@ -142,6 +153,7 @@ struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
     varnames_seen::OrderedDict{VarName,Int}
     statements::Vector{Stmt}
     error_on_failure::Bool
+    record_statements::Bool
     record_varinfo::Bool
     show_statements::Bool
 end
@@ -152,6 +164,7 @@ function DebugContext(
     varnames_seen=OrderedDict{VarName,Int}(),
     statements=Vector{Stmt}(),
     error_on_failure=false,
+    record_statements=true,
     record_varinfo=false,
     show_statements=false
 )
@@ -161,14 +174,15 @@ function DebugContext(
         varnames_seen,
         statements,
         error_on_failure,
+        record_statements,
         record_varinfo,
         show_statements
     )
 end
 
-NodeTrait(::DebugContext) = IsParent()
-childcontext(context::DebugContext) = context.context
-setchildcontext(context::DebugContext, child) = Setfield.@set context.context = child
+DynamicPPL.NodeTrait(::DebugContext) = DynamicPPL.IsParent()
+DynamicPPL.childcontext(context::DebugContext) = context.context
+DynamicPPL.setchildcontext(context::DebugContext, child) = Setfield.@set context.context = child
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
     if haskey(context.varnames_seen, varname)
@@ -200,7 +214,9 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp,
         logp=logp,
         varinfo=context.record_varinfo ? varinfo : nothing,
     )
-    push!(context.statements, stmt)
+    if context.record_statements
+        push!(context.statements, stmt)
+    end
     if context.show_statements
         @info "$stmt"
     end
@@ -215,7 +231,9 @@ function record_post_tilde_observe!(context::DebugContext, vn, dist, logp, varin
         logp=logp,
         varinfo=context.record_varinfo ? varinfo : nothing,
     )
-    push!(context.statements, stmt)
+    if context.record_statements
+        push!(context.statements, stmt)
+    end
     if context.show_statements
         @info "$stmt"
     end
@@ -229,7 +247,7 @@ function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, va
     splat(record_varname!).(tuple.(broadcast_safe(context), vn, broadcast_safe(right)))
 
     # Check for `missing`s; these should not end up here.
-    if _has_missings(value)
+    if _has_missings(left)
         error(
             "Variable $(vn) has missing has missing value(s)!\n" *
             "This is not supported for syntax dotted syntax, such as " *
@@ -252,7 +270,9 @@ function record_post_dot_tilde_assume!(
         logp=logp,
         varinfo=context.record_varinfo ? deepcopy(varinfo) : nothing,
     )
-    push!(context.statements, stmt)
+    if context.record_statements
+        push!(context.statements, stmt)
+    end
     if context.show_statements
         @info "$stmt"
     end
@@ -271,7 +291,9 @@ function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp
         logp=logp,
         varinfo=context.record_varinfo ? deepcopy(vi) : nothing,
     )
-    push!(context.statements, stmt)
+    if context.record_statements
+        push!(context.statements, stmt)
+    end
     if context.show_statements
         @info "$stmt"
     end
@@ -280,48 +302,53 @@ end
 
 # Tilde-implementations
 # tilde
-function tilde_assume(context::DebugContext, right, vn, vi)
+function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, logp, vi)
     return value, logp, vi
 end
-function tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
+function DynamicPPL.tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, logp, vi)
     return value, logp, vi
 end
 
-function tilde_observe(context::DebugContext, right, left, vi)
+function DynamicPPL.tilde_observe(context::DebugContext, right, left, vi)
     record_pre_tilde_observe!(context, left, right, vi)
-    logp, vi = tilde_observe(childcontext(context), right, left, vi)
+    logp, vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
     record_post_tilde_observe!(context, left, right, logp, vi)
     return logp, vi
 end
 
 # dot-tilde
-function dot_tilde_assume(context::DebugContext, right, left, vn, vi)
+function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
     record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = dot_tilde_assume(
+    value, logp, vi = DynamicPPL.dot_tilde_assume(
         childcontext(context), right, left, vn, vi
     )
     record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
     return value, logp, vi
 end
 
-function dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
+function DynamicPPL.dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
     record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = dot_tilde_assume(
+    value, logp, vi = DynamicPPL.dot_tilde_assume(
         rng, childcontext(context), sampler, right, left, vn, vi
     )
     record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
     return value, logp, vi
 end
 
-function dot_tilde_observe(context::DebugContext, right, left, vi)
+function DynamicPPL.dot_tilde_observe(context::DebugContext, right, left, vi)
     record_pre_dot_tilde_observe!(context, left, right, vi)
-    logp, vi = dot_tilde_observe(childcontext(context), right, left, vi)
+    logp, vi = DynamicPPL.dot_tilde_observe(
+        childcontext(context),
+        right,
+        left,
+        vi
+    )
     record_post_dot_tilde_observe!(context, left, right, logp, vi)
     return logp, vi
 end
@@ -401,3 +428,5 @@ end
 
 # 2. Heuristic checks to see if we're sampling something that the
 # user intended to be fixed or conditioned.
+
+end
