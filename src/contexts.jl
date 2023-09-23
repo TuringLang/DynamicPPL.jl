@@ -489,11 +489,6 @@ function conditioned(context::ConditionContext)
     return _merge(context.values, conditioned(childcontext(context)))
 end
 
-_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
-_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
-_merge(left::AbstractDict, right::NamedTuple{()}) = left
-_merge(left::NamedTuple{()}, right::AbstractDict) = right
-
 struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
@@ -660,12 +655,12 @@ Note that this will recursively traverse the context stack and return
 a merged version of the fix values.
 """
 fixed(context::AbstractContext) = fixed(NodeTrait(fixed, context), context)
-fixed(::IsLeaf, context) = ()
+fixed(::IsLeaf, context) = NamedTuple()
 fixed(::IsParent, context) = fixed(childcontext(context))
 function fixed(context::FixedContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
     # the `fixed` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
-    return merge(context.values, fixed(childcontext(context)))
+    return _merge(context.values, fixed(childcontext(context)))
 end

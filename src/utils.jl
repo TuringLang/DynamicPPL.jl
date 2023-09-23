@@ -1085,3 +1085,12 @@ end
 broadcast_safe(x) = x
 broadcast_safe(x::Distribution) = (x,)
 broadcast_safe(x::AbstractContext) = (x,)
+
+# Version of `merge` used by `conditioned` and `fixed` to handle
+# the scenario where we might try to merge a dict with an empty
+# tuple.
+# TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
+_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
+_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
+_merge(left::AbstractDict, right::NamedTuple{()}) = left
+_merge(left::NamedTuple{()}, right::AbstractDict) = right
