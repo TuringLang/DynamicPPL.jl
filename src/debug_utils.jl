@@ -439,15 +439,17 @@ This will check the model for the following issues:
 - `trace::Vector{Stmt}`: The trace of statements executed during the model check.
 
 # Examples
+## Correct model
+
 ```jldoctest
 julia> using StableRNGs
 
 julia> rng = StableRNG(42);
 
-julia> @model demo() = x ~ Normal()
-demo (generic function with 2 methods)
+julia> @model demo_correct() = x ~ Normal()
+demo_correct (generic function with 2 methods)
 
-julia> issuccess, trace = check_model_and_trace(rng, demo());
+julia> issuccess, trace = check_model_and_trace(rng, demo_correct());
 
 julia> issuccess
 true
@@ -455,7 +457,7 @@ true
 julia> print(trace)
  assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252 (logprob = -1.14356)
 
-julia> issuccess, trace = check_model_and_trace(rng, demo() | (x = 1.0,));
+julia> issuccess, trace = check_model_and_trace(rng, demo_correct() | (x = 1.0,));
 
 julia> issuccess
 true
@@ -463,6 +465,22 @@ true
 julia> print(trace)
 observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0) (logprob = -1.41894)
 ```
+
+## Incorrect model
+
+```jldoctest
+julia> @model function demo_incorrect()
+           # (×) Sampling `x` twice will lead to incorrect log-probabilities!
+           x ~ Normal()
+           x ~ Exponential()
+       end
+demo_incorrect (generic function with 2 methods)
+
+julia> issuccess, trace = check_model_and_trace(rng, demo_incorrect(); error_on_failure=true);
+ERROR: varname x used multiple times in model
+```
+
+
 """
 function check_model_and_trace(model::Model; kwargs...)
     return check_model_and_trace(Random.default_rng(), model; kwargs...)
