@@ -93,14 +93,14 @@
     @testset "printing statements" begin
         @testset "assume" begin
             @model demo_assume() = x ~ Normal()
-            isuccess, (trace, varnames_seen) = check_model(demo_assume())
+            isuccess, trace = check_model_and_trace(demo_assume())
             @test isuccess
             @test startswith(string(trace), " assume: x ~ Normal")
         end
 
         @testset "observe" begin
             @model demo_observe(x) = x ~ Normal()
-            isuccess, (trace, varnames_seen) = check_model(demo_observe(1.0))
+            isuccess, trace = check_model_and_trace(demo_observe(1.0))
             @test isuccess
             @test occursin(r"observe: \d+\.\d+ ~ Normal", string(trace))
         end
