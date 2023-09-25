@@ -7,7 +7,9 @@
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, (trace, varnames_seen) = DynamicPPL.DebugUtils.check_model_and_extras(model)
+        issuccess, (trace, varnames_seen) = DynamicPPL.DebugUtils.check_model_and_extras(
+            model
+        )
         # These models should all work.
         @test issuccess
 
@@ -53,9 +55,9 @@
             end
             model = ModelOuterBroken()
             @test_throws ErrorException check_model(model; error_on_failure=true)
-            
+
             @model function ModelOuterWorking()
-                @submodel prefix=true z = ModelInner()
+                @submodel prefix = true z = ModelInner()
                 x ~ Normal()
                 return z
             end
@@ -67,7 +69,7 @@
     @testset "incorrect use of condition" begin
         @testset "missing in multivariate" begin
             @model function demo_missing_in_multivariate(x)
-                x ~ MvNormal(zeros(length(x)), I)
+                return x ~ MvNormal(zeros(length(x)), I)
             end
             model = demo_missing_in_multivariate([1.0, missing])
             @test_throws ErrorException check_model(model)
@@ -75,16 +77,18 @@
 
         @testset "condition both in args and context" begin
             @model function demo_condition_both_in_args_and_context(x)
-                x ~ Normal()
+                return x ~ Normal()
             end
             model = demo_condition_both_in_args_and_context(1.0)
             for vals in [
-                (x = 2.0,),
-                OrderedDict(@varname(x) => 2.0,),
-                OrderedDict(@varname(x[1]) => 2.0,)
+                (x=2.0,),
+                OrderedDict(@varname(x) => 2.0),
+                OrderedDict(@varname(x[1]) => 2.0),
             ]
                 conditioned_model = DynamicPPL.condition(model, vals)
-                @test_throws ErrorException check_model(conditioned_model; error_on_failure=true)
+                @test_throws ErrorException check_model(
+                    conditioned_model; error_on_failure=true
+                )
             end
         end
     end
