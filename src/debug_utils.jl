@@ -8,7 +8,7 @@ using Setfield: Setfield
 using DocStringExtensions
 using Distributions
 
-export check_model, check_model_and_trace, DebugContext
+export check_model, check_model_and_trace
 
 # Statements
 abstract type Stmt end
@@ -145,8 +145,6 @@ end
     DebugContext <: AbstractContext
 
 A context used for checking validity of a model.
-
-This context is used by [`check_model`](@ref) to check that a model is valid.
 
 # Fields
 $(FIELDS)
