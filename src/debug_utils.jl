@@ -347,7 +347,7 @@ function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
         # TODO: Once `observe` statements receive `vn`, refer to this in the
         # error message.
         error(
-            "Ecountered missing value(s) in observe!\n" *
+            "Encountered missing value(s) in observe!\n" *
             "Usage of `missing` is not supported for dotted syntax, such as " *
             "`@. x ~ dist` or `x .~ dist`",
         )
