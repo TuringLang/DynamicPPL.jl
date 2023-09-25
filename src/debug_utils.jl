@@ -441,7 +441,7 @@ This will check the model for the following issues:
 # Examples
 ## Correct model
 
-```jldoctest
+```jldoctest check-model-and-tracecheck-model-and-trace
 julia> using StableRNGs
 
 julia> rng = StableRNG(42);
@@ -468,7 +468,7 @@ observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0) (logprob = -1.41894)
 
 ## Incorrect model
 
-```jldoctest
+```jldoctest check-model-and-trace
 julia> @model function demo_incorrect()
            # (×) Sampling `x` twice will lead to incorrect log-probabilities!
            x ~ Normal()
