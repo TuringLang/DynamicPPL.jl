@@ -3,6 +3,7 @@ module DebugUtils
 using ..DynamicPPL
 using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
+using Random: Random
 using Setfield: Setfield
 
 using DocStringExtensions
@@ -416,7 +417,7 @@ function check_model_post_evaluation(context::DebugContext, model::Model)
 end
 
 """
-    check_model_and_trace(model::Model; kwargs...)
+    check_model_and_trace([rng, ]model::Model; kwargs...)
 
 Check that `model` is valid, warning about any potential issues.
 
@@ -425,6 +426,7 @@ This will check the model for the following issues:
 2. Incorrectly treating a variable as random rather than fixed, and vice versa.
 
 # Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use when evaluating the model.
 - `model::Model`: The model to check.
 
 # Keyword Arguments
@@ -436,10 +438,14 @@ This will check the model for the following issues:
 - `issuccess::Bool`: Whether the model check succeeded.
 - `trace::Vector{Stmt}`: The trace of statements executed during the model check.
 """
+function check_model_and_trace(model::Model; kwargs...)
+    return check_model_and_trace(Random.default_rng(), model; kwargs...)
+end
 function check_model_and_trace(
+    rng::Random.AbstractRNG,
     model::Model;
     varinfo=VarInfo(),
-    context=SamplingContext(),
+    context=SamplingContext(rng),
     error_on_failure=false,
     kwargs...,
 )
@@ -468,7 +474,7 @@ function check_model_and_trace(
 end
 
 """
-    check_model(model::Model; kwargs...)
+    check_model([rng, ]model::Model; kwargs...)
 
 Check that `model` is valid, warning about any potential issues.
 
@@ -479,5 +485,8 @@ and details of which types of checks are performed.
 - `issuccess::Bool`: Whether the model check succeeded.
 """
 check_model(model::Model; kwargs...) = first(check_model_and_trace(model; kwargs...))
+function check_model(rng::Random.AbstractRNG, model::Model; kwargs...)
+    first(check_model_and_trace(rng, model; kwargs...))
+end
 
 end
