@@ -417,28 +417,7 @@ function check_model_post_evaluation(context::DebugContext, model::Model)
     return check_varnames_seen(context.varnames_seen)
 end
 
-"""
-    check_model(model::Model; kwargs...)
-
-Check that `model` is valid, warning about any potential issues.
-
-This will check the model for the following issues:
-1. Repeated usage of the same varname in a model.
-2. Incorrectly treating a variable as random rather than fixed, and vice versa.
-
-# Arguments
-- `model::Model`: The model to check.
-
-# Keyword Arguments
-- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
-- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
-
-# Returns
-- `issuccess::Bool`: Whether the model check succeeded.
-- `trace::Vector{Stmt}`: The trace of the model.
-"""
-function check_model(
+function check_model_and_extras(
     model::Model;
     varinfo=VarInfo(),
     context=SamplingContext(),
@@ -468,5 +447,27 @@ function check_model(
     trace = debug_context.statements
     return issuccess, (trace=trace, varnames_seen=debug_context.varnames_seen)
 end
+
+"""
+    check_model(model::Model; kwargs...)
+
+Check that `model` is valid, warning about any potential issues.
+
+This will check the model for the following issues:
+1. Repeated usage of the same varname in a model.
+2. Incorrectly treating a variable as random rather than fixed, and vice versa.
+
+# Arguments
+- `model::Model`: The model to check.
+
+# Keyword Arguments
+- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
+
+# Returns
+- `issuccess::Bool`: Whether the model check succeeded.
+"""
+check_model(model::Model; kwargs...) = first(check_model_and_extras(model; kwargs...))
 
 end

@@ -7,7 +7,7 @@
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, (trace, varnames_seen) = check_model(model)
+        issuccess, (trace, varnames_seen) = DynamicPPL.DebugUtils.check_model_and_extras(model)
         # These models should all work.
         @test issuccess
 
@@ -38,7 +38,7 @@
             buggy_model = buggy_demo_model()
 
             @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess, (trace, varnames_seen) = check_model(
+            issuccess = check_model(
                 buggy_model; context=SamplingContext(), record_varinfo=false
             )
             @test !issuccess
@@ -60,7 +60,7 @@
                 return z
             end
             model = ModelOuterWorking()
-            @test first(check_model(model; error_on_failure=true))
+            @test check_model(model; error_on_failure=true)
         end
     end
 
