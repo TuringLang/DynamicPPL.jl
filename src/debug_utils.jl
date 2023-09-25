@@ -8,7 +8,7 @@ using Setfield: Setfield
 using DocStringExtensions
 using Distributions
 
-export check_model, DebugContext
+export check_model, check_model_and_trace, DebugContext
 
 # Statements
 abstract type Stmt end
@@ -417,7 +417,28 @@ function check_model_post_evaluation(context::DebugContext, model::Model)
     return check_varnames_seen(context.varnames_seen)
 end
 
-function check_model_and_extras(
+"""
+    check_model_and_trace(model::Model; kwargs...)
+
+Check that `model` is valid, warning about any potential issues.
+
+This will check the model for the following issues:
+1. Repeated usage of the same varname in a model.
+2. Incorrectly treating a variable as random rather than fixed, and vice versa.
+
+# Arguments
+- `model::Model`: The model to check.
+
+# Keyword Arguments
+- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
+
+# Returns
+- `issuccess::Bool`: Whether the model check succeeded.
+- `trace::Vector{Stmt}`: The trace of statements executed during the model check.
+"""
+function check_model_and_trace(
     model::Model;
     varinfo=VarInfo(),
     context=SamplingContext(),
@@ -445,7 +466,7 @@ function check_model_and_extras(
     end
 
     trace = debug_context.statements
-    return issuccess, (trace=trace, varnames_seen=debug_context.varnames_seen)
+    return issuccess, trace
 end
 
 """
@@ -453,21 +474,12 @@ end
 
 Check that `model` is valid, warning about any potential issues.
 
-This will check the model for the following issues:
-1. Repeated usage of the same varname in a model.
-2. Incorrectly treating a variable as random rather than fixed, and vice versa.
-
-# Arguments
-- `model::Model`: The model to check.
-
-# Keyword Arguments
-- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
-- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
+See [`check_model_and_trace`](@ref) for more details on supported keword arguments
+and details of which types of checks are performed.
 
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 """
-check_model(model::Model; kwargs...) = first(check_model_and_extras(model; kwargs...))
+check_model(model::Model; kwargs...) = first(check_model_and_trace(model; kwargs...))
 
 end
