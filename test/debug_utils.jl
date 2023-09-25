@@ -7,9 +7,7 @@
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, trace = check_model_and_trace(
-            model
-        )
+        issuccess, trace = check_model_and_trace(model)
         # These models should all work.
         @test issuccess
 
