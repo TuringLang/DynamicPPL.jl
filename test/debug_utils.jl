@@ -41,18 +41,15 @@
             issuccess, (trace, varnames_seen) = check_model(
                 buggy_model; context=SamplingContext(), record_varinfo=false
             )
-            
             @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model; error_on_failure=true
-            )
+            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
 
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()
                 @submodel z = ModelInner()
-                x ~ Normal()
+                return x ~ Normal()
             end
             model = ModelOuterBroken()
             @test_throws ErrorException check_model(model; error_on_failure=true)

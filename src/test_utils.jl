@@ -1037,7 +1037,8 @@ function test_context_interface(context)
     # If it's a parent.
     if DynamicPPL.NodeTrait(context) == DynamicPPL.IsParent
         # Should implement `childcontext` and `setchildcontext`
-        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) == context
+        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
+            context
     end
 end
 

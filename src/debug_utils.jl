@@ -26,19 +26,19 @@ add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
 show_varname(io::IO, varname::VarName) = print(io, varname)
 function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
     # TODO: Can we remove the `VarName` at the beginning of the show completely?
-    show(IOContext(io, :typeinfo => VarName), convert(Array{VarName,N}, varname))
+    return show(IOContext(io, :typeinfo => VarName), convert(Array{VarName,N}, varname))
 end
 
 function show_right(io::IO, d::Distribution)
     pnames = fieldnames(typeof(d))
     uml, namevals = Distributions._use_multline_show(d, pnames)
-    Distributions.show_oneline(io, d, namevals)
+    return Distributions.show_oneline(io, d, namevals)
 end
 
 function show_right(io::IO, d::Distributions.ReshapedDistribution)
     print(io, "reshape(")
     show_right(io, d.dist)
-    print(io, ")")
+    return print(io, ")")
 end
 
 function show_right(io::IO, d::Distributions.Product)
@@ -49,7 +49,7 @@ function show_right(io::IO, d::Distributions.Product)
         end
         show_right(io, dist)
     end
-    print(io, ")")
+    return print(io, ")")
 end
 
 show_right(io::IO, d) = show(io, d)
@@ -59,7 +59,7 @@ Base.@kwdef struct AssumeStmt <: Stmt
     right
     value
     logp
-    varinfo=nothing
+    varinfo = nothing
 end
 
 function Base.show(io::IO, stmt::AssumeStmt)
@@ -74,14 +74,14 @@ function Base.show(io::IO, stmt::AssumeStmt)
     print(io, stmt.value)
     print(io, " (logprob = ")
     print(io, stmt.logp)
-    print(io, ")")
+    return print(io, ")")
 end
 
 Base.@kwdef struct ObserveStmt <: Stmt
     left
     right
     logp
-    varinfo=nothing
+    varinfo = nothing
 end
 
 function Base.show(io::IO, stmt::ObserveStmt)
@@ -92,7 +92,7 @@ function Base.show(io::IO, stmt::ObserveStmt)
     show_right(io, stmt.right)
     print(io, " (logprob = ")
     print(io, stmt.logp)
-    print(io, ")")
+    return print(io, ")")
 end
 
 Base.@kwdef struct DotAssumeStmt <: Stmt
@@ -101,7 +101,7 @@ Base.@kwdef struct DotAssumeStmt <: Stmt
     right
     value
     logp
-    varinfo=nothing
+    varinfo = nothing
 end
 
 function Base.show(io::IO, stmt::DotAssumeStmt)
@@ -118,14 +118,14 @@ function Base.show(io::IO, stmt::DotAssumeStmt)
     print(io, stmt.value)
     print(io, " (logprob = ")
     print(io, stmt.logp)
-    print(io, ")")
+    return print(io, ")")
 end
 
 Base.@kwdef struct DotObserveStmt <: Stmt
     left
     right
     logp
-    varinfo=nothing
+    varinfo = nothing
 end
 
 function Base.show(io::IO, stmt::DotObserveStmt)
@@ -138,7 +138,7 @@ function Base.show(io::IO, stmt::DotObserveStmt)
     print(io, RESULT_SYMBOL)
     print(io, " (logprob = ")
     print(io, stmt.logp)
-    print(io, ")")
+    return print(io, ")")
 end
 
 """
@@ -190,7 +190,9 @@ end
 
 DynamicPPL.NodeTrait(::DebugContext) = DynamicPPL.IsParent()
 DynamicPPL.childcontext(context::DebugContext) = context.context
-DynamicPPL.setchildcontext(context::DebugContext, child) = Setfield.@set context.context = child
+function DynamicPPL.setchildcontext(context::DebugContext, child)
+    Setfield.@set context.context = child
+end
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
     if haskey(context.varnames_seen, varname)
@@ -216,7 +218,7 @@ function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
 end
 
 function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp, varinfo)
-    stmt = AssumeStmt(
+    stmt = AssumeStmt(;
         varname=vn,
         right=dist,
         value=value,
@@ -237,7 +239,9 @@ function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
 end
 function DynamicPPL.tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(
+        rng, childcontext(context), sampler, right, vn, vi
+    )
     record_post_tilde_assume!(context, vn, right, value, logp, vi)
     return value, logp, vi
 end
@@ -249,13 +253,13 @@ function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
         error(
             "Encountered missing value(s) in observe!\n" *
             "Remember that using `missing` to de-condition a variable is only " *
-            "supported for univariate distributions, not for $dist"
+            "supported for univariate distributions, not for $dist",
         )
     end
 end
 
 function record_post_tilde_observe!(context::DebugContext, left, right, logp, varinfo)
-    stmt = ObserveStmt(
+    stmt = ObserveStmt(;
         left=left,
         right=right,
         logp=logp,
@@ -287,7 +291,7 @@ function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, va
         error(
             "Variable $(vn) has missing has missing value(s)!\n" *
             "Usage of `missing` is not supported for dotted syntax, such as " *
-            "`@. x ~ dist` or `x .~ dist`"
+            "`@. x ~ dist` or `x .~ dist`",
         )
     end
 
@@ -301,7 +305,7 @@ end
 function record_post_dot_tilde_assume!(
     context::DebugContext, vns, left, right, value, logp, varinfo
 )
-    stmt = DotAssumeStmt(
+    stmt = DotAssumeStmt(;
         varname=vns,
         left=left,
         right=right,
@@ -325,7 +329,9 @@ function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
     return value, logp, vi
 end
 
-function DynamicPPL.dot_tilde_assume(rng, context::DebugContext, sampler, right, left, vn, vi)
+function DynamicPPL.dot_tilde_assume(
+    rng, context::DebugContext, sampler, right, left, vn, vi
+)
     record_pre_dot_tilde_assume!(context, vn, left, right, vi)
     value, logp, vi = DynamicPPL.dot_tilde_assume(
         rng, childcontext(context), sampler, right, left, vn, vi
@@ -343,13 +349,13 @@ function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
         error(
             "Ecountered missing value(s) in observe!\n" *
             "Usage of `missing` is not supported for dotted syntax, such as " *
-            "`@. x ~ dist` or `x .~ dist`"
+            "`@. x ~ dist` or `x .~ dist`",
         )
     end
 end
 
 function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp, vi)
-    stmt = DotObserveStmt(
+    stmt = DotObserveStmt(;
         left=left,
         right=right,
         logp=logp,
@@ -362,12 +368,7 @@ function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp
 end
 function DynamicPPL.dot_tilde_observe(context::DebugContext, right, left, vi)
     record_pre_dot_tilde_observe!(context, left, right, vi)
-    logp, vi = DynamicPPL.dot_tilde_observe(
-        childcontext(context),
-        right,
-        left,
-        vi
-    )
+    logp, vi = DynamicPPL.dot_tilde_observe(childcontext(context), right, left, vi)
     record_post_dot_tilde_observe!(context, left, right, logp, vi)
     return logp, vi
 end
@@ -416,7 +417,6 @@ function check_model_post_evaluation(context::DebugContext, model::Model)
     return check_varnames_seen(context.varnames_seen)
 end
 
-
 """
     check_model(model::Model; kwargs...)
 
@@ -443,13 +443,11 @@ function check_model(
     varinfo=VarInfo(),
     context=SamplingContext(),
     error_on_failure=false,
-    kwargs...
+    kwargs...,
 )
     # Execute the model with the debug context.
     debug_context = DebugContext(
-        model, context;
-        error_on_failure=error_on_failure,
-        kwargs...
+        model, context; error_on_failure=error_on_failure, kwargs...
     )
 
     # Perform checks before evaluating the model.
