@@ -530,7 +530,7 @@ and details of which types of checks are performed.
 """
 check_model(model::Model; kwargs...) = first(check_model_and_trace(model; kwargs...))
 function check_model(rng::Random.AbstractRNG, model::Model; kwargs...)
-    first(check_model_and_trace(rng, model; kwargs...))
+    return first(check_model_and_trace(rng, model; kwargs...))
 end
 
 end
