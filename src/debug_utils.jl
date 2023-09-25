@@ -27,7 +27,7 @@ add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
 show_varname(io::IO, varname::VarName) = print(io, varname)
 function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
     # TODO: Can we remove the `VarName` at the beginning of the show completely?
-    return show(IOContext(io, :typeinfo => VarName), convert(Array{VarName,N}, varname))
+    return show(io, convert(Array{VarName,N}, varname))
 end
 
 function show_right(io::IO, d::Distribution)
@@ -437,6 +437,32 @@ This will check the model for the following issues:
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 - `trace::Vector{Stmt}`: The trace of statements executed during the model check.
+
+# Examples
+```jldoctest
+julia> using StableRNGs
+
+julia> rng = StableRNG(42);
+
+julia> @model demo() = x ~ Normal()
+demo (generic function with 2 methods)
+
+julia> issuccess, trace = check_model_and_trace(rng, demo());
+
+julia> issuccess
+true
+
+julia> print(trace)
+ assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252 (logprob = -1.14356)
+
+julia> issuccess, trace = check_model_and_trace(rng, demo() | (x = 1.0,));
+
+julia> issuccess
+true
+
+julia> print(trace)
+observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0) (logprob = -1.41894)
+```
 """
 function check_model_and_trace(model::Model; kwargs...)
     return check_model_and_trace(Random.default_rng(), model; kwargs...)
