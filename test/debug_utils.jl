@@ -7,7 +7,7 @@
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, (trace, varnames_seen) = DynamicPPL.DebugUtils.check_model_and_extras(
+        issuccess, trace = check_model_and_trace(
             model
         )
         # These models should all work.
@@ -18,10 +18,7 @@
         vns_iter = mapreduce(vcat, assume_stmts) do record
             vec([record.varname;])
         end
-        varnames_in_trace = Set(vns_iter)
         for vn in DynamicPPL.TestUtils.varnames(model)
-            @test haskey(varnames_seen, vn)
-            @test varnames_seen[vn] == 1
             @test vn in varnames_in_trace
         end
 
