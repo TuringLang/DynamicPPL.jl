@@ -260,6 +260,10 @@ end
     @testset "TestUtils" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             x = DynamicPPL.TestUtils.rand_prior_true(model)
+
+            # Ensure `rand` is correct.
+            @test rand(model) == x
+
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
             @test loglikelihood(model, x) ≈
