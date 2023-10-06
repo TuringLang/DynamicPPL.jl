@@ -252,7 +252,7 @@ function logprior_true_with_logabsdet_jacobian(
     return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
 
-function Random.rand(
+function rand_prior_true(
     rng::Random.AbstractRNG,
     ::Type{NamedTuple},
     model::Model{typeof(demo_one_variable_multiple_constraints)},
@@ -299,7 +299,7 @@ function logprior_true_with_logabsdet_jacobian(model::Model{typeof(demo_lkjchol)
     return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
 
-function Random.rand(
+function rand_prior_true(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::Model{typeof(demo_lkjchol)}
 )
     x = rand(rng, LKJCholesky(model.args.d, 1.0))
@@ -715,7 +715,7 @@ const DemoModels = Union{
 
 # We require demo models to have explict impleentations of `rand` since we want
 # these to be considered as ground truth.
-function Random.rand(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
+function rand_prior_true(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
     return error("demo models requires explicit implementation of rand")
 end
 
@@ -732,7 +732,7 @@ function posterior_optima(::UnivariateAssumeDemoModels)
     # TODO: Figure out exact for `s`.
     return (s=0.907407, m=7 / 6)
 end
-function Random.rand(
+function rand_prior_true(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
 )
     s = rand(rng, InverseGamma(2, 3))
@@ -755,7 +755,7 @@ const MultivariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     vals.s[1] = 19 / 8
     vals.m[1] = 3 / 4
@@ -767,7 +767,7 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 end
 function likelihood_optima(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     # NOTE: These are "as close to zero as we can get".
     vals.s[1] = 1e-32
@@ -780,7 +780,7 @@ function likelihood_optima(model::MultivariateAssumeDemoModels)
 end
 function posterior_optima(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     # TODO: Figure out exact for `s[1]`.
     vals.s[1] = 0.890625
@@ -790,7 +790,7 @@ function posterior_optima(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function Random.rand(
+function rand_prior_true(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
 )
     # Get template values from `model`.
@@ -810,7 +810,7 @@ const MatrixvariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     vals.s[1, 1] = 19 / 8
     vals.m[1] = 3 / 4
@@ -822,7 +822,7 @@ function posterior_mean(model::MatrixvariateAssumeDemoModels)
 end
 function likelihood_optima(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     # NOTE: These are "as close to zero as we can get".
     vals.s[1, 1] = 1e-32
@@ -835,7 +835,7 @@ function likelihood_optima(model::MatrixvariateAssumeDemoModels)
 end
 function posterior_optima(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     # TODO: Figure out exact for `s[1]`.
     vals.s[1, 1] = 0.890625
@@ -845,7 +845,7 @@ function posterior_optima(model::MatrixvariateAssumeDemoModels)
 
     return vals
 end
-function Base.rand(
+function rand_prior_true(
     rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MatrixvariateAssumeDemoModels
 )
     # Get template values from `model`.
