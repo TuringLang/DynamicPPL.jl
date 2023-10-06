@@ -60,7 +60,7 @@
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
                                                           DynamicPPL.TestUtils.DEMO_MODELS
-        values_constrained = rand(NamedTuple, model)
+        values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$(typeof(vi))" for vi in (
             SimpleVarInfo(Dict()), SimpleVarInfo(values_constrained), VarInfo(model)
         )
@@ -112,7 +112,7 @@
 
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        svi_nt = SimpleVarInfo(rand(NamedTuple, model))
+        svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
 
         @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
@@ -121,7 +121,7 @@
             DynamicPPL.settrans!!(svi_nt, true),
             DynamicPPL.settrans!!(svi_dict, true),
         )
-            # Random seed is set in each `@testset`, so we need to sample
+            # RandOM seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
             retval = model()
 
@@ -138,7 +138,7 @@
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            values_eval_constrained = rand(NamedTuple, model)
+            values_eval_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
             if DynamicPPL.istrans(svi)
                 _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
@@ -225,7 +225,7 @@
         model = DynamicPPL.TestUtils.demo_static_transformation()
 
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, rand(NamedTuple, model), [@varname(s), @varname(m)]
+            model, DynamicPPL.TestUtils.rand_prior_true(model), [@varname(s), @varname(m)]
         )
         @testset "$(short_varinfo_name(vi))" for vi in varinfos
             # Initialize varinfo and link.

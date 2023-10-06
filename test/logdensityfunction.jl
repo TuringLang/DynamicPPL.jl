@@ -2,7 +2,7 @@ using Test, DynamicPPL, LogDensityProblems
 
 @testset "LogDensityFunction" begin
     @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        example_values = rand(NamedTuple, model)
+        example_values = DynamicPPL.TestUtils.rand_prior_true(model)
         vns = DynamicPPL.TestUtils.varnames(model)
         varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
 

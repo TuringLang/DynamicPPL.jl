@@ -318,7 +318,7 @@
 
     @testset "values_as" begin
         @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            example_values = rand(NamedTuple, model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             vns = DynamicPPL.TestUtils.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
@@ -363,7 +363,7 @@
             DynamicPPL.TestUtils.demo_lkjchol(),
         ]
             @testset "mutating=$mutating" for mutating in [false, true]
-                value_true = rand(model)
+                value_true = DynamicPPL.TestUtils.rand_prior_true(model)
                 varnames = DynamicPPL.TestUtils.varnames(model)
                 varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
