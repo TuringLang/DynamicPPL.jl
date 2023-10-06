@@ -218,7 +218,7 @@ end
         Random.seed!(1776)
         s, m = model()
         sample_namedtuple = (; s=s, m=m)
-        sample_dict = Dict(@varname(s) => s, @varname(m) => m)
+        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
 
         # With explicit RNG
         @test rand(Random.seed!(1776), model) == sample_namedtuple
@@ -231,7 +231,7 @@ end
         Random.seed!(1776)
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
-        @test rand(Dict, model) == sample_dict
+        @test rand(OrderedDict, model) == sample_dict
     end
 
     @testset "default arguments" begin
@@ -259,7 +259,7 @@ end
 
     @testset "TestUtils" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            x = rand(model)
+            x = DynamicPPL.TestUtils.rand_prior_true(model)
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
             @test loglikelihood(model, x) ≈

@@ -169,6 +169,15 @@ corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
 function posterior_mean end
 
 """
+    rand_prior_true([rng::AbstractRNG, ]model::DynamicPPL.Model)
+
+Return a `NamedTuple` of realizations from the prior of `model` compatible with `varnames(model)`.
+"""
+function rand_prior_true(model::DynamicPPL.Model)
+    return rand_prior_true(Random.default_rng(), model)
+end
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
@@ -300,7 +309,7 @@ function logprior_true_with_logabsdet_jacobian(model::Model{typeof(demo_lkjchol)
 end
 
 function rand_prior_true(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::Model{typeof(demo_lkjchol)}
+    rng::Random.AbstractRNG, model::Model{typeof(demo_lkjchol)}
 )
     x = rand(rng, LKJCholesky(model.args.d, 1.0))
     return (x=x,)
@@ -715,7 +724,7 @@ const DemoModels = Union{
 
 # We require demo models to have explict impleentations of `rand` since we want
 # these to be considered as ground truth.
-function rand_prior_true(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
+function rand_prior_true(rng::Random.AbstractRNG, model::DemoModels)
     return error("demo models requires explicit implementation of rand")
 end
 
@@ -733,7 +742,7 @@ function posterior_optima(::UnivariateAssumeDemoModels)
     return (s=0.907407, m=7 / 6)
 end
 function rand_prior_true(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
+    rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels
 )
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
@@ -791,7 +800,7 @@ function posterior_optima(model::MultivariateAssumeDemoModels)
     return vals
 end
 function rand_prior_true(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
+    rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels
 )
     # Get template values from `model`.
     retval = model(rng)
@@ -846,7 +855,7 @@ function posterior_optima(model::MatrixvariateAssumeDemoModels)
     return vals
 end
 function rand_prior_true(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MatrixvariateAssumeDemoModels
+    rng::Random.AbstractRNG, model::MatrixvariateAssumeDemoModels
 )
     # Get template values from `model`.
     retval = model(rng)
