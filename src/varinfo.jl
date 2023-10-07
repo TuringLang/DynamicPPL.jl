@@ -909,7 +909,7 @@ end
 function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _link_metadata!(varinfo, varinfo.metadata, _getvns(spl)),
+        _link_metadata!(varinfo, varinfo.metadata, _getvns(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
@@ -993,7 +993,7 @@ end
 function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!(varinfo, varinfo.metadata, _getvns(spl)),
+        _invlink_metadata!(varinfo, varinfo.metadata, _getvns(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
