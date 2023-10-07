@@ -263,7 +263,6 @@ end
 
 function rand_prior_true(
     rng::Random.AbstractRNG,
-    ::Type{NamedTuple},
     model::Model{typeof(demo_one_variable_multiple_constraints)},
 )
     x = Vector{Float64}(undef, 5)
@@ -720,12 +719,6 @@ const DemoModels = Union{
     Model{typeof(demo_assume_matrix_dot_observe_matrix)},
 }
 
-# We require demo models to have explict impleentations of `rand` since we want
-# these to be considered as ground truth.
-function rand_prior_true(rng::Random.AbstractRNG, model::DemoModels)
-    return error("demo models requires explicit implementation of rand")
-end
-
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},Model{typeof(demo_assume_literal_dot_observe)}
 }
@@ -942,6 +935,13 @@ function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_static_transformation)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
+
+function rand_prior_true(
+    rng::Random.AbstractRNG,
+    model::Model{typeof(demo_static_transformation)},
+)
+    return (s = rand(rng, InverseGamma(2, 3)), m = rand(rng, Normal(0, sqrt(s))))
 end
 
 """
