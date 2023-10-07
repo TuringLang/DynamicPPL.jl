@@ -903,25 +903,44 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
 end
 
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
-    return _link(varinfo)
+    return _link(varinfo, spl)
 end
 
-function _link(varinfo::UntypedVarInfo)
+function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _link_metadata!(varinfo, varinfo.metadata),
+        _link_metadata!(varinfo, varinfo.metadata, Val(getspace(spl))),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
 end
 
-function _link(varinfo::TypedVarInfo)
+function _link(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
-    md = map(Base.Fix1(_link_metadata!, varinfo), varinfo.metadata)
+    md = _link_metadata!(varinfo, varinfo.metadata, Val(getspace(spl)))
     # TODO: Update logp, etc.
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
+@generated function _link_metadata!(
+    varinfo::VarInfo,
+    metadata::NamedTuple{names},
+    ::Val{space}
+) where {names,space}
+    vals = Expr(:tuple)
+    for f in names
+        if inspace(f, space) || length(space) == 0
+            push!(
+                expr.args,
+                :(_link_metadata!(varinfo, metadata.$f))
+            )
+        else
+            push!(vals.args, :(metadata.$f))
+        end
+    end
+
+    return :(NamedTuple{$names}($vals))
+end
 function _link_metadata!(varinfo::VarInfo, metadata::Metadata)
     vns = metadata.vns
 
@@ -972,25 +991,44 @@ end
 function invlink(
     ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
 )
-    return _invlink(varinfo)
+    return _invlink(varinfo, spl)
 end
 
-function _invlink(varinfo::UntypedVarInfo)
+function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!(varinfo, varinfo.metadata),
+        _invlink_metadata!(varinfo, varinfo.metadata, Val(getspace(spl))),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
 end
 
-function _invlink(varinfo::TypedVarInfo)
+function _invlink(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
-    md = map(Base.Fix1(_invlink_metadata!, varinfo), varinfo.metadata)
+    md = _invlink_metadata!(varinfo, varinfo.metadata, Val(getspace(spl)))
     # TODO: Update logp, etc.
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
+@generated function _invlink_metadata!(
+    varinfo::VarInfo,
+    metadata::NamedTuple{names},
+    ::Val{space}
+) where {names,space}
+    vals = Expr(:tuple)
+    for f in names
+        if inspace(f, space) || length(space) == 0
+            push!(
+                expr.args,
+                :(_invlink_metadata!(varinfo, metadata.$f))
+            )
+        else
+            push!(vals.args, :(metadata.$f))
+        end
+    end
+
+    return :(NamedTuple{$names}($vals))
+end
 function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata)
     vns = metadata.vns
 
