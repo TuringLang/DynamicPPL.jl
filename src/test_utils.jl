@@ -939,7 +939,9 @@ end
 function rand_prior_true(
     rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
 )
-    return (s=rand(rng, InverseGamma(2, 3)), m=rand(rng, Normal(0, sqrt(s))))
+    s = rand(rng, InverseGamma(2, 3))
+    m = rand(rng, Normal(0, sqrt(s)))
+    return (s=s, m=m)
 end
 
 """
