@@ -262,8 +262,7 @@ function logprior_true_with_logabsdet_jacobian(
 end
 
 function rand_prior_true(
-    rng::Random.AbstractRNG,
-    model::Model{typeof(demo_one_variable_multiple_constraints)},
+    rng::Random.AbstractRNG, model::Model{typeof(demo_one_variable_multiple_constraints)}
 )
     x = Vector{Float64}(undef, 5)
     x[1] = rand(rng, Normal())
@@ -938,10 +937,9 @@ function logprior_true_with_logabsdet_jacobian(
 end
 
 function rand_prior_true(
-    rng::Random.AbstractRNG,
-    model::Model{typeof(demo_static_transformation)},
+    rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
 )
-    return (s = rand(rng, InverseGamma(2, 3)), m = rand(rng, Normal(0, sqrt(s))))
+    return (s=rand(rng, InverseGamma(2, 3)), m=rand(rng, Normal(0, sqrt(s))))
 end
 
 """
