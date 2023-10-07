@@ -917,23 +917,19 @@ end
 
 function _link(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
-    md = _link_metadata_namedtuple!(varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl)))
+    md = _link_metadata_namedtuple!(
+        varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl))
+    )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
 @generated function _link_metadata_namedtuple!(
-    varinfo::VarInfo,
-    metadata::NamedTuple{names},
-    vns::NamedTuple,
-    ::Val{space}
+    varinfo::VarInfo, metadata::NamedTuple{names}, vns::NamedTuple, ::Val{space}
 ) where {names,space}
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(
-                vals.args,
-                :(_link_metadata!(varinfo, metadata.$f, vns.$f))
-            )
+            push!(vals.args, :(_link_metadata!(varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
@@ -1005,23 +1001,19 @@ end
 
 function _invlink(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
-    md = _invlink_metadata_namedtuple!(varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl)))
+    md = _invlink_metadata_namedtuple!(
+        varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl))
+    )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
 @generated function _invlink_metadata_namedtuple!(
-    varinfo::VarInfo,
-    metadata::NamedTuple{names},
-    vns::NamedTuple,
-    ::Val{space}
+    varinfo::VarInfo, metadata::NamedTuple{names}, vns::NamedTuple, ::Val{space}
 ) where {names,space}
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(
-                vals.args,
-                :(_invlink_metadata!(varinfo, metadata.$f, vns.$f))
-            )
+            push!(vals.args, :(_invlink_metadata!(varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
