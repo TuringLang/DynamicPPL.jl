@@ -260,9 +260,19 @@ end
     @testset "TestUtils" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             x = DynamicPPL.TestUtils.rand_prior_true(model)
+            # `rand_prior_true` should return a `NamedTuple`.
+            @test x isa NamedTuple
 
-            # Ensure `rand` is correct.
-            @test rand(model) == x
+            # `rand` with a `AbstractDict` should have `varnames` as keys.
+            x_rand_dict = rand(OrderedDict, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_dict, vn)
+            end
+            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
+            x_rand_nt = rand(NamedTuple, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_nt, Symbol(vn))
+            end
 
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
