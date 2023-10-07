@@ -72,7 +72,7 @@ end
         @model demo() = m ~ dist
         model = demo()
 
-        example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+        example_values = rand(NamedTuple, model)
         vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(m),))
         @testset "$(short_varinfo_name(vi))" for vi in vis
             # Evaluate once to ensure we have `logp` value.
@@ -106,7 +106,7 @@ end
             @testset "d=$d" for d in [2, 3, 5]
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
-                values_original = DynamicPPL.TestUtils.rand_prior_true(model)
+                values_original = rand(NamedTuple, model)
                 vis = DynamicPPL.TestUtils.setup_varinfos(
                     model, values_original, (@varname(x),)
                 )
@@ -147,7 +147,7 @@ end
         @model demo_dirichlet(d::Int) = x ~ Dirichlet(d, 1.0)
         @testset "d=$d" for d in [2, 3, 5]
             model = demo_dirichlet(d)
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            example_values = rand(NamedTuple, model)
             vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 lp = logpdf(Dirichlet(d, 1.0), vi[:])
