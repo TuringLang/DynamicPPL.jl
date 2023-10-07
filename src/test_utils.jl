@@ -308,9 +308,7 @@ function logprior_true_with_logabsdet_jacobian(model::Model{typeof(demo_lkjchol)
     return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
 
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_lkjchol)}
-)
+function rand_prior_true(rng::Random.AbstractRNG, model::Model{typeof(demo_lkjchol)})
     x = rand(rng, LKJCholesky(model.args.d, 1.0))
     return (x=x,)
 end
@@ -741,9 +739,7 @@ function posterior_optima(::UnivariateAssumeDemoModels)
     # TODO: Figure out exact for `s`.
     return (s=0.907407, m=7 / 6)
 end
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels
-)
+function rand_prior_true(rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels)
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
 
@@ -799,9 +795,7 @@ function posterior_optima(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels
-)
+function rand_prior_true(rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels)
     # Get template values from `model`.
     retval = model(rng)
     vals = (s=retval.s, m=retval.m)
@@ -854,9 +848,7 @@ function posterior_optima(model::MatrixvariateAssumeDemoModels)
 
     return vals
 end
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::MatrixvariateAssumeDemoModels
-)
+function rand_prior_true(rng::Random.AbstractRNG, model::MatrixvariateAssumeDemoModels)
     # Get template values from `model`.
     retval = model(rng)
     vals = (s=retval.s, m=retval.m)
