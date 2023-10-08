@@ -512,4 +512,44 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             end
         end
     end
+
+    @testset "merge" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in [
+                VarInfo(model),
+                last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
+            ]
+
+                vns = DynamicPPL.TestUtils.varnames(model)
+
+                @testset "with itself" begin
+                    # Merging itself should be a no-op.
+                    varinfo_merged = merge(varinfo, varinfo)
+                    vns_merged = keys(varinfo_merged)
+                    # Should be equivalent.
+                    @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                    # Values should be the same.
+                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                end
+
+                @testset "with empty" begin
+                    # Merging with an empty `VarInfo` should be a no-op.
+                    varinfo_merged = merge(varinfo, empty!!(deepcopy(varinfo)))
+                    vns_merged = keys(varinfo_merged)
+                    # Should be equivalent.
+                    @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                    # Values should be the same.
+                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                end
+
+                @testset "with different value" begin
+                    x = DynamicPPL.TestUtils.rand(model)
+                    varinfo_changed = DynamicPPL.TestUtils.update_values!!(deepcopy(varinfo), x, vns)
+                    # After `merge`, we should have the same values as `x`.
+                    varinfo_merged = merge(varinfo, varinfo_changed)
+                    DynamicPPL.TestUtils.test_values(varinfo_merged, x, vns)
+                end
+            end
+        end
+    end
 end

@@ -269,7 +269,7 @@ end
 
 Subset a `metadata` to only contain the variables `vns`.
 """
-function subset(metadata::DynamicPPL.Metadata, vns::AbstractVector{<:VarName})
+function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = Dict(vn => i for (i, vn) in enumerate(vns))
@@ -279,6 +279,7 @@ function subset(metadata::DynamicPPL.Metadata, vns::AbstractVector{<:VarName})
     # 1. Keep ranges as they are and simply `copy` the full `vals`.
     # 2. Adjust the ranges to be consistent with the `vals`.
     # We choose option 1 for now, though this feels quite hacky.
+    # TODO: Only pick the subset of `vals` needed.
     ranges = metadata.ranges[indices_for_vns]
     # vals = mapreduce(Base.Fix1(getindex, metadata.vals), vcat, ranges)
     vals = copy(metadata.vals)
@@ -292,6 +293,163 @@ function subset(metadata::DynamicPPL.Metadata, vns::AbstractVector{<:VarName})
         metadata.dists[indices_for_vns],
         metadata.gids,
         metadata.orders[indices_for_vns],
+        flags,
+    )
+end
+
+"""
+    merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+
+Merge two `VarInfo` instances into one, giving precedence to `varinfo_right` when reasonable.
+"""
+Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo) =_merge(varinfo_left, varinfo_right)
+Base.merge(varinfo_left::TypedVarInfo, varinfo_right::TypedVarInfo) =_merge(varinfo_left, varinfo_right)
+
+function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+    metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
+    lp = getlogp(varinfo_left) + getlogp(varinfo_right)
+    # TODO: Is this really the way we want to combine `num_produce`?
+    num_produce = varinfo_left.num_produce[] + varinfo_right.num_produce[]
+    return VarInfo(metadata, Ref(lp), Ref(num_produce))
+end
+
+function merge_metadata(
+    metadata_left::NamedTuple{names_left},
+    metadata_right::NamedTuple{names_right}
+) where {names_left, names_right}
+    # TODO: Improve this. Maybe make `@generated`?
+    metadata = map(names_left) do sym
+        if sym in names_right
+            merge_metadata(getfield(metadata_left, sym), getfield(metadata_right, sym))
+        else
+            getfield(metadata_left, sym)
+        end
+    end
+    names_right_only = filter(∉(names_left), names_right)
+    metadata_right_only = map(Tuple(names_right_only)) do sym
+        if !(sym in names_left)
+            getfield(metadata_right, sym)
+        end
+    end
+
+    return NamedTuple{(names_left..., names_right_only...)}(tuple(metadata..., metadata_right_only...))
+end
+
+function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
+    # Extract the varnames.
+    vns_left = metadata_left.vns
+    vns_right = metadata_right.vns
+    vns_both = union(vns_left, vns_right)
+
+    # Determine `eltype` of `vals`.
+    T_left = eltype(metadata_left.vals)
+    T_right = eltype(metadata_right.vals)
+    T = promote_type(T_left, T_right)
+    # TODO: Is this necessary?
+    if !(T <: Real)
+        T = Real
+    end
+
+    # Determine `eltype` of `dists`.
+    D_left = eltype(metadata_left.dists)
+    D_right = eltype(metadata_right.dists)
+    D = promote_type(D_left, D_right)
+    # TODO: Is this necessary?
+    if !(D <: Distribution)
+        D = Distribution
+    end
+
+    # Initialize required fields for `metadata`.
+    vns = VarName[]
+    idcs = Dict{VarName, Int}()
+    ranges = Vector{UnitRange{Int}}()
+    vals = T[]
+    dists = D[]
+    gids = metadata_right.gids  # NOTE: giving precedence to `metadata_right`
+    orders = Int[]
+    flags = Dict{String, BitVector}()
+    # Initialize the `flags`.
+    for k in union(keys(metadata_left.flags), keys(metadata_right.flags))
+        flags[k] = BitVector()
+    end
+
+    # Range offset.
+    offset = 0
+
+    for (idx, vn) in enumerate(vns_both)
+        # `idcs`
+        idcs[vn] = idx
+        # `vns`
+        push!(vns, vn)
+        if vn in vns_left && vn in vns_right
+            # `vals`: only valid if they're the length.
+            vals_left = getval(metadata_left, vn)
+            vals_right = getval(metadata_right, vn)
+            @assert length(vals_left) == length(vals_right)
+            append!(vals, vals_right)
+            # `ranges`
+            r = (offset + 1):(offset + length(vals_left))
+            push!(ranges, r)
+            offset = r[end]
+            # `dists`: only valid if they're the same.
+            dists_left = getdist(metadata_left, vn)
+            dists_right = getdist(metadata_right, vn)
+            @assert dists_left == dists_right
+            push!(dists, dists_left)
+            # `orders`: giving precedence to `metadata_right`
+            push!(orders, getorder(metadata_right, vn))
+            # `flags`
+            for k in keys(flags)
+                # Using `metadata_right`; should we?
+                push!(flags[k], is_flagged(metadata_right, vn, k))
+            end
+        elseif vn in vns_left
+            # Just extract the metadata from `metadata_left`.
+            # `vals`
+            vals_left = getval(metadata_left, vn)
+            append!(vals, vals_left)
+            # `ranges`
+            r = (offset + 1):(offset + length(vals_left))
+            push!(ranges, r)
+            offset = r[end]
+            # `dists`
+            dists_left = getdist(metadata_left, vn)
+            push!(dists, dists_left)
+            # `orders`
+            push!(orders, getorder(metadata_left, vn))
+            # `flags`
+            for k in keys(flags)
+                push!(flags[k], is_flagged(metadata_left, vn, k))
+            end
+        else
+            # Just extract the metadata from `metadata_right`.
+            # `vals`
+            vals_right = getvals(metadata_right, vn)
+            append!(vals, vals_right)
+            # `ranges`
+            r = (offset + 1):(offset + length(vals_right))
+            push!(ranges, r)
+            offset = r[end]
+            # `dists`
+            dists_right = getdist(metadata_right, vn)
+            push!(dists, dists_right)
+            # `orders`
+            push!(orders, getorder(metadata_right, vn))
+            # `flags`
+            for k in keys(flags)
+                push!(flags[k], is_flagged(metadata_right, vn, k))
+            end
+        end
+    end
+
+    return Metadata(
+        idcs,
+        vns,
+        ranges,
+        vals,
+        dists,
+        gids,
+        orders,
         flags,
     )
 end
@@ -1434,6 +1592,16 @@ function setorder!(vi::VarInfo, vn::VarName, index::Int)
     return vi
 end
 
+"""
+    getorder(vi::VarInfo, vn::VarName)
+
+Get the `order` of `vn` in `vi`, where `order` is the number of `observe` statements
+run before sampling `vn`.
+"""
+getorder(vi::VarInfo, vn::VarName) = getorder(getmetadata(vi, vn), vn)
+getorder(metadata::Metadata, vn::VarName) = metadata.orders[getidx(metadata, vn)]
+
+
 #######################################
 # Rand & replaying method for VarInfo #
 #######################################
@@ -1444,8 +1612,9 @@ end
 Check whether `vn` has a true value for `flag` in `vi`.
 """
 function is_flagged(vi::VarInfo, vn::VarName, flag::String)
-    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)]
+    return is_flagged(getmetadata(vi, vn), vn, flag)
 end
+is_flagged(metadata::Metadata, vn::VarName, flag::String) = metadata.flags[flag][getidx(metadata, vn)]
 
 """
     unset_flag!(vi::VarInfo, vn::VarName, flag::String)
