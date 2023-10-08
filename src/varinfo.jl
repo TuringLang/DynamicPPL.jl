@@ -908,10 +908,9 @@ end
 # This is quite hacky, but seems safer than changing the behavior of `_getvns`.
 _getvns_link(varinfo::VarInfo, spl::AbstractSampler) = _getvns(varinfo, spl)
 _getvns_link(varinfo::UntypedVarInfo, spl::SampleFromPrior) = nothing
-_getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior) = map(
-    Base.Returns(nothing),
-    varinfo.metadata
-)
+function _getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior)
+    return map(Base.Returns(nothing), varinfo.metadata)
+end
 
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
     return _link(varinfo, spl)
