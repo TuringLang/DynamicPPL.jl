@@ -463,4 +463,48 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @test any(!Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_m)
         end
     end
+
+    @testset "subset" begin
+        @model function demo_subsetting_varinfo(::Type{TV}=Vector{Float64}) where {TV}
+            s ~ InverseGamma(2, 3)
+            m ~ Normal(0, sqrt(s))
+            x = TV(undef, 2)
+            x[1] ~ Normal(m, sqrt(s))
+            x[2] ~ Normal(m, sqrt(s))
+        end
+        model = demo_subsetting_varinfo()
+
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in [
+            VarInfo(model),
+            last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
+            ]
+
+            # All variables.
+            @test isempty(setdiff(keys(varinfo), [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]))
+
+            @testset "$(convert(Vector{VarName}, vns))" for vns in [
+                [@varname(s)],
+                [@varname(m)],
+                [@varname(x[1])],
+                [@varname(x[2])],
+                [@varname(s), @varname(m)],
+                [@varname(s), @varname(x[1])],
+                [@varname(s), @varname(x[2])],
+                [@varname(m), @varname(x[1])],
+                [@varname(m), @varname(x[2])],
+                [@varname(x[1]), @varname(x[2])],
+                [@varname(s), @varname(m), @varname(x[1])],
+                [@varname(s), @varname(m), @varname(x[2])],
+                [@varname(s), @varname(x[1]), @varname(x[2])],
+                [@varname(m), @varname(x[1]), @varname(x[2])],
+                [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
+                ]
+                varinfo_subset = subset(varinfo, vns)
+                # Should now only contain the variables in `vns`.
+                @test isempty(setdiff(keys(varinfo_subset), vns))
+                # Values should be the same.
+                @test [varinfo_subset[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+            end
+        end
+    end
 end
