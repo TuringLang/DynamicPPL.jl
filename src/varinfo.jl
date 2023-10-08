@@ -910,7 +910,7 @@ _getvns_link(varinfo::VarInfo, spl::AbstractSampler) = _getvns(varinfo, spl)
 _getvns_link(varinfo::UntypedVarInfo, spl::SampleFromPrior) = nothing
 _getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior) = map(
     Base.Returns(nothing),
-    _getvns(varinfo, spl)
+    varinfo.metadata
 )
 
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
