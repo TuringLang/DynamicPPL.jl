@@ -432,6 +432,7 @@
             return nothing
         end
         model = demo_subsetting_varinfo()
+        vns = [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
         @testset "$(short_varinfo_name(varinfo))" for varinfo in [
             VarInfo(model), last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
@@ -441,11 +442,11 @@
             @test isempty(
                 setdiff(
                     keys(varinfo),
-                    [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
+                    vns,
                 ),
             )
 
-            @testset "$(convert(Vector{VarName}, vns))" for vns in [
+            @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in [
                 [@varname(s)],
                 [@varname(m)],
                 [@varname(x[1])],
@@ -462,11 +463,19 @@
                 [@varname(m), @varname(x[1]), @varname(x[2])],
                 [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
             ]
-                varinfo_subset = subset(varinfo, vns)
-                # Should now only contain the variables in `vns`.
-                @test isempty(setdiff(keys(varinfo_subset), vns))
+                varinfo_subset = subset(varinfo, vns_subset)
+                # Should now only contain the variables in `vns_subset`.
+                @test isempty(setdiff(keys(varinfo_subset), vns_subset))
                 # Values should be the same.
-                @test [varinfo_subset[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                @test [varinfo_subset[vn] for vn in vns_subset] == [varinfo[vn] for vn in vns_subset]
+
+                # `merge` with the original.
+                varinfo_merged = merge(varinfo, varinfo_subset)
+                vns_merged = keys(varinfo_merged)
+                # Should be equivalent.
+                @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                # Values should be the same.
+                @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
         end
     end
@@ -477,9 +486,7 @@
                 VarInfo(model),
                 last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
             ]
-
                 vns = DynamicPPL.TestUtils.varnames(model)
-
                 @testset "with itself" begin
                     # Merging itself should be a no-op.
                     varinfo_merged = merge(varinfo, varinfo)
