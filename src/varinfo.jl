@@ -236,6 +236,66 @@ else
     _tail(nt::NamedTuple) = Base.tail(nt)
 end
 
+# TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
+# the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
+# might result in a `Vector{Any}`.
+"""
+    subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
+
+Subset a `varinfo` to only contain the variables `vns`.
+"""
+function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
+    metadata = subset(varinfo.metadata, vns)
+    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
+end
+
+function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
+    # If all the variables are using the same symbol, then we can just extract that field from the metadata.
+    metadata = subset(getfield(varinfo.metadata, sym), vns)
+    return VarInfo(NamedTuple{(sym,)}(tuple(metadata)), varinfo.logp, varinfo.num_produce)
+end
+
+function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
+    syms = Tuple(unique(map(getsym, vns)))
+    metadatas = map(syms) do sym
+        subset(getfield(varinfo.metadata, sym), filter(==(sym) ∘ getsym, vns))
+    end
+
+    return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
+end
+
+"""
+    subset(metadata::Metadata, vns::AbstractVector{<:VarName})
+
+Subset a `metadata` to only contain the variables `vns`.
+"""
+function subset(metadata::DynamicPPL.Metadata, vns::AbstractVector{<:VarName})
+    # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
+    indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
+    indices = Dict(vn => i for (i, vn) in enumerate(vns))
+    # HACK: maintaining consistency between `vals` and `ranges` in scenarios where
+    # `vns = [@varname(x[2])]` and `metadata` contains `x[1]` and `x[2]` is difficult.
+    # There are two options:
+    # 1. Keep ranges as they are and simply `copy` the full `vals`.
+    # 2. Adjust the ranges to be consistent with the `vals`.
+    # We choose option 1 for now, though this feels quite hacky.
+    ranges = metadata.ranges[indices_for_vns]
+    # vals = mapreduce(Base.Fix1(getindex, metadata.vals), vcat, ranges)
+    vals = copy(metadata.vals)
+
+    flags = Dict(k => v[indices_for_vns] for (k, v) in metadata.flags)
+    return Metadata(
+        indices,
+        vns,
+        ranges,
+        vals,
+        metadata.dists[indices_for_vns],
+        metadata.gids,
+        metadata.orders[indices_for_vns],
+        flags,
+    )
+end
+
 const VarView = Union{Int,UnitRange,Vector{Int}}
 
 """
