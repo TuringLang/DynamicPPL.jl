@@ -429,16 +429,21 @@
             x = TV(undef, 2)
             x[1] ~ Normal(m, sqrt(s))
             x[2] ~ Normal(m, sqrt(s))
+            return nothing
         end
         model = demo_subsetting_varinfo()
 
         @testset "$(short_varinfo_name(varinfo))" for varinfo in [
-            VarInfo(model),
-            last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
-            ]
+            VarInfo(model), last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
+        ]
 
             # All variables.
-            @test isempty(setdiff(keys(varinfo), [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]))
+            @test isempty(
+                setdiff(
+                    keys(varinfo),
+                    [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
+                ),
+            )
 
             @testset "$(convert(Vector{VarName}, vns))" for vns in [
                 [@varname(s)],
@@ -456,7 +461,7 @@
                 [@varname(s), @varname(x[1]), @varname(x[2])],
                 [@varname(m), @varname(x[1]), @varname(x[2])],
                 [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
-                ]
+            ]
                 varinfo_subset = subset(varinfo, vns)
                 # Should now only contain the variables in `vns`.
                 @test isempty(setdiff(keys(varinfo_subset), vns))
