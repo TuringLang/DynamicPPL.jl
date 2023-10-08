@@ -481,12 +481,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         ]
 
             # All variables.
-            @test isempty(
-                setdiff(
-                    keys(varinfo),
-                    vns,
-                ),
-            )
+            @test isempty(setdiff(keys(varinfo), vns))
 
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in [
                 [@varname(s)],
@@ -526,7 +521,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             @testset "$(short_varinfo_name(varinfo))" for varinfo in [
                 VarInfo(model),
-                last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
+                last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext())),
             ]
                 vns = DynamicPPL.TestUtils.varnames(model)
                 @testset "with itself" begin
@@ -551,7 +546,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
                 @testset "with different value" begin
                     x = DynamicPPL.TestUtils.rand(model)
-                    varinfo_changed = DynamicPPL.TestUtils.update_values!!(deepcopy(varinfo), x, vns)
+                    varinfo_changed = DynamicPPL.TestUtils.update_values!!(
+                        deepcopy(varinfo), x, vns
+                    )
                     # After `merge`, we should have the same values as `x`.
                     varinfo_merged = merge(varinfo, varinfo_changed)
                     DynamicPPL.TestUtils.test_values(varinfo_merged, x, vns)

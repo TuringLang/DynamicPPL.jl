@@ -302,8 +302,11 @@ end
 
 Merge two `VarInfo` instances into one, giving precedence to `varinfo_right` when reasonable.
 """
-Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo) =_merge(varinfo_left, varinfo_right)
-Base.merge(varinfo_left::TypedVarInfo, varinfo_right::TypedVarInfo) =_merge(varinfo_left, varinfo_right)
+Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo) =
+    _merge(varinfo_left, varinfo_right)
+function Base.merge(varinfo_left::TypedVarInfo, varinfo_right::TypedVarInfo)
+    return _merge(varinfo_left, varinfo_right)
+end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
@@ -314,9 +317,8 @@ function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
 end
 
 function merge_metadata(
-    metadata_left::NamedTuple{names_left},
-    metadata_right::NamedTuple{names_right}
-) where {names_left, names_right}
+    metadata_left::NamedTuple{names_left}, metadata_right::NamedTuple{names_right}
+) where {names_left,names_right}
     # TODO: Improve this. Maybe make `@generated`?
     metadata = map(names_left) do sym
         if sym in names_right
@@ -332,7 +334,9 @@ function merge_metadata(
         end
     end
 
-    return NamedTuple{(names_left..., names_right_only...)}(tuple(metadata..., metadata_right_only...))
+    return NamedTuple{(names_left..., names_right_only...)}(
+        tuple(metadata..., metadata_right_only...)
+    )
 end
 
 function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
@@ -361,13 +365,13 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
 
     # Initialize required fields for `metadata`.
     vns = VarName[]
-    idcs = Dict{VarName, Int}()
+    idcs = Dict{VarName,Int}()
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
     gids = metadata_right.gids  # NOTE: giving precedence to `metadata_right`
     orders = Int[]
-    flags = Dict{String, BitVector}()
+    flags = Dict{String,BitVector}()
     # Initialize the `flags`.
     for k in union(keys(metadata_left.flags), keys(metadata_right.flags))
         flags[k] = BitVector()
@@ -442,16 +446,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         end
     end
 
-    return Metadata(
-        idcs,
-        vns,
-        ranges,
-        vals,
-        dists,
-        gids,
-        orders,
-        flags,
-    )
+    return Metadata(idcs, vns, ranges, vals, dists, gids, orders, flags)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -1601,7 +1596,6 @@ run before sampling `vn`.
 getorder(vi::VarInfo, vn::VarName) = getorder(getmetadata(vi, vn), vn)
 getorder(metadata::Metadata, vn::VarName) = metadata.orders[getidx(metadata, vn)]
 
-
 #######################################
 # Rand & replaying method for VarInfo #
 #######################################
@@ -1614,7 +1608,9 @@ Check whether `vn` has a true value for `flag` in `vi`.
 function is_flagged(vi::VarInfo, vn::VarName, flag::String)
     return is_flagged(getmetadata(vi, vn), vn, flag)
 end
-is_flagged(metadata::Metadata, vn::VarName, flag::String) = metadata.flags[flag][getidx(metadata, vn)]
+function is_flagged(metadata::Metadata, vn::VarName, flag::String)
+    return metadata.flags[flag][getidx(metadata, vn)]
+end
 
 """
     unset_flag!(vi::VarInfo, vn::VarName, flag::String)
