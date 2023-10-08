@@ -902,6 +902,17 @@ function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     return vi
 end
 
+# HACK: We need `SampleFromPrior` to result in ALL values which are in need
+# of a transformation to be transformed. `_getvns` will by default return
+# an empty iterable for `SampleFromPrior`, so we need to override it here.
+# This is quite hacky, but seems safer than changing the behavior of `_getvns`.
+_getvns_link(varinfo::VarInfo, spl::AbstractSampler) = _getvns(varinfo, spl)
+_getvns_link(varinfo::UntypedVarInfo, spl::SampleFromPrior) = nothing
+_getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior) = map(
+    Base.Returns(nothing),
+    _getvns(varinfo, spl)
+)
+
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
     return _link(varinfo, spl)
 end
@@ -909,7 +920,7 @@ end
 function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _link_metadata!(varinfo, varinfo.metadata, _getvns(varinfo, spl)),
+        _link_metadata!(varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
@@ -918,7 +929,7 @@ end
 function _link(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     md = _link_metadata_namedtuple!(
-        varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl))
+        varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
     )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
@@ -943,7 +954,8 @@ function _link_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
         # Return early if we're already in unconstrained space.
-        if istrans(varinfo, vn) || vn ∉ target_vns
+        # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
+        if istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
         end
 
@@ -993,7 +1005,7 @@ end
 function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!(varinfo, varinfo.metadata, _getvns(varinfo, spl)),
+        _invlink_metadata!(varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
@@ -1002,7 +1014,7 @@ end
 function _invlink(varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     md = _invlink_metadata_namedtuple!(
-        varinfo, varinfo.metadata, _getvns(varinfo, spl), Val(getspace(spl))
+        varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
     )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
@@ -1028,7 +1040,8 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
     vals_new = map(vns) do vn
         # Return early if we're already in constrained space OR if we're not
         # supposed to touch this `vn`.
-        if !istrans(varinfo, vn) || vn ∉ target_vns
+        # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
+        if !istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
         end
 
