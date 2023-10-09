@@ -264,25 +264,41 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
 end
 
-"""
-    subset(metadata::Metadata, vns::AbstractVector{<:VarName})
-
-Subset a `metadata` to only contain the variables `vns`.
-"""
 function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = Dict(vn => i for (i, vn) in enumerate(vns))
-    # HACK: maintaining consistency between `vals` and `ranges` in scenarios where
-    # `vns = [@varname(x[2])]` and `metadata` contains `x[1]` and `x[2]` is difficult.
-    # There are two options:
-    # 1. Keep ranges as they are and simply `copy` the full `vals`.
-    # 2. Adjust the ranges to be consistent with the `vals`.
-    # We choose option 1 for now, though this feels quite hacky.
-    # TODO: Only pick the subset of `vals` needed.
-    ranges = metadata.ranges[indices_for_vns]
-    # vals = mapreduce(Base.Fix1(getindex, metadata.vals), vcat, ranges)
-    vals = copy(metadata.vals)
+    # Construct new `vals` and `ranges`.
+    vals_original = metadata.vals
+    ranges_original = metadata.ranges
+    # Allocate the new `vals`. and `ranges`.
+    vals = similar(metadata.vals, sum(length, ranges_original[indices_for_vns]))
+    ranges = similar(ranges_original)
+    # The new range `r` for `vns[i]` is offset by `offset` and
+    # has the same length as the original range `r_original`.
+    # The new `indices` (from above) ensures ordering according to `vns`.
+    # NOTE: This means that the order of the variables in `vns` defines the order
+    # in the resulting `varinfo`! This can have performance implications, e.g.
+    # if in the model we have something like
+    #
+    #     for i = 1:N
+    #         x[i] ~ Normal()
+    #     end
+    #
+    # and we then we do
+    #
+    #    subset(varinfo, [@varname(x[i]) for i in shuffle(keys(varinfo))])
+    #
+    # the resulting `varinfo` will have `vals` ordered differently from the
+    # original `varinfo`, which can have performance implications.
+    offset = 0
+    for (idx, idx_original) in enumerate(indices_for_vns)
+        r_original = ranges_original[idx_original]
+        r = (offset + 1):(offset + length(r_original))
+        vals[r] = vals_original[r_original]
+        ranges[idx] = r
+        offset = r[end]
+    end
 
     flags = Dict(k => v[indices_for_vns] for (k, v) in metadata.flags)
     return Metadata(
@@ -302,10 +318,7 @@ end
 
 Merge two `VarInfo` instances into one, giving precedence to `varinfo_right` when reasonable.
 """
-function Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo)
-    return _merge(varinfo_left, varinfo_right)
-end
-function Base.merge(varinfo_left::TypedVarInfo, varinfo_right::TypedVarInfo)
+function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     return _merge(varinfo_left, varinfo_right)
 end
 
