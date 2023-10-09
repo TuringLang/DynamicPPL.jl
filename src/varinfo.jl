@@ -302,8 +302,9 @@ end
 
 Merge two `VarInfo` instances into one, giving precedence to `varinfo_right` when reasonable.
 """
-Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo) =
-    _merge(varinfo_left, varinfo_right)
+function Base.merge(varinfo_left::UntypedVarInfo, varinfo_right::UntypedVarInfo)
+    return _merge(varinfo_left, varinfo_right)
+end
 function Base.merge(varinfo_left::TypedVarInfo, varinfo_right::TypedVarInfo)
     return _merge(varinfo_left, varinfo_right)
 end
@@ -316,27 +317,31 @@ function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     return VarInfo(metadata, Ref(lp), Ref(num_produce))
 end
 
-function merge_metadata(
+@generated function merge_metadata(
     metadata_left::NamedTuple{names_left}, metadata_right::NamedTuple{names_right}
 ) where {names_left,names_right}
-    # TODO: Improve this. Maybe make `@generated`?
-    metadata = map(names_left) do sym
+    names = Expr(:tuple)
+    vals = Expr(:tuple)
+    # Loop over `names_left` first because we want to preserve the order of the variables.
+    for sym in names_left
+        push!(names.args, QuoteNode(sym))
         if sym in names_right
-            merge_metadata(getfield(metadata_left, sym), getfield(metadata_right, sym))
+            push!(
+                vals.args,
+                :(merge_metadata(metadata_left.$sym, metadata_right.$sym))
+            )
         else
-            getfield(metadata_left, sym)
+            push!(vals.args, :(metadata_left.$sym))
         end
     end
+    # Loop over remaining variables in `names_right`.
     names_right_only = filter(∉(names_left), names_right)
-    metadata_right_only = map(Tuple(names_right_only)) do sym
-        if !(sym in names_left)
-            getfield(metadata_right, sym)
-        end
+    for sym in names_right_only
+        push!(names.args, QuoteNode(sym))
+        push!(vals.args, :(metadata_right.$sym))
     end
 
-    return NamedTuple{(names_left..., names_right_only...)}(
-        tuple(metadata..., metadata_right_only...)
-    )
+    return :(NamedTuple{$names}($vals))
 end
 
 function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
