@@ -449,10 +449,7 @@ end
     for sym in names_left
         push!(names.args, QuoteNode(sym))
         if sym in names_right
-            push!(
-                vals.args,
-                :(merge_metadata(metadata_left.$sym, metadata_right.$sym))
-            )
+            push!(vals.args, :(merge_metadata(metadata_left.$sym, metadata_right.$sym)))
         else
             push!(vals.args, :(metadata_left.$sym))
         end
