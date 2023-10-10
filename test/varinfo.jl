@@ -1,3 +1,7 @@
+# A simple "algorithm" which only has `s` variables in its space.
+struct MySAlg end
+DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
+
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
@@ -419,6 +423,44 @@
                     end
                 end
             end
+        end
+    end
+
+    @testset "VarInfo with selectors" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            varinfo = VarInfo(model)
+            selector = DynamicPPL.Selector()
+            spl = Sampler(MySAlg(), model, selector)
+
+            vns = DynamicPPL.TestUtils.varnames(model)
+            vns_s = filter(vn -> DynamicPPL.getsym(vn) === :s, vns)
+            vns_m = filter(vn -> DynamicPPL.getsym(vn) === :m, vns)
+            for vn in vns_s
+                DynamicPPL.updategid!(varinfo, vn, spl)
+            end
+
+            # Should only get the variables subsumed by `@varname(s)`.
+            @test varinfo[spl] ==
+                mapreduce(Base.Fix1(DynamicPPL.getval, varinfo), vcat, vns_s)
+
+            # `link`
+            varinfo_linked = DynamicPPL.link(varinfo, spl, model)
+            # `s` variables should be linked
+            @test any(Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_s)
+            # `m` variables should NOT be linked
+            @test any(!Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_m)
+            # And `varinfo` should be unchanged
+            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo), vns)
+
+            # `invlink`
+            varinfo_invlinked = DynamicPPL.invlink(varinfo_linked, spl, model)
+            # `s` variables should no longer be linked
+            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo_invlinked), vns_s)
+            # `m` variables should still not be linked
+            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo_invlinked), vns_m)
+            # And `varinfo_linked` should be unchanged
+            @test any(Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_s)
+            @test any(!Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_m)
         end
     end
 end
