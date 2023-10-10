@@ -1038,7 +1038,7 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
         # Return early if we're already in constrained space OR if we're not
-        # supposed to touch this `vn`.
+        # supposed to touch this `vn`, e.g. when `vn` does not belong to the current sampler. 
         # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
         if !istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
