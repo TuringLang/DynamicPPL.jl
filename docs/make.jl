@@ -21,7 +21,6 @@ makedocs(;
         "API" => "api.md",
         "Tutorials" => ["tutorials/prob-interface.md"],
     ],
-    strict=true,
     checkdocs=:exports,
 )
 
