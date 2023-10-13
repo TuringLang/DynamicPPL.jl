@@ -445,38 +445,49 @@ end
             x = TV(undef, 2)
             x[1] ~ Normal(m, sqrt(s))
             x[2] ~ Normal(m, sqrt(s))
-            return nothing
+            return (; s, m, x)
         end
         model = demo_subsetting_varinfo()
         vns = [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in [
-            VarInfo(model), last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext()))
+        # `VarInfo` supports, effectively, arbitrary subsetting.
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, model(), vns)
+        varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
+        varinfos_simple = filter(Base.Fix2(isa, SimpleVarInfo), varinfos)
+
+        # `VarInfo` supports subsetting using, basically, arbitrary varnames.
+        vns_supported_standard = [
+            [@varname(s)],
+            [@varname(m)],
+            [@varname(x[1])],
+            [@varname(x[2])],
+            [@varname(s), @varname(m)],
+            [@varname(s), @varname(x[1])],
+            [@varname(s), @varname(x[2])],
+            [@varname(m), @varname(x[1])],
+            [@varname(m), @varname(x[2])],
+            [@varname(x[1]), @varname(x[2])],
+            [@varname(s), @varname(m), @varname(x[1])],
+            [@varname(s), @varname(m), @varname(x[2])],
+            [@varname(s), @varname(x[1]), @varname(x[2])],
+            [@varname(m), @varname(x[1]), @varname(x[2])],
+            [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
-            # All variables.
-            @test isempty(setdiff(keys(varinfo), vns))
+        # `SimpleaVarInfo` only supports subsetting using the varnames as they appear
+        # in the model.
+        vns_supported_simple = filter(∈(vns), vns_supported_standard)
 
-            @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in [
-                [@varname(s)],
-                [@varname(m)],
-                [@varname(x[1])],
-                [@varname(x[2])],
-                [@varname(s), @varname(m)],
-                [@varname(s), @varname(x[1])],
-                [@varname(s), @varname(x[2])],
-                [@varname(m), @varname(x[1])],
-                [@varname(m), @varname(x[2])],
-                [@varname(x[1]), @varname(x[2])],
-                [@varname(s), @varname(m), @varname(x[1])],
-                [@varname(s), @varname(m), @varname(x[2])],
-                [@varname(s), @varname(x[1]), @varname(x[2])],
-                [@varname(m), @varname(x[1]), @varname(x[2])],
-                [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
-            ]
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos_standard
+            # All variables.
+            check_varinfo_keys(varinfo, vns)
+
+            # Added a `convert` to make the naming of the testsets a bit more readable.
+            vns_supported = varinfo isa SimpleVarInfo ? vns_supported_simple : vns_supported_standard
+            @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in vns_supported
                 varinfo_subset = subset(varinfo, vns_subset)
                 # Should now only contain the variables in `vns_subset`.
-                @test isempty(setdiff(keys(varinfo_subset), vns_subset))
+                check_varinfo_keys(varinfo_subset, vns_subset)
                 # Values should be the same.
                 @test [varinfo_subset[vn] for vn in vns_subset] == [varinfo[vn] for vn in vns_subset]
 
@@ -484,7 +495,7 @@ end
                 varinfo_merged = merge(varinfo, varinfo_subset)
                 vns_merged = keys(varinfo_merged)
                 # Should be equivalent.
-                @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                check_varinfo_keys(varinfo_merged, vns)
                 # Values should be the same.
                 @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
@@ -493,17 +504,14 @@ end
 
     @testset "merge" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in [
-                VarInfo(model),
-                last(DynamicPPL.evaluate!!(model, VarInfo(), SamplingContext())),
-            ]
-                vns = DynamicPPL.TestUtils.varnames(model)
+            vns = DynamicPPL.TestUtils.varnames(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), vns)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
                     # Merging itself should be a no-op.
                     varinfo_merged = merge(varinfo, varinfo)
-                    vns_merged = keys(varinfo_merged)
-                    # Should be equivalent.
-                    @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                    # Varnames should be unchanged.
+                    check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
                 end
@@ -511,9 +519,8 @@ end
                 @testset "with empty" begin
                     # Merging with an empty `VarInfo` should be a no-op.
                     varinfo_merged = merge(varinfo, empty!!(deepcopy(varinfo)))
-                    vns_merged = keys(varinfo_merged)
-                    # Should be equivalent.
-                    @test union(vns_merged, vns) == intersect(vns_merged, vns)
+                    # Varnames should be unchanged.
+                    check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
                 end
