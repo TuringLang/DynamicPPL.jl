@@ -451,7 +451,7 @@ function _subset(x::NamedTuple, vns)
 end
 
 # `merge`
-function merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
+function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
     logp = getlogp(varinfo_right)
     transformation = merge_transformations(

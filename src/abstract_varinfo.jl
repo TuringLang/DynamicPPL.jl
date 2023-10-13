@@ -478,16 +478,23 @@ julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 """
 function subset end
 
-@doc """
-    merge(varinfo_left, varinfo_right)
+"""
+    merge(varinfo, other_varinfos...)
 
-Merge two varinfos into one, giving precedence to `varinfo_right` when reasonable.
+Merge varinfos into one, giving precedence to the right-most varinfo when sensible.
 
 This is particularly useful when combined with [`subset(varinfo, vns)`](@ref).
 
 See docstring of [`subset(varinfo, vns)`](@ref) for examples.
 """
-Base.merge
+function Base.merge(varinfo::AbstractVarInfo, varinfo_others::AbstractVarInfo...)
+    return merge(Base.merge(varinfo, first(varinfo_others)), Base.tail(varinfo_others)...)
+end
+
+# Avoid `StackoverFlowError` if implementation is missing.
+function Base.merge(varinfo::AbstractVarInfo, varinfo_other::AbstractVarInfo)
+    throw(MethodError(Base.merge, (varinfo, varinfo_other)))
+end
 
 # Transformations
 """

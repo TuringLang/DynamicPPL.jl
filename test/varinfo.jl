@@ -1,3 +1,19 @@
+function check_varinfo_keys(varinfo, vns)
+    if varinfo isa SimpleVarInfo{<:NamedTuple}
+        # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
+        # since `keys(varinfo_merged)` only contains `VarName` with `IdentityLens`.
+        # So we just check that the original keys are present.
+        for vn in vns
+            # Should have all the original keys.
+            @test haskey(varinfo, vn)
+        end
+    else
+        vns_varinfo = keys(varinfo)
+        # Should be equivalent.
+        @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
+    end
+end
+
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo" begin
         @model gdemo(x, y) = begin
