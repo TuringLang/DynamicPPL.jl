@@ -491,7 +491,7 @@ Base.merge(varinfo::AbstractVarInfo) = varinfo
 function Base.merge(
     varinfo_left::AbstractVarInfo,
     varinfo_right::AbstractVarInfo,
-    varinfo_others::AbstractVarInfo...
+    varinfo_others::AbstractVarInfo...,
 )
     return merge(Base.merge(varinfo_left, varinfo_right), varinfo_others...)
 end
