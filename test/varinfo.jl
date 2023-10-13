@@ -1,5 +1,5 @@
 function check_varinfo_keys(varinfo, vns)
-    if varinfo isa SimpleVarInfo{<:NamedTuple}
+    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
         # since `keys(varinfo_merged)` only contains `VarName` with `IdentityLens`.
         # So we just check that the original keys are present.
@@ -342,7 +342,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             vns = DynamicPPL.TestUtils.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                model, example_values, vns; include_threadsafe=true
+            )
             @testset "$(short_varinfo_name(vi))" for vi in varinfos
                 # Just making sure.
                 DynamicPPL.TestUtils.test_values(vi, example_values, vns)
@@ -385,9 +387,11 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @testset "mutating=$mutating" for mutating in [false, true]
                 value_true = rand(model)
                 varnames = DynamicPPL.TestUtils.varnames(model)
-                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
+                varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                    model, value_true, varnames; include_threadsafe=true
+                )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    if varinfo isa SimpleVarInfo{<:NamedTuple}
+                    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
                         # NOTE: this is broken since we'll end up trying to set
                         #
                         #    varinfo[@varname(x[4:5])] = [x[4],]
@@ -455,7 +459,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         vns = [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
         # `VarInfo` supports, effectively, arbitrary subsetting.
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, model(), vns)
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
+            model, model(), vns; include_threadsafe=true
+        )
         varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
         varinfos_simple = filter(Base.Fix2(isa, SimpleVarInfo), varinfos)
 
@@ -511,7 +517,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     @testset "merge" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                model, rand(model), vns; include_threadsafe=true
+            )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
                     # Merging itself should be a no-op.
