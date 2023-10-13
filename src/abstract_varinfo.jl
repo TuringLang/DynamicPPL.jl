@@ -431,7 +431,7 @@ julia> varinfo_subset2[[@varname(s), @varname(x[2])]]
  4.0
 ```
 
-`subset` is particularly useful when combined with [`merge(varinfo_left::VarInfo, varinfo_right::VarInfo)`](@ref)
+`subset` is particularly useful when combined with [`merge(varinfo::AbstractVarInfo)`](@ref)
 
 ```jldoctest varinfo-subset
 julia> # Merge the two.
