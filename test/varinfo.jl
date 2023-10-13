@@ -483,8 +483,10 @@ end
             check_varinfo_keys(varinfo, vns)
 
             # Added a `convert` to make the naming of the testsets a bit more readable.
-            vns_supported = varinfo isa SimpleVarInfo ? vns_supported_simple : vns_supported_standard
-            @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in vns_supported
+            vns_supported =
+                varinfo isa SimpleVarInfo ? vns_supported_simple : vns_supported_standard
+            @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
+                                                                   vns_supported
                 varinfo_subset = subset(varinfo, vns_subset)
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_subset)

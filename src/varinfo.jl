@@ -311,7 +311,9 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    return VarInfo(metadata, Ref(getlogp(varinfo_right)), Ref(varinfo_right.num_produce[]))
+    return VarInfo(
+        metadata, Ref(getlogp(varinfo_right)), Ref(get_num_produce(varinfo_right))
+    )
 end
 
 @generated function merge_metadata(

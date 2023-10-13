@@ -430,7 +430,7 @@ function _subset(x::AbstractDict, vns)
         error(
             "Cannot subset `AbstractDict` with `VarName` that is not an explicit key. " *
             "For example, if `keys(x) == [@varname(x[1])]`, then subsetting with " *
-            "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not."
+            "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not.",
         )
     end
     C = ConstructionBase.constructorof(typeof(x))
@@ -442,7 +442,7 @@ function _subset(x::NamedTuple, vns)
     if any(!==(Setfield.IdentityLens()) ∘ getlens, vns)
         error(
             "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
-            "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not."
+            "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
         )
     end
 
@@ -455,8 +455,7 @@ function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
     logp = getlogp(varinfo_right)
     transformation = merge_transformations(
-        varinfo_left.transformation,
-        varinfo_right.transformation,
+        varinfo_left.transformation, varinfo_right.transformation
     )
     return SimpleVarInfo(values, logp, transformation)
 end
