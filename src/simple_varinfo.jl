@@ -453,7 +453,7 @@ end
 # `merge`
 function merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    logp = getlogp(varinfo_left) + getlogp(varinfo_right)
+    logp = getlogp(varinfo_right)
     transformation = merge_transformations(
         varinfo_left.transformation,
         varinfo_right.transformation,

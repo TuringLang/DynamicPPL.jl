@@ -311,10 +311,7 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    lp = getlogp(varinfo_left) + getlogp(varinfo_right)
-    # TODO: Is this really the way we want to combine `num_produce`?
-    num_produce = varinfo_left.num_produce[] + varinfo_right.num_produce[]
-    return VarInfo(metadata, Ref(lp), Ref(num_produce))
+    return VarInfo(metadata, Ref(getlogp(varinfo_right)), Ref(varinfo_right.num_produce[]))
 end
 
 @generated function merge_metadata(
