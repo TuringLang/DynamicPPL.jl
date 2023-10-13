@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.23.18"
+version = "0.23.19"
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -8,6 +8,7 @@ AbstractPPL = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
 ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
@@ -21,6 +22,12 @@ Setfield = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
+[weakdeps]
+MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+
+[extensions]
+DynamicPPLMCMCChainsExt = ["MCMCChains"]
+
 [compat]
 AbstractMCMC = "2, 3.0, 4"
 AbstractPPL = "0.6"
@@ -28,6 +35,7 @@ BangBang = "0.3"
 Bijectors = "0.13"
 ChainRulesCore = "0.9.7, 0.10, 1"
 ConstructionBase = "1.5.4"
+Compat = "4"
 Distributions = "0.23.8, 0.24, 0.25"
 DocStringExtensions = "0.8, 0.9"
 LogDensityProblems = "2"
@@ -39,11 +47,5 @@ Setfield = "0.7.1, 0.8, 1"
 ZygoteRules = "0.2"
 julia = "1.6"
 
-[extensions]
-DynamicPPLMCMCChainsExt = ["MCMCChains"]
-
 [extras]
-MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
-
-[weakdeps]
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"

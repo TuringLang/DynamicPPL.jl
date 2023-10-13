@@ -3,6 +3,7 @@ module DynamicPPL
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
 using Bijectors
+using Compat
 using Distributions
 using OrderedCollections: OrderedDict
 
