@@ -305,11 +305,6 @@ function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
     )
 end
 
-"""
-    merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
-
-Merge two `VarInfo` instances into one, giving precedence to `varinfo_right` when reasonable.
-"""
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     return _merge(varinfo_left, varinfo_right)
 end
