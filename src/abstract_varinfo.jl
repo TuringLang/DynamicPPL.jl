@@ -487,13 +487,13 @@ This is particularly useful when combined with [`subset(varinfo, vns)`](@ref).
 
 See docstring of [`subset(varinfo, vns)`](@ref) for examples.
 """
-function Base.merge(varinfo::AbstractVarInfo, varinfo_others::AbstractVarInfo...)
-    return merge(Base.merge(varinfo, first(varinfo_others)), Base.tail(varinfo_others)...)
-end
-
-# Avoid `StackoverFlowError` if implementation is missing.
-function Base.merge(varinfo::AbstractVarInfo, varinfo_other::AbstractVarInfo)
-    throw(MethodError(Base.merge, (varinfo, varinfo_other)))
+Base.merge(varinfo::AbstractVarInfo) = varinfo
+function Base.merge(
+    varinfo_left::AbstractVarInfo,
+    varinfo_right::AbstractVarInfo,
+    varinfo_others::AbstractVarInfo...
+)
+    return merge(Base.merge(varinfo_left, varinfo_right), varinfo_others...)
 end
 
 # Transformations
