@@ -950,6 +950,17 @@ function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, mod
     return vi
 end
 
+function link!!(
+    t::DynamicTransformation,
+    vi::ThreadSafeVarInfo{<:VarInfo},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Setfield.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+end
+
 """
     link!(vi::VarInfo, spl::Sampler)
 
@@ -1023,6 +1034,17 @@ function invlink!!(::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, m
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi
+end
+
+function invlink!!(
+    ::DynamicTransformation,
+    vi::ThreadSafeVarInfo{<:VarInfo},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Setfield.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1129,6 +1151,16 @@ end
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
     return _link(varinfo, spl)
 end
+function link(
+    ::DynamicTransformation,
+    varinfo::ThreadSafeVarInfo{<:VarInfo},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
+end
 
 function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
@@ -1213,6 +1245,16 @@ function invlink(
     ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
 )
     return _invlink(varinfo, spl)
+end
+function invlink(
+    ::DynamicTransformation,
+    varinfo::ThreadSafeVarInfo{<:VarInfo},
+    spl::AbstractSampler,
+    model::Model,
+)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
 function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
