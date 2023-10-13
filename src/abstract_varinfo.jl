@@ -488,12 +488,14 @@ This is particularly useful when combined with [`subset(varinfo, vns)`](@ref).
 See docstring of [`subset(varinfo, vns)`](@ref) for examples.
 """
 Base.merge(varinfo::AbstractVarInfo) = varinfo
+# Define 3-argument version so 2-argument version will error if not implemented.
 function Base.merge(
-    varinfo_left::AbstractVarInfo,
-    varinfo_right::AbstractVarInfo,
+    varinfo1::AbstractVarInfo,
+    varinfo2::AbstractVarInfo,
+    varinfo3::AbstractVarInfo,
     varinfo_others::AbstractVarInfo...,
 )
-    return merge(Base.merge(varinfo_left, varinfo_right), varinfo_others...)
+    return merge(Base.merge(varinfo1, varinfo2), varinfo3, varinfo_others...)
 end
 
 # Transformations
