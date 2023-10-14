@@ -463,7 +463,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             model, model(), vns; include_threadsafe=true
         )
         varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
-        varinfos_simple = filter(Base.Fix2(isa, SimpleVarInfo), varinfos)
+        varinfos_simple = filter(
+            Base.Fix2(isa, DynamicPPL.SimpleOrThreadSafeSimple), varinfos
+        )
 
         # `VarInfo` supports subsetting using, basically, arbitrary varnames.
         vns_supported_standard = [
@@ -493,8 +495,11 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             check_varinfo_keys(varinfo, vns)
 
             # Added a `convert` to make the naming of the testsets a bit more readable.
-            vns_supported =
-                varinfo isa SimpleVarInfo ? vns_supported_simple : vns_supported_standard
+            vns_supported = if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple
+                vns_supported_simple
+            else
+                vns_supported_standard
+            end
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
                                                                    vns_supported
                 varinfo_subset = subset(varinfo, vns_subset)
@@ -511,6 +516,18 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 # Values should be the same.
                 @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
+        end
+
+        # For certain varinfos we should have errors.
+        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `IdentityLens`.
+        varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:NamedTuple}), varinfos)]
+        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
+            @test_throws ArgumentError subset(varinfo, [@varname(s), @varname(m), @varname(x[1])])
+        end
+        # `SimpleVarInfo{<:AbstractDict}` can only handle varnames as they appear in the model.
+        varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:AbstractDict}), varinfos)]
+        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
+            @test_throws ArgumentError subset(varinfo, [@varname(s), @varname(m), @varname(x)])
         end
     end
 
@@ -530,7 +547,25 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
                 end
 
+                @testset "with itself (3-argument version)" begin
+                    # Merging itself should be a no-op.
+                    varinfo_merged = merge(varinfo, varinfo, varinfo)
+                    # Varnames should be unchanged.
+                    check_varinfo_keys(varinfo_merged, vns)
+                    # Values should be the same.
+                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                end
+
                 @testset "with empty" begin
+                    # Empty is 1st argument.
+                    # Merging with an empty `VarInfo` should be a no-op.
+                    varinfo_merged = merge(empty!!(deepcopy(varinfo)), varinfo)
+                    # Varnames should be unchanged.
+                    check_varinfo_keys(varinfo_merged, vns)
+                    # Values should be the same.
+                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+
+                    # Empty is 2nd argument.
                     # Merging with an empty `VarInfo` should be a no-op.
                     varinfo_merged = merge(varinfo, empty!!(deepcopy(varinfo)))
                     # Varnames should be unchanged.

@@ -429,7 +429,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         else
             # Just extract the metadata from `metadata_right`.
             # `vals`
-            vals_right = getvals(metadata_right, vn)
+            vals_right = getval(metadata_right, vn)
             append!(vals, vals_right)
             # `ranges`
             r = (offset + 1):(offset + length(vals_right))
