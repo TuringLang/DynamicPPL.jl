@@ -419,6 +419,51 @@ function Base.eltype(
     return V
 end
 
+# `subset`
+function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
+    return Setfield.@set varinfo.values = _subset(varinfo.values, vns)
+end
+
+function _subset(x::AbstractDict, vns)
+    # NOTE: This requires `vns` to be explicitly present in `x`.
+    if any(!Base.Fix1(haskey, x), vns)
+        throw(
+            ArgumentError(
+                "Cannot subset `AbstractDict` with `VarName` that is not an explicit key. " *
+                "For example, if `keys(x) == [@varname(x[1])]`, then subsetting with " *
+                "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not.",
+            ),
+        )
+    end
+    C = ConstructionBase.constructorof(typeof(x))
+    return C(vn => x[vn] for vn in vns)
+end
+
+function _subset(x::NamedTuple, vns)
+    # NOTE: Here we can only handle `vns` that contain the `IdentityLens`.
+    if any(Base.Fix1(!==, Setfield.IdentityLens()) ∘ getlens, vns)
+        throw(
+            ArgumentError(
+                "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
+                "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
+            ),
+        )
+    end
+
+    syms = map(getsym, vns)
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix2(getindex, x), syms)))
+end
+
+# `merge`
+function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
+    values = merge(varinfo_left.values, varinfo_right.values)
+    logp = getlogp(varinfo_right)
+    transformation = merge_transformations(
+        varinfo_left.transformation, varinfo_right.transformation
+    )
+    return SimpleVarInfo(values, logp, transformation)
+end
+
 # Context implementations
 # NOTE: Evaluations, i.e. those without `rng` are shared with other
 # implementations of `AbstractVarInfo`.

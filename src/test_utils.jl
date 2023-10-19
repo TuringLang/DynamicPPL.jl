@@ -37,12 +37,17 @@ function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal
 end
 
 """
-    setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+    setup_varinfos(model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false)
 
 Return a tuple of instances for different implementations of `AbstractVarInfo` with
 each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
+
+If `include_threadsafe` is `true`, then the returned tuple will also include thread-safe versions
+of the varinfo instances.
 """
-function setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+function setup_varinfos(
+    model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
+)
     # VarInfo
     vi_untyped = VarInfo()
     model(vi_untyped)
@@ -56,12 +61,18 @@ function setup_varinfos(model::Model, example_values::NamedTuple, varnames)
     svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
 
     lp = getlogp(vi_typed)
-    return map((
+    varinfos = map((
         vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
     )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
     end
+
+    if include_threadsafe
+        varinfos = (varinfos..., map(DynamicPPL.ThreadSafeVarInfo ∘ deepcopy, varinfos)...)
+    end
+
+    return varinfos
 end
 
 """

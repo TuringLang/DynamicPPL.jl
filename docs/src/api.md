@@ -255,6 +255,8 @@ DynamicPPL.reconstruct
 #### Utils
 
 ```@docs
+Base.merge(::AbstractVarInfo)
+DynamicPPL.subset
 DynamicPPL.unflatten
 DynamicPPL.tonamedtuple
 DynamicPPL.varname_leaves
