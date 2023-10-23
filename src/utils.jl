@@ -238,7 +238,7 @@ reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
 
 function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
-    return reconstruct(dist, reshape(val, size(dist)))
+    return reconstruct(dist, Matrix(reshape(val, size(dist))))
 end
 function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
     return Cholesky(val, dist.uplo, 0)
