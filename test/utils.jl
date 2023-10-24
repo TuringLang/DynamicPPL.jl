@@ -48,4 +48,24 @@
         x = rand(dist)
         @test vectorize(dist, x) == vec(x.UL)
     end
+
+    @testset "BangBang.possible" begin
+        a = zeros(3, 3, 3, 3)
+        svi = SimpleVarInfo(Dict(@varname(a) => a))
+        DynamicPPL.setindex!!(svi, ones(3, 2), @varname(a[1, 1:3, 1, 1:2]))
+        @test eltype(svi[@varname(a)]) != Any
+
+        DynamicPPL.setindex!!(svi, ones(3), @varname(a[1, 1, :, 1]))
+        @test eltype(svi[@varname(a)]) != Any
+
+        DynamicPPL.setindex!!(svi, [1, 2], @varname(a[[5, 8]]))
+        @test eltype(svi[@varname(a)]) != Any
+
+        DynamicPPL.setindex!!(
+            svi,
+            [1, 2],
+            @varname(a[[CartesianIndex(1, 1, 3, 1), CartesianIndex(1, 1, 3, 2)]])
+        )
+        @test eltype(svi[@varname(a)]) != Any
+    end
 end

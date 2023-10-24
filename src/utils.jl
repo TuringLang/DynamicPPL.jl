@@ -569,6 +569,12 @@ function BangBang.possible(
     return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C)
 end
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, ::Vararg
+) where {C<:AbstractArray,T<:AbstractArray}
+    return BangBang.implements(setindex!, C) &&
+           promote_type(eltype(C), eltype(T)) <: eltype(C)
+end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
 # TODO(torfjelde): Do better.
