@@ -541,35 +541,6 @@ end
 # and https://github.com/JuliaFolds/BangBang.jl/pull/238.
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
 function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
-) where {C<:AbstractMatrix,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
-end
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractPPL.ConcretizedSlice, ::Integer
-) where {C<:AbstractMatrix,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
-end
-# HACK: Makes it possible to use ranges, etc. for setting a vector.
-# For example, without this hack, BangBang.jl will consider
-#
-#    x[1:2] = [1, 2]
-#
-# as NOT supported. This results is calling the immutable
-# `BangBang.setindex` instead, which also ends up expanding the
-# type of the containing array (`x` in the above scenario) to
-# have element type `Any`.
-# The below code just, correctly, marks this as possible and
-# thus we hit the mutable `setindex!` instead.
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractVector{<:Integer}
-) where {C<:AbstractVector,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
-end
-function BangBang.possible(
     ::typeof(BangBang._setindex!), ::C, ::T, ::Vararg
 ) where {C<:AbstractArray,T<:AbstractArray}
     return BangBang.implements(setindex!, C) &&
