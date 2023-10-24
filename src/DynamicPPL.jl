@@ -3,6 +3,7 @@ module DynamicPPL
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
 using Bijectors
+using Compat
 using Distributions
 using OrderedCollections: OrderedDict
 
@@ -47,6 +48,7 @@ export AbstractVarInfo,
     SimpleVarInfo,
     push!!,
     empty!!,
+    subset,
     getlogp,
     setlogp!!,
     acclogp!!,
