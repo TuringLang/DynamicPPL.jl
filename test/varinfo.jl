@@ -581,7 +581,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 end
 
                 @testset "with different value" begin
-                    x = DynamicPPL.TestUtils.rand(model)
+                    x = DynamicPPL.TestUtils.rand_prior_true(model)
                     varinfo_changed = DynamicPPL.TestUtils.update_values!!(
                         deepcopy(varinfo), x, vns
                     )
