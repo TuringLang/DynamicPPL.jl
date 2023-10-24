@@ -541,7 +541,10 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model, DynamicPPL.TestUtils.rand_prior_true(model), vns; include_threadsafe=true
+                model,
+                DynamicPPL.TestUtils.rand_prior_true(model),
+                vns;
+                include_threadsafe=true,
             )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
