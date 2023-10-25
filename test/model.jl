@@ -222,7 +222,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         Random.seed!(1776)
         s, m = model()
         sample_namedtuple = (; s=s, m=m)
-        sample_dict = Dict(@varname(s) => s, @varname(m) => m)
+        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
 
         # With explicit RNG
         @test rand(Random.seed!(1776), model) == sample_namedtuple
@@ -235,7 +235,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         Random.seed!(1776)
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
-        @test rand(Dict, model) == sample_dict
+        @test rand(OrderedDict, model) == sample_dict
     end
 
     @testset "default arguments" begin
@@ -263,7 +263,21 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
     @testset "TestUtils" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            x = rand(model)
+            x = DynamicPPL.TestUtils.rand_prior_true(model)
+            # `rand_prior_true` should return a `NamedTuple`.
+            @test x isa NamedTuple
+
+            # `rand` with a `AbstractDict` should have `varnames` as keys.
+            x_rand_dict = rand(OrderedDict, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_dict, vn)
+            end
+            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
+            x_rand_nt = rand(NamedTuple, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_nt, Symbol(vn))
+            end
+
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
             @test loglikelihood(model, x) ≈
