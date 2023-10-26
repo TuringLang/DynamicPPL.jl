@@ -209,8 +209,6 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
 end
 
-tonamedtuple(vi::ThreadSafeVarInfo) = tonamedtuple(vi.varinfo)
-
 # Transformations.
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)

@@ -71,7 +71,6 @@ export AbstractVarInfo,
     invlink,
     invlink!,
     invlink!!,
-    tonamedtuple,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
