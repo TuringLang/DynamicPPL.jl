@@ -532,44 +532,6 @@ function dot_assume(
     return value, lp, vi
 end
 
-# We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
-# TODO: Move away from using these `tonamedtuple` methods.
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
-    nt_vals = map(keys(vi)) do vn
-        val = vi[vn]
-        vns = collect(TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-        (vals, map(string, vns))
-    end
-
-    return NamedTuple{names}(nt_vals)
-end
-
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
-    syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
-    for vn in keys(vi)
-        # Extract the leaf varnames and values.
-        val = vi[vn]
-        vns = collect(TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-
-        # Determine the corresponding symbol.
-        sym = only(unique(map(getsym, vns)))
-
-        # Initialize entry if not yet initialized.
-        if !haskey(syms_to_result, sym)
-            syms_to_result[sym] = (Real[], String[])
-        end
-
-        # Combine with old result.
-        old_vals, old_string_vns = syms_to_result[sym]
-        syms_to_result[sym] = (vcat(old_vals, vals), vcat(old_string_vns, map(string, vns)))
-    end
-
-    # Construct `NamedTuple`.
-    return NamedTuple(pairs(syms_to_result))
-end
-
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())

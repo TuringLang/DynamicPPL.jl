@@ -738,21 +738,6 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-"""
-    tonamedtuple(vi::AbstractVarInfo)
-
-Convert a `vi` into a `NamedTuple` where each variable symbol maps to the values and 
-indexing string of the variable.
-
-For example, a model that had a vector of vector-valued
-variables `x` would return
-
-```julia
-(x = ([1.5, 2.0], [3.0, 1.0], ["x[1]", "x[2]"]), )
-```
-"""
-function tonamedtuple end
-
 # TODO: Clean up all this linking stuff once and for all!
 """
     with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
