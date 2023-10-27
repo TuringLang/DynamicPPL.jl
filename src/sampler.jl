@@ -87,10 +87,12 @@ function AbstractMCMC.sample(
     N::Integer;
     chain_type=default_chain_type(sampler),
     resume_from=nothing,
-    kwargs...
+    kwargs...,
 )
     initial_state = loadstate(resume_from)
-    return AbstractMCMC.mcmcsample(rng, model, sampler, N; chain_type, initial_state, kwargs...)
+    return AbstractMCMC.mcmcsample(
+        rng, model, sampler, N; chain_type, initial_state, kwargs...
+    )
 end
 
 # initial step: general interface for resuming and

@@ -17,7 +17,11 @@ end
 # Load state from a `Chains`: By convention, it is stored in `:samplerstate` metadata
 function DynamicPPL.loadstate(chain::MCMCChains.Chains)
     if !haskey(chain.info, :samplerstate)
-        throw(ArgumentError("The chain object does not contain the final state of the sampler: Metadata `:samplerstate` missing."))
+        throw(
+            ArgumentError(
+                "The chain object does not contain the final state of the sampler: Metadata `:samplerstate` missing.",
+            ),
+        )
     end
     return chain.info[:samplerstate]
 end
