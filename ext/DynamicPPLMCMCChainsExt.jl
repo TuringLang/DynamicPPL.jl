@@ -14,6 +14,14 @@ function _check_varname_indexing(c::MCMCChains.Chains)
            error("Chains do not support indexing using $vn.")
 end
 
+# Load state from a `Chains`: By convention, it is stored in `:samplerstate` metadata
+function DynamicPPL.loadstate(chain::MCMCChains.Chains)
+    if !haskey(chain.info, :samplerstate)
+        throw(ArgumentError("The chain object does not contain the final state of the sampler: Metadata `:samplerstate` missing."))
+    end
+    return chain.info[:samplerstate]
+end
+
 # A few methods needed.
 function DynamicPPL.supports_varname_indexing(chain::MCMCChains.Chains)
     return _has_varname_to_symbol(chain.info)
