@@ -97,11 +97,7 @@ end
 
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    spl::Sampler;
-    initial_params=nothing,
-    kwargs...,
+    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
 )
     # Sample initial values.
     vi = default_varinfo(rng, model, spl)
