@@ -46,6 +46,7 @@ export AbstractVarInfo,
     UntypedVarInfo,
     TypedVarInfo,
     SimpleVarInfo,
+    VarNameVector,
     push!!,
     empty!!,
     subset,
@@ -168,6 +169,7 @@ include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
+include("varnamevector.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
