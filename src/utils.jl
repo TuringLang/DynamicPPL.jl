@@ -538,7 +538,7 @@ function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) whe
 end
 
 # HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
-# and https://github.com/JuliaFolds/BangBang.jl/pull/238.
+# and https://github.com/JuliaFolds/BangBang.jl/pull/238, https://github.com/JuliaFolds2/BangBang.jl/pull/16.
 # HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
 function BangBang.possible(
     ::typeof(BangBang._setindex!), ::C, ::T, ::Vararg
