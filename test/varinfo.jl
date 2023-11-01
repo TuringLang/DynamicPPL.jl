@@ -338,7 +338,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
     @testset "values_as" begin
         @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            example_values = rand(NamedTuple, model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             vns = DynamicPPL.TestUtils.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
@@ -385,7 +385,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             DynamicPPL.TestUtils.demo_lkjchol(),
         ]
             @testset "mutating=$mutating" for mutating in [false, true]
-                value_true = rand(model)
+                value_true = DynamicPPL.TestUtils.rand_prior_true(model)
                 varnames = DynamicPPL.TestUtils.varnames(model)
                 varinfos = DynamicPPL.TestUtils.setup_varinfos(
                     model, value_true, varnames; include_threadsafe=true
@@ -541,7 +541,10 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model, rand(model), vns; include_threadsafe=true
+                model,
+                DynamicPPL.TestUtils.rand_prior_true(model),
+                vns;
+                include_threadsafe=true,
             )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
@@ -581,7 +584,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 end
 
                 @testset "with different value" begin
-                    x = DynamicPPL.TestUtils.rand(model)
+                    x = DynamicPPL.TestUtils.rand_prior_true(model)
                     varinfo_changed = DynamicPPL.TestUtils.update_values!!(
                         deepcopy(varinfo), x, vns
                     )
