@@ -50,6 +50,8 @@
     end
 
     @testset "BangBang.possible" begin
+        using DynamicPPL.BangBang: setindex!!
+
         # Some utility methods for testing `setindex!`.
         test_linear_index_only(::Tuple, ::AbstractArray) = false
         test_linear_index_only(inds::NTuple{1}, ::AbstractArray) = true
