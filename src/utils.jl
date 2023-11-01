@@ -561,10 +561,10 @@ _index_dimension(::Colon) = 1
 _index_dimension(::AbstractVector) = 1
 _index_dimension(indices::Tuple) = sum(map(_index_dimension, indices))
 
-function possible(
-    ::typeof(_setindex!), ::C, ::T, indices::Vararg
+function BangBang.possible(
+    ::typeof(BangBang._setindex!), ::C, ::T, indices::Vararg
 ) where {M,C<:AbstractArray{<:Real},T<:AbstractArray{<:Real,M}}
-    return implements(setindex!, C) &&
+    return BangBang.implements(setindex!, C) &&
            promote_type(eltype(C), eltype(T)) <: eltype(C) &&
            # This will still return `false` for scenarios such as
            #
