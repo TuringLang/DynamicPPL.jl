@@ -1,14 +1,6 @@
 @testset "VarNameVector" begin
-    vns = [
-        @varname(x[1]),
-        @varname(x[2]),
-        @varname(x[3]),
-    ]
-    vals = [
-        1,
-        2:3,
-        reshape(4:9, 2, 3),
-    ]
+    vns = [@varname(x[1]), @varname(x[2]), @varname(x[3])]
+    vals = [1, 2:3, reshape(4:9, 2, 3)]
     vnv = VarNameVector(vns, vals)
 
     # `getindex`

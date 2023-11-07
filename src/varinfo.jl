@@ -908,7 +908,6 @@ istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
 istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
 istrans(vnv::VarNameVector, vn::VarName) = !(gettransform(vnv, vn) isa FromVec)
 
-
 getlogp(vi::VarInfo) = vi.logp[]
 
 function setlogp!!(vi::VarInfo, logp)

@@ -4,7 +4,7 @@ struct VarNameVector{
     TIdcs<:OrderedDict{<:VarName,Int},
     TVN<:AbstractVector{<:VarName},
     TVal<:AbstractVector,
-    TTrans<:AbstractVector
+    TTrans<:AbstractVector,
 }
     "mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`"
     idcs::TIdcs # Dict{<:VarName,Int}
@@ -44,9 +44,7 @@ Bijectors.inverse(f::FromVec{Tuple{}}) = tovec
 VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
 VarNameVector(vns, vals) = VarNameVector(collect(vns), collect(vals))
 function VarNameVector(
-    vns::AbstractVector,
-    vals::AbstractVector,
-    transforms = map(FromVec, vals)
+    vns::AbstractVector, vals::AbstractVector, transforms=map(FromVec, vals)
 )
     # TODO: Check uniqueness of `vns`?
 
@@ -107,7 +105,7 @@ Base.getindex(vnv::VarNameVector, spl::AbstractSampler) = vnv[:]
 Base.setindex!(vnv::VarNameVector, val, i::Int) = vnv.vals[i] = val
 function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
     f = inverse(gettransform(vnv, vn))
-    vnv.vals[getrange(vnv, vn)] = f(val)
+    return vnv.vals[getrange(vnv, vn)] = f(val)
 end
 
 function Base.empty!(vnv::VarNameVector)
@@ -146,7 +144,7 @@ function group_by_symbol(vnv::VarNameVector)
         VarNameVector(
             map(identity, vns),
             map(Base.Fix1(getindex, vnv), vns),
-            map(Base.Fix1(gettransform, vnv), vns)
+            map(Base.Fix1(gettransform, vnv), vns),
         )
     end
 
