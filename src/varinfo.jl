@@ -101,6 +101,7 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
 end
+const VectorVarInfo = VarInfo{<:VarNameVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
@@ -520,6 +521,8 @@ Return the distribution from which `vn` was sampled in `vi`.
 """
 getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
+# HACK: we shouldn't need this
+getdist(::VarNameVector, ::VarName) = nothing
 
 """
     getval(vi::VarInfo, vn::VarName)
@@ -530,6 +533,8 @@ The values may or may not be transformed to Euclidean space.
 """
 getval(vi::VarInfo, vn::VarName) = getval(getmetadata(vi, vn), vn)
 getval(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
+# HACK: We shouldn't need this
+getval(vnv::VarNameVector, vn::VarName) = view(vnv.vals, getrange(vnv, vn))
 
 """
     setval!(vi::VarInfo, val, vn::VarName)
@@ -562,13 +567,14 @@ Return the values of all the variables in `vi`.
 
 The values may or may not be transformed to Euclidean space.
 """
-getall(vi::UntypedVarInfo) = getall(vi.metadata)
+getall(vi::VarInfo) = getall(vi.metadata)
 # NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
 # See for example https://github.com/JuliaLang/julia/pull/46381.
 getall(vi::TypedVarInfo) = reduce(vcat, map(getall, vi.metadata))
 function getall(md::Metadata)
     return mapreduce(Base.Fix1(getval, md), vcat, md.vns; init=similar(md.vals, 0))
 end
+getall(vnv::VarNameVector) = vnv.vals
 
 """
     setall!(vi::VarInfo, val)
@@ -743,7 +749,7 @@ end
 @inline function _getranges(vi::VarInfo, s::Selector, space)
     return _getranges(vi, _getidcs(vi, s, space))
 end
-@inline function _getranges(vi::UntypedVarInfo, idcs::Vector{Int})
+@inline function _getranges(vi::VarInfo, idcs::Vector{Int})
     return mapreduce(i -> vi.metadata.ranges[i], vcat, idcs; init=Int[])
 end
 @inline _getranges(vi::TypedVarInfo, idcs::NamedTuple) = _getranges(vi.metadata, idcs)
@@ -848,6 +854,12 @@ function TypedVarInfo(vi::UntypedVarInfo)
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
 TypedVarInfo(vi::TypedVarInfo) = vi
+function TypedVarInfo(vi::VectorVarInfo)
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = group_by_symbol(vi.metadata)
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
@@ -866,6 +878,8 @@ end
 
 # Functions defined only for UntypedVarInfo
 Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
+
+Base.keys(vi::VectorVarInfo) = keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
 # on other methods in the codebase which requires `Vector{<:VarName}`.
@@ -890,7 +904,10 @@ function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
     return push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
 end
 
-istrans(vi::VarInfo, vn::VarName) = is_flagged(vi, vn, "trans")
+istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
+istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
+istrans(vnv::VarNameVector, vn::VarName) = !(gettransform(vnv, vn) isa FromVec)
+
 
 getlogp(vi::VarInfo) = vi.logp[]
 
@@ -1406,6 +1423,12 @@ function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     val = getval(vi, vn)
     return maybe_invlink_and_reconstruct(vi, vn, dist, val)
 end
+function getindex(vi::VectorVarInfo, vn::VarName, ::Nothing)
+    if !haskey(vi, vn)
+        throw(KeyError(vn))
+    end
+    return getmetadata(vi, vn)[vn]
+end
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
     # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
     # such as `x .~ [Normal(), Exponential()]`.
@@ -1440,7 +1463,7 @@ Return the current value(s) of the random variables sampled by `spl` in `vi`.
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-getindex(vi::UntypedVarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
+getindex(vi::VarInfo, spl::Sampler) = copy(getval(vi, _getranges(vi, spl)))
 function getindex(vi::TypedVarInfo, spl::Sampler)
     # Gets the ranges as a NamedTuple
     ranges = _getranges(vi, spl)

@@ -74,40 +74,81 @@ function VarNameVector(
 end
 
 # Basic array interface.
-Base.eltype(vmd::VarNameVector) = eltype(vmd.vals)
-Base.length(vmd::VarNameVector) = length(vmd.vals)
-Base.size(vmd::VarNameVector) = size(vmd.vals)
+Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
+Base.length(vnv::VarNameVector) = length(vnv.vals)
+Base.size(vnv::VarNameVector) = size(vnv.vals)
 
 Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 
+# Dictionary interface.
+Base.keys(vnv::VarNameVector) = vnv.vns
+
+Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.idcs, vn)
+
 # `getindex` & `setindex!`
-getidc(vmd::VarNameVector, vn::VarName) = vmd.idcs[vn]
+getidx(vnv::VarNameVector, vn::VarName) = vnv.idcs[vn]
 
-getrange(vmd::VarNameVector, i::Int) = vmd.ranges[i]
-getrange(vmd::VarNameVector, vn::VarName) = getrange(vmd, getidc(vmd, vn))
+getrange(vnv::VarNameVector, i::Int) = vnv.ranges[i]
+getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 
-gettransform(vmd::VarNameVector, vn::VarName) = vmd.transforms[getidc(vmd, vn)]
+gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
 
-Base.getindex(vmd::VarNameVector, i::Int) = vmd.vals[i]
-function Base.getindex(vmd::VarNameVector, vn::VarName)
-    x = vmd.vals[getrange(vmd, vn)]
-    f = gettransform(vmd, vn)
+Base.getindex(vnv::VarNameVector, ::Colon) = vnv.vals
+Base.getindex(vnv::VarNameVector, i::Int) = vnv.vals[i]
+function Base.getindex(vnv::VarNameVector, vn::VarName)
+    x = vnv.vals[getrange(vnv, vn)]
+    f = gettransform(vnv, vn)
     return f(x)
 end
 
-Base.setindex!(vmd::VarNameVector, val, i::Int) = vmd.vals[i] = val
-function Base.setindex!(vmd::VarNameVector, val, vn::VarName)
-    f = inverse(gettransform(vmd, vn))
-    vmd.vals[getrange(vmd, vn)] = f(val)
+# HACK: remove this as soon as possible.
+Base.getindex(vnv::VarNameVector, spl::AbstractSampler) = vnv[:]
+
+Base.setindex!(vnv::VarNameVector, val, i::Int) = vnv.vals[i] = val
+function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
+    f = inverse(gettransform(vnv, vn))
+    vnv.vals[getrange(vnv, vn)] = f(val)
 end
 
+function Base.empty!(vnv::VarNameVector)
+    # TODO: Or should the semantics be different, e.g. keeping `vns`?
+    empty!(vnv.idcs)
+    empty!(vnv.vns)
+    empty!(vnv.ranges)
+    empty!(vnv.vals)
+    empty!(vnv.transforms)
+    return nothing
+end
+BangBang.empty!!(vnv::VarNameVector) = empty!(vnv)
+
 # TODO: Re-use some of the show functionality from Base?
-function Base.show(io::IO, vmd::VarNameVector)
+function Base.show(io::IO, vnv::VarNameVector)
     print(io, "[")
-    for (i, vn) in enumerate(vmd.vns)
+    for (i, vn) in enumerate(vnv.vns)
         if i > 1
             print(io, ", ")
         end
-        print(io, vn, " = ", vmd[vn])
+        print(io, vn, " = ", vnv[vn])
     end
+end
+
+# Typed version.
+function group_by_symbol(vnv::VarNameVector)
+    # Group varnames in `vnv` by the symbol.
+    d = OrderedDict{Symbol,Vector{VarName}}()
+    for vn in vnv.vns
+        push!(get!(d, getsym(vn), Vector{VarName}()), vn)
+    end
+
+    # Create a `NamedTuple` from the grouped varnames.
+    nt_vals = map(values(d)) do vns
+        # TODO: Do we need to specialize the inputs here?
+        VarNameVector(
+            map(identity, vns),
+            map(Base.Fix1(getindex, vnv), vns),
+            map(Base.Fix1(gettransform, vnv), vns)
+        )
+    end
+
+    return NamedTuple{Tuple(keys(d))}(nt_vals)
 end
