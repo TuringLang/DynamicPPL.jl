@@ -23,7 +23,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 AbstractMCMC = "5"
-AbstractPPL = "0.6"
+AbstractPPL = "0.7"
 Bijectors = "0.13"
 Compat = "4.3.0"
 Distributions = "0.25"
