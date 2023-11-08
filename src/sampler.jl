@@ -81,7 +81,7 @@ function default_varinfo(
 end
 
 function AbstractMCMC.sample(
-    rng::AbstractRNG,
+    rng::Random.AbstractRNG,
     model::Model,
     sampler::Sampler,
     N::Integer;
