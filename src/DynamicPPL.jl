@@ -189,6 +189,9 @@ end
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
+        @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
+            "../ext/DynamicPPLEnzymeCoreExt.jl"
+        )
     end
 end
 
