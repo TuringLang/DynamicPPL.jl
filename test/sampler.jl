@@ -84,7 +84,7 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            chain = sample(model, sampler, 1; init_params=0.2, progress=false)
+            chain = sample(model, sampler, 1; initial_params=0.2, progress=false)
             @test chain[1].metadata.p.vals == [0.2]
             @test getlogp(chain[1]) == lptrue
 
@@ -95,7 +95,7 @@
                 MCMCThreads(),
                 1,
                 10;
-                init_params=fill(0.2, 10),
+                initial_params=fill(0.2, 10),
                 progress=false,
             )
             for c in chains
@@ -110,7 +110,7 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            chain = sample(model, sampler, 1; init_params=[4, -1], progress=false)
+            chain = sample(model, sampler, 1; initial_params=[4, -1], progress=false)
             @test chain[1].metadata.s.vals == [4]
             @test chain[1].metadata.m.vals == [-1]
             @test getlogp(chain[1]) == lptrue
@@ -122,7 +122,7 @@
                 MCMCThreads(),
                 1,
                 10;
-                init_params=fill([4, -1], 10),
+                initial_params=fill([4, -1], 10),
                 progress=false,
             )
             for c in chains
@@ -132,7 +132,7 @@
             end
 
             # set only m = -1
-            chain = sample(model, sampler, 1; init_params=[missing, -1], progress=false)
+            chain = sample(model, sampler, 1; initial_params=[missing, -1], progress=false)
             @test !ismissing(chain[1].metadata.s.vals[1])
             @test chain[1].metadata.m.vals == [-1]
 
@@ -143,7 +143,7 @@
                 MCMCThreads(),
                 1,
                 10;
-                init_params=fill([missing, -1], 10),
+                initial_params=fill([missing, -1], 10),
                 progress=false,
             )
             for c in chains
@@ -151,11 +151,11 @@
                 @test c[1].metadata.m.vals == [-1]
             end
 
-            # specify `init_params=nothing`
+            # specify `initial_params=nothing`
             Random.seed!(1234)
             chain1 = sample(model, sampler, 1; progress=false)
             Random.seed!(1234)
-            chain2 = sample(model, sampler, 1; init_params=nothing, progress=false)
+            chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
             @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
             @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
 
@@ -164,7 +164,7 @@
             chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
             Random.seed!(1234)
             chains2 = sample(
-                model, sampler, MCMCThreads(), 1, 10; init_params=nothing, progress=false
+                model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false
             )
             for (c1, c2) in zip(chains1, chains2)
                 @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
