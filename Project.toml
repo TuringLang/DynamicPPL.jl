@@ -30,12 +30,12 @@ DynamicPPLMCMCChainsExt = ["MCMCChains"]
 
 [compat]
 AbstractMCMC = "2, 3.0, 4"
-AbstractPPL = "0.6"
+AbstractPPL = "0.6, 0.7"
 BangBang = "0.3"
 Bijectors = "0.13"
 ChainRulesCore = "0.9.7, 0.10, 1"
-ConstructionBase = "1.5.4"
 Compat = "4"
+ConstructionBase = "1.5.4"
 Distributions = "0.23.8, 0.24, 0.25"
 DocStringExtensions = "0.8, 0.9"
 LogDensityProblems = "2"
