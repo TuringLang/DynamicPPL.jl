@@ -876,10 +876,9 @@ end
     return expr
 end
 
-# Functions defined only for UntypedVarInfo
-Base.keys(vi::UntypedVarInfo) = keys(vi.metadata.idcs)
-
-Base.keys(vi::VectorVarInfo) = keys(vi.metadata)
+# `keys`
+Base.keys(md::Metadata) = keys(md.idcs)
+Base.keys(vi::VarInfo) = keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
 # on other methods in the codebase which requires `Vector{<:VarName}`.
@@ -889,7 +888,7 @@ Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
     push!(expr.args, :vcat)
 
     for n in names
-        push!(expr.args, :(vi.metadata.$n.vns))
+        push!(expr.args, :(keys(vi.metadata.$n)))
     end
 
     return expr
@@ -1569,7 +1568,7 @@ const _MAX_VARS_SHOWN = 4
 
 function _show_varnames(io::IO, vi)
     md = vi.metadata
-    vns = md.vns
+    vns = keys(md)
 
     vns_by_name = Dict{Symbol,Vector{VarName}}()
     for vn in vns
