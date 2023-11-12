@@ -8,15 +8,15 @@ struct VarNameVector{
     MData
 }
     "mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`"
-    idcs::TIdcs # Dict{<:VarName,Int}
+    varname_to_index::TIdcs # Dict{<:VarName,Int}
 
-    "vector of identifiers for the random variables, where `vns[idcs[vn]] == vn`"
+    "vector of identifiers for the random variables, where `vns[varname_to_index[vn]] == vn`"
     vns::TVN # AbstractVector{<:VarName}
 
     "vector of index ranges in `vals` corresponding to `vns`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
     ranges::Vector{UnitRange{Int}}
 
-    "vector of values of all the univariate, multivariate and matrix variables; the value(s) of `vn` is/are `vals[ranges[idcs[vn]]]`"
+    "vector of values of all the univariate, multivariate and matrix variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
     vals::TVal # AbstractVector{<:Real}
 
     "vector of transformations whose inverse takes us back to the original space"
@@ -26,8 +26,8 @@ struct VarNameVector{
     metadata::MData
 end
 
-function VarNameVector(idcs, vns, ranges, vals, transforms)
-    return VarNameVector(idcs, vns, ranges, vals, transforms, nothing)
+function VarNameVector(varname_to_index, vns, ranges, vals, transforms)
+    return VarNameVector(varname_to_index, vns, ranges, vals, transforms, nothing)
 end
 
 # Useful transformation going from the flattened representation.
@@ -63,12 +63,12 @@ function VarNameVector(
     if !(eltype(vns) <: VarName)
         vns = convert(Vector{VarName}, vns)
     end
-    idcs = OrderedDict{eltype(vns),Int}()
+    varname_to_index = OrderedDict{eltype(vns),Int}()
     ranges = Vector{UnitRange{Int}}()
     offset = 0
     for (i, (vn, x)) in enumerate(zip(vns, vals_vecs))
         # Add the varname index.
-        push!(idcs, vn => length(idcs) + 1)
+        push!(varname_to_index, vn => length(varname_to_index) + 1)
         # Add the range.
         r = (offset + 1):(offset + length(x))
         push!(ranges, r)
@@ -76,7 +76,7 @@ function VarNameVector(
         offset = r[end]
     end
 
-    return VarNameVector(idcs, vns, ranges, reduce(vcat, vals_vecs), transforms)
+    return VarNameVector(varname_to_index, vns, ranges, reduce(vcat, vals_vecs), transforms)
 end
 
 # Basic array interface.
@@ -89,10 +89,10 @@ Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 # Dictionary interface.
 Base.keys(vnv::VarNameVector) = vnv.vns
 
-Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.idcs, vn)
+Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
 # `getindex` & `setindex!`
-getidx(vnv::VarNameVector, vn::VarName) = vnv.idcs[vn]
+getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
 
 getrange(vnv::VarNameVector, i::Int) = vnv.ranges[i]
 getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
@@ -118,7 +118,7 @@ end
 
 function Base.empty!(vnv::VarNameVector)
     # TODO: Or should the semantics be different, e.g. keeping `vns`?
-    empty!(vnv.idcs)
+    empty!(vnv.varname_to_index)
     empty!(vnv.vns)
     empty!(vnv.ranges)
     empty!(vnv.vals)
