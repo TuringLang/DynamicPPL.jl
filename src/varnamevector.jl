@@ -7,13 +7,13 @@ struct VarNameVector{
     TTrans<:AbstractVector,
     MData
 }
-    "mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`"
+    "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
     varname_to_index::TIdcs # Dict{<:VarName,Int}
 
-    "vector of identifiers for the random variables, where `vns[varname_to_index[vn]] == vn`"
-    vns::TVN # AbstractVector{<:VarName}
+    "vector of identifiers for the random variables, where `varnames[varname_to_index[vn]] == vn`"
+    varnames::TVN # AbstractVector{<:VarName}
 
-    "vector of index ranges in `vals` corresponding to `vns`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
+    "vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
     ranges::Vector{UnitRange{Int}}
 
     "vector of values of all the univariate, multivariate and matrix variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
@@ -26,8 +26,8 @@ struct VarNameVector{
     metadata::MData
 end
 
-function VarNameVector(varname_to_index, vns, ranges, vals, transforms)
-    return VarNameVector(varname_to_index, vns, ranges, vals, transforms, nothing)
+function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
+    return VarNameVector(varname_to_index, varnames, ranges, vals, transforms, nothing)
 end
 
 # Useful transformation going from the flattened representation.
@@ -50,23 +50,23 @@ Bijectors.inverse(f::FromVec) = tovec
 Bijectors.inverse(f::FromVec{Tuple{}}) = tovec
 
 VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
-VarNameVector(vns, vals) = VarNameVector(collect(vns), collect(vals))
+VarNameVector(varnames, vals) = VarNameVector(collect(varnames), collect(vals))
 function VarNameVector(
-    vns::AbstractVector, vals::AbstractVector, transforms=map(FromVec, vals)
+    varnames::AbstractVector, vals::AbstractVector, transforms=map(FromVec, vals)
 )
-    # TODO: Check uniqueness of `vns`?
+    # TODO: Check uniqueness of `varnames`?
 
     # Convert `vals` into a vector of vectors.
     vals_vecs = map(tovec, vals)
 
     # TODO: Is this really the way to do this?
-    if !(eltype(vns) <: VarName)
-        vns = convert(Vector{VarName}, vns)
+    if !(eltype(varnames) <: VarName)
+        varnames = convert(Vector{VarName}, varnames)
     end
-    varname_to_index = OrderedDict{eltype(vns),Int}()
+    varname_to_index = OrderedDict{eltype(varnames),Int}()
     ranges = Vector{UnitRange{Int}}()
     offset = 0
-    for (i, (vn, x)) in enumerate(zip(vns, vals_vecs))
+    for (i, (vn, x)) in enumerate(zip(varnames, vals_vecs))
         # Add the varname index.
         push!(varname_to_index, vn => length(varname_to_index) + 1)
         # Add the range.
@@ -76,7 +76,7 @@ function VarNameVector(
         offset = r[end]
     end
 
-    return VarNameVector(varname_to_index, vns, ranges, reduce(vcat, vals_vecs), transforms)
+    return VarNameVector(varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms)
 end
 
 # Basic array interface.
@@ -87,7 +87,7 @@ Base.size(vnv::VarNameVector) = size(vnv.vals)
 Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 
 # Dictionary interface.
-Base.keys(vnv::VarNameVector) = vnv.vns
+Base.keys(vnv::VarNameVector) = vnv.varnames
 
 Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
@@ -117,9 +117,9 @@ function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
 end
 
 function Base.empty!(vnv::VarNameVector)
-    # TODO: Or should the semantics be different, e.g. keeping `vns`?
+    # TODO: Or should the semantics be different, e.g. keeping `varnames`?
     empty!(vnv.varname_to_index)
-    empty!(vnv.vns)
+    empty!(vnv.varnames)
     empty!(vnv.ranges)
     empty!(vnv.vals)
     empty!(vnv.transforms)
@@ -130,7 +130,7 @@ BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 # TODO: Re-use some of the show functionality from Base?
 function Base.show(io::IO, vnv::VarNameVector)
     print(io, "[")
-    for (i, vn) in enumerate(vnv.vns)
+    for (i, vn) in enumerate(vnv.varnames)
         if i > 1
             print(io, ", ")
         end
@@ -142,17 +142,17 @@ end
 function group_by_symbol(vnv::VarNameVector)
     # Group varnames in `vnv` by the symbol.
     d = OrderedDict{Symbol,Vector{VarName}}()
-    for vn in vnv.vns
+    for vn in vnv.varnames
         push!(get!(d, getsym(vn), Vector{VarName}()), vn)
     end
 
     # Create a `NamedTuple` from the grouped varnames.
-    nt_vals = map(values(d)) do vns
+    nt_vals = map(values(d)) do varnames
         # TODO: Do we need to specialize the inputs here?
         VarNameVector(
-            map(identity, vns),
-            map(Base.Fix1(getindex, vnv), vns),
-            map(Base.Fix1(gettransform, vnv), vns),
+            map(identity, varnames),
+            map(Base.Fix1(getindex, vnv), varnames),
+            map(Base.Fix1(gettransform, vnv), varnames),
         )
     end
 
