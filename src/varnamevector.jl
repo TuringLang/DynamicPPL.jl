@@ -5,6 +5,7 @@ struct VarNameVector{
     TVN<:AbstractVector{<:VarName},
     TVal<:AbstractVector,
     TTrans<:AbstractVector,
+    MData
 }
     "mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`"
     idcs::TIdcs # Dict{<:VarName,Int}
@@ -20,6 +21,13 @@ struct VarNameVector{
 
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
+
+    "metadata associated with the varnames"
+    metadata::MData
+end
+
+function VarNameVector(idcs, vns, ranges, vals, transforms)
+    return VarNameVector(idcs, vns, ranges, vals, transforms, nothing)
 end
 
 # Useful transformation going from the flattened representation.
@@ -117,7 +125,7 @@ function Base.empty!(vnv::VarNameVector)
     empty!(vnv.transforms)
     return nothing
 end
-BangBang.empty!!(vnv::VarNameVector) = empty!(vnv)
+BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
 # TODO: Re-use some of the show functionality from Base?
 function Base.show(io::IO, vnv::VarNameVector)
