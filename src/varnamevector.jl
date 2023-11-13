@@ -183,7 +183,6 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
-
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
 function Base.similar(vnv::VarNameVector)
