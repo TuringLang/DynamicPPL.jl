@@ -68,6 +68,7 @@ collect_maybe(x) = collect(x)
 collect_maybe(x::AbstractArray) = x
 
 VarNameVector() = VarNameVector{VarName,Real}()
+VarNameVector(xs::Pair...) = VarNameVector(OrderedDict(xs...))
 VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
 VarNameVector(varnames, vals) = VarNameVector(collect_maybe(varnames), collect_maybe(vals))
 function VarNameVector(
@@ -112,8 +113,12 @@ has_inactive_ranges(vnv::VarNameVector) = !isempty(vnv.inactive_ranges)
 
 # Basic array interface.
 Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
-Base.length(vnv::VarNameVector) = length(vnv.vals)
-Base.size(vnv::VarNameVector) = size(vnv.vals)
+Base.length(vnv::VarNameVector) = if isempty(vnv.inactive_ranges)
+    length(vnv.vals)
+else
+    sum(length, vnv.ranges)
+end
+Base.size(vnv::VarNameVector) = (length(vnv),)
 
 Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 
@@ -178,12 +183,12 @@ end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
 function nextrange(vnd::VarNameVector, x)
-    n = length(vnd)
+    n = maximum(map(last, vnd.ranges))
     return (n + 1):(n + length(x))
 end
 
 # `push!` and `push!!`: add a variable to the varname vector.
-function push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
+function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
     return update!(vnv, vn, val, transform)
@@ -194,9 +199,12 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     val_vec = tovec(val)
     if !haskey(vnv, vn)
         # Here we just add a new entry.
+        # NOTE: We need to compute the `nextrange` BEFORE we start mutating
+        # the underlying; otherwise we might get some strange behaviors.
+        r_new = nextrange(vnv, val_vec)
         vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
         push!(vnv.varnames, vn)
-        push!(vnv.ranges, nextrange(vnv, val_vec))
+        push!(vnv.ranges, r_new)
         append!(vnv.vals, val_vec)
         push!(vnv.transforms, transform)
     else
@@ -208,11 +216,9 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
         # Existing keys needs to be handled differently depending on
         # whether the size of the value is increasing or decreasing.
         if n_new > n_old
-            # Remove the old range.
-            delete!(vnv.ranges, vn)
             # Add the new range.
             r_new = nextrange(vnv, val_vec)
-            vnv.varname_to_ranges[vn] = r_new
+            vnv.ranges[idx] = r_new
             # Grow the underlying vector to accomodate the new value.
             resize!(vnv.vals, r_new[end])
             # Keep track of the deleted ranges.
@@ -242,7 +248,6 @@ end
 
 function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
     offset = 0
-    # NOTE: assumes `ranges` are ordered.
     for i in 1:length(ranges)
         r_old = ranges[i]
         ranges[i] = (offset + 1):(offset + length(r_old))
@@ -292,21 +297,14 @@ function group_by_symbol(vnv::VarNameVector)
 end
 
 # `iterate`
+# TODO: Maybe implement `iterate` as a vector and then instead implement `pairs`.
 function Base.iterate(vnv::VarNameVector, state=nothing)
     res = if state === nothing
-        iterate(vnv.varname_to_index)
+        iterate(vnv.varnames)
     else
-        iterate(vnv.varname_to_index, state)
+        iterate(vnv.varnames, state)
     end
     res === nothing && return nothing
-    (vn, idx), state_new = res
-    return vn => vnv.vals[getrange(vnv, idx)], state_new
-end
-
-# `convert`
-function Base.convert(::Type{D}, vnv::VarNameVector) where {D<:AbstractDict}
-    return ConstructionBase.constructorof(D)(
-        keys(vnv.varname_to_index),
-        map(Base.Fix1(getindex, vnv), keys(vnv.varname_to_index)),
-    )
+    vn, state_new = res
+    return vn => getindex(vnv, vn), state_new
 end
