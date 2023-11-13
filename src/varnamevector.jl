@@ -82,6 +82,16 @@ function VarNameVector(
     return VarNameVector(varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms)
 end
 
+# Some `VarNameVector` specific functions.
+getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
+
+getrange(vnv::VarNameVector, i::Int) = vnv.ranges[i]
+getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
+
+gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
+
+has_inactive_ranges(vnv::VarNameVector) = !isempty(vnv.inactive_ranges)
+
 # Basic array interface.
 Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
 Base.length(vnv::VarNameVector) = length(vnv.vals)
@@ -95,28 +105,47 @@ Base.keys(vnv::VarNameVector) = vnv.varnames
 Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
 # `getindex` & `setindex!`
-getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
-
-getrange(vnv::VarNameVector, i::Int) = vnv.ranges[i]
-getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
-
-gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
-
-Base.getindex(vnv::VarNameVector, ::Colon) = vnv.vals
-Base.getindex(vnv::VarNameVector, i::Int) = vnv.vals[i]
+Base.getindex(vnv::VarNameVector, i::Int) = getindex_raw(vnv, i)
 function Base.getindex(vnv::VarNameVector, vn::VarName)
-    x = vnv.vals[getrange(vnv, vn)]
+    x = getindex_raw(vnv, vn)
     f = gettransform(vnv, vn)
     return f(x)
+end
+
+getindex_raw(vnv::VarNameVector, i::Int) = vnv.vals[i]
+function getindex_raw(vnv::VarNameVector, vn::VarName)
+    return vnv.vals[getrange(vnv, vn)]
+end
+
+# `getindex` for `Colon`
+function Base.getindex(vnv::VarNameVector, ::Colon)
+    return if has_inactive_ranges(vnv)
+        mapreduce(Base.Fix1(getindex, vnv.vals), vcat, vnv.ranges)
+    else
+        vnv.vals
+    end
+end
+
+function getindex_raw(vnv::VarNameVector, ::Colon)
+    return if has_inactive_ranges(vnv)
+        mapreduce(Base.Fix1(getindex_raw, vnv.vals), vcat, vnv.ranges)
+    else
+        vnv.vals
+    end
 end
 
 # HACK: remove this as soon as possible.
 Base.getindex(vnv::VarNameVector, spl::AbstractSampler) = vnv[:]
 
-Base.setindex!(vnv::VarNameVector, val, i::Int) = vnv.vals[i] = val
+Base.setindex!(vnv::VarNameVector, val, i::Int) = setindex_raw!(vnv, val, i)
 function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
     f = inverse(gettransform(vnv, vn))
-    return vnv.vals[getrange(vnv, vn)] = f(val)
+    return setindex_raw!(vnv, f(val), vn)
+end
+
+setindex_raw!(vnv::VarNameVector, val, i::Int) = vnv.vals[i] = val
+function setindex_raw!(vnv::VarNameVector, val::AbstractVector, vn::VarName)
+    return vnv.vals[getrange(vnv, vn)] = val
 end
 
 function Base.empty!(vnv::VarNameVector)
