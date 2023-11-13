@@ -172,6 +172,7 @@ function setindex_raw!(vnv::VarNameVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
 
+# `empty!(!)`
 function Base.empty!(vnv::VarNameVector)
     # TODO: Or should the semantics be different, e.g. keeping `varnames`?
     empty!(vnv.varname_to_index)
@@ -183,6 +184,7 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
+# `similar`
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
 function Base.similar(vnv::VarNameVector)
@@ -204,9 +206,11 @@ function Base.similar(vnv::VarNameVector)
     )
 end
 
-function nextrange(vnd::VarNameVector, x)
-    n = maximum(map(last, vnd.ranges))
-    return (n + 1):(n + length(x))
+function nextrange(vnv::VarNameVector, x)
+    # NOTE: Need to treat `isempty(vnv.ranges)` separately because `maximum`
+    # will error if `vnv.ranges` is empty.
+    offset = isempty(vnv.ranges) ? 0 : maximum(last, vnv.ranges)
+    return (offset + 1):(offset + length(x))
 end
 
 # `push!` and `push!!`: add a variable to the varname vector.

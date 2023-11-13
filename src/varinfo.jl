@@ -867,7 +867,8 @@ function BangBang.empty!!(vi::VarInfo)
     reset_num_produce!(vi)
     return vi
 end
-@inline _empty!(metadata::Metadata) = empty!(metadata)
+
+_empty!(metadata) = empty!(metadata)
 @generated function _empty!(metadata::NamedTuple{names}) where {names}
     expr = Expr(:block)
     for f in names
@@ -1534,12 +1535,14 @@ end
     return map(vn -> vi[vn], f_vns)
 end
 
+haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
+
 """
     haskey(vi::VarInfo, vn::VarName)
 
 Check whether `vn` has been sampled in `vi`.
 """
-haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn).idcs, vn)
+haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
 function haskey(vi::TypedVarInfo, vn::VarName)
     metadata = vi.metadata
     Tmeta = typeof(metadata)
@@ -1603,9 +1606,14 @@ function BangBang.push!!(
         @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
-    val = vectorize(dist, r)
-
     meta = getmetadata(vi, vn)
+    push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+
+    return vi
+end
+
+function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
+    val = vectorize(dist, r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
     l = length(meta.vals)
@@ -1614,11 +1622,16 @@ function BangBang.push!!(
     append!(meta.vals, val)
     push!(meta.dists, dist)
     push!(meta.gids, gidset)
-    push!(meta.orders, get_num_produce(vi))
+    push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
 
-    return vi
+    return meta
+end
+
+function Base.push!(vnv::VarNameVector, vn, r, dist, gidset, num_produce)
+    # FIXME: Include `transform` in the `push!` call below.
+    return push!(vnv, vn, r)
 end
 
 """
