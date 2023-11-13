@@ -22,12 +22,15 @@ struct VarNameVector{
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
 
+    "inactive ranges"
+    inactive_ranges::Vector{UnitRange{Int}}
+
     "metadata associated with the varnames"
     metadata::MData
 end
 
 function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
-    return VarNameVector(varname_to_index, varnames, ranges, vals, transforms, nothing)
+    return VarNameVector(varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing)
 end
 
 # Useful transformation going from the flattened representation.
@@ -127,15 +130,107 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
-# TODO: Re-use some of the show functionality from Base?
-function Base.show(io::IO, vnv::VarNameVector)
-    print(io, "[")
-    for (i, vn) in enumerate(vnv.varnames)
-        if i > 1
-            print(io, ", ")
+function nextrange(vnd::VarNameVector, x)
+    n = length(vnd)
+    return n + 1:n + length(x)
+end
+
+# `push!` and `push!!`: add a variable to the varname vector.
+function push!(
+    vnv::VarNameVector,
+    vn::VarName,
+    val,
+    transform=FromVec(val),
+)
+    # Error if we already have the variable.
+    haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
+    return update!(vnv, vn, val, transform)
+end
+
+# `update!` and `update!!`: update a variable in the varname vector.
+function update!(
+    vnv::VarNameVector,
+    vn::VarName,
+    val,
+    transform=FromVec(val),
+)
+    val_vec = tovec(val)
+    if !haskey(vnv, vn)
+        # Here we just add a new entry.
+        vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
+        push!(vnv.varnames, vn)
+        push!(vnv.ranges, nextrange(vnv, val_vec))
+        append!(vnv.vals, val_vec)
+        push!(vnv.transforms, transform)
+    else
+        # Here we update the existing entry.
+        idx = getidx(vnv, vn)
+        r_old = getrange(vnv, idx)
+        n_old = length(r_old)
+        n_new = length(val_vec)
+        # Existing keys needs to be handled differently depending on
+        # whether the size of the value is increasing or decreasing.
+        if n_new > n_old
+            # Remove the old range.
+            delete!(vnv.ranges, vn)
+            # Add the new range.
+            r_new = nextrange(vnv, val_vec)
+            vnv.varname_to_ranges[vn] = r_new
+            # Grow the underlying vector to accomodate the new value.
+            resize!(vnv.vals, r_new[end])
+            # Keep track of the deleted ranges.
+            push!(vnv.inactive_ranges, r_old)
+        else
+            # `n_new <= n_old`
+            # Just decrease the current range.
+            r_new = r_old[1]:(r_old[1] + n_new - 1)
+            vnv.ranges[idx] = r_new
+            # And mark the rest as inactive if needed.
+            if n_new < n_old
+                push!(vnv.inactive_ranges, r_old[n_new]:r_old[end])
+            end
         end
-        print(io, vn, " = ", vnv[vn])
+
+        # Update the value.
+        vnv.vals[r_new] = val_vec
+        # Update the transform.
+        vnv.transforms[idx] = transform
+
+        # TODO: Should we maybe sweep over inactive ranges and re-contiguify
+        # if we the total number of inactive elements is "large" in some sense?
     end
+
+    return vnv
+end
+
+function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
+    offset = 0
+    # NOTE: assumes `ranges` are ordered.
+    for i = 1:length(ranges)
+        r_old = ranges[i]
+        ranges[i] = offset + 1:offset + length(r_old)
+        offset += length(r_old)
+    end
+
+    return ranges
+end
+
+function inactive_ranges_sweep!(vnv::VarNameVector)
+    # Extract the re-contiguified values.
+    # NOTE: We need to do this before we update the ranges.
+    vals = vnv[:]
+    # And then we re-contiguify the ranges.
+    recontiguify_ranges!(vnv.ranges)
+    # Clear the inactive ranges.
+    empty!(vnv.inactive_ranges)
+    # Now we update the values.
+    for (i, r) in enumerate(vnv.ranges)
+        vnv.vals[r] = vals[r]
+    end
+    # And (potentially) shrink the underlying vector.
+    resize!(vnv.vals, vnv.ranges[end][end])
+    # The rest should be left as is.
+    return vnv
 end
 
 # Typed version.
