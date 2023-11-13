@@ -25,6 +25,16 @@ struct VarNameVector{
     metadata::MData
 end
 
+function ==(vnv_left::VarNameVector, vnv_right::VarNameVector)
+    return vnv_left.varname_to_index == vnv_right.varname_to_index &&
+           vnv_left.varnames == vnv_right.varnames &&
+           vnv_left.ranges == vnv_right.ranges &&
+           vnv_left.vals == vnv_right.vals &&
+           vnv_left.transforms == vnv_right.transforms &&
+           vnv_left.inactive_ranges == vnv_right.inactive_ranges &&
+           vnv_left.metadata == vnv_right.metadata
+end
+
 function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
     return VarNameVector(
         varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing
