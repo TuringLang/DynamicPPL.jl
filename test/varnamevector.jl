@@ -116,9 +116,6 @@ end
     end
 
     test_varnames_iter = combinations(collect(keys(test_pairs)), 2)
-    @info "Testing varnames" collect(
-        map(Base.Fix1(convert, Vector{VarName}), test_varnames_iter)
-    )
     @testset "$(vn_left) and $(vn_right)" for (vn_left, vn_right) in test_varnames_iter
         val_left = test_pairs[vn_left]
         val_right = test_pairs[vn_right]
