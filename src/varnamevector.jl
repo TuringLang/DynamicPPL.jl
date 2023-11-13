@@ -1,12 +1,7 @@
 # Similar to `Metadata` but representing a `Vector` and simpler interface.
 # TODO: Should we subtype `AbstractVector` or `AbstractDict`?
 struct VarNameVector{
-    K,
-    V,
-    TVN<:AbstractVector{K},
-    TVal<:AbstractVector{V},
-    TTrans<:AbstractVector,
-    MData
+    K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
 }
     "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
     varname_to_index::OrderedDict{K,Int}
@@ -31,10 +26,14 @@ struct VarNameVector{
 end
 
 function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
-    return VarNameVector(varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing)
+    return VarNameVector(
+        varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing
+    )
 end
 # TODO: Do we need this?
-VarNameVector{K,V}() where {K,V} = VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
+function VarNameVector{K,V}() where {K,V}
+    return VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
+end
 
 # Useful transformation going from the flattened representation.
 struct FromVec{Sz}
@@ -87,11 +86,7 @@ function VarNameVector(
     end
 
     return VarNameVector(
-        varname_to_index,
-        varnames,
-        ranges,
-        reduce(vcat, vals_vecs),
-        transforms
+        varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms
     )
 end
 
@@ -174,28 +169,18 @@ BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
 function nextrange(vnd::VarNameVector, x)
     n = length(vnd)
-    return n + 1:n + length(x)
+    return (n + 1):(n + length(x))
 end
 
 # `push!` and `push!!`: add a variable to the varname vector.
-function push!(
-    vnv::VarNameVector,
-    vn::VarName,
-    val,
-    transform=FromVec(val),
-)
+function push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
     return update!(vnv, vn, val, transform)
 end
 
 # `update!` and `update!!`: update a variable in the varname vector.
-function update!(
-    vnv::VarNameVector,
-    vn::VarName,
-    val,
-    transform=FromVec(val),
-)
+function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     val_vec = tovec(val)
     if !haskey(vnv, vn)
         # Here we just add a new entry.
@@ -248,9 +233,9 @@ end
 function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
     offset = 0
     # NOTE: assumes `ranges` are ordered.
-    for i = 1:length(ranges)
+    for i in 1:length(ranges)
         r_old = ranges[i]
-        ranges[i] = offset + 1:offset + length(r_old)
+        ranges[i] = (offset + 1):(offset + length(r_old))
         offset += length(r_old)
     end
 
@@ -298,7 +283,11 @@ end
 
 # `iterate`
 function Base.iterate(vnv::VarNameVector, state=nothing)
-    res = state === nothing ? iterate(vnv.varname_to_index) : iterate(vnv.varname_to_index, state)
+    res = if state === nothing
+        iterate(vnv.varname_to_index)
+    else
+        iterate(vnv.varname_to_index, state)
+    end
     res === nothing && return nothing
     (vn, idx), state_new = res
     return vn => vnv.vals[getrange(vnv, idx)], state_new
@@ -308,6 +297,6 @@ end
 function Base.convert(::Type{D}, vnv::VarNameVector) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(
         keys(vnv.varname_to_index),
-        map(Base.Fix1(getindex, vnv), keys(vnv.varname_to_index))
+        map(Base.Fix1(getindex, vnv), keys(vnv.varname_to_index)),
     )
 end

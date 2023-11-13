@@ -22,7 +22,7 @@ replace_sym(vn::VarName, sym_new::Symbol) = VarName{sym_new}(vn.lens)
         @varname(x[1]) => rand(),
         @varname(x[2]) => rand(2),
         @varname(x[3]) => rand(2, 3),
-        @varname(x[4]) => rand(2, 3, 4)
+        @varname(x[4]) => rand(2, 3, 4),
     )
 
     @testset "constructor" begin
@@ -50,7 +50,8 @@ replace_sym(vn::VarName, sym_new::Symbol) = VarName{sym_new}(vn.lens)
         end
 
         # Should also work when mixing varnames with different symbols.
-        @testset "$(vn_left) and $(replace_sym(vn_right, :y))" for (vn_left, vn_right) in Iterators.product(
+        @testset "$(vn_left) and $(replace_sym(vn_right, :y))" for (vn_left, vn_right) in
+                                                                   Iterators.product(
             keys(test_pairs), keys(test_pairs)
         )
             val_left = test_pairs[vn_left]
