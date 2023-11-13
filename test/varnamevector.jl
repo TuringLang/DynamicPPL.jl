@@ -37,7 +37,9 @@ function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
     return false
 end
 
-relax_container_types(vnv::VarNameVector, vn::VarName, val) = relax_container_types(vnv, [vn], [val])
+function relax_container_types(vnv::VarNameVector, vn::VarName, val)
+    return relax_container_types(vnv, [vn], [val])
+end
 function relax_container_types(vnv::VarNameVector, vns, vals)
     if any(need_varnames_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
         varname_to_index_new = convert(OrderedDict{VarName,Int}, vnv.varname_to_index)
@@ -47,11 +49,12 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         varnames_new = vnv.varnames
     end
 
-    transforms_new = if any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
-        convert(Vector{Any}, vnv.transforms)
-    else
-        vnv.transforms
-    end
+    transforms_new =
+        if any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
+            convert(Vector{Any}, vnv.transforms)
+        else
+            vnv.transforms
+        end
 
     vals_new = if any(need_values_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
         convert(Vector{Any}, vnv.vals)
@@ -66,7 +69,7 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         vals_new,
         transforms_new,
         vnv.inactive_ranges,
-        vnv.metadata
+        vnv.metadata,
     )
 end
 
@@ -92,11 +95,9 @@ end
         @varname(x[1]) => rand(),
         @varname(x[2]) => rand(2),
         @varname(x[3]) => rand(2, 3),
-
         @varname(y[1]) => rand(),
         @varname(y[2]) => rand(2),
         @varname(y[3]) => rand(2, 3),
-
         @varname(z[1]) => rand(1:10),
         @varname(z[2]) => rand(1:10, 2),
         @varname(z[3]) => rand(1:10, 2, 3),
@@ -148,8 +149,7 @@ end
 
         @testset "type specialization" begin
             @test !should_have_restricted_varname_type || has_restricted_varname_type
-            @test !should_have_restricted_transform_type ||
-                  has_restricted_transform_type
+            @test !should_have_restricted_transform_type || has_restricted_transform_type
         end
 
         # `eltype`
@@ -190,7 +190,9 @@ end
 
         # `push!` & `update!`
         @testset "push!" begin
-            vnv = relax_container_types(deepcopy(vnv_base), keys(test_pairs), values(test_pairs))
+            vnv = relax_container_types(
+                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+            )
             @testset "$vn" for vn in keys(test_pairs)
                 val = test_pairs[vn]
                 if vn == vn_left || vn == vn_right
@@ -203,7 +205,9 @@ end
             end
         end
         @testset "update!" begin
-            vnv = relax_container_types(deepcopy(vnv_base), keys(test_pairs), values(test_pairs))
+            vnv = relax_container_types(
+                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+            )
             @testset "$vn" for vn in keys(test_pairs)
                 val = test_pairs[vn]
                 expected_length = if haskey(vnv, vn)
@@ -226,7 +230,9 @@ end
             # we required either a) the underlying `transforms` to be non-concrete,
             # or b) the sizes of the values to match. But now the sizes of the values
             # will change, so we can only test the former.
-            vnv = relax_container_types(deepcopy(vnv_base), keys(test_pairs), values(test_pairs))
+            vnv = relax_container_types(
+                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+            )
             @testset "$vn (different size)" for vn in keys(test_pairs)
                 val_original = test_pairs[vn]
                 val = change_size_for_test(val_original)

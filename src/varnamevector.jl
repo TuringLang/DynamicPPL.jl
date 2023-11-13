@@ -113,11 +113,12 @@ has_inactive_ranges(vnv::VarNameVector) = !isempty(vnv.inactive_ranges)
 
 # Basic array interface.
 Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
-Base.length(vnv::VarNameVector) = if isempty(vnv.inactive_ranges)
-    length(vnv.vals)
-else
-    sum(length, vnv.ranges)
-end
+Base.length(vnv::VarNameVector) =
+    if isempty(vnv.inactive_ranges)
+        length(vnv.vals)
+    else
+        sum(length, vnv.ranges)
+    end
 Base.size(vnv::VarNameVector) = (length(vnv),)
 
 Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
