@@ -183,6 +183,28 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
+
+similar_metadata(::Nothing) = nothing
+similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
+function Base.similar(vnv::VarNameVector)
+    # NOTE: Whether or not we should empty the underlying containers or note
+    # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
+    # result in an empty `AbstractDict`, while the vectors, e.g. `vnv.ranges`,
+    # will result in non-empty vectors but with entries as `undef`. But it's
+    # much easier to write the rest of the code assuming that `undef` is not
+    # present, and so for now we empty the underlying containers, thus differing
+    # from the behavior of `similar` for `AbstractArray`s.
+    return VarNameVector(
+        similar(vnv.varname_to_index),
+        similar(vnv.varnames, 0),
+        similar(vnv.ranges, 0),
+        similar(vnv.vals, 0),
+        similar(vnv.transforms, 0),
+        similar(vnv.inactive_ranges, 0),
+        similar_metadata(vnv.metadata),
+    )
+end
+
 function nextrange(vnd::VarNameVector, x)
     n = maximum(map(last, vnd.ranges))
     return (n + 1):(n + length(x))

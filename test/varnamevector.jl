@@ -157,6 +157,23 @@ end
         # `length`
         @test length(vnv_base) == length(val_left) + length(val_right)
 
+        # `isempty`
+        @test !isempty(vnv_base)
+
+        # `empty!`
+        @testset "empty!" begin
+            vnv = deepcopy(vnv_base)
+            empty!(vnv)
+            @test isempty(vnv)
+        end
+
+        # `similar`
+        @testset "similar" begin
+            vnv = similar(vnv_base)
+            @test isempty(vnv)
+            @test typeof(vnv) == typeof(vnv_base)
+        end
+
         # `getindex`
         @testset "getindex" begin
             # `getindex`
