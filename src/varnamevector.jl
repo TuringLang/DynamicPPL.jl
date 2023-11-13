@@ -1,14 +1,15 @@
 # Similar to `Metadata` but representing a `Vector` and simpler interface.
-# TODO: Should we subtype `AbstractVector`?
+# TODO: Should we subtype `AbstractVector` or `AbstractDict`?
 struct VarNameVector{
-    TIdcs<:OrderedDict{<:VarName,Int},
-    TVN<:AbstractVector{<:VarName},
-    TVal<:AbstractVector,
+    K,
+    V,
+    TVN<:AbstractVector{K},
+    TVal<:AbstractVector{V},
     TTrans<:AbstractVector,
     MData
 }
     "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
-    varname_to_index::TIdcs # Dict{<:VarName,Int}
+    varname_to_index::OrderedDict{K,Int}
 
     "vector of identifiers for the random variables, where `varnames[varname_to_index[vn]] == vn`"
     varnames::TVN # AbstractVector{<:VarName}
@@ -32,6 +33,8 @@ end
 function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
     return VarNameVector(varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing)
 end
+# TODO: Do we need this?
+VarNameVector{K,V}() where {K,V} = VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 
 # Useful transformation going from the flattened representation.
 struct FromVec{Sz}
@@ -52,8 +55,12 @@ tovec(x::AbstractArray) = vec(x)
 Bijectors.inverse(f::FromVec) = tovec
 Bijectors.inverse(f::FromVec{Tuple{}}) = tovec
 
+collect_maybe(x) = collect(x)
+collect_maybe(x::AbstractArray) = x
+
+VarNameVector() = VarNameVector{VarName,Real}()
 VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
-VarNameVector(varnames, vals) = VarNameVector(collect(varnames), collect(vals))
+VarNameVector(varnames, vals) = VarNameVector(collect_maybe(varnames), collect_maybe(vals))
 function VarNameVector(
     varnames::AbstractVector, vals::AbstractVector, transforms=map(FromVec, vals)
 )
@@ -79,7 +86,13 @@ function VarNameVector(
         offset = r[end]
     end
 
-    return VarNameVector(varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms)
+    return VarNameVector(
+        varname_to_index,
+        varnames,
+        ranges,
+        reduce(vcat, vals_vecs),
+        transforms
+    )
 end
 
 # Some `VarNameVector` specific functions.
