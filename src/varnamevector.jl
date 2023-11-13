@@ -282,3 +282,19 @@ function group_by_symbol(vnv::VarNameVector)
 
     return NamedTuple{Tuple(keys(d))}(nt_vals)
 end
+
+# `iterate`
+function Base.iterate(vnv::VarNameVector, state=nothing)
+    res = state === nothing ? iterate(vnv.varname_to_index) : iterate(vnv.varname_to_index, state)
+    res === nothing && return nothing
+    (vn, idx), state_new = res
+    return vn => vnv.vals[getrange(vnv, idx)], state_new
+end
+
+# `convert`
+function Base.convert(::Type{D}, vnv::VarNameVector) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(
+        keys(vnv.varname_to_index),
+        map(Base.Fix1(getindex, vnv), keys(vnv.varname_to_index))
+    )
+end
