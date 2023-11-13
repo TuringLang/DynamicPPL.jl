@@ -94,9 +94,9 @@ replace_sym(vn::VarName, sym_new::Symbol) = VarName{sym_new}(vn.lens)
             @test vnv[vn_right] == val_right .+ 100
         end
 
-        # `push!`
-        # `push!` and `update!` are only allowed for all the varnames if both the
-        # varname and the transform types used in the underlying containers are not concrete.
+        # `push!` & `update!`
+        # These are only allowed for all the varnames if both the varname and
+        # the transform types used in the underlying containers are not concrete.
         push_test_varnames = filter(keys(test_pairs)) do vn
             val = test_pairs[vn]
             transform_is_okay =
@@ -119,8 +119,6 @@ replace_sym(vn::VarName, sym_new::Symbol) = VarName{sym_new}(vn.lens)
                 @test vnv[vn] == val
             end
         end
-
-        # `update!`
         @testset "update! ($(vn))" for vn in push_test_varnames
             val = test_pairs[vn]
             # Perturb `val` a bit so we can also check that the existing `vn_left` and `vn_right`
