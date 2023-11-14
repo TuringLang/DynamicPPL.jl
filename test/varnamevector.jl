@@ -1,7 +1,11 @@
 replace_sym(vn::VarName, sym_new::Symbol) = VarName{sym_new}(vn.lens)
 
-change_size_for_test(x::Real) = [x]
-change_size_for_test(x::AbstractArray) = repeat(x, 2)
+increase_size_for_test(x::Real) = [x]
+increase_size_for_test(x::AbstractArray) = repeat(x, 2)
+
+decrease_size_for_test(x::Real) = x
+decrease_size_for_test(x::AbstractVector) = first(x)
+decrease_size_for_test(x::AbstractArray) = first(eachslice(x; dims=1))
 
 function need_varnames_relaxation(vnv::VarNameVector, vn::VarName, val)
     if isconcretetype(eltype(vnv.varnames))
@@ -16,6 +20,9 @@ function need_varnames_relaxation(vnv::VarNameVector, vn::VarName, val)
 
     return false
 end
+function need_varnames_relaxation(vnv::VarNameVector, vns, vals)
+    return any(need_varnames_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
+end
 
 function need_values_relaxation(vnv::VarNameVector, vn::VarName, val)
     if isconcretetype(eltype(vnv.vals))
@@ -23,6 +30,9 @@ function need_values_relaxation(vnv::VarNameVector, vn::VarName, val)
     end
 
     return false
+end
+function need_values_relaxation(vnv::VarNameVector, vns, vals)
+    return any(need_values_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
 end
 
 function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
@@ -36,12 +46,35 @@ function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
 
     return false
 end
+function need_transforms_relaxation(vnv::VarNameVector, vns, vals)
+    return any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
+end
 
+"""
+    relax_container_types(vnv::VarNameVector, vn::VarName, val)
+    relax_container_types(vnv::VarNameVector, vns, val)
+
+Relax the container types of `vnv` if necessary to accommodate `vn` and `val`.
+
+This attempts to avoid unnecessary container type relaxations by checking whether
+the container types of `vnv` are already compatible with `vn` and `val`.
+
+# Notes
+For example, if `vn` is not compatible with the current keys in `vnv`, then
+the underlying types will be changed to `VarName` to accommodate `vn`.
+
+Similarly:
+- If `val` is not compatible with the current values in `vnv`, then
+  the underlying value type will be changed to `Real`.
+- If `val` requires a transformation that is not compatible with the current
+  transformations type in `vnv`, then the underlying transformation type will
+  be changed to `Any`.
+"""
 function relax_container_types(vnv::VarNameVector, vn::VarName, val)
     return relax_container_types(vnv, [vn], [val])
 end
 function relax_container_types(vnv::VarNameVector, vns, vals)
-    if any(need_varnames_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
+    if need_varnames_relaxation(vnv, vns, vals)
         varname_to_index_new = convert(OrderedDict{VarName,Int}, vnv.varname_to_index)
         varnames_new = convert(Vector{VarName}, vnv.varnames)
     else
@@ -49,15 +82,14 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         varnames_new = vnv.varnames
     end
 
-    transforms_new =
-        if any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
-            convert(Vector{Any}, vnv.transforms)
-        else
-            vnv.transforms
-        end
+    transforms_new = if need_transforms_relaxation(vnv, vns, vals)
+        convert(Vector{Any}, vnv.transforms)
+    else
+        vnv.transforms
+    end
 
-    vals_new = if any(need_values_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
-        convert(Vector{Any}, vnv.vals)
+    vals_new = if need_values_relaxation(vnv, vns, vals)
+        convert(Vector{Real}, vnv.vals)
     else
         vnv.vals
     end
@@ -102,7 +134,7 @@ end
         @varname(z[3]) => rand(1:10, 2, 3),
     )
     test_vns = collect(keys(test_pairs))
-    test_vals = collect(test_vals)
+    test_vals = collect(values(test_pairs))
 
     @testset "constructor: no args" begin
         # Empty.
@@ -237,14 +269,10 @@ end
                 @test !DynamicPPL.has_inactive_ranges(vnv)
             end
 
-            # Need to recompute valid varnames for the changing of the sizes; before
-            # we required either a) the underlying `transforms` to be non-concrete,
-            # or b) the sizes of the values to match. But now the sizes of the values
-            # will change, so we can only test the former.
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
-            @testset "$vn (different size)" for vn in test_vns
+            @testset "$vn (increased size)" for vn in test_vns
                 val_original = test_pairs[vn]
-                val = change_size_for_test(val_original)
+                val = increase_size_for_test(val_original)
                 vn_already_present = haskey(vnv, vn)
                 expected_length = if vn_already_present
                     # If it's already present, the resulting length will be altered.
@@ -253,6 +281,23 @@ end
                     length(vnv) + length(val)
                 end
 
+                DynamicPPL.update!(vnv, vn, val .+ 1)
+                @test vnv[vn] == val .+ 1
+                @test length(vnv) == expected_length
+                @test length(vnv[:]) == length(vnv)
+            end
+
+            vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
+            @testset "$vn (decreased size)" for vn in test_vns
+                val_original = test_pairs[vn]
+                val = decrease_size_for_test(val_original)
+                vn_already_present = haskey(vnv, vn)
+                expected_length = if vn_already_present
+                    # If it's already present, the resulting length will be altered.
+                    length(vnv) + length(val) - length(val_original)
+                else
+                    length(vnv) + length(val)
+                end
                 DynamicPPL.update!(vnv, vn, val .+ 1)
                 @test vnv[vn] == val .+ 1
                 @test length(vnv) == expected_length

@@ -209,7 +209,18 @@ end
 function nextrange(vnv::VarNameVector, x)
     # NOTE: Need to treat `isempty(vnv.ranges)` separately because `maximum`
     # will error if `vnv.ranges` is empty.
-    offset = isempty(vnv.ranges) ? 0 : maximum(last, vnv.ranges)
+    max_active_range = isempty(vnv.ranges) ? 0 : maximum(last, vnv.ranges)
+    # Also need to consider inactive ranges, since we can have scenarios such as
+    #
+    #     vnv = VarNameVector(@varname(x) => 1, @varname(y) => [2, 3])
+    #     update!(vnv, @varname(y), [4]) # => `ranges = [1:1, 2:2], inactive_ranges = [3:3]`
+    #
+    # Here `nextrange(vnv, [5])` should return `4:4`, _not_ `3:3`.
+    # NOTE: We could of course attempt to make use of unused space, e.g. if we have an inactive
+    # range which can hold `x`, then we could just use that. Buuut the complexity of this is
+    # probably not worth it (at least at the moment).
+    max_inactive_range = isempty(vnv.inactive_ranges) ? 0 : maximum(last, vnv.inactive_ranges)
+    offset = max(max_active_range, max_inactive_range)
     return (offset + 1):(offset + length(x))
 end
 
