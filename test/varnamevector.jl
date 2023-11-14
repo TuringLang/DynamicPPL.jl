@@ -90,7 +90,6 @@ end
     # - `iterate`
     # - `convert` to
     #   - `AbstractDict`
-
     test_pairs = OrderedDict(
         @varname(x[1]) => rand(),
         @varname(x[2]) => rand(2),
@@ -102,6 +101,8 @@ end
         @varname(z[2]) => rand(1:10, 2),
         @varname(z[3]) => rand(1:10, 2, 3),
     )
+    test_vns = collect(keys(test_pairs))
+    test_vals = collect(test_vals)
 
     @testset "constructor: no args" begin
         # Empty.
@@ -115,7 +116,7 @@ end
         @test eltype(vnv) == Float64
     end
 
-    test_varnames_iter = combinations(collect(keys(test_pairs)), 2)
+    test_varnames_iter = combinations(test_vns, 2)
     @testset "$(vn_left) and $(vn_right)" for (vn_left, vn_right) in test_varnames_iter
         val_left = test_pairs[vn_left]
         val_right = test_pairs[vn_right]
@@ -205,9 +206,9 @@ end
         # `push!` & `update!`
         @testset "push!" begin
             vnv = relax_container_types(
-                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+                deepcopy(vnv_base), test_vns, test_vals
             )
-            @testset "$vn" for vn in keys(test_pairs)
+            @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
                 if vn == vn_left || vn == vn_right
                     # Should not be possible to `push!` existing varname.
@@ -220,9 +221,9 @@ end
         end
         @testset "update!" begin
             vnv = relax_container_types(
-                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+                deepcopy(vnv_base), test_vns, test_vals
             )
-            @testset "$vn" for vn in keys(test_pairs)
+            @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
                 expected_length = if haskey(vnv, vn)
                     # If it's already present, the resulting length will be unchanged.
@@ -245,9 +246,9 @@ end
             # or b) the sizes of the values to match. But now the sizes of the values
             # will change, so we can only test the former.
             vnv = relax_container_types(
-                deepcopy(vnv_base), keys(test_pairs), values(test_pairs)
+                deepcopy(vnv_base), test_vns, test_vals
             )
-            @testset "$vn (different size)" for vn in keys(test_pairs)
+            @testset "$vn (different size)" for vn in test_vns
                 val_original = test_pairs[vn]
                 val = change_size_for_test(val_original)
                 vn_already_present = haskey(vnv, vn)
