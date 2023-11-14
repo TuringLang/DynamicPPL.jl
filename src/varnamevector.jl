@@ -219,7 +219,8 @@ function nextrange(vnv::VarNameVector, x)
     # NOTE: We could of course attempt to make use of unused space, e.g. if we have an inactive
     # range which can hold `x`, then we could just use that. Buuut the complexity of this is
     # probably not worth it (at least at the moment).
-    max_inactive_range = isempty(vnv.inactive_ranges) ? 0 : maximum(last, vnv.inactive_ranges)
+    max_inactive_range =
+        isempty(vnv.inactive_ranges) ? 0 : maximum(last, vnv.inactive_ranges)
     offset = max(max_active_range, max_inactive_range)
     return (offset + 1):(offset + length(x))
 end
