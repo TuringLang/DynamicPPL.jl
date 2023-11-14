@@ -205,9 +205,7 @@ end
 
         # `push!` & `update!`
         @testset "push!" begin
-            vnv = relax_container_types(
-                deepcopy(vnv_base), test_vns, test_vals
-            )
+            vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
                 if vn == vn_left || vn == vn_right
@@ -220,9 +218,7 @@ end
             end
         end
         @testset "update!" begin
-            vnv = relax_container_types(
-                deepcopy(vnv_base), test_vns, test_vals
-            )
+            vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
                 expected_length = if haskey(vnv, vn)
@@ -245,9 +241,7 @@ end
             # we required either a) the underlying `transforms` to be non-concrete,
             # or b) the sizes of the values to match. But now the sizes of the values
             # will change, so we can only test the former.
-            vnv = relax_container_types(
-                deepcopy(vnv_base), test_vns, test_vals
-            )
+            vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn (different size)" for vn in test_vns
                 val_original = test_pairs[vn]
                 val = change_size_for_test(val_original)
