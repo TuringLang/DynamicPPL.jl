@@ -878,7 +878,7 @@ _empty!(metadata) = empty!(metadata)
 end
 
 # `keys`
-Base.keys(md::Metadata) = keys(md.idcs)
+Base.keys(md::Metadata) = md.vns
 Base.keys(vi::VarInfo) = keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
