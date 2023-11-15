@@ -538,36 +538,40 @@ function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) whe
 end
 
 # HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
-# and https://github.com/JuliaFolds/BangBang.jl/pull/238.
-# HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
-) where {C<:AbstractMatrix,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
-end
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractPPL.ConcretizedSlice, ::Integer
-) where {C<:AbstractMatrix,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
-end
-# HACK: Makes it possible to use ranges, etc. for setting a vector.
-# For example, without this hack, BangBang.jl will consider
+# and https://github.com/JuliaFolds/BangBang.jl/pull/238, https://github.com/JuliaFolds2/BangBang.jl/pull/16.
+# This avoids type-instability in `dot_assume` for `SimpleVarInfo`.
+# The following code a copy from https://github.com/JuliaFolds2/BangBang.jl/pull/16 authored by torfjelde
+# Default implementation for `_setindex!` with `AbstractArray`.
+# But this will return `false` even in cases such as
 #
-#    x[1:2] = [1, 2]
+#     setindex!!([1, 2, 3], [4, 5, 6], :)
 #
-# as NOT supported. This results is calling the immutable
-# `BangBang.setindex` instead, which also ends up expanding the
-# type of the containing array (`x` in the above scenario) to
-# have element type `Any`.
-# The below code just, correctly, marks this as possible and
-# thus we hit the mutable `setindex!` instead.
+# because `promote_type(eltype(C), T) <: eltype(C)` is `false`.
+# To address this, we specialize on the case where `T<:AbstractArray`.
+# In addition, we need to support a wide range of indexing behaviors:
+#
+# We also need to ensure that the dimensionality of the index is
+# valid, i.e. that we're not returning `true` in cases such as
+#
+#     setindex!!([1, 2, 3], [4, 5], 1)
+#
+# which should return `false`.
+_index_dimension(::Any) = 0
+_index_dimension(::Colon) = 1
+_index_dimension(::AbstractVector) = 1
+_index_dimension(indices::Tuple) = sum(map(_index_dimension, indices))
+
 function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::AbstractVector{<:Integer}
-) where {C<:AbstractVector,T<:AbstractVector}
+    ::typeof(BangBang._setindex!), ::C, ::T, indices::Vararg
+) where {M,C<:AbstractArray{<:Real},T<:AbstractArray{<:Real,M}}
     return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
+           promote_type(eltype(C), eltype(T)) <: eltype(C) &&
+           # This will still return `false` for scenarios such as
+           #
+           #     setindex!!([1, 2, 3], [4, 5, 6], :, 1)
+           #
+           # which are in fact valid. However, this cases are rare.
+           (_index_dimension(indices) == M || _index_dimension(indices) == 1)
 end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
