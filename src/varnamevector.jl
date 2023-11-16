@@ -268,7 +268,7 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     else
         # `n_new <= n_old`
         # Just decrease the current range.
-        r_new = r_old[1]:(r_old[1]+n_new-1)
+        r_new = r_old[1]:(r_old[1] + n_new - 1)
         vnv.ranges[idx] = r_new
         # And mark the rest as inactive if needed.
         if n_new < n_old
