@@ -594,6 +594,30 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 end
             end
         end
+
+        @testset "different models" begin
+            @model function demo_merge_different_y()
+                x ~ Uniform()
+                y ~ Normal()
+            end
+            @model function demo_merge_different_z()
+                x ~ Normal()
+                z ~ Normal()
+            end
+            model_left = demo_merge_different_y()
+            model_right = demo_merge_different_z()
+
+            varinfo_left = VarInfo(model_left)
+            varinfo_right = VarInfo(model_right)
+
+            varinfo_merged = merge(varinfo_left, varinfo_right)
+            vns = [@varname(x), @varname(y), @varname(z)]
+            check_varinfo_keys(varinfo_merged, vns)
+
+            # Right has precedence.
+            @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
+            @test DynamicPPL.getdist(varinfo_merged, @varname(x)) isa Normal
+        end
     end
 
     @testset "VarInfo with selectors" begin
