@@ -598,11 +598,11 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @testset "different models" begin
             @model function demo_merge_different_y()
                 x ~ Uniform()
-                y ~ Normal()
+                return y ~ Normal()
             end
             @model function demo_merge_different_z()
                 x ~ Normal()
-                z ~ Normal()
+                return z ~ Normal()
             end
             model_left = demo_merge_different_y()
             model_right = demo_merge_different_z()
