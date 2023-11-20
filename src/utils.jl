@@ -70,7 +70,9 @@ true
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = acclogp!!($(esc(:(__varinfo__))), $(esc(ex)))
+        $(esc(:(__varinfo__))) = acclogp!!(
+            $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
+        )
     end
 end
 
