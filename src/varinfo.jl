@@ -398,10 +398,9 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             push!(ranges, r)
             offset = r[end]
             # `dists`: only valid if they're the same.
-            dists_left = getdist(metadata_left, vn)
-            dists_right = getdist(metadata_right, vn)
-            @assert dists_left == dists_right
-            push!(dists, dists_left)
+            dist_right = getdist(metadata_right, vn)
+            # Give precedence to `metadata_right`.
+            push!(dists, dist_right)
             # `orders`: giving precedence to `metadata_right`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
@@ -419,8 +418,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             push!(ranges, r)
             offset = r[end]
             # `dists`
-            dists_left = getdist(metadata_left, vn)
-            push!(dists, dists_left)
+            dist_left = getdist(metadata_left, vn)
+            push!(dists, dist_left)
             # `orders`
             push!(orders, getorder(metadata_left, vn))
             # `flags`
@@ -437,8 +436,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             push!(ranges, r)
             offset = r[end]
             # `dists`
-            dists_right = getdist(metadata_right, vn)
-            push!(dists, dists_right)
+            dist_right = getdist(metadata_right, vn)
+            push!(dists, dist_right)
             # `orders`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
