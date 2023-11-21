@@ -186,6 +186,9 @@ end
         @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
             "../ext/DynamicPPLChainRulesCoreExt.jl"
         )
+        @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
+            "../ext/DynamicPPLEnzymeCoreExt.jl"
+        )
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
