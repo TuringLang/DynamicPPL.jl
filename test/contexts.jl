@@ -16,6 +16,8 @@ using DynamicPPL:
     hasconditioned_nested,
     getconditioned_nested
 
+using EnzymeCore
+
 # Dummy context to test nested behaviors.
 struct ParentContext{C<:AbstractContext} <: AbstractContext
     context::C
@@ -252,6 +254,7 @@ end
         @test SamplingContext(Random.default_rng(), DefaultContext()) == context
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
+        @test EnzymeCore.EnzymeRules.inactive_type(typeof(context))
     end
 
     @testset "FixedContext" begin
