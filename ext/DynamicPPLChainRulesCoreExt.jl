@@ -18,9 +18,7 @@ ChainRulesCore.@non_differentiable BangBang.push!!(
 )
 
 ChainRulesCore.@non_differentiable DynamicPPL.updategid!(
-    vi::DynamicPPL.AbstractVarInfo,
-    vn::DynamicPPL.VarName,
-    spl::DynamicPPL.Sampler,
+    vi::DynamicPPL.AbstractVarInfo, vn::DynamicPPL.VarName, spl::DynamicPPL.Sampler
 )
 
 end # module
