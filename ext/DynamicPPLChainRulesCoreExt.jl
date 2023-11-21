@@ -21,4 +21,7 @@ ChainRulesCore.@non_differentiable DynamicPPL.updategid!(
     vi::DynamicPPL.AbstractVarInfo, vn::DynamicPPL.VarName, spl::DynamicPPL.Sampler
 )
 
+# No need + causes issues for some AD backends, e.g. Zygote.
+ChainRulesCore.@non_differentiable DynamicPPL.infer_nested_eltype(x)
+
 end # module
