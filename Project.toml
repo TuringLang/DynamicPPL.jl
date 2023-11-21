@@ -23,10 +23,14 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [weakdeps]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [extensions]
+DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
+DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 
 [compat]
 AbstractMCMC = "5"
@@ -51,4 +55,6 @@ Test = "1.6"
 julia = "1.6"
 
 [extras]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
