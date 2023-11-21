@@ -8,6 +8,6 @@ else
     using ..EnzymeCore
 end
 
-@inline EnzymeCore.EnzymeRules.inactive_type(::Type{T}) where {T<:SamplingContext} = true
+@inline EnzymeCore.EnzymeRules.inactive_type(::Type{<:DynamicPPL.SamplingContext}) = true
 
 end
