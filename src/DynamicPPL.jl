@@ -9,11 +9,9 @@ using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
 using BangBang: BangBang, push!!, empty!!, setindex!!
-using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
-using ZygoteRules: ZygoteRules
 using LogDensityProblems: LogDensityProblems
 
 using LinearAlgebra: LinearAlgebra, Cholesky
@@ -171,7 +169,6 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
-include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
@@ -186,11 +183,17 @@ end
 
 @static if !isdefined(Base, :get_extension)
     function __init__()
-        @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
-            "../ext/DynamicPPLMCMCChainsExt.jl"
+        @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
+            "../ext/DynamicPPLChainRulesCoreExt.jl"
         )
         @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
             "../ext/DynamicPPLEnzymeCoreExt.jl"
+        )
+        @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
+            "../ext/DynamicPPLMCMCChainsExt.jl"
+        )
+        @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
+            "../ext/DynamicPPLZygoteRulesExt.jl"
         )
     end
 end
