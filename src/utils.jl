@@ -262,7 +262,7 @@ end
 reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
 reconstruct(::Tuple{}, val::AbstractVector) = val[1]
 reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
-reconstruct(s::NTuple{2}, val::AbstractVector) = reshape(copy(val), s)
+reconstruct(s::Tuple, val::AbstractVector) = reshape(copy(val), s)
 function reconstruct!(r, d::Distribution, val::AbstractVector)
     return reconstruct!(r, d, val)
 end

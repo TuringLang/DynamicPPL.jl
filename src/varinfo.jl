@@ -126,6 +126,47 @@ function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
     )
 end
 
+# No-op if we're already working with a `VarNameVector`.
+metadata_to_varnamevector(vnv::VarNameVector) = vnv
+function metadata_to_varnamevector(md::Metadata)
+    idcs = md.idcs
+    vns = md.vns
+    ranges = md.ranges
+    vals = md.vals
+    transforms = map(md.dists) do dist
+        # TODO: Handle linked distributions.
+        FromVec(size(dist))
+    end
+
+    return VarNameVector(
+        OrderedDict{eltype(keys(idcs)),Int}(idcs),
+        vns,
+        ranges,
+        vals,
+        transforms,
+    )
+end
+
+function VectorVarInfo(vi::UntypedVarInfo)
+    md = metadata_to_varnamevector(vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(
+        md,
+        Base.RefValue{eltype(lp)}(lp),
+        Ref(get_num_produce(vi)),
+    )
+end
+
+function VectorVarInfo(vi::TypedVarInfo)
+    md = map(metadata_to_varnamevector, vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(
+        md,
+        Base.RefValue{eltype(lp)}(lp),
+        Ref(get_num_produce(vi)),
+    )
+end
+
 function VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -549,6 +590,10 @@ end
 function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
 end
+function setval!(vnv::VarNameVector, val, vn::VarName)
+    return setindex_raw!(vnv, tovec(val), vn)
+end
+
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
@@ -1421,12 +1466,15 @@ function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     val = getval(vi, vn)
     return maybe_invlink_and_reconstruct(vi, vn, dist, val)
 end
-function getindex(vi::VectorVarInfo, vn::VarName, ::Nothing)
+# HACK: Allows us to also work with `VarNameVector` where `dist` is not used,
+# but we instead use a transformation stored with the variable.
+function getindex(vi::VarInfo, vn::VarName, ::Nothing)
     if !haskey(vi, vn)
         throw(KeyError(vn))
     end
     return getmetadata(vi, vn)[vn]
 end
+
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
     # FIXME(torfjelde): Using `getdist(vi, first(vns))` won't be correct in cases
     # such as `x .~ [Normal(), Exponential()]`.
@@ -1543,9 +1591,10 @@ Check whether `vn` has been sampled in `vi`.
 """
 haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
 function haskey(vi::TypedVarInfo, vn::VarName)
-    metadata = vi.metadata
-    Tmeta = typeof(metadata)
-    return getsym(vn) in fieldnames(Tmeta) && haskey(getmetadata(vi, vn).idcs, vn)
+    md_haskey = map(vi.metadata) do metadata
+        haskey(metadata, vn)
+    end
+    return any(md_haskey)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
@@ -1640,12 +1689,14 @@ Set the `order` of `vn` in `vi` to `index`, where `order` is the number of `obse
 statements run before sampling `vn`.
 """
 function setorder!(vi::VarInfo, vn::VarName, index::Int)
-    metadata = getmetadata(vi, vn)
-    if metadata.orders[metadata.idcs[vn]] != index
-        metadata.orders[metadata.idcs[vn]] = index
-    end
+    setorder!(getmetadata(vi, vn), vn, index)
     return vi
 end
+function setorder!(metadata::Metadata, vn::VarName, index::Int)
+    metadata.orders[metadata.idcs[vn]] = index
+    return metadata
+end
+setorder!(vnv::VarNameVector, ::VarName, ::Int) = vnv
 
 """
     getorder(vi::VarInfo, vn::VarName)
@@ -1671,6 +1722,8 @@ end
 function is_flagged(metadata::Metadata, vn::VarName, flag::String)
     return metadata.flags[flag][getidx(metadata, vn)]
 end
+# HACK: This is bad. Should we always return `true` here?
+is_flagged(::VarNameVector, ::VarName, flag::String) = flag == "del" ? true : false
 
 """
     unset_flag!(vi::VarInfo, vn::VarName, flag::String)
@@ -1678,9 +1731,14 @@ end
 Set `vn`'s value for `flag` to `false` in `vi`.
 """
 function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = false
+    unset_flag!(getmetadata(vi, vn), vn, flag)
     return vi
 end
+function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
+    metadata.flags[flag][getidx(vi, vn)] = false
+    return metadata
+end
+unset_flag!(vnv::VarNameVector, ::VarName, ::String) = vnv
 
 """
     set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)

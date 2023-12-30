@@ -30,9 +30,9 @@ end
 
 Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
 """
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal, kwargs...)
+function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...)
     for vn in vns
-        @test isequal(vi[vn], get(vals, vn); kwargs...)
+        @test compare(vi[vn], get(vals, vn); kwargs...)
     end
 end
 
@@ -52,6 +52,8 @@ function setup_varinfos(
     vi_untyped = VarInfo()
     model(vi_untyped)
     vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
+    vi_vnv = DynamicPPL.VectorVarInfo(vi_untyped)
+    vi_vnv_typed = DynamicPPL.VectorVarInfo(vi_typed)
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
@@ -62,7 +64,14 @@ function setup_varinfos(
 
     lp = getlogp(vi_typed)
     varinfos = map((
-        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
+        vi_untyped,
+        vi_typed,
+        vi_vnv,
+        vi_vnv_typed,
+        svi_typed,
+        svi_untyped,
+        svi_typed_ref,
+        svi_untyped_ref,
     )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)

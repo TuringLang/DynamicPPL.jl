@@ -1,7 +1,15 @@
 # Similar to `Metadata` but representing a `Vector` and simpler interface.
 # TODO: Should we subtype `AbstractVector` or `AbstractDict`?
+"""
+    VarNameVector
+
+A container that works like a `Vector` and an `OrderedDict` but is neither.
+
+# Fields
+$(FIELDS)
+"""
 struct VarNameVector{
-    K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
+    K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
 }
     "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
     varname_to_index::OrderedDict{K,Int}
@@ -64,6 +72,7 @@ tovec(x::AbstractArray) = vec(x)
 Bijectors.inverse(f::FromVec) = tovec
 Bijectors.inverse(f::FromVec{Tuple{}}) = tovec
 
+# More convenient constructors.
 collect_maybe(x) = collect(x)
 collect_maybe(x::AbstractArray) = x
 

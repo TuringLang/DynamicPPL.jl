@@ -306,3 +306,64 @@ end
         end
     end
 end
+
+has_varnamevector(vi) = false
+function has_varnamevector(vi::VarInfo)
+    return vi.metadata isa VarNameVector ||
+           (vi isa TypedVarInfo && first(values(vi.metadata)) isa VarNameVector)
+end
+
+@testset "VarInfo + VarNameVector" begin
+    models = [
+        DynamicPPL.TestUtils.demo_assume_index_observe(),
+        DynamicPPL.TestUtils.demo_assume_observe_literal(),
+        DynamicPPL.TestUtils.demo_assume_literal_dot_observe(),
+    ]
+
+    @testset "$(model.f)" for model in models
+        # TODO: Does not currently work with `get_and_set_val!` and thus not with
+        # `dot_tilde_assume`.
+        # NOTE: Need to set random seed explicitly to avoid using the same seed
+        # for initialization as for sampling in the inner testset below.
+        Random.seed!(42)
+        value_true = DynamicPPL.TestUtils.rand_prior_true(model)
+        vns = DynamicPPL.TestUtils.varnames(model)
+        varnames = DynamicPPL.TestUtils.varnames(model)
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
+            model, value_true, varnames; include_threadsafe=false
+        )
+        # Filter out those which are not based on `VarNameVector`.
+        varinfos = filter(has_varnamevector, varinfos)
+        # Get the true log joint.
+        logp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
+
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            # Need to make sure we're using a different random seed from the
+            # one used in the above call to `rand_prior_true`.
+            Random.seed!(43)
+
+            # Are values correct?
+            DynamicPPL.TestUtils.test_values(varinfo, value_true, vns)
+
+            # Is evaluation correct?
+            varinfo_eval = last(
+                DynamicPPL.evaluate!!(model, deepcopy(varinfo), DefaultContext())
+            )
+            # Log density should be the same.
+            @test getlogp(varinfo_eval) ≈ logp_true
+            # Values should be the same.
+            DynamicPPL.TestUtils.test_values(varinfo_eval, value_true, vns)
+
+            # Is sampling correct?
+            varinfo_sample = last(
+                DynamicPPL.evaluate!!(model, deepcopy(varinfo), SamplingContext())
+            )
+            # Log density should be different.
+            @test getlogp(varinfo_sample) != getlogp(varinfo)
+            # Values should be different.
+            DynamicPPL.TestUtils.test_values(
+                varinfo_sample, value_true, vns; compare=!isequal
+            )
+        end
+    end
+end
