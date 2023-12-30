@@ -314,15 +314,8 @@ function has_varnamevector(vi::VarInfo)
 end
 
 @testset "VarInfo + VarNameVector" begin
-    models = [
-        DynamicPPL.TestUtils.demo_assume_index_observe(),
-        DynamicPPL.TestUtils.demo_assume_observe_literal(),
-        DynamicPPL.TestUtils.demo_assume_literal_dot_observe(),
-    ]
-
+    models = DynamicPPL.TestUtils.DEMO_MODELS
     @testset "$(model.f)" for model in models
-        # TODO: Does not currently work with `get_and_set_val!` and thus not with
-        # `dot_tilde_assume`.
         # NOTE: Need to set random seed explicitly to avoid using the same seed
         # for initialization as for sampling in the inner testset below.
         Random.seed!(42)
