@@ -139,32 +139,20 @@ function metadata_to_varnamevector(md::Metadata)
     end
 
     return VarNameVector(
-        OrderedDict{eltype(keys(idcs)),Int}(idcs),
-        vns,
-        ranges,
-        vals,
-        transforms,
+        OrderedDict{eltype(keys(idcs)),Int}(idcs), vns, ranges, vals, transforms
     )
 end
 
 function VectorVarInfo(vi::UntypedVarInfo)
     md = metadata_to_varnamevector(vi.metadata)
     lp = getlogp(vi)
-    return VarInfo(
-        md,
-        Base.RefValue{eltype(lp)}(lp),
-        Ref(get_num_produce(vi)),
-    )
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 function VectorVarInfo(vi::TypedVarInfo)
     md = map(metadata_to_varnamevector, vi.metadata)
     lp = getlogp(vi)
-    return VarInfo(
-        md,
-        Base.RefValue{eltype(lp)}(lp),
-        Ref(get_num_produce(vi)),
-    )
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 function VarInfo(
@@ -593,7 +581,6 @@ end
 function setval!(vnv::VarNameVector, val, vn::VarName)
     return setindex_raw!(vnv, tovec(val), vn)
 end
-
 
 """
     getval(vi::VarInfo, vns::Vector{<:VarName})
