@@ -333,7 +333,9 @@ We can achieve this nicely by storing the values for different `VarName`s contig
 
 We also want some additional methods that are not part of the `Dict` or `Vector` interface:
 
-  - `push!(container, ::VarName, value)` to add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
+- `push!(container, ::VarName, value[, transform])`:  add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
+
+- `update!(container, ::VarName, value[, transform])`: similar to `push!` but if the `VarName` is already present in the container, then we update the corresponding value instead of adding a new element.
 
 In addition, we want to be able to access the "transformed" / unconstrained realization for a particular `VarName` and so we also need corresponding methods for this:
 
