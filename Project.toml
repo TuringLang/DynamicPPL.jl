@@ -1,6 +1,7 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.24.1"
+
+version = "0.24.4"
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -23,10 +24,16 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [weakdeps]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [extensions]
+DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
+DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
+DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 
 [compat]
 AbstractMCMC = "5"
@@ -38,6 +45,7 @@ Compat = "4"
 ConstructionBase = "1.5.4"
 Distributions = "0.25"
 DocStringExtensions = "0.9"
+EnzymeCore = "0.6"
 LogDensityProblems = "2"
 MCMCChains = "6"
 MacroTools = "0.5.6"
@@ -51,4 +59,7 @@ Test = "1.6"
 julia = "1.6"
 
 [extras]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"

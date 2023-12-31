@@ -107,12 +107,20 @@ Set the log of the joint probability of the observed data and parameters sampled
 function setlogp!! end
 
 """
-    acclogp!!(vi::AbstractVarInfo, logp)
+    acclogp!!([context::AbstractContext, ]vi::AbstractVarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!! end
+function acclogp!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(NodeTrait(context), context, vi, logp)
+end
+function acclogp!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(vi, logp)
+end
+function acclogp!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(childcontext(context), vi, logp)
+end
 
 """
     resetlogp!!(vi::AbstractVarInfo)

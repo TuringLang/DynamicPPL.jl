@@ -70,7 +70,9 @@ true
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = acclogp!!($(esc(:(__varinfo__))), $(esc(ex)))
+        $(esc(:(__varinfo__))) = acclogp!!(
+            $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
+        )
     end
 end
 
@@ -880,9 +882,6 @@ end
 
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
 infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
-
-# No need + causes issues for some AD backends, e.g. Zygote.
-ChainRulesCore.@non_differentiable infer_nested_eltype(x)
 
 """
     varname_leaves(vn::VarName, val)
