@@ -261,35 +261,41 @@ VarNameVector
 
 #### Design
 
-[`VarInfo`](@ref) is a fairly simple structure; it contains 
-- a `logp` field for accumulation of the log-density evaluation, and
-- a `metadata` field for storing information about the realizations of the different variables.
+[`VarInfo`](@ref) is a fairly simple structure; it contains
+
+  - a `logp` field for accumulation of the log-density evaluation, and
+  - a `metadata` field for storing information about the realizations of the different variables.
 
 Representing `logp` is fairly straight-forward: we'll just use a `Real` or an array of `Real`, depending on the context.
 
 **Representing `metadata` is a bit trickier**. This is supposed to contain all the necessary information for each `VarName` to enable the different executions of the model + extraction of different properties of interest after execution, e.g. the realization / value corresponding used for, say, `@varname(x)`.
 
 !!! note
+    
     We want to work with `VarName` rather than something like `Symbol` or `String` as `VarName` contains additional structural information, e.g. a `Symbol("x[1]")` can be a result of either `var"x[1]" ~ Normal()` or `x[1] ~ Normal()`; these scenarios are disambiguated by `VarName`.
 
 To ensure that `varinfo` is simple and intuitive to work with, we need the underlying `metadata` to replicate the following functionality of `Dict`:
-- `keys(::Dict)`: return all the `VarName`s present in `metadata`.
-- `haskey(::Dict)`: check if a particular `VarName` is present in `metadata`.
-- `getindex(::Dict, ::VarName)`: return the realization corresponding to a particular `VarName`.
-- `setindex!(::Dict, val, ::VarName)`: set the realization corresponding to a particular `VarName`.
-- `delete!(::Dict, ::VarName)`: delete the realization corresponding to a particular `VarName`.
-- `empty!(::Dict)`: delete all realizations in `metadata`.
-- `merge(::Dict, ::Dict)`: merge two `metadata` structures according to similar rules as `Dict`.
+
+  - `keys(::Dict)`: return all the `VarName`s present in `metadata`.
+  - `haskey(::Dict)`: check if a particular `VarName` is present in `metadata`.
+  - `getindex(::Dict, ::VarName)`: return the realization corresponding to a particular `VarName`.
+  - `setindex!(::Dict, val, ::VarName)`: set the realization corresponding to a particular `VarName`.
+  - `delete!(::Dict, ::VarName)`: delete the realization corresponding to a particular `VarName`.
+  - `empty!(::Dict)`: delete all realizations in `metadata`.
+  - `merge(::Dict, ::Dict)`: merge two `metadata` structures according to similar rules as `Dict`.
 
 *But* for general-purpose samplers, we often want to work with a simple flattened structure, typically a `Vector{<:Real}`. Hence we also want `varinfo` to be able to replicate the following functionality of `Vector{<:Real}`:
-- `getindex(::Vector{<:Real}, ::Int)`: return the i-th value in the flat representation of `metadata`.
-  - For example, if `metadata` contains a realization of `x ~ MvNormal(zeros(3), I)`, then `getindex(varinfo, 1)` should return the realization of `x[1]`, `getindex(varinfo, 2)` should return the realization of `x[2]`, etc.
-- `setindex!(::Vector{<:Real}, val, ::Int)`: set the i-th value in the flat representation of `metadata`.
-- `length(::Vector{<:Real})`: return the length of the flat representation of `metadata`.
+
+  - `getindex(::Vector{<:Real}, ::Int)`: return the i-th value in the flat representation of `metadata`.
+    
+      + For example, if `metadata` contains a realization of `x ~ MvNormal(zeros(3), I)`, then `getindex(varinfo, 1)` should return the realization of `x[1]`, `getindex(varinfo, 2)` should return the realization of `x[2]`, etc.
+  - `setindex!(::Vector{<:Real}, val, ::Int)`: set the i-th value in the flat representation of `metadata`.
+  - `length(::Vector{<:Real})`: return the length of the flat representation of `metadata`.
 
 Moreover, we want also want the underlying representation used in `metadata` to have a few performance-related properties:
-1. Type-stable when possible, but still functional when not.
-2. Efficient storage and iteration.
+
+ 1. Type-stable when possible, but still functional when not.
+ 2. Efficient storage and iteration.
 
 `VarNameVector` is a data structure that allows us to achieve all of the above when used as the `metadata` field of `VarInfo`.
 
@@ -305,6 +311,7 @@ y ~ Normal(0, 1)
 then we construct a type-stable representation by using a `NamedTuple{(:x, :y), Tuple{Vx, Vy}}` where `Vx` is a container with `eltype` `Bool` and `Vy` is a container with `eltype` `Float64`. Since `VarName` contains the `Symbol` used in its type, something like `getindex(varinfo, @varname(x))` can be resolved to `getindex(varinfo.metadata.x, @varname(x))` at compile-time.
 
 !!! warning
+    
     Of course, this `NamedTuple` approach is *not* going to help us in scenarios where the `Symbol` does not correspond to a unique type, e.g.
     
     ```julia
@@ -325,10 +332,12 @@ We can achieve this nicely by storing the values for different `VarName`s contig
 ##### Additional methods
 
 We also want some additional methods that are not part of the `Dict` or `Vector` interface:
-- `push!(container, ::VarName, value)` to add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
+
+  - `push!(container, ::VarName, value)` to add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
 
 In addition, we want to be able to access the "transformed" / unconstrained realization for a particular `VarName` and so we also need corresponding methods for this:
-- `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
+
+  - `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
 
 ### Common API
 
@@ -387,7 +396,6 @@ DynamicPPL.unflatten
 DynamicPPL.varname_leaves
 DynamicPPL.varname_and_value_leaves
 ```
-
 
 ### Evaluation Contexts
 
