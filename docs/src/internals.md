@@ -133,10 +133,20 @@ Mutating functions, e.g. `setindex!`, are then treated according to the followin
 
 This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient in the scenarios we encounter in practice.
 
-In particular, we want to make sure that the following scenario is efficient:
+In particular, we want to optimize code-paths which effectively boil down to inner-loop in the following example::
 
- 1. Construct a [`VarInfo`](@ref) from a `[Model`](@ref).
- 2. Repeatedly call `rand!(rng, ::Model, ::VarInfo)`.
+```julia
+# Construct a `VarInfo` with types inferred from `model`.
+varinfo = VarInfo(model)
+
+# Repeatedly sample from `model`.
+for _ = 1:num_samples
+    rand!(rng, model, varinfo)
+
+    # Do something with `varinfo`.
+    # ...
+end
+```
 
 There are typically a few scenarios where we encounter changing representation sizes of a random variable `x`:
 
@@ -151,10 +161,10 @@ In scenario (2), we'll end up with quite a sub-optimal representation unless we 
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
 println("Before insertion: $(length(vnv.vals))")
 
-for i in 2:5
-    # Insert value 1 size larger.
-    DynamicPPL.update!(vnv, @varname(x), fill(true, i))
-    println("After insertion #$(i): $(length(vnv.vals))")
+for i in 1:5
+    x = fill(true, rand(1:5))
+    DynamicPPL.update!(vnv, @varname(x), x)
+    println("After insertion #$(i) of length $(length(x)): $(length(vnv.vals))")
 end
 ```
 
@@ -164,31 +174,17 @@ To alleviate this issue, we can insert a call to [`DynamicPPL.inactive_ranges_sw
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
 println("Before insertion: $(length(vnv.vals))")
 
-for i in 2:5
-    # Insert value 1 size larger.
-    DynamicPPL.update!(vnv, @varname(x), fill(true, i))
+for i in 1:5
+    x = fill(true, rand(1:5))
+    DynamicPPL.update!(vnv, @varname(x), x)
     DynamicPPL.inactive_ranges_sweep!(vnv)
-    println("After insertion #$(i): $(length(vnv.vals))")
+    println("After insertion #$(i) of length $(length(x)): $(length(vnv.vals))")
 end
 ```
 
-The nice aspect of this is that `vnv` can grow as needed, but once it is sufficiently large to contain the all the different realizations of `x`, it stops growing!
+Without the calls to [`DynamicPPL.inactive_ranges_sweep!`](@ref), the above would result in a much larger memory footprint. Of course, in this does incur a runtime cost as it requires re-allocation of the `ranges` in addition to a `resize!` of the underlying `Vector{T}`.
 
-```@example varinfo-design
-vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
-println("Before insertion: $(length(vnv.vals))")
-
-for i in 1:100
-    DynamicPPL.update!(vnv, @varname(x), fill(true, rand(1:5)))
-    if DynamicPPL.has_inactive_ranges(vnv)
-        DynamicPPL.inactive_ranges_sweep!(vnv)
-    end
-end
-
-println("After insertions: $(length(vnv.vals))")
-```
-
-Without the calls to [`DynamicPPL.inactive_ranges_sweep!`](@ref), the above would result in a much larger memory footprint.
+That is, we've decided to focus on optimizing scenario (1) but we still maintain functionality even in scenario (2), though at a greater computational cost.
 
 `delete!` and similars are also implemented using the "delete-by-mark" technique outlined above.
 
