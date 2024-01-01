@@ -118,6 +118,11 @@ getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 
 gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
 
+"""
+    has_inactive_ranges(vnv::VarNameVector)
+
+Returns `true` if `vnv` has inactive ranges. 
+"""
 has_inactive_ranges(vnv::VarNameVector) = !isempty(vnv.inactive_ranges)
 
 # Basic array interface.
@@ -307,6 +312,11 @@ function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
     return ranges
 end
 
+"""
+    inactive_ranges_sweep!(vnv::VarNameVector)
+
+Sweep over the inactive ranges in `vnv` and re-contiguify the underlying
+"""
 function inactive_ranges_sweep!(vnv::VarNameVector)
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
