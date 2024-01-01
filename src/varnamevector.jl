@@ -315,7 +315,7 @@ end
 """
     inactive_ranges_sweep!(vnv::VarNameVector)
 
-Sweep over the inactive ranges in `vnv` and re-contiguify the underlying
+Re-contiguify the underlying vector and shrink if possible.
 """
 function inactive_ranges_sweep!(vnv::VarNameVector)
     # Extract the re-contiguified values.

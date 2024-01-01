@@ -253,12 +253,6 @@ Base.empty!
 SimpleVarInfo
 ```
 
-#### `VarNameVector`
-
-```@docs
-VarNameVector
-```
-
 ### Common API
 
 #### Accumulation of log-probabilities

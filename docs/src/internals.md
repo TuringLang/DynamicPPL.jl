@@ -103,11 +103,17 @@ varinfo_typed[@varname(x)], varinfo_typed[@varname(y)]
     
     Another downside with this approach is that if we have a model with lots of tilde-statements, e.g. `a ~ Normal()`, `b ~ Normal()`, ..., `z ~ Normal()` will result in a `NamedTuple` with 27 entries, potentially leading to long compilation times.
 
-Hence we obtain a "type-stable when possible"-representation by wrapping it in a `NamedTuple` and partially resolving the `getindex`, `setindex!`, etc. methods at compile-time. When type-stability is *not* desired, we can simply use a `VarNameVector` for all `VarName`s instead of a `NamedTuple` wrapping `VarNameVector`s.
+Hence we obtain a "type-stable when possible"-representation by wrapping it in a `NamedTuple` and partially resolving the `getindex`, `setindex!`, etc. methods at compile-time. When type-stability is *not* desired, we can simply use a single `metadata` for all `VarName`s instead of a `NamedTuple` wrapping a collection of `metadata`s.
 
 ### Efficient storage and iteration
 
-In [`VarNameVector{<:VarName,Vector{T}}`](@ref), we achieve this by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
+Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`VarNameVector`](@ref):
+
+```@docs
+DynamicPPL.VarNameVector
+```
+
+In a [`VarNameVector{<:VarName,Vector{T}}`](@ref), we achieve this by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
 
 This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each `VarName` a unique `Int` index in the `varname_to_index` field, which is then used to index into the following fields:
 
@@ -124,17 +130,23 @@ Mutating functions, e.g. `setindex!`, are then treated according to the followin
      1. If `value` has the *same length* as the existing value for `VarName`: replace existing value.
      2. If `value` has a *smaller length* than the existing value for `VarName`: replace existing value and mark the remaining indices as "inactive" by adding the range to the `inactive_ranges` field.
      3. If `value` has a *larger length* than the existing value for `VarName`: mark the entire current range for `VarName` as "inactive", expand the underlying `Vector{T}` to accommodate the new value, and update the `ranges` to point to the new range for this `VarName`.
+     
+This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient.
 
-This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient; if we instead tried to insert a new larger value at the same location as the old value, then we would have to shift all the elements after the insertion point, potentially requiring a lot of memory allocations. This also means that the underlying `Vector{T}` can grow without bound, so we have the following methods to interact with the inactive ranges:
+!!! note
+    
+    If we instead tried to insert a new larger value at the same location as the old value, then we would have to shift all the elements after the insertion point, potentially requiring a lot of memory allocations.
+
+!!! note
+    
+    Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing he `VarName`'s transformation with a `DynamicPPL.FromVec`.
+
+This does mean that the underlying `Vector{T}` can grow without bound, so we have the following methods to interact with the inactive ranges:
 
 ```@docs
 DynamicPPL.has_inactive_ranges
 DynamicPPL.inactive_ranges_sweep!
 ```
-
-!!! note
-    
-    Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing he `VarName`'s transformation with a `DynamicPPL.FromVec`.
 
 ### Additional methods
 
