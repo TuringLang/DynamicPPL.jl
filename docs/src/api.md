@@ -299,13 +299,15 @@ Moreover, we want also want the underlying representation used in `metadata` to 
  1. Type-stable when possible, but still functional when not.
  2. Efficient storage and iteration.
 
-[`VarNameVector`](@ref) is a data structure that implements the above methods in a way that allows us to achieve all of the above when used as the `metadata` field of `VarInfo`.
+In the following sections, we'll outline how we achieve this in [`VarInfo`](@ref).
 
 ##### Type-stability
 
-This is somewhat non-trivial to address since we want to achieve this for both continuous (typically `Float64`) and discrete (typically `Int`) variables. The way we approach this in `VarInfo` is to use a `NamedTuple` with a separate `VarNameVector` *for each distinct `Symbol` used*. For example, if we have a model of the form
+This is somewhat non-trivial to address since we want to achieve this for both continuous (typically `Float64`) and discrete (typically `Int`) variables.
 
-```@example varnamevector-design
+Suppose we have an implementation of `metadata` which implements the functionality outlined in the previous section. The way we approach this in `VarInfo` is to use a `NamedTuple` with a separate `metadata` *for each distinct `Symbol` used*. For example, if we have a model of the form
+
+```@example varinfo-design
 using DynamicPPL, Distributions
 
 @model function demo()
@@ -323,31 +325,31 @@ Since `VarName` contains the `Symbol` used in its type, something like `getindex
 
 For example, with the model above we have
 
-```@example varnamevector-design
+```@example varinfo-design
 # Type-unstable `VarInfo`
-varinfo_untyped = DynamicPPL.VectorVarInfo(DynamicPPL.untyped_varinfo(demo()))
+varinfo_untyped = DynamicPPL.untyped_varinfo(demo())
 typeof(varinfo_untyped.metadata)
 ```
 
-```@example varnamevector-design
+```@example varinfo-design
 # Type-stable `VarInfo`
-varinfo_typed = DynamicPPL.VectorVarInfo(DynamicPPL.typed_varinfo(demo()))
+varinfo_typed = DynamicPPL.typed_varinfo(demo())
 typeof(varinfo_typed.metadata)
 ```
 
 But they both work as expected:
 
-```@example varnamevector-design
+```@example varinfo-design
 varinfo_untyped[@varname(x)], varinfo_untyped[@varname(y)]
 ```
 
-```@example varnamevector-design
+```@example varinfo-design
 varinfo_typed[@varname(x)], varinfo_typed[@varname(y)]
 ```
 
 !!! warning
     
-    Of course, this `NamedTuple` approach is *not* going to help us in scenarios where the `Symbol` does not correspond to a unique type, e.g.
+    Of course, this `NamedTuple` approach is *not* necessarily going to help us in scenarios where the `Symbol` does not correspond to a unique type, e.g.
     
     ```julia
     x[1] ~ Bernoulli(0.5)
@@ -360,7 +362,7 @@ varinfo_typed[@varname(x)], varinfo_typed[@varname(y)]
 
 !!! warning
     
-    Another downside with this approach is that if we have a model with lots of tilde-statements, e.g. `a ~ Normal()`, `b ~ Normal()`, ..., `z ~ Normal()`, this will result in a `NamedTuple` with 27 entries, potentially leading to long compilation times.
+    Another downside with this approach is that if we have a model with lots of tilde-statements, e.g. `a ~ Normal()`, `b ~ Normal()`, ..., `z ~ Normal()` will result in a `NamedTuple` with 27 entries, potentially leading to long compilation times.
 
 Hence we obtain a "type-stable when possible"-representation by wrapping it in a `NamedTuple` and partially resolving the `getindex`, `setindex!`, etc. methods at compile-time. When type-stability is *not* desired, we can simply use a `VarNameVector` for all `VarName`s instead of a `NamedTuple` wrapping `VarNameVector`s.
 
@@ -383,6 +385,13 @@ Mutating functions, e.g. `setindex!`, are then treated according to the followin
      1. If `value` has the *same length* as the existing value for `VarName`: replace existing value.
      2. If `value` has a *smaller length* than the existing value for `VarName`: replace existing value and mark the remaining indices as "inactive" by adding the range to the `inactive_ranges` field.
      3. If `value` has a *larger length* than the existing value for `VarName`: mark the entire current range for `VarName` as "inactive", expand the underlying `Vector{T}` to accommodate the new value, and update the `ranges` to point to the new range for this `VarName`.
+
+This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient; if we instead tried to insert a new larger value at the same location as the old value, then we would have to shift all the elements after the insertion point, potentially requiring a lot of memory allocations. This also means that the underlying `Vector{T}` can grow without bound, so we have the following methods to interact with the inactive ranges:
+
+```@docs
+DynamicPPL.has_inactive_ranges
+DynamicPPL.inactive_ranges_sweep!
+```
 
 !!! note
     
