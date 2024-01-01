@@ -155,15 +155,28 @@ function VectorVarInfo(vi::TypedVarInfo)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
-function VarInfo(
+function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
     varinfo = VarInfo()
-    model(rng, varinfo, sampler, context)
-    return TypedVarInfo(varinfo)
+    return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
+end
+function untyped_varinfo(model::Model, args...)
+    return untyped_varinfo(Random.default_rng(), model, args...)
+end
+
+typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
+
+function VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return typed_varinfo(rng, model, sampler, context)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
