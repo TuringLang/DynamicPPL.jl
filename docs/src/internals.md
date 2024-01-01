@@ -47,11 +47,11 @@ This is somewhat non-trivial to address since we want to achieve this for both c
 Suppose we have an implementation of `metadata` which implements the functionality outlined in the previous section. The way we approach this in `VarInfo` is to use a `NamedTuple` with a separate `metadata` *for each distinct `Symbol` used*. For example, if we have a model of the form
 
 ```@example varinfo-design
-using DynamicPPL, Distributions
-
+using DynamicPPL, Distributions, FillArrays
 @model function demo()
-    x ~ Bernoulli(0.5)
-    return y ~ Normal(0, 1)
+    x ~ product_distribution(Fill(Bernoulli(0.5), 2))
+    y ~ Normal(0, 1)
+    return nothing
 end
 ```
 
@@ -113,7 +113,7 @@ Efficient storage and iteration we achieve through implementation of the `metada
 DynamicPPL.VarNameVector
 ```
 
-In a [`VarNameVector{<:VarName,Vector{T}}`](@ref), we achieve this by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
+In a [`VarNameVector{<:VarName,Vector{T}}`](@ref), we achieve the desirata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
 
 This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each `VarName` a unique `Int` index in the `varname_to_index` field, which is then used to index into the following fields:
 
@@ -130,8 +130,67 @@ Mutating functions, e.g. `setindex!`, are then treated according to the followin
      1. If `value` has the *same length* as the existing value for `VarName`: replace existing value.
      2. If `value` has a *smaller length* than the existing value for `VarName`: replace existing value and mark the remaining indices as "inactive" by adding the range to the `inactive_ranges` field.
      3. If `value` has a *larger length* than the existing value for `VarName`: mark the entire current range for `VarName` as "inactive", expand the underlying `Vector{T}` to accommodate the new value, and update the `ranges` to point to the new range for this `VarName`.
-     
-This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient.
+
+This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient in the scenarios we encounter in practice.
+
+In particular, we want to make sure that the following scenario is efficient:
+
+ 1. Construct a [`VarInfo`](@ref) from a `[Model`](@ref).
+ 2. Repeatedly call `rand!(rng, ::Model, ::VarInfo)`.
+
+There are typically a few scenarios where we encounter changing representation sizes of a random variable `x`:
+
+ 1. We're working with a transformed version `x` which is represented in a lower-dimensional space, e.g. transforming a `x ~ LKJ(2, 1)` to unconstrained `y = f(x)` takes us from 2-by-2 `Matrix{Float64}` to a 1-length `Vector{Float64}`.
+ 2. `x` has a random size, e.g. in a mixture model with a prior on the number of components. Here the size of `x` can vary widly between every realization of the `Model`.
+
+In scenario (1), the we're usually *shrinking* the representation of `x`, and so we end up not making any allocations for the underlying `Vector{T}` but instead just marking the redundant part as "inactive".
+
+In scenario (2), we'll end up with quite a sub-optimal representation unless we do something to handle this. For example:
+
+```@example varinfo-design
+vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
+println("Before insertion: $(length(vnv.vals))")
+
+for i in 2:5
+    # Insert value 1 size larger.
+    DynamicPPL.update!(vnv, @varname(x), fill(true, i))
+    println("After insertion #$(i): $(length(vnv.vals))")
+end
+```
+
+To alleviate this issue, we can insert a call to [`DynamicPPL.inactive_ranges_sweep!`](@ref) after every insertion:
+
+```@example varinfo-design
+vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
+println("Before insertion: $(length(vnv.vals))")
+
+for i in 2:5
+    # Insert value 1 size larger.
+    DynamicPPL.update!(vnv, @varname(x), fill(true, i))
+    DynamicPPL.inactive_ranges_sweep!(vnv)
+    println("After insertion #$(i): $(length(vnv.vals))")
+end
+```
+
+The nice aspect of this is that `vnv` can grow as needed, but once it is sufficiently large to contain the all the different realizations of `x`, it stops growing!
+
+```@example varinfo-design
+vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
+println("Before insertion: $(length(vnv.vals))")
+
+for i in 1:100
+    DynamicPPL.update!(vnv, @varname(x), fill(true, rand(1:5)))
+    if DynamicPPL.has_inactive_ranges(vnv)
+        DynamicPPL.inactive_ranges_sweep!(vnv)
+    end
+end
+
+println("After insertions: $(length(vnv.vals))")
+```
+
+Without the calls to [`DynamicPPL.inactive_ranges_sweep!`](@ref), the above would result in a much larger memory footprint.
+
+`delete!` and similars are also implemented using the "delete-by-mark" technique outlined above.
 
 !!! note
     
@@ -146,6 +205,52 @@ This does mean that the underlying `Vector{T}` can grow without bound, so we hav
 ```@docs
 DynamicPPL.has_inactive_ranges
 DynamicPPL.inactive_ranges_sweep!
+```
+
+Continuing from the example from the previous section:
+
+```@example varinfo-design
+# Type-unstable
+varinfo_untyped_vnv = DynamicPPL.VectorVarInfo(varinfo_untyped)
+varinfo_untyped_vnv[@varname(x)], varinfo_untyped_vnv[@varname(y)]
+```
+
+```@example varinfo-design
+# Type-stable
+varinfo_typed_vnv = DynamicPPL.VectorVarInfo(varinfo_typed)
+varinfo_typed_vnv[@varname(x)], varinfo_typed_vnv[@varname(y)]
+```
+
+If we now try to `delete!` `@varname(x)`
+
+```@example varinfo-design
+haskey(varinfo_untyped_vnv, @varname(x))
+```
+
+```@example varinfo-design
+DynamicPPL.has_inactive_ranges(varinfo_untyped_vnv.metadata)
+```
+
+```@example varinfo-design
+# `delete!`
+DynamicPPL.delete!(varinfo_untyped_vnv.metadata, @varname(x))
+DynamicPPL.has_inactive_ranges(varinfo_untyped_vnv.metadata)
+```
+
+```@example varinfo-design
+haskey(varinfo_untyped_vnv, @varname(x))
+```
+
+If we try to insert a differently-sized value for `@varname(x)`
+
+```@example varinfo-design
+DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(false, 1))
+varinfo_untyped_vnv[@varname(x)]
+```
+
+```@example varinfo-design
+DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(false, 3))
+varinfo_untyped_vnv[@varname(x)]
 ```
 
 ### Additional methods
