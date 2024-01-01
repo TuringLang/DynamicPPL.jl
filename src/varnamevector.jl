@@ -27,7 +27,7 @@ struct VarNameVector{
     transforms::TTrans
 
     "inactive ranges"
-    inactive_ranges::Vector{UnitRange{Int}}
+    inactive_ranges::OrderedDict{Int,UnitRange{Int}}
 
     "metadata associated with the varnames"
     metadata::MData
@@ -45,7 +45,13 @@ end
 
 function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
     return VarNameVector(
-        varname_to_index, varnames, ranges, vals, transforms, UnitRange{Int}[], nothing
+        varname_to_index,
+        varnames,
+        ranges,
+        vals,
+        transforms,
+        OrderedDict{Int,UnitRange{Int}}(),
+        nothing,
     )
 end
 # TODO: Do we need this?
@@ -216,7 +222,7 @@ function Base.similar(vnv::VarNameVector)
         similar(vnv.ranges, 0),
         similar(vnv.vals, 0),
         similar(vnv.transforms, 0),
-        similar(vnv.inactive_ranges, 0),
+        similar(vnv.inactive_ranges),
         similar_metadata(vnv.metadata),
     )
 end
@@ -235,7 +241,7 @@ function nextrange(vnv::VarNameVector, x)
     # range which can hold `x`, then we could just use that. Buuut the complexity of this is
     # probably not worth it (at least at the moment).
     max_inactive_range =
-        isempty(vnv.inactive_ranges) ? 0 : maximum(last, vnv.inactive_ranges)
+        isempty(vnv.inactive_ranges) ? 0 : maximum(last, values(vnv.inactive_ranges))
     offset = max(max_active_range, max_inactive_range)
     return (offset + 1):(offset + length(x))
 end
@@ -256,6 +262,11 @@ function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val)
     return nothing
 end
 
+function shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
+    x[(start + n):end] = x[start:(end - n)]
+    return x
+end
+
 # `update!` and `update!!`: update a variable in the varname vector.
 function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     if !haskey(vnv, vn)
@@ -272,13 +283,47 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     # Existing keys needs to be handled differently depending on
     # whether the size of the value is increasing or decreasing.
     if n_new > n_old
-        # Add the new range.
-        r_new = nextrange(vnv, val_vec)
-        vnv.ranges[idx] = r_new
+        n_extra = n_new - n_old
         # Grow the underlying vector to accomodate the new value.
-        resize!(vnv.vals, r_new[end])
-        # Keep track of the deleted ranges.
-        push!(vnv.inactive_ranges, r_old)
+        resize!(vnv.vals, length(vnv.vals) + n_extra)
+        # Shift the existing values to make room for the new value.
+        shift_right!(vnv.vals, r_old[end] + 1, n_extra)
+        # Compute the new range.
+        r_new = r_old[1]:(r_old[1] + n_new - 1)
+        vnv.ranges[idx] = r_new
+        # If we have an inactive range for this variable, we need to update it.
+        if haskey(vnv.inactive_ranges, idx)
+            # Then we need to change this to reflect the new range.
+            let inactive_range = vnv.inactive_ranges[idx]
+                # Inactive range should always start before the new range
+                # in the scenario where the new range is larger than the old range.
+                @assert inactive_range[1] <= r_new[end]
+                if inactive_range[end] <= r_new[end]
+                    # Inactive range ends before the new range ends.
+                    delete!(vnv.inactive_ranges, idx)
+                else
+                    # Then we have `inactive_range[1] < r_new[end]`, i.e.
+                    # Inactive range starts before the new range ends.
+                    # AND the inactive range ends after the new range ends.
+                    # => We need to split the inactive range.
+                    vnv.inactive_ranges[idx] = (r_new[end] + 1):inactive_range[end]
+                end
+            end
+        end
+
+        # Shift existing ranges which are after the current range.
+        for (i, r_i) in enumerate(vnv.ranges)
+            if r_i[1] > r_old[end]
+                vnv.ranges[i] = r_i .+ n_extra
+            end
+        end
+        # Shift inactive ranges coming after `r_old` (unless they are
+        # for the current variable).
+        for (i, r_i) in pairs(vnv.inactive_ranges)
+            if i !== idx && r_i[1] > r_old[end]
+                vnv.inactive_ranges[i] = r_i .+ n_extra
+            end
+        end
     else
         # `n_new <= n_old`
         # Just decrease the current range.
@@ -286,7 +331,13 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
         vnv.ranges[idx] = r_new
         # And mark the rest as inactive if needed.
         if n_new < n_old
-            push!(vnv.inactive_ranges, r_old[n_new]:r_old[end])
+            if haskey(vnv.inactive_ranges, idx)
+                vnv.inactive_ranges[idx] = (
+                    (r_old[n_new] + 1):vnv.inactive_ranges[idx][end]
+                )
+            else
+                vnv.inactive_ranges[idx] = ((r_old[n_new] + 1):r_old[end])
+            end
         end
     end
 
@@ -367,4 +418,47 @@ function Base.iterate(vnv::VarNameVector, state=nothing)
     res === nothing && return nothing
     vn, state_new = res
     return vn => getindex(vnv, vn), state_new
+end
+
+function Base.pairs(vnv::VarNameVector)
+    return Iterators.zip(
+        vnv.varnames, Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
+    )
+end
+
+function Base.delete!(vnv::VarNameVector, vn::VarName)
+    # Error if we don't have the variable.
+    !haskey(vnv, vn) && throw(ArgumentError("variable name $vn does not exist"))
+
+    # Get the index of the variable.
+    idx = getidx(vnv, vn)
+    # Get the range of the variable.
+    r_old = getrange(vnv, idx)
+    # Delete the variable.
+    delete!(vnv.varname_to_index, vn)
+    deleteat!(vnv.varnames, idx)
+    deleteat!(vnv.ranges, idx)
+    deleteat!(vnv.transforms, idx)
+    # Mark the range as inactive.
+    push!(vnv.inactive_ranges, r_old)
+
+    return vnv
+end
+
+function Base.deleteat!(vnv::VarNameVector, vn::VarName)
+    # Error if we don't have the variable.
+    !haskey(vnv, vn) && throw(ArgumentError("variable name $vn does not exist"))
+    # Get the index of the variable.
+    idx = getidx(vnv, vn)
+    # Get the range of the variable.
+    r_old = getrange(vnv, idx)
+    # Delete the variable.
+    delete!(vnv.varname_to_index, vn)
+    deleteat!(vnv.varnames, idx)
+    deleteat!(vnv.ranges, idx)
+    deleteat!(vnv.transforms, idx)
+    # Delete the range.
+    deleteat!(vnv.vals, r_old)
+
+    return vnv
 end

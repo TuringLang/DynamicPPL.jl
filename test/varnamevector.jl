@@ -305,6 +305,32 @@ end
             end
         end
     end
+
+    @testset "growing and shrinking" begin
+        n = 5
+        vn = @varname(x)
+        vnv = VarNameVector(OrderedDict(vn => [true]))
+        @test !DynamicPPL.has_inactive_ranges(vnv)
+        # Growing should not create inactive ranges.
+        for i in 1:n
+            x = fill(true, i)
+            DynamicPPL.update!(vnv, vn, x)
+            @test !DynamicPPL.has_inactive_ranges(vnv)
+        end
+
+        # Same size should not create inactive ranges.
+        x = fill(true, n)
+        DynamicPPL.update!(vnv, vn, x)
+        @test !DynamicPPL.has_inactive_ranges(vnv)
+
+        # Shrinking should create inactive ranges.
+        for i in (n - 1):-1:1
+            x = fill(true, i)
+            DynamicPPL.update!(vnv, vn, x)
+            @test DynamicPPL.has_inactive_ranges(vnv)
+            @test vnv.inactive_ranges[1] == ((i + 1):n)
+        end
+    end
 end
 
 has_varnamevector(vi) = false
