@@ -234,6 +234,7 @@ function Base.empty!(vnv::VarNameVector)
     empty!(vnv.ranges)
     empty!(vnv.vals)
     empty!(vnv.transforms)
+    empty!(vnv.num_inactive)
     return nothing
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
