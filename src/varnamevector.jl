@@ -172,6 +172,13 @@ Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 
 # Dictionary interface.
 Base.keys(vnv::VarNameVector) = vnv.varnames
+Base.values(vnv::VarNameVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
+
+function Base.pairs(vnv::VarNameVector)
+    return Iterators.zip(
+        vnv.varnames, Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
+    )
+end
 
 Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
@@ -443,25 +450,6 @@ function group_by_symbol(vnv::VarNameVector)
     end
 
     return NamedTuple{Tuple(keys(d))}(nt_vals)
-end
-
-# `iterate`
-# TODO: Maybe implement `iterate` as a vector and then instead implement `pairs`.
-function Base.iterate(vnv::VarNameVector, state=nothing)
-    res = if state === nothing
-        iterate(vnv.varnames)
-    else
-        iterate(vnv.varnames, state)
-    end
-    res === nothing && return nothing
-    vn, state_new = res
-    return vn => getindex(vnv, vn), state_new
-end
-
-function Base.pairs(vnv::VarNameVector)
-    return Iterators.zip(
-        vnv.varnames, Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
-    )
 end
 
 function Base.delete!(vnv::VarNameVector, vn::VarName)
