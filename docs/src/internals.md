@@ -33,11 +33,21 @@ To ensure that `varinfo` is simple and intuitive to work with, we need the under
   - `length(::Vector{<:Real})`: return the length of the flat representation of `metadata`.
   - `similar(::Vector{<:Real})`: return a new instance with the same `eltype` as the input.
 
-Moreover, we want also want the underlying representation used in `metadata` to have a few performance-related properties:
+We also want some additional methods that are *not* part of the `Dict` or `Vector` interface:
+
+  - `push!(container, ::VarName, value[, transform])`:  add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
+
+  - `update!(container, ::VarName, value[, transform])`: similar to `push!` but if the `VarName` is already present in the container, then we update the corresponding value instead of adding a new element.
+
+In addition, we want to be able to access the transformed / "unconstrained" realization for a particular `VarName` and so we also need corresponding methods for this:
+
+  - `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
+
+Finally, we want want the underlying representation used in `metadata` to have a few performance-related properties:
 
  1. Type-stable when possible, but functional when not.
  2. Efficient storage and iteration when possible, but functional when not.
- 
+
 The "but functional when not" is important as we want to support arbitrary models, which means that we can't always have these performance properties.
 
 In the following sections, we'll outline how we achieve this in [`VarInfo`](@ref).
@@ -147,7 +157,7 @@ For example, we want to optimize code-paths which effectively boil down to inner
 varinfo = VarInfo(model)
 
 # Repeatedly sample from `model`.
-for _ = 1:num_samples
+for _ in 1:num_samples
     rand!(rng, model, varinfo)
 
     # Do something with `varinfo`.
@@ -183,7 +193,9 @@ println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocat
 for i in 1:5
     x = fill(true, rand(1:100))
     DynamicPPL.update!(vnv, @varname(x), x)
-    println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
+    println(
+        "After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))",
+    )
 end
 ```
 
@@ -199,7 +211,9 @@ for i in 1:5
     if DynamicPPL.num_allocated(vnv) > 10
         DynamicPPL.contiguify!(vnv)
     end
-    println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
+    println(
+        "After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))",
+    )
 end
 ```
 
@@ -267,23 +281,11 @@ DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 
 In the end, we have the following "rough" performance characteristics for `VarNameVector`:
 
-| Method | Is blazingly fast? |
-| :-: | :-: |
-| `getindex` | ${\color{green} \checkmark}$ |
-| `setindex!` | ${\color{green} \checkmark}$ |
-| `push!` | ${\color{green} \checkmark}$ |
-| `delete!` | ${\color{red} \times}$ |
-| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
-| `convert(Vector, ::VarNameVector)` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise |
-
-### Additional methods
-
-We also want some additional methods that are not part of the `Dict` or `Vector` interface:
-
-  - `push!(container, ::VarName, value[, transform])`:  add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
-
-  - `update!(container, ::VarName, value[, transform])`: similar to `push!` but if the `VarName` is already present in the container, then we update the corresponding value instead of adding a new element.
-
-In addition, we want to be able to access the transformed / "unconstrained" realization for a particular `VarName` and so we also need corresponding methods for this:
-
-  - `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
+| Method                                             | Is blazingly fast?                                                                           |
+|:--------------------------------------------------:|:--------------------------------------------------------------------------------------------:|
+| `getindex`                                         | ${\color{green} \checkmark}$                                                                 |
+| `setindex!`                                        | ${\color{green} \checkmark}$                                                                 |
+| `push!`                                            | ${\color{green} \checkmark}$                                                                 |
+| `delete!`                                          | ${\color{red} \times}$                                                                       |
+| `update!` on existing `VarName`                    | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
+| `convert(Vector{T}, ::VarNameVector{<:VarName,T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
