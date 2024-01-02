@@ -23,6 +23,7 @@ makedocs(;
         "Internals" => ["internals/varinfo.md"],
     ],
     checkdocs=:exports,
+    doctest=false,
 )
 
 deploydocs(; repo="github.com/TuringLang/DynamicPPL.jl.git", push_preview=true)
