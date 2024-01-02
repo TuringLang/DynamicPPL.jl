@@ -1,5 +1,3 @@
-# Similar to `Metadata` but representing a `Vector` and simpler interface.
-# TODO: Should we subtype `AbstractVector` or `AbstractDict`?
 """
     VarNameVector
 
@@ -115,6 +113,46 @@ function VarNameVector(
         varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms
     )
 end
+
+"""
+    replace_values(vnv::VarNameVector, vals::AbstractVector)
+
+Replace the values in `vnv` with `vals`.
+
+This is useful when we want to update the entire underlying vector of values
+in one go or if we want to change the how the values are stored, e.g. alter the `eltype`.
+
+!!! warning
+    This replaces the raw underlying values, and so care should be taken when using this
+    function. For example, if `vnv` has any inactive entries, then the provided `vals`
+    should also contain the inactive entries to avoid unexpected behavior.
+
+# Example
+
+```jldoctest varnamevector-replace-values
+julia> using DynamicPPL: VarNameVector, replace_values
+
+julia> vnv = VarNameVector(@varname(x) => [1.0]);
+
+julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
+true
+```
+
+This is also useful when we want to differentiate wrt. the values
+using automatic differentiation, e.g. ForwardDiff.jl.
+
+```jldoctest varnamevector-replace-values
+julia> using ForwardDiff: ForwardDiff
+
+julia> f(x) = sum(abs2, replace_values(vnv, x)[@varname(x)])
+f (generic function with 1 method)
+
+julia> ForwardDiff.gradient(f, [1.0])
+1-element Vector{Float64}:
+ 2.0
+```
+"""
+replace_values(vnv::VarNameVector, vals) = Setfield.@set vnv.vals = vals
 
 # Some `VarNameVector` specific functions.
 getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
@@ -505,6 +543,34 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
     return vnv
 end
 
+"""
+    values_as(vnv::VarNameVector[, T])
+
+Return the values/realizations in `vnv` as type `T`, if implemented.
+
+If no type `T` is provided, return values as stored in `vnv`.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: VarNameVector
+
+julia> vnv = VarNameVector(@varname(x) => 1, @varname(y) => [2.0]);
+
+julia> values_as(vnv) == [1.0, 2.0]
+true
+
+julia> values_as(vnv, Vector{Float32}) == Vector{Float32}([1.0, 2.0])
+true
+
+julia> values_as(vnv, OrderedDict) == OrderedDict(@varname(x) => 1.0, @varname(y) => [2.0])
+true
+
+julia> values_as(vnv, NamedTuple) == (x = 1.0, y = [2.0])
+true
+```
+"""
+values_as(vnv::VarNameVector) = values_as(vnv, Vector)
 values_as(vnv::VarNameVector, ::Type{Vector}) = vnv[:]
 function values_as(vnv::VarNameVector, ::Type{Vector{T}}) where {T}
     return convert(Vector{T}, values_as(vnv, Vector))

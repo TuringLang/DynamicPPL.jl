@@ -295,3 +295,13 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 | `delete!`                                          | ${\color{red} \times}$                                                                       |
 | `update!` on existing `VarName`                    | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
 | `values_as(::VarNameVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
+
+## Other methods
+
+```@docs
+DynamicPPL.replace_values(::VarNameVector, vals::AbstractVector)
+```
+
+```@docs; canonical=false
+DynamicPPL.values_as(::VarNameVector)
+```
