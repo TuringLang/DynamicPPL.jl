@@ -20,7 +20,7 @@ makedocs(;
         "Home" => "index.md",
         "API" => "api.md",
         "Tutorials" => ["tutorials/prob-interface.md"],
-        "Internals" => "internals.md",
+        "Internals" => ["internals/varinfo.md"],
     ],
     checkdocs=:exports,
 )
