@@ -165,6 +165,7 @@ Base.length(vnv::VarNameVector) =
         sum(length, vnv.ranges)
     end
 Base.size(vnv::VarNameVector) = (length(vnv),)
+Base.isempty(vnv::VarNameVector) = isempty(vnv.varnames)
 
 # TODO: We should probably remove this
 Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
