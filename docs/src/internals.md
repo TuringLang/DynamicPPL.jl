@@ -171,7 +171,7 @@ for i in 1:5
 end
 ```
 
-To alleviate this issue, we can insert a call to [`DynamicPPL.inactive_ranges_sweep!`](@ref) after every insertion:
+To alleviate this issue, we can insert a call to [`DynamicPPL.contiguify!`](@ref) after every insertion:
 
 ```@example varinfo-design
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
@@ -180,7 +180,7 @@ println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocat
 for i in 1:5
     x = fill(true, rand(1:5))
     DynamicPPL.update!(vnv, @varname(x), x)
-    DynamicPPL.inactive_ranges_sweep!(vnv)
+    DynamicPPL.contiguify!(vnv)
     println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 end
 ```
@@ -195,7 +195,7 @@ This does mean that the underlying `Vector{T}` can grow without bound, so we hav
 
 ```@docs
 DynamicPPL.has_inactive
-DynamicPPL.inactive_ranges_sweep!
+DynamicPPL.contiguify!
 ```
 
 Continuing from the example from the previous section:

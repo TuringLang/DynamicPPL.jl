@@ -414,11 +414,11 @@ function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
 end
 
 """
-    inactive_ranges_sweep!(vnv::VarNameVector)
+    contiguify!(vnv::VarNameVector)
 
 Re-contiguify the underlying vector and shrink if possible.
 """
-function inactive_ranges_sweep!(vnv::VarNameVector)
+function contiguify!(vnv::VarNameVector)
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
     vals = vnv[:]
