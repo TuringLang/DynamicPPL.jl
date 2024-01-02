@@ -1,6 +1,12 @@
 # Design of `VarInfo` #
 
-[`VarInfo`](@ref) is a fairly simple structure; it contains
+[`VarInfo`](@ref) is a fairly simple structure. 
+
+```@docs; canonical=false
+VarInfo
+```
+
+It contains
 
   - a `logp` field for accumulation of the log-density evaluation, and
   - a `metadata` field for storing information about the realizations of the different variables.
@@ -13,7 +19,7 @@ Representing `logp` is fairly straight-forward: we'll just use a `Real` or an ar
     
     We want to work with `VarName` rather than something like `Symbol` or `String` as `VarName` contains additional structural information, e.g. a `Symbol("x[1]")` can be a result of either `var"x[1]" ~ Normal()` or `x[1] ~ Normal()`; these scenarios are disambiguated by `VarName`.
 
-To ensure that `varinfo` is simple and intuitive to work with, we need the underlying `metadata` to replicate the following functionality of `Dict`:
+To ensure that `VarInfo` is simple and intuitive to work with, we want `VarInfo`, and hence the underlying `metadata`, to replicate the following functionality of `Dict`:
 
   - `keys(::Dict)`: return all the `VarName`s present in `metadata`.
   - `haskey(::Dict)`: check if a particular `VarName` is present in `metadata`.
