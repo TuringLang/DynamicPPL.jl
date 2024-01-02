@@ -246,17 +246,22 @@ varinfo_untyped_vnv[@varname(x)]
 
 #### Performance summary
 
-In the end, we have the following "rough" performance characteristics:
+In the end, we have the following "rough" performance characteristics for `VarNameVector`:
 
 | Method | Is blazingly fast? |
 | :-: | :-: |
 | `getindex` | ${\color{green} \checkmark}$ |
 | `setindex!` | ${\color{green} \checkmark}$ |
 | `push!` | ${\color{green} \checkmark}$ |
-| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if same size / ${\color{red} \times}$ if different size |
+| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
 | `delete!` | ${\color{red} \times}$ |
 
+#### Methods
 
+```@docs
+DynamicPPL.num_inactive
+DynamicPPL.num_allocated
+```
 
 ### Additional methods
 
