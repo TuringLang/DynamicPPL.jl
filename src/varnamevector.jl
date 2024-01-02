@@ -436,11 +436,21 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
     r_old = getrange(vnv, idx)
     # Delete the variable.
     delete!(vnv.varname_to_index, vn)
+    # `deleteat!` deletes and shifts the rest of the vector.
+    # So after this, we need to re-adjust the indices in `varname_to_index`.
     deleteat!(vnv.varnames, idx)
     deleteat!(vnv.ranges, idx)
     deleteat!(vnv.transforms, idx)
-    # Mark the range as inactive.
-    push!(vnv.inactive_ranges, r_old)
+
+    # Delete any inactive ranges corresponding to the variable.
+    if haskey(vnv.inactive_ranges, idx)
+        delete!(vnv.inactive_ranges, idx)
+    end
+
+    # Re-adjust the indices in `varname_to_index`.
+    for (vn, idx) in vnv.varname_to_index
+        idx > idx && (vnv.varname_to_index[vn] = idx - 1)
+    end
 
     return vnv
 end
