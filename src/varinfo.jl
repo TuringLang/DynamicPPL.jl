@@ -129,10 +129,10 @@ end
 # No-op if we're already working with a `VarNameVector`.
 metadata_to_varnamevector(vnv::VarNameVector) = vnv
 function metadata_to_varnamevector(md::Metadata)
-    idcs = md.idcs
-    vns = md.vns
-    ranges = md.ranges
-    vals = md.vals
+    idcs = copy(md.idcs)
+    vns = copy(md.vns)
+    ranges = copy(md.ranges)
+    vals = copy(md.vals)
     transforms = map(md.dists) do dist
         # TODO: Handle linked distributions.
         FromVec(size(dist))
