@@ -454,43 +454,44 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
 
     # Get the index of the variable.
     idx = getidx(vnv, vn)
-    # Get the range of the variable.
-    r_old = getrange(vnv, idx)
-    # Delete the variable.
+
+    # Delete the values.
+    r_start = first(getrange(vnv, idx))
+    n_allocated = num_allocated(vnv, idx)
+    deleteat!(vnv.vals, r_start:(r_start + n_allocated - 1))
+
+    # Delete `vn` from the lookup table.
     delete!(vnv.varname_to_index, vn)
-    # `deleteat!` deletes and shifts the rest of the vector.
-    # So after this, we need to re-adjust the indices in `varname_to_index`.
+
+    # Delete any inactive ranges corresponding to `vn`.
+    haskey(vnv.num_inactive, idx) && delete!(vnv.num_inactive, idx)
+
+    # Re-adjust the indices for varnames occuring after `vn` so
+    # that they point to the correct indices after the deletions below.
+    for idx_to_shift in (idx + 1):length(vnv.varnames)
+        vn = vnv.varnames[idx_to_shift]
+        if idx_to_shift > idx
+            # Shift the index in the lookup table.
+            vnv.varname_to_index[vn] = idx_to_shift - 1
+            # Shift the index in the inactive ranges.
+            if haskey(vnv.num_inactive, idx_to_shift)
+                # Done in increasing order =>  don't need to worry about
+                # potentially shifting the same index twice.
+                vnv.num_inactive[idx_to_shift - 1] = pop!(vnv.num_inactive, idx_to_shift)
+            end
+        end
+    end
+
+    # Re-adjust the ranges for varnames occuring after `vn`.
+    for idx_to_shift in (idx + 1):length(vnv.varnames)
+        vnv.ranges[idx_to_shift] = vnv.ranges[idx_to_shift] .- n_allocated
+    end
+
+    # Delete references from vector fields, thus shifting the indices of
+    # varnames occuring after `vn` by one to the left, as we adjusted for above.
     deleteat!(vnv.varnames, idx)
     deleteat!(vnv.ranges, idx)
     deleteat!(vnv.transforms, idx)
-
-    # Delete any inactive ranges corresponding to the variable.
-    if haskey(vnv.num_inactive, idx)
-        delete!(vnv.num_inactive, idx)
-    end
-
-    # Re-adjust the indices in `varname_to_index`.
-    for (vn, idx) in vnv.varname_to_index
-        idx > idx && (vnv.varname_to_index[vn] = idx - 1)
-    end
-
-    return vnv
-end
-
-function Base.deleteat!(vnv::VarNameVector, vn::VarName)
-    # Error if we don't have the variable.
-    !haskey(vnv, vn) && throw(ArgumentError("variable name $vn does not exist"))
-    # Get the index of the variable.
-    idx = getidx(vnv, vn)
-    # Get the range of the variable.
-    r_old = getrange(vnv, idx)
-    # Delete the variable.
-    delete!(vnv.varname_to_index, vn)
-    deleteat!(vnv.varnames, idx)
-    deleteat!(vnv.ranges, idx)
-    deleteat!(vnv.transforms, idx)
-    # Delete the range.
-    deleteat!(vnv.vals, r_old)
 
     return vnv
 end
