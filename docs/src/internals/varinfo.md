@@ -287,13 +287,13 @@ DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 
 In the end, we have the following "rough" performance characteristics for `VarNameVector`:
 
-| Method                                             | Is blazingly fast?                                                                           |
-|:--------------------------------------------------:|:--------------------------------------------------------------------------------------------:|
-| `getindex`                                         | ${\color{green} \checkmark}$                                                                 |
-| `setindex!`                                        | ${\color{green} \checkmark}$                                                                 |
-| `push!`                                            | ${\color{green} \checkmark}$                                                                 |
-| `delete!`                                          | ${\color{red} \times}$                                                                       |
-| `update!` on existing `VarName`                    | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
+| Method                                  | Is blazingly fast?                                                                           |
+|:---------------------------------------:|:--------------------------------------------------------------------------------------------:|
+| `getindex`                              | ${\color{green} \checkmark}$                                                                 |
+| `setindex!`                             | ${\color{green} \checkmark}$                                                                 |
+| `push!`                                 | ${\color{green} \checkmark}$                                                                 |
+| `delete!`                               | ${\color{red} \times}$                                                                       |
+| `update!` on existing `VarName`         | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
 | `values_as(::VarNameVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
 
 ## Other methods
