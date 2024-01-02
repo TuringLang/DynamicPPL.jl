@@ -1,6 +1,6 @@
-# Design of `VarInfo` #
+# Design of `VarInfo`
 
-[`VarInfo`](@ref) is a fairly simple structure. 
+[`VarInfo`](@ref) is a fairly simple structure.
 
 ```@docs; canonical=false
 VarInfo
@@ -58,7 +58,7 @@ The "but functional when not" is important as we want to support arbitrary model
 
 In the following sections, we'll outline how we achieve this in [`VarInfo`](@ref).
 
-## Type-stability ##
+## Type-stability
 
 Ensuring type-stability is somewhat non-trivial to address since we want this to be the case even when models mix continuous (typically `Float64`) and discrete (typically `Int`) variables.
 
@@ -128,7 +128,7 @@ Notice that the untyped `VarInfo` uses `Vector{Real}` to store the boolean entri
 
 Hence we obtain a "type-stable when possible"-representation by wrapping it in a `NamedTuple` and partially resolving the `getindex`, `setindex!`, etc. methods at compile-time. When type-stability is *not* desired, we can simply use a single `metadata` for all `VarName`s instead of a `NamedTuple` wrapping a collection of `metadata`s.
 
-## Efficient storage and iteration ##
+## Efficient storage and iteration
 
 Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`VarNameVector`](@ref):
 
@@ -283,7 +283,7 @@ varinfo_untyped_vnv[@varname(x)]
 DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 ```
 
-### Performance summary ###
+### Performance summary
 
 In the end, we have the following "rough" performance characteristics for `VarNameVector`:
 
