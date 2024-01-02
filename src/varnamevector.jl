@@ -26,8 +26,8 @@ struct VarNameVector{
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
 
-    "inactive ranges"
-    inactive_ranges::OrderedDict{Int,UnitRange{Int}}
+    "additional entries which are considered inactive"
+    num_inactive::OrderedDict{Int,Int}
 
     "metadata associated with the varnames"
     metadata::MData
@@ -39,7 +39,7 @@ function ==(vnv_left::VarNameVector, vnv_right::VarNameVector)
            vnv_left.ranges == vnv_right.ranges &&
            vnv_left.vals == vnv_right.vals &&
            vnv_left.transforms == vnv_right.transforms &&
-           vnv_left.inactive_ranges == vnv_right.inactive_ranges &&
+           vnv_left.num_inactive == vnv_right.num_inactive &&
            vnv_left.metadata == vnv_right.metadata
 end
 
@@ -50,7 +50,7 @@ function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
         ranges,
         vals,
         transforms,
-        OrderedDict{Int,UnitRange{Int}}(),
+        OrderedDict{Int,Int}(),
         nothing,
     )
 end
@@ -119,22 +119,47 @@ end
 # Some `VarNameVector` specific functions.
 getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
 
-getrange(vnv::VarNameVector, i::Int) = vnv.ranges[i]
+getrange(vnv::VarNameVector, idx::Int) = vnv.ranges[idx]
 getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 
 gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
 
 """
-    has_inactive_ranges(vnv::VarNameVector)
+    has_inactive(vnv::VarNameVector)
 
 Returns `true` if `vnv` has inactive ranges. 
 """
-has_inactive_ranges(vnv::VarNameVector) = !isempty(vnv.inactive_ranges)
+has_inactive(vnv::VarNameVector) = !isempty(vnv.num_inactive)
+
+"""
+    num_inactive(vnv::VarNameVector, vn::VarName)
+
+Returns the number of inactive entries for `vn` in `vnv`.
+"""
+num_inactive(vnv::VarNameVector, vn::VarName) = num_inactive(vnv, getidx(vnv, vn))
+num_inactive(vnv::VarNameVector, idx::Int) = get(vnv.num_inactive, idx, 0)
+
+"""
+    num_allocated(vnv::VarNameVector)
+
+Returns the number of allocated entries in `vnv`.
+"""
+num_allocated(vnv::VarNameVector) = length(vnv.vals)
+
+"""
+    num_allocated(vnv::VarNameVector, vn::VarName)
+
+Returns the number of allocated entries for `vn` in `vnv`.
+"""
+num_allocated(vnv::VarNameVector, vn::VarName) = num_allocated(vnv, getidx(vnv, vn))
+function num_allocated(vnv::VarNameVector, idx::Int)
+    return length(getrange(vnv, idx)) + num_inactive(vnv, idx)
+end
 
 # Basic array interface.
 Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
 Base.length(vnv::VarNameVector) =
-    if isempty(vnv.inactive_ranges)
+    if isempty(vnv.num_inactive)
         length(vnv.vals)
     else
         sum(length, vnv.ranges)
@@ -164,7 +189,7 @@ end
 
 # `getindex` for `Colon`
 function Base.getindex(vnv::VarNameVector, ::Colon)
-    return if has_inactive_ranges(vnv)
+    return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex, vnv.vals), vcat, vnv.ranges)
     else
         vnv.vals
@@ -172,7 +197,7 @@ function Base.getindex(vnv::VarNameVector, ::Colon)
 end
 
 function getindex_raw(vnv::VarNameVector, ::Colon)
-    return if has_inactive_ranges(vnv)
+    return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex_raw, vnv.vals), vcat, vnv.ranges)
     else
         vnv.vals
@@ -222,27 +247,20 @@ function Base.similar(vnv::VarNameVector)
         similar(vnv.ranges, 0),
         similar(vnv.vals, 0),
         similar(vnv.transforms, 0),
-        similar(vnv.inactive_ranges),
+        similar(vnv.num_inactive),
         similar_metadata(vnv.metadata),
     )
 end
 
 function nextrange(vnv::VarNameVector, x)
-    # NOTE: Need to treat `isempty(vnv.ranges)` separately because `maximum`
-    # will error if `vnv.ranges` is empty.
-    max_active_range = isempty(vnv.ranges) ? 0 : maximum(last, vnv.ranges)
-    # Also need to consider inactive ranges, since we can have scenarios such as
-    #
-    #     vnv = VarNameVector(@varname(x) => 1, @varname(y) => [2, 3])
-    #     update!(vnv, @varname(y), [4]) # => `ranges = [1:1, 2:2], inactive_ranges = [3:3]`
-    #
-    # Here `nextrange(vnv, [5])` should return `4:4`, _not_ `3:3`.
-    # NOTE: We could of course attempt to make use of unused space, e.g. if we have an inactive
-    # range which can hold `x`, then we could just use that. Buuut the complexity of this is
-    # probably not worth it (at least at the moment).
-    max_inactive_range =
-        isempty(vnv.inactive_ranges) ? 0 : maximum(last, values(vnv.inactive_ranges))
-    offset = max(max_active_range, max_inactive_range)
+    # If `vnv` is empty, return immediately.
+    isempty(vnv) && return 1:length(x)
+
+    # The offset will be the last range's end + its number of inactive entries.
+    vn_last = vnv.varnames[end]
+    idx = getidx(vnv, vn_last)
+    offset = last(getrange(vnv, idx)) + num_inactive(vnv, idx)
+
     return (offset + 1):(offset + length(x))
 end
 
@@ -267,6 +285,11 @@ function shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
     return x
 end
 
+function shift_left!(x::AbstractVector{<:Real}, start::Int, n::Int)
+    x[start:(end - n)] = x[(start + n):end]
+    return x
+end
+
 # `update!` and `update!!`: update a variable in the varname vector.
 function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     if !haskey(vnv, vn)
@@ -277,70 +300,84 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     # Here we update an existing entry.
     val_vec = tovec(val)
     idx = getidx(vnv, vn)
+    # Extract the old range.
     r_old = getrange(vnv, idx)
+    start_old, end_old = first(r_old), last(r_old)
     n_old = length(r_old)
+    # Compute the new range.
     n_new = length(val_vec)
-    # Existing keys needs to be handled differently depending on
-    # whether the size of the value is increasing or decreasing.
-    if n_new > n_old
-        n_extra = n_new - n_old
-        # Grow the underlying vector to accomodate the new value.
-        resize!(vnv.vals, length(vnv.vals) + n_extra)
-        # Shift the existing values to make room for the new value.
-        shift_right!(vnv.vals, r_old[end] + 1, n_extra)
-        # Compute the new range.
-        r_new = r_old[1]:(r_old[1] + n_new - 1)
-        vnv.ranges[idx] = r_new
-        # If we have an inactive range for this variable, we need to update it.
-        if haskey(vnv.inactive_ranges, idx)
-            # Then we need to change this to reflect the new range.
-            let inactive_range = vnv.inactive_ranges[idx]
-                # Inactive range should always start before the new range
-                # in the scenario where the new range is larger than the old range.
-                @assert inactive_range[1] <= r_new[end]
-                if inactive_range[end] <= r_new[end]
-                    # Inactive range ends before the new range ends.
-                    delete!(vnv.inactive_ranges, idx)
-                else
-                    # Then we have `inactive_range[1] < r_new[end]`, i.e.
-                    # Inactive range starts before the new range ends.
-                    # AND the inactive range ends after the new range ends.
-                    # => We need to split the inactive range.
-                    vnv.inactive_ranges[idx] = (r_new[end] + 1):inactive_range[end]
-                end
-            end
-        end
+    start_new = start_old
+    end_new = start_old + n_new - 1
+    r_new = start_new:end_new
 
-        # Shift existing ranges which are after the current range.
-        for (i, r_i) in enumerate(vnv.ranges)
-            if r_i[1] > r_old[end]
-                vnv.ranges[i] = r_i .+ n_extra
-            end
+    #=
+    Suppose we currently have the following:
+
+      | x | x | o | o | o | y | y | y |    <- Current entries
+
+    where 'O' denotes an inactive entry, and we're going to
+    update the variable `x` to be of size `k` instead of 2.
+
+    We then have a few different scenarios:
+    1. `k > 5`: All inactive entries become active + need to shift `y` to the right.
+        E.g. if `k = 7`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | x | x | x | x | y | y | y |    <- New entries
+
+    2. `k = 5`: All inactive entries become active.
+        Then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | x | x | y | y | y |            <- New entries
+
+    3. `k < 5`: Some inactive entries become active, some remain inactive.
+        E.g. if `k = 3`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | o | o | y | y | y |            <- New entries
+
+    4. `k = 2`: No inactive entries become active.
+        Then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | o | o | o | y | y | y |            <- New entries
+
+    5. `k < 2`: More entries become inactive.
+        E.g. if `k = 1`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | o | o | o | o | y | y | y |            <- New entries
+    =#
+
+    # Compute the allocated space for `vn`.
+    had_inactive = haskey(vnv.num_inactive, idx)
+    n_allocated = had_inactive ? n_old + vnv.num_inactive[idx] : n_old
+
+    if n_new > n_allocated
+        # Then we need to grow the underlying vector.
+        n_extra = n_new - n_allocated
+        # Allocate.
+        resize!(vnv.vals, length(vnv.vals) + n_extra)
+        # Shift current  values.
+        shift_right!(vnv.vals, end_old + 1, n_extra)
+        # No more inactive entries.
+        had_inactive && delete!(vnv.num_inactive, idx)
+        # Update the ranges for all variables after this one.
+        for i in (idx + 1):length(vnv.varnames)
+            vnv.ranges[i] = vnv.ranges[i] .+ n_extra
         end
-        # Shift inactive ranges coming after `r_old` (unless they are
-        # for the current variable).
-        for (i, r_i) in pairs(vnv.inactive_ranges)
-            if i !== idx && r_i[1] > r_old[end]
-                vnv.inactive_ranges[i] = r_i .+ n_extra
-            end
-        end
+    elseif n_new == n_allocated
+        # => No more inactive entries.
+        had_inactive && delete!(vnv.num_inactive, idx)
     else
-        # `n_new <= n_old`
-        # Just decrease the current range.
-        r_new = r_old[1]:(r_old[1] + n_new - 1)
-        vnv.ranges[idx] = r_new
-        # And mark the rest as inactive if needed.
-        if n_new < n_old
-            if haskey(vnv.inactive_ranges, idx)
-                vnv.inactive_ranges[idx] = (
-                    (r_old[n_new] + 1):vnv.inactive_ranges[idx][end]
-                )
-            else
-                vnv.inactive_ranges[idx] = ((r_old[n_new] + 1):r_old[end])
-            end
-        end
+        # `n_new < n_allocated`
+        # => Need to update the number of inactive entries.
+        vnv.num_inactive[idx] = n_allocated - n_new
     end
 
+    # Update the range for this variable.
+    vnv.ranges[idx] = r_new
     # Update the value.
     vnv.vals[r_new] = val_vec
     # Update the transform.
@@ -375,7 +412,7 @@ function inactive_ranges_sweep!(vnv::VarNameVector)
     # And then we re-contiguify the ranges.
     recontiguify_ranges!(vnv.ranges)
     # Clear the inactive ranges.
-    empty!(vnv.inactive_ranges)
+    empty!(vnv.num_inactive)
     # Now we update the values.
     for (i, r) in enumerate(vnv.ranges)
         vnv.vals[r] = vals[r]
@@ -443,8 +480,8 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
     deleteat!(vnv.transforms, idx)
 
     # Delete any inactive ranges corresponding to the variable.
-    if haskey(vnv.inactive_ranges, idx)
-        delete!(vnv.inactive_ranges, idx)
+    if haskey(vnv.num_inactive, idx)
+        delete!(vnv.num_inactive, idx)
     end
 
     # Re-adjust the indices in `varname_to_index`.

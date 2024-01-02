@@ -100,7 +100,7 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         vnv.ranges,
         vals_new,
         transforms_new,
-        vnv.inactive_ranges,
+        vnv.num_inactive,
         vnv.metadata,
     )
 end
@@ -266,7 +266,7 @@ end
                 @test length(vnv[:]) == length(vnv)
 
                 # There should be no redundant values in the underlying vector.
-                @test !DynamicPPL.has_inactive_ranges(vnv)
+                @test !DynamicPPL.has_inactive(vnv)
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -307,28 +307,53 @@ end
     end
 
     @testset "growing and shrinking" begin
-        n = 5
-        vn = @varname(x)
-        vnv = VarNameVector(OrderedDict(vn => [true]))
-        @test !DynamicPPL.has_inactive_ranges(vnv)
-        # Growing should not create inactive ranges.
-        for i in 1:n
-            x = fill(true, i)
+        @testset "deterministic" begin
+            n = 5
+            vn = @varname(x)
+            vnv = VarNameVector(OrderedDict(vn => [true]))
+            @test !DynamicPPL.has_inactive(vnv)
+            # Growing should not create inactive ranges.
+            for i in 1:n
+                x = fill(true, i)
+                DynamicPPL.update!(vnv, vn, x)
+                @test !DynamicPPL.has_inactive(vnv)
+            end
+
+            # Same size should not create inactive ranges.
+            x = fill(true, n)
             DynamicPPL.update!(vnv, vn, x)
-            @test !DynamicPPL.has_inactive_ranges(vnv)
+            @test !DynamicPPL.has_inactive(vnv)
+
+            # Shrinking should create inactive ranges.
+            for i in (n - 1):-1:1
+                x = fill(true, i)
+                DynamicPPL.update!(vnv, vn, x)
+                @test DynamicPPL.has_inactive(vnv)
+                @test DynamicPPL.num_inactive(vnv, vn) == n - i
+            end
         end
 
-        # Same size should not create inactive ranges.
-        x = fill(true, n)
-        DynamicPPL.update!(vnv, vn, x)
-        @test !DynamicPPL.has_inactive_ranges(vnv)
+        @testset "random" begin
+            n = 5
+            vn = @varname(x)
+            vnv = VarNameVector(OrderedDict(vn => [true]))
+            @test !DynamicPPL.has_inactive(vnv)
 
-        # Shrinking should create inactive ranges.
-        for i in (n - 1):-1:1
-            x = fill(true, i)
-            DynamicPPL.update!(vnv, vn, x)
-            @test DynamicPPL.has_inactive_ranges(vnv)
-            @test vnv.inactive_ranges[1] == ((i + 1):n)
+            # Insert a bunch of random-length vectors.
+            for i in 1:100
+                x = fill(true, rand(1:n))
+                DynamicPPL.update!(vnv, vn, x)
+            end
+            # Should never be allocating more than `n` elements.
+            @test DynamicPPL.num_allocated(vnv, vn) ≤ n
+
+            # If we compaticfy, then it should always be the same size as just inserted.
+            for i in 1:10
+                x = fill(true, rand(1:n))
+                DynamicPPL.update!(vnv, vn, x)
+                DynamicPPL.inactive_ranges_sweep!(vnv)
+                @test DynamicPPL.num_allocated(vnv, vn) == length(x)
+            end
         end
     end
 end
