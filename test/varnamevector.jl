@@ -235,6 +235,15 @@ end
             @test vnv[vn_right] == val_right .+ 100
         end
 
+        # `delete!`
+        @testset "delete!" begin
+            vnv = deepcopy(vnv_base)
+            delete!(vnv, vn_left)
+            @test !haskey(vnv, vn_left)
+            delete!(vnv, vn_right)
+            @test !haskey(vnv, vn_right)
+        end
+
         # `push!` & `update!`
         @testset "push!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -351,7 +360,7 @@ end
             for i in 1:10
                 x = fill(true, rand(1:n))
                 DynamicPPL.update!(vnv, vn, x)
-                DynamicPPL.inactive_ranges_sweep!(vnv)
+                DynamicPPL.contiguify!(vnv)
                 @test DynamicPPL.num_allocated(vnv, vn) == length(x)
             end
         end
