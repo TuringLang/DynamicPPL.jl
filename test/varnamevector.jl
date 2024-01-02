@@ -240,6 +240,7 @@ end
             vnv = deepcopy(vnv_base)
             delete!(vnv, vn_left)
             @test !haskey(vnv, vn_left)
+            @test haskey(vnv, vn_right)
             delete!(vnv, vn_right)
             @test !haskey(vnv, vn_right)
         end
