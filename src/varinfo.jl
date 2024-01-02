@@ -1735,7 +1735,7 @@ function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
     return vi
 end
 function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
-    metadata.flags[flag][getidx(vi, vn)] = false
+    metadata.flags[flag][getidx(metadata, vn)] = false
     return metadata
 end
 unset_flag!(vnv::VarNameVector, ::VarName, ::String) = vnv
