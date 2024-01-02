@@ -294,11 +294,6 @@ function shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
     return x
 end
 
-function shift_left!(x::AbstractVector{<:Real}, start::Int, n::Int)
-    x[start:(end - n)] = x[(start + n):end]
-    return x
-end
-
 # `update!` and `update!!`: update a variable in the varname vector.
 function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     if !haskey(vnv, vn)
