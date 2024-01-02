@@ -294,4 +294,4 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 | `push!`                                            | ${\color{green} \checkmark}$                                                                 |
 | `delete!`                                          | ${\color{red} \times}$                                                                       |
 | `update!` on existing `VarName`                    | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
-| `convert(Vector{T}, ::VarNameVector{<:VarName,T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
+| `values_as(::VarNameVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |

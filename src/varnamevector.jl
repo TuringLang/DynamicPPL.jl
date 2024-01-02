@@ -454,7 +454,7 @@ function group_by_symbol(vnv::VarNameVector)
         )
     end
 
-    return NamedTuple{Tuple(keys(d))}(nt_vals)
+    return OrderedDict(zip(keys(d), nt_vals))
 end
 
 function Base.delete!(vnv::VarNameVector, vn::VarName)
@@ -503,4 +503,15 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
     deleteat!(vnv.transforms, idx)
 
     return vnv
+end
+
+values_as(vnv::VarNameVector, ::Type{Vector}) = vnv[:]
+function values_as(vnv::VarNameVector, ::Type{Vector{T}}) where {T}
+    return convert(Vector{T}, values_as(vnv, Vector))
+end
+function values_as(vnv::VarNameVector, ::Type{NamedTuple})
+    return NamedTuple(zip(map(Symbol, keys(vnv)), values(vnv)))
+end
+function values_as(vnv::VarNameVector, ::Type{D}) where {D<:AbstractDict}
+    return ConstructionBase.constructorof(D)(pairs(vnv))
 end

@@ -901,7 +901,7 @@ TypedVarInfo(vi::TypedVarInfo) = vi
 function TypedVarInfo(vi::VectorVarInfo)
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
-    nt = group_by_symbol(vi.metadata)
+    nt = NamedTuple(group_by_symbol(vi.metadata))
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
 
