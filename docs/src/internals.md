@@ -7,7 +7,7 @@
 
 Representing `logp` is fairly straight-forward: we'll just use a `Real` or an array of `Real`, depending on the context.
 
-**Representing `metadata` is a bit trickier**. This is supposed to contain all the necessary information for each `VarName` to enable the different executions of the model + extraction of different properties of interest after execution, e.g. the realization / value corresponding used for, say, `@varname(x)`.
+**Representing `metadata` is a bit trickier**. This is supposed to contain all the necessary information for each `VarName` to enable the different executions of the model + extraction of different properties of interest after execution, e.g. the realization / value corresponding to a variable `@varname(x)`.
 
 !!! note
     
@@ -31,23 +31,26 @@ To ensure that `varinfo` is simple and intuitive to work with, we need the under
 
   - `setindex!(::Vector{<:Real}, val, ::Int)`: set the i-th value in the flat representation of `metadata`.
   - `length(::Vector{<:Real})`: return the length of the flat representation of `metadata`.
-  - `similar(::Vector{<:Real})`: return a new
+  - `similar(::Vector{<:Real})`: return a new instance with the same `eltype` as the input.
 
 Moreover, we want also want the underlying representation used in `metadata` to have a few performance-related properties:
 
- 1. Type-stable when possible, but still functional when not.
- 2. Efficient storage and iteration.
+ 1. Type-stable when possible, but functional when not.
+ 2. Efficient storage and iteration when possible, but functional when not.
+ 
+The "but functional when not" is important as we want to support arbitrary models, which means that we can't always have these performance properties.
 
 In the following sections, we'll outline how we achieve this in [`VarInfo`](@ref).
 
 ### Type-stability
 
-This is somewhat non-trivial to address since we want to achieve this for both continuous (typically `Float64`) and discrete (typically `Int`) variables.
+Ensuring type-stability is somewhat non-trivial to address since we want this to be the case even when models mix continuous (typically `Float64`) and discrete (typically `Int`) variables.
 
 Suppose we have an implementation of `metadata` which implements the functionality outlined in the previous section. The way we approach this in `VarInfo` is to use a `NamedTuple` with a separate `metadata` *for each distinct `Symbol` used*. For example, if we have a model of the form
 
 ```@example varinfo-design
 using DynamicPPL, Distributions, FillArrays
+
 @model function demo()
     x ~ product_distribution(Fill(Bernoulli(0.5), 2))
     y ~ Normal(0, 1)
@@ -76,7 +79,7 @@ varinfo_typed = DynamicPPL.typed_varinfo(demo())
 typeof(varinfo_typed.metadata)
 ```
 
-But they both work as expected:
+But they both work as expected but one results in concrete typing and the other does not:
 
 ```@example varinfo-design
 varinfo_untyped[@varname(x)], varinfo_untyped[@varname(y)]
@@ -99,11 +102,13 @@ Notice that the untyped `VarInfo` uses `Vector{Real}` to store the boolean entri
     
     In this case we'll end up with a `NamedTuple((:x,), Tuple{Vx})` where `Vx` is a container with `eltype` `Union{Bool, Float64}` or something worse. This is *not* type-stable but will still be functional.
     
-    In practice, we see that such mixing of types is not very common, and so in DynamicPPL and more widely in Turing.jl, we use a `NamedTuple` approach for type-stability with great success.
+    In practice, rarely observe such mixing of types, therefore in DynamicPPL, and more widely in Turing.jl, we use a `NamedTuple` approach for type-stability with great success.
 
 !!! warning
     
-    Another downside with this approach is that if we have a model with lots of tilde-statements, e.g. `a ~ Normal()`, `b ~ Normal()`, ..., `z ~ Normal()` will result in a `NamedTuple` with 27 entries, potentially leading to long compilation times.
+    Another downside with such a `NamedTuple` approach is that if we have a model with lots of tilde-statements, e.g. `a ~ Normal()`, `b ~ Normal()`, ..., `z ~ Normal()` will result in a `NamedTuple` with 27 entries, potentially leading to long compilation times.
+    
+    For these scenarios it can be useful to fall back to "untyped" representations.
 
 Hence we obtain a "type-stable when possible"-representation by wrapping it in a `NamedTuple` and partially resolving the `getindex`, `setindex!`, etc. methods at compile-time. When type-stability is *not* desired, we can simply use a single `metadata` for all `VarName`s instead of a `NamedTuple` wrapping a collection of `metadata`s.
 
@@ -123,19 +128,19 @@ This does require a bit of book-keeping, in particular when it comes to insertio
   - `ranges::Vector{UnitRange{Int}}`: the ranges of indices in the `Vector{T}` that correspond to each `VarName`.
   - `transforms::Vector`: the transforms associated with each `VarName`.
 
-Mutating functions, e.g. `setindex!`, are then treated according to the following rules:
+Mutating functions, e.g. `setindex!(vnv::VarNameVector, val, vn::VarName)`, are then treated according to the following rules:
 
- 1. If `VarName` is not already present: add it to the end of `varnames`, add the value to the underlying `Vector{T}`, etc.
+ 1. If `vn` is not already present: add it to the end of `vnv.varnames`, add the `val` to the underlying `vnv.vals`, etc.
 
- 2. If `VarName` is already present in the `VarNameVector`:
+ 2. If `vn` is already present in `vnv`:
     
-     1. If `value` has the *same length* as the existing value for `VarName`: replace existing value.
-     2. If `value` has a *smaller length* than the existing value for `VarName`: replace existing value and mark the remaining indices as "inactive" by adding the range to the `inactive_ranges` field.
-     3. If `value` has a *larger length* than the existing value for `VarName`: mark the entire current range for `VarName` as "inactive", expand the underlying `Vector{T}` to accommodate the new value, and update the `ranges` to point to the new range for this `VarName`.
+     1. If `val` has the *same length* as the existing value for `vn`: replace existing value.
+     2. If `val` has a *smaller length* than the existing value for `vn`: replace existing value and mark the remaining indices as "inactive" by increasing the entry in `vnv.num_inactive` field.
+     3. If `val` has a *larger length* than the existing value for `vn`: expand the underlying `vnv.vals` to accommodate the new value, update all `VarName`s occuring after `vn`, and update the `vnv.ranges` to point to the new range for `vn`.
 
-This "delete-by-mark" instead of having to actually delete elements from the underlying `Vector{T}` ensures that `setindex!` will be fairly efficient in the scenarios we encounter in practice.
+This means that `VarNameVector` is allowed to grow as needed, while "shrinking" (i.e. insertion of smaller elements) is handled by simply marking the redundant indices as "inactive". This turns out to be efficient for use-cases that we are generally interested in.
 
-In particular, we want to optimize code-paths which effectively boil down to inner-loop in the following example::
+For example, we want to optimize code-paths which effectively boil down to inner-loop in the following example:
 
 ```julia
 # Construct a `VarInfo` with types inferred from `model`.
@@ -155,32 +160,45 @@ There are typically a few scenarios where we encounter changing representation s
  1. We're working with a transformed version `x` which is represented in a lower-dimensional space, e.g. transforming a `x ~ LKJ(2, 1)` to unconstrained `y = f(x)` takes us from 2-by-2 `Matrix{Float64}` to a 1-length `Vector{Float64}`.
  2. `x` has a random size, e.g. in a mixture model with a prior on the number of components. Here the size of `x` can vary widly between every realization of the `Model`.
 
-In scenario (1), the we're usually *shrinking* the representation of `x`, and so we end up not making any allocations for the underlying `Vector{T}` but instead just marking the redundant part as "inactive".
+In scenario (1), we're usually *shrinking* the representation of `x`, and so we end up not making any allocations for the underlying `Vector{T}` but instead just marking the redundant part as "inactive".
 
+In scenario (2), we  end up increasing the allocated memory for the randomly sized `x`, eventually leading to a vector that is large enough to hold realizations without needing to reallocate. But this can still lead to unnecessary memory usage, which might be undesirable. Hence one has to make a decision regarding the trade-off between memory usage and performance for the use-case at hand.
 
-In scenario (2), we'll end up with quite a sub-optimal representation unless we do something to handle this. For example:
+To help with this, we have the following functions:
+
+```@docs
+DynamicPPL.has_inactive
+DynamicPPL.num_inactive
+DynamicPPL.num_allocated
+DynamicPPL.is_contiguous
+DynamicPPL.contiguify!
+```
+
+For example, one might encounter the following scenario:
 
 ```@example varinfo-design
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
 println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
-    x = fill(true, rand(1:5))
+    x = fill(true, rand(1:100))
     DynamicPPL.update!(vnv, @varname(x), x)
     println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 end
 ```
 
-To alleviate this issue, we can insert a call to [`DynamicPPL.contiguify!`](@ref) after every insertion:
+We can then insert a call to [`DynamicPPL.contiguify!`](@ref) after every insertion whenever the allocation grows too large to reduce overall memory usage:
 
 ```@example varinfo-design
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
 println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
-    x = fill(true, rand(1:5))
+    x = fill(true, rand(1:100))
     DynamicPPL.update!(vnv, @varname(x), x)
-    DynamicPPL.contiguify!(vnv)
+    if DynamicPPL.num_allocated(vnv) > 10
+        DynamicPPL.contiguify!(vnv)
+    end
     println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 end
 ```
@@ -191,14 +209,7 @@ This does incur a runtime cost as it requires re-allocation of the `ranges` in a
     
     Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing he `VarName`'s transformation with a `DynamicPPL.FromVec`.
 
-This does mean that the underlying `Vector{T}` can grow without bound, so we have the following methods to interact with the inactive ranges:
-
-```@docs
-DynamicPPL.has_inactive
-DynamicPPL.contiguify!
-```
-
-Continuing from the example from the previous section:
+Continuing from the example from the previous section, we can use a `VarInfo` with a `VarNameVector` as the `metadata` field:
 
 ```@example varinfo-design
 # Type-unstable
@@ -232,16 +243,24 @@ DynamicPPL.has_inactive(varinfo_untyped_vnv.metadata)
 haskey(varinfo_untyped_vnv, @varname(x))
 ```
 
-If we try to insert a differently-sized value for `@varname(x)`
+Or insert a differently-sized value for `@varname(x)`
 
 ```@example varinfo-design
-DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(false, 1))
+DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(true, 1))
 varinfo_untyped_vnv[@varname(x)]
 ```
 
 ```@example varinfo-design
-DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(false, 3))
+DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
+```
+
+```@example varinfo-design
+DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(true, 4))
 varinfo_untyped_vnv[@varname(x)]
+```
+
+```@example varinfo-design
+DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 ```
 
 #### Performance summary
@@ -253,15 +272,9 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 | `getindex` | ${\color{green} \checkmark}$ |
 | `setindex!` | ${\color{green} \checkmark}$ |
 | `push!` | ${\color{green} \checkmark}$ |
-| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
 | `delete!` | ${\color{red} \times}$ |
-
-#### Methods
-
-```@docs
-DynamicPPL.num_inactive
-DynamicPPL.num_allocated
-```
+| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
+| `convert(Vector, ::VarNameVector)` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise |
 
 ### Additional methods
 

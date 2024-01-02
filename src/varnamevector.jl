@@ -262,13 +262,13 @@ function Base.similar(vnv::VarNameVector)
 end
 
 """
-    is_continugous(vnv::VarNameVector)
+    is_contiguous(vnv::VarNameVector)
 
 Returns `true` if the underlying data of `vnv` is stored in a contiguous array.
 
-This is equivalent to [`!has_inactive(vnv)`](@ref).
+This is equivalent to negating [`has_inactive(vnv)`](@ref).
 """
-is_continugous(vnv::VarNameVector) = !has_inactive(vnv)
+is_contiguous(vnv::VarNameVector) = !has_inactive(vnv)
 
 function nextrange(vnv::VarNameVector, x)
     # If `vnv` is empty, return immediately.
