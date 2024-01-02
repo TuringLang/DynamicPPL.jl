@@ -86,6 +86,8 @@ varinfo_untyped[@varname(x)], varinfo_untyped[@varname(y)]
 varinfo_typed[@varname(x)], varinfo_typed[@varname(y)]
 ```
 
+Notice that the untyped `VarInfo` uses `Vector{Real}` to store the boolean entries while the typed uses `Vector{Bool}`. This is because the untyped version needs the underlying container to be able to handle both the `Bool` for `x` and the `Float64` for `y`, while the typed version can use a `Vector{Bool}` for `x` and a `Vector{Float64}` for `y` due to its usage of `NamedTuple`.
+
 !!! warning
     
     Of course, this `NamedTuple` approach is *not* necessarily going to help us in scenarios where the `Symbol` does not correspond to a unique type, e.g.
@@ -155,16 +157,17 @@ There are typically a few scenarios where we encounter changing representation s
 
 In scenario (1), the we're usually *shrinking* the representation of `x`, and so we end up not making any allocations for the underlying `Vector{T}` but instead just marking the redundant part as "inactive".
 
+
 In scenario (2), we'll end up with quite a sub-optimal representation unless we do something to handle this. For example:
 
 ```@example varinfo-design
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
-println("Before insertion: $(length(vnv.vals))")
+println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
     x = fill(true, rand(1:5))
     DynamicPPL.update!(vnv, @varname(x), x)
-    println("After insertion #$(i) of length $(length(x)): $(length(vnv.vals))")
+    println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 end
 ```
 
@@ -172,25 +175,17 @@ To alleviate this issue, we can insert a call to [`DynamicPPL.inactive_ranges_sw
 
 ```@example varinfo-design
 vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
-println("Before insertion: $(length(vnv.vals))")
+println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
     x = fill(true, rand(1:5))
     DynamicPPL.update!(vnv, @varname(x), x)
     DynamicPPL.inactive_ranges_sweep!(vnv)
-    println("After insertion #$(i) of length $(length(x)): $(length(vnv.vals))")
+    println("After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 end
 ```
 
-Without the calls to [`DynamicPPL.inactive_ranges_sweep!`](@ref), the above would result in a much larger memory footprint. Of course, in this does incur a runtime cost as it requires re-allocation of the `ranges` in addition to a `resize!` of the underlying `Vector{T}`.
-
-That is, we've decided to focus on optimizing scenario (1) but we still maintain functionality even in scenario (2), though at a greater computational cost.
-
-`delete!` and similars are also implemented using the "delete-by-mark" technique outlined above.
-
-!!! note
-    
-    If we instead tried to insert a new larger value at the same location as the old value, then we would have to shift all the elements after the insertion point, potentially requiring a lot of memory allocations.
+This does incur a runtime cost as it requires re-allocation of the `ranges` in addition to a `resize!` of the underlying `Vector{T}`. However, this also ensures that the the underlying `Vector{T}` is contiguous, which is important for performance. Hence, if we're about to do a lot of work with the `VarNameVector` without insertions, etc., it can be worth it to do a sweep to ensure that the underlying `Vector{T}` is contiguous.
 
 !!! note
     
@@ -199,7 +194,7 @@ That is, we've decided to focus on optimizing scenario (1) but we still maintain
 This does mean that the underlying `Vector{T}` can grow without bound, so we have the following methods to interact with the inactive ranges:
 
 ```@docs
-DynamicPPL.has_inactive_ranges
+DynamicPPL.has_inactive
 DynamicPPL.inactive_ranges_sweep!
 ```
 
@@ -224,13 +219,13 @@ haskey(varinfo_untyped_vnv, @varname(x))
 ```
 
 ```@example varinfo-design
-DynamicPPL.has_inactive_ranges(varinfo_untyped_vnv.metadata)
+DynamicPPL.has_inactive(varinfo_untyped_vnv.metadata)
 ```
 
 ```@example varinfo-design
 # `delete!`
 DynamicPPL.delete!(varinfo_untyped_vnv.metadata, @varname(x))
-DynamicPPL.has_inactive_ranges(varinfo_untyped_vnv.metadata)
+DynamicPPL.has_inactive(varinfo_untyped_vnv.metadata)
 ```
 
 ```@example varinfo-design
@@ -248,6 +243,20 @@ varinfo_untyped_vnv[@varname(x)]
 DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(false, 3))
 varinfo_untyped_vnv[@varname(x)]
 ```
+
+#### Performance summary
+
+In the end, we have the following "rough" performance characteristics:
+
+| Method | Is blazingly fast? |
+| :-: | :-: |
+| `getindex` | ${\color{green} \checkmark}$ |
+| `setindex!` | ${\color{green} \checkmark}$ |
+| `push!` | ${\color{green} \checkmark}$ |
+| `update!` on existing `VarName` | ${\color{green} \checkmark}$ if same size / ${\color{red} \times}$ if different size |
+| `delete!` | ${\color{red} \times}$ |
+
+
 
 ### Additional methods
 
