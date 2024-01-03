@@ -346,6 +346,19 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     return VarNameVector(varnames_to_index, vns_both, ranges, vals, transforms)
 end
 
+function subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
+    # NOTE: This does not specialize types when possible.
+    vnv_new = similar(vnv)
+    # Return early if possible.
+    isempty(vnv) && return vnv_new
+
+    for vn in vns
+        push!(vnv_new, vn, getval(vnv, vn), gettransform(vnv, vn))
+    end
+
+    return vnv_new
+end
+
 # `similar`
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
