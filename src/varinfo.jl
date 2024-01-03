@@ -364,6 +364,10 @@ function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     )
 end
 
+function merge_metadata(vnv_left::VarNameVector, vnv_right::VarNameVector)
+    return merge(vnv_left, vnv_right)
+end
+
 @generated function merge_metadata(
     metadata_left::NamedTuple{names_left}, metadata_right::NamedTuple{names_right}
 ) where {names_left,names_right}
