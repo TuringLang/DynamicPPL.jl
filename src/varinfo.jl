@@ -2079,6 +2079,10 @@ end
 function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
 end
+values_as(vi::VectorVarInfo, ::Type{NamedTuple}) = values_as(vi.metadata, NamedTuple)
+function values_as(vi::VectorVarInfo, ::Type{D}) where {D<:AbstractDict}
+    return values_as(vi.metadata, D)
+end
 
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
@@ -2098,3 +2102,5 @@ function values_from_metadata(md::Metadata)
         vn in md.vns
     )
 end
+
+values_from_metadata(md::VarNameVector) = pairs(md)
