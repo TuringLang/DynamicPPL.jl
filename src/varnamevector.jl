@@ -336,12 +336,36 @@ function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val)
     return nothing
 end
 
+"""
+    shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
+
+Shifts the elements of `x` starting from index `start` by `n` to the right.
+"""
 function shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
     x[(start + n):end] = x[start:(end - n)]
     return x
 end
 
+"""
+    shift_subsequent_ranges_by!(vnv::VarNameVector, idx::Int, n)
+
+Shifts the ranges of variables in `vnv` starting from index `idx` by `n`.
+"""
+function shift_subsequent_ranges_by!(vnv::VarNameVector, idx::Int, n)
+    for i in (idx + 1):length(vnv.ranges)
+        vnv.ranges[i] = vnv.ranges[i] .+ n
+    end
+    return nothing
+end
+
 # `update!` and `update!!`: update a variable in the varname vector.
+"""
+    update!(vnv::VarNameVector, vn::VarName, val[, transform])
+
+Either add a new entry or update existing entry for  `vn` in `vnv` with the value `val`.
+
+If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
+"""
 function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
     if !haskey(vnv, vn)
         # Here we just add a new entry.
@@ -410,14 +434,12 @@ function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
         n_extra = n_new - n_allocated
         # Allocate.
         resize!(vnv.vals, length(vnv.vals) + n_extra)
-        # Shift current  values.
+        # Shift current values.
         shift_right!(vnv.vals, end_old + 1, n_extra)
         # No more inactive entries.
         had_inactive && delete!(vnv.num_inactive, idx)
         # Update the ranges for all variables after this one.
-        for i in (idx + 1):length(vnv.varnames)
-            vnv.ranges[i] = vnv.ranges[i] .+ n_extra
-        end
+        shift_subsequent_ranges_by!(vnv, idx, n_extra)
     elseif n_new == n_allocated
         # => No more inactive entries.
         had_inactive && delete!(vnv.num_inactive, idx)
@@ -474,7 +496,12 @@ function contiguify!(vnv::VarNameVector)
     return vnv
 end
 
-# Typed version.
+"""
+    group_by_symbol(vnv::VarNameVector)
+
+Return a dictionary mapping symbols to `VarNameVector`s with
+varnames containing that symbol.
+"""
 function group_by_symbol(vnv::VarNameVector)
     # Group varnames in `vnv` by the symbol.
     d = OrderedDict{Symbol,Vector{VarName}}()
@@ -495,6 +522,41 @@ function group_by_symbol(vnv::VarNameVector)
     return OrderedDict(zip(keys(d), nt_vals))
 end
 
+"""
+    shift_index_left!(vnv::VarNameVector, idx::Int)
+
+Shift the index `idx` to the left by one and update the relevant fields.
+
+!!! warning
+    This does not check if index we're shifting to is already occupied.
+"""
+function shift_index_left!(vnv::VarNameVector, idx::Int)
+    # Shift the index in the lookup table.
+    vn = vnv.varnames[idx]
+    vnv.varname_to_index[vn] = idx - 1
+    # Shift the index in the inactive ranges.
+    if haskey(vnv.num_inactive, idx)
+        # Done in increasing order =>  don't need to worry about
+        # potentially shifting the same index twice.
+        vnv.num_inactive[idx - 1] = pop!(vnv.num_inactive, idx)
+    end
+end
+
+"""
+    shift_subsequent_indices_left!(vnv::VarNameVector, idx::Int)
+
+Shift the indices for all variables after `idx` to the left by one and update
+the relevant fields.
+
+This just
+"""
+function shift_subsequent_indices_left!(vnv::VarNameVector, idx::Int)
+    # Shift the indices for all variables after `idx`.
+    for idx_to_shift in (idx + 1):length(vnv.varnames)
+        shift_index_left!(vnv, idx_to_shift)
+    end
+end
+
 function Base.delete!(vnv::VarNameVector, vn::VarName)
     # Error if we don't have the variable.
     !haskey(vnv, vn) && throw(ArgumentError("variable name $vn does not exist"))
@@ -505,6 +567,7 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
     # Delete the values.
     r_start = first(getrange(vnv, idx))
     n_allocated = num_allocated(vnv, idx)
+    # NOTE: `deleteat!` also results in a `resize!` so we don't need to do that.
     deleteat!(vnv.vals, r_start:(r_start + n_allocated - 1))
 
     # Delete `vn` from the lookup table.
@@ -515,24 +578,10 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
 
     # Re-adjust the indices for varnames occuring after `vn` so
     # that they point to the correct indices after the deletions below.
-    for idx_to_shift in (idx + 1):length(vnv.varnames)
-        vn = vnv.varnames[idx_to_shift]
-        if idx_to_shift > idx
-            # Shift the index in the lookup table.
-            vnv.varname_to_index[vn] = idx_to_shift - 1
-            # Shift the index in the inactive ranges.
-            if haskey(vnv.num_inactive, idx_to_shift)
-                # Done in increasing order =>  don't need to worry about
-                # potentially shifting the same index twice.
-                vnv.num_inactive[idx_to_shift - 1] = pop!(vnv.num_inactive, idx_to_shift)
-            end
-        end
-    end
+    shift_subsequent_indices_left!(vnv, idx)
 
     # Re-adjust the ranges for varnames occuring after `vn`.
-    for idx_to_shift in (idx + 1):length(vnv.varnames)
-        vnv.ranges[idx_to_shift] = vnv.ranges[idx_to_shift] .- n_allocated
-    end
+    shift_subsequent_ranges_by!(vnv, idx, -n_allocated)
 
     # Delete references from vector fields, thus shifting the indices of
     # varnames occuring after `vn` by one to the left, as we adjusted for above.
