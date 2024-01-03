@@ -70,8 +70,17 @@ FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
 
 Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
 
+from_vec_transform(x::Real) = FromVec(())
+from_vec_transform(x::AbstractArray) = FromVec(size(x))
+from_vec_transform(C::Cholesky) = from_vec_transform(C.UL)
+from_vec_transform(U::LinearAlgebra.UpperTriangular) = Bijectors.vec_to_triu
+from_vec_transform(L::LinearAlgebra.LowerTriangular) = transpose ∘ from_vec_transform
+
 tovec(x::Real) = [x]
 tovec(x::AbstractArray) = vec(x)
+tovec(C::Cholesky) = tovec(C.UL)
+tovec(L::LinearAlgebra.LowerTriangular) = tovec(transpose(L))
+tovec(U::LinearAlgebra.UpperTriangular) = Bijectors.triu_to_vec(U)
 
 Bijectors.inverse(f::FromVec) = tovec
 Bijectors.inverse(f::FromVec{Tuple{}}) = tovec
