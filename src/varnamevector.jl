@@ -94,7 +94,7 @@ VarNameVector(xs::Pair...) = VarNameVector(OrderedDict(xs...))
 VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
 VarNameVector(varnames, vals) = VarNameVector(collect_maybe(varnames), collect_maybe(vals))
 function VarNameVector(
-    varnames::AbstractVector, vals::AbstractVector, transforms=map(FromVec, vals)
+    varnames::AbstractVector, vals::AbstractVector, transforms=map(from_vec_transform, vals)
 )
     # TODO: Check uniqueness of `varnames`?
 
@@ -407,7 +407,7 @@ function nextrange(vnv::VarNameVector, x)
 end
 
 # `push!` and `push!!`: add a variable to the varname vector.
-function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
+function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
     # NOTE: We need to compute the `nextrange` BEFORE we start mutating
@@ -452,7 +452,7 @@ Either add a new entry or update existing entry for  `vn` in `vnv` with the valu
 
 If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
 """
-function update!(vnv::VarNameVector, vn::VarName, val, transform=FromVec(val))
+function update!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     if !haskey(vnv, vn)
         # Here we just add a new entry.
         return push!(vnv, vn, val, transform)
