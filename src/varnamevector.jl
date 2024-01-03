@@ -211,12 +211,7 @@ Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
 # Dictionary interface.
 Base.keys(vnv::VarNameVector) = vnv.varnames
 Base.values(vnv::VarNameVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
-
-function Base.pairs(vnv::VarNameVector)
-    return Iterators.zip(
-        vnv.varnames, Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
-    )
-end
+Base.pairs(vnv::VarNameVector) = (vn => vnv[vn] for vn in keys(vnv))
 
 Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
