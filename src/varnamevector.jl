@@ -297,16 +297,16 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     end
 
     # Determine `eltype` of `varnames`.
-    V_left = eltype(left.varnames)
-    V_right = eltype(right.varnames)
+    V_left = eltype(left_vnv.varnames)
+    V_right = eltype(right_vnv.varnames)
     V = promote_type(V_left, V_right)
     if !(V <: VarName)
         V = VarName
     end
 
     # Determine `eltype` of `transforms`.
-    F_left = eltype(left.transforms)
-    F_right = eltype(right.transforms)
+    F_left = eltype(left_vnv.transforms)
+    F_right = eltype(right_vnv.transforms)
     F = promote_type(F_left, F_right)
 
     # Allocate.
@@ -323,17 +323,17 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
         if vn in vns_left && !(vn in vns_right)
             # `vn` is only in `left`.
             varnames_to_index[vn] = idx
-            val = getindex_raw(left, vn)
+            val = getindex_raw(left_vnv, vn)
             n = length(val)
             r = (offset + 1):(offset + n)
-            f = gettransform(left, vn)
+            f = gettransform(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
             varnames_to_index[vn] = idx
-            val = getindex_raw(right, vn)
+            val = getindex_raw(right_vnv, vn)
             n = length(val)
             r = (offset + 1):(offset + n)
-            f = gettransform(right, vn)
+            f = gettransform(right_vnv, vn)
         end
         # Update.
         append!(vals, val)
