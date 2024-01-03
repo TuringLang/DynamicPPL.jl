@@ -277,23 +277,19 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
-function Base.merge(left::VarNameVector, right::VarNameVector)
+function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     # Return early if possible.
-    isempty(left) && return deepcopy(right)
-    isempty(right) && return deepcopy(left)
-
-    # A very simple way of doing this would be to just
-    # convert both to `OrderedDict` and merge.
-    # However, we need to also account of transformations.
+    isempty(left_vnv) && return deepcopy(right_vnv)
+    isempty(right_vnv) && return deepcopy(left_vnv)
 
     # Determine varnames.
-    vns_left = left.varnames
-    vns_right = right.varnames
+    vns_left = left_vnv.varnames
+    vns_right = right_vnv.varnames
     vns_both = union(vns_left, vns_right)
 
     # Determine `eltype` of `vals`.
-    T_left = eltype(left.vals)
-    T_right = eltype(right.vals)
+    T_left = eltype(left_vnv.vals)
+    T_right = eltype(right_vnv.vals)
     T = promote_type(T_left, T_right)
     # TODO: Is this necessary?
     if !(T <: Real)
