@@ -284,6 +284,11 @@ function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
 
+function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
+    metadata = subset(varinfo.metadata, vns)
+    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
+end
+
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
     # If all the variables are using the same symbol, then we can just extract that field from the metadata.
     metadata = subset(getfield(varinfo.metadata, sym), vns)
