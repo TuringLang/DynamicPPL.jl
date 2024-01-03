@@ -277,6 +277,79 @@ function Base.empty!(vnv::VarNameVector)
 end
 BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
 
+function Base.merge(left::VarNameVector, right::VarNameVector)
+    # Return early if possible.
+    isempty(left) && return deepcopy(right)
+    isempty(right) && return deepcopy(left)
+
+    # A very simple way of doing this would be to just
+    # convert both to `OrderedDict` and merge.
+    # However, we need to also account of transformations.
+
+    # Determine varnames.
+    vns_left = left.varnames
+    vns_right = right.varnames
+    vns_both = union(vns_left, vns_right)
+
+    # Determine `eltype` of `vals`.
+    T_left = eltype(left.vals)
+    T_right = eltype(right.vals)
+    T = promote_type(T_left, T_right)
+    # TODO: Is this necessary?
+    if !(T <: Real)
+        T = Real
+    end
+
+    # Determine `eltype` of `varnames`.
+    V_left = eltype(left.varnames)
+    V_right = eltype(right.varnames)
+    V = promote_type(V_left, V_right)
+    if !(V <: VarName)
+        V = VarName
+    end
+
+    # Determine `eltype` of `transforms`.
+    F_left = eltype(left.transforms)
+    F_right = eltype(right.transforms)
+    F = promote_type(F_left, F_right)
+
+    # Allocate.
+    varnames_to_index = OrderedDict{V,Int}()
+    ranges = UnitRange{Int}[]
+    vals = T[]
+    transforms = F[]
+
+    # Range offset.
+    offset = 0
+
+    for (idx, vn) in enumerate(vns_both)
+        # Extract the necessary information from `left` or `right`.
+        if vn in vns_left && !(vn in vns_right)
+            # `vn` is only in `left`.
+            varnames_to_index[vn] = idx
+            val = getindex_raw(left, vn)
+            n = length(val)
+            r = (offset + 1):(offset + n)
+            f = gettransform(left, vn)
+        else
+            # `vn` is either in both or just `right`.
+            varnames_to_index[vn] = idx
+            val = getindex_raw(right, vn)
+            n = length(val)
+            r = (offset + 1):(offset + n)
+            f = gettransform(right, vn)
+        end
+        # Update.
+        append!(vals, val)
+        push!(ranges, r)
+        push!(transforms, f)
+        # Increment `offset`.
+        offset += n
+    end
+
+    return VarNameVector(varnames_to_index, vns_both, ranges, vals, transforms)
+end
+
 # `similar`
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)

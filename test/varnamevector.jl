@@ -245,6 +245,33 @@ end
             @test !haskey(vnv, vn_right)
         end
 
+        # `merge`
+        @testset "merge" begin
+            # When there are no inactive entries, `merge` on itself result in the same.
+            @test merge(vnv_base, vnv_base) == vnv_base
+
+            # Merging with empty should result in the same.
+            @test merge(vnv_base, similar(vnv_base)) == vnv_base
+            @test merge(similar(vnv_base), vnv_base) == vnv_base
+
+            # With differences.
+            vnv_left_only = deepcopy(vnv_base)
+            delete!(vnv_left_only, vn_right)
+            vnv_right_only = deepcopy(vnv_base)
+            delete!(vnv_right_only, vn_left)
+
+            # `(x,)` and `(x, y)` should be `(x, y)`.
+            @test merge(vnv_left_only, vnv_base) == vnv_base
+            # `(x, y)` and `(x,)` should be `(x, y)`.
+            @test merge(vnv_base, vnv_left_only) == vnv_base
+            # `(x, y)` and `(y,)` should be `(x, y)`.
+            @test merge(vnv_base, vnv_right_only) == vnv_base
+            # `(y,)` and `(x, y)` should be `(y, x)`.
+            vnv_merged = merge(vnv_right_only, vnv_base)
+            @test vnv_merged != vnv_base
+            @test collect(keys(vnv_merged)) == [vn_right, vn_left]
+        end
+
         # `push!` & `update!`
         @testset "push!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
