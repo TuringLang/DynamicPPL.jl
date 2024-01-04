@@ -311,7 +311,7 @@ function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
     return setindex_raw!(vnv, f(val), vn)
 end
 
-setindex_raw!(vnv::VarNameVector, val, i::Int) = vnv.vals[i] = val
+setindex_raw!(vnv::VarNameVector, val, i::Int) = vnv.vals[index_to_raw_index(vnv, i)] = val
 function setindex_raw!(vnv::VarNameVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
