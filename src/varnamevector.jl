@@ -179,6 +179,13 @@ Returns `true` if `vnv` has inactive ranges.
 has_inactive(vnv::VarNameVector) = !isempty(vnv.num_inactive)
 
 """
+    num_inactive(vnv::VarNameVector)
+
+Return the number of inactive entries in `vnv`.
+"""
+num_inactive(vnv::VarNameVector) = sum(values(vnv.num_inactive))
+
+"""
     num_inactive(vnv::VarNameVector, vn::VarName)
 
 Returns the number of inactive entries for `vn` in `vnv`.
@@ -232,10 +239,51 @@ function Base.getindex(vnv::VarNameVector, vn::VarName)
     return f(x)
 end
 
-getindex_raw(vnv::VarNameVector, i::Int) = vnv.vals[i]
-function getindex_raw(vnv::VarNameVector, vn::VarName)
-    return vnv.vals[getrange(vnv, vn)]
+function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
+    # TODO: Assume `ranges` to be sorted and contiguous, and use `searchsortedfirst`
+    # for a more efficient approach.
+    range_idx = findfirst(Base.Fix1(∈, x), ranges)
+
+    # If we're out of bounds, we raise an error.
+    if range_idx === nothing
+        throw(ArgumentError("Value $x is not in any of the ranges."))
+    end
+
+    return range_idx
 end
+
+function adjusted_ranges(vnv::VarNameVector)
+    # Every range following inactive entries needs to be shifted.
+    offset = 0
+    ranges_adj = similar(vnv.ranges)
+    for (idx, r) in enumerate(vnv.ranges)
+        # Remove the `offset` in `r` due to inactive entries.
+        ranges_adj[idx] = r .- offset
+        # Update `offset`.
+        offset += get(vnv.num_inactive, idx, 0)
+    end
+
+    return ranges_adj
+end
+
+function index_to_raw_index(vnv::VarNameVector, i::Int)
+    # If we don't have any inactive entries, there's nothing to do.
+    has_inactive(vnv) || return i
+
+    # Get the adjusted ranges.
+    ranges_adj = adjusted_ranges(vnv)
+    # Determine the adjusted range that the index corresponds to.
+    r_idx = find_range_from_sorted(ranges_adj, i)
+    r = vnv.ranges[r_idx]
+    # Determine how much of the index `i` is used to get to this range.
+    i_used = r_idx == 1 ? 0 : sum(length, ranges_adj[1:(r_idx - 1)])
+    # Use remainder to index into `r`.
+    i_remainder = i - i_used
+    return r[i_remainder]
+end
+
+getindex_raw(vnv::VarNameVector, i::Int) = vnv.vals[index_to_raw_index(vnv, i)]
+getindex_raw(vnv::VarNameVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
 # `getindex` for `Colon`
 function Base.getindex(vnv::VarNameVector, ::Colon)
