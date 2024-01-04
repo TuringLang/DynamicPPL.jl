@@ -206,9 +206,13 @@ end
 
         # `getindex`
         @testset "getindex" begin
-            # `getindex`
+            # With `VarName` index.
             @test vnv_base[vn_left] == val_left
             @test vnv_base[vn_right] == val_right
+
+            # With `Int` index.
+            val_vec = vcat(to_vec_left(val_left), to_vec_right(val_right))
+            @test all(vnv_base[i] == val_vec[i] for i in 1:length(val_vec))
         end
 
         # `setindex!`
@@ -222,8 +226,15 @@ end
 
         # `getindex_raw`
         @testset "getindex_raw" begin
+            # With `VarName` index.
             @test DynamicPPL.getindex_raw(vnv_base, vn_left) == to_vec_left(val_left)
             @test DynamicPPL.getindex_raw(vnv_base, vn_right) == to_vec_right(val_right)
+            # With `Int` index.
+            val_vec = vcat(to_vec_left(val_left), to_vec_right(val_right))
+            @test all(
+                DynamicPPL.getindex_raw(vnv_base, i) == val_vec[i] for
+                i in 1:length(val_vec)
+            )
         end
 
         # `setindex_raw!`
@@ -298,12 +309,16 @@ end
                 end
 
                 DynamicPPL.update!(vnv, vn, val .+ 1)
+                x = vnv[:]
                 @test vnv[vn] == val .+ 1
                 @test length(vnv) == expected_length
-                @test length(vnv[:]) == length(vnv)
+                @test length(x) == length(vnv)
 
                 # There should be no redundant values in the underlying vector.
                 @test !DynamicPPL.has_inactive(vnv)
+
+                # `getindex` with `Int` index.
+                @test all(vnv[i] == x[i] for i in 1:length(x))
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -319,9 +334,13 @@ end
                 end
 
                 DynamicPPL.update!(vnv, vn, val .+ 1)
+                x = vnv[:]
                 @test vnv[vn] == val .+ 1
                 @test length(vnv) == expected_length
-                @test length(vnv[:]) == length(vnv)
+                @test length(x) == length(vnv)
+
+                # `getindex` with `Int` index.
+                @test all(vnv[i] == x[i] for i in 1:length(x))
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -336,9 +355,13 @@ end
                     length(vnv) + length(val)
                 end
                 DynamicPPL.update!(vnv, vn, val .+ 1)
+                x = vnv[:]
                 @test vnv[vn] == val .+ 1
                 @test length(vnv) == expected_length
-                @test length(vnv[:]) == length(vnv)
+                @test length(x) == length(vnv)
+
+                # `getindex` with `Int` index.
+                @test all(vnv[i] == x[i] for i in 1:length(x))
             end
         end
     end
@@ -393,12 +416,6 @@ end
             end
         end
     end
-end
-
-has_varnamevector(vi) = false
-function has_varnamevector(vi::VarInfo)
-    return vi.metadata isa VarNameVector ||
-           (vi isa TypedVarInfo && first(values(vi.metadata)) isa VarNameVector)
 end
 
 @testset "VarInfo + VarNameVector" begin
