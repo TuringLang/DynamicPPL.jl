@@ -1444,7 +1444,7 @@ function getindex(vi::TypedVarInfo, spl::Sampler)
     # Gets the ranges as a NamedTuple
     ranges = _getranges(vi, spl)
     # Calling getfield(ranges, f) gives all the indices in `vals` of the `vn`s with symbol `f` sampled by `spl` in `vi`
-    return vcat(_getindex(vi.metadata, ranges)...)
+    return reduce(vcat, _getindex(vi.metadata, ranges))
 end
 # Recursively builds a tuple of the `vals` of all the symbols
 @generated function _getindex(metadata, ranges::NamedTuple{names}) where {names}
