@@ -144,7 +144,9 @@ extract_priors
 ```
 
 ```@docs
+WrappedDistribution
 NamedDist
+NoDist
 ```
 
 ## Testing Utilities
