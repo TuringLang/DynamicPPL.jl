@@ -1368,7 +1368,7 @@ function _link_metadata!(
     fromvec_transforms = map(from_vec_transform, ys)
     # Compose the transformations to form a full transformation from
     # unconstrained vector representation to constrained space.
-    transforms = map(∘, fromvec_transforms, link_transforms)
+    transforms = map(∘, map(inverse, link_transforms), fromvec_transforms)
     # Convert to vector representation.
     yvecs = map(tovec, ys)
 
