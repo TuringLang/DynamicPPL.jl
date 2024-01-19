@@ -119,6 +119,6 @@ end
 
 function extract_priors(::Random.AbstractRNG, model::Model, varinfo::AbstractVarInfo)
     context = PriorExtractorContext(DefaultContext())
-    evaluate!!(model, varinfo, context)
+    evaluate!!(model, deepcopy(varinfo), context)
     return context.priors
 end
