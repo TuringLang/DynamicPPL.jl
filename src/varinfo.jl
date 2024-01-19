@@ -681,14 +681,18 @@ Return the set of sampler selectors associated with `vn` in `vi`.
 getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
 
 function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
+    return settrans!!(getmetadata(vi, vn), trans, vn)
+end
+function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
     if trans
-        set_flag!(vi, vn, "trans")
+        set_flag!(metadata, vn, "trans")
     else
-        unset_flag!(vi, vn, "trans")
+        unset_flag!(metadata, vn, "trans")
     end
 
     return vi
 end
+settrans!!(vnv::VarNameVector, trans::Bool, vn::VarName) = settrans!(vnv, trans, vn)
 
 function settrans!!(vi::VarInfo, trans::Bool)
     for vn in keys(vi)
@@ -851,7 +855,10 @@ end
 Set `vn`'s value for `flag` to `true` in `vi`.
 """
 function set_flag!(vi::VarInfo, vn::VarName, flag::String)
-    return getmetadata(vi, vn).flags[flag][getidx(vi, vn)] = true
+    return set_flag!(getmetadata(vi, vn), vn, flag)
+end
+function set_flag!(md::Metadata, vn::VarName, flag::String)
+    return md.flags[flag][getidx(vi, vn)] = true
 end
 
 ####

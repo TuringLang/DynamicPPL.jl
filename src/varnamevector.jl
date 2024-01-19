@@ -70,7 +70,7 @@ function VarNameVector{K,V}() where {K,V}
 end
 
 istrans(vnv::VarNameVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
-function settrans!(vnv::VarNameVector, vn::VarName, val)
+function settrans!(vnv::VarNameVector, val::Bool, vn::VarName)
     return vnv.is_transformed[vnv.varname_to_index[vn]] = val
 end
 
