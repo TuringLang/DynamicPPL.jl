@@ -119,6 +119,12 @@ function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     return new_vi
 end
 
+function VarInfo(old_vi::VectorVarInfo, spl, x::AbstractVector)
+    new_vi = deepcopy(old_vi)
+    new_vi[spl] = x
+    return new_vi
+end
+
 function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
     return VarInfo(
