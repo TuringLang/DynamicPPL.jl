@@ -2230,3 +2230,30 @@ function values_from_metadata(md::Metadata)
 end
 
 values_from_metadata(md::VarNameVector) = pairs(md)
+
+# TODO: Move these.
+Bijectors.with_logabsdet_jacobian(::typeof(transpose), x) = (transpose(x), 0)
+Bijectors.inverse(::typeof(transpose)) = transpose
+
+function Bijectors.with_logabsdet_jacobian(::typeof(Bijectors.vec_to_triu), x)
+    return (Bijectors.vec_to_triu(x), 0)
+end
+
+# HACK: Overload of `invlink_with_logpdf` so we can fix it for `VarNameVector`.
+function invlink_with_logpdf(vi::VarInfo, vn::VarName, dist, y)
+    return _invlink_with_logpdf(getmetadata(vi, vn), vn, dist, y)
+end
+
+function _invlink_with_logpdf(md::Metadata, vn::VarName, dist, y)
+    # NOTE: Will this cause type-instabilities or will union-splitting save us?
+    f = istrans(md, vn) ? invlink_transform(dist) : identity
+    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+    return x, logpdf(dist, x) + logjac
+end
+
+function _invlink_with_logpdf(vnv::VarNameVector, vn::VarName, dist, y)
+    # Here the transformation is stored in `vnv` so we just extract and use this.
+    f = gettransform(vnv, vn)
+    x, logjac = with_logabsdet_jacobian(f, y)
+    return x, logpdf(dist, x) + logjac
+end
