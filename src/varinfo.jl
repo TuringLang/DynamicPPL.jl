@@ -161,6 +161,20 @@ function VectorVarInfo(vi::TypedVarInfo)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
+"""
+    has_varnamevector(varinfo::VarInfo)
+
+Returns `true` if `varinfo` uses `VarNameVector` as metadata.
+"""
+has_varnamevector(vi) = false
+function has_varnamevector(vi::VarInfo)
+    return vi.metadata isa VarNameVector ||
+           (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNameVector), values(vi.metadata)))
+end
+function has_varnamevector(vi::DynamicPPL.ThreadSafeVarInfo)
+    return has_varnamevector(vi.varinfo)
+end
+
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -1018,6 +1032,8 @@ end
 
 # X -> R for all variables associated with given sampler
 function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+    # If we're working with a `VarNameVector`, we always use immutable.
+    has_varnamevector(vi) && return link(t, vi, spl, model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
     _link!(vi, spl)
     return vi
@@ -1103,7 +1119,11 @@ end
 end
 
 # R -> X for all variables associated with given sampler
-function invlink!!(::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function invlink!!(
+    t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model
+)
+    # If we're working with a `VarNameVector`, we always use immutable.
+    has_varnamevector(vi) && return invlink(t, vi, spl, model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi

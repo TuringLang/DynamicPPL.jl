@@ -237,21 +237,10 @@ Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = 
 from_vec_transform(x::Real) = FromVec(())
 from_vec_transform(x::AbstractVector) = identity
 from_vec_transform(x::AbstractArray) = FromVec(size(x))
-function from_vec_transform(C::Cholesky)
-    return ToChol(C.uplo) ∘ from_vec_transform(C.UL)
-end
-from_vec_transform(U::LinearAlgebra.UpperTriangular) = Bijectors.vec_to_triu
-function from_vec_transform(L::LinearAlgebra.LowerTriangular)
-    return transpose ∘ from_vec_transform(transpose(L))
-end
+from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
 
 # FIXME: drop the `rand` below and instead implement on a case-by-case basis.
 from_vec_transform(dist::Distribution) = from_vec_transform(rand(dist))
-
-# TODO: Move these.
-function Bijectors.with_logabsdet_jacobian(::typeof(Bijectors.vec_to_triu), x)
-    return (Bijectors.vec_to_triu(x), 0)
-end
 
 # FIXME: When given a `LowerTriangular`, `VarInfo` still stores the full matrix
 # flattened, while using `tovec` below flattenes only the necessary entries.
@@ -259,9 +248,7 @@ end
 # or fix `tovec` to flatten the full matrix instead of using `Bijectors.triu_to_vec`.
 tovec(x::Real) = [x]
 tovec(x::AbstractArray) = vec(x)
-tovec(C::Cholesky) = tovec(C.UL)
-tovec(L::LinearAlgebra.LowerTriangular) = tovec(transpose(L))
-tovec(U::LinearAlgebra.UpperTriangular) = Bijectors.triu_to_vec(U)
+tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
 # TODO: Remove these.
 vectorize(d, r) = vectorize(r)

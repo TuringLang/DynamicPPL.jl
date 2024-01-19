@@ -431,7 +431,7 @@ end
             model, value_true, varnames; include_threadsafe=false
         )
         # Filter out those which are not based on `VarNameVector`.
-        varinfos = filter(has_varnamevector, varinfos)
+        varinfos = filter(DynamicPPL.has_varnamevector, varinfos)
         # Get the true log joint.
         logp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
 
