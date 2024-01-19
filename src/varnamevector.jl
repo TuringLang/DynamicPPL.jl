@@ -18,11 +18,14 @@ struct VarNameVector{
     "vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
     ranges::Vector{UnitRange{Int}}
 
-    "vector of values of all the univariate, multivariate and matrix variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
+    "vector of values of all variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
     vals::TVal # AbstractVector{<:Real}
 
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
+
+    "specifies whether a variable is transformed or not "
+    is_transformed::BitVector
 
     "additional entries which are considered inactive"
     num_inactive::OrderedDict{Int,Int}
@@ -37,17 +40,26 @@ function ==(vnv_left::VarNameVector, vnv_right::VarNameVector)
            vnv_left.ranges == vnv_right.ranges &&
            vnv_left.vals == vnv_right.vals &&
            vnv_left.transforms == vnv_right.transforms &&
+           vnv_left.is_transformed == vnv_right.is_transformed &&
            vnv_left.num_inactive == vnv_right.num_inactive &&
            vnv_left.metadata == vnv_right.metadata
 end
 
-function VarNameVector(varname_to_index, varnames, ranges, vals, transforms)
+function VarNameVector(
+    varname_to_index,
+    varnames,
+    ranges,
+    vals,
+    transforms,
+    is_transformed=fill!(BitVector(undef, length(varnames)), 0),
+)
     return VarNameVector(
         varname_to_index,
         varnames,
         ranges,
         vals,
         transforms,
+        is_transformed,
         OrderedDict{Int,Int}(),
         nothing,
     )
@@ -57,57 +69,10 @@ function VarNameVector{K,V}() where {K,V}
     return VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
 
-# Useful transformation going from the flattened representation.
-struct FromVec{Sz} <: Bijectors.Bijector
-    sz::Sz
+istrans(vnv::VarNameVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
+function settrans!(vnv::VarNameVector, vn::VarName, val)
+    return vnv.is_transformed[vnv.varname_to_index[vn]] = val
 end
-
-FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
-
-# TODO: Should we materialize the `reshape`?
-(f::FromVec)(x) = reshape(x, f.sz)
-(f::FromVec{Tuple{}})(x) = only(x)
-# TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
-
-Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
-
-struct ToChol <: Bijectors.Bijector
-    uplo::Char
-end
-
-Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
-Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
-
-from_vec_transform(x::Real) = FromVec(())
-from_vec_transform(x::AbstractVector) = identity
-from_vec_transform(x::AbstractArray) = FromVec(size(x))
-function from_vec_transform(C::Cholesky)
-    return ToChol(C.uplo) ∘ from_vec_transform(C.UL)
-end
-from_vec_transform(U::LinearAlgebra.UpperTriangular) = Bijectors.vec_to_triu
-function from_vec_transform(L::LinearAlgebra.LowerTriangular)
-    return transpose ∘ from_vec_transform(transpose(L))
-end
-
-# FIXME: remove the `rand` below.
-from_vec_transform(dist::Distribution) = from_vec_transform(rand(dist))
-
-# We want to use the inverse of `FromVec` so it preserves the size information.
-Bijectors.transform(::Bijectors.Inverse{<:FromVec}, x) = tovec(x)
-
-# FIXME: When given a `LowerTriangular`, `VarInfo` still stores the full matrix
-# flattened, while using `tovec` below flattenes only the necessary entries.
-# => Need to either fix how `VarInfo` does things, i.e. use `tovec` everywhere,
-# or fix `tovec` to flatten the full matrix instead of using `Bijectors.triu_to_vec`.
-tovec(x::Real) = [x]
-tovec(x::AbstractArray) = vec(x)
-tovec(C::Cholesky) = tovec(C.UL)
-tovec(L::LinearAlgebra.LowerTriangular) = tovec(transpose(L))
-tovec(U::LinearAlgebra.UpperTriangular) = Bijectors.triu_to_vec(U)
-
-# More convenient constructors.
-collect_maybe(x) = collect(x)
-collect_maybe(x::AbstractArray) = x
 
 VarNameVector() = VarNameVector{VarName,Real}()
 VarNameVector(xs::Pair...) = VarNameVector(OrderedDict(xs...))

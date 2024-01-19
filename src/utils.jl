@@ -211,6 +211,59 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
+# Useful transformation going from the flattened representation.
+struct FromVec{Sz} <: Bijectors.Bijector
+    sz::Sz
+end
+
+FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
+
+# TODO: Should we materialize the `reshape`?
+(f::FromVec)(x) = reshape(x, f.sz)
+(f::FromVec{Tuple{}})(x) = only(x)
+# TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
+
+Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
+# We want to use the inverse of `FromVec` so it preserves the size information.
+Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:FromVec}, x) = (tovec(x), 0)
+
+struct ToChol <: Bijectors.Bijector
+    uplo::Char
+end
+
+Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
+Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
+
+from_vec_transform(x::Real) = FromVec(())
+from_vec_transform(x::AbstractVector) = identity
+from_vec_transform(x::AbstractArray) = FromVec(size(x))
+function from_vec_transform(C::Cholesky)
+    return ToChol(C.uplo) ∘ from_vec_transform(C.UL)
+end
+from_vec_transform(U::LinearAlgebra.UpperTriangular) = Bijectors.vec_to_triu
+function from_vec_transform(L::LinearAlgebra.LowerTriangular)
+    return transpose ∘ from_vec_transform(transpose(L))
+end
+
+# FIXME: drop the `rand` below and instead implement on a case-by-case basis.
+from_vec_transform(dist::Distribution) = from_vec_transform(rand(dist))
+
+# TODO: Move these.
+function Bijectors.with_logabsdet_jacobian(::typeof(Bijectors.vec_to_triu), x)
+    return (Bijectors.vec_to_triu(x), 0)
+end
+
+# FIXME: When given a `LowerTriangular`, `VarInfo` still stores the full matrix
+# flattened, while using `tovec` below flattenes only the necessary entries.
+# => Need to either fix how `VarInfo` does things, i.e. use `tovec` everywhere,
+# or fix `tovec` to flatten the full matrix instead of using `Bijectors.triu_to_vec`.
+tovec(x::Real) = [x]
+tovec(x::AbstractArray) = vec(x)
+tovec(C::Cholesky) = tovec(C.UL)
+tovec(L::LinearAlgebra.LowerTriangular) = tovec(transpose(L))
+tovec(U::LinearAlgebra.UpperTriangular) = Bijectors.triu_to_vec(U)
+
+# TODO: Remove these.
 vectorize(d, r) = vectorize(r)
 vectorize(r) = tovec(r)
 
@@ -340,8 +393,13 @@ end
 #######################
 # Convenience methods #
 #######################
-collectmaybe(x) = x
-collectmaybe(x::Base.AbstractSet) = collect(x)
+"""
+    collect_maybe(x)
+
+Return `collect(x)` if `x` is an array, otherwise return `x`.
+"""
+collect_maybe(x) = collect(x)
+collect_maybe(x::AbstractArray) = x
 
 #######################
 # BangBang.jl related #

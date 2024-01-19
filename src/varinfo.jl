@@ -964,7 +964,6 @@ end
 
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
 istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
-istrans(vnv::VarNameVector, vn::VarName) = !(gettransform(vnv, vn) isa FromVec)
 
 getlogp(vi::VarInfo) = vi.logp[]
 
@@ -1336,9 +1335,12 @@ end
 function _link_metadata!(
     model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
 )
+    # HACK: We ignore `target_vns` here.
     vns = keys(metadata)
     # Need to extract the priors from the model.
     dists = extract_priors(model, varinfo)
+
+    is_transformed = copy(metadata.is_transformed)
 
     # Construct the linking transformations.
     link_transforms = map(vns) do vn
@@ -1348,6 +1350,7 @@ function _link_metadata!(
         end
 
         # Otherwise, we derive the transformation from the distribution.
+        is_transformed[getidx(metadata, vn)] = true
         link_transform(getindex(dists, vn))
     end
     # Compute the transformed values.
@@ -1385,6 +1388,7 @@ function _link_metadata!(
         ranges_new,
         reduce(vcat, yvecs),
         transforms,
+        is_transformed,
     )
 end
 
@@ -1491,19 +1495,23 @@ end
 function _invlink_metadata!(
     model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
 )
+    # HACK: We ignore `target_vns` here.
     # TODO: Make use of `update!` to aovid copying values.
     #       => Only need to allocate for transformations.
 
     vns = keys(metadata)
+    is_transformed = copy(varinfo.is_transformed)
 
     # Compute the transformed values.
     xs = map(vns) do vn
         f = inverse(gettransform(metadata, vn))
         y = getval(metadata, vn)
-        # TODO: Can we remove this `_reconstruct` part?
+        # No need to use `with_reconstruct` as `f` will include this.
         x, logjac = with_logabsdet_jacobian(f, y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
+        # Mark as no longer transformed.
+        is_transformed[getidx(metadata, vn)] = false
         # Return the transformed value.
         return x
     end
@@ -1529,6 +1537,7 @@ function _invlink_metadata!(
         ranges_new,
         reduce(vcat, xvecs),
         transforms,
+        is_transformed,
     )
 end
 
@@ -1949,7 +1958,7 @@ end
 Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
 function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
-    keys_strings = map(string, collectmaybe(keys))
+    keys_strings = map(string, collect_maybe(keys))
     num_indices_seen = 0
 
     for vn in Base.keys(vi)
@@ -1971,7 +1980,7 @@ function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
 end
 
 function _apply!(kernel!, vi::TypedVarInfo, values, keys)
-    return _typed_apply!(kernel!, vi, vi.metadata, values, collectmaybe(keys))
+    return _typed_apply!(kernel!, vi, vi.metadata, values, collect_maybe(keys))
 end
 
 @generated function _typed_apply!(
@@ -2007,7 +2016,7 @@ end
 end
 
 function _find_missing_keys(vi::VarInfoOrThreadSafeVarInfo, keys)
-    string_vns = map(string, collectmaybe(Base.keys(vi)))
+    string_vns = map(string, collect_maybe(Base.keys(vi)))
     # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
     missing_keys = filter(keys) do key
         !any(Base.Fix2(subsumes_string, key), string_vns)
