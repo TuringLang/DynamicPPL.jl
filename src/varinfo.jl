@@ -1500,11 +1500,11 @@ function _invlink_metadata!(
     #       => Only need to allocate for transformations.
 
     vns = keys(metadata)
-    is_transformed = copy(varinfo.is_transformed)
+    is_transformed = copy(metadata.is_transformed)
 
     # Compute the transformed values.
     xs = map(vns) do vn
-        f = inverse(gettransform(metadata, vn))
+        f = gettransform(metadata, vn)
         y = getval(metadata, vn)
         # No need to use `with_reconstruct` as `f` will include this.
         x, logjac = with_logabsdet_jacobian(f, y)

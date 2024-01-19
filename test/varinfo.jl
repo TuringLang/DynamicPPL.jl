@@ -413,6 +413,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     else
                         DynamicPPL.link(varinfo, model)
                     end
+                    for vn in keys(varinfo)
+                        @test DynamicPPL.istrans(varinfo_linked, vn)
+                    end
                     @test length(varinfo[:]) > length(varinfo_linked[:])
                     varinfo_linked_unflattened = DynamicPPL.unflatten(
                         varinfo_linked, varinfo_linked[:]

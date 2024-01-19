@@ -413,6 +413,7 @@ function Base.similar(vnv::VarNameVector)
         similar(vnv.ranges, 0),
         similar(vnv.vals, 0),
         similar(vnv.transforms, 0),
+        BitVector(),
         similar(vnv.num_inactive),
         similar_metadata(vnv.metadata),
     )
