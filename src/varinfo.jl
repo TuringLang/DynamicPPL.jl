@@ -634,12 +634,19 @@ Set the values of all the variables in `vi` to `val`.
 
 The values may or may not be transformed to Euclidean space.
 """
-function setall!(vi::UntypedVarInfo, val)
-    for r in vi.metadata.ranges
-        vi.metadata.vals[r] .= val[r]
+setall!(vi::VarInfo, val) = _setall!(vi.metadata, val)
+
+function _setall!(metadata::Metadata, val)
+    for r in metadata.ranges
+        metadata.vals[r] .= val[r]
     end
 end
-setall!(vi::TypedVarInfo, val) = _setall!(vi.metadata, val)
+function _setall!(vnv::VarNameVector, val)
+    # TODO: Do something more efficient here.
+    for i in 1:length(vnv)
+        vnv[i] = val[i]
+    end
+end
 @generated function _setall!(metadata::NamedTuple{names}, val) where {names}
     expr = Expr(:block)
     start = :(1)
@@ -1192,6 +1199,10 @@ end
 end
 
 function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
+    return _inner_transform!(getmetadata(vi, vn), vi, vn, dist, f)
+end
+
+function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, dist, f)
     # TODO: Use inplace versions to avoid allocations
     y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
     yvec = vectorize(dist, y)
@@ -1210,14 +1221,15 @@ end
 # an empty iterable for `SampleFromPrior`, so we need to override it here.
 # This is quite hacky, but seems safer than changing the behavior of `_getvns`.
 _getvns_link(varinfo::VarInfo, spl::AbstractSampler) = _getvns(varinfo, spl)
-_getvns_link(varinfo::UntypedVarInfo, spl::SampleFromPrior) = nothing
+_getvns_link(varinfo::VarInfo, spl::SampleFromPrior) = nothing
 function _getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior)
     return map(Returns(nothing), varinfo.metadata)
 end
 
 function link(::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model)
-    return _link(varinfo, spl)
+    return _link(model, varinfo, spl)
 end
+
 function link(
     ::DynamicTransformation,
     varinfo::ThreadSafeVarInfo{<:VarInfo},
@@ -1229,30 +1241,43 @@ function link(
     return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
-function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
+function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _link_metadata!(varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
 end
 
-function _link(varinfo::TypedVarInfo, spl::AbstractSampler)
+function _link(model::Model, varinfo::VectorVarInfo, spl::AbstractSampler)
+    varinfo = deepcopy(varinfo)
+    return VarInfo(
+        _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        Base.Ref(getlogp(varinfo)),
+        Ref(get_num_produce(varinfo)),
+    )
+end
+
+function _link(model::Model, varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     md = _link_metadata_namedtuple!(
-        varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
+        model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
     )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
 @generated function _link_metadata_namedtuple!(
-    varinfo::VarInfo, metadata::NamedTuple{names}, vns::NamedTuple, ::Val{space}
+    model::Model,
+    varinfo::VarInfo,
+    metadata::NamedTuple{names},
+    vns::NamedTuple,
+    ::Val{space},
 ) where {names,space}
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(vals.args, :(_link_metadata!(varinfo, metadata.$f, vns.$f)))
+            push!(vals.args, :(_link_metadata!(model, varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
@@ -1260,7 +1285,7 @@ end
 
     return :(NamedTuple{$names}($vals))
 end
-function _link_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
+function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 
     # Construct the new transformed values, and keep track of their lengths.
@@ -1272,8 +1297,8 @@ function _link_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
         end
 
         # Transform to constrained space.
-        x = getval(varinfo, vn)
-        dist = getdist(varinfo, vn)
+        x = getval(metadata, vn)
+        dist = getdist(metadata, vn)
         f = link_transform(dist)
         y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
         # Vectorize value.
@@ -1308,10 +1333,65 @@ function _link_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
     )
 end
 
+function _link_metadata!(
+    model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
+)
+    vns = keys(metadata)
+    # Need to extract the priors from the model.
+    dists = extract_priors(model, varinfo)
+
+    # Construct the linking transformations.
+    link_transforms = map(vns) do vn
+        # If `vn` is not part of `target_vns`, the `identity` transformation is used.
+        if (target_vns !== nothing && vn ∉ target_vns)
+            return identity
+        end
+
+        # Otherwise, we derive the transformation from the distribution.
+        link_transform(getindex(dists, vn))
+    end
+    # Compute the transformed values.
+    ys = map(vns, link_transforms) do vn, f
+        # TODO: Do we need to handle scenarios where `vn` is not in `dists`?
+        dist = dists[vn]
+        x = getval(metadata, vn)
+        y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+        # Accumulate the log-abs-det jacobian correction.
+        acclogp!!(varinfo, -logjac)
+        # Return the transformed value.
+        return y
+    end
+    # Extract the from-vec transformations.
+    fromvec_transforms = map(from_vec_transform, ys)
+    # Compose the transformations to form a full transformation from
+    # unconstrained vector representation to constrained space.
+    transforms = map(∘, fromvec_transforms, link_transforms)
+    # Convert to vector representation.
+    yvecs = map(tovec, ys)
+
+    # Determine new ranges.
+    ranges_new = similar(metadata.ranges)
+    offset = 0
+    for (i, v) in enumerate(yvecs)
+        r_start, r_end = offset + 1, length(v) + offset
+        offset = r_end
+        ranges_new[i] = r_start:r_end
+    end
+
+    # Now we just create a new metadata with the new `vals` and `ranges`.
+    return VarNameVector(
+        metadata.varname_to_index,
+        metadata.varnames,
+        ranges_new,
+        reduce(vcat, yvecs),
+        transforms,
+    )
+end
+
 function invlink(
     ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
 )
-    return _invlink(varinfo, spl)
+    return _invlink(model, varinfo, spl)
 end
 function invlink(
     ::DynamicTransformation,
@@ -1324,30 +1404,34 @@ function invlink(
     return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
-function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
+function _invlink(model::Model, varinfo::VarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!(varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        _invlink_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
 end
 
-function _invlink(varinfo::TypedVarInfo, spl::AbstractSampler)
+function _invlink(model::Model, varinfo::TypedVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     md = _invlink_metadata_namedtuple!(
-        varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
+        model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
     )
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
 @generated function _invlink_metadata_namedtuple!(
-    varinfo::VarInfo, metadata::NamedTuple{names}, vns::NamedTuple, ::Val{space}
+    model::Model,
+    varinfo::VarInfo,
+    metadata::NamedTuple{names},
+    vns::NamedTuple,
+    ::Val{space},
 ) where {names,space}
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(vals.args, :(_invlink_metadata!(varinfo, metadata.$f, vns.$f)))
+            push!(vals.args, :(_invlink_metadata!(model, varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
@@ -1355,7 +1439,7 @@ end
 
     return :(NamedTuple{$names}($vals))
 end
-function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
+function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 
     # Construct the new transformed values, and keep track of their lengths.
@@ -1401,6 +1485,50 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
         metadata.gids,
         metadata.orders,
         metadata.flags,
+    )
+end
+
+function _invlink_metadata!(
+    model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
+)
+    # TODO: Make use of `update!` to aovid copying values.
+    #       => Only need to allocate for transformations.
+
+    vns = keys(metadata)
+
+    # Compute the transformed values.
+    xs = map(vns) do vn
+        f = inverse(gettransform(metadata, vn))
+        y = getval(metadata, vn)
+        # TODO: Can we remove this `_reconstruct` part?
+        x, logjac = with_logabsdet_jacobian(f, y)
+        # Accumulate the log-abs-det jacobian correction.
+        acclogp!!(varinfo, -logjac)
+        # Return the transformed value.
+        return x
+    end
+    # Compose the transformations to form a full transformation from
+    # unconstrained vector representation to constrained space.
+    transforms = map(from_vec_transform, xs)
+    # Convert to vector representation.
+    xvecs = map(tovec, xs)
+
+    # Determine new ranges.
+    ranges_new = similar(metadata.ranges)
+    offset = 0
+    for (i, v) in enumerate(xvecs)
+        r_start, r_end = offset + 1, length(v) + offset
+        offset = r_end
+        ranges_new[i] = r_start:r_end
+    end
+
+    # Now we just create a new metadata with the new `vals` and `ranges`.
+    return VarNameVector(
+        metadata.varname_to_index,
+        metadata.varnames,
+        ranges_new,
+        reduce(vcat, xvecs),
+        transforms,
     )
 end
 
