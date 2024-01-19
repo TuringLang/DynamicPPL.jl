@@ -690,7 +690,7 @@ function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
         unset_flag!(metadata, vn, "trans")
     end
 
-    return vi
+    return metadata
 end
 settrans!!(vnv::VarNameVector, trans::Bool, vn::VarName) = settrans!(vnv, trans, vn)
 
