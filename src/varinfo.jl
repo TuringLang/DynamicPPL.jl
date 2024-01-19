@@ -196,6 +196,12 @@ function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext
     return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
+function replace_values(md::Metadata, vals)
+    return Metadata(
+        md.idcs, md.vns, md.ranges, vals, md.dists, md.gids, md.orders, md.flags
+    )
+end
+
 @generated function newmetadata(
     metadata::NamedTuple{names}, ::Val{space}, x
 ) where {names,space}
@@ -205,21 +211,7 @@ end
         mdf = :(metadata.$f)
         if inspace(f, space) || length(space) == 0
             len = :(sum(length, $mdf.ranges))
-            push!(
-                exprs,
-                :(
-                    $f = Metadata(
-                        $mdf.idcs,
-                        $mdf.vns,
-                        $mdf.ranges,
-                        x[($offset + 1):($offset + $len)],
-                        $mdf.dists,
-                        $mdf.gids,
-                        $mdf.orders,
-                        $mdf.flags,
-                    )
-                ),
-            )
+            push!(exprs, :($f = replace_values($mdf, x[($offset + 1):($offset + $len)])))
             offset = :($offset + $len)
         else
             push!(exprs, :($f = $mdf))
