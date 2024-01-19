@@ -212,9 +212,7 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 vectorize(d, r) = vectorize(r)
-vectorize(r::Real) = [r]
-vectorize(r::AbstractArray{<:Real}) = copy(vec(r))
-vectorize(r::Cholesky) = copy(vec(r.UL))
+vectorize(r) = tovec(r)
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
@@ -240,7 +238,8 @@ reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
 
 function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
-    return reconstruct(dist, Matrix(reshape(val, size(dist))))
+    f = from_vec_transform(dist)
+    return reconstruct(dist, f(val))
 end
 function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
     return Cholesky(val, dist.uplo, 0)

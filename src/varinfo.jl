@@ -135,7 +135,7 @@ function metadata_to_varnamevector(md::Metadata)
     vals = copy(md.vals)
     transforms = map(md.dists) do dist
         # TODO: Handle linked distributions.
-        FromVec(size(dist))
+        from_vec_transform(dist)
     end
 
     return VarNameVector(
