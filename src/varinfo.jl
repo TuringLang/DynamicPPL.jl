@@ -858,7 +858,7 @@ function set_flag!(vi::VarInfo, vn::VarName, flag::String)
     return set_flag!(getmetadata(vi, vn), vn, flag)
 end
 function set_flag!(md::Metadata, vn::VarName, flag::String)
-    return md.flags[flag][getidx(vi, vn)] = true
+    return md.flags[flag][getidx(md, vn)] = true
 end
 
 ####
