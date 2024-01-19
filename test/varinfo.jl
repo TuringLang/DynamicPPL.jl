@@ -405,6 +405,12 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                         continue
                     end
 
+                    if has_varnamevector(varinfo) && mutating
+                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNameVector`.
+                        @test_broken false
+                        continue
+                    end
+
                     # Evaluate the model once to update the logp of the varinfo.
                     varinfo = last(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()))
 

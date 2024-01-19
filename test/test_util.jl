@@ -104,3 +104,12 @@ function modify_value_representation(nt::NamedTuple)
     end
     return modified_nt
 end
+
+has_varnamevector(vi) = false
+function has_varnamevector(vi::VarInfo)
+    return vi.metadata isa VarNameVector ||
+           (vi isa TypedVarInfo && first(values(vi.metadata)) isa VarNameVector)
+end
+function has_varnamevector(vi::DynamicPPL.ThreadSafeVarInfo)
+    return has_varnamevector(vi.varinfo)
+end
