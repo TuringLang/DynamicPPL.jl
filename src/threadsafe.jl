@@ -238,3 +238,7 @@ function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVa
         varinfo_left.varinfo, varinfo_right.varinfo
     )
 end
+
+function invlink_with_logpdf(vi::ThreadSafeVarInfo, vn::VarName, dist, y)
+    return invlink_with_logpdf(vi.varinfo, vn, dist, y)
+end
