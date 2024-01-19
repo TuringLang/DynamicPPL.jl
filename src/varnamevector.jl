@@ -351,6 +351,7 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     ranges = UnitRange{Int}[]
     vals = T[]
     transforms = F[]
+    is_transformed = BitVector(undef, length(vns_both))
 
     # Range offset.
     offset = 0
@@ -364,6 +365,7 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
             n = length(val)
             r = (offset + 1):(offset + n)
             f = gettransform(left_vnv, vn)
+            is_transformed[idx] = istrans(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
             varnames_to_index[vn] = idx
@@ -371,6 +373,7 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
             n = length(val)
             r = (offset + 1):(offset + n)
             f = gettransform(right_vnv, vn)
+            is_transformed[idx] = istrans(right_vnv, vn)
         end
         # Update.
         append!(vals, val)
