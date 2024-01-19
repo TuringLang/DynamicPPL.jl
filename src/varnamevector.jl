@@ -456,6 +456,7 @@ function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_tra
     push!(vnv.ranges, r_new)
     append!(vnv.vals, val_vec)
     push!(vnv.transforms, transform)
+    push!(vnv.is_transformed, false)
     return nothing
 end
 
