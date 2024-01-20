@@ -1036,4 +1036,22 @@ function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...;
     return test_sampler_on_demo_models(sampler, args...; kwargs...)
 end
 
+"""
+    test_context_interface(context)
+
+Test that `context` implements the `AbstractContext` interface.
+"""
+function test_context_interface(context)
+    # Is a subtype of `AbstractContext`.
+    @test context isa DynamicPPL.AbstractContext
+    # Should implement `NodeTrait.`
+    @test DynamicPPL.NodeTrait(context) isa Union{DynamicPPL.IsParent,DynamicPPL.IsLeaf}
+    # If it's a parent.
+    if DynamicPPL.NodeTrait(context) == DynamicPPL.IsParent
+        # Should implement `childcontext` and `setchildcontext`
+        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
+            context
+    end
+end
+
 end

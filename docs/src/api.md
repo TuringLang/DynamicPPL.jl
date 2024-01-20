@@ -187,6 +187,15 @@ DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
+## Debugging Utilities
+
+DynamicPPL provides a few methods for checking validity of a model-definition.
+
+```@docs
+check_model
+check_model_and_trace
+```
+
 ## Advanced
 
 ### Variable names
