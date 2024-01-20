@@ -223,6 +223,7 @@
 
     @testset "Static transformation" begin
         model = DynamicPPL.TestUtils.demo_static_transformation()
+        priors = extract_priors(model)
 
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, DynamicPPL.TestUtils.rand_prior_true(model), [@varname(s), @varname(m)]
@@ -251,8 +252,11 @@
                 model, deepcopy(vi_linked), DefaultContext()
             )
 
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≠ retval.s  # `s` is unconstrained in original
-            @test DynamicPPL.getindex_raw(vi_linked_result, @varname(s)) == retval.s  # `s` is constrained in result
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(s), priors[@varname(s)]) ≠
+                retval.s  # `s` is unconstrained in original
+            @test DynamicPPL.getindex_raw(
+                vi_linked_result, @varname(s), priors[@varname(s)]
+            ) == retval.s  # `s` is constrained in result
 
             # `m` should not be transformed.
             @test vi_linked[@varname(m)] == retval.m
@@ -263,9 +267,11 @@
                 model, retval.s, retval.m
             )
 
-            # Realizations in `vi_linked` should all be equal to the unconstrained realization.
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≈ retval_unconstrained.s
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(m)) ≈ retval_unconstrained.m
+
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(s), priors[@varname(s)]) ≈
+                retval_unconstrained.s
+            @test DynamicPPL.getindex_raw(vi_linked, @varname(m), priors[@varname(m)]) ≈
+                retval_unconstrained.m
 
             # The resulting varinfo should hold the correct logp.
             lp = getlogp(vi_linked_result)

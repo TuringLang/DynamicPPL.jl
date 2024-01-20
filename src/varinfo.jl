@@ -1668,6 +1668,15 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
 end
 
 getindex_raw(vi::VarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
+function getindex_raw(vi::VarInfo, vn::VarName, ::Nothing)
+    # FIXME: This is too hacky.
+    # We know this will only be hit if we're working with `VarNameVector`,
+    # so we can just use the `getindex_raw` for `VarNameVector`.
+    # NOTE: This won't result in the same behavior as `getindex_raw`
+    # for the other `VarInfo`s since we don't have access to the `dist`
+    # and so can't call `reconstruct`.
+    return getindex_raw(getmetadata(vi, vn), vn)
+end
 function getindex_raw(vi::VarInfo, vn::VarName, dist::Distribution)
     return reconstruct(dist, getval(vi, vn))
 end
