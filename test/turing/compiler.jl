@@ -111,7 +111,7 @@
 
         chain = sample(
             newinterface(obs),
-            HMC(0.75, 3, :p, :x; adtype = AutoForwardDiff(; chunksize = 2)),
+            HMC(0.75, 3, :p, :x; adtype=AutoForwardDiff(; chunksize=2)),
             100,
         )
     end
