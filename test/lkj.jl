@@ -1,7 +1,13 @@
-using Bijectors: pd_from_upper, pd_from_lower
-
 function pd_from_triangular(X::AbstractMatrix, uplo::Char)
-    return uplo == 'U' ? pd_from_upper(X) : pd_from_lower(X)
+    # Pre-allocation fixes a problem with abstract element types in Julia 1.10
+    # Ref https://github.com/TuringLang/DynamicPPL.jl/pull/570#issue-2092729916
+    out = similar(X, Base.promote_op(*, eltype(X), eltype(X)))
+    if uplo === 'U'
+        mul!(out, UpperTriangular(X)', UpperTriangular(X))
+    else
+        mul!(out, LowerTriangular(X), LowerTriangular(X)')
+    end
+    return out
 end
 
 @model lkj_prior_demo() = x ~ LKJ(2, 1)
