@@ -188,8 +188,7 @@
 
         # Vector assumptions
         N = 10
-        setchunksize(N)
-        alg = HMC(0.2, 4)
+        alg = HMC(0.2, 4; adtype=AutoForwardDiff(; chunksize=N))
 
         @model function vdemo3()
             x = Vector{Real}(undef, N)
@@ -256,8 +255,7 @@
 
         # Vector assumptions
         N = 10
-        setchunksize(N)
-        alg = HMC(0.2, 4)
+        alg = HMC(0.2, 4; adtype=AutoForwardDiff(; chunksize=N))
 
         @model function vdemo3()
             x = Vector{Real}(undef, N)
@@ -302,8 +300,7 @@
     end
     @testset "Type parameters" begin
         N = 10
-        setchunksize(N)
-        alg = HMC(0.01, 5)
+        alg = HMC(0.01, 5; adtype=AutoForwardDiff(; chunksize=N))
         x = randn(1000)
         @model function vdemo1(::Type{T}=Float64) where {T}
             x = Vector{T}(undef, N)
