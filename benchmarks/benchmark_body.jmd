@@ -20,7 +20,9 @@ results["evaluation_typed"]
 ```
 
 ```julia; echo=false; results="hidden";
-BenchmarkTools.save(joinpath("results", WEAVE_ARGS[:name], "$(nameof(m))_benchmarks.json"), results)
+BenchmarkTools.save(
+    joinpath("results", WEAVE_ARGS[:name], "$(nameof(m))_benchmarks.json"), results
+)
 ```
 
 ```julia; wrap=false
@@ -32,15 +34,16 @@ end
 ```julia; echo=false; results="hidden"
 if WEAVE_ARGS[:include_typed_code]
     # Serialize the output of `typed_code` so we can compare later.
-    haskey(WEAVE_ARGS, :name) && serialize(joinpath("results", WEAVE_ARGS[:name],"$(nameof(m)).jls"), string(typed));
+    haskey(WEAVE_ARGS, :name) &&
+        serialize(joinpath("results", WEAVE_ARGS[:name], "$(nameof(m)).jls"), string(typed))
 end
 ```
 
 ```julia; wrap=false; echo=false;
 if haskey(WEAVE_ARGS, :name_old)
     # We want to compare the generated code to the previous version.
-    import DiffUtils
-    typed_old = deserialize(joinpath("results", WEAVE_ARGS[:name_old], "$(nameof(m)).jls"));
-    DiffUtils.diff(typed_old, string(typed), width=130)
+    using DiffUtils: DiffUtils
+    typed_old = deserialize(joinpath("results", WEAVE_ARGS[:name_old], "$(nameof(m)).jls"))
+    DiffUtils.diff(typed_old, string(typed); width=130)
 end
 ```
