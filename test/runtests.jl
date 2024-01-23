@@ -64,6 +64,11 @@ include("test_util.jl")
             include("ext/DynamicPPLMCMCChainsExt.jl")
         end
 
+        @testset "ad" begin
+            include("ext/DynamicPPLADTypesExt.jl")
+            include("ext/DynamicPPLForwardDiffExt.jl")
+        end
+
         @testset "doctests" begin
             DocMeta.setdocmeta!(
                 DynamicPPL,
