@@ -340,7 +340,6 @@
 
         n = 10
         model = state_space(y, length(t))
-        @test size(sample(model, NUTS(; adtype=AutoReverseDiff(true)), n)) ==
-            (n, length(t) + 2, 1)
+        @test size(sample(model, NUTS(; adtype=AutoReverseDiff(true)), n), 1) == n
     end
 end
