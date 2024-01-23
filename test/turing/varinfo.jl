@@ -322,14 +322,14 @@
             # Priors 
             α ~ Normal(y[1], 0.001)
             τ ~ Exponential(1)
-            η ~ filldist(Normal(0, 1), TT-1)
+            η ~ filldist(Normal(0, 1), TT - 1)
             σ ~ Exponential(1)
 
             # create latent variable
             x = Vector{T}(undef, TT)
             x[1] = α
             for t in 2:TT
-                x[t] = x[t-1] + η[t-1] * τ
+                x[t] = x[t - 1] + η[t - 1] * τ
             end
 
             # measurement model
@@ -340,6 +340,7 @@
 
         n = 10
         model = state_space(y, length(t))
-        @test size(sample(model, NUTS(; adtype = AutoReverseDiff(true)), n)) == (n, length(t + 2), 1)
+        @test size(sample(model, NUTS(; adtype=AutoReverseDiff(true)), n)) ==
+            (n, length(t) + 2, 1)
     end
 end
