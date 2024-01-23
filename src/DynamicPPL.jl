@@ -183,12 +183,20 @@ end
 
 @static if !isdefined(Base, :get_extension)
     function __init__()
+        @require ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b" include(
+            "../ext/DynamicPPLADTypesExt.jl"
+        )
         @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
             "../ext/DynamicPPLChainRulesCoreExt.jl"
         )
         @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
             "../ext/DynamicPPLEnzymeCoreExt.jl"
         )
+        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
+            @require ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b" include(
+                "../ext/DynamicPPLForwardDiffExt.jl"
+            )
+        end
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
@@ -197,5 +205,9 @@ end
         )
     end
 end
+
+# Standard tag: Improves stacktraces
+# Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+struct DynamicPPLTag end
 
 end # module

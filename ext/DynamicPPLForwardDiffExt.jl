@@ -1,0 +1,56 @@
+module DynamicPPLForwardDiffExt
+
+if isdefined(Base, :get_extension)
+    using DynamicPPL: DynamicPPL, LogDensityProblemsAD
+    using ADTypes
+    using ForwardDiff
+else
+    using ..DynamicPPL: DynamicPPL, LogDensityProblemsAD
+    using ..ADTypes
+    using ..ForwardDiff
+end
+
+getchunksize(::AutoForwardDiff{chunk}) where {chunk} = chunk
+
+standardtag(::AutoForwardDiff{<:Any,Nothing}) = true
+standardtag(::AutoForwardDiff) = false
+
+function LogDensityProblemsAD.ADgradient(
+    ad::AutoForwardDiff, ℓ::DynamicPPL.LogDensityFunction
+)
+    θ = DynamicPPL.getparams(ℓ)
+    f = Base.Fix1(LogDensityProblems.logdensity, ℓ)
+
+    # Define configuration for ForwardDiff.
+    tag = if standardtag(ad)
+        ForwardDiff.Tag(DynamicPPL.DynamicPPLTag(), eltype(θ))
+    else
+        ForwardDiff.Tag(f, eltype(θ))
+    end
+    chunk_size = getchunksize(ad)
+    chunk = if chunk_size == 0
+        ForwardDiff.Chunk(θ)
+    else
+        ForwardDiff.Chunk(length(θ), chunk_size)
+    end
+
+    return LogDensityProblemsAD.ADgradient(Val(:ForwardDiff), ℓ; chunk, tag, x=θ)
+end
+
+# Allow Turing tag in gradient etc. calls of the log density function
+function ForwardDiff.checktag(
+    ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag(),V}},
+    ::LogDensityFunction,
+    ::AbstractArray{V},
+) where {V}
+    return true
+end
+function ForwardDiff.checktag(
+    ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag(),V}},
+    ::Base.Fix1{typeof(LogDensityProblems.logdensity),<:LogDensityFunction},
+    ::AbstractArray{V},
+) where {V}
+    return true
+end
+
+end # module
