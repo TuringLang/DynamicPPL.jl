@@ -183,9 +183,6 @@ end
 
 @static if !isdefined(Base, :get_extension)
     function __init__()
-        @require ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b" include(
-            "../ext/DynamicPPLADTypesExt.jl"
-        )
         @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
             "../ext/DynamicPPLChainRulesCoreExt.jl"
         )
