@@ -192,11 +192,9 @@ end
         @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
             "../ext/DynamicPPLEnzymeCoreExt.jl"
         )
-        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
-            @require ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b" include(
-                "../ext/DynamicPPLForwardDiffExt.jl"
-            )
-        end
+        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
+            "../ext/DynamicPPLForwardDiffExt.jl"
+        )
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )

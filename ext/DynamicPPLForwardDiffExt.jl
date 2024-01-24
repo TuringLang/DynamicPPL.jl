@@ -10,13 +10,13 @@ else
     using ..ForwardDiff
 end
 
-getchunksize(::AutoForwardDiff{chunk}) where {chunk} = chunk
+getchunksize(::ADTypes.AutoForwardDiff{chunk}) where {chunk} = chunk
 
-standardtag(::AutoForwardDiff{<:Any,Nothing}) = true
-standardtag(::AutoForwardDiff) = false
+standardtag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
+standardtag(::ADTypes.AutoForwardDiff) = false
 
 function LogDensityProblemsAD.ADgradient(
-    ad::AutoForwardDiff, ℓ::DynamicPPL.LogDensityFunction
+    ad::ADTypes.AutoForwardDiff, ℓ::DynamicPPL.LogDensityFunction
 )
     θ = DynamicPPL.getparams(ℓ)
     f = Base.Fix1(LogDensityProblems.logdensity, ℓ)
