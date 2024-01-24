@@ -65,8 +65,7 @@ include("test_util.jl")
         end
 
         @testset "ad" begin
-            include("ext/DynamicPPLADTypesExt.jl")
-            include("ext/DynamicPPLForwardDiffExt.jl")
+            include("ad.jl")
         end
 
         @testset "doctests" begin
