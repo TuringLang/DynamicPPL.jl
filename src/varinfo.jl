@@ -171,9 +171,6 @@ function has_varnamevector(vi::VarInfo)
     return vi.metadata isa VarNameVector ||
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNameVector), values(vi.metadata)))
 end
-function has_varnamevector(vi::DynamicPPL.ThreadSafeVarInfo)
-    return has_varnamevector(vi.varinfo)
-end
 
 function untyped_varinfo(
     rng::Random.AbstractRNG,
