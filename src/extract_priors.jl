@@ -116,3 +116,18 @@ function extract_priors(rng::Random.AbstractRNG, model::Model)
     evaluate!!(model, VarInfo(), context)
     return context.priors
 end
+
+"""
+
+    extract_priors(model::Model, varinfo::AbstractVarInfo)
+
+Extract the priors from a model.
+
+This is done by evaluating the model at the values present in `varinfo`
+and recording the distributions that are present at each tilde statement.
+"""
+function extract_priors(model::Model, varinfo::AbstractVarInfo)
+    context = PriorExtractorContext(DefaultContext())
+    evaluate!!(model, deepcopy(varinfo), context)
+    return context.priors
+end
