@@ -47,6 +47,7 @@ nothing # hide
 ```
 
 We can also decondition only some of the variables:
+
 ```@example probinterface
 decondition(model, :μ)
 nothing # hide
