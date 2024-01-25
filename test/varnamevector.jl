@@ -100,6 +100,7 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         vnv.ranges,
         vals_new,
         transforms_new,
+        vnv.is_transformed,
         vnv.num_inactive,
         vnv.metadata,
     )
