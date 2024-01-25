@@ -267,7 +267,6 @@
                 model, retval.s, retval.m
             )
 
-
             @test DynamicPPL.getindex_raw(vi_linked, @varname(s), priors[@varname(s)]) ≈
                 retval_unconstrained.s
             @test DynamicPPL.getindex_raw(vi_linked, @varname(m), priors[@varname(m)]) ≈
