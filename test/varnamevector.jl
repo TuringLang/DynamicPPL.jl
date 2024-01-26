@@ -36,15 +36,19 @@ function need_values_relaxation(vnv::VarNameVector, vns, vals)
 end
 
 function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
-    if isconcretetype(eltype(vnv.transforms))
+    return if isconcretetype(eltype(vnv.transforms))
         # If the container is concrete, we need to make sure that the sizes match.
         # => If the sizes don't match, we need to relax the container type.
-        return any(keys(vnv)) do vn_present
+        any(keys(vnv)) do vn_present
             size(vnv[vn_present]) != size(val)
         end
+    elseif eltype(vnv.transforms) !== Any
+        # If it's not concrete AND it's not `Any`, then we should just make it `Any`.
+        true
+    else
+        # Otherwise, it's `Any`, so we don't need to relax the container type.
+        false
     end
-
-    return false
 end
 function need_transforms_relaxation(vnv::VarNameVector, vns, vals)
     return any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
