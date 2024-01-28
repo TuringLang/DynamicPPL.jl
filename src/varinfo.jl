@@ -1650,7 +1650,7 @@ getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
 function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getval(vi, vn)
-    return maybe_invlink_and_reconstruct(vi, vn, dist, val)
+    return from_maybe_linked_internal(vi, vn, dist, val)
 end
 # HACK: Allows us to also work with `VarNameVector` where `dist` is not used,
 # but we instead use a transformation stored with the variable.

@@ -754,21 +754,21 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
 end
 
 """
-    maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
-function maybe_reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
+function to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
     f = to_maybe_linked_internal_transform(vi, vn, dist)
     return f(val)
 end
 
 """
-    maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
 """
-function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
     f = from_maybe_linked_internal_transform(vi, vn, dist)
     return f(val)
 end
