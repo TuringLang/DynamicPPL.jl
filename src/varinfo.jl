@@ -1192,7 +1192,9 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     if istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, from_linked_internal_transform(vi, vn, dist))
+            _inner_transform!(
+                vi, vn, dist, linked_internal_to_internal_transform(vi, vn, dist)
+            )
             settrans!!(vi, false, vn)
         end
     else
@@ -1221,7 +1223,10 @@ end
                         for vn in f_vns
                             dist = getdist(vi, vn)
                             _inner_transform!(
-                                vi, vn, dist, from_linked_internal_transform(vi, vn, dist)
+                                vi,
+                                vn,
+                                dist,
+                                linked_internal_to_internal_transform(vi, vn, dist),
                             )
                             settrans!!(vi, false, vn)
                         end
