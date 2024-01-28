@@ -1876,8 +1876,8 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
 end
 
 function Base.push!(vnv::VarNameVector, vn, r, dist, gidset, num_produce)
-    # FIXME: Include `transform` in the `push!` call below.
-    return push!(vnv, vn, r)
+    f = from_vec_transform(dist)
+    return push!(vnv, vn, r, f)
 end
 
 """
@@ -2296,13 +2296,20 @@ end
 values_from_metadata(md::VarNameVector) = pairs(md)
 
 # Transforming from internal representation to distribution representation.
+# Without `vn` argument.
+from_internal_transform(vi::VarInfo, dist) = from_vec_transform(dist)
+# With `vn` argument.
 function from_internal_transform(vi::VarInfo, vn::VarName, dist)
     return from_internal_transform(getmetadata(vi, vn), vn, dist)
 end
 from_internal_transform(::Metadata, ::VarName, dist) = from_vec_transform(dist)
 from_internal_transform(::VarNameVector, ::VarName, dist) = from_vec_transform(dist)
 
+# Without `vn` argument.
+from_linked_internal_transform(vi::VarInfo, dist) = from_linked_vec_transform(dist)
+# With `vn` argument.
 function from_linked_internal_transform(vi::VarInfo, vn::VarName, dist)
+    # Dispatch to metadata in case this alters the behavior.
     return from_linked_internal_transform(getmetadata(vi, vn), vn, dist)
 end
 function from_linked_internal_transform(::Metadata, ::VarName, dist)

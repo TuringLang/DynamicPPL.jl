@@ -468,6 +468,19 @@ function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any,
     )
 end
 
+# HACK: These methods are only used in the `get_and_set_val!` methods below.
+# FIXME: Remove these.
+function _link_broadcast_new(vi, vn, dist, r)
+    b = to_linked_internal_transform(vi, dist)
+    return b(r)
+end
+
+function _maybe_invlink_broadcast(vi, vn, dist)
+    xvec = getval(vi, vn)
+    b = from_maybe_linked_internal_transform(vi, vn, dist)
+    return b(xvec)
+end
+
 function get_and_set_val!(
     rng,
     vi::VarInfoOrThreadSafeVarInfo,
@@ -483,11 +496,8 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                setindex!!(
-                    vi,
-                    vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
-                    vn,
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[:, i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -498,7 +508,8 @@ function get_and_set_val!(
         for i in 1:n
             vn = vns[i]
             if istrans(vi)
-                push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
+                ri_linked = _link_broadcast_new(vi, vn, dist, r[:, i])
+                push!!(vi, vn, ri_linked, dist, spl)
                 # `push!!` sets the trans-flag to `false` by default.
                 settrans!!(vi, true, vn)
             else
@@ -525,17 +536,18 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                setindex!!(
-                    vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
             # r = reshape(vi[vec(vns)], size(vns))
             # FIXME: Remove `reconstruct` in `getindex_raw(::VarInfo, ...)`
             # and fix the lines below.
-            r_raw = getindex_raw(vi, vec(vns))
-            r = maybe_invlink_and_reconstruct.((vi,), vns, dists, reshape(r_raw, size(vns)))
+            # r_raw = getindex_raw(vi, vec(vns))
+            # r = maybe_invlink_and_reconstruct.((vi,), vns, dists, reshape(r_raw, size(vns)))
+            rs = _maybe_invlink_broadcast.((vi,), vns, dists)
+            r = reshape(rs, size(vns))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
@@ -546,10 +558,10 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, reconstruct_and_link.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             # FIXME: This is not great.
-            acclogp_assume!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
+            acclogp_assume!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else

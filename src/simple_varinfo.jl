@@ -693,9 +693,16 @@ function invlink!!(
 end
 
 # With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
-from_internal_transform(::SimpleVarInfo, ::VarName, dist) = identity
-function from_linked_internal_transform(vi::SimpleVarInfo, vn::VarName, dist)
+from_internal_transform(::SimpleVarInfo, dist) = identity
+function from_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
+    return from_internal_transform(vi, dist)
+end
+
+function from_linked_internal_transform(vi::SimpleVarInfo, dist)
     return invlink_transform(dist)
+end
+function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
+    return from_linked_internal_transform(vi, dist)
 end
 
 # Threadsafe stuff.
