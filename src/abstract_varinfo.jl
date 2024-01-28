@@ -753,37 +753,6 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-# TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
-# just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
-# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
-"""
-    reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return linked `val` but reconstruct before linking, if necessary.
-
-Note that unlike [`invlink_and_reconstruct`](@ref), this does not necessarily
-return a reconstructed value, i.e. a value of the same type and shape as expected
-by `dist`.
-
-See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
-"""
-function reconstruct_and_link(varinfo::AbstractVarInfo, vn::VarName, dist, val)
-    f = to_linked_internal_transform(varinfo, vn, dist)
-    return f(val)
-end
-
-"""
-    invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return invlinked and reconstructed `val`.
-
-See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
-"""
-function invlink_and_reconstruct(varinfo::AbstractVarInfo, vn::VarName, dist, val)
-    f = from_linked_internal_transform(varinfo, vn, dist)
-    return f(val)
-end
-
 """
     maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
 
