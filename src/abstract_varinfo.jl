@@ -890,3 +890,15 @@ possibly linked internal representation of `vn` with `dist` in `varinfo`.
 function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     return inverse(from_maybe_linked_internal_transform(varinfo, vn, dist))
 end
+
+"""
+    internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from the internal representation of `vn` with `dist`
+in `varinfo` to a _linked_ internal representation of `vn` with `dist` in `varinfo`.
+"""
+function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    f_from_internal = from_internal_transform(varinfo, vn, dist)
+    f_to_linked_internal = to_linked_internal_transform(varinfo, vn, dist)
+    return f_to_linked_internal ∘ f_from_internal
+end

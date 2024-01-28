@@ -1086,7 +1086,9 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     if ~istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, to_linked_internal_transform(vi, vn, dist))
+            _inner_transform!(
+                vi, vn, dist, internal_to_linked_internal_transform(vi, vn, dist)
+            )
             settrans!!(vi, true, vn)
         end
     else
@@ -1115,7 +1117,10 @@ end
                         for vn in f_vns
                             dist = getdist(vi, vn)
                             _inner_transform!(
-                                vi, vn, dist, to_linked_internal_transform(vi, vn, dist)
+                                vi,
+                                vn,
+                                dist,
+                                internal_to_linked_internal_transform(vi, vn, dist),
                             )
                             settrans!!(vi, true, vn)
                         end
@@ -1330,7 +1335,7 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         # Transform to constrained space.
         x = getval(metadata, vn)
         dist = getdist(metadata, vn)
-        f = to_linked_internal_transform(varinfo, vn, dist)
+        f = internal_to_linked_internal_transform(varinfo, vn, dist)
         y, logjac = with_logabsdet_jacobian(f, x)
         # Vectorize value.
         yvec = vectorize(dist, y)
@@ -1383,7 +1388,7 @@ function _link_metadata!(
 
         # Otherwise, we derive the transformation from the distribution.
         is_transformed[getidx(metadata, vn)] = true
-        to_linked_internal_transform(varinfo, vn, dists[vn])
+        internal_to_linked_internal_transform(varinfo, vn, dists[vn])
     end
     # Compute the transformed values.
     ys = map(vns, link_transforms) do vn, f
