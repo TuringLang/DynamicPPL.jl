@@ -161,8 +161,8 @@ end
 
         # We'll need the transformations later.
         # TODO: Should we test other transformations than just `FromVec`?
-        from_vec_left = DynamicPPL.FromVec(val_left)
-        from_vec_right = DynamicPPL.FromVec(val_right)
+        from_vec_left = DynamicPPL.from_vec_transform(val_left)
+        from_vec_right = DynamicPPL.from_vec_transform(val_right)
         to_vec_left = inverse(from_vec_left)
         to_vec_right = inverse(from_vec_right)
 
