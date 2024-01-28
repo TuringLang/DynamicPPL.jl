@@ -1674,6 +1674,7 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
+    # TODO: Replace when we have better dispatch for multiple vals.
     return reconstruct(dist, vals_linked, length(vns))
 end
 
@@ -1688,12 +1689,14 @@ function getindex_raw(vi::VarInfo, vn::VarName, ::Nothing)
     return getindex_raw(getmetadata(vi, vn), vn)
 end
 function getindex_raw(vi::VarInfo, vn::VarName, dist::Distribution)
-    return reconstruct(dist, getval(vi, vn))
+    f = from_internal_transform(vi, vn, dist)
+    return f(getval(vi, vn))
 end
 function getindex_raw(vi::VarInfo, vns::Vector{<:VarName})
     return getindex_raw(vi, vns, getdist(vi, first(vns)))
 end
 function getindex_raw(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    # TODO: Replace when we have better dispatch for multiple vals.
     return reconstruct(dist, getval(vi, vns), length(vns))
 end
 
@@ -2284,7 +2287,7 @@ end
 
 function values_from_metadata(md::Metadata)
     return (
-        vn => reconstruct(md.dists[md.idcs[vn]], md.vals[md.ranges[md.idcs[vn]]]) for
+        vn => from_internal_transform(md, vn, getdist(md, vn))(getval(md, vn)) for
         vn in md.vns
     )
 end
