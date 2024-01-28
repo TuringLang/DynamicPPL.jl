@@ -267,9 +267,11 @@ function from_linked_vec_transform(dist::Distribution)
     return f_invlink ∘ f_vec
 end
 
+# Specializations that circumvent the `from_vec_transform` machinery.
 function from_linked_vec_transform(dist::LKJCholesky)
     return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
 end
+from_linked_vec_transform(dist::LKJ) = inverse(Bijectors.VecCorrBijector())
 
 """
     to_vec_transform(x)
