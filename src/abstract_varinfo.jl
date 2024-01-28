@@ -820,7 +820,6 @@ function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
     return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
 end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
-    # NOTE: Will this cause type-instabilities or will union-splitting save us?
     f = from_maybe_linked_internal_transform(vi, vn, dist)
     x, logjac = with_logabsdet_jacobian(f, y)
     return x, logpdf(dist, x) + logjac
