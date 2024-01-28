@@ -380,6 +380,26 @@ function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector, n::In
     return r
 end
 
+"""
+    recombine(dist::Distribution, vals::AbstractVector, n::Int)
+
+Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
+"""
+function recombine(d::Distribution, val::AbstractVector, n::Int)
+    return reconstruct(size(d), val, n)
+end
+function recombine(::Tuple{}, val::AbstractVector, n::Int)
+    return copy(val)
+end
+function recombine(s::NTuple{1}, val::AbstractVector, n::Int)
+    return copy(reshape(val, s[1], n))
+end
+function recombine(s::NTuple{2}, val::AbstractVector, n::Int)
+    tmp = reshape(val, s..., n)
+    orig = [tmp[:, :, i] for i in 1:n]
+    return orig
+end
+
 # Uniform random numbers with range 4 for robust initializations
 # Reference: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
 randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2

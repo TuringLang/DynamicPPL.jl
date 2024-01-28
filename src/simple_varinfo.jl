@@ -298,8 +298,7 @@ function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribu
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
-    # TODO: Fix this `reconstruct`.
-    return reconstruct(dist, vals_linked, length(vns))
+    return recombine(dist, vals_linked, length(vns))
 end
 
 Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
@@ -328,10 +327,8 @@ function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
 end
 getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
 function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
     vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
-    # TODO: Fix this `reconstruct`.
-    return reconstruct(dist, vals, length(vns))
+    return recombine(dist, vals, length(vns))
 end
 
 # HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.

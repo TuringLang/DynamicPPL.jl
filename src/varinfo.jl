@@ -1675,7 +1675,7 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
         getindex(vi, vn, dist)
     end
     # TODO: Replace when we have better dispatch for multiple vals.
-    return reconstruct(dist, vals_linked, length(vns))
+    return recombine(dist, vals_linked, length(vns))
 end
 
 getindex_raw(vi::VarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
@@ -1697,7 +1697,7 @@ function getindex_raw(vi::VarInfo, vns::Vector{<:VarName})
 end
 function getindex_raw(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     # TODO: Replace when we have better dispatch for multiple vals.
-    return reconstruct(dist, getval(vi, vns), length(vns))
+    return recombine(dist, getval(vi, vns), length(vns))
 end
 
 """

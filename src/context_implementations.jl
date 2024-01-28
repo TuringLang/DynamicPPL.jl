@@ -207,6 +207,7 @@ function assume(dist::Distribution, vn::VarName, vi)
     return r, logp, vi
 end
 
+# TODO: Remove this thing.
 # SampleFromPrior and SampleFromUniform
 function assume(
     rng::Random.AbstractRNG,
@@ -220,9 +221,8 @@ function assume(
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            BangBang.setindex!!(
-                vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r)), vn
-            )
+            f = to_maybe_linked_internal_transform(vi, vn, dist)
+            BangBang.setindex!!(vi, f(r), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -231,7 +231,8 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            push!!(vi, vn, reconstruct_and_link(dist, r), dist, sampler)
+            f = to_linked_internal_transform(vi, dist)
+            push!!(vi, vn, f(r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
