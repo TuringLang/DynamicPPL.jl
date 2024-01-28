@@ -2287,7 +2287,8 @@ end
 
 function values_from_metadata(md::Metadata)
     return (
-        vn => from_internal_transform(md, vn, getdist(md, vn))(getval(md, vn)) for
+        # `copy` to avoid accidentaly mutation of internal representation.
+        vn => copy(from_internal_transform(md, vn, getdist(md, vn))(getval(md, vn))) for
         vn in md.vns
     )
 end
