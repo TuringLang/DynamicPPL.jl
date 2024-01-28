@@ -323,12 +323,14 @@ Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 # we simply call `getindex` in `getindex_raw`.
 getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
 function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return reconstruct(dist, getindex_raw(vi, vn))
+    f = from_internal_transform(vi, vn, dist)
+    return f(getindex_raw(vi, vn))
 end
 getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
 function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
     vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
+    # TODO: Fix this `reconstruct`.
     return reconstruct(dist, vals, length(vns))
 end
 
