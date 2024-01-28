@@ -301,92 +301,13 @@ tovec(C::Cholesky) = tovec(Matrix(C.UL))
 vectorize(d, r) = vectorize(r)
 vectorize(r) = tovec(r)
 
-# NOTE:
-# We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
-# However here we would like the result to be specifric type, e.g. Array{Dual{4,Float64}, 2},
-# otherwise we will have error for MatrixDistribution.
-# Note this is not the case for MultivariateDistribution so I guess this might be lack of
-# support for some types related to matrices (like PDMat).
-
-"""
-    reconstruct([f, ]dist, val)
-
-Reconstruct `val` so that it's compatible with `dist`.
-
-If `f` is also provided, the reconstruct value will be
-such that `f(reconstruct_val)` is compatible with `dist`.
-"""
-reconstruct(f, dist, val) = reconstruct(dist, val)
-
-# No-op versions.
-reconstruct(::UnivariateDistribution, val::Real) = val
-reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
-reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
-reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
-
-function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
-    f = from_vec_transform(dist)
-    return f(val)
-end
-function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
-    return Cholesky(val, dist.uplo, 0)
-end
-reconstruct(::LKJCholesky, val::Cholesky) = val
-
-function reconstruct(
-    ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
-)
-    return copy(val)
-end
-
-function reconstruct(
-    ::Inverse{Bijectors.PDVecBijector}, ::MatrixDistribution, val::AbstractVector
-)
-    return copy(val)
-end
-
-# TODO: Implement no-op `reconstruct` for general array variates.
-
-reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
-reconstruct(::Tuple{}, val::AbstractVector) = val[1]
-reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
-reconstruct(s::Tuple, val::AbstractVector) = reshape(copy(val), s)
-function reconstruct!(r, d::Distribution, val::AbstractVector)
-    return reconstruct!(r, d, val)
-end
-function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector)
-    r .= val
-    return r
-end
-function reconstruct(d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct(size(d), val, n)
-end
-function reconstruct(::Tuple{}, val::AbstractVector, n::Int)
-    return copy(val)
-end
-function reconstruct(s::NTuple{1}, val::AbstractVector, n::Int)
-    return copy(reshape(val, s[1], n))
-end
-function reconstruct(s::NTuple{2}, val::AbstractVector, n::Int)
-    tmp = reshape(val, s..., n)
-    orig = [tmp[:, :, i] for i in 1:n]
-    return orig
-end
-function reconstruct!(r, d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct!(r, d, val, n)
-end
-function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector, n::Int)
-    r .= val
-    return r
-end
-
 """
     recombine(dist::Distribution, vals::AbstractVector, n::Int)
 
 Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
 """
 function recombine(d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct(size(d), val, n)
+    return recombine(size(d), val, n)
 end
 function recombine(::Tuple{}, val::AbstractVector, n::Int)
     return copy(val)
