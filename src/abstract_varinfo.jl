@@ -902,3 +902,15 @@ function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::Var
     f_to_linked_internal = to_linked_internal_transform(varinfo, vn, dist)
     return f_to_linked_internal ∘ f_from_internal
 end
+
+"""
+    linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from a _linked_ internal representation of `vn` with `dist`
+in `varinfo` to the internal representation of `vn` with `dist` in `varinfo`.
+"""
+function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    f_from_linked_internal = from_linked_internal_transform(varinfo, vn, dist)
+    f_to_internal = to_internal_transform(varinfo, vn, dist)
+    return f_to_internal ∘ f_from_linked_internal
+end
