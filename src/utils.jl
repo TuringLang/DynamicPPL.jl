@@ -234,13 +234,58 @@ end
 Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
 Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
 
-from_vec_transform(x::Real) = FromVec(())
-from_vec_transform(x::AbstractVector) = identity
-from_vec_transform(x::AbstractArray) = FromVec(size(x))
+"""
+    from_vec_transform(x)
+
+Return the transformation from the vector representation of `x` to original representation.
+"""
+from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
 from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
 
-# FIXME: drop the `rand` below and instead implement on a case-by-case basis.
-from_vec_transform(dist::Distribution) = from_vec_transform(rand(dist))
+from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
+from_vec_transform_for_size(::Tuple{()}) = FromVec(())
+from_vec_transform_for_size(::Tuple{<:Any}) = identity
+
+"""
+    from_vec_transform(dist::Distribution)
+
+Return the transformation from the vector representation of a realization from
+distribution `dist` to the original representation compatible with `dist`.
+"""
+from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
+from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
+
+"""
+    from_linked_vec_transform(dist)
+
+Return the transformation from the unconstrained vector to the constrained
+realization of distribution `dist`.
+"""
+function from_linked_vec_transform(dist::Distribution)
+    f_vec = from_vec_transform(dist)
+    f_invlink = invlink_transform(dist)
+    return f_invlink ∘ f_vec
+end
+
+function from_linked_vec_transform(dist::LKJCholesky)
+    return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
+end
+
+"""
+    to_vec_transform(x)
+
+Return the transformation from the original representation of `x` to the vector
+representation.
+"""
+to_vec_transform(x) = inverse(from_vec_transform(x))
+
+"""
+    to_linked_vec_transform(dist)
+
+Return the transformation from the constrained realization of distribution `dist`
+to the unconstrained vector.
+"""
+to_linked_vec_transform(x) = inverse(from_linked_vec_transform(x))
 
 # FIXME: When given a `LowerTriangular`, `VarInfo` still stores the full matrix
 # flattened, while using `tovec` below flattenes only the necessary entries.
@@ -279,7 +324,7 @@ reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = 
 
 function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
     f = from_vec_transform(dist)
-    return reconstruct(dist, f(val))
+    return f(val)
 end
 function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
     return Cholesky(val, dist.uplo, 0)

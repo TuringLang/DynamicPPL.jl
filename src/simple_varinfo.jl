@@ -298,6 +298,7 @@ function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribu
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
+    # TODO: Fix this `reconstruct`.
     return reconstruct(dist, vals_linked, length(vns))
 end
 
@@ -687,6 +688,12 @@ function invlink!!(
     lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
+end
+
+# With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
+from_internal_transform(::SimpleVarInfo, ::VarName, dist) = identity
+function from_linked_internal_transform(vi::SimpleVarInfo, vn::VarName, dist)
+    return invlink_transform(dist)
 end
 
 # Threadsafe stuff.

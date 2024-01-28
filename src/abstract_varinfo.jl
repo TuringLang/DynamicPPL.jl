@@ -755,13 +755,13 @@ end
 
 # TODO: Clean up all this linking stuff once and for all!
 """
-    with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
+    with_logabsdet_jacobian_and_reconstruct(f, dist, x)
 
 Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
 value is reconstructed to the correct type and shape according to `dist`.
 """
 function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
-    x_recon = reconstruct(f, dist, x)
+    x_recon = reconstruct(dist, x)
     return with_logabsdet_jacobian(f, x_recon)
 end
 
@@ -769,7 +769,6 @@ end
 # just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
 """
-    reconstruct_and_link(dist, val)
     reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return linked `val` but reconstruct before linking, if necessary.
@@ -780,26 +779,21 @@ by `dist`.
 
 See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
 """
-reconstruct_and_link(f, dist, val) = f(reconstruct(f, dist, val))
-reconstruct_and_link(dist, val) = reconstruct_and_link(link_transform(dist), dist, val)
-function reconstruct_and_link(::AbstractVarInfo, ::VarName, dist, val)
-    return reconstruct_and_link(dist, val)
+function reconstruct_and_link(varinfo::AbstractVarInfo, vn::VarName, dist, val)
+    f = to_linked_internal_transform(varinfo, vn, dist)
+    return f(val)
 end
 
 """
-    invlink_and_reconstruct(dist, val)
     invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return invlinked and reconstructed `val`.
 
 See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
 """
-invlink_and_reconstruct(f, dist, val) = f(reconstruct(f, dist, val))
-function invlink_and_reconstruct(dist, val)
-    return invlink_and_reconstruct(invlink_transform(dist), dist, val)
-end
-function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
-    return invlink_and_reconstruct(dist, val)
+function invlink_and_reconstruct(varinfo::AbstractVarInfo, vn::VarName, dist, val)
+    f = from_linked_internal_transform(varinfo, vn, dist)
+    return f(val)
 end
 
 """
@@ -808,11 +802,8 @@ end
 Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
 function maybe_reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return if istrans(vi, vn)
-        reconstruct_and_link(vi, vn, dist, val)
-    else
-        reconstruct(dist, val)
-    end
+    f = to_maybe_linked_internal_transform(vi, vn, dist)
+    return f(val)
 end
 
 """
@@ -821,28 +812,29 @@ end
 Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
 """
 function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return if istrans(vi, vn)
-        invlink_and_reconstruct(vi, vn, dist, val)
-    else
-        reconstruct(dist, val)
-    end
+    f = from_maybe_linked_internal_transform(vi, vn, dist)
+    return f(val)
 end
 
 """
-    invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist[, x])
+    invlink_with_logpdf(varinfo::AbstractVarInfo, vn::VarName, dist[, x])
 
 Invlink `x` and compute the logpdf under `dist` including correction from
 the invlink-transformation.
 
 If `x` is not provided, `getval(vi, vn)` will be used.
+
+!!! warning
+    The input value `x` should be according to the internal representation of
+    `varinfo`, e.g. the value returned by `getval(vi, vn)`.
 """
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
     return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
 end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     # NOTE: Will this cause type-instabilities or will union-splitting save us?
-    f = istrans(vi, vn) ? invlink_transform(dist) : identity
-    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+    f = from_maybe_linked_internal_transform(vi, vn, dist)
+    x, logjac = with_logabsdet_jacobian(f, y)
     return x, logpdf(dist, x) + logjac
 end
 
@@ -850,3 +842,63 @@ end
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
 setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
+
+"""
+    from_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from the internal representation of `vn` with `dist`
+in `varinfo` to a representation compatible with `dist`.
+"""
+function from_internal_transform end
+
+"""
+    from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from the linked internal representation of `vn` with `dist`
+in `varinfo` to a representation compatible with `dist`.
+"""
+function from_linked_internal_transform end
+
+"""
+    from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from the possibly linked internal representation of `vn` with `dist`n
+in `varinfo` to a representation compatible with `dist`.
+"""
+function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return if istrans(varinfo, vn)
+        from_linked_internal_transform(varinfo, vn, dist)
+    else
+        from_internal_transform(varinfo, vn, dist)
+    end
+end
+
+"""
+    to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from a representation compatible with `dist` to the
+internal representation of `vn` with `dist` in `varinfo`.
+"""
+function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_internal_transform(varinfo, vn, dist))
+end
+
+"""
+    to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from a representation compatible with `dist` to the
+linked internal representation of `vn` with `dist` in `varinfo`.
+"""
+function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_linked_internal_transform(varinfo, vn, dist))
+end
+
+"""
+    to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from a representation compatible with `dist` to a
+possibly linked internal representation of `vn` with `dist` in `varinfo`.
+"""
+function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_maybe_linked_internal_transform(varinfo, vn, dist))
+end

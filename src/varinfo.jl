@@ -2278,21 +2278,19 @@ end
 
 values_from_metadata(md::VarNameVector) = pairs(md)
 
-# HACK: Overload of `invlink_with_logpdf` so we can fix it for `VarNameVector`.
-function invlink_with_logpdf(vi::VarInfo, vn::VarName, dist, y)
-    return _invlink_with_logpdf(getmetadata(vi, vn), vn, dist, y)
+# Transforming from internal representation to distribution representation.
+function from_internal_transform(vi::VarInfo, vn::VarName, dist)
+    return from_internal_transform(getmetadata(vi, vn), vn, dist)
 end
+from_internal_transform(::Metadata, ::VarName, dist) = from_vec_transform(dist)
+from_internal_transform(::VarNameVector, ::VarName, dist) = from_vec_transform(dist)
 
-function _invlink_with_logpdf(md::Metadata, vn::VarName, dist, y)
-    # NOTE: Will this cause type-instabilities or will union-splitting save us?
-    f = istrans(md, vn) ? invlink_transform(dist) : identity
-    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
-    return x, logpdf(dist, x) + logjac
+function from_linked_internal_transform(vi::VarInfo, vn::VarName, dist)
+    return from_linked_internal_transform(getmetadata(vi, vn), vn, dist)
 end
-
-function _invlink_with_logpdf(vnv::VarNameVector, vn::VarName, dist, y)
-    # Here the transformation is stored in `vnv` so we just extract and use this.
-    f = gettransform(vnv, vn)
-    x, logjac = with_logabsdet_jacobian(f, y)
-    return x, logpdf(dist, x) + logjac
+function from_linked_internal_transform(::Metadata, ::VarName, dist)
+    return from_linked_vec_transform(dist)
+end
+function from_linked_internal_transform(::VarNameVector, ::VarName, dist)
+    return from_linked_vec_transform(dist)
 end
