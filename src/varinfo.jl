@@ -1086,7 +1086,7 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     if ~istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, link_transform(dist))
+            _inner_transform!(vi, vn, dist, to_linked_internal_transform(vi, vn, dist))
             settrans!!(vi, true, vn)
         end
     else
@@ -1114,7 +1114,9 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist, link_transform(dist))
+                            _inner_transform!(
+                                vi, vn, dist, to_linked_internal_transform(vi, vn, dist)
+                            )
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -1185,7 +1187,7 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     if istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist, invlink_transform(dist))
+            _inner_transform!(vi, vn, dist, from_linked_internal_transform(vi, vn, dist))
             settrans!!(vi, false, vn)
         end
     else
@@ -1213,7 +1215,9 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist, invlink_transform(dist))
+                            _inner_transform!(
+                                vi, vn, dist, from_linked_internal_transform(vi, vn, dist)
+                            )
                             settrans!!(vi, false, vn)
                         end
                     else
@@ -1232,8 +1236,7 @@ end
 
 function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, dist, f)
     # TODO: Use inplace versions to avoid allocations
-    y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
-    yvec = vectorize(dist, y)
+    yvec, logjac = with_logabsdet_jacobian(f, getval(vi, vn))
     # Determine the new range.
     start = first(getrange(vi, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
@@ -1327,8 +1330,8 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         # Transform to constrained space.
         x = getval(metadata, vn)
         dist = getdist(metadata, vn)
-        f = link_transform(dist)
-        y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+        f = to_linked_internal_transform(varinfo, vn, dist)
+        y, logjac = with_logabsdet_jacobian(f, x)
         # Vectorize value.
         yvec = vectorize(dist, y)
         # Accumulate the log-abs-det jacobian correction.
@@ -1380,14 +1383,14 @@ function _link_metadata!(
 
         # Otherwise, we derive the transformation from the distribution.
         is_transformed[getidx(metadata, vn)] = true
-        link_transform(getindex(dists, vn))
+        to_linked_internal_transform(varinfo, vn, dists[vn])
     end
     # Compute the transformed values.
     ys = map(vns, link_transforms) do vn, f
         # TODO: Do we need to handle scenarios where `vn` is not in `dists`?
         dist = dists[vn]
         x = getval(metadata, vn)
-        y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
+        y, logjac = with_logabsdet_jacobian(f, x)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Return the transformed value.
@@ -1487,8 +1490,8 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
         # Transform to constrained space.
         y = getval(varinfo, vn)
         dist = getdist(varinfo, vn)
-        f = invlink_transform(dist)
-        x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+        f = from_linked_internal_transform(varinfo, vn, dist)
+        x, logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
         xvec = vectorize(dist, x)
         # Accumulate the log-abs-det jacobian correction.

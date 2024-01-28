@@ -753,18 +753,6 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-# TODO: Clean up all this linking stuff once and for all!
-"""
-    with_logabsdet_jacobian_and_reconstruct(f, dist, x)
-
-Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
-value is reconstructed to the correct type and shape according to `dist`.
-"""
-function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
-    x_recon = reconstruct(dist, x)
-    return with_logabsdet_jacobian(f, x_recon)
-end
-
 # TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
 # just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
