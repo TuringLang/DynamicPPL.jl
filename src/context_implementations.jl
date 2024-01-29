@@ -16,10 +16,22 @@ require_particles(spl::Sampler) = false
 
 # Allows samplers, etc. to hook into the final logp accumulation in the tilde-pipeline.
 function acclogp_assume!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(NodeTrait(acclogp_assume!!, context), context, vi, logp)
+end
+function acclogp_assume!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(childcontext(context), vi, logp)
+end
+function acclogp_assume!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
     return acclogp!!(context, vi, logp)
 end
 
 function acclogp_observe!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(NodeTrait(acclogp_observe!!, context), context, vi, logp)
+end
+function acclogp_observe!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(childcontext(context), vi, logp)
+end
+function acclogp_observe!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
     return acclogp!!(context, vi, logp)
 end
 
