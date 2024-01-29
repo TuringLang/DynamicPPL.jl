@@ -1,12 +1,10 @@
 module DynamicPPLForwardDiffExt
 
 if isdefined(Base, :get_extension)
-    using DynamicPPL: DynamicPPL, LogDensityProblemsAD
-    using ADTypes
+    using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ForwardDiff
 else
-    using ..DynamicPPL: DynamicPPL, LogDensityProblemsAD
-    using ..ADTypes
+    using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ..ForwardDiff
 end
 
@@ -40,14 +38,14 @@ end
 # Allow Turing tag in gradient etc. calls of the log density function
 function ForwardDiff.checktag(
     ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag(),V}},
-    ::LogDensityFunction,
+    ::DynamicPPL.LogDensityFunction,
     ::AbstractArray{V},
 ) where {V}
     return true
 end
 function ForwardDiff.checktag(
     ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag(),V}},
-    ::Base.Fix1{typeof(LogDensityProblems.logdensity),<:LogDensityFunction},
+    ::Base.Fix1{typeof(LogDensityProblems.logdensity),<:DynamicPPL.LogDensityFunction},
     ::AbstractArray{V},
 ) where {V}
     return true

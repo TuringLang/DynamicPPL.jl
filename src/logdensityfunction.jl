@@ -98,26 +98,3 @@ function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
 end
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
-
-# AD related code
-getADType(spl::Sampler) = getADType(spl.alg)
-getADType(::SampleFromPrior) = ADTypes.AutoForwardDiff(; chunksize=0)
-getADType(ctx::SamplingContext) = getADType(ctx.sampler)
-getADType(ctx::AbstractContext) = getADType(NodeTrait(ctx), ctx)
-
-function getADType(::IsLeaf, ctx::AbstractContext)
-    return ADTypes.AutoForwardDiff(; chunksize=0)
-end
-function getADType(::IsParent, ctx::AbstractContext)
-    return getADType(childcontext(ctx))
-end
-
-function LogDensityProblemsAD.ADgradient(ℓ::LogDensityFunction)
-    return LogDensityProblemsAD.ADgradient(getADType(ℓ.context), ℓ)
-end
-
-function LogDensityProblemsAD.ADgradient(ad::AutoReverseDiff, ℓ::LogDensityFunction)
-    return LogDensityProblemsAD.ADgradient(
-        Val(:ReverseDiff), ℓ; compile=Val(ad.compile), x=getparams(ℓ)
-    )
-end

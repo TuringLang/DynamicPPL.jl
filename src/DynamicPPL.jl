@@ -8,11 +8,13 @@ using Distributions
 using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
+using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using LogDensityProblems: LogDensityProblems
+using LogDensityProblemsAD: LogDensityProblemsAD
 
 using LinearAlgebra: LinearAlgebra, Cholesky
 
