@@ -253,7 +253,7 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)
     vals = unflatten(svi.values, x)
     T = eltype(x)
-    return SimpleVarInfo{typeof(vals), T}(vals, T(logp))
+    return SimpleVarInfo{typeof(vals),T}(vals, T(logp))
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
