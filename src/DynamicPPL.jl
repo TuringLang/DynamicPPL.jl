@@ -197,7 +197,7 @@ end
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
-        @require ReverseDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
+        @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
             "../ext/DynamicPPLReverseDiffExt"
         )
         @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
