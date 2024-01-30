@@ -112,13 +112,7 @@ const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
 # multiple times.
 transformation(vi::VarInfo) = DynamicTransformation()
 
-function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
-    new_vi = deepcopy(old_vi)
-    new_vi[spl] = x
-    return new_vi
-end
-
-function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
+function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
     md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
     return VarInfo(
         md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
@@ -145,6 +139,20 @@ unflatten(vi::VarInfo, spl::AbstractSampler, x::AbstractVector) = VarInfo(vi, sp
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
     return VarInfo(rng, model, SampleFromPrior(), context)
+end
+
+# TODO: do we need `space`?
+function newmetadata(metadata::Metadata, space, x)
+    return Metadata(
+        metadata.idcs,
+        metadata.vns,
+        metadata.ranges,
+        x,
+        metadata.dists,
+        metadata.gids,
+        metadata.orders,
+        metadata.flags,
+    )
 end
 
 @generated function newmetadata(

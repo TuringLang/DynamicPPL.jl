@@ -250,7 +250,10 @@ end
 
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
-    return Setfield.@set svi.values = unflatten(svi.values, x)
+    logp = getlogp(svi)
+    vals = unflatten(svi.values, x)
+    T = eltype(x)
+    return SimpleVarInfo{typeof(vals), T}(vals, T(logp))
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
