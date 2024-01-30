@@ -1,4 +1,4 @@
-@testset "tag and chunksize for ForwardDiff.jl" begin
+@testset "tag" begin
     for chunksize in (0, 1, 10)
         ad = ADTypes.AutoForwardDiff(; chunksize=chunksize)
         forwarddiff_ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
