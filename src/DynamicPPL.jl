@@ -198,7 +198,7 @@ end
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
         @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
-            "../ext/DynamicPPLReverseDiffExt"
+            "../ext/DynamicPPLReverseDiffExt.jl"
         )
         @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
             "../ext/DynamicPPLZygoteRulesExt.jl"
