@@ -37,7 +37,6 @@ include("test_util.jl")
         @testset "interface" begin
             include("utils.jl")
             include("compiler.jl")
-            include("varnamevector.jl")
             include("varinfo.jl")
             include("simple_varinfo.jl")
             include("model.jl")

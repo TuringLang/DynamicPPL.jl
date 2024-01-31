@@ -85,7 +85,6 @@ Return string representing a short description of `vi`.
 short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
     "threadsafe($(short_varinfo_name(vi.varinfo)))"
 function short_varinfo_name(vi::TypedVarInfo)
-    DynamicPPL.has_varnamevector(vi) && return "TypedVarInfo with VarNameVector"
     return "TypedVarInfo"
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"

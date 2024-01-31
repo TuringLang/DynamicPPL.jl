@@ -55,8 +55,6 @@ function setlogp!!(vi::ThreadSafeVarInfoWithRef, logp)
     return ThreadSafeVarInfo(setlogp!!(vi.varinfo, logp), vi.logps)
 end
 
-has_varnamevector(vi::DynamicPPL.ThreadSafeVarInfo) = has_varnamevector(vi.varinfo)
-
 function BangBang.push!!(
     vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
