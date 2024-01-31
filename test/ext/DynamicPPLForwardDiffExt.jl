@@ -4,7 +4,7 @@
         standardtag = if !isdefined(Base, :get_extension)
             DynamicPPL.DynamicPPLReverseDiffExt.standardtag
         else
-            Base.get_extension(DynamicPPL, :DynamicPPLReverseDiffExt).standardtag
+            Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt).standardtag
         end
         @test standardtag(ad)
         for tag in (false, 0, 1)
