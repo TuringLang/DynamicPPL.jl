@@ -1,12 +1,14 @@
 @testset "tag" begin
     for chunksize in (0, 1, 10)
         ad = ADTypes.AutoForwardDiff(; chunksize=chunksize)
-        forwarddiff_ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
-        @test forwarddiff_ext.standardtag(ad)
-        for standardtag in (false, 0, 1)
-            @test !forwarddiff_ext.standardtag(
-                AutoForwardDiff(; chunksize=chunksize, tag=standardtag)
-            )
+        standardtag = if !isdefined(Base, :get_extension)
+            DynamicPPL.DynamicPPLReverseDiffExt.standardtag
+        else
+            Base.get_extension(DynamicPPL, :DynamicPPLReverseDiffExt).standardtag
+        end
+        @test standardtag(ad)
+        for tag in (false, 0, 1)
+            @test !standardtag(AutoForwardDiff(; chunksize=chunksize, tag=tag))
         end
     end
 end
