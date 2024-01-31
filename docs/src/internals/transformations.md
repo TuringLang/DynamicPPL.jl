@@ -57,6 +57,7 @@ There are two aspects to transforming from the internal representation of a vari
     
       + [`VarInfo`](@ref) represents a realization of a model as in a "flattened" / vector representation, regardless of form of the variable in the model.
       + [`SimpleVarInfo`](@ref) represents a realization of a model exactly as in the model (unless it has been transformed; we'll get to that later).
+
  2. We need the ability to transform from "constrained space" to "unconstrained space", as we saw in the previous section.
 
 ## Working example
