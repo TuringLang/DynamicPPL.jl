@@ -118,19 +118,6 @@ function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     return new_vi
 end
 
-function VarInfo(old_vi::VectorVarInfo, spl, x::AbstractVector)
-    new_vi = deepcopy(old_vi)
-    new_vi[spl] = x
-    return new_vi
-end
-
-function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
-    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
-    return VarInfo(
-        md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
-    )
-end
-
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -248,11 +235,6 @@ else
 end
 
 function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
-    metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
-end
-
-function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
     return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
@@ -875,12 +857,6 @@ function TypedVarInfo(vi::UntypedVarInfo)
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
 TypedVarInfo(vi::TypedVarInfo) = vi
-function TypedVarInfo(vi::VectorVarInfo)
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
-    nt = NamedTuple(group_by_symbol(vi.metadata))
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
-end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
@@ -1219,15 +1195,6 @@ function link(
 end
 
 function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
-    varinfo = deepcopy(varinfo)
-    return VarInfo(
-        _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
-        Base.Ref(getlogp(varinfo)),
-        Ref(get_num_produce(varinfo)),
-    )
-end
-
-function _link(model::Model, varinfo::VectorVarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
         _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
@@ -2066,10 +2033,6 @@ function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
 end
 function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
-end
-values_as(vi::VectorVarInfo, ::Type{NamedTuple}) = values_as(vi.metadata, NamedTuple)
-function values_as(vi::VectorVarInfo, ::Type{D}) where {D<:AbstractDict}
-    return values_as(vi.metadata, D)
 end
 
 function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}

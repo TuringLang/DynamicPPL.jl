@@ -52,8 +52,6 @@ function setup_varinfos(
     vi_untyped = VarInfo()
     model(vi_untyped)
     vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
-    vi_vnv = DynamicPPL.VectorVarInfo(vi_untyped)
-    vi_vnv_typed = DynamicPPL.VectorVarInfo(vi_typed)
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
