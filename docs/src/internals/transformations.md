@@ -373,4 +373,5 @@ DynamicPPL.to_linked_vec_transform
       + The **model representation** is the representation of the variable as it appears in the model code / is expected by the `dist` on the right-hand-side of the `~` in the model code.
       + The **internal representation** is the representation of the variable as it appears in the `varinfo`, which varies between implementations of [`AbstractVarInfo`](@ref), e.g. a `Vector` in [`VarInfo`](@ref). This can be converted to the model representation by [`DynamicPPL.from_internal_transform`](@ref).
       + The **linked internal representation** is the representation of the variable as it appears in the `varinfo` after [`link`](@ref)ing. This can be converted to the model representation by [`DynamicPPL.from_linked_internal_transform`](@ref).
+
   - Having separation between *internal* and *linked internal* is necessary because transformations might be constructed at the time of model evaluation, and thus we need to know whether to construct the transformation from the internal representation or the linked internal representation.
