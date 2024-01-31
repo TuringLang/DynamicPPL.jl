@@ -49,6 +49,8 @@ In addition, we want to be able to access the transformed / "unconstrained" real
 
   - `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
 
+  - `getindex_internal` and `setindex_internal!` for extracting and mutating the internal representaton of a particular `VarName`.
+
 Finally, we want want the underlying representation used in `metadata` to have a few performance-related properties:
 
  1. Type-stable when possible, but functional when not.

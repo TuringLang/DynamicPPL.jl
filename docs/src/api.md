@@ -270,6 +270,7 @@ resetlogp!!
 keys
 getindex
 DynamicPPL.getindex_raw
+DynamicPPL.getindex_internal
 push!!
 empty!!
 isempty
@@ -297,6 +298,8 @@ DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.default_transformation
+DynamicPPL.link_transform
+DynamicPPL.invlink_transform
 DynamicPPL.maybe_invlink_before_eval!!
 ```
 
