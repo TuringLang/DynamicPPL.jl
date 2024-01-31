@@ -316,7 +316,7 @@ While if `dist` is not provided, we have:
 Notice that `dist` is not present here, but otherwise the diagrams are the same.
 
 !!! warning
-    This does mean that the `getindex(varinfo, varname)` might not be the same as the `getindex(varinfo, varname, dist)` that occcurs within a model evaluation! This can be confusing, but as outlined above, we do want to allow the `dist` in a `x ~ dist` expression to "override" whatever transformation `varinfo` might have.
+    This does mean that the `getindex(varinfo, varname)` might not be the same as the `getindex(varinfo, varname, dist)` that occurs within a model evaluation! This can be confusing, but as outlined above, we do want to allow the `dist` in a `x ~ dist` expression to "override" whatever transformation `varinfo` might have.
     
 ## Other functionalities
 

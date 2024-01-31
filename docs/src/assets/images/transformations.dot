@@ -1,0 +1,28 @@
+digraph {
+    # Nodes.
+    tilde_node [shape=box, label="x ~ Normal()", fontname="Courier"];
+    base_node [shape=box, label=< vn = <FONT COLOR="#3B6EA8">@varname</FONT>(x)<BR/>dist = Normal()<BR/>x, vi = ... >, fontname="Courier"];
+    assume [shape=box, label="assume(vn, dist, vi)", fontname="Courier"];
+
+    iflinked [label=< <FONT COLOR="#3B6EA8">if</FONT> istrans(vi, vn) >, fontname="Courier"];
+
+    without_linking [shape=box, label="f = from_internal_transform(vi, vn, dist)", styled=dashed, fontname="Courier"];
+    with_linking [shape=box, label="f = from_linked_internal_transform(vi, vn, dist)", styled=dashed, fontname="Courier"];
+
+    with_logabsdetjac [shape=box, label="x, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn, dist))", styled=dashed, fontname="Courier"];
+    return [shape=box, label=< <FONT COLOR="#3B6EA8">return</FONT> x, logpdf(dist, x) - logjac, vi >, styled=dashed, fontname="Courier"];
+
+    # Edges.
+    tilde_node -> base_node [style=dashed, label=<  <FONT COLOR="#3B6EA8">@model</FONT>>, fontname="Courier"]
+    base_node -> assume [style=dashed, label="  tilde-pipeline", fontname="Courier"];
+
+    assume -> iflinked;
+
+    iflinked -> without_linking [label=<  <FONT COLOR="#97365B">false</FONT>>, fontname="Courier"];
+    iflinked -> with_linking [label=<  <FONT COLOR="#97365B">true</FONT>>, fontname="Courier"];
+
+    without_linking -> with_logabsdetjac;
+    with_linking -> with_logabsdetjac;
+
+    with_logabsdetjac -> return;
+}
