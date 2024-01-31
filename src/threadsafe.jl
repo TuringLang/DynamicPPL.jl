@@ -222,7 +222,7 @@ end
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
 istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
 
-getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
+getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 
 function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Setfield.@set vi.varinfo = unflatten(vi.varinfo, x)

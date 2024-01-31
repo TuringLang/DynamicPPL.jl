@@ -644,7 +644,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
             # Should only get the variables subsumed by `@varname(s)`.
             @test varinfo[spl] ==
-                mapreduce(Base.Fix1(DynamicPPL.getval, varinfo), vcat, vns_s)
+                mapreduce(Base.Fix1(DynamicPPL.getindex_internal, varinfo), vcat, vns_s)
 
             # `link`
             varinfo_linked = DynamicPPL.link(varinfo, spl, model)

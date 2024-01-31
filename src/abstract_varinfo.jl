@@ -779,14 +779,14 @@ end
 Invlink `x` and compute the logpdf under `dist` including correction from
 the invlink-transformation.
 
-If `x` is not provided, `getval(vi, vn)` will be used.
+If `x` is not provided, `getindex_internal(vi, vn)` will be used.
 
 !!! warning
     The input value `x` should be according to the internal representation of
-    `varinfo`, e.g. the value returned by `getval(vi, vn)`.
+    `varinfo`, e.g. the value returned by `getindex_internal(vi, vn)`.
 """
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
-    return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
+    return invlink_with_logpdf(vi, vn, dist, getindex_internal(vi, vn))
 end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     f = from_maybe_linked_internal_transform(vi, vn, dist)
@@ -800,26 +800,32 @@ increment_num_produce!(::AbstractVarInfo) = nothing
 setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
 
 """
-    from_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from the internal representation of `vn` with `dist`
 in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function from_internal_transform end
 
 """
-    from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from the linked internal representation of `vn` with `dist`
 in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function from_linked_internal_transform end
 
 """
-    from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from the possibly linked internal representation of `vn` with `dist`n
 in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     return if istrans(varinfo, vn)
@@ -828,35 +834,57 @@ function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarN
         from_internal_transform(varinfo, vn, dist)
     end
 end
+function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return if istrans(varinfo, vn)
+        from_linked_internal_transform(varinfo, vn)
+    else
+        from_internal_transform(varinfo, vn)
+    end
+end
 
 """
-    to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from a representation compatible with `dist` to the
 internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     return inverse(from_internal_transform(varinfo, vn, dist))
 end
+function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_internal_transform(varinfo, vn))
+end
 
 """
-    to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from a representation compatible with `dist` to the
 linked internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     return inverse(from_linked_internal_transform(varinfo, vn, dist))
 end
+function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_linked_internal_transform(varinfo, vn))
+end
 
 """
-    to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from a representation compatible with `dist` to a
 possibly linked internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     return inverse(from_maybe_linked_internal_transform(varinfo, vn, dist))
+end
+function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_maybe_linked_internal_transform(varinfo, vn))
 end
 
 """
@@ -864,21 +892,36 @@ end
 
 Return a transformation that transforms from the internal representation of `vn` with `dist`
 in `varinfo` to a _linked_ internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     f_from_internal = from_internal_transform(varinfo, vn, dist)
     f_to_linked_internal = to_linked_internal_transform(varinfo, vn, dist)
     return f_to_linked_internal ∘ f_from_internal
 end
+function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    f_from_internal = from_internal_transform(varinfo, vn)
+    f_to_linked_internal = to_linked_internal_transform(varinfo, vn)
+    return f_to_linked_internal ∘ f_from_internal
+end
 
 """
-    linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from a _linked_ internal representation of `vn` with `dist`
 in `varinfo` to the internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
     f_from_linked_internal = from_linked_internal_transform(varinfo, vn, dist)
     f_to_internal = to_internal_transform(varinfo, vn, dist)
+    return f_to_internal ∘ f_from_linked_internal
+end
+
+function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    f_from_linked_internal = from_linked_internal_transform(varinfo, vn)
+    f_to_internal = to_internal_transform(varinfo, vn)
     return f_to_internal ∘ f_from_linked_internal
 end

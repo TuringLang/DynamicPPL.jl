@@ -332,7 +332,7 @@ function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribut
 end
 
 # HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
-getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
+getindex_internal(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
@@ -690,16 +690,11 @@ function invlink!!(
 end
 
 # With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
-from_internal_transform(::SimpleVarInfo, dist) = identity
-function from_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
-    return from_internal_transform(vi, dist)
-end
-
-function from_linked_internal_transform(vi::SimpleVarInfo, dist)
-    return invlink_transform(dist)
-end
+from_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
+from_internal_transform(vi::SimpleVarInfo, ::VarName, dist) = identity
+from_linked_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
 function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
-    return from_linked_internal_transform(vi, dist)
+    return invlink_transform(dist)
 end
 
 # Threadsafe stuff.

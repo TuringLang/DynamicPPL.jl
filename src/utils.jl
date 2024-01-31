@@ -256,10 +256,14 @@ from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
 
 """
-    from_linked_vec_transform(dist)
+    from_linked_vec_transform(dist::Distribution)
 
 Return the transformation from the unconstrained vector to the constrained
 realization of distribution `dist`.
+
+By default, this is just `invlink_transform(dist) ∘ from_vec_transform(dist)`.
+
+See also: [`DynamicPPL.invlink_transform`](@ref), [`DynamicPPL.from_vec_transform`](@ref).
 """
 function from_linked_vec_transform(dist::Distribution)
     f_vec = from_vec_transform(dist)

@@ -477,7 +477,7 @@ function _link_broadcast_new(vi, vn, dist, r)
 end
 
 function _maybe_invlink_broadcast(vi, vn, dist)
-    xvec = getval(vi, vn)
+    xvec = getindex_internal(vi, vn)
     b = from_maybe_linked_internal_transform(vi, vn, dist)
     return b(xvec)
 end

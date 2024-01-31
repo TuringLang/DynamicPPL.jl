@@ -393,7 +393,7 @@ function subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
     isempty(vnv) && return vnv_new
 
     for vn in vns
-        push!(vnv_new, vn, getval(vnv, vn), gettransform(vnv, vn))
+        push!(vnv_new, vn, getindex_internal(vnv, vn), gettransform(vnv, vn))
     end
 
     return vnv_new
