@@ -244,10 +244,10 @@ function invlink_with_logpdf(vi::ThreadSafeVarInfo, vn::VarName, dist, y)
 end
 
 function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
-    return from_linked_internal_transform(varinfo.varinfo, vn)
+    return from_internal_transform(varinfo.varinfo, vn)
 end
 function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName, dist)
-    return from_linked_internal_transform(varinfo.varinfo, vn, dist)
+    return from_internal_transform(varinfo.varinfo, vn, dist)
 end
 
 function from_linked_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
