@@ -159,21 +159,6 @@ function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::D
 end
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 
-getindex_raw(vi::ThreadSafeVarInfo, ::Colon) = getindex_raw(vi.varinfo, Colon())
-getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
-function getindex_raw(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
-    return getindex_raw(vi.varinfo, vns)
-end
-function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
-    return getindex_raw(vi.varinfo, vn, dist)
-end
-function getindex_raw(
-    vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution
-)
-    return getindex_raw(vi.varinfo, vns, dist)
-end
-getindex_raw(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex_raw(vi.varinfo, spl)
-
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
     return Setfield.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end

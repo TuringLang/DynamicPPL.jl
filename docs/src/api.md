@@ -269,7 +269,6 @@ resetlogp!!
 ```@docs
 keys
 getindex
-DynamicPPL.getindex_raw
 DynamicPPL.getindex_internal
 push!!
 empty!!

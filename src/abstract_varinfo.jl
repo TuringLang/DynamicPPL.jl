@@ -144,9 +144,7 @@ Return an iterator over all `vns` in `vi`.
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s).
 
-If `dist` is specified, the value(s) will be reshaped accordingly.
-
-See also: [`getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
+If `dist` is specified, the value(s) will be massaged into the representation expected by `dist`.
 """ Base.getindex
 
 """
@@ -164,22 +162,14 @@ Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
 Base.getindex(vi::AbstractVarInfo, ::AbstractSampler) = vi[:]
 
 """
-    getindex_raw(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
-    getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
+    getindex_internal(vi::AbstractVarInfo, vn::VarName)
+    getindex_internal(vi::AbstractVarInfo, vns::Vector{<:VarName})
 
-Return the current value(s) of `vn` (`vns`) in `vi`.
-
-If `dist` is specified, the value(s) will be reshaped accordingly.
+Return the current value(s) of `vn` (`vns`) in `vi` as represented internally in `vi`.
 
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
-
-!!! note
-    The difference between `getindex(vi, vn, dist)` and `getindex_raw` is that 
-    `getindex` will also transform the value(s) to the support of the distribution(s). 
-    This is _not_ the case for `getindex_raw`.
-
 """
-function getindex_raw end
+function getindex_internal end
 
 """
     push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)

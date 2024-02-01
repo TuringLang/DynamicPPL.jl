@@ -309,7 +309,8 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `TypedVarInfo`
@@ -317,7 +318,8 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ### `SimpleVarInfo`
@@ -325,14 +327,16 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        x = Bijectors.invlink(dist, DynamicPPL.getindex_raw(vi, vn))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
     end
 

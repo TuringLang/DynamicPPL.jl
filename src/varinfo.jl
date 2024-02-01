@@ -456,11 +456,6 @@ end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
 
-"""
-    getindex_internal(vi::UntypedVarInfo, vview::Union{Int, UnitRange, Vector{Int}})
-
-Return a view `vi.vals[vview]`.
-"""
 getindex_internal(vi::UntypedVarInfo, vview::VarView) = view(vi.metadata.vals, vview)
 
 """
@@ -535,6 +530,10 @@ The values may or may not be transformed to Euclidean space.
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
 getindex_internal(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
 
+function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
+    return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
+end
+
 """
     setval!(vi::VarInfo, val, vn::VarName)
 
@@ -549,16 +548,6 @@ end
 function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
 end
-
-"""
-    getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
-
-Return the value(s) of `vns`.
-
-The values may or may not be transformed to Euclidean space.
-"""
-getindex_internal(vi::VarInfo, vns::Vector{<:VarName}) =
-    mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
 
 """
     getall(vi::VarInfo)
@@ -1469,19 +1458,6 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     end
     # TODO: Replace when we have better dispatch for multiple vals.
     return recombine(dist, vals_linked, length(vns))
-end
-
-getindex_raw(vi::VarInfo, vn::VarName) = getindex_raw(vi, vn, getdist(vi, vn))
-function getindex_raw(vi::VarInfo, vn::VarName, dist::Distribution)
-    f = from_internal_transform(vi, vn, dist)
-    return f(getindex_internal(vi, vn))
-end
-function getindex_raw(vi::VarInfo, vns::Vector{<:VarName})
-    return getindex_raw(vi, vns, getdist(vi, first(vns)))
-end
-function getindex_raw(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    # TODO: Replace when we have better dispatch for multiple vals.
-    return recombine(dist, getindex_internal(vi, vns), length(vns))
 end
 
 """

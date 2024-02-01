@@ -290,7 +290,6 @@ function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
-# `NamedTuple`
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
     return from_maybe_linked_internal(vi, vn, dist, getindex(vi, vn))
 end
@@ -301,12 +300,7 @@ function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribu
     return recombine(dist, vals_linked, length(vns))
 end
 
-Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
-
-# `AbstractDict`
-function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    return nested_getindex(vi.values, vn)
-end
+Base.getindex(vi::SimpleVarInfo, vn::VarName) = getindex_internal(vi, vn)
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
@@ -318,21 +312,11 @@ Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getinde
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
-# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
-# we simply call `getindex` in `getindex_raw`.
-getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
-function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    f = from_internal_transform(vi, vn, dist)
-    return f(getindex_raw(vi, vn))
+getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
+# `AbstractDict`
+function getindex_internal(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
+    return nested_getindex(vi.values, vn)
 end
-getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
-function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
-    return recombine(dist, vals, length(vns))
-end
-
-# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
-getindex_internal(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
