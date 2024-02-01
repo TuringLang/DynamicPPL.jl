@@ -1458,7 +1458,9 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName})
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn)
     end
-    return recombine(vi, vals_linked, length(vns))
+    # HACK: I don't like this.
+    dist = getdist(vi, vns[1])
+    return recombine(dist, vals_linked, length(vns))
 end
 function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
