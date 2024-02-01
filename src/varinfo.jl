@@ -118,6 +118,13 @@ function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
     return new_vi
 end
 
+function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
+    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
+    return VarInfo(
+        md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
+    )
+end
+
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
