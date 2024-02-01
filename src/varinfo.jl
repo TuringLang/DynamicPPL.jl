@@ -520,13 +520,6 @@ Return the distribution from which `vn` was sampled in `vi`.
 getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
 
-"""
-    getindex_internal(vi::VarInfo, vn::VarName)
-
-Return the value(s) of `vn`.
-
-The values may or may not be transformed to Euclidean space.
-"""
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
 getindex_internal(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
 
