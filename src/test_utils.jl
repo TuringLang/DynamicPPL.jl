@@ -62,14 +62,7 @@ function setup_varinfos(
 
     lp = getlogp(vi_typed)
     varinfos = map((
-        vi_untyped,
-        vi_typed,
-        vi_vnv,
-        vi_vnv_typed,
-        svi_typed,
-        svi_untyped,
-        svi_typed_ref,
-        svi_untyped_ref,
+        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
     )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
