@@ -14,9 +14,7 @@
         θ = identity.(varinfo[:])
         logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ad_forwarddiff_f, θ)
 
-        @testset "ReverseDiff with compile=$compile" for compile in (
-            false, true
-        )
+        @testset "ReverseDiff with compile=$compile" for compile in (false, true)
             adtype = ADTypes.AutoReverseDiff(; compile=compile)
             ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
             _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
