@@ -12,7 +12,7 @@ function LogDensityProblemsAD.ADgradient(
     ad::ADTypes.AutoReverseDiff, ℓ::DynamicPPL.LogDensityFunction
 )
     return LogDensityProblemsAD.ADgradient(
-        Val(:ReverseDiff), ℓ; compile=Val(ad.compile), x=DynamicPPL.getparams(ℓ)
+        Val(:ReverseDiff), ℓ; compile=Val(ad.compile), x=identity.(DynamicPPL.getparams(ℓ))
     )
 end
 
