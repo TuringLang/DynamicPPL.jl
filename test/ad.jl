@@ -5,7 +5,6 @@
     varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
     @testset "$varinfo" for varinfo in varinfos
-        varinfo = varinfos[2]
         f = DynamicPPL.LogDensityFunction(m, varinfo)
 
         # use ForwardDiff result as reference
