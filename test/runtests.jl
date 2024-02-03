@@ -20,8 +20,6 @@ using Random
 using Serialization
 using Test
 
-using Combinatorics: combinations
-
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
