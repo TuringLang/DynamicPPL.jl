@@ -43,7 +43,7 @@ In the end, we'll end up with something that looks like this:
 
 ```@raw html
 <div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../assets/images/transformations.dot.png" />
+<img style="border-radius: 5px;" src="../../assets/images/transformations.dot.png" />
 </div>
 ```
 
@@ -199,7 +199,7 @@ That is, why can't we just do
 
 ```@raw html
 <div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../assets/images/transformations-assume-without-istrans.dot.png" />
+<img style="border-radius: 5px;" src="../../assets/images/transformations-assume-without-istrans.dot.png" />
 </div>
 ```
 
@@ -279,7 +279,7 @@ And so the earlier diagram becomes:
 
 ```@raw html
 <div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../assets/images/transformations-assume.dot.png" />
+<img style="border-radius: 5px;" src="../../assets/images/transformations-assume.dot.png" />
 </div>
 ```
 
@@ -296,7 +296,7 @@ For `getindex` we have the following diagram:
 
 ```@raw html
 <div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../assets/images/transformations-getindex-with-dist.dot.png" />
+<img style="border-radius: 5px;" src="../../assets/images/transformations-getindex-with-dist.dot.png" />
 </div>
 ```
 
@@ -304,7 +304,7 @@ While if `dist` is not provided, we have:
 
 ```@raw html
 <div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../assets/images/transformations-getindex-without-dist.dot.png" />
+<img style="border-radius: 5px;" src="../../assets/images/transformations-getindex-without-dist.dot.png" />
 </div>
 ```
 
@@ -341,7 +341,7 @@ To support a new distribution, one needs to implement for the desired `AbstractV
   - [`DynamicPPL.from_internal_transform`](@ref)
   - [`DynamicPPL.from_linked_internal_transform`](@ref)
 
-At the time of writing, [`VarInfo`](@ref) is the one that is most commonly used, whose internal representation is always a `Vector`. In this scenario, one can just implemente the following methods instead:
+At the time of writing, [`VarInfo`](@ref) is the one that is most commonly used, whose internal representation is always a `Vector`. In this scenario, one can just implement the following methods instead:
 
 ```@docs
 DynamicPPL.from_vec_transform(::Distribution)
