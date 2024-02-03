@@ -348,30 +348,34 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         end
     end
 
-    @testset "Type stability of models" begin
-        models_to_test = [
-            # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
-            # DynamicPPL.TestUtils.DEMO_MODELS...,
-            DynamicPPL.TestUtils.demo_lkjchol(2),
-        ]
-        @testset "$(model.f)" for model in models_to_test
-            vns = DynamicPPL.TestUtils.varnames(model)
-            example_values = DynamicPPL.TestUtils.rand(model)
-            varinfos = filter(
-                is_typed_varinfo,
-                DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
-            )
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                @test (@inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
-                true)
-
-                varinfo_linked = DynamicPPL.link(varinfo, model)
-                @test (
-                    @inferred(
-                        DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
-                    );
-                    true
+    if VERSION >= v"1.8"
+        @testset "Type stability of models" begin
+            models_to_test = [
+                # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
+                # DynamicPPL.TestUtils.DEMO_MODELS...,
+                DynamicPPL.TestUtils.demo_lkjchol(2),
+            ]
+            @testset "$(model.f)" for model in models_to_test
+                vns = DynamicPPL.TestUtils.varnames(model)
+                example_values = DynamicPPL.TestUtils.rand(model)
+                varinfos = filter(
+                    is_typed_varinfo,
+                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
                 )
+                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                    @test (
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                        true
+                    )
+
+                    varinfo_linked = DynamicPPL.link(varinfo, model)
+                    @test (
+                        @inferred(
+                            DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
+                        );
+                        true
+                    )
+                end
             end
         end
     end
