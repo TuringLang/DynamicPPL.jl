@@ -84,9 +84,7 @@ Return string representing a short description of `vi`.
 """
 short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
     "threadsafe($(short_varinfo_name(vi.varinfo)))"
-function short_varinfo_name(vi::TypedVarInfo)
-    return "TypedVarInfo"
-end
+short_varinfo_name(::TypedVarInfo) = "TypedVarInfo"
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
