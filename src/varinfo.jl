@@ -464,12 +464,6 @@ getindex_internal(vi::UntypedVarInfo, vview::VarView) = view(vi.metadata.vals, v
 Set the value of `vi.vals[vview]` to `val`.
 """
 setval!(vi::UntypedVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
-function setval!(vi::UntypedVarInfo, val, vview::Vector{UnitRange})
-    if length(vview) > 0
-        vi.metadata.vals[[i for arr in vview for i in arr]] = val
-    end
-    return val
-end
 
 """
     getmetadata(vi::VarInfo, vn::VarName)
