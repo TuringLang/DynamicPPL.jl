@@ -1449,7 +1449,6 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
-    # TODO: Replace when we have better dispatch for multiple vals.
     return recombine(dist, vals_linked, length(vns))
 end
 

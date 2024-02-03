@@ -676,6 +676,7 @@ end
 # With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
 from_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
 from_internal_transform(vi::SimpleVarInfo, ::VarName, dist) = identity
+# TODO: Should the following methods specialize on the case where we have a `StaticTransformation{<:Bijectors.NamedTransform}`?
 from_linked_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
 function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
     return invlink_transform(dist)
