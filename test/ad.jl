@@ -1,4 +1,4 @@
-@testset "ReverseDiff test for model $(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+@testset "Testing AD by comparing gradient using ForwardDiff and ReverseDiff for model $(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
     f = DynamicPPL.LogDensityFunction(m)
     rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
     vns = DynamicPPL.TestUtils.varnames(m)
