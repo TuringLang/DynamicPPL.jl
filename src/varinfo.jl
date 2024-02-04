@@ -141,7 +141,7 @@ function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext
     return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
-# TODO: do we need `space`?
+# TODO: Remove `space` argument when no longer needed. Ref: https://github.com/TuringLang/DynamicPPL.jl/issues/573
 function newmetadata(metadata::Metadata, space, x)
     return Metadata(
         metadata.idcs,
