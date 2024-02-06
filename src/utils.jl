@@ -211,87 +211,118 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
+# Useful transformation going from the flattened representation.
+struct FromVec{Sz} <: Bijectors.Bijector
+    sz::Sz
+end
+
+FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
+
+# TODO: Should we materialize the `reshape`?
+(f::FromVec)(x) = reshape(x, f.sz)
+(f::FromVec{Tuple{}})(x) = only(x)
+# TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
+
+Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
+# We want to use the inverse of `FromVec` so it preserves the size information.
+Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:FromVec}, x) = (tovec(x), 0)
+
+struct ToChol <: Bijectors.Bijector
+    uplo::Char
+end
+
+Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
+Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
+
+"""
+    from_vec_transform(x)
+
+Return the transformation from the vector representation of `x` to original representation.
+"""
+from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
+from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
+
+from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
+from_vec_transform_for_size(::Tuple{()}) = FromVec(())
+from_vec_transform_for_size(::Tuple{<:Any}) = identity
+
+"""
+    from_vec_transform(dist::Distribution)
+
+Return the transformation from the vector representation of a realization from
+distribution `dist` to the original representation compatible with `dist`.
+"""
+from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
+from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
+
+"""
+    from_linked_vec_transform(dist::Distribution)
+
+Return the transformation from the unconstrained vector to the constrained
+realization of distribution `dist`.
+
+By default, this is just `invlink_transform(dist) ∘ from_vec_transform(dist)`.
+
+See also: [`DynamicPPL.invlink_transform`](@ref), [`DynamicPPL.from_vec_transform`](@ref).
+"""
+function from_linked_vec_transform(dist::Distribution)
+    f_vec = from_vec_transform(dist)
+    f_invlink = invlink_transform(dist)
+    return f_invlink ∘ f_vec
+end
+
+# Specializations that circumvent the `from_vec_transform` machinery.
+function from_linked_vec_transform(dist::LKJCholesky)
+    return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
+end
+from_linked_vec_transform(dist::LKJ) = inverse(Bijectors.VecCorrBijector())
+
+"""
+    to_vec_transform(x)
+
+Return the transformation from the original representation of `x` to the vector
+representation.
+"""
+to_vec_transform(x) = inverse(from_vec_transform(x))
+
+"""
+    to_linked_vec_transform(dist)
+
+Return the transformation from the constrained realization of distribution `dist`
+to the unconstrained vector.
+"""
+to_linked_vec_transform(x) = inverse(from_linked_vec_transform(x))
+
+# FIXME: When given a `LowerTriangular`, `VarInfo` still stores the full matrix
+# flattened, while using `tovec` below flattenes only the necessary entries.
+# => Need to either fix how `VarInfo` does things, i.e. use `tovec` everywhere,
+# or fix `tovec` to flatten the full matrix instead of using `Bijectors.triu_to_vec`.
+tovec(x::Real) = [x]
+tovec(x::AbstractArray) = vec(x)
+tovec(C::Cholesky) = tovec(Matrix(C.UL))
+
+# TODO: Remove these.
 vectorize(d, r) = vectorize(r)
-vectorize(r::Real) = [r]
-vectorize(r::AbstractArray{<:Real}) = copy(vec(r))
-vectorize(r::Cholesky) = copy(vec(r.UL))
-
-# NOTE:
-# We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
-# However here we would like the result to be specifric type, e.g. Array{Dual{4,Float64}, 2},
-# otherwise we will have error for MatrixDistribution.
-# Note this is not the case for MultivariateDistribution so I guess this might be lack of
-# support for some types related to matrices (like PDMat).
+vectorize(r) = tovec(r)
 
 """
-    reconstruct([f, ]dist, val)
+    recombine(dist::Distribution, vals::AbstractVector, n::Int)
 
-Reconstruct `val` so that it's compatible with `dist`.
-
-If `f` is also provided, the reconstruct value will be
-such that `f(reconstruct_val)` is compatible with `dist`.
+Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
 """
-reconstruct(f, dist, val) = reconstruct(dist, val)
-
-# No-op versions.
-reconstruct(::UnivariateDistribution, val::Real) = val
-reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
-reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
-reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
-
-function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
-    return reconstruct(dist, Matrix(reshape(val, size(dist))))
+function recombine(d::Distribution, val::AbstractVector, n::Int)
+    return recombine(size(d), val, n)
 end
-function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
-    return Cholesky(val, dist.uplo, 0)
-end
-reconstruct(::LKJCholesky, val::Cholesky) = val
-
-function reconstruct(
-    ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
-)
+function recombine(::Tuple{}, val::AbstractVector, n::Int)
     return copy(val)
 end
-
-function reconstruct(
-    ::Inverse{Bijectors.PDVecBijector}, ::MatrixDistribution, val::AbstractVector
-)
-    return copy(val)
-end
-
-# TODO: Implement no-op `reconstruct` for general array variates.
-
-reconstruct(d::Distribution, val::AbstractVector) = reconstruct(size(d), val)
-reconstruct(::Tuple{}, val::AbstractVector) = val[1]
-reconstruct(s::NTuple{1}, val::AbstractVector) = copy(val)
-reconstruct(s::NTuple{2}, val::AbstractVector) = reshape(copy(val), s)
-function reconstruct!(r, d::Distribution, val::AbstractVector)
-    return reconstruct!(r, d, val)
-end
-function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector)
-    r .= val
-    return r
-end
-function reconstruct(d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct(size(d), val, n)
-end
-function reconstruct(::Tuple{}, val::AbstractVector, n::Int)
-    return copy(val)
-end
-function reconstruct(s::NTuple{1}, val::AbstractVector, n::Int)
+function recombine(s::NTuple{1}, val::AbstractVector, n::Int)
     return copy(reshape(val, s[1], n))
 end
-function reconstruct(s::NTuple{2}, val::AbstractVector, n::Int)
+function recombine(s::NTuple{2}, val::AbstractVector, n::Int)
     tmp = reshape(val, s..., n)
     orig = [tmp[:, :, i] for i in 1:n]
     return orig
-end
-function reconstruct!(r, d::Distribution, val::AbstractVector, n::Int)
-    return reconstruct!(r, d, val, n)
-end
-function reconstruct!(r, d::MultivariateDistribution, val::AbstractVector, n::Int)
-    r .= val
-    return r
 end
 
 # Uniform random numbers with range 4 for robust initializations
@@ -341,8 +372,13 @@ end
 #######################
 # Convenience methods #
 #######################
-collectmaybe(x) = x
-collectmaybe(x::Base.AbstractSet) = collect(x)
+"""
+    collect_maybe(x)
+
+Return `collect(x)` if `x` is an array, otherwise return `x`.
+"""
+collect_maybe(x) = collect(x)
+collect_maybe(x::AbstractArray) = x
 
 #######################
 # BangBang.jl related #

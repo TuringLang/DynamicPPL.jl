@@ -44,6 +44,7 @@ export AbstractVarInfo,
     UntypedVarInfo,
     TypedVarInfo,
     SimpleVarInfo,
+    VarNameVector,
     push!!,
     empty!!,
     subset,
@@ -78,10 +79,6 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    vectorize,
-    reconstruct,
-    reconstruct!,
-    Sample,
     init,
     vectorize,
     OrderedDict,
@@ -162,6 +159,7 @@ include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
+include("varnamevector.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
