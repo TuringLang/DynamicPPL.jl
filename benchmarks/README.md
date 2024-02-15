@@ -1,4 +1,5 @@
 To run the benchmarks, simply do:
+
 ```sh
 julia --project -e 'using DynamicPPLBenchmarks; weave_benchmarks();'
 ```

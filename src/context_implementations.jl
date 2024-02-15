@@ -14,6 +14,27 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
+# Allows samplers, etc. to hook into the final logp accumulation in the tilde-pipeline.
+function acclogp_assume!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(NodeTrait(acclogp_assume!!, context), context, vi, logp)
+end
+function acclogp_assume!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(childcontext(context), vi, logp)
+end
+function acclogp_assume!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(context, vi, logp)
+end
+
+function acclogp_observe!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(NodeTrait(acclogp_observe!!, context), context, vi, logp)
+end
+function acclogp_observe!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(childcontext(context), vi, logp)
+end
+function acclogp_observe!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(context, vi, logp)
+end
+
 # assume
 """
     tilde_assume(context::SamplingContext, right, vn, vi)
@@ -115,7 +136,7 @@ probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
     value, logp, vi = tilde_assume(context, right, vn, vi)
-    return value, acclogp!!(vi, logp)
+    return value, acclogp_assume!!(context, vi, logp)
 end
 
 # observe
@@ -181,7 +202,7 @@ probability of `vi` with the returned value.
 """
 function tilde_observe!!(context, right, left, vi)
     logp, vi = tilde_observe(context, right, left, vi)
-    return left, acclogp!!(vi, logp)
+    return left, acclogp_observe!!(context, vi, logp)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -383,7 +404,7 @@ Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
     value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
-    return value, acclogp!!(vi, logp), vi
+    return value, acclogp_assume!!(context, vi, logp), vi
 end
 
 # `dot_assume`
@@ -539,7 +560,8 @@ function get_and_set_val!(
         if istrans(vi)
             push!!.((vi,), vns, reconstruct_and_link.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
-            acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
+            # FIXME: This is not great.
+            acclogp_assume!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
@@ -634,7 +656,7 @@ Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!!(context, right, left, vi)
     logp, vi = dot_tilde_observe(context, right, left, vi)
-    return left, acclogp!!(vi, logp)
+    return left, acclogp_observe!!(context, vi, logp)
 end
 
 # Falls back to non-sampler definition.

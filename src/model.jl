@@ -1037,7 +1037,7 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
         evaluate!!(
             model,
             SimpleVarInfo{Float64}(OrderedDict()),
-            SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+            SamplingContext(rng, SampleFromPrior(), model.context),
         ),
     )
     return values_as(x, T)

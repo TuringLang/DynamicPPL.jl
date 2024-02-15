@@ -56,19 +56,14 @@ jobs:
             ${{ runner.os }}-
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
-        with:
-          coverage: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1 }}
         env:
           GROUP: All
           JULIA_NUM_THREADS: ${{ matrix.num_threads }}
       - uses: julia-actions/julia-processcoverage@v1
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
       - uses: codecov/codecov-action@v1
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
         with:
           file: lcov.info
       - uses: coverallsapp/github-action@master
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: lcov.info

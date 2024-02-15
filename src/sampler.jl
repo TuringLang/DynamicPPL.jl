@@ -80,26 +80,31 @@ function default_varinfo(
     return VarInfo(rng, model, init_sampler, context)
 end
 
-# initial step: general interface for resuming and
-function AbstractMCMC.step(
+function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
     model::Model,
-    spl::Sampler;
+    sampler::Sampler,
+    N::Integer;
+    chain_type=default_chain_type(sampler),
     resume_from=nothing,
-    init_params=nothing,
+    initial_state=loadstate(resume_from),
     kwargs...,
 )
-    if resume_from !== nothing
-        state = loadstate(resume_from)
-        return AbstractMCMC.step(rng, model, spl, state; kwargs...)
-    end
+    return AbstractMCMC.mcmcsample(
+        rng, model, sampler, N; chain_type, initial_state, kwargs...
+    )
+end
 
+# initial step: general interface for resuming and
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
+)
     # Sample initial values.
     vi = default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
-    if init_params !== nothing
-        vi = initialize_parameters!!(vi, init_params, spl, model)
+    if initial_params !== nothing
+        vi = initialize_parameters!!(vi, initial_params, spl, model)
 
         # Update joint log probability.
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
@@ -108,15 +113,24 @@ function AbstractMCMC.step(
         vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
-    return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
+    return initialstep(rng, model, spl, vi; initial_params, kwargs...)
 end
 
 """
     loadstate(data)
 
 Load sampler state from `data`.
+
+By default, `data` is returned.
 """
-function loadstate end
+loadstate(data) = data
+
+"""
+    default_chaintype(sampler)
+
+Default type of the chain of posterior samples from `sampler`.
+"""
+default_chain_type(sampler::Sampler) = Any
 
 """
     initialsampler(sampler::Sampler)
@@ -129,12 +143,12 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 initialsampler(spl::Sampler) = SampleFromPrior()
 
 function initialize_parameters!!(
-    vi::AbstractVarInfo, init_params, spl::Sampler, model::Model
+    vi::AbstractVarInfo, initial_params, spl::Sampler, model::Model
 )
-    @debug "Using passed-in initial variable values" init_params
+    @debug "Using passed-in initial variable values" initial_params
 
     # Flatten parameters.
-    init_theta = mapreduce(vcat, init_params) do x
+    init_theta = mapreduce(vcat, initial_params) do x
         vec([x;])
     end
 

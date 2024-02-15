@@ -84,25 +84,56 @@ islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl
 function link!!(
     t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
 )
-    return link!!(t, vi.varinfo, spl, model)
+    return Setfield.@set vi.varinfo = link!!(t, vi.varinfo, spl, model)
 end
 
 function invlink!!(
     t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
 )
-    return invlink!!(t, vi.varinfo, spl, model)
+    return Setfield.@set vi.varinfo = invlink!!(t, vi.varinfo, spl, model)
 end
 
 function link(
     t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
 )
-    return link(t, vi.varinfo, spl, model)
+    return Setfield.@set vi.varinfo = link(t, vi.varinfo, spl, model)
 end
 
 function invlink(
     t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
 )
-    return invlink(t, vi.varinfo, spl, model)
+    return Setfield.@set vi.varinfo = invlink(t, vi.varinfo, spl, model)
+end
+
+# Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
+# NOTE: We also can't just defer to the wrapped varinfo, because we need to ensure
+# consistency between `vi.logps` field and `getlogp(vi.varinfo)`, which accumulates
+# to define `getlogp(vi)`.
+function link!!(
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
+end
+
+function invlink!!(
+    ::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return settrans!!(
+        last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
+        NoTransformation(),
+    )
+end
+
+function link(
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return link!!(t, deepcopy(vi), spl, model)
+end
+
+function invlink(
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink!!(t, deepcopy(vi), spl, model)
 end
 
 function maybe_invlink_before_eval!!(
@@ -178,8 +209,6 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
 end
 
-tonamedtuple(vi::ThreadSafeVarInfo) = tonamedtuple(vi.varinfo)
-
 # Transformations.
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
@@ -192,3 +221,20 @@ istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
 istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
 
 getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
+
+function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
+    return Setfield.@set vi.varinfo = unflatten(vi.varinfo, x)
+end
+function unflatten(vi::ThreadSafeVarInfo, spl::AbstractSampler, x::AbstractVector)
+    return Setfield.@set vi.varinfo = unflatten(vi.varinfo, spl, x)
+end
+
+function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
+    return Setfield.@set varinfo.varinfo = subset(varinfo.varinfo, vns)
+end
+
+function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVarInfo)
+    return Setfield.@set varinfo_left.varinfo = merge(
+        varinfo_left.varinfo, varinfo_right.varinfo
+    )
+end

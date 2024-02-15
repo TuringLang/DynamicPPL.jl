@@ -250,7 +250,12 @@ end
 
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
-    return Setfield.@set svi.values = unflatten(svi.values, x)
+    logp = getlogp(svi)
+    vals = unflatten(svi.values, x)
+    T = eltype(x)
+    return SimpleVarInfo{typeof(vals),T,typeof(svi.transformation)}(
+        vals, T(logp), svi.transformation
+    )
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
@@ -419,6 +424,51 @@ function Base.eltype(
     return V
 end
 
+# `subset`
+function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
+    return Setfield.@set varinfo.values = _subset(varinfo.values, vns)
+end
+
+function _subset(x::AbstractDict, vns)
+    # NOTE: This requires `vns` to be explicitly present in `x`.
+    if any(!Base.Fix1(haskey, x), vns)
+        throw(
+            ArgumentError(
+                "Cannot subset `AbstractDict` with `VarName` that is not an explicit key. " *
+                "For example, if `keys(x) == [@varname(x[1])]`, then subsetting with " *
+                "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not.",
+            ),
+        )
+    end
+    C = ConstructionBase.constructorof(typeof(x))
+    return C(vn => x[vn] for vn in vns)
+end
+
+function _subset(x::NamedTuple, vns)
+    # NOTE: Here we can only handle `vns` that contain the `IdentityLens`.
+    if any(Base.Fix1(!==, Setfield.IdentityLens()) ∘ getlens, vns)
+        throw(
+            ArgumentError(
+                "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
+                "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
+            ),
+        )
+    end
+
+    syms = map(getsym, vns)
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix2(getindex, x), syms)))
+end
+
+# `merge`
+function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
+    values = merge(varinfo_left.values, varinfo_right.values)
+    logp = getlogp(varinfo_right)
+    transformation = merge_transformations(
+        varinfo_left.transformation, varinfo_right.transformation
+    )
+    return SimpleVarInfo(values, logp, transformation)
+end
+
 # Context implementations
 # NOTE: Evaluations, i.e. those without `rng` are shared with other
 # implementations of `AbstractVarInfo`.
@@ -485,44 +535,6 @@ function dot_assume(
     # Compute logp.
     lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
     return value, lp, vi
-end
-
-# We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
-# TODO: Move away from using these `tonamedtuple` methods.
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
-    nt_vals = map(keys(vi)) do vn
-        val = vi[vn]
-        vns = collect(TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-        (vals, map(string, vns))
-    end
-
-    return NamedTuple{names}(nt_vals)
-end
-
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
-    syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
-    for vn in keys(vi)
-        # Extract the leaf varnames and values.
-        val = vi[vn]
-        vns = collect(TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-
-        # Determine the corresponding symbol.
-        sym = only(unique(map(getsym, vns)))
-
-        # Initialize entry if not yet initialized.
-        if !haskey(syms_to_result, sym)
-            syms_to_result[sym] = (Real[], String[])
-        end
-
-        # Combine with old result.
-        old_vals, old_string_vns = syms_to_result[sym]
-        syms_to_result[sym] = (vcat(old_vals, vals), vcat(old_string_vns, map(string, vns)))
-    end
-
-    # Construct `NamedTuple`.
-    return NamedTuple(pairs(syms_to_result))
 end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.

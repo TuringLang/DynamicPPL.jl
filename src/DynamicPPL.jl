@@ -8,13 +8,13 @@ using Distributions
 using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
+using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
-using ChainRulesCore: ChainRulesCore
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
-using ZygoteRules: ZygoteRules
 using LogDensityProblems: LogDensityProblems
+using LogDensityProblemsAD: LogDensityProblemsAD
 
 using LinearAlgebra: LinearAlgebra, Cholesky
 
@@ -48,6 +48,7 @@ export AbstractVarInfo,
     SimpleVarInfo,
     push!!,
     empty!!,
+    subset,
     getlogp,
     setlogp!!,
     acclogp!!,
@@ -70,7 +71,6 @@ export AbstractVarInfo,
     invlink,
     invlink!,
     invlink!!,
-    tonamedtuple,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -171,7 +171,6 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
-include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
@@ -186,10 +185,29 @@ end
 
 @static if !isdefined(Base, :get_extension)
     function __init__()
+        @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
+            "../ext/DynamicPPLChainRulesCoreExt.jl"
+        )
+        @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
+            "../ext/DynamicPPLEnzymeCoreExt.jl"
+        )
+        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
+            "../ext/DynamicPPLForwardDiffExt.jl"
+        )
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
         )
+        @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
+            "../ext/DynamicPPLReverseDiffExt.jl"
+        )
+        @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
+            "../ext/DynamicPPLZygoteRulesExt.jl"
+        )
     end
 end
+
+# Standard tag: Improves stacktraces
+# Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+struct DynamicPPLTag end
 
 end # module
