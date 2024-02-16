@@ -8,11 +8,13 @@ using Distributions
 using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
+using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Setfield: Setfield
 using LogDensityProblems: LogDensityProblems
+using LogDensityProblemsAD: LogDensityProblemsAD
 
 using LinearAlgebra: LinearAlgebra, Cholesky
 
@@ -189,13 +191,23 @@ end
         @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
             "../ext/DynamicPPLEnzymeCoreExt.jl"
         )
+        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
+            "../ext/DynamicPPLForwardDiffExt.jl"
+        )
         @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
             "../ext/DynamicPPLMCMCChainsExt.jl"
+        )
+        @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
+            "../ext/DynamicPPLReverseDiffExt.jl"
         )
         @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
             "../ext/DynamicPPLZygoteRulesExt.jl"
         )
     end
 end
+
+# Standard tag: Improves stacktraces
+# Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+struct DynamicPPLTag end
 
 end # module
