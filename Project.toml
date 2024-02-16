@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.24.7"
+version = "0.24.8"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -28,7 +28,7 @@ ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 ADTypes = "0.2"
 AbstractMCMC = "5"
 AbstractPPL = "0.7"
-BangBang = "0.3"
+BangBang = "0.4.1"
 Bijectors = "0.13"
 ChainRulesCore = "1"
 Compat = "4"
