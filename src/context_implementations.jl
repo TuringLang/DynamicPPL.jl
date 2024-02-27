@@ -289,7 +289,7 @@ function dot_tilde_assume(context::AbstractContext, args...)
     return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), context, args...)
 end
 function dot_tilde_assume(rng, context::AbstractContext, args...)
-    return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
+    return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), rng, context, args...)
 end
 
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
