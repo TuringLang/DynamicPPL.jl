@@ -121,8 +121,8 @@ function cross_val(
     loss = zero(logjoint(model, rand(rng, model)))
 
     # prepare the K-folds
-    fold_size = div(length(dataset), nfolds)
-    if length(dataset) % nfolds != 0
+    fold_size, remaining = divrem(length(dataset), nfolds)
+    if remaining != 0
         error("The number of folds must divide the number of data points.")
     end
     splits = Vector{Tuple{SubArray,SubArray}}(undef, nfolds)
