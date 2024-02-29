@@ -107,12 +107,11 @@ To give an example of the probability interface in use, we can use it to estimat
 In cross-validation, we split the dataset into several equal parts.
 Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).[^1]
+(For the sake of simplicity, in the following code, we enforce that `nfolds` )
 
 ```@example probinterface
-using MLUtils
-
 function cross_val(
-    dataset::AbstractVector{<:Real};
+    dataset::Vector{<:Real};
     nfolds::Int=5,
     nsamples::Int=1_000,
     rng::Random.AbstractRNG=Random.default_rng(),
@@ -121,7 +120,20 @@ function cross_val(
     model = gdemo(1) | (x=[first(dataset)],)
     loss = zero(logjoint(model, rand(rng, model)))
 
-    for (train, validation) in kfolds(dataset, nfolds)
+    # prepare the K-folds
+    fold_size = div(length(dataset), nfolds)
+    if length(dataset) % nfolds != 0
+        error("The number of folds must divide the number of data points.")
+    end
+    splits = Vector{Tuple{SubArray, SubArray}}(undef, nfolds)
+    
+    for i in 1:nfolds
+        start_idx, end_idx = (i-1)*fold_size + 1, i*fold_size
+        train_set_indices = [1:start_idx-1; end_idx+1:length(dataset)]
+        splits[i] = (view(dataset, train_set_indices), view(dataset, start_idx:end_idx))
+    end
+
+    for (train, validation) in splits
         # First, we train the model on the training set, i.e., we obtain samples from the posterior.
         # For normally-distributed data, the posterior can be computed in closed form.
         # For general models, however, typically samples will be generated using MCMC with Turing.
