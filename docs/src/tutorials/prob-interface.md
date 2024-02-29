@@ -110,6 +110,23 @@ Here, we measure fit using the cross entropy (Bayes loss).[^1]
 (For the sake of simplicity, in the following code, we enforce that `nfolds` must divide the number of data points. For a more competent implementation, see [MLUtils.jl](https://juliaml.github.io/MLUtils.jl/dev/api/#MLUtils.kfolds).)
 
 ```@example probinterface
+# Calculate the train/validation splits across `nfolds` partitions, assume `length(dataset)` divides `nfolds`
+function kfolds(dataset::Array{<:Real}, nfolds::Int)
+    fold_size, remaining = divrem(length(dataset), nfolds)
+    if remaining != 0
+        error("The number of folds must divide the number of data points.")
+    end
+    first_idx = firstindex(dataset)
+    last_idx = lastindex(dataset)
+    splits = map(0:(nfolds - 1)) do i
+        start_idx = first_idx + i * fold_size
+        end_idx = start_idx + fold_size
+        train_set_indices = [first_idx:start_idx-1; end_idx:last_idx]
+        return (view(dataset, train_set_indices), view(dataset, start_idx:end_idx-1))
+    end
+    return splits
+end
+
 function cross_val(
     dataset::Vector{<:Real};
     nfolds::Int=5,
@@ -120,21 +137,7 @@ function cross_val(
     model = gdemo(1) | (x=[first(dataset)],)
     loss = zero(logjoint(model, rand(rng, model)))
 
-    # prepare the K-folds
-    fold_size, remaining = divrem(length(dataset), nfolds)
-    if remaining != 0
-        error("The number of folds must divide the number of data points.")
-    end
-    first_idx = firstindex(dataset)
-    last_idx = lastindex(dataset)
-    splits = map(0:(nfolds - 1)) do i
-        start_idx = first_idx + i * fold_size
-        end_idx = start_idx + fold_size
-        train_set_indices = [first_idx:start_idx; (end_idx + 1):last_idx]
-        return (view(dataset, train_set_indices), view(dataset, (start_idx + 1):end_idx))
-    end
-
-    for (train, validation) in splits
+    for (train, validation) in kfolds(dataset, nfolds)
         # First, we train the model on the training set, i.e., we obtain samples from the posterior.
         # For normally-distributed data, the posterior can be computed in closed form.
         # For general models, however, typically samples will be generated using MCMC with Turing.
