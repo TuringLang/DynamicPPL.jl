@@ -26,7 +26,7 @@ function LogDensityProblemsAD.ADgradient(
         ForwardDiff.Tag(f, eltype(θ))
     end
     chunk_size = getchunksize(ad)
-    chunk = if chunk_size == 0
+    chunk = if chunk_size == 0 || chunk_size === nothing
         ForwardDiff.Chunk(θ)
     else
         ForwardDiff.Chunk(length(θ), chunk_size)
