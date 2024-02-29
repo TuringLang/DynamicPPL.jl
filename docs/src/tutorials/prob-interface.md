@@ -125,11 +125,11 @@ function cross_val(
     if length(dataset) % nfolds != 0
         error("The number of folds must divide the number of data points.")
     end
-    splits = Vector{Tuple{SubArray, SubArray}}(undef, nfolds)
-    
+    splits = Vector{Tuple{SubArray,SubArray}}(undef, nfolds)
+
     for i in 1:nfolds
-        start_idx, end_idx = (i-1)*fold_size + 1, i*fold_size
-        train_set_indices = [1:start_idx-1; end_idx+1:length(dataset)]
+        start_idx, end_idx = (i - 1) * fold_size + 1, i * fold_size
+        train_set_indices = [1:(start_idx - 1); (end_idx + 1):length(dataset)]
         splits[i] = (view(dataset, train_set_indices), view(dataset, start_idx:end_idx))
     end
 
