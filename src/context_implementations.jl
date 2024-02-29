@@ -302,7 +302,7 @@ end
 function dot_tilde_assume(::IsParent, context::AbstractContext, args...)
     return dot_tilde_assume(childcontext(context), args...)
 end
-function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
+function dot_tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
