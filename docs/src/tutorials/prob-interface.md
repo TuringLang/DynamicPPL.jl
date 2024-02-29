@@ -121,8 +121,8 @@ function kfolds(dataset::Array{<:Real}, nfolds::Int)
     splits = map(0:(nfolds - 1)) do i
         start_idx = first_idx + i * fold_size
         end_idx = start_idx + fold_size
-        train_set_indices = [first_idx:start_idx-1; end_idx:last_idx]
-        return (view(dataset, train_set_indices), view(dataset, start_idx:end_idx-1))
+        train_set_indices = [first_idx:(start_idx - 1); end_idx:last_idx]
+        return (view(dataset, train_set_indices), view(dataset, start_idx:(end_idx - 1)))
     end
     return splits
 end
