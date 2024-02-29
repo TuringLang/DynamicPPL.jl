@@ -107,7 +107,7 @@ To give an example of the probability interface in use, we can use it to estimat
 In cross-validation, we split the dataset into several equal parts.
 Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).[^1]
-(For the sake of simplicity, in the following code, we enforce that `nfolds` )
+(For the sake of simplicity, in the following code, we enforce that `nfolds` must divide the number of data points. For a more competent implementation, see [MLUtils.jl](https://juliaml.github.io/MLUtils.jl/dev/api/#MLUtils.kfolds).)
 
 ```@example probinterface
 function cross_val(
