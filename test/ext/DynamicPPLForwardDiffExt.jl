@@ -1,5 +1,5 @@
 @testset "tag" begin
-    for chunksize in (0, 1, 10)
+    for chunksize in (nothing, 0, 1, 10)
         ad = ADTypes.AutoForwardDiff(; chunksize=chunksize)
         standardtag = if !isdefined(Base, :get_extension)
             DynamicPPL.DynamicPPLForwardDiffExt.standardtag
