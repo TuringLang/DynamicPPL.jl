@@ -158,11 +158,14 @@ function initialize_parameters!!(
         vi = invlink!!(vi, spl, model)
     end
     theta = vi[spl]
-    length(theta) == length(init_theta) ||
-        error("Provided initial value doesn't match the dimension of the model")
+    length(theta) == length(init_theta) || throw(
+        DimensionMismatch(
+            "Provided initial value size ($(length(init_theta))) doesn't match the model size ($(length(theta)))",
+        ),
+    )
 
     # Update values that are provided.
-    for i in 1:length(init_theta)
+    for i in eachindex(init_theta)
         x = init_theta[i]
         if x !== missing
             theta[i] = x
