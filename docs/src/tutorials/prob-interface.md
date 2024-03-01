@@ -107,12 +107,28 @@ To give an example of the probability interface in use, we can use it to estimat
 In cross-validation, we split the dataset into several equal parts.
 Then, we choose one of these sets to serve as the validation set.
 Here, we measure fit using the cross entropy (Bayes loss).[^1]
+(For the sake of simplicity, in the following code, we enforce that `nfolds` must divide the number of data points. For a more competent implementation, see [MLUtils.jl](https://juliaml.github.io/MLUtils.jl/dev/api/#MLUtils.kfolds).)
 
 ```@example probinterface
-using MLUtils
+# Calculate the train/validation splits across `nfolds` partitions, assume `length(dataset)` divides `nfolds`
+function kfolds(dataset::Array{<:Real}, nfolds::Int)
+    fold_size, remaining = divrem(length(dataset), nfolds)
+    if remaining != 0
+        error("The number of folds must divide the number of data points.")
+    end
+    first_idx = firstindex(dataset)
+    last_idx = lastindex(dataset)
+    splits = map(0:(nfolds - 1)) do i
+        start_idx = first_idx + i * fold_size
+        end_idx = start_idx + fold_size
+        train_set_indices = [first_idx:(start_idx - 1); end_idx:last_idx]
+        return (view(dataset, train_set_indices), view(dataset, start_idx:(end_idx - 1)))
+    end
+    return splits
+end
 
 function cross_val(
-    dataset::AbstractVector{<:Real};
+    dataset::Vector{<:Real};
     nfolds::Int=5,
     nsamples::Int=1_000,
     rng::Random.AbstractRNG=Random.default_rng(),
