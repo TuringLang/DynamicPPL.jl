@@ -1050,7 +1050,9 @@ end
 function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         optic = DynamicPPL.Accessors.PropertyLens{sym}()
-        varname_and_value_leaves_inner(VarName{getsym(vn)}(getoptic(vn) ⨟ optic), optic(val))
+        varname_and_value_leaves_inner(
+            VarName{getsym(vn)}(getoptic(vn) ⨟ optic), optic(val)
+        )
     end
 
     return Iterators.flatten(iter)
