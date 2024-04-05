@@ -352,7 +352,9 @@ function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
     return Accessors.set(obj, opticmut, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
-    optic = BangBang.prefermutation(Accessors.PropertyLens{sym}() ∘ AbstractPPL.getoptic(vn))
+    optic = BangBang.prefermutation(
+        Accessors.PropertyLens{sym}() ∘ AbstractPPL.getoptic(vn)
+    )
     return Accessors.set(obj, optic, value)
 end
 
