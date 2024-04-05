@@ -390,7 +390,9 @@ end
 
 # `IndexLens`: only relevant if `x` supports indexing.
 canview(optic::Accessors.IndexLens, x) = false
-canview(optic::Accessors.IndexLens, x::AbstractArray) = checkbounds(Bool, x, optic.indices...)
+function canview(optic::Accessors.IndexLens, x::AbstractArray)
+    return checkbounds(Bool, x, optic.indices...)
+end
 
 # `ComposedOptic`: check that we can view `.inner` and `.outer`, but using
 # value extracted using `.inner`.
