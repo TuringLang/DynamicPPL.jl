@@ -347,13 +347,13 @@ collectmaybe(x::Base.AbstractSet) = collect(x)
 #######################
 # BangBang.jl related #
 #######################
-function set!!(obj, lens::AbstractPPL.ALLOWED_OPTICS, value)
-    lensmut = BangBang.prefermutation(lens)
-    return Accessors.set(obj, lensmut, value)
+function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
+    opticmut = BangBang.prefermutation(optic)
+    return Accessors.set(obj, opticmut, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
-    lens = BangBang.prefermutation(Accessors.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
-    return Accessors.set(obj, lens, value)
+    optic = BangBang.prefermutation(Accessors.PropertyLens{sym}() ∘ AbstractPPL.getoptic(vn))
+    return Accessors.set(obj, optic, value)
 end
 
 #############################
@@ -363,39 +363,39 @@ end
 # we're more likely to specialize on the key in these settings rather than the container.
 # TODO: I'm not sure about this name.
 """
-    canview(lens, container)
+    canview(optic, container)
 
-Return `true` if `lens` can be used to view `container`, and `false` otherwise.
+Return `true` if `optic` can be used to view `container`, and `false` otherwise.
 
 # Examples
 ```jldoctest; setup=:(using Accessors; using DynamicPPL: canview)
-julia> canview(@lens(_.a), (a = 1.0, ))
+julia> canview(@o(_.a), (a = 1.0, ))
 true
 
-julia> canview(@lens(_.a), (b = 1.0, )) # property `a` does not exist
+julia> canview(@o(_.a), (b = 1.0, )) # property `a` does not exist
 false
 
-julia> canview(@lens(_.a[1]), (a = [1.0, 2.0], ))
+julia> canview(@o(_.a[1]), (a = [1.0, 2.0], ))
 true
 
-julia> canview(@lens(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
+julia> canview(@o(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
 false
 ```
 """
-canview(lens, container) = false
+canview(optic, container) = false
 canview(::typeof(identity), _) = true
-function canview(lens::Accessors.PropertyLens{field}, x) where {field}
+function canview(optic::Accessors.PropertyLens{field}, x) where {field}
     return hasproperty(x, field)
 end
 
 # `IndexLens`: only relevant if `x` supports indexing.
-canview(lens::Accessors.IndexLens, x) = false
-canview(lens::Accessors.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
+canview(optic::Accessors.IndexLens, x) = false
+canview(optic::Accessors.IndexLens, x::AbstractArray) = checkbounds(Bool, x, optic.indices...)
 
-# `ComposedLens`: check that we can view `.outer` and `.inner`, but using
-# value extracted using `.outer`.
-function canview(lens::Accessors.ComposedOptic, x)
-    return canview(lens.outer, x) && canview(lens.inner, get(x, lens.outer))
+# `ComposedOptic`: check that we can view `.inner` and `.outer`, but using
+# value extracted using `.inner`.
+function canview(optic::Accessors.ComposedOptic, x)
+    return canview(optic.inner, x) && canview(optic.outer, optic.inner(x))
 end
 
 """
@@ -416,7 +416,7 @@ x
 ```
 """
 function parent(vn::VarName)
-    p = parent(getlens(vn))
+    p = parent(getoptic(vn))
     return p === nothing ? VarName(vn, identity) : VarName(vn, p)
 end
 
@@ -470,7 +470,7 @@ end
     splitoptic(condition, optic)
 
 Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a lens such that `condition(parent)` is `true` and `parent ⨟ child == lens`.
+`parent` is a optic such that `condition(parent)` is `true` and `parent ⨟ child == optic`.
 
 If `issuccess` is `false`, then no such split could be found.
 
@@ -749,8 +749,8 @@ false
 """
 function hasvalue(vals::NamedTuple, vn::VarName{sym}) where {sym}
     # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    return haskey(vals, sym) && canview(getlens(vn), getproperty(vals, sym))
+    # RHS: Ensure that the optic can view into `nt`.
+    return haskey(vals, sym) && canview(getoptic(vn), getproperty(vals, sym))
 end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
@@ -760,20 +760,20 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     haskey(vals, vn) && return true
 
     # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # to split the optic into the key / `parent` and the extraction optic / `child`.
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? identity : lens
-        haskey(vals, VarName(vn, l))
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(vals, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? identity : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # Return early if no such split could be found.
     issuccess || return false
 
     # At this point we just need to check that we `canview` the value.
-    value = vals[VarName(vn, keylens)]
+    value = vals[VarName(vn, keyoptic)]
 
     return canview(child, value)
 end
@@ -790,13 +790,13 @@ function nested_getindex(values::AbstractDict, vn::VarName)
         return maybeval
     end
 
-    # Split the lens into the key / `parent` and the extraction lens / `child`.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? identity : lens
-        haskey(values, VarName(vn, l))
+    # Split the optic into the key / `parent` and the extraction optic / `child`.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(values, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? identity : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # If we found a valid split, then we can extract the value.
     if !issuccess
@@ -806,7 +806,7 @@ function nested_getindex(values::AbstractDict, vn::VarName)
 
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
-    value = values[VarName(vn, keylens)]
+    value = values[VarName(vn, keyoptic)]
     return get(value, child)
 end
 
@@ -911,20 +911,20 @@ x.z[2][1]
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, getlens(vn) ∘ Accessors.IndexLens(Tuple(I))) for
+        VarName(vn, getoptic(vn) ⨟ Accessors.IndexLens(Tuple(I))) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName(vn, getlens(vn) ∘ Accessors.IndexLens(Tuple(I))), val[I]) for
+        varname_leaves(VarName(vn, getoptic(vn) ⨟ Accessors.IndexLens(Tuple(I))), val[I]) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = Accessors.PropertyLens{sym}()
-        varname_leaves(vn ∘ lens, get(val, lens))
+        optic = Accessors.PropertyLens{sym}()
+        varname_leaves(vn ∘ optic, optic(val))
     end
     return Iterators.flatten(iter)
 end
@@ -1033,7 +1033,7 @@ function varname_and_value_leaves_inner(
 )
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1042,15 +1042,15 @@ end
 function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
 end
 function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = DynamicPPL.Accessors.PropertyLens{sym}()
-        varname_and_value_leaves_inner(vn ∘ lens, get(val, lens))
+        optic = DynamicPPL.Accessors.PropertyLens{sym}()
+        varname_and_value_leaves_inner(VarName{getsym(vn)}(getoptic(vn) ⨟ optic), optic(val))
     end
 
     return Iterators.flatten(iter)
@@ -1067,7 +1067,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             x[I],
         )
         # Iteration over the lower-triangular indices.
@@ -1077,7 +1077,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             x[I],
         )
         # Iteration over the upper-triangular indices.

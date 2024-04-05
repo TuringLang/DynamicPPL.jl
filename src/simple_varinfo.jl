@@ -362,20 +362,20 @@ end
 function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     dict = values_as(vi)
-    # Attempt to split into `parent` and `child` lenses.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? identity : lens
-        haskey(dict, VarName(vn, l))
+    # Attempt to split into `parent` and `child` optic.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(dict, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? identity : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     dict_new = if !issuccess
         # Split doesn't exist ⟹ we're working with a new key.
         BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName(vn, keylens)
+        vn_key = VarName(vn, keyoptic)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
     return Accessors.@set vi.values = dict_new
@@ -445,11 +445,11 @@ function _subset(x::AbstractDict, vns)
 end
 
 function _subset(x::NamedTuple, vns)
-    # NOTE: Here we can only handle `vns` that contain the `IdentityLens`.
-    if any(Base.Fix1(!==, identity) ∘ getlens, vns)
+    # NOTE: Here we can only handle `vns` that contain `identity` as optic.
+    if any(Base.Fix1(!==, identity) ∘ getoptic, vns)
         throw(
             ArgumentError(
-                "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
+                "Cannot subset `NamedTuple` with non-`identity` `VarName`. " *
                 "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
             ),
         )

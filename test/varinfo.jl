@@ -1,7 +1,7 @@
 function check_varinfo_keys(varinfo, vns)
     if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
-        # since `keys(varinfo_merged)` only contains `VarName` with `IdentityLens`.
+        # since `keys(varinfo_merged)` only contains `VarName` with `identity`.
         # So we just check that the original keys are present.
         for vn in vns
             # Should have all the original keys.
@@ -519,7 +519,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         end
 
         # For certain varinfos we should have errors.
-        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `IdentityLens`.
+        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `identity`.
         varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:NamedTuple}), varinfos)]
         @testset "$(short_varinfo_name(varinfo)): failure cases" begin
             @test_throws ArgumentError subset(

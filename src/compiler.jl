@@ -4,7 +4,7 @@ const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
     need_concretize(expr)
 
 Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
-requires a dynamic lens.
+requires a dynamic optic.
 
 # Examples
 
@@ -226,7 +226,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return AbstractPPL.concretize(vn ∘ Accessors.IndexLens((Colon(), i)), left)
+        return AbstractPPL.concretize(vn ⨟ Accessors.IndexLens((Colon(), i)), left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
