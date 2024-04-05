@@ -8,7 +8,7 @@ requires a dynamic lens.
 
 # Examples
 
-```jldoctest; setup=:(using Setfield)
+```jldoctest; setup=:(using Accessors)
 julia> DynamicPPL.need_concretize(:(x[1, :]))
 true
 
@@ -19,7 +19,7 @@ julia> DynamicPPL.need_concretize(:(x[1, 1]))
 false
 """
 function need_concretize(expr)
-    return Setfield.need_dynamic_lens(expr) || begin
+    return Accessors.need_dynamic_optic(expr) || begin
         flag = false
         MacroTools.postwalk(expr) do ex
             # Concretise colon by default
@@ -226,7 +226,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return AbstractPPL.concretize(vn ∘ Setfield.IndexLens((Colon(), i)), left)
+        return AbstractPPL.concretize(vn ∘ Accessors.IndexLens((Colon(), i)), left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -236,7 +236,7 @@ function unwrap_right_left_vns(
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return vn ∘ Setfield.IndexLens(Tuple(i))
+        return vn ∘ Accessors.IndexLens(Tuple(i))
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -437,7 +437,7 @@ function generate_tilde_assume(left, right, vn)
     expr = :($left = $value)
     if left isa Expr
         expr = AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+            Accessors.setmacro(BangBang.prefermutation, expr; overwrite=true)
         )
     end
 

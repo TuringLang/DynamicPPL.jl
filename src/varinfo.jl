@@ -965,7 +965,7 @@ function link!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
 end
 
 """
@@ -1051,7 +1051,7 @@ function invlink!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1166,7 +1166,7 @@ function link(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
 function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
@@ -1261,7 +1261,7 @@ function invlink(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
 function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)

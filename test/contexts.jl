@@ -1,4 +1,4 @@
-using Test, DynamicPPL, Setfield
+using Test, DynamicPPL, Accessors
 using DynamicPPL:
     leafcontext,
     setleafcontext,

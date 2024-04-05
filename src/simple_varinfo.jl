@@ -259,15 +259,15 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
-    return resetlogp!!(Setfield.@set vi.values = empty!!(vi.values))
+    return resetlogp!!(Accessors.@set vi.values = empty!!(vi.values))
 end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
 getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
 
-setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
-acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
+setlogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = getlogp(vi) + logp
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -343,7 +343,7 @@ Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return Setfield.@set vi.values = set!!(vi.values, vn, val)
+    return Accessors.@set vi.values = set!!(vi.values, vn, val)
 end
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
@@ -364,11 +364,11 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
     dict = values_as(vi)
     # Attempt to split into `parent` and `child` lenses.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
+        l = lens === nothing ? identity : lens
         haskey(dict, VarName(vn, l))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    keylens = parent === nothing ? identity : parent
 
     dict_new = if !issuccess
         # Split doesn't exist ⟹ we're working with a new key.
@@ -378,18 +378,18 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
         vn_key = VarName(vn, keylens)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return Setfield.@set vi.values = dict_new
+    return Accessors.@set vi.values = dict_new
 end
 
 # `NamedTuple`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Setfield.IdentityLens},
+    vn::VarName{sym,typeof(identity)},
     value,
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
+    return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -398,7 +398,7 @@ function BangBang.push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = set!!(vi.values, vn, value)
+    return Accessors.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `AbstractDict`
@@ -426,7 +426,7 @@ end
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
-    return Setfield.@set varinfo.values = _subset(varinfo.values, vns)
+    return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
 end
 
 function _subset(x::AbstractDict, vns)
@@ -446,7 +446,7 @@ end
 
 function _subset(x::NamedTuple, vns)
     # NOTE: Here we can only handle `vns` that contain the `IdentityLens`.
-    if any(Base.Fix1(!==, Setfield.IdentityLens()) ∘ getlens, vns)
+    if any(Base.Fix1(!==, identity) ∘ getlens, vns)
         throw(
             ArgumentError(
                 "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
@@ -542,10 +542,10 @@ function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
-    return Setfield.@set vi.transformation = transformation
+    return Accessors.@set vi.transformation = transformation
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
@@ -675,7 +675,7 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = y), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = y), lp_new)
     return settrans!!(vi_new, t)
 end
 
@@ -690,7 +690,7 @@ function invlink!!(
     y = vi.values
     x, logjac = with_logabsdet_jacobian(b, y)
     lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 

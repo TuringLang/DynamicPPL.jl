@@ -8,7 +8,7 @@ using Test
 
 using Random: Random
 using Bijectors: Bijectors
-using Setfield: Setfield
+using Accessors: Accessors
 
 # For backwards compat.
 using DynamicPPL: varname_leaves

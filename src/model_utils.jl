@@ -110,7 +110,7 @@ function values_from_chain(
     for vn in varname_leaves(VarName{sym}(), x)
         # Update `out`, possibly in place, and return.
         l = AbstractPPL.getlens(vn)
-        out = Setfield.set(
+        out = Accessors.set(
             out,
             BangBang.prefermutation(l),
             chain[iteration_idx, Symbol(vn_parent ∘ l), chain_idx],

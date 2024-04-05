@@ -347,13 +347,13 @@ collectmaybe(x::Base.AbstractSet) = collect(x)
 #######################
 # BangBang.jl related #
 #######################
-function set!!(obj, lens::Setfield.Lens, value)
+function set!!(obj, lens::AbstractPPL.ALLOWED_OPTICS, value)
     lensmut = BangBang.prefermutation(lens)
-    return Setfield.set(obj, lensmut, value)
+    return Accessors.set(obj, lensmut, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
-    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
-    return Setfield.set(obj, lens, value)
+    lens = BangBang.prefermutation(Accessors.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
+    return Accessors.set(obj, lens, value)
 end
 
 #############################
@@ -368,7 +368,7 @@ end
 Return `true` if `lens` can be used to view `container`, and `false` otherwise.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: canview)
+```jldoctest; setup=:(using Accessors; using DynamicPPL: canview)
 julia> canview(@lens(_.a), (a = 1.0, ))
 true
 
@@ -383,18 +383,18 @@ false
 ```
 """
 canview(lens, container) = false
-canview(::Setfield.IdentityLens, _) = true
-function canview(lens::Setfield.PropertyLens{field}, x) where {field}
+canview(::typeof(identity), _) = true
+function canview(lens::Accessors.PropertyLens{field}, x) where {field}
     return hasproperty(x, field)
 end
 
 # `IndexLens`: only relevant if `x` supports indexing.
-canview(lens::Setfield.IndexLens, x) = false
-canview(lens::Setfield.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
+canview(lens::Accessors.IndexLens, x) = false
+canview(lens::Accessors.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
 
 # `ComposedLens`: check that we can view `.outer` and `.inner`, but using
 # value extracted using `.outer`.
-function canview(lens::Setfield.ComposedLens, x)
+function canview(lens::Accessors.ComposedOptic, x)
     return canview(lens.outer, x) && canview(lens.inner, get(x, lens.outer))
 end
 
@@ -417,122 +417,122 @@ x
 """
 function parent(vn::VarName)
     p = parent(getlens(vn))
-    return p === nothing ? VarName(vn, Setfield.IdentityLens()) : VarName(vn, p)
+    return p === nothing ? VarName(vn, identity) : VarName(vn, p)
 end
 
 """
-    parent(lens::Setfield.Lens)
+    parent(optic)
 
-Return the parent lens. If `lens` doesn't have a parent,
+Return the parent optic. If `optic` doesn't have a parent,
 `nothing` is returned.
 
 See also: [`parent_and_child`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent)
-julia> parent(@lens(_.a[1]))
-(@lens _.a)
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent)
+julia> parent(@o(_.a[1]))
+(@o _.a)
 
-julia> # Parent of lens without parents results in `nothing`.
-       (parent ∘ parent)(@lens(_.a[1])) === nothing
+julia> # Parent of optic without parents results in `nothing`.
+       (parent ⨟ parent)(@o(_.a[1])) === nothing
 true
 ```
 """
-parent(lens::Setfield.Lens) = first(parent_and_child(lens))
+parent(optic::AbstractPPL.ALLOWED_OPTICS) = first(parent_and_child(optic))
 
 """
-    parent_and_child(lens::Setfield.Lens)
+    parent_and_child(optic)
 
-Return a 2-tuple of lenses `(parent, child)` where `parent` is the
-parent lens of `lens` and `child` is the child lens of `lens`.
+Return a 2-tuple of optics `(parent, child)` where `parent` is the
+parent optic of `optic` and `child` is the child optic of `optic`.
 
-If `lens` does not have a parent, we return `(nothing, lens)`.
+If `optic` does not have a parent, we return `(nothing, optic)`.
 
 See also: [`parent`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent_and_child)
-julia> parent_and_child(@lens(_.a[1]))
-((@lens _.a), (@lens _[1]))
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent_and_child)
+julia> parent_and_child(@o(_.a[1]))
+((@o _.a), (@o _[1]))
 
-julia> parent_and_child(@lens(_.a))
-(nothing, (@lens _.a))
+julia> parent_and_child(@o(_.a))
+(nothing, (@o _.a))
 ```
 """
-parent_and_child(lens::Setfield.Lens) = (nothing, lens)
-function parent_and_child(lens::Setfield.ComposedLens)
-    p, child = parent_and_child(lens.inner)
-    parent = p === nothing ? lens.outer : lens.outer ∘ p
+parent_and_child(optic::AbstractPPL.ALLOWED_OPTICS) = (nothing, optic)
+function parent_and_child(optic::Accessors.ComposedOptic)
+    p, child = parent_and_child(optic.outer)
+    parent = p === nothing ? optic.inner : optic.inner ⨟ p
     return parent, child
 end
 
 """
-    splitlens(condition, lens)
+    splitoptic(condition, optic)
 
 Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a lens such that `condition(parent)` is `true` and `parent ∘ child == lens`.
+`parent` is a lens such that `condition(parent)` is `true` and `parent ⨟ child == lens`.
 
 If `issuccess` is `false`, then no such split could be found.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: splitlens)
-julia> p, c, issucesss = splitlens(@lens(_.a[1])) do parent
+```jldoctest; setup=:(using Accessors; using DynamicPPL: splitoptic)
+julia> p, c, issucesss = splitoptic(@o(_.a[1])) do parent
            # Succeeds!
-           parent == @lens(_.a)
+           parent == @o(_.a)
        end
-((@lens _.a), (@lens _[1]), true)
+((@o _.a), (@o _[1]), true)
 
-julia> p ∘ c
-(@lens _.a[1])
+julia> p ⨟ c
+(@o _.a[1])
 
-julia> splitlens(@lens(_.a[1])) do parent
+julia> splitoptic(@o(_.a[1])) do parent
            # Fails!
-           parent == @lens(_.b)
+           parent == @o(_.b)
        end
-(nothing, (@lens _.a[1]), false)
+(nothing, (@o _.a[1]), false)
 ```
 """
-function splitlens(condition, lens)
-    current_parent, current_child = parent_and_child(lens)
+function splitoptic(condition, optic)
+    current_parent, current_child = parent_and_child(optic)
     # We stop if either a) `condition` is satisfied, or b) we reached the root.
     while !condition(current_parent) && current_parent !== nothing
         current_parent, c = parent_and_child(current_parent)
-        current_child = c ∘ current_child
+        current_child = c ⨟ current_child
     end
 
     return current_parent, current_child, condition(current_parent)
 end
 
 """
-    remove_parent_lens(vn_parent::VarName, vn_child::VarName)
+    remove_parent_optic(vn_parent::VarName, vn_child::VarName)
 
-Remove the parent lens `vn_parent` from `vn_child`.
+Remove the parent optic `vn_parent` from `vn_child`.
 
 # Examples
-```jldoctest
-julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a))
-(@lens _.a)
+```jldoctest; setup = :(using Accessors; using DynamicPPL: remove_parent_optic)
+julia> remove_parent_optic(@varname(x), @varname(x.a))
+(@o _.a)
 
-julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a[1]))
-(@lens _.a[1])
+julia> remove_parent_optic(@varname(x), @varname(x.a[1]))
+(@o _.a[1])
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1]))
-(@lens _[1])
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1]))
+(@o _[1])
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1].b))
-(@lens _[1].b)
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1].b))
+(@o _[1].b)
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a))
+julia> remove_parent_optic(@varname(x.a), @varname(x.a))
 ERROR: Could not find x.a in x.a
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a[2]), @varname(x.a[1]))
+julia> remove_parent_optic(@varname(x.a[2]), @varname(x.a[1]))
 ERROR: Could not find x.a[2] in x.a[1]
 ```
 """
-function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
-    _, child, issuccess = splitlens(getlens(vn_child)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        VarName(vn_child, l) == vn_parent
+function remove_parent_optic(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
+    _, child, issuccess = splitoptic(getoptic(vn_child)) do optic
+        o = optic === nothing ? identity : optic
+        VarName(vn_child, o) == vn_parent
     end
 
     issuccess || error("Could not find $vn_parent in $vn_child")
@@ -763,11 +763,11 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     # to split the lens into the key / `parent` and the extraction lens / `child`.
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
+        l = lens === nothing ? identity : lens
         haskey(vals, VarName(vn, l))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    keylens = parent === nothing ? identity : parent
 
     # Return early if no such split could be found.
     issuccess || return false
@@ -792,11 +792,11 @@ function nested_getindex(values::AbstractDict, vn::VarName)
 
     # Split the lens into the key / `parent` and the extraction lens / `child`.
     parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
+        l = lens === nothing ? identity : lens
         haskey(values, VarName(vn, l))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    keylens = parent === nothing ? identity : parent
 
     # If we found a valid split, then we can extract the value.
     if !issuccess
@@ -911,19 +911,19 @@ x.z[2][1]
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        VarName(vn, getlens(vn) ∘ Accessors.IndexLens(Tuple(I))) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
+        varname_leaves(VarName(vn, getlens(vn) ∘ Accessors.IndexLens(Tuple(I))), val[I]) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = Setfield.PropertyLens{sym}()
+        lens = Accessors.PropertyLens{sym}()
         varname_leaves(vn ∘ lens, get(val, lens))
     end
     return Iterators.flatten(iter)
@@ -1033,7 +1033,7 @@ function varname_and_value_leaves_inner(
 )
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1042,14 +1042,14 @@ end
 function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
 end
 function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = DynamicPPL.Setfield.PropertyLens{sym}()
+        lens = DynamicPPL.Accessors.PropertyLens{sym}()
         varname_and_value_leaves_inner(vn ∘ lens, get(val, lens))
     end
 
@@ -1059,15 +1059,15 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
     return if x.uplo == 'L'
-        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:L}(), x.L)
+        varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:L}(), x.L)
     else
-        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:U}(), x.U)
+        varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:U}(), x.U)
     end
 end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             x[I],
         )
         # Iteration over the lower-triangular indices.
@@ -1077,7 +1077,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             x[I],
         )
         # Iteration over the upper-triangular indices.
