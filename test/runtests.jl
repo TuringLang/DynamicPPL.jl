@@ -1,3 +1,6 @@
+using Pkg
+Pkg.add(url="https://github.com/TuringLang/AbstractPPL.jl", rev="sunxd/fix-get-function")
+
 using Accessors
 using ADTypes
 using DynamicPPL
