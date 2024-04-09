@@ -1064,7 +1064,7 @@ end
 # Special types.
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
-        return if x.uplo == 'L'
+    return if x.uplo == 'L'
         varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:L}(), x.L)
     else
         varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:U}(), x.U)
