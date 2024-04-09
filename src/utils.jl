@@ -438,7 +438,7 @@ julia> parent(@o(_.a[1]))
 (@o _.a)
 
 julia> # Parent of optic without parents results in `nothing`.
-       (parent ⨟ parent)(@o(_.a[1])) === nothing
+       (parent ∘ parent)(@o(_.a[1])) === nothing
 true
 ```
 """
@@ -466,7 +466,7 @@ julia> parent_and_child(@o(_.a))
 parent_and_child(optic::AbstractPPL.ALLOWED_OPTICS) = (nothing, optic)
 function parent_and_child(optic::Accessors.ComposedOptic)
     p, child = parent_and_child(optic.outer)
-    parent = p === nothing ? optic.inner : optic.inner ⨟ p
+    parent = p === nothing ? optic.inner : p ∘ optic.inner
     return parent, child
 end
 
@@ -474,7 +474,7 @@ end
     splitoptic(condition, optic)
 
 Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a optic such that `condition(parent)` is `true` and `parent ⨟ child == optic`.
+`parent` is a optic such that `condition(parent)` is `true` and `child ∘ parent == optic`.
 
 If `issuccess` is `false`, then no such split could be found.
 
@@ -486,7 +486,7 @@ julia> p, c, issucesss = splitoptic(@o(_.a[1])) do parent
        end
 ((@o _.a), (@o _[1]), true)
 
-julia> p ⨟ c
+julia> c ∘ p
 (@o _.a[1])
 
 julia> splitoptic(@o(_.a[1])) do parent
@@ -501,7 +501,7 @@ function splitoptic(condition, optic)
     # We stop if either a) `condition` is satisfied, or b) we reached the root.
     while !condition(current_parent) && current_parent !== nothing
         current_parent, c = parent_and_child(current_parent)
-        current_child = c ⨟ current_child
+        current_child = current_child ∘ c
     end
 
     return current_parent, current_child, condition(current_parent)
@@ -915,20 +915,20 @@ x.z[2][1]
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, getoptic(vn) ⨟ Accessors.IndexLens(Tuple(I))) for
+        VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName(vn, getoptic(vn) ⨟ Accessors.IndexLens(Tuple(I))), val[I])
+        varname_leaves(VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), val[I])
         for I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         optic = Accessors.PropertyLens{sym}()
-        varname_leaves(vn ∘ optic, optic(val))
+        varname_leaves(VarName(vn, optic ∘ getoptic(vn)), optic(val))
     end
     return Iterators.flatten(iter)
 end
@@ -1037,7 +1037,7 @@ function varname_and_value_leaves_inner(
 )
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getoptic(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1046,7 +1046,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName(vn, DynamicPPL.getoptic(vn) ∘ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1064,7 +1064,7 @@ end
 # Special types.
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
-    return if x.uplo == 'L'
+        return if x.uplo == 'L'
         varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:L}(), x.L)
     else
         varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:U}(), x.U)

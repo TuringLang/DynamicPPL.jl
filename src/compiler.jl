@@ -226,7 +226,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return AbstractPPL.concretize(vn ⨟ Accessors.IndexLens((Colon(), i)), left)
+        return AbstractPPL.concretize(Accessors.IndexLens((Colon(), i)) ∘ vn, left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -236,7 +236,7 @@ function unwrap_right_left_vns(
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return vn ∘ Accessors.IndexLens(Tuple(i))
+        return Accessors.IndexLens(Tuple(i)) ∘ vn
     end
     return unwrap_right_left_vns(right, left, vns)
 end

@@ -1,5 +1,5 @@
 using Pkg
-Pkg.add(url="https://github.com/TuringLang/AbstractPPL.jl", rev="sunxd/fix-get-function")
+Pkg.add(url="https://github.com/TuringLang/AbstractPPL.jl", rev="sunxd/add_composite_function")
 
 using Accessors
 using ADTypes
