@@ -1,6 +1,3 @@
-using Pkg
-Pkg.add(url="https://github.com/TuringLang/AbstractPPL.jl", rev="sunxd/add_composite_function")
-
 using Accessors
 using ADTypes
 using DynamicPPL
