@@ -1,3 +1,6 @@
+using Pkg
+Pkg.add(url="https://github.com/TuringLang/AbstractPPL.jl", rev="sunxd/patch_compose")
+
 using Accessors
 using ADTypes
 using DynamicPPL
