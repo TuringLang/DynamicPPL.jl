@@ -353,7 +353,7 @@ function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
     optic = BangBang.prefermutation(
-        Accessors.PropertyLens{sym}() ∘ AbstractPPL.getoptic(vn)
+        AbstractPPL.getoptic(vn) ∘ Accessors.PropertyLens{sym}()
     )
     return Accessors.set(obj, optic, value)
 end
@@ -811,7 +811,7 @@ function nested_getindex(values::AbstractDict, vn::VarName)
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
     value = values[VarName(vn, keyoptic)]
-    return get(value, child)
+    return child(value)
 end
 
 """
@@ -1037,7 +1037,7 @@ function varname_and_value_leaves_inner(
 )
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1046,7 +1046,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1055,7 +1055,7 @@ function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         optic = DynamicPPL.Accessors.PropertyLens{sym}()
         varname_and_value_leaves_inner(
-            VarName{getsym(vn)}(getoptic(vn) ⨟ optic), optic(val)
+            VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val)
         )
     end
 
@@ -1065,15 +1065,15 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
     return if x.uplo == 'L'
-        varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:L}(), x.L)
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:L}() ∘ vn, x.L)
     else
-        varname_and_value_leaves_inner(vn ∘ Accessors.PropertyLens{:U}(), x.U)
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:U}() ∘ vn, x.U)
     end
 end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             x[I],
         )
         # Iteration over the lower-triangular indices.
@@ -1083,7 +1083,7 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getoptic(vn) ⨟ DynamicPPL.Accessors.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             x[I],
         )
         # Iteration over the upper-triangular indices.

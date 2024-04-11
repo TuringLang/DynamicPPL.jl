@@ -79,12 +79,12 @@ function varname_in_chain!(
     x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx, out
 ) where {sym}
     # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the optic.
-    # This way we can use `getoptic(vn)` to extract the value from `x` and use `vn_parent ⨟ getoptic(vn)`
+    # This way we can use `getoptic(vn)` to extract the value from `x` and use `getoptic(vn) ∘ vn_parent`
     # to extract the value from the `chain`.
     for vn in varname_leaves(VarName{sym}(), x)
         # Update `out`, possibly in place, and return.
         l = AbstractPPL.getoptic(vn)
-        varname_in_chain!(x, vn_parent ⨟ l, chain, chain_idx, iteration_idx, out)
+        varname_in_chain!(x, l ∘ vn_parent, chain, chain_idx, iteration_idx, out)
     end
     return out
 end
@@ -104,7 +104,7 @@ function values_from_chain(
     x::AbstractArray, vn_parent::VarName{sym}, chain, chain_idx, iteration_idx
 ) where {sym}
     # We use `VarName{sym}()` so that the resulting leaf `vn` only contains the tail of the optic.
-    # This way we can use `getoptic(vn)` to extract the value from `x` and use `vn_parent ⨟ getoptic(vn)`
+    # This way we can use `getoptic(vn)` to extract the value from `x` and use `getoptic(vn) ∘ vn_parent`
     # to extract the value from the `chain`.
     out = similar(x)
     for vn in varname_leaves(VarName{sym}(), x)
@@ -113,7 +113,7 @@ function values_from_chain(
         out = Accessors.set(
             out,
             BangBang.prefermutation(l),
-            chain[iteration_idx, Symbol(vn_parent ⨟ l), chain_idx],
+            chain[iteration_idx, Symbol(l ∘ vn_parent), chain_idx],
         )
     end
 

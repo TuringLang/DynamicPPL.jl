@@ -25,6 +25,20 @@ using Test
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
+# TODO: temporarily overwrite for testing 
+using AbstractPPL: ALLOWED_OPTICS, VarName
+# Allow compositions with optic.
+function Base.:∘(optic::ALLOWED_OPTICS, vn::VarName{sym,<:ALLOWED_OPTICS}) where {sym}
+    vn_optic = getoptic(vn)
+    if vn_optic == identity
+        return VarName{sym}(optic)
+    elseif optic == identity
+        return vn
+    else
+        return VarName{sym}(optic ∘ vn_optic)
+    end
+end
+
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
 const GROUP = get(ENV, "GROUP", "All")
