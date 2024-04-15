@@ -765,6 +765,16 @@ function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
 end
 
+# NOTE: Necessary to handle product distributions of `Dirichlet` and similar.
+function with_logabsdet_jacobian_and_reconstruct(
+    f::Bijectors.Inverse{<:Bijectors.SimplexBijector}, dist, y
+)
+    (d, ns...) = size(dist)
+    yreshaped = reshape(y, d - 1, ns...)
+    x, logjac = with_logabsdet_jacobian(f, yreshaped)
+    return x, logjac
+end
+
 # TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
 # just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
 # NOTE: `reconstruct` is no-op if `val` is already of correct shape.
