@@ -483,7 +483,14 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             [@varname(s), @varname(m), @varname(x[2])],
             [@varname(s), @varname(x[1]), @varname(x[2])],
             [@varname(m), @varname(x[1]), @varname(x[2])],
-            [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
+        ]
+
+        # Patterns requiring `subsumes`.
+        vns_supported_with_subsumes = [
+            [@varname(s), @varname(x)] => [@varname(s), @varname(x[1]), @varname(x[2])],
+            [@varname(m), @varname(x)] => [@varname(m), @varname(x[1]), @varname(x[2])],
+            [@varname(s), @varname(m), @varname(x)] =>
+                [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
         # `SimpleaVarInfo` only supports subsetting using the varnames as they appear
@@ -507,6 +514,24 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 check_varinfo_keys(varinfo_subset, vns_subset)
                 # Values should be the same.
                 @test [varinfo_subset[vn] for vn in vns_subset] == [varinfo[vn] for vn in vns_subset]
+
+                # `merge` with the original.
+                varinfo_merged = merge(varinfo, varinfo_subset)
+                vns_merged = keys(varinfo_merged)
+                # Should be equivalent.
+                check_varinfo_keys(varinfo_merged, vns)
+                # Values should be the same.
+                @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+            end
+
+            @testset "$(convert(Vector{VarName}, vns_subset))" for (
+                vns_subset, vns_target
+            ) in vns_supported_with_subsumes
+                varinfo_subset = subset(varinfo, vns_subset)
+                # Should now only contain the variables in `vns_subset`.
+                check_varinfo_keys(varinfo_subset, vns_target)
+                # Values should be the same.
+                @test [varinfo_subset[vn] for vn in vns_target] == [varinfo[vn] for vn in vns_target]
 
                 # `merge` with the original.
                 varinfo_merged = merge(varinfo, varinfo_subset)
