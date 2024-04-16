@@ -551,15 +551,6 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 varinfo, [@varname(s), @varname(m), @varname(x[1])]
             )
         end
-        # `SimpleVarInfo{<:AbstractDict}` can only handle varnames as they appear in the model.
-        varinfo = varinfos[findfirst(
-            Base.Fix2(isa, SimpleVarInfo{<:AbstractDict}), varinfos
-        )]
-        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
-            @test_throws ArgumentError subset(
-                varinfo, [@varname(s), @varname(m), @varname(x)]
-            )
-        end
     end
 
     @testset "merge" begin

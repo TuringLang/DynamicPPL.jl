@@ -432,7 +432,7 @@ end
 function _subset(x::AbstractDict, vns)
     vns_present = collect(keys(x))
     vns_found = mapreduce(vcat, vns) do vn
-        return map(Base.Fix1(subsumes, vn), vs_present)
+        return filter(Base.Fix1(subsumes, vn), vns_present)
     end
 
     # NOTE: This `vns` to be subsume varnames explicitly present in `x`.
