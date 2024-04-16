@@ -459,7 +459,7 @@ function _subset(x::NamedTuple, vns)
     end
 
     syms = map(getsym, vns)
-    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix2(getindex, x), syms)))
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
 end
 
 # `merge`

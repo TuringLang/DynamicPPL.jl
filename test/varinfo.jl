@@ -493,20 +493,24 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
-        # `SimpleaVarInfo` only supports subsetting using the varnames as they appear
+        # `SimpleVarInfo` only supports subsetting using the varnames as they appear
         # in the model.
         vns_supported_simple = filter(∈(vns), vns_supported_standard)
 
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos_standard
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # All variables.
             check_varinfo_keys(varinfo, vns)
 
             # Added a `convert` to make the naming of the testsets a bit more readable.
-            vns_supported = if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple
-                vns_supported_simple
-            else
-                vns_supported_standard
-            end
+            # `SimpleVarInfo{<:NamedTuple}` only supports subsetting with "simple" varnames,
+            ## i.e. `VarName{sym}()` without any indexing, etc.
+            vns_supported =
+                if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple &&
+                    values_as(varinfo) isa NamedTuple
+                    vns_supported_simple
+                else
+                    vns_supported_standard
+                end
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
                                                                    vns_supported
                 varinfo_subset = subset(varinfo, vns_subset)

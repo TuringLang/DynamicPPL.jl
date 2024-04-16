@@ -200,6 +200,7 @@ function BangBang.empty!!(vi::ThreadSafeVarInfo)
     return resetlogp!!(Setfield.@set!(vi.varinfo = empty!!(vi.varinfo)))
 end
 
+values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
 values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
 function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
