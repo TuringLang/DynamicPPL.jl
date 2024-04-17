@@ -264,8 +264,12 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
 end
 
-function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
+function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
+    # For each `vn` in `vns`, get the variables subsumed by `vn`.
+    vns = mapreduce(vcat, vns_given) do vn
+        filter(Base.Fix1(subsumes, vn), metadata.vns)
+    end
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = Dict(vn => i for (i, vn) in enumerate(vns))
     # Construct new `vals` and `ranges`.

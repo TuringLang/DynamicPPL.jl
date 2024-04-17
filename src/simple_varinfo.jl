@@ -430,18 +430,21 @@ function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
 end
 
 function _subset(x::AbstractDict, vns)
-    # NOTE: This requires `vns` to be explicitly present in `x`.
-    if any(!Base.Fix1(haskey, x), vns)
+    vns_present = collect(keys(x))
+    vns_found = mapreduce(vcat, vns) do vn
+        return filter(Base.Fix1(subsumes, vn), vns_present)
+    end
+
+    # NOTE: This `vns` to be subsume varnames explicitly present in `x`.
+    if isempty(vns_found)
         throw(
             ArgumentError(
-                "Cannot subset `AbstractDict` with `VarName` that is not an explicit key. " *
-                "For example, if `keys(x) == [@varname(x[1])]`, then subsetting with " *
-                "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not.",
+                "Cannot subset `AbstractDict` with `VarName` which does not subsume any keys.",
             ),
         )
     end
     C = ConstructionBase.constructorof(typeof(x))
-    return C(vn => x[vn] for vn in vns)
+    return C(vn => x[vn] for vn in vns_found)
 end
 
 function _subset(x::NamedTuple, vns)
@@ -456,7 +459,7 @@ function _subset(x::NamedTuple, vns)
     end
 
     syms = map(getsym, vns)
-    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix2(getindex, x), syms)))
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
 end
 
 # `merge`
