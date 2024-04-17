@@ -43,7 +43,7 @@ DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 [compat]
 ADTypes = "0.2"
 AbstractMCMC = "5"
-AbstractPPL = "0.8.3"
+AbstractPPL = "0.8.4"
 Accessors = "0.1"
 BangBang = "0.4"
 Bijectors = "0.13"

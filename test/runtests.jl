@@ -76,7 +76,7 @@ include("test_util.jl")
             DocMeta.setdocmeta!(
                 DynamicPPL,
                 :DocTestSetup,
-                :(using DynamicPPL, Distributions, Accessors);
+                :(using DynamicPPL, Distributions);
                 recursive=true,
             )
             doctestfilters = [

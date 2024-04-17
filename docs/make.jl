@@ -10,7 +10,7 @@ using DynamicPPL: AbstractPPL
 using Distributions
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL, Accessors); recursive=true)
+DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
 
 makedocs(;
     sitename="DynamicPPL",
