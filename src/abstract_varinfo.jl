@@ -262,7 +262,7 @@ julia> values_as(SimpleVarInfo(data), NamedTuple)
 (x = 1.0, m = [2.0])
 
 julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
   x => 1.0
   m => [2.0]
 
@@ -312,7 +312,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -338,7 +338,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -426,7 +426,7 @@ julia> # Extract one with only `m`.
 
 
 julia> keys(varinfo_subset1)
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> varinfo_subset1[@varname(m)]
@@ -763,6 +763,16 @@ value is reconstructed to the correct type and shape according to `dist`.
 function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
     x_recon = reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
+end
+
+# NOTE: Necessary to handle product distributions of `Dirichlet` and similar.
+function with_logabsdet_jacobian_and_reconstruct(
+    f::Bijectors.Inverse{<:Bijectors.SimplexBijector}, dist, y
+)
+    (d, ns...) = size(dist)
+    yreshaped = reshape(y, d - 1, ns...)
+    x, logjac = with_logabsdet_jacobian(f, yreshaped)
+    return x, logjac
 end
 
 # TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can

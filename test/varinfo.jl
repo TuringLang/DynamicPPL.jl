@@ -1,7 +1,7 @@
 function check_varinfo_keys(varinfo, vns)
     if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
-        # since `keys(varinfo_merged)` only contains `VarName` with `IdentityLens`.
+        # since `keys(varinfo_merged)` only contains `VarName` with `identity`.
         # So we just check that the original keys are present.
         for vn in vns
             # Should have all the original keys.
@@ -483,23 +483,34 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             [@varname(s), @varname(m), @varname(x[2])],
             [@varname(s), @varname(x[1]), @varname(x[2])],
             [@varname(m), @varname(x[1]), @varname(x[2])],
-            [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
-        # `SimpleaVarInfo` only supports subsetting using the varnames as they appear
+        # Patterns requiring `subsumes`.
+        vns_supported_with_subsumes = [
+            [@varname(s), @varname(x)] => [@varname(s), @varname(x[1]), @varname(x[2])],
+            [@varname(m), @varname(x)] => [@varname(m), @varname(x[1]), @varname(x[2])],
+            [@varname(s), @varname(m), @varname(x)] =>
+                [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
+        ]
+
+        # `SimpleVarInfo` only supports subsetting using the varnames as they appear
         # in the model.
         vns_supported_simple = filter(∈(vns), vns_supported_standard)
 
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos_standard
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # All variables.
             check_varinfo_keys(varinfo, vns)
 
             # Added a `convert` to make the naming of the testsets a bit more readable.
-            vns_supported = if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple
-                vns_supported_simple
-            else
-                vns_supported_standard
-            end
+            # `SimpleVarInfo{<:NamedTuple}` only supports subsetting with "simple" varnames,
+            ## i.e. `VarName{sym}()` without any indexing, etc.
+            vns_supported =
+                if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple &&
+                    values_as(varinfo) isa NamedTuple
+                    vns_supported_simple
+                else
+                    vns_supported_standard
+                end
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
                                                                    vns_supported
                 varinfo_subset = subset(varinfo, vns_subset)
@@ -516,23 +527,32 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 # Values should be the same.
                 @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
+
+            @testset "$(convert(Vector{VarName}, vns_subset))" for (
+                vns_subset, vns_target
+            ) in vns_supported_with_subsumes
+                varinfo_subset = subset(varinfo, vns_subset)
+                # Should now only contain the variables in `vns_subset`.
+                check_varinfo_keys(varinfo_subset, vns_target)
+                # Values should be the same.
+                @test [varinfo_subset[vn] for vn in vns_target] == [varinfo[vn] for vn in vns_target]
+
+                # `merge` with the original.
+                varinfo_merged = merge(varinfo, varinfo_subset)
+                vns_merged = keys(varinfo_merged)
+                # Should be equivalent.
+                check_varinfo_keys(varinfo_merged, vns)
+                # Values should be the same.
+                @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+            end
         end
 
         # For certain varinfos we should have errors.
-        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `IdentityLens`.
+        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `identity`.
         varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:NamedTuple}), varinfos)]
         @testset "$(short_varinfo_name(varinfo)): failure cases" begin
             @test_throws ArgumentError subset(
                 varinfo, [@varname(s), @varname(m), @varname(x[1])]
-            )
-        end
-        # `SimpleVarInfo{<:AbstractDict}` can only handle varnames as they appear in the model.
-        varinfo = varinfos[findfirst(
-            Base.Fix2(isa, SimpleVarInfo{<:AbstractDict}), varinfos
-        )]
-        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
-            @test_throws ArgumentError subset(
-                varinfo, [@varname(s), @varname(m), @varname(x)]
             )
         end
     end

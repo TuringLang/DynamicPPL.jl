@@ -1,3 +1,4 @@
+using Accessors
 using ADTypes
 using DynamicPPL
 using AbstractMCMC
@@ -13,7 +14,6 @@ using MCMCChains
 using Tracker
 using ReverseDiff
 using Zygote
-using Setfield
 using Compat
 
 using Distributed
