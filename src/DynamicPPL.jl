@@ -93,6 +93,7 @@ export AbstractVarInfo,
     getargnames,
     generated_quantities,
     extract_priors,
+    extract_realizations,
     # Samplers
     Sampler,
     SampleFromPrior,

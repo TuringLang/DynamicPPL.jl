@@ -143,6 +143,12 @@ Sometimes it can be useful to extract the priors of a model. This is the possibl
 extract_priors
 ```
 
+Safe extraction of realizations from a given [`AbstractVarInfo`](@ref) can be done using [`extract_realizations`](@ref).
+
+```@docs
+extract_realizations
+```
+
 ```@docs
 NamedDist
 ```
