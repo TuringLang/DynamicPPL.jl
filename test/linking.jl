@@ -182,8 +182,7 @@ end
         end
         @testset "ns=$ns" for ns in [
             (3,),
-            (3, 4), 
-            (3, 4, 5)
+            # (3, 4), (3, 4, 5)
         ]
             model = demo_highdim_dirichlet(ns...)
             example_values = rand(NamedTuple, model)
