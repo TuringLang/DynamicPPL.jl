@@ -174,4 +174,29 @@ end
             end
         end
     end
+
+    # Related: https://github.com/TuringLang/Turing.jl/issues/2190
+    @testset "High-dim Dirichlet" begin
+        @model function demo_highdim_dirichlet(ns...)
+            return x ~ filldist(Dirichlet(ones(2)), ns...)
+        end
+        @testset "ns=$ns" for ns in [
+            (3,),
+            # TODO: Uncomment once we have https://github.com/TuringLang/Bijectors.jl/pull/304
+            # (3, 4), (3, 4, 5)
+        ]
+            model = demo_highdim_dirichlet(ns...)
+            example_values = rand(NamedTuple, model)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            @testset "$(short_varinfo_name(vi))" for vi in vis
+                # Linked.
+                vi_linked = if mutable
+                    DynamicPPL.link!!(deepcopy(vi), model)
+                else
+                    DynamicPPL.link(vi, model)
+                end
+                @test length(vi_linked[:]) == prod(ns)
+            end
+        end
+    end
 end
