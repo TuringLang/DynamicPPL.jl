@@ -237,6 +237,11 @@ reconstruct(f, dist, val) = reconstruct(dist, val)
 reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
+function reconstruct(
+    ::Distribution{ArrayLikeVariate{N}}, val::AbstractArray{<:Real,N}
+) where {N}
+    return copy(val)
+end
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
 
 function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
