@@ -4,11 +4,11 @@ const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
     need_concretize(expr)
 
 Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
-requires a dynamic lens.
+requires a dynamic optic.
 
 # Examples
 
-```jldoctest; setup=:(using Setfield)
+```jldoctest; setup=:(using Accessors)
 julia> DynamicPPL.need_concretize(:(x[1, :]))
 true
 
@@ -19,7 +19,7 @@ julia> DynamicPPL.need_concretize(:(x[1, 1]))
 false
 """
 function need_concretize(expr)
-    return Setfield.need_dynamic_lens(expr) || begin
+    return Accessors.need_dynamic_optic(expr) || begin
         flag = false
         MacroTools.postwalk(expr) do ex
             # Concretise colon by default
@@ -202,13 +202,13 @@ variables.
 # Example
 ```jldoctest; setup=:(using Distributions, LinearAlgebra)
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
-x[:,2]
+x[:, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
-x[1,2]
+x[1, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
-x[:][1,2]
+x[:][1, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
 x[1][3]
@@ -226,7 +226,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return AbstractPPL.concretize(vn ∘ Setfield.IndexLens((Colon(), i)), left)
+        return AbstractPPL.concretize(Accessors.IndexLens((Colon(), i)) ∘ vn, left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -236,7 +236,7 @@ function unwrap_right_left_vns(
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return vn ∘ Setfield.IndexLens(Tuple(i))
+        return Accessors.IndexLens(Tuple(i)) ∘ vn
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -437,7 +437,7 @@ function generate_tilde_assume(left, right, vn)
     expr = :($left = $value)
     if left isa Expr
         expr = AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+            Accessors.setmacro(BangBang.prefermutation, expr; overwrite=true)
         )
     end
 

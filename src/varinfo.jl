@@ -969,7 +969,7 @@ function link!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
 end
 
 """
@@ -1055,7 +1055,7 @@ function invlink!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1170,7 +1170,7 @@ function link(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
 function _link(varinfo::UntypedVarInfo, spl::AbstractSampler)
@@ -1265,7 +1265,7 @@ function invlink(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
 function _invlink(varinfo::UntypedVarInfo, spl::AbstractSampler)
@@ -1401,10 +1401,10 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     vn_parent = vns[i]
     dist = getdist(md, vn_parent)
     val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
-    # Split the varname into its tail lens.
-    lens = remove_parent_lens(vn_parent, vn)
+    # Split the varname into its tail optic.
+    optic = remove_parent_optic(vn_parent, vn)
     # Update the value for the parent.
-    val_parent_updated = set!!(val_parent, lens, val)
+    val_parent_updated = set!!(val_parent, optic, val)
     setindex!(vi, val_parent_updated, vn_parent)
     return vn_parent
 end
