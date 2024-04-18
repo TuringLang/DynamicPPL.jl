@@ -695,10 +695,10 @@ function setchildcontext(context::RealizationExtractorContext, child)
 end
 
 function Base.push!(context::RealizationExtractorContext, vn::VarName, value)
-    return setindex!(context.values, value, vn)
+    return setindex!(context.values, copy(value), vn)
 end
 
-function broadcast_push!(context::RealizationExtractorContext, vns, dists, values)
+function broadcast_push!(context::RealizationExtractorContext, vns, values)
     return push!.((context,), vns, values)
 end
 
@@ -716,6 +716,7 @@ function tilde_assume(context::RealizationExtractorContext, right, vn, vi)
     value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
     # Save the value.
     push!(context, vn, value)
+    # Save the value.
     # Pass on.
     return value, logp, vi
 end
@@ -734,7 +735,6 @@ function dot_tilde_assume(context::RealizationExtractorContext, right, left, vn,
     value, logp, vi = dot_tilde_assume(childcontext(context), right, left, vn, vi)
 
     # Save the value.
-    # FIXME: This is not going to work for arbitrary broadcasting.
     _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
     broadcast_push!(context, _vns, value)
 
@@ -753,7 +753,6 @@ function dot_tilde_assume(
         rng, childcontext(context), sampler, right, left, vn, vi
     )
     # Save the value.
-    # FIXME: This is not going to work for arbitrary broadcasting.
     _right, _left, _vns = unwrap_right_left_vns(right, left, vn)
     broadcast_push!(context, _vns, value)
 
@@ -761,7 +760,8 @@ function dot_tilde_assume(
 end
 
 """
-    extract_realizations([rng::Random.AbstractRNG, ]model::Model[, varinfo::AbstractVarInfo])
+    extract_realizations(model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
+    extract_realizations(rng::Random.AbstractRNG, model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
 
 Extract realizations from the `model` for a given `varinfo` through a evaluation of the model.
 
@@ -775,6 +775,12 @@ space.
 
 Hence this method is a "safe" way of obtaining realizations in constrained space at the cost
 of additional model evaluations.
+
+# Arguments
+- `model::Model`: model to extract realizations from.
+- `varinfo::AbstractVarInfo`: variable information to use for the extraction.
+- `context::AbstractContext`: context to use for the extraction. If `rng` is specified, then `context`
+    will be wrapped in a [`SamplingContext`](@ref) with the provided `rng`.
 
 # Examples
 
@@ -827,13 +833,20 @@ julia> # Approach 2: Extract realizations using `extract_realizations`.
 true
 ```
 """
-function extract_realizations(model::Model, varinfo::AbstractVarInfo=VarInfo())
-    return extract_realizations(Random.default_rng(), model, varinfo)
-end
 function extract_realizations(
-    rng::Random.AbstractRNG, model::Model, varinfo::AbstractVarInfo=VarInfo()
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(),
+    context::AbstractContext=DefaultContext(),
 )
-    context = RealizationExtractorContext(SamplingContext(rng))
+    context = RealizationExtractorContext(context)
     evaluate!!(model, varinfo, context)
     return context.values
+end
+function extract_realizations(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(),
+    context::AbstractContext=DefaultContext(),
+)
+    return extract_realizations(model, varinfo, SamplingContext(rng, context))
 end

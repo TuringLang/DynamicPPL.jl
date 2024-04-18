@@ -356,7 +356,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         ]
         @testset "$(model.f)" for model in models_to_test
             vns = DynamicPPL.TestUtils.varnames(model)
-            example_values = DynamicPPL.TestUtils.rand(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = filter(
                 is_typed_varinfo,
                 DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
@@ -372,6 +372,24 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                     );
                     true
                 )
+            end
+        end
+    end
+
+    @testset "extract_realizations" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                realizations = extract_realizations(model, varinfo)
+                # Ensure that all variables are found.
+                vns_found = collect(keys(realizations))
+                @test vns ∩ vns_found == vns ∪ vns_found
+                # Ensure that the values are the same.
+                for vn in vns
+                    @test realizations[vn] == varinfo[vn]
+                end
             end
         end
     end
