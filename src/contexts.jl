@@ -833,7 +833,7 @@ end
 function extract_realizations(
     rng::Random.AbstractRNG, model::Model, varinfo::AbstractVarInfo=VarInfo()
 )
-    context = RealizationExtractorContext(DefaultContext())
+    context = RealizationExtractorContext(SamplingContext(rng))
     evaluate!!(model, varinfo, context)
     return context.values
 end
