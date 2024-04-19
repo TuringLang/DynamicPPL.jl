@@ -60,7 +60,7 @@ struct Model{
         context::Ctx=DefaultContext(),
         has_static_support::Union{Val{false},Val{true}}=Val{false}(),
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,typeof(isstatic)}(
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,typeof(has_static_support)}(
             f, args, defaults, context, has_static_support
         )
     end
