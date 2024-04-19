@@ -179,6 +179,7 @@ include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
+include("values_as_in_model.jl")
 
 if !isdefined(Base, :get_extension)
     using Requires
