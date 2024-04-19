@@ -12,7 +12,7 @@ using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
-using Setfield: Setfield
+using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
 using LogDensityProblemsAD: LogDensityProblemsAD
 
