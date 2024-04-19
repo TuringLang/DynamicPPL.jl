@@ -4,7 +4,7 @@ using ..DynamicPPL
 using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
 using Random: Random
-using Setfield: Setfield
+using Accessors: Accessors
 
 using DocStringExtensions
 using Distributions
@@ -190,7 +190,7 @@ end
 DynamicPPL.NodeTrait(::DebugContext) = DynamicPPL.IsParent()
 DynamicPPL.childcontext(context::DebugContext) = context.context
 function DynamicPPL.setchildcontext(context::DebugContext, child)
-    Setfield.@set context.context = child
+    Accessors.@set context.context = child
 end
 
 function record_varname!(context::DebugContext, varname::VarName, dist)

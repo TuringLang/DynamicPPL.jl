@@ -2,7 +2,7 @@
     @testset "context interface" begin
         # HACK: Require a model to instantiate it, so let's just grab one.
         model = first(DynamicPPL.TestUtils.DEMO_MODELS)
-        context = DynamicPPL.DebugContext(model)
+        context = DynamicPPL.DebugUtils.DebugContext(model)
         DynamicPPL.TestUtils.test_context_interface(context)
     end
 
@@ -13,7 +13,7 @@
 
         # Check that the trace contains all the variables in the model.
         assume_stmts = filter(Base.Fix2(hasproperty, :varname), trace)
-        vns_iter = mapreduce(vcat, assume_stmts) do record
+        varnames_in_trace = mapreduce(vcat, assume_stmts) do record
             vec([record.varname;])
         end
         for vn in DynamicPPL.TestUtils.varnames(model)
