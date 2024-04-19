@@ -666,9 +666,10 @@ function fixed(context::FixedContext)
 end
 
 """
-    RealizationExtractorContext
+    ValuesAsInModelContext
 
-A context that is used to extract realizations from a model.
+A context that is used by [`values_as_in_model`](@ref) to obtain values
+of the model parameters as they are in the model.
 
 This is particularly useful when working in unconstrained space, but one
 wants to extract the realization of a model in a constrained space.
@@ -676,35 +677,35 @@ wants to extract the realization of a model in a constrained space.
 # Fields
 $(TYPEDFIELDS)
 """
-struct RealizationExtractorContext{T,C<:AbstractContext} <: AbstractContext
+struct ValuesAsInModelContext{T,C<:AbstractContext} <: AbstractContext
     "values that are extracted from the model"
     values::T
     "child context"
     context::C
 end
 
-RealizationExtractorContext(values) = RealizationExtractorContext(values, DefaultContext())
-function RealizationExtractorContext(context::AbstractContext)
-    return RealizationExtractorContext(OrderedDict(), context)
+ValuesAsInModelContext(values) = ValuesAsInModelContext(values, DefaultContext())
+function ValuesAsInModelContext(context::AbstractContext)
+    return ValuesAsInModelContext(OrderedDict(), context)
 end
 
-NodeTrait(::RealizationExtractorContext) = IsParent()
-childcontext(context::RealizationExtractorContext) = context.context
-function setchildcontext(context::RealizationExtractorContext, child)
-    return RealizationExtractorContext(context.values, child)
+NodeTrait(::ValuesAsInModelContext) = IsParent()
+childcontext(context::ValuesAsInModelContext) = context.context
+function setchildcontext(context::ValuesAsInModelContext, child)
+    return ValuesAsInModelContext(context.values, child)
 end
 
-function Base.push!(context::RealizationExtractorContext, vn::VarName, value)
+function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
     return setindex!(context.values, copy(value), vn)
 end
 
-function broadcast_push!(context::RealizationExtractorContext, vns, values)
+function broadcast_push!(context::ValuesAsInModelContext, vns, values)
     return push!.((context,), vns, values)
 end
 
 # This will be hit if we're broadcasting an `AbstractMatrix` over a `MultivariateDistribution`.
 function broadcast_push!(
-    context::RealizationExtractorContext, vns::AbstractVector, values::AbstractMatrix
+    context::ValuesAsInModelContext, vns::AbstractVector, values::AbstractMatrix
 )
     for (vn, col) in zip(vns, eachcol(values))
         push!(context, vn, col)
@@ -712,7 +713,7 @@ function broadcast_push!(
 end
 
 # `tilde_asssume`
-function tilde_assume(context::RealizationExtractorContext, right, vn, vi)
+function tilde_assume(context::ValuesAsInModelContext, right, vn, vi)
     value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
     # Save the value.
     push!(context, vn, value)
@@ -721,7 +722,7 @@ function tilde_assume(context::RealizationExtractorContext, right, vn, vi)
     return value, logp, vi
 end
 function tilde_assume(
-    rng::Random.AbstractRNG, context::RealizationExtractorContext, sampler, right, vn, vi
+    rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, vn, vi
 )
     value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
     # Save the value.
@@ -731,7 +732,7 @@ function tilde_assume(
 end
 
 # `dot_tilde_assume`
-function dot_tilde_assume(context::RealizationExtractorContext, right, left, vn, vi)
+function dot_tilde_assume(context::ValuesAsInModelContext, right, left, vn, vi)
     value, logp, vi = dot_tilde_assume(childcontext(context), right, left, vn, vi)
 
     # Save the value.
@@ -741,13 +742,7 @@ function dot_tilde_assume(context::RealizationExtractorContext, right, left, vn,
     return value, logp, vi
 end
 function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::RealizationExtractorContext,
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
+    rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, left, vn, vi
 )
     value, logp, vi = dot_tilde_assume(
         rng, childcontext(context), sampler, right, left, vn, vi
@@ -760,10 +755,10 @@ function dot_tilde_assume(
 end
 
 """
-    extract_realizations(model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
-    extract_realizations(rng::Random.AbstractRNG, model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
+    values_as_in_model(model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
+    values_as_in_model(rng::Random.AbstractRNG, model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
 
-Extract realizations from the `model` for a given `varinfo` through a evaluation of the model.
+Get the values of `varinfo` as they would be seen in the model.
 
 If no `varinfo` is provided, then this is effectively the same as
 [`Base.rand(rng::Random.AbstractRNG, model::Model)`](@ref).
@@ -826,27 +821,27 @@ julia> # (×) Fails! Because `VarInfo` _saves_ the original distributions
        lb ≤ varinfo_invlinked[@varname(y)] ≤ ub
 false
 
-julia> # Approach 2: Extract realizations using `extract_realizations`.
-       # (✓) `extract_realizations` will re-run the model and extract
+julia> # Approach 2: Extract realizations using `values_as_in_model`.
+       # (✓) `values_as_in_model` will re-run the model and extract
        # the correct realization of `y` given the new values of `x`.
-       lb ≤ extract_realizations(model, varinfo_linked)[@varname(y)] ≤ ub
+       lb ≤ values_as_in_model(model, varinfo_linked)[@varname(y)] ≤ ub
 true
 ```
 """
-function extract_realizations(
+function values_as_in_model(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(),
     context::AbstractContext=DefaultContext(),
 )
-    context = RealizationExtractorContext(context)
+    context = ValuesAsInModelContext(context)
     evaluate!!(model, varinfo, context)
     return context.values
 end
-function extract_realizations(
+function values_as_in_model(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(),
     context::AbstractContext=DefaultContext(),
 )
-    return extract_realizations(model, varinfo, SamplingContext(rng, context))
+    return values_as_in_model(model, varinfo, SamplingContext(rng, context))
 end

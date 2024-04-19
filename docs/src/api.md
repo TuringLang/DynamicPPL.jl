@@ -143,10 +143,10 @@ Sometimes it can be useful to extract the priors of a model. This is the possibl
 extract_priors
 ```
 
-Safe extraction of realizations from a given [`AbstractVarInfo`](@ref) can be done using [`extract_realizations`](@ref).
+Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are seen in the model can be done using [`values_as_in_model`](@ref).
 
 ```@docs
-extract_realizations
+values_as_in_model
 ```
 
 ```@docs
