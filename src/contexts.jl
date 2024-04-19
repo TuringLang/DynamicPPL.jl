@@ -766,7 +766,7 @@ end
 Extract realizations from the `model` for a given `varinfo` through a evaluation of the model.
 
 If no `varinfo` is provided, then this is effectively the same as
-[`Base.rand(rng::Random.AbstractRNG, model::Model)`].
+[`Base.rand(rng::Random.AbstractRNG, model::Model)`](@ref).
 
 More specifically, this method attempts to extract the realization _as seen in the model_.
 For example, `x[1] ~ truncated(Normal(); lower=0)` will result in a realization compatible
