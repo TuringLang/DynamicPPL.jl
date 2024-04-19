@@ -26,8 +26,24 @@ add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
 
 show_varname(io::IO, varname::VarName) = print(io, varname)
 function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
-    # TODO: Can we remove the `VarName` at the beginning of the show completely?
-    return show(io, convert(Array{VarName,N}, varname))
+    # Attempt to make the type concrete in case the symbol is shared.
+    return _show_varname(io, map(identity, varname))
+end
+function _show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
+    # Print the first and last element of the array.
+    print(io, "[")
+    show_varname(io, varname[1])
+    print(io, ", ..., ")
+    show_varname(io, varname[end])
+    print(io, "]")
+    # And the size.
+    print(io, " ", size(varname))
+
+    return nothing
+end
+function _show_varname(io::IO, varname::Array{<:VarName{sym},N}) where {N,sym}
+    print(io, sym, "[...]", " ", size(varname))
+    return nothing
 end
 
 function show_right(io::IO, d::Distribution)
