@@ -1253,7 +1253,7 @@ function generated_quantities(model::Model, chain::AbstractChains)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
         setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
-        model(varinfo)
+        model(varinfo, PostProcessingContext())
     end
 end
 
@@ -1295,11 +1295,11 @@ julia> generated_quantities(model, values(parameters), keys(parameters))
 function generated_quantities(model::Model, parameters::NamedTuple)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values(parameters), keys(parameters))
-    return model(varinfo)
+    return model(varinfo, PostProcessingContext())
 end
 
 function generated_quantities(model::Model, values, keys)
     varinfo = VarInfo(model)
     setval_and_resample!(varinfo, values, keys)
-    return model(varinfo)
+    return model(varinfo, PostProcessingContext())
 end

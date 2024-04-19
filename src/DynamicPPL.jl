@@ -129,6 +129,7 @@ export AbstractVarInfo,
     unfix,
     # Convenience macros
     @addlogprob!,
+    @is_post_processing,
     @submodel,
     value_iterator_from_chain
 

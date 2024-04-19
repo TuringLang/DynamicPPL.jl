@@ -1,6 +1,28 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
+    check_if_in_model_block_expr(name)
+
+Return an expression that can be evaluated to check if we're inside a model block.
+
+# Arguments
+- `name`: The name of the variable or method that can only be used inside a model block.
+    Error message will include this name.
+"""
+function check_if_in_model_block_expr(name)
+    return Expr(
+        :||,
+        Expr(
+            :&&,
+            Expr(:isdefined, esc(:__model__)),
+            Expr(:call, :isa, esc(:__model__), Model),
+        ),
+        # Otherwise, throw error.
+        :(error($(string(name)) * " can only be used inside a model block")),
+    )
+end
+
+"""
     need_concretize(expr)
 
 Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 

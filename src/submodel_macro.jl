@@ -241,6 +241,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
+            $(check_if_in_model_block_expr("@submodel"))
             $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )

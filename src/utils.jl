@@ -70,6 +70,7 @@ true
 """
 macro addlogprob!(ex)
     return quote
+        $(check_if_in_model_block_expr("@addlogprob!"))
         $(esc(:(__varinfo__))) = acclogp!!(
             $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
         )

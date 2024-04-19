@@ -54,7 +54,7 @@ function DynamicPPL.generated_quantities(
 
         # TODO: Some of the variables can be a view into the `varinfo`, so we need to
         # `deepcopy` the `varinfo` before passing it to `model`.
-        model(deepcopy(varinfo))
+        model(deepcopy(varinfo), DynamicPPL.PostProcessingContext())
     end
 end
 

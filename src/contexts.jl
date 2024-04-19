@@ -664,3 +664,66 @@ function fixed(context::FixedContext)
     # precedence over decendants of `context`.
     return merge(context.values, fixed(childcontext(context)))
 end
+
+""""
+    PostProcessingContext
+
+Simple context used to indicate that the model is being evaluated with the aim
+of post-processing the inference results, e.g. making predictions or computing
+generated quantities.
+"""
+struct PostProcessingContext{Ctx} <: AbstractContext
+    context::AbstractContext
+end
+
+function PostProcessingContext(context::AbstractContext)
+    return PostProcessingContext{typeof(context)}(context)
+end
+PostProcessingContext() = PostProcessingContext(DefaultContext())
+
+NodeTrait(::PostProcessingContext) = IsParent()
+childcontext(context::PostProcessingContext) = context.context
+function setchildcontext(context::PostProcessingContext, child)
+    return PostProcessingContext(child)
+end
+
+function is_post_processing(context::AbstractContext)
+    return is_post_processing(NodeTrait(is_post_processing, context), context)
+end
+is_post_processing(::IsLeaf, context) = false
+is_post_processing(::IsParent, context) = is_post_processing(childcontext(context))
+is_post_processing(context::PostProcessingContext) = true
+
+"""
+    @is_post_processing
+
+Return `true` if the model is being evaluated with the aim of post-processing
+inference results, e.g. making predictions or computing generated quantities.
+
+# Examples
+
+```jldoctest; setup = :(using Distributions)
+julia> @model function demo()
+           x ~ Normal(0, 1)
+           return if @is_post_processing
+               x
+           else
+               nothing
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> model()  # (✓) Returns nothing
+
+julia> generated_quantities(model, (x = 1,))  # (✓) Returns 1.0
+1.0
+```
+"""
+macro is_post_processing()
+    return quote
+        $(check_if_in_model_block_expr("@is_post_processing"))
+        $(is_post_processing)($(esc(:__context__)))
+    end
+end
