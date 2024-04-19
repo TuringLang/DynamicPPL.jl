@@ -83,7 +83,6 @@ export AbstractVarInfo,
     vectorize,
     reconstruct,
     reconstruct!,
-    Sample,
     init,
     vectorize,
     OrderedDict,
@@ -131,7 +130,9 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     @submodel,
-    value_iterator_from_chain
+    value_iterator_from_chain,
+    check_model,
+    check_model_and_trace
 
 # Reexport
 using Distributions: loglikelihood
@@ -180,6 +181,9 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+
+include("debug_utils.jl")
+using .DebugUtils
 
 if !isdefined(Base, :get_extension)
     using Requires
