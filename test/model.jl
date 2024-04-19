@@ -25,6 +25,10 @@ function innermost_distribution_type(d::Distributions.Product)
     return dists[1]
 end
 
+is_typed_varinfo(::DynamicPPL.AbstractVarInfo) = false
+is_typed_varinfo(varinfo::DynamicPPL.TypedVarInfo) = true
+is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
         model = gdemo_default # defined in test/test_util.jl
@@ -218,7 +222,7 @@ end
         Random.seed!(1776)
         s, m = model()
         sample_namedtuple = (; s=s, m=m)
-        sample_dict = Dict(@varname(s) => s, @varname(m) => m)
+        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
 
         # With explicit RNG
         @test rand(Random.seed!(1776), model) == sample_namedtuple
@@ -231,7 +235,7 @@ end
         Random.seed!(1776)
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
-        @test rand(Dict, model) == sample_dict
+        @test rand(OrderedDict, model) == sample_dict
     end
 
     @testset "default arguments" begin
@@ -259,7 +263,21 @@ end
 
     @testset "TestUtils" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            x = rand(model)
+            x = DynamicPPL.TestUtils.rand_prior_true(model)
+            # `rand_prior_true` should return a `NamedTuple`.
+            @test x isa NamedTuple
+
+            # `rand` with a `AbstractDict` should have `varnames` as keys.
+            x_rand_dict = rand(OrderedDict, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_dict, vn)
+            end
+            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
+            x_rand_nt = rand(NamedTuple, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_nt, Symbol(vn))
+            end
+
             # Ensure log-probability computations are implemented.
             @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
             @test loglikelihood(model, x) ≈
@@ -327,6 +345,34 @@ end
         results = generated_quantities(model, chain_with_extra)
         for (x_true, result) in zip(xs, results)
             @test x_true.UL == result.x.UL
+        end
+    end
+
+    @testset "Type stability of models" begin
+        models_to_test = [
+            # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
+            # DynamicPPL.TestUtils.DEMO_MODELS...,
+            DynamicPPL.TestUtils.demo_lkjchol(2),
+        ]
+        @testset "$(model.f)" for model in models_to_test
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand(model)
+            varinfos = filter(
+                is_typed_varinfo,
+                DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
+            )
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @test (@inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                true)
+
+                varinfo_linked = DynamicPPL.link(varinfo, model)
+                @test (
+                    @inferred(
+                        DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
+                    );
+                    true
+                )
+            end
         end
     end
 end

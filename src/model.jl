@@ -279,11 +279,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest condition
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
  inner.m
 ```
 
@@ -448,7 +448,7 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
@@ -634,11 +634,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest fix
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
  inner.m
 ```
 
@@ -830,7 +830,7 @@ julia> fixed(cm)
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
  a.m
 
 julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
@@ -1037,7 +1037,7 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
         evaluate!!(
             model,
             SimpleVarInfo{Float64}(OrderedDict()),
-            SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+            SamplingContext(rng, SampleFromPrior(), model.context),
         ),
     )
     return values_as(x, T)

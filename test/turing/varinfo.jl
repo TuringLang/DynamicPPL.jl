@@ -192,7 +192,7 @@
             return p
         end
         chain = sample(mat_name_test(), HMC(0.2, 4), 1000)
-        check_numerical(chain, ["p[1,1]"], [0]; atol=0.25)
+        check_numerical(chain, ["p[1, 1]"], [0]; atol=0.25)
 
         @model function marr_name_test()
             p = Array{Array{Any}}(undef, 2)
@@ -310,5 +310,36 @@
         @test vi.metadata.z.gids[1] == Set([pg.selector])
         @test vi.metadata.w.gids[1] == Set([hmc.selector])
         @test vi.metadata.u.gids[1] == Set([hmc.selector]) =#
+    end
+
+    @testset "Turing#2151: eltype(vi, spl)" begin
+        # build data
+        t = 1:0.05:8
+        σ = 0.3
+        y = @. rand(sin(t) + Normal(0, σ))
+
+        @model function state_space(y, TT, ::Type{T}=Float64) where {T}
+            # Priors 
+            α ~ Normal(y[1], 0.001)
+            τ ~ Exponential(1)
+            η ~ filldist(Normal(0, 1), TT - 1)
+            σ ~ Exponential(1)
+
+            # create latent variable
+            x = Vector{T}(undef, TT)
+            x[1] = α
+            for t in 2:TT
+                x[t] = x[t - 1] + η[t - 1] * τ
+            end
+
+            # measurement model
+            y ~ MvNormal(x, σ^2 * I)
+
+            return x
+        end
+
+        n = 10
+        model = state_space(y, length(t))
+        @test size(sample(model, NUTS(; adtype=AutoReverseDiff(true)), n), 1) == n
     end
 end

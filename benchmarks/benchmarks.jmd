@@ -19,7 +19,7 @@ import DynamicPPLBenchmarks: time_model_def, make_suite, typed_code, weave_child
     m ~ Normal()
     x ~ Normal(m, 1)
 
-    return (m = m, x = x)
+    return (m=m, x=x)
 end
 
 model_def = demo1;
@@ -27,13 +27,13 @@ data = 1.0;
 ```
 
 ```julia; results="markup"; echo=false
-weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 ```
 
 ### `demo2`
 
 ```julia
-@model function demo2(y) 
+@model function demo2(y)
     # Our prior belief about the probability of heads in a coin.
     p ~ Beta(1, 1)
 
@@ -50,7 +50,7 @@ data = rand(0:1, 10);
 ```
 
 ```julia; results="markup"; echo=false
-weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 ```
 
 ### `demo3`
@@ -74,7 +74,7 @@ weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
     k = Vector{Int}(undef, N)
     for i in 1:N
         k[i] ~ Categorical(w)
-        x[:,i] ~ MvNormal([μ[k[i]], μ[k[i]]], 1.)
+        x[:, i] ~ MvNormal([μ[k[i]], μ[k[i]]], 1.0)
     end
     return k
 end
@@ -88,11 +88,11 @@ N = 30
 μs = [-3.5, 0.0]
 
 # Construct the data points.
-data = mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.), N), hcat, 1:2);
+data = mapreduce(c -> rand(MvNormal([μs[c], μs[c]], 1.0), N), hcat, 1:2);
 ```
 
 ```julia; echo=false
-weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 ```
 
 ### `demo4`: loads of indexing
@@ -107,24 +107,24 @@ weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
 end
 
 model_def = demo4
-data = (100_000, );
+data = (100_000,);
 ```
 
 ```julia; echo=false
-weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 ```
 
 ```julia
 @model function demo4_dotted(n, ::Type{TV}=Vector{Float64}) where {TV}
     m ~ Normal()
     x = TV(undef, n)
-    x .~ Normal(m, 1.0)
+    return x .~ Normal(m, 1.0)
 end
 
 model_def = demo4_dotted
-data = (100_000, );
+data = (100_000,);
 ```
 
 ```julia; echo=false
-weave_child(WEAVE_ARGS[:benchmarkbody], mod = @__MODULE__, args = WEAVE_ARGS)
+weave_child(WEAVE_ARGS[:benchmarkbody]; mod=@__MODULE__, args=WEAVE_ARGS)
 ```

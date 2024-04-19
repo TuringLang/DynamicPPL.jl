@@ -72,7 +72,8 @@ end
         @model demo() = m ~ dist
         model = demo()
 
-        vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(m),))
+        example_values = rand(NamedTuple, model)
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(m),))
         @testset "$(short_varinfo_name(vi))" for vi in vis
             # Evaluate once to ensure we have `logp` value.
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
@@ -105,7 +106,7 @@ end
             @testset "d=$d" for d in [2, 3, 5]
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
-                values_original = rand(model)
+                values_original = rand(NamedTuple, model)
                 vis = DynamicPPL.TestUtils.setup_varinfos(
                     model, values_original, (@varname(x),)
                 )
@@ -146,7 +147,8 @@ end
         @model demo_dirichlet(d::Int) = x ~ Dirichlet(d, 1.0)
         @testset "d=$d" for d in [2, 3, 5]
             model = demo_dirichlet(d)
-            vis = DynamicPPL.TestUtils.setup_varinfos(model, rand(model), (@varname(x),))
+            example_values = rand(NamedTuple, model)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 lp = logpdf(Dirichlet(d, 1.0), vi[:])
                 @test length(vi[:]) == d
@@ -169,6 +171,31 @@ end
                 end
                 @test length(vi_invlinked[:]) == d
                 @test getlogp(vi_invlinked) ≈ lp
+            end
+        end
+    end
+
+    # Related: https://github.com/TuringLang/Turing.jl/issues/2190
+    @testset "High-dim Dirichlet" begin
+        @model function demo_highdim_dirichlet(ns...)
+            return x ~ filldist(Dirichlet(ones(2)), ns...)
+        end
+        @testset "ns=$ns" for ns in [
+            (3,),
+            # TODO: Uncomment once we have https://github.com/TuringLang/Bijectors.jl/pull/304
+            # (3, 4), (3, 4, 5)
+        ]
+            model = demo_highdim_dirichlet(ns...)
+            example_values = rand(NamedTuple, model)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            @testset "$(short_varinfo_name(vi))" for vi in vis
+                # Linked.
+                vi_linked = if mutable
+                    DynamicPPL.link!!(deepcopy(vi), model)
+                else
+                    DynamicPPL.link(vi, model)
+                end
+                @test length(vi_linked[:]) == prod(ns)
             end
         end
     end

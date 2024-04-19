@@ -1,3 +1,5 @@
+using Accessors
+using ADTypes
 using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
@@ -6,11 +8,12 @@ using Distributions
 using DistributionsAD
 using Documenter
 using ForwardDiff
+using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
 using Tracker
+using ReverseDiff
 using Zygote
-using Setfield
 using Compat
 
 using Distributed
@@ -62,6 +65,11 @@ include("test_util.jl")
 
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
+        end
+
+        @testset "ad" begin
+            include("ext/DynamicPPLForwardDiffExt.jl")
+            include("ad.jl")
         end
 
         @testset "doctests" begin
