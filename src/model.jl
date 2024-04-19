@@ -31,21 +31,12 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{
-    F,
-    argnames,
-    defaultnames,
-    missings,
-    Targs,
-    Tdefaults,
-    Ctx<:AbstractContext,
-    IsStatic<:Union{Val{false},Val{true}},
-} <: AbstractProbabilisticProgram
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
+       AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
-    has_static_support::IsStatic
 
     @doc """
         Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
@@ -58,10 +49,9 @@ struct Model{
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
-        has_static_support::Union{Val{false},Val{true}}=Val{false}(),
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,typeof(isstatic)}(
-            f, args, defaults, context, has_static_support
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
+            f, args, defaults, context
         )
     end
 end
@@ -87,38 +77,6 @@ end
 function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
     return Model(f, args, NamedTuple(kwargs), context)
 end
-
-"""
-    has_static_support(model::Model)
-
-Return `true` if `model` has static support.
-"""
-has_static_support(model::Model) = model.has_static_support isa Val{true}
-
-"""
-    set_static_support(model::Model, isstatic::Val{true},Val{false})
-
-Set `model` to have static support if `isstatic` is `true`, otherwise not.
-"""
-function set_static_support(model::Model, isstatic::Union{Val{true},Val{false}})
-    return Model{getmissings(model)}(
-        model.f, model.args, model.defaults, model.context, isstatic
-    )
-end
-
-"""
-    mark_as_static_support(model::Model)
-
-Mark `model` as having static support.
-"""
-mark_as_static_support(model::Model) = set_static_support(model, Val{true}())
-
-"""
-    mark_as_dynamic_support(model::Model)
-
-Mark `model` as not having static support.
-"""
-mark_as_dynamic_support(model::Model) = set_static_support(model, Val{false}())
 
 function contextualize(model::Model, context::AbstractContext)
     return Model(model.f, model.args, model.defaults, context)
