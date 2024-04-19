@@ -196,6 +196,12 @@ check_model
 check_model_and_trace
 ```
 
+And some which might be useful to determine certain properties of the model based on the debug trace.
+
+```@docs
+DynamicPPL.has_static_constraints
+```
+
 ## Advanced
 
 ### Variable names

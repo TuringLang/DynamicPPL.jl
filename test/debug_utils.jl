@@ -12,10 +12,7 @@
         @test issuccess
 
         # Check that the trace contains all the variables in the model.
-        assume_stmts = filter(Base.Fix2(hasproperty, :varname), trace)
-        varnames_in_trace = mapreduce(vcat, assume_stmts) do record
-            vec([record.varname;])
-        end
+        varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
         for vn in DynamicPPL.TestUtils.varnames(model)
             @test vn in varnames_in_trace
         end
@@ -23,6 +20,9 @@
         # Quick checks for `show` of trace.
         @test occursin("assume: ", string(trace))
         @test occursin("observe: ", string(trace))
+
+        # All these models should have static constraints.
+        @test DynamicPPL.has_static_constraints(model)
     end
 
     @testset "multiple usage of same variable" begin
@@ -102,5 +102,25 @@
             @test isuccess
             @test occursin(r"observe: \d+\.\d+ ~ Normal", string(trace))
         end
+    end
+
+    @testset "comparing multiple traces" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        issuccess_1, trace_1 = check_model_and_trace(model)
+        issuccess_2, trace_2 = check_model_and_trace(model)
+        @test issuccess_1 && issuccess_2
+
+        # Should have the same varnames present.
+        varnames_1 = DynamicPPL.DebugUtils.varnames_in_trace(trace_1)
+        varnames_2 = DynamicPPL.DebugUtils.varnames_in_trace(trace_2)
+        @info varnames_1 == varnames_2
+
+        # But will have different distributions.
+        dists_1 = DynamicPPL.DebugUtils.distributions_in_trace(trace_1)
+        dists_2 = DynamicPPL.DebugUtils.distributions_in_trace(trace_2)
+        @test dists_1[1] == dists_2[1]
+        @test dists_1[2] != dists_2[2]
+
+        @test !DynamicPPL.has_static_constraints(model)
     end
 end

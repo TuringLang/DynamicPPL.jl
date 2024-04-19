@@ -9,7 +9,7 @@ using Accessors: Accessors
 using DocStringExtensions
 using Distributions
 
-export check_model, check_model_and_trace
+export check_model, check_model_and_trace, has_static_constraints
 
 # Statements
 abstract type Stmt end
@@ -140,6 +140,34 @@ function Base.show(io::IO, stmt::DotObserveStmt)
     print(io, " (logprob = ")
     print(io, stmt.logp)
     return print(io, ")")
+end
+
+# Some utility methods for extracting information from a trace.
+"""
+    varnames_in_trace(trace)
+
+Return all the varnames present in the trace.
+"""
+varnames_in_trace(trace::AbstractVector) = mapreduce(varnames_in_stmt, vcat, trace)
+
+varnames_in_stmt(stmt::AssumeStmt) = [stmt.varname]
+function varnames_in_stmt(stmt::DotAssumeStmt)
+    return stmt.varname isa VarName ? [stmt.varname] : stmt.varname
+end
+varnames_in_stmt(::ObserveStmt) = []
+varnames_in_stmt(::DotObserveStmt) = []
+
+function distributions_in_trace(trace::AbstractVector)
+    return mapreduce(distributions_in_stmt, vcat, trace)
+end
+
+distributions_in_stmt(stmt::AssumeStmt) = [stmt.right]
+function distributions_in_stmt(stmt::DotAssumeStmt)
+    return stmt.right isa AbstractArray ? vec(stmt.right) : [stmt.right]
+end
+distributions_in_stmt(stmt::ObserveStmt) = [stmt.right]
+function distributions_in_stmt(stmt::DotObserveStmt)
+    return stmt.right isa AbstractArray ? vec(stmt.right) : [stmt.right]
 end
 
 """
@@ -479,8 +507,6 @@ demo_incorrect (generic function with 2 methods)
 julia> issuccess, trace = check_model_and_trace(rng, demo_incorrect(); error_on_failure=true);
 ERROR: varname x used multiple times in model
 ```
-
-
 """
 function check_model_and_trace(model::Model; kwargs...)
     return check_model_and_trace(Random.default_rng(), model; kwargs...)
@@ -531,6 +557,58 @@ and details of which types of checks are performed.
 check_model(model::Model; kwargs...) = first(check_model_and_trace(model; kwargs...))
 function check_model(rng::Random.AbstractRNG, model::Model; kwargs...)
     return first(check_model_and_trace(rng, model; kwargs...))
+end
+
+# Convenience method used to check if all elements in a list are the same.
+function all_the_same(xs)
+    issuccess = true
+    for i in 2:length(xs)
+        if xs[1] != xs[i]
+            issuccess = false
+            break
+        end
+    end
+
+    return issuccess
+end
+
+"""
+    has_static_constraints([rng, ]model::Model; num_evals=5, kwargs...)
+
+Return `true` if the model has static constraints, `false` otherwise.
+
+Note that this is a heuristic check based on sampling from the model multiple times
+and checking if the model is consistent across runs.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use when evaluating the model.
+- `model::Model`: The model to check.
+
+# Keyword Arguments
+- `num_evals::Int`: The number of evaluations to perform. Default: `5`.
+- `kwargs...`: Additional keyword arguments to pass to [`check_model_and_trace`](@ref).
+"""
+function has_static_constraints(model::Model; kwargs...)
+    return has_static_constraints(Random.default_rng(), model; kwargs...)
+end
+function has_static_constraints(
+    rng::Random.AbstractRNG, model::Model; num_evals=5, kwargs...
+)
+    results = map(1:num_evals) do _
+        check_model_and_trace(rng, model; kwargs...)
+    end
+    issuccess = all(first, results)
+    issuccess || throw(ArgumentError("model check failed"))
+
+    # Extract the distributions and the corresponding bijectors for each run.
+    traces = map(last, results)
+    dists_per_trace = map(distributions_in_trace, traces)
+    transforms = map(dists_per_trace) do dists
+        map(DynamicPPL.link_transform, dists)
+    end
+
+    # Check if the distributions are the same across all runs.
+    return all_the_same(transforms)
 end
 
 end
