@@ -2,7 +2,6 @@ name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 version = "0.25.1"
 
-
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -42,7 +41,7 @@ DynamicPPLReverseDiffExt = ["ReverseDiff"]
 DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 
 [compat]
-ADTypes = "0.2"
+ADTypes = "0.2, 1"
 AbstractMCMC = "5"
 AbstractPPL = "0.8.4"
 Accessors = "0.1"
