@@ -387,6 +387,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
 end
 
 function generate_assign(left, right)
+    right_expr = :($(TrackedValue)($right))
     tilde_expr = generate_tilde(left, right_expr)
     return quote
         if $(is_extracting_values)(__context__)
