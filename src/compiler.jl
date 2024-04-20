@@ -371,7 +371,31 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
         )
     end
 
+    # Modify the assignment operators.
+    args_assign = getargs_coloneq(expr)
+    if args_assign !== nothing
+        L, R = args_assign
+        return Base.remove_linenums!(
+            generate_assign(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
+    end
+
     return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
+end
+
+function generate_assign(left, right)
+    right_expr = :($(Distributions.Dirac)($right))
+    tilde_expr = generate_tilde(left, right_expr)
+    return quote
+        if $(is_extracting_values)(__context__)
+            $tilde_expr
+        else
+            $left = $right
+        end
+    end
 end
 
 function generate_tilde_literal(left, right)

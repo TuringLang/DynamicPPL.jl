@@ -29,6 +29,13 @@ function setchildcontext(context::ValuesAsInModelContext, child)
     return ValuesAsInModelContext(context.values, child)
 end
 
+is_extracting_values(context::ValuesAsInModelContext) = true
+function is_extracting_values(context::AbstractContext)
+    return is_extracting_values(NodeTrait(context), context)
+end
+is_extracting_values(::IsParent, ::AbstractContext) = false
+is_extracting_values(::IsLeaf, ::AbstractContext) = false
+
 function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
     return setindex!(context.values, copy(value), vn)
 end
