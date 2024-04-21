@@ -181,6 +181,7 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+include("latent_handling.jl")
 
 include("debug_utils.jl")
 using .DebugUtils
