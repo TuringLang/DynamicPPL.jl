@@ -724,8 +724,12 @@ function matchingvalue(sampler, vi, value)
         return value
     end
 end
+# If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
 function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
     return get_matching_type(sampler, vi, value)
+end
+function matchingvalue(sampler::AbstractSampler, vi, value::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(sampler, vi, T)}()
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
@@ -742,7 +746,7 @@ function matchingvalue(context::SamplingContext, vi, value)
 end
 
 """
-    get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T}
+    get_matching_type(spl::AbstractSampler, vi, ::TypeWrap{T}) where {T}
 
 Get the specialized version of type `T` for sampler `spl`.
 
