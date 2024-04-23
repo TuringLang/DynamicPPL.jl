@@ -578,8 +578,41 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
+"""
+    TypeWrap{T}
+
+A wrapper type used internally to make expressions such as `::Type{TV}` in the model arguments
+ending up as a `DataType`.
+"""
+struct TypeWrap{T} end
+
+arg_type_is_type(e) = false
+function arg_type_is_type(e::Expr)
+    return Meta.isexpr(e, :curly) && length(e.args) > 1 && e.args[1] === :Type
+end
+
 function splitarg_to_expr((arg_name, arg_type, is_splat, default))
     return is_splat ? :($arg_name...) : arg_name
+end
+
+"""
+    transform_args(args)
+
+Return transformed `args` used in both the model constructor and evaluator.
+
+Specifically, this replaces expressions of the form `::Type{TV}=Vector{Float64}`
+with `::TypeWrap{TV}=TypeWrap{Vector{Float64}}()` to avoid introducing `DataType`.
+"""
+function transform_args(args)
+    splitargs = map(MacroTools.splitarg, args)
+    splitargs = map(splitargs) do (arg_name, arg_type, is_splat, default)
+        return if arg_type_is_type(arg_type)
+            arg_name, :($TypeWrap{$(arg_type.args[2])}), is_splat, :($TypeWrap{$default}())
+        else
+            arg_name, arg_type, is_splat, default
+        end
+    end
+    return map(Base.splat(MacroTools.combinearg), splitargs)
 end
 
 function namedtuple_from_splitargs(splitargs)
@@ -599,7 +632,7 @@ is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 Builds the output expression.
 """
 function build_output(modeldef, linenumbernode)
-    args = modeldef[:args]
+    args = transform_args(modeldef[:args])
     kwargs = modeldef[:kwargs]
 
     ## Build the anonymous evaluator from the user-provided model definition.
@@ -645,6 +678,8 @@ function build_output(modeldef, linenumbernode)
     args_nt = namedtuple_from_splitargs(args_split)
     kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
 
+    # Need to update `args` since we might have added `TypeWrap` to the types.
+    modeldef[:args] = args
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
