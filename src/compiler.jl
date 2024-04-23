@@ -604,8 +604,8 @@ Specifically, this replaces expressions of the form `::Type{TV}=Vector{Float64}`
 with `::TypeWrap{TV}=TypeWrap{Vector{Float64}}()` to avoid introducing `DataType`.
 """
 function transform_args(args)
-    splitargs = map(MacroTools.splitarg, args)
-    splitargs = map(splitargs) do (arg_name, arg_type, is_splat, default)
+    splitargs = map(args) do arg
+        arg_name, arg_type, is_splat, default = MacroTools.splitarg(arg)
         return if arg_type_is_type(arg_type)
             arg_name, :($TypeWrap{$(arg_type.args[2])}), is_splat, :($TypeWrap{$default}())
         else
