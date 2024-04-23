@@ -582,12 +582,11 @@ hasmissing(::Type{Union{}}) = false # issue #368
     TypeWrap{T}
 
 A wrapper type used internally to make expressions such as `::Type{TV}` in the model arguments
-ending up as a `DataType`.
+not ending up as a `DataType`.
 """
 struct TypeWrap{T} end
 
-arg_type_is_type(e) = false
-function arg_type_is_type(e::Expr)
+function arg_type_is_type(e)
     return Meta.isexpr(e, :curly) && length(e.args) > 1 && e.args[1] === :Type
 end
 
