@@ -1,3 +1,11 @@
+struct TrackedValue{T}
+    value::T
+end
+
+is_tracked_value(::TrackedValue) = true
+is_tracked_value(::Any) = false
+
+check_tilde_rhs(x::TrackedValue) = x
 
 """
     ValuesAsInModelContext
@@ -29,6 +37,13 @@ function setchildcontext(context::ValuesAsInModelContext, child)
     return ValuesAsInModelContext(context.values, child)
 end
 
+is_extracting_values(context::ValuesAsInModelContext) = true
+function is_extracting_values(context::AbstractContext)
+    return is_extracting_values(NodeTrait(context), context)
+end
+is_extracting_values(::IsParent, ::AbstractContext) = false
+is_extracting_values(::IsLeaf, ::AbstractContext) = false
+
 function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
     return setindex!(context.values, copy(value), vn)
 end
@@ -48,7 +63,12 @@ end
 
 # `tilde_asssume`
 function tilde_assume(context::ValuesAsInModelContext, right, vn, vi)
-    value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
+    if is_tracked_value(right)
+        value = right.value
+        logp = zero(getlogp(vi))
+    else
+        value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
+    end
     # Save the value.
     push!(context, vn, value)
     # Save the value.
@@ -58,7 +78,12 @@ end
 function tilde_assume(
     rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, vn, vi
 )
-    value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    if is_tracked_value(right)
+        value = right.value
+        logp = zero(getlogp(vi))
+    else
+        value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    end
     # Save the value.
     push!(context, vn, value)
     # Pass on.
