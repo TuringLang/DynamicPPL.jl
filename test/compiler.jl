@@ -697,7 +697,7 @@ module Issue537 end
             return (; x, y)
         end
         @model function demo_tracked_submodel()
-            @submodel (; x, y) = demo_tracked()
+            @submodel (x, y) = demo_tracked()
             return (; x, y)
         end
         for model in [demo_tracked(), demo_tracked_submodel()]
