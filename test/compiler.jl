@@ -689,4 +689,30 @@ module Issue537 end
         model = demo_with_logging()
         @test model() == nothing
     end
+
+    @testset ":= (tracked values)" begin
+        @model function demo_tracked()
+            x ~ Normal()
+            y := 100 + x
+            return (; x, y)
+        end
+        @model function demo_tracked_submodel()
+            @submodel (; x, y) = demo_tracked()
+            return (; x, y)
+        end
+        for model in [demo_tracked(), demo_tracked_submodel()]
+            # Make sure it's runnable and `y` is present in the return-value.
+            @test model() isa NamedTuple{(:x, :y)}
+
+            # `VarInfo` should only contain `x`.
+            varinfo = VarInfo(model)
+            @test haskey(varinfo, @varname(x))
+            @test !haskey(varinfo, @varname(y))
+
+            # While `values_as_in_model` should contain both `x` and `y`.
+            values = values_as_in_model(model, deepcopy(varinfo))
+            @test haskey(values, @varname(x))
+            @test haskey(values, @varname(y))
+        end
+    end
 end
