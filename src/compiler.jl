@@ -632,7 +632,7 @@ Builds the output expression.
 """
 function build_output(modeldef, linenumbernode)
     args = transform_args(modeldef[:args])
-    kwargs = modeldef[:kwargs]
+    kwargs = transform_args(modeldef[:kwargs])
 
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = copy(modeldef)
@@ -677,8 +677,9 @@ function build_output(modeldef, linenumbernode)
     args_nt = namedtuple_from_splitargs(args_split)
     kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
 
-    # Need to update `args` since we might have added `TypeWrap` to the types.
+    # Need to update `args` and `kwargs` since we might have added `TypeWrap` to the types.
     modeldef[:args] = args
+    modeldef[:kwargs] = kwargs
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
     # that no new `LineNumberNode`s are added apart from the reference `linenumbernode`
