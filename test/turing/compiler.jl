@@ -311,13 +311,15 @@
             for i in 1:N
                 x[i] ~ Normal(0, sqrt(4))
             end
-        
+        end
 
         t_loop = @elapsed res = sample(vdemo1(), alg, 250)
         t_loop = @elapsed res = sample(vdemo1(DynamicPPL.TypeWrap{Float64}()), alg, 250)
 
         vdemo1kw(; T) = vdemo1(T)
-        t_loop = @elapsed res = sample(vdemo1kw(; T=DynamicPPL.TypeWrap{Float64}()), alg, 250)
+        t_loop = @elapsed res = sample(
+            vdemo1kw(; T=DynamicPPL.TypeWrap{Float64}()), alg, 250
+        )
 
         @model function vdemo2(::Type{T}=Float64) where {T<:Real}
             x = Vector{T}(undef, N)
@@ -328,7 +330,9 @@
         t_vec = @elapsed res = sample(vdemo2(DynamicPPL.TypeWrap{Float64}()), alg, 250)
 
         vdemo2kw(; T) = vdemo2(T)
-        t_vec = @elapsed res = sample(vdemo2kw(; T=DynamicPPL.TypeWrap{Float64}()), alg, 250)
+        t_vec = @elapsed res = sample(
+            vdemo2kw(; T=DynamicPPL.TypeWrap{Float64}()), alg, 250
+        )
 
         @model function vdemo3(::Type{TV}=Vector{Float64}) where {TV<:AbstractVector}
             x = TV(undef, N)
