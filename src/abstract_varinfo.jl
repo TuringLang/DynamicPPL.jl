@@ -54,6 +54,27 @@ struct StaticTransformation{F} <: AbstractTransformation
 end
 
 """
+    merge_transformations(transformation_left, transformation_right)
+
+Merge two transformations.
+
+The main use of this is in [`merge(::AbstractVarInfo, ::AbstractVarInfo)`](@ref).
+"""
+function merge_transformations(::NoTransformation, ::NoTransformation)
+    return NoTransformation()
+end
+function merge_transformations(::DynamicTransformation, ::DynamicTransformation)
+    return DynamicTransformation()
+end
+function merge_transformations(left::StaticTransformation, right::StaticTransformation)
+    return StaticTransformation(merge_bijectors(left.bijector, right.bijector))
+end
+
+function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
+    return Bijectors.NamedTransform(merge_bijector(left.bs, right.bs))
+end
+
+"""
     default_transformation(model::Model[, vi::AbstractVarInfo])
 
 Return the `AbstractTransformation` currently related to `model` and, potentially, `vi`.
@@ -86,12 +107,20 @@ Set the log of the joint probability of the observed data and parameters sampled
 function setlogp!! end
 
 """
-    acclogp!!(vi::AbstractVarInfo, logp)
+    acclogp!!([context::AbstractContext, ]vi::AbstractVarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!! end
+function acclogp!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(NodeTrait(context), context, vi, logp)
+end
+function acclogp!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(vi, logp)
+end
+function acclogp!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(childcontext(context), vi, logp)
+end
 
 """
     resetlogp!!(vi::AbstractVarInfo)
@@ -233,7 +262,7 @@ julia> values_as(SimpleVarInfo(data), NamedTuple)
 (x = 1.0, m = [2.0])
 
 julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
   x => 1.0
   m => [2.0]
 
@@ -283,7 +312,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -309,7 +338,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -334,7 +363,154 @@ Determine the default `eltype` of the values returned by `vi[spl]`.
     This method is considered legacy, and is likely to be deprecated in the future.
 """
 function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior})
-    return eltype(Core.Compiler.return_type(getindex, Tuple{typeof(vi),typeof(spl)}))
+    T = Base.promote_op(getindex, typeof(vi), typeof(spl))
+    if T === Union{}
+        # In this case `getindex(vi, spl)` errors
+        # Let us throw a more descriptive error message
+        # Ref https://github.com/TuringLang/Turing.jl/issues/2151
+        return eltype(vi[spl])
+    end
+    return eltype(T)
+end
+
+# TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
+# the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
+# might result in a `Vector{Any}`.
+"""
+    subset(varinfo::AbstractVarInfo, vns::AbstractVector{<:VarName})
+
+Subset a `varinfo` to only contain the variables `vns`.
+
+!!! warning
+    The ordering of the variables in the resulting `varinfo` is _not_
+    guaranteed to follow the ordering of the variables in `varinfo`.
+    Hence care must be taken, in particular when used in conjunction with
+    other methods which uses the vector-representation of the `varinfo`,
+    e.g. `getindex(varinfo, sampler)`.
+
+# Examples
+```jldoctest varinfo-subset; setup = :(using Distributions, DynamicPPL)
+julia> @model function demo()
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           x = Vector{Float64}(undef, 2)
+           x[1] ~ Normal(m, sqrt(s))
+           x[2] ~ Normal(m, sqrt(s))
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> varinfo = VarInfo(model);
+
+julia> keys(varinfo)
+4-element Vector{VarName}:
+ s
+ m
+ x[1]
+ x[2]
+
+julia> for (i, vn) in enumerate(keys(varinfo))
+           varinfo[vn] = i
+       end
+
+julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+4-element Vector{Float64}:
+ 1.0
+ 2.0
+ 3.0
+ 4.0
+
+julia> # Extract one with only `m`.
+       varinfo_subset1 = subset(varinfo, [@varname(m),]);
+
+
+julia> keys(varinfo_subset1)
+1-element Vector{VarName{:m, typeof(identity)}}:
+ m
+
+julia> varinfo_subset1[@varname(m)]
+2.0
+
+julia> # Extract one with both `s` and `x[2]`.
+       varinfo_subset2 = subset(varinfo, [@varname(s), @varname(x[2])]);
+
+julia> keys(varinfo_subset2)
+2-element Vector{VarName}:
+ s
+ x[2]
+
+julia> varinfo_subset2[[@varname(s), @varname(x[2])]]
+2-element Vector{Float64}:
+ 1.0
+ 4.0
+```
+
+`subset` is particularly useful when combined with [`merge(varinfo::AbstractVarInfo)`](@ref)
+
+```jldoctest varinfo-subset
+julia> # Merge the two.
+       varinfo_subset_merged = merge(varinfo_subset1, varinfo_subset2);
+
+julia> keys(varinfo_subset_merged)
+3-element Vector{VarName}:
+ m
+ s
+ x[2]
+
+julia> varinfo_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
+3-element Vector{Float64}:
+ 1.0
+ 2.0
+ 4.0
+
+julia> # Merge the two with the original.
+       varinfo_merged = merge(varinfo, varinfo_subset_merged);
+
+julia> keys(varinfo_merged)
+4-element Vector{VarName}:
+ s
+ m
+ x[1]
+ x[2]
+
+julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+4-element Vector{Float64}:
+ 1.0
+ 2.0
+ 3.0
+ 4.0
+```
+
+# Notes
+
+## Type-stability
+
+!!! warning
+    This function is only type-stable when `vns` contains only varnames
+    with the same symbol. For exmaple, `[@varname(m[1]), @varname(m[2])]` will
+    be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
+"""
+function subset end
+
+"""
+    merge(varinfo, other_varinfos...)
+
+Merge varinfos into one, giving precedence to the right-most varinfo when sensible.
+
+This is particularly useful when combined with [`subset(varinfo, vns)`](@ref).
+
+See docstring of [`subset(varinfo, vns)`](@ref) for examples.
+"""
+Base.merge(varinfo::AbstractVarInfo) = varinfo
+# Define 3-argument version so 2-argument version will error if not implemented.
+function Base.merge(
+    varinfo1::AbstractVarInfo,
+    varinfo2::AbstractVarInfo,
+    varinfo3::AbstractVarInfo,
+    varinfo_others::AbstractVarInfo...,
+)
+    return merge(Base.merge(varinfo1, varinfo2), varinfo3, varinfo_others...)
 end
 
 # Transformations
@@ -368,7 +544,8 @@ function settrans!! end
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transforms the variables in `vi` to their linked space, using the transformation `t`.
+Transform the variables in `vi` to their linked space, using the transformation `t`,
+mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -384,11 +561,30 @@ function link!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 end
 
 """
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`. 
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`invlink`](@ref).
+"""
+link(vi::AbstractVarInfo, model::Model) = link(deepcopy(vi), SampleFromPrior(), model)
+function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
+    return link(t, deepcopy(vi), SampleFromPrior(), model)
+end
+function link(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    # Use `default_transformation` to decide which transformation to use if none is specified.
+    return link(default_transformation(model, vi), deepcopy(vi), spl, model)
+end
+
+"""
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space, using the (inverse of) 
-transformation `t`.
+transformation `t`, mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -432,6 +628,25 @@ function invlink!!(
     lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
+end
+
+"""
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+
+Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
+transformation `t`.
+
+If `t` is not provided, `default_transformation(model, vi)` will be used.
+
+See also: [`default_transformation`](@ref), [`link`](@ref).
+"""
+invlink(vi::AbstractVarInfo, model::Model) = invlink(vi, SampleFromPrior(), model)
+function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
+    return invlink(t, vi, SampleFromPrior(), model)
+end
+function invlink(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    return invlink(transformation(vi), vi, spl, model)
 end
 
 """
@@ -538,21 +753,6 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-"""
-    tonamedtuple(vi::AbstractVarInfo)
-
-Convert a `vi` into a `NamedTuple` where each variable symbol maps to the values and 
-indexing string of the variable.
-
-For example, a model that had a vector of vector-valued
-variables `x` would return
-
-```julia
-(x = ([1.5, 2.0], [3.0, 1.0], ["x[1]", "x[2]"]), )
-```
-"""
-function tonamedtuple end
-
 # TODO: Clean up all this linking stuff once and for all!
 """
     with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
@@ -563,6 +763,16 @@ value is reconstructed to the correct type and shape according to `dist`.
 function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
     x_recon = reconstruct(f, dist, x)
     return with_logabsdet_jacobian(f, x_recon)
+end
+
+# NOTE: Necessary to handle product distributions of `Dirichlet` and similar.
+function with_logabsdet_jacobian_and_reconstruct(
+    f::Bijectors.Inverse{<:Bijectors.SimplexBijector}, dist, y
+)
+    (d, ns...) = size(dist)
+    yreshaped = reshape(y, d - 1, ns...)
+    x, logjac = with_logabsdet_jacobian(f, yreshaped)
+    return x, logjac
 end
 
 # TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can

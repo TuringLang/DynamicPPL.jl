@@ -12,9 +12,26 @@ struct MyZeroModel end
     return x ~ Normal(m, 1)
 end
 
+innermost_distribution_type(d::Distribution) = typeof(d)
+function innermost_distribution_type(d::Distributions.ReshapedDistribution)
+    return innermost_distribution_type(d.dist)
+end
+function innermost_distribution_type(d::Distributions.Product)
+    dists = map(innermost_distribution_type, d.v)
+    if any(!=(dists[1]), dists)
+        error("Cannot extract innermost distribution type from $d")
+    end
+
+    return dists[1]
+end
+
+is_typed_varinfo(::DynamicPPL.AbstractVarInfo) = false
+is_typed_varinfo(varinfo::DynamicPPL.TypedVarInfo) = true
+is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default
+        model = gdemo_default # defined in test/test_util.jl
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -36,6 +53,77 @@ end
         ljoint = logjoint(model, vi)
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
+
+        #### logprior, logjoint, loglikelihood for MCMC chains ####
+        for model in DynamicPPL.TestUtils.DEMO_MODELS # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
+            var_info = VarInfo(model)
+            vns = DynamicPPL.TestUtils.varnames(model)
+            syms = unique(DynamicPPL.getsym.(vns))
+
+            # generate a chain of sample parameter values.
+            N = 200
+            vals_OrderedDict = mapreduce(hcat, 1:N) do _
+                rand(OrderedDict, model)
+            end
+            vals_mat = mapreduce(hcat, 1:N) do i
+                [vals_OrderedDict[i][vn] for vn in vns]
+            end
+            i = 1
+            for col in eachcol(vals_mat)
+                col_flattened = []
+                [push!(col_flattened, x...) for x in col]
+                if i == 1
+                    chain_mat = Matrix(reshape(col_flattened, 1, length(col_flattened)))
+                else
+                    chain_mat = vcat(
+                        chain_mat, reshape(col_flattened, 1, length(col_flattened))
+                    )
+                end
+                i += 1
+            end
+            chain_mat = convert(Matrix{Float64}, chain_mat)
+
+            # devise parameter names for chain
+            sample_values_vec = collect(values(vals_OrderedDict[1]))
+            symbol_names = []
+            chain_sym_map = Dict()
+            for k in 1:length(keys(var_info))
+                vn_parent = keys(var_info)[k]
+                sym = DynamicPPL.getsym(vn_parent)
+                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in src/utils.jl
+                for vn_child in vn_children
+                    chain_sym_map[Symbol(vn_child)] = sym
+                    symbol_names = [symbol_names; Symbol(vn_child)]
+                end
+            end
+            chain = Chains(chain_mat, symbol_names)
+
+            # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
+            logpriors = logprior(model, chain)
+            loglikelihoods = loglikelihood(model, chain)
+            logjoints = logjoint(model, chain)
+            # compare them with true values
+            for i in 1:N
+                samples_dict = Dict()
+                for chain_key in keys(chain)
+                    value = chain[i, chain_key, 1]
+                    key = chain_sym_map[chain_key]
+                    existing_value = get(samples_dict, key, Float64[])
+                    push!(existing_value, value)
+                    samples_dict[key] = existing_value
+                end
+                samples = (; samples_dict...)
+                samples = modify_value_representation(samples) # `modify_value_representation` defined in test/test_util.jl
+                @test logpriors[i] ≈
+                    DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
+                    model, samples[:s], samples[:m]
+                )
+                @test logjoints[i] ≈
+                    DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+            end
+            println("\n model $(model) passed !!! \n")
+        end
     end
 
     @testset "rng" begin
@@ -134,7 +222,7 @@ end
         Random.seed!(1776)
         s, m = model()
         sample_namedtuple = (; s=s, m=m)
-        sample_dict = Dict(@varname(s) => s, @varname(m) => m)
+        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
 
         # With explicit RNG
         @test rand(Random.seed!(1776), model) == sample_namedtuple
@@ -147,11 +235,162 @@ end
         Random.seed!(1776)
         @test rand(NamedTuple, model) == sample_namedtuple
         Random.seed!(1776)
-        @test rand(Dict, model) == sample_dict
+        @test rand(OrderedDict, model) == sample_dict
     end
 
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
         @test length(test_defaults(missing, 2)()) == 2
+    end
+
+    @testset "extract priors" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            priors = extract_priors(model)
+
+            # We know that any variable starting with `s` should have `InverseGamma`
+            # and any variable starting with `m` should have `Normal`.
+            for (vn, prior) in priors
+                if DynamicPPL.getsym(vn) == :s
+                    @test innermost_distribution_type(prior) <: InverseGamma
+                elseif DynamicPPL.getsym(vn) == :m
+                    @test innermost_distribution_type(prior) <: Union{Normal,MvNormal}
+                else
+                    error("Unexpected variable name: $vn")
+                end
+            end
+        end
+    end
+
+    @testset "TestUtils" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            x = DynamicPPL.TestUtils.rand_prior_true(model)
+            # `rand_prior_true` should return a `NamedTuple`.
+            @test x isa NamedTuple
+
+            # `rand` with a `AbstractDict` should have `varnames` as keys.
+            x_rand_dict = rand(OrderedDict, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_dict, vn)
+            end
+            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
+            x_rand_nt = rand(NamedTuple, model)
+            for vn in DynamicPPL.TestUtils.varnames(model)
+                @test haskey(x_rand_nt, Symbol(vn))
+            end
+
+            # Ensure log-probability computations are implemented.
+            @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
+            @test loglikelihood(model, x) ≈
+                DynamicPPL.TestUtils.loglikelihood_true(model, x...)
+            @test logjoint(model, x) ≈ DynamicPPL.TestUtils.logjoint_true(model, x...)
+            @test logjoint(model, x) !=
+                DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
+            # Ensure `varnames` is implemented.
+            vi = last(
+                DynamicPPL.evaluate!!(
+                    model, SimpleVarInfo(OrderedDict()), SamplingContext()
+                ),
+            )
+            @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
+            # Ensure `posterior_mean` is implemented.
+            @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
+        end
+    end
+
+    @testset "generated_quantities on `LKJCholesky`" begin
+        n = 10
+        d = 2
+        model = DynamicPPL.TestUtils.demo_lkjchol(d)
+        xs = [model().x for _ in 1:n]
+
+        # Extract varnames and values.
+        vns_and_vals_xs = map(
+            collect ∘ Base.Fix1(DynamicPPL.varname_and_value_leaves, @varname(x)), xs
+        )
+        vns = map(first, first(vns_and_vals_xs))
+        vals = map(vns_and_vals_xs) do vns_and_vals
+            map(last, vns_and_vals)
+        end
+
+        # Construct the chain.
+        syms = map(Symbol, vns)
+        vns_to_syms = OrderedDict{VarName,Any}(zip(vns, syms))
+
+        chain = MCMCChains.Chains(
+            permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
+        )
+        display(chain)
+
+        # Test!
+        results = generated_quantities(model, chain)
+        for (x_true, result) in zip(xs, results)
+            @test x_true.UL == result.x.UL
+        end
+
+        # With variables that aren't in the `model`.
+        vns_to_syms_with_extra = let d = deepcopy(vns_to_syms)
+            d[@varname(y)] = :y
+            d
+        end
+        vals_with_extra = map(enumerate(vals)) do (i, v)
+            vcat(v, i)
+        end
+        chain_with_extra = MCMCChains.Chains(
+            permutedims(stack(vals_with_extra)),
+            vcat(syms, [:y]);
+            info=(varname_to_symbol=vns_to_syms_with_extra,),
+        )
+        display(chain_with_extra)
+        # Test!
+        results = generated_quantities(model, chain_with_extra)
+        for (x_true, result) in zip(xs, results)
+            @test x_true.UL == result.x.UL
+        end
+    end
+
+    @testset "Type stability of models" begin
+        models_to_test = [
+            # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
+            # DynamicPPL.TestUtils.DEMO_MODELS...,
+            DynamicPPL.TestUtils.demo_lkjchol(2),
+        ]
+        @testset "$(model.f)" for model in models_to_test
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = filter(
+                is_typed_varinfo,
+                DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
+            )
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @test (@inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                true)
+
+                varinfo_linked = DynamicPPL.link(varinfo, model)
+                @test (
+                    @inferred(
+                        DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
+                    );
+                    true
+                )
+            end
+        end
+    end
+
+    @testset "values_as_in_model" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                realizations = values_as_in_model(model, varinfo)
+                # Ensure that all variables are found.
+                vns_found = collect(keys(realizations))
+                @test vns ∩ vns_found == vns ∪ vns_found
+                # Ensure that the values are the same.
+                for vn in vns
+                    @test realizations[vn] == varinfo[vn]
+                end
+            end
+        end
     end
 end

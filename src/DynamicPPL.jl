@@ -3,24 +3,28 @@ module DynamicPPL
 using AbstractMCMC: AbstractSampler, AbstractChains
 using AbstractPPL
 using Bijectors
+using Compat
 using Distributions
 using OrderedCollections: OrderedDict
 
 using AbstractMCMC: AbstractMCMC
+using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
-using ChainRulesCore: ChainRulesCore
 using DensityInterface: DensityInterface
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
-using Setfield: Setfield
-using ZygoteRules: ZygoteRules
+using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
+using LogDensityProblemsAD: LogDensityProblemsAD
 
-using LinearAlgebra: Cholesky
+using LinearAlgebra: LinearAlgebra, Cholesky
 
 using DocStringExtensions
 
 using Random: Random
+
+# TODO: Remove these when it's possible.
+import Bijectors: link, invlink
 
 import Base:
     Symbol,
@@ -45,6 +49,7 @@ export AbstractVarInfo,
     SimpleVarInfo,
     push!!,
     empty!!,
+    subset,
     getlogp,
     setlogp!!,
     acclogp!!,
@@ -61,11 +66,12 @@ export AbstractVarInfo,
     updategid!,
     setorder!,
     istrans,
+    link,
     link!,
     link!!,
+    invlink,
     invlink!,
     invlink!!,
-    tonamedtuple,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -78,7 +84,6 @@ export AbstractVarInfo,
     vectorize,
     reconstruct,
     reconstruct!,
-    Sample,
     init,
     vectorize,
     OrderedDict,
@@ -87,6 +92,8 @@ export AbstractVarInfo,
     getmissings,
     getargnames,
     generated_quantities,
+    extract_priors,
+    values_as_in_model,
     # Samplers
     Sampler,
     SampleFromPrior,
@@ -119,9 +126,14 @@ export AbstractVarInfo,
     pointwise_loglikelihoods,
     condition,
     decondition,
+    fix,
+    unfix,
     # Convenience macros
     @addlogprob!,
-    @submodel
+    @submodel,
+    value_iterator_from_chain,
+    check_model,
+    check_model_and_trace
 
 # Reexport
 using Distributions: loglikelihood
@@ -149,6 +161,7 @@ const LEGACY_WARNING = """
 # Necessary forward declarations
 include("utils.jl")
 include("selector.jl")
+include("chains.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
@@ -161,11 +174,47 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("prob_macro.jl")
-include("compat/ad.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
+include("model_utils.jl")
+include("extract_priors.jl")
+include("values_as_in_model.jl")
+
+include("debug_utils.jl")
+using .DebugUtils
+
+if !isdefined(Base, :get_extension)
+    using Requires
+end
+
+@static if !isdefined(Base, :get_extension)
+    function __init__()
+        @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
+            "../ext/DynamicPPLChainRulesCoreExt.jl"
+        )
+        @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
+            "../ext/DynamicPPLEnzymeCoreExt.jl"
+        )
+        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
+            "../ext/DynamicPPLForwardDiffExt.jl"
+        )
+        @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
+            "../ext/DynamicPPLMCMCChainsExt.jl"
+        )
+        @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
+            "../ext/DynamicPPLReverseDiffExt.jl"
+        )
+        @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
+            "../ext/DynamicPPLZygoteRulesExt.jl"
+        )
+    end
+end
+
+# Standard tag: Improves stacktraces
+# Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+struct DynamicPPLTag end
 
 end # module

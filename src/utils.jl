@@ -70,7 +70,9 @@ true
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = acclogp!!($(esc(:(__varinfo__))), $(esc(ex)))
+        $(esc(:(__varinfo__))) = acclogp!!(
+            $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
+        )
     end
 end
 
@@ -161,6 +163,20 @@ function getargs_assignment(expr::Expr)
     end
 end
 
+"""
+    getargs_coloneq(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L := R`, or `nothing`
+otherwise.
+"""
+getargs_coloneq(x) = nothing
+function getargs_coloneq(expr::Expr)
+    return MacroTools.@match expr begin
+        (L_ := R_) => (L, R)
+        x_ => nothing
+    end
+end
+
 function to_namedtuple_expr(syms)
     length(syms) == 0 && return :(NamedTuple())
 
@@ -209,11 +225,10 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-vectorize(d, r) = vec(r)
-vectorize(d::UnivariateDistribution, r::Real) = [r]
-vectorize(d::MultivariateDistribution, r::AbstractVector{<:Real}) = copy(r)
-vectorize(d::MatrixDistribution, r::AbstractMatrix{<:Real}) = copy(vec(r))
-vectorize(d::Distribution{CholeskyVariate}, r::Cholesky) = copy(vec(r.UL))
+vectorize(d, r) = vectorize(r)
+vectorize(r::Real) = [r]
+vectorize(r::AbstractArray{<:Real}) = copy(vec(r))
+vectorize(r::Cholesky) = copy(vec(r.UL))
 
 # NOTE:
 # We cannot use reconstruct{T} because val is always Vector{Real} then T will be Real.
@@ -236,9 +251,29 @@ reconstruct(f, dist, val) = reconstruct(dist, val)
 reconstruct(::UnivariateDistribution, val::Real) = val
 reconstruct(::MultivariateDistribution, val::AbstractVector{<:Real}) = copy(val)
 reconstruct(::MatrixDistribution, val::AbstractMatrix{<:Real}) = copy(val)
+function reconstruct(
+    ::Distribution{ArrayLikeVariate{N}}, val::AbstractArray{<:Real,N}
+) where {N}
+    return copy(val)
+end
 reconstruct(::Inverse{Bijectors.VecCorrBijector}, ::LKJ, val::AbstractVector) = copy(val)
+
+function reconstruct(dist::LKJCholesky, val::AbstractVector{<:Real})
+    return reconstruct(dist, Matrix(reshape(val, size(dist))))
+end
+function reconstruct(dist::LKJCholesky, val::AbstractMatrix{<:Real})
+    return Cholesky(val, dist.uplo, 0)
+end
+reconstruct(::LKJCholesky, val::Cholesky) = val
+
 function reconstruct(
     ::Inverse{Bijectors.VecCholeskyBijector}, ::LKJCholesky, val::AbstractVector
+)
+    return copy(val)
+end
+
+function reconstruct(
+    ::Inverse{Bijectors.PDVecBijector}, ::MatrixDistribution, val::AbstractVector
 )
     return copy(val)
 end
@@ -331,13 +366,15 @@ collectmaybe(x::Base.AbstractSet) = collect(x)
 #######################
 # BangBang.jl related #
 #######################
-function set!!(obj, lens::Setfield.Lens, value)
-    lensmut = BangBang.prefermutation(lens)
-    return Setfield.set(obj, lensmut, value)
+function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
+    opticmut = BangBang.prefermutation(optic)
+    return Accessors.set(obj, opticmut, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
-    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
-    return Setfield.set(obj, lens, value)
+    optic = BangBang.prefermutation(
+        AbstractPPL.getoptic(vn) ∘ Accessors.PropertyLens{sym}()
+    )
+    return Accessors.set(obj, optic, value)
 end
 
 #############################
@@ -347,39 +384,41 @@ end
 # we're more likely to specialize on the key in these settings rather than the container.
 # TODO: I'm not sure about this name.
 """
-    canview(lens, container)
+    canview(optic, container)
 
-Return `true` if `lens` can be used to view `container`, and `false` otherwise.
+Return `true` if `optic` can be used to view `container`, and `false` otherwise.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: canview)
-julia> canview(@lens(_.a), (a = 1.0, ))
+```jldoctest; setup=:(using Accessors; using DynamicPPL: canview)
+julia> canview(@o(_.a), (a = 1.0, ))
 true
 
-julia> canview(@lens(_.a), (b = 1.0, )) # property `a` does not exist
+julia> canview(@o(_.a), (b = 1.0, )) # property `a` does not exist
 false
 
-julia> canview(@lens(_.a[1]), (a = [1.0, 2.0], ))
+julia> canview(@o(_.a[1]), (a = [1.0, 2.0], ))
 true
 
-julia> canview(@lens(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
+julia> canview(@o(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
 false
 ```
 """
-canview(lens, container) = false
-canview(::Setfield.IdentityLens, _) = true
-function canview(lens::Setfield.PropertyLens{field}, x) where {field}
+canview(optic, container) = false
+canview(::typeof(identity), _) = true
+function canview(optic::Accessors.PropertyLens{field}, x) where {field}
     return hasproperty(x, field)
 end
 
 # `IndexLens`: only relevant if `x` supports indexing.
-canview(lens::Setfield.IndexLens, x) = false
-canview(lens::Setfield.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
+canview(optic::Accessors.IndexLens, x) = false
+function canview(optic::Accessors.IndexLens, x::AbstractArray)
+    return checkbounds(Bool, x, optic.indices...)
+end
 
-# `ComposedLens`: check that we can view `.outer` and `.inner`, but using
-# value extracted using `.outer`.
-function canview(lens::Setfield.ComposedLens, x)
-    return canview(lens.outer, x) && canview(lens.inner, get(x, lens.outer))
+# `ComposedOptic`: check that we can view `.inner` and `.outer`, but using
+# value extracted using `.inner`.
+function canview(optic::Accessors.ComposedOptic, x)
+    return canview(optic.inner, x) && canview(optic.outer, optic.inner(x))
 end
 
 """
@@ -400,99 +439,127 @@ x
 ```
 """
 function parent(vn::VarName)
-    p = parent(getlens(vn))
-    return p === nothing ? VarName(vn, Setfield.IdentityLens()) : VarName(vn, p)
+    p = parent(getoptic(vn))
+    return p === nothing ? VarName(vn, identity) : VarName(vn, p)
 end
 
 """
-    parent(lens::Setfield.Lens)
+    parent(optic)
 
-Return the parent lens. If `lens` doesn't have a parent,
+Return the parent optic. If `optic` doesn't have a parent,
 `nothing` is returned.
 
 See also: [`parent_and_child`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent)
-julia> parent(@lens(_.a[1]))
-(@lens _.a)
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent)
+julia> parent(@o(_.a[1]))
+(@o _.a)
 
-julia> # Parent of lens without parents results in `nothing`.
-       (parent ∘ parent)(@lens(_.a[1])) === nothing
+julia> # Parent of optic without parents results in `nothing`.
+       (parent ∘ parent)(@o(_.a[1])) === nothing
 true
 ```
 """
-parent(lens::Setfield.Lens) = first(parent_and_child(lens))
+parent(optic::AbstractPPL.ALLOWED_OPTICS) = first(parent_and_child(optic))
 
 """
-    parent_and_child(lens::Setfield.Lens)
+    parent_and_child(optic)
 
-Return a 2-tuple of lenses `(parent, child)` where `parent` is the
-parent lens of `lens` and `child` is the child lens of `lens`.
+Return a 2-tuple of optics `(parent, child)` where `parent` is the
+parent optic of `optic` and `child` is the child optic of `optic`.
 
-If `lens` does not have a parent, we return `(nothing, lens)`.
+If `optic` does not have a parent, we return `(nothing, optic)`.
 
 See also: [`parent`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent_and_child)
-julia> parent_and_child(@lens(_.a[1]))
-((@lens _.a), (@lens _[1]))
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent_and_child)
+julia> parent_and_child(@o(_.a[1]))
+((@o _.a), (@o _[1]))
 
-julia> parent_and_child(@lens(_.a))
-(nothing, (@lens _.a))
+julia> parent_and_child(@o(_.a))
+(nothing, (@o _.a))
 ```
 """
-parent_and_child(lens::Setfield.Lens) = (nothing, lens)
-function parent_and_child(lens::Setfield.ComposedLens)
-    p, child = parent_and_child(lens.inner)
-    parent = p === nothing ? lens.outer : lens.outer ∘ p
+parent_and_child(optic::AbstractPPL.ALLOWED_OPTICS) = (nothing, optic)
+function parent_and_child(optic::Accessors.ComposedOptic)
+    p, child = parent_and_child(optic.outer)
+    parent = p === nothing ? optic.inner : p ∘ optic.inner
     return parent, child
 end
 
 """
-    splitlens(condition, lens)
+    splitoptic(condition, optic)
 
 Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a lens such that `condition(parent)` is `true` and `parent ∘ child == lens`.
+`parent` is a optic such that `condition(parent)` is `true` and `child ∘ parent == optic`.
 
 If `issuccess` is `false`, then no such split could be found.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: splitlens)
-julia> p, c, issucesss = splitlens(@lens(_.a[1])) do parent
+```jldoctest; setup=:(using Accessors; using DynamicPPL: splitoptic)
+julia> p, c, issucesss = splitoptic(@o(_.a[1])) do parent
            # Succeeds!
-           parent == @lens(_.a)
+           parent == @o(_.a)
        end
-((@lens _.a), (@lens _[1]), true)
+((@o _.a), (@o _[1]), true)
 
-julia> p ∘ c
-(@lens _.a[1])
+julia> c ∘ p
+(@o _.a[1])
 
-julia> splitlens(@lens(_.a[1])) do parent
+julia> splitoptic(@o(_.a[1])) do parent
            # Fails!
-           parent == @lens(_.b)
+           parent == @o(_.b)
        end
-(nothing, (@lens _.a[1]), false)
+(nothing, (@o _.a[1]), false)
 ```
 """
-function splitlens(condition, lens)
-    current_parent, current_child = parent_and_child(lens)
+function splitoptic(condition, optic)
+    current_parent, current_child = parent_and_child(optic)
     # We stop if either a) `condition` is satisfied, or b) we reached the root.
     while !condition(current_parent) && current_parent !== nothing
         current_parent, c = parent_and_child(current_parent)
-        current_child = c ∘ current_child
+        current_child = current_child ∘ c
     end
 
     return current_parent, current_child, condition(current_parent)
 end
 
-# HACK(torfjelde): Avoids type-instability in `dot_assume` for `SimpleVarInfo`.
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, ::Colon, ::Integer
-) where {C<:AbstractMatrix,T<:AbstractVector}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C)
+"""
+    remove_parent_optic(vn_parent::VarName, vn_child::VarName)
+
+Remove the parent optic `vn_parent` from `vn_child`.
+
+# Examples
+```jldoctest; setup = :(using Accessors; using DynamicPPL: remove_parent_optic)
+julia> remove_parent_optic(@varname(x), @varname(x.a))
+(@o _.a)
+
+julia> remove_parent_optic(@varname(x), @varname(x.a[1]))
+(@o _.a[1])
+
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1]))
+(@o _[1])
+
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1].b))
+(@o _[1].b)
+
+julia> remove_parent_optic(@varname(x.a), @varname(x.a))
+ERROR: Could not find x.a in x.a
+
+julia> remove_parent_optic(@varname(x.a[2]), @varname(x.a[1]))
+ERROR: Could not find x.a[2] in x.a[1]
+```
+"""
+function remove_parent_optic(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
+    _, child, issuccess = splitoptic(getoptic(vn_child)) do optic
+        o = optic === nothing ? identity : optic
+        VarName(vn_child, o) == vn_parent
+    end
+
+    issuccess || error("Could not find $vn_parent in $vn_child")
+    return child
 end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
@@ -668,8 +735,8 @@ false
 """
 function hasvalue(vals::NamedTuple, vn::VarName{sym}) where {sym}
     # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    return haskey(vals, sym) && canview(getlens(vn), getproperty(vals, sym))
+    # RHS: Ensure that the optic can view into `nt`.
+    return haskey(vals, sym) && canview(getoptic(vn), getproperty(vals, sym))
 end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
@@ -679,20 +746,20 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     haskey(vals, vn) && return true
 
     # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # to split the optic into the key / `parent` and the extraction optic / `child`.
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(vals, VarName(vn, l))
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(vals, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # Return early if no such split could be found.
     issuccess || return false
 
     # At this point we just need to check that we `canview` the value.
-    value = vals[VarName(vn, keylens)]
+    value = vals[VarName(vn, keyoptic)]
 
     return canview(child, value)
 end
@@ -709,13 +776,13 @@ function nested_getindex(values::AbstractDict, vn::VarName)
         return maybeval
     end
 
-    # Split the lens into the key / `parent` and the extraction lens / `child`.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(values, VarName(vn, l))
+    # Split the optic into the key / `parent` and the extraction optic / `child`.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(values, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # If we found a valid split, then we can extract the value.
     if !issuccess
@@ -725,8 +792,8 @@ function nested_getindex(values::AbstractDict, vn::VarName)
 
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
-    value = values[VarName(vn, keylens)]
-    return get(value, child)
+    value = values[VarName(vn, keyoptic)]
+    return child(value)
 end
 
 """
@@ -802,9 +869,6 @@ end
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
 infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
 
-# No need + causes issues for some AD backends, e.g. Zygote.
-ChainRulesCore.@non_differentiable infer_nested_eltype(x)
-
 """
     varname_leaves(vn::VarName, val)
 
@@ -833,20 +897,191 @@ x.z[2][1]
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
-        I in CartesianIndices(val)
+        varname_leaves(VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), val[I])
+        for I in CartesianIndices(val)
     )
 end
-function varname_leaves(vn::DynamicPPL.VarName, val::NamedTuple)
+function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = Setfield.PropertyLens{sym}()
-        varname_leaves(vn ∘ lens, get(val, lens))
+        optic = Accessors.PropertyLens{sym}()
+        varname_leaves(VarName(vn, optic ∘ getoptic(vn)), optic(val))
     end
     return Iterators.flatten(iter)
 end
+
+"""
+    varname_and_value_leaves(vn::VarName, val)
+
+Return an iterator over all varname-value pairs that are represented by `vn` on `val`.
+
+# Examples
+```jldoctest varname-and-value-leaves
+julia> using DynamicPPL: varname_and_value_leaves
+
+julia> foreach(println, varname_and_value_leaves(@varname(x), 1:2))
+(x[1], 1)
+(x[2], 2)
+
+julia> foreach(println, varname_and_value_leaves(@varname(x[1:2]), 1:2))
+(x[1:2][1], 1)
+(x[1:2][2], 2)
+
+julia> x = (y = 1, z = [[2.0], [3.0]]);
+
+julia> foreach(println, varname_and_value_leaves(@varname(x), x))
+(x.y, 1)
+(x.z[1][1], 2.0)
+(x.z[2][1], 3.0)
+```
+
+There are also some special handling for certain types:
+
+```jldoctest varname-and-value-leaves
+julia> using LinearAlgebra
+
+julia> x = reshape(1:4, 2, 2);
+
+julia> # `LowerTriangular`
+       foreach(println, varname_and_value_leaves(@varname(x), LowerTriangular(x)))
+(x[1, 1], 1)
+(x[2, 1], 2)
+(x[2, 2], 4)
+
+julia> # `UpperTriangular`
+       foreach(println, varname_and_value_leaves(@varname(x), UpperTriangular(x)))
+(x[1, 1], 1)
+(x[1, 2], 3)
+(x[2, 2], 4)
+
+julia> # `Cholesky` with lower-triangular
+       foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'L', 0)))
+(x.L[1, 1], 1.0)
+(x.L[2, 1], 0.0)
+(x.L[2, 2], 1.0)
+
+julia> # `Cholesky` with upper-triangular
+       foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'U', 0)))
+(x.U[1, 1], 1.0)
+(x.U[1, 2], 0.0)
+(x.U[2, 2], 1.0)
+```
+"""
+function varname_and_value_leaves(vn::VarName, x)
+    return Iterators.map(value, Iterators.flatten(varname_and_value_leaves_inner(vn, x)))
+end
+
+"""
+    Leaf{T}
+
+A container that represents the leaf of a nested structure, implementing
+`iterate` to return itself.
+
+This is particularly useful in conjunction with `Iterators.flatten` to
+prevent flattening of nested structures.
+"""
+struct Leaf{T}
+    value::T
+end
+
+Leaf(xs...) = Leaf(xs)
+
+# Allow us to treat `Leaf` as an iterator containing a single element.
+# Something like an `[x]` would also be an iterator with a single element,
+# but when we call `flatten` on this, it would also iterate over `x`,
+# unflattening that too. By making `Leaf` a single-element iterator, which
+# returns itself, we can call `iterate` on this as many times as we like
+# without causing any change. The result is that `Iterators.flatten`
+# will _not_ unflatten `Leaf`s.
+# Note that this is similar to how `Base.iterate` is implemented for `Real`::
+#
+#    julia> iterate(1)
+#    (1, nothing)
+#
+# One immediate example where this becomes in our scenario is that we might
+# have `missing` values in our data, which does _not_ have an `iterate`
+# implemented. Calling `Iterators.flatten` on this would cause an error.
+Base.iterate(leaf::Leaf) = leaf, nothing
+Base.iterate(::Leaf, _) = nothing
+
+# Convenience.
+value(leaf::Leaf) = leaf.value
+
+# Leaf-types.
+varname_and_value_leaves_inner(vn::VarName, x::Real) = [Leaf(vn, x)]
+function varname_and_value_leaves_inner(
+    vn::VarName, val::AbstractArray{<:Union{Real,Missing}}
+)
+    return (
+        Leaf(
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
+            val[I],
+        ) for I in CartesianIndices(val)
+    )
+end
+# Containers.
+function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
+    return Iterators.flatten(
+        varname_and_value_leaves_inner(
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
+            val[I],
+        ) for I in CartesianIndices(val)
+    )
+end
+function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
+    iter = Iterators.map(keys(val)) do sym
+        optic = DynamicPPL.Accessors.PropertyLens{sym}()
+        varname_and_value_leaves_inner(
+            VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val)
+        )
+    end
+
+    return Iterators.flatten(iter)
+end
+# Special types.
+function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
+    # TODO: Or do we use `PDMat` here?
+    return if x.uplo == 'L'
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:L}() ∘ vn, x.L)
+    else
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:U}() ∘ vn, x.U)
+    end
+end
+function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
+    return (
+        Leaf(
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
+            x[I],
+        )
+        # Iteration over the lower-triangular indices.
+        for I in CartesianIndices(x) if I[1] >= I[2]
+    )
+end
+function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
+    return (
+        Leaf(
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
+            x[I],
+        )
+        # Iteration over the upper-triangular indices.
+        for I in CartesianIndices(x) if I[1] <= I[2]
+    )
+end
+
+broadcast_safe(x) = x
+broadcast_safe(x::Distribution) = (x,)
+broadcast_safe(x::AbstractContext) = (x,)
+
+# Version of `merge` used by `conditioned` and `fixed` to handle
+# the scenario where we might try to merge a dict with an empty
+# tuple.
+# TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
+_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
+_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
+_merge(left::AbstractDict, right::NamedTuple{()}) = left
+_merge(left::NamedTuple{()}, right::AbstractDict) = right

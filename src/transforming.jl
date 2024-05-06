@@ -74,7 +74,7 @@ function dot_tilde_assume(
     for (vn, ri) in zip(vns, eachcol(r))
         # Only transform if `!isinverse` since `vi[vn, right]`
         # already performs the inverse transformation if it's transformed.
-        vi = DynamicPPL.setindex!!(vi, isinverse ? ri : b(ri), vn)
+        vi = setindex!!(vi, isinverse ? ri : b(ri), vn)
     end
 
     return r, lp, vi
@@ -93,4 +93,16 @@ function invlink!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
         NoTransformation(),
     )
+end
+
+function link(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return link!!(t, deepcopy(vi), spl, model)
+end
+
+function invlink(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink!!(t, deepcopy(vi), spl, model)
 end

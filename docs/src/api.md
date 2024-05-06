@@ -82,6 +82,34 @@ Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, 
 decondition
 ```
 
+## Fixing and unfixing
+
+We can also _fix_ a collection of variables in a [`Model`](@ref) to certain using [`fix`](@ref).
+
+This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
+but they are indeed different operations:
+
+  - `condition`ed variables are considered to be _observations_, and are thus
+    included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+    but not in [`logprior`](@ref).
+  - `fix`ed variables are considered to be _constant_, and are thus not included
+    in any log-probability computations.
+
+The differences are more clearly spelled out in the docstring of [`fix`](@ref) below.
+
+```@docs
+fix
+DynamicPPL.fixed
+```
+
+The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
+
+Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original meaning:
+
+```@docs
+unfix
+```
+
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
@@ -100,6 +128,25 @@ For a chain of samples, one can compute the pointwise log-likelihoods of each ob
 
 ```@docs
 pointwise_loglikelihoods
+```
+
+For converting a chain into a format that can more easily be fed into a `Model` again, for example using `condition`, you can use [`value_iterator_from_chain`](@ref).
+
+```@docs
+value_iterator_from_chain
+
+```
+
+Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
+
+```@docs
+extract_priors
+```
+
+Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are seen in the model can be done using [`values_as_in_model`](@ref).
+
+```@docs
+values_as_in_model
 ```
 
 ```@docs
@@ -144,6 +191,21 @@ DynamicPPL.TestUtils.posterior_mean
 DynamicPPL.TestUtils.setup_varinfos
 DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
+```
+
+## Debugging Utilities
+
+DynamicPPL provides a few methods for checking validity of a model-definition.
+
+```@docs
+check_model
+check_model_and_trace
+```
+
+And some which might be useful to determine certain properties of the model based on the debug trace.
+
+```@docs
+DynamicPPL.has_static_constraints
 ```
 
 ## Advanced
@@ -202,6 +264,8 @@ DynamicPPL.StaticTransformation
 DynamicPPL.istrans
 DynamicPPL.settrans!!
 DynamicPPL.transformation
+DynamicPPL.link
+DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.default_transformation
@@ -212,8 +276,11 @@ DynamicPPL.reconstruct
 #### Utils
 
 ```@docs
+Base.merge(::AbstractVarInfo)
+DynamicPPL.subset
 DynamicPPL.unflatten
-DynamicPPL.tonamedtuple
+DynamicPPL.varname_leaves
+DynamicPPL.varname_and_value_leaves
 ```
 
 #### `SimpleVarInfo`
@@ -321,4 +388,3 @@ dot_tilde_assume
 tilde_observe
 dot_tilde_observe
 ```
-

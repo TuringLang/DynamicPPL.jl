@@ -110,7 +110,9 @@
         end
 
         chain = sample(
-            newinterface(obs), HMC{Turing.ForwardDiffAD{2}}(0.75, 3, :p, :x), 100
+            newinterface(obs),
+            HMC(0.75, 3, :p, :x; adtype=AutoForwardDiff(; chunksize=2)),
+            100,
         )
     end
     @testset "no return" begin
@@ -186,8 +188,7 @@
 
         # Vector assumptions
         N = 10
-        setchunksize(N)
-        alg = HMC(0.2, 4)
+        alg = HMC(0.2, 4; adtype=AutoForwardDiff(; chunksize=N))
 
         @model function vdemo3()
             x = Vector{Real}(undef, N)
@@ -254,8 +255,7 @@
 
         # Vector assumptions
         N = 10
-        setchunksize(N)
-        alg = HMC(0.2, 4)
+        alg = HMC(0.2, 4; adtype=AutoForwardDiff(; chunksize=N))
 
         @model function vdemo3()
             x = Vector{Real}(undef, N)
@@ -300,8 +300,7 @@
     end
     @testset "Type parameters" begin
         N = 10
-        setchunksize(N)
-        alg = HMC(0.01, 5)
+        alg = HMC(0.01, 5; adtype=AutoForwardDiff(; chunksize=N))
         x = randn(1000)
         @model function vdemo1(::Type{T}=Float64) where {T}
             x = Vector{T}(undef, N)

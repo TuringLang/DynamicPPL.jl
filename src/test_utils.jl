@@ -8,7 +8,7 @@ using Test
 
 using Random: Random
 using Bijectors: Bijectors
-using Setfield: Setfield
+using Accessors: Accessors
 
 # For backwards compat.
 using DynamicPPL: varname_leaves
@@ -37,24 +37,42 @@ function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal
 end
 
 """
-    setup_varinfos(model::Model, example_values::NamedTuple, varnames)
+    setup_varinfos(model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false)
 
 Return a tuple of instances for different implementations of `AbstractVarInfo` with
 each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
+
+If `include_threadsafe` is `true`, then the returned tuple will also include thread-safe versions
+of the varinfo instances.
 """
-function setup_varinfos(model::Model, example_values::NamedTuple, varnames)
-    # <:VarInfo
+function setup_varinfos(
+    model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
+)
+    # VarInfo
     vi_untyped = VarInfo()
     model(vi_untyped)
     vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
-    # <:SimpleVarInfo
+    # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
 
-    return map((vi_untyped, vi_typed, svi_typed, svi_untyped)) do vi
+    # SimpleVarInfo{<:Any,<:Ref}
+    svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
+    svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
+
+    lp = getlogp(vi_typed)
+    varinfos = map((
+        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
+    )) do vi
         # Set them all to the same values.
-        update_values!!(vi, example_values, varnames)
+        DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
     end
+
+    if include_threadsafe
+        varinfos = (varinfos..., map(DynamicPPL.ThreadSafeVarInfo ∘ deepcopy, varinfos)...)
+    end
+
+    return varinfos
 end
 
 """
@@ -162,6 +180,15 @@ corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
 function posterior_mean end
 
 """
+    rand_prior_true([rng::AbstractRNG, ]model::DynamicPPL.Model)
+
+Return a `NamedTuple` of realizations from the prior of `model` compatible with `varnames(model)`.
+"""
+function rand_prior_true(model::DynamicPPL.Model)
+    return rand_prior_true(Random.default_rng(), model)
+end
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
@@ -188,6 +215,111 @@ function logprior_true_with_logabsdet_jacobian(
     b_x = Bijectors.bijector(truncated(Normal(), m, Inf))
     x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
     return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
+end
+
+"""
+    demo_one_variable_multiple_constraints()
+
+A model with a single multivariate `x` whose components have multiple different constraints.
+
+# Model
+```julia
+x[1] ~ Normal()
+x[2] ~ InverseGamma(2, 3)
+x[3] ~ truncated(Normal(), -5, 20)
+x[4:5] ~ Dirichlet([1.0, 2.0])
+```
+
+"""
+@model function demo_one_variable_multiple_constraints(
+    ::Type{TV}=Vector{Float64}
+) where {TV}
+    x = TV(undef, 5)
+    x[1] ~ Normal()
+    x[2] ~ InverseGamma(2, 3)
+    x[3] ~ truncated(Normal(), -5, 20)
+    x[4:5] ~ Dirichlet([1.0, 2.0])
+
+    return (x=x,)
+end
+
+function logprior_true(model::Model{typeof(demo_one_variable_multiple_constraints)}, x)
+    return (
+        logpdf(Normal(), x[1]) +
+        logpdf(InverseGamma(2, 3), x[2]) +
+        logpdf(truncated(Normal(), -5, 20), x[3]) +
+        logpdf(Dirichlet([1.0, 2.0]), x[4:5])
+    )
+end
+function loglikelihood_true(model::Model{typeof(demo_one_variable_multiple_constraints)}, x)
+    return zero(float(eltype(x)))
+end
+function varnames(model::Model{typeof(demo_one_variable_multiple_constraints)})
+    return [@varname(x[1]), @varname(x[2]), @varname(x[3]), @varname(x[4:5])]
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_one_variable_multiple_constraints)}, x
+)
+    b_x2 = Bijectors.bijector(InverseGamma(2, 3))
+    b_x3 = Bijectors.bijector(truncated(Normal(), -5, 20))
+    b_x4 = Bijectors.bijector(Dirichlet([1.0, 2.0]))
+    x_unconstrained = vcat(x[1], b_x2(x[2]), b_x3(x[3]), b_x4(x[4:5]))
+    Δlogp = (
+        Bijectors.logabsdetjac(b_x2, x[2]) +
+        Bijectors.logabsdetjac(b_x3, x[3]) +
+        Bijectors.logabsdetjac(b_x4, x[4:5])
+    )
+    return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
+end
+
+function rand_prior_true(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_one_variable_multiple_constraints)}
+)
+    x = Vector{Float64}(undef, 5)
+    x[1] = rand(rng, Normal())
+    x[2] = rand(rng, InverseGamma(2, 3))
+    x[3] = rand(rng, truncated(Normal(), -5, 20))
+    x[4:5] = rand(rng, Dirichlet([1.0, 2.0]))
+    return (x=x,)
+end
+
+"""
+    demo_lkjchol(d=2)
+
+A model with a single variable `x` with support on the Cholesky factor of a
+LKJ distribution.
+
+# Model
+```julia
+x ~ LKJCholesky(d, 1.0)
+```
+"""
+@model function demo_lkjchol(d::Int=2)
+    x ~ LKJCholesky(d, 1.0)
+    return (x=x,)
+end
+
+function logprior_true(model::Model{typeof(demo_lkjchol)}, x)
+    return logpdf(LKJCholesky(model.args.d, 1.0), x)
+end
+
+function loglikelihood_true(model::Model{typeof(demo_lkjchol)}, x)
+    return zero(float(eltype(x)))
+end
+
+function varnames(model::Model{typeof(demo_lkjchol)})
+    return [@varname(x)]
+end
+
+function logprior_true_with_logabsdet_jacobian(model::Model{typeof(demo_lkjchol)}, x)
+    b_x = Bijectors.bijector(LKJCholesky(model.args.d, 1.0))
+    x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
+    return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
+end
+
+function rand_prior_true(rng::Random.AbstractRNG, model::Model{typeof(demo_lkjchol)})
+    x = rand(rng, LKJCholesky(model.args.d, 1.0))
+    return (x=x,)
 end
 
 # A collection of models for which the posterior should be "similar".
@@ -543,7 +675,8 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
-    return [@varname(s[:, 1]), @varname(s[:, 2]), @varname(m)]
+    s = zeros(1, 2) # used for varname concretization only
+    return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
 end
 
 @model function demo_assume_matrix_dot_observe_matrix(
@@ -580,19 +713,6 @@ function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
     return [@varname(s), @varname(m)]
 end
 
-function Random.rand(
-    rng::Random.AbstractRNG,
-    ::Type{NamedTuple},
-    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)},
-)
-    n = length(model.args.x)
-    s = reshape(rand(rng, InverseGamma(2, 3), n), n ÷ 2, 2)
-    s_vec = vec(s)
-    m = rand(rng, MvNormal(zeros(n), Diagonal(s_vec)))
-
-    return (s=s, m=m)
-end
-
 const DemoModels = Union{
     Model{typeof(demo_dot_assume_dot_observe)},
     Model{typeof(demo_assume_index_observe)},
@@ -609,21 +729,20 @@ const DemoModels = Union{
     Model{typeof(demo_assume_matrix_dot_observe_matrix)},
 }
 
-# We require demo models to have explict impleentations of `rand` since we want
-# these to be considered as ground truth.
-function Random.rand(rng::Random.AbstractRNG, ::Type{NamedTuple}, model::DemoModels)
-    return error("demo models requires explicit implementation of rand")
-end
-
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},Model{typeof(demo_assume_literal_dot_observe)}
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
 end
-function Random.rand(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::UnivariateAssumeDemoModels
-)
+function likelihood_optima(::UnivariateAssumeDemoModels)
+    return (s=1 / 16, m=7 / 4)
+end
+function posterior_optima(::UnivariateAssumeDemoModels)
+    # TODO: Figure out exact for `s`.
+    return (s=0.907407, m=7 / 6)
+end
+function rand_prior_true(rng::Random.AbstractRNG, model::UnivariateAssumeDemoModels)
     s = rand(rng, InverseGamma(2, 3))
     m = rand(rng, Normal(0, sqrt(s)))
 
@@ -644,7 +763,7 @@ const MultivariateAssumeDemoModels = Union{
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
-    vals = Random.rand(model)
+    vals = rand_prior_true(model)
 
     vals.s[1] = 19 / 8
     vals.m[1] = 3 / 4
@@ -654,9 +773,85 @@ function posterior_mean(model::MultivariateAssumeDemoModels)
 
     return vals
 end
-function Random.rand(
-    rng::Random.AbstractRNG, ::Type{NamedTuple}, model::MultivariateAssumeDemoModels
-)
+function likelihood_optima(model::MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1] = 1e-32
+    vals.s[2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::MultivariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1] = 0.890625
+    vals.s[2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
+function rand_prior_true(rng::Random.AbstractRNG, model::MultivariateAssumeDemoModels)
+    # Get template values from `model`.
+    retval = model(rng)
+    vals = (s=retval.s, m=retval.m)
+    # Fill containers with realizations from prior.
+    for i in LinearIndices(vals.s)
+        vals.s[i] = rand(rng, InverseGamma(2, 3))
+        vals.m[i] = rand(rng, Normal(0, sqrt(vals.s[i])))
+    end
+
+    return vals
+end
+
+const MatrixvariateAssumeDemoModels = Union{
+    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+}
+function posterior_mean(model::MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s[1, 2] = 8 / 3
+    vals.m[2] = 1
+
+    return vals
+end
+function likelihood_optima(model::MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s[1, 1] = 1e-32
+    vals.s[1, 2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::MatrixvariateAssumeDemoModels)
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s[1, 1] = 0.890625
+    vals.s[1, 2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
+function rand_prior_true(rng::Random.AbstractRNG, model::MatrixvariateAssumeDemoModels)
     # Get template values from `model`.
     retval = model(rng)
     vals = (s=retval.s, m=retval.m)
@@ -752,6 +947,14 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 
+function rand_prior_true(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
+)
+    s = rand(rng, InverseGamma(2, 3))
+    m = rand(rng, Normal(0, sqrt(s)))
+    return (s=s, m=m)
+end
+
 """
     marginal_mean_of_samples(chain, varname)
 
@@ -791,9 +994,10 @@ function test_sampler(
     varnames_filter=Returns(true),
     atol=1e-1,
     rtol=1e-3,
+    sampler_name=typeof(sampler),
     kwargs...,
 )
-    @testset "$(typeof(sampler)) on $(nameof(model))" for model in models
+    @testset "$(sampler_name) on $(nameof(model))" for model in models
         chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
         target_values = posterior_mean(model)
         for vn in filter(varnames_filter, varnames(model))
@@ -830,6 +1034,24 @@ As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref)
 """
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     return test_sampler_on_demo_models(sampler, args...; kwargs...)
+end
+
+"""
+    test_context_interface(context)
+
+Test that `context` implements the `AbstractContext` interface.
+"""
+function test_context_interface(context)
+    # Is a subtype of `AbstractContext`.
+    @test context isa DynamicPPL.AbstractContext
+    # Should implement `NodeTrait.`
+    @test DynamicPPL.NodeTrait(context) isa Union{DynamicPPL.IsParent,DynamicPPL.IsLeaf}
+    # If it's a parent.
+    if DynamicPPL.NodeTrait(context) == DynamicPPL.IsParent
+        # Should implement `childcontext` and `setchildcontext`
+        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
+            context
+    end
 end
 
 end

@@ -33,6 +33,8 @@ struct MyCoolStruct{T}
     a::T
 end
 
+module Issue537 end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
@@ -599,6 +601,33 @@ end
         # With assignment.
         @model outer() = @submodel x = inner()
         @test outer()() isa Real
+
+        # Edge-cases.
+        # `return` in the last statement.
+        # Ref: issue #511.
+        @model function demo_ret_in_last_stmt(x::Bool)
+            # Two different values not supporting `iterate`.
+            if x
+                return Val(1)
+            else
+                return Val(2)
+            end
+        end
+
+        model_true = demo_ret_in_last_stmt(true)
+        @test model_true() === Val(1)
+
+        model_false = demo_ret_in_last_stmt(false)
+        @test model_false() === Val(2)
+
+        # `return` with `return`
+        @model function demo_ret_with_ret()
+            return begin
+                return Val(1)
+                Val(2)
+            end
+        end
+        @test demo_ret_with_ret()() === Val(1)
     end
 
     @testset "issue #368: hasmissing dispatch" begin
@@ -647,5 +676,45 @@ end
         # Empty `args...` and empty `kwargs...`.
         res = f_splat_test_2(1)()
         @test res == (1, (), 1, Int, NamedTuple())
+    end
+
+    @testset "issue #537: model with logging" begin
+        # Make sure `Module` is valid to put in a model.
+        @model demo_with_module() = Issue537
+        model = demo_with_module()
+        @test model() === Issue537
+
+        # And one explicit test for logging so know that is working.
+        @model demo_with_logging() = @info "hi"
+        model = demo_with_logging()
+        @test model() === nothing
+        # Make sure that the log message is present.
+        @test_logs (:info, "hi") model()
+    end
+
+    @testset ":= (tracked values)" begin
+        @model function demo_tracked()
+            x ~ Normal()
+            y := 100 + x
+            return (; x, y)
+        end
+        @model function demo_tracked_submodel()
+            @submodel (x, y) = demo_tracked()
+            return (; x, y)
+        end
+        for model in [demo_tracked(), demo_tracked_submodel()]
+            # Make sure it's runnable and `y` is present in the return-value.
+            @test model() isa NamedTuple{(:x, :y)}
+
+            # `VarInfo` should only contain `x`.
+            varinfo = VarInfo(model)
+            @test haskey(varinfo, @varname(x))
+            @test !haskey(varinfo, @varname(y))
+
+            # While `values_as_in_model` should contain both `x` and `y`.
+            values = values_as_in_model(model, deepcopy(varinfo))
+            @test haskey(values, @varname(x))
+            @test haskey(values, @varname(y))
+        end
     end
 end

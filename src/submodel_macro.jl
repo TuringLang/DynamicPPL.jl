@@ -120,49 +120,49 @@ julia> @model inner() = x ~ Normal()
 inner (generic function with 2 methods)
 
 julia> # When `prefix` is unspecified, no prefix is used.
-       @model outer() = @submodel a = inner()
-outer (generic function with 2 methods)
+       @model submodel_noprefix() = @submodel a = inner()
+submodel_noprefix (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(outer()))
+julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
 true
 
 julia> # Explicitely don't use any prefix.
-       @model outer() = @submodel prefix=false a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_false() = @submodel prefix=false a = inner()
+submodel_prefix_false (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(outer()))
+julia> @varname(x) in keys(VarInfo(submodel_prefix_false()))
 true
 
 julia> # Automatically determined from `a`.
-       @model outer() = @submodel prefix=true a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_true() = @submodel prefix=true a = inner()
+submodel_prefix_true (generic function with 2 methods)
 
-julia> @varname(var"a.x") in keys(VarInfo(outer()))
+julia> @varname(var"a.x") in keys(VarInfo(submodel_prefix_true()))
 true
 
 julia> # Using a static string.
-       @model outer() = @submodel prefix="my prefix" a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_string() = @submodel prefix="my prefix" a = inner()
+submodel_prefix_string (generic function with 2 methods)
 
-julia> @varname(var"my prefix.x") in keys(VarInfo(outer()))
+julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
 true
 
 julia> # Using string interpolation.
-       @model outer() = @submodel prefix="\$(nameof(inner()))" a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_interpolation() = @submodel prefix="\$(nameof(inner()))" a = inner()
+submodel_prefix_interpolation (generic function with 2 methods)
 
-julia> @varname(var"inner.x") in keys(VarInfo(outer()))
+julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
 true
 
 julia> # Or using some arbitrary expression.
-       @model outer() = @submodel prefix=1 + 2 a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_expr() = @submodel prefix=1 + 2 a = inner()
+submodel_prefix_expr (generic function with 2 methods)
 
-julia> @varname(var"3.x") in keys(VarInfo(outer()))
+julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
 true
 
 julia> # (×) Automatic prefixing without a left-hand side expression does not work!
-       @model outer() = @submodel prefix=true inner()
+       @model submodel_prefix_error() = @submodel prefix=true inner()
 ERROR: LoadError: cannot automatically prefix with no left-hand side
 [...]
 ```
@@ -191,12 +191,12 @@ end
 prefix_submodel_context(prefix, left, ctx) = prefix_submodel_context(prefix, ctx)
 function prefix_submodel_context(prefix, ctx)
     # E.g. `prefix="asd[$i]"` or `prefix=asd` with `asd` to be evaluated.
-    return :($(DynamicPPL.PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
+    return :($(PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, ctx)
     # E.g. `prefix="asd"`.
-    return :($(DynamicPPL.PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
+    return :($(PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Bool, ctx)
@@ -225,7 +225,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
             $retval
@@ -241,7 +241,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
             $(esc(L)) = $retval

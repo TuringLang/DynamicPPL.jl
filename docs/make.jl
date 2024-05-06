@@ -1,11 +1,16 @@
 using Documenter
 using DynamicPPL
 using DynamicPPL: AbstractPPL
+# NOTE: This is necessary to ensure that if we print something from
+# Distributions.jl in a doctest, then the shown value will not include
+# a qualifier; that is, we don't want `Distributions.Normal{Float64}`
+# but rather `Normal{Float64}`. The latter is what will then be printed
+# in the doctest as run in `test/runtests.jl`, and so we need to stay
+# consistent with that.
+using Distributions
 
 # Doctest setup
-DocMeta.setdocmeta!(
-    DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
-)
+DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
 
 makedocs(;
     sitename="DynamicPPL",
@@ -16,7 +21,6 @@ makedocs(;
         "API" => "api.md",
         "Tutorials" => ["tutorials/prob-interface.md"],
     ],
-    strict=true,
     checkdocs=:exports,
 )
 

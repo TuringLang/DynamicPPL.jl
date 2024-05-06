@@ -1,3 +1,5 @@
+using Accessors
+using ADTypes
 using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
@@ -6,11 +8,13 @@ using Distributions
 using DistributionsAD
 using Documenter
 using ForwardDiff
+using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
 using Tracker
+using ReverseDiff
 using Zygote
-using Setfield
+using Compat
 
 using Distributed
 using LinearAlgebra
@@ -44,6 +48,7 @@ include("test_util.jl")
             include("contexts.jl")
             include("context_implementations.jl")
             include("logdensityfunction.jl")
+            include("linking.jl")
 
             include("threadsafe.jl")
 
@@ -58,9 +63,21 @@ include("test_util.jl")
             include(joinpath("compat", "ad.jl"))
         end
 
+        @testset "extensions" begin
+            include("ext/DynamicPPLMCMCChainsExt.jl")
+        end
+
+        @testset "ad" begin
+            include("ext/DynamicPPLForwardDiffExt.jl")
+            include("ad.jl")
+        end
+
         @testset "doctests" begin
             DocMeta.setdocmeta!(
-                DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true
+                DynamicPPL,
+                :DocTestSetup,
+                :(using DynamicPPL, Distributions);
+                recursive=true,
             )
             doctestfilters = [
                 # Older versions will show "0 element Array" instead of "Type[]".
