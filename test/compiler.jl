@@ -687,7 +687,9 @@ module Issue537 end
         # And one explicit test for logging so know that is working.
         @model demo_with_logging() = @info "hi"
         model = demo_with_logging()
-        @test model() == nothing
+        @test model() === nothing
+        # Make sure that the log message is present.
+        @test_logs (:info, "hi") model()
     end
 
     @testset ":= (tracked values)" begin
