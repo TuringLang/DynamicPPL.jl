@@ -689,4 +689,16 @@ module Issue537 end
         model = demo_with_logging()
         @test model() == nothing
     end
+
+    @testset "signature parsing + TypeWrap" begin
+        @model function demo_typewrap(
+            a, b=1, ::Type{T1}=Float64; c, d=2, t::Type{T2}=Int
+        ) where {T1,T2}
+            return (; a, b, c, d, t)
+        end
+
+        model = demo_typewrap(1; c=2)
+        res = model()
+        @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
+    end
 end
