@@ -602,8 +602,40 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
+"""
+    TypeWrap{T}
+
+A wrapper type used internally to make expressions such as `::Type{TV}` in the model arguments
+not ending up as a `DataType`.
+"""
+struct TypeWrap{T} end
+
+function arg_type_is_type(e)
+    return Meta.isexpr(e, :curly) && length(e.args) > 1 && e.args[1] === :Type
+end
+
 function splitarg_to_expr((arg_name, arg_type, is_splat, default))
     return is_splat ? :($arg_name...) : arg_name
+end
+
+"""
+    transform_args(args)
+
+Return transformed `args` used in both the model constructor and evaluator.
+
+Specifically, this replaces expressions of the form `::Type{TV}=Vector{Float64}`
+with `::TypeWrap{TV}=TypeWrap{Vector{Float64}}()` to avoid introducing `DataType`.
+"""
+function transform_args(args)
+    splitargs = map(args) do arg
+        arg_name, arg_type, is_splat, default = MacroTools.splitarg(arg)
+        return if arg_type_is_type(arg_type)
+            arg_name, :($TypeWrap{$(arg_type.args[2])}), is_splat, :($TypeWrap{$default}())
+        else
+            arg_name, arg_type, is_splat, default
+        end
+    end
+    return map(Base.splat(MacroTools.combinearg), splitargs)
 end
 
 function namedtuple_from_splitargs(splitargs)
@@ -623,8 +655,12 @@ is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 Builds the output expression.
 """
 function build_output(modeldef, linenumbernode)
-    args = modeldef[:args]
-    kwargs = modeldef[:kwargs]
+    args = transform_args(modeldef[:args])
+    kwargs = transform_args(modeldef[:kwargs])
+
+    # Need to update `args` and `kwargs` since we might have added `TypeWrap` to the types.
+    modeldef[:args] = args
+    modeldef[:kwargs] = kwargs
 
     ## Build the anonymous evaluator from the user-provided model definition.
     evaluatordef = copy(modeldef)
@@ -713,8 +749,12 @@ function matchingvalue(sampler, vi, value)
         return value
     end
 end
+# If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
 function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
     return get_matching_type(sampler, vi, value)
+end
+function matchingvalue(sampler::AbstractSampler, vi, value::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(sampler, vi, T)}()
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
@@ -731,7 +771,7 @@ function matchingvalue(context::SamplingContext, vi, value)
 end
 
 """
-    get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T}
+    get_matching_type(spl::AbstractSampler, vi, ::TypeWrap{T}) where {T}
 
 Get the specialized version of type `T` for sampler `spl`.
 
