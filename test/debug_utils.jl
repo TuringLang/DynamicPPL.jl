@@ -93,6 +93,23 @@
             @test !issuccess
             @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
+
+        @testset "subsumes (x.a then x)" begin
+            @model function buggy_subsumes_demo_model()
+                x = (a=nothing,)
+                x.a ~ Normal()
+                x ~ Normal()
+                return nothing
+            end
+            buggy_model = buggy_subsumes_demo_model()
+
+            @test_logs (:warn,) (:warn,) check_model(buggy_model)
+            issuccess = check_model(
+                buggy_model; context=SamplingContext(), record_varinfo=false
+            )
+            @test !issuccess
+            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
+        end
     end
 
     @testset "incorrect use of condition" begin
