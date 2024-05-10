@@ -116,9 +116,6 @@ export AbstractVarInfo,
     # Pseudo distributions
     NamedDist,
     NoDist,
-    # Prob macros
-    @prob_str,
-    @logprob_str,
     # Convenience functions
     logprior,
     logjoint,
@@ -172,7 +169,6 @@ include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
-include("prob_macro.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
