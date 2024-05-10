@@ -246,6 +246,41 @@ function record_varname!(context::DebugContext, varname::VarName, dist)
         end
         context.varnames_seen[varname] += 1
     else
+        # We need to check:
+        # 1. Does this `varname` subsume any of the other keys.
+        # 2. Does any of the other keys subsume `varname`.
+        vns = collect(keys(context.varnames_seen))
+        # Is `varname` subsumed by any of the other keys?
+        idx_parent = findfirst(Base.Fix2(subsumes, varname), vns)
+        if idx_parent !== nothing
+            varname_parent = vns[idx_parent]
+            if context.error_on_failure
+                error(
+                    "varname $(varname_parent) used multiple times in model (subsumes $varname)",
+                )
+            else
+                @warn "varname $(varname_parent) used multiple times in model (subsumes $varname)"
+            end
+            # Update count of parent.
+            context.varnames_seen[varname_parent] += 1
+        else
+            # Does `varname` subsume any of the other keys?
+            idx_child = findfirst(Base.Fix1(subsumes, varname), vns)
+            if idx_child !== nothing
+                varname_child = vns[idx_child]
+                if context.error_on_failure
+                    error(
+                        "varname $(varname_child) used multiple times in model (subsumed by $varname)",
+                    )
+                else
+                    @warn "varname $(varname_child) used multiple times in model (subsumed by $varname)"
+                end
+
+                # Update count of child.
+                context.varnames_seen[varname_child] += 1
+            end
+        end
+
         context.varnames_seen[varname] = 1
     end
 end
