@@ -575,7 +575,7 @@ end
 
 Return the log joint probability of variables `θ` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
