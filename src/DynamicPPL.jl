@@ -129,7 +129,10 @@ export AbstractVarInfo,
     @submodel,
     value_iterator_from_chain,
     check_model,
-    check_model_and_trace
+    check_model_and_trace,
+    # legacy macro
+    @logprob_str,
+    @prob_str
 
 # Reexport
 using Distributions: loglikelihood
@@ -169,6 +172,7 @@ include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
+include("prob_macro.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
