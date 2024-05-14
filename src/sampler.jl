@@ -60,10 +60,15 @@ function AbstractMCMC.step(
     model::Model,
     sampler::Union{SampleFromUniform,SampleFromPrior},
     state=nothing;
+    use_simplevarinfo=false,
     kwargs...,
 )
-    vi = VarInfo()
-    model(rng, vi, sampler)
+    if !use_simplevarinfo
+        vi = VarInfo()
+        model(rng, vi, sampler)
+    else
+        vi = model(rng, SimpleVarInfo{Float64}(OrderedDict()), sampler)
+    end
     return vi, nothing
 end
 
@@ -97,23 +102,39 @@ end
 
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Sampler;
+    initial_params=nothing,
+    use_simplevarinfo=false,
+    kwargs...,
 )
-    # Sample initial values.
-    vi = default_varinfo(rng, model, spl)
+    if !use_simplevarinfo
+        # Sample initial values.
+        vi = default_varinfo(rng, model, spl)
 
-    # Update the parameters if provided.
-    if initial_params !== nothing
-        vi = initialize_parameters!!(vi, initial_params, spl, model)
+        # Update the parameters if provided.
+        if initial_params !== nothing
+            vi = initialize_parameters!!(vi, initial_params, spl, model)
 
-        # Update joint log probability.
-        # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
-        # and https://github.com/TuringLang/Turing.jl/issues/1563
-        # to avoid that existing variables are resampled
-        vi = last(evaluate!!(model, vi, DefaultContext()))
+            # Update joint log probability.
+            # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
+            # and https://github.com/TuringLang/Turing.jl/issues/1563
+            # to avoid that existing variables are resampled
+            vi = last(evaluate!!(model, vi, DefaultContext()))
+        end
+
+        return initialstep(rng, model, spl, vi; initial_params, kwargs...)
+    else
+        vi = last(DynamicPPL.evaluate!!(model, SimpleVarInfo{Float64}(OrderedDict()), SamplingContext(rng, SampleFromPrior(), DefaultContext())))
+        
+        if initial_params !== nothing
+            vi = initialize_parameters!!(vi, initial_params, spl, model)
+            vi = last(evaluate!!(model, vi, DefaultContext()))
+        end
+
+        return initialstep(rng, model, spl, vi; initial_params, kwargs...)
     end
-
-    return initialstep(rng, model, spl, vi; initial_params, kwargs...)
 end
 
 """
