@@ -130,9 +130,6 @@ export AbstractVarInfo,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
-    # legacy macro
-    @logprob_str,
-    @prob_str
 
 # Reexport
 using Distributions: loglikelihood
