@@ -126,8 +126,14 @@ function AbstractMCMC.step(
 
         return initialstep(rng, model, spl, vi; initial_params, kwargs...)
     else
-        vi = last(DynamicPPL.evaluate!!(model, SimpleVarInfo{Float64}(OrderedDict()), SamplingContext(rng, SampleFromPrior(), DefaultContext())))
-        
+        vi = last(
+            DynamicPPL.evaluate!!(
+                model,
+                SimpleVarInfo{Float64}(OrderedDict()),
+                SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+            ),
+        )
+
         if initial_params !== nothing
             vi = initialize_parameters!!(vi, initial_params, spl, model)
             vi = last(evaluate!!(model, vi, DefaultContext()))
