@@ -129,7 +129,7 @@ export AbstractVarInfo,
     @submodel,
     value_iterator_from_chain,
     check_model,
-    check_model_and_trace,
+    check_model_and_trace
 
 # Reexport
 using Distributions: loglikelihood
