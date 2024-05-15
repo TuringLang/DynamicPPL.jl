@@ -67,7 +67,7 @@ function AbstractMCMC.step(
         vi = VarInfo()
         model(rng, vi, sampler)
     else
-        vi = model(rng, SimpleVarInfo{Float64}(OrderedDict()), sampler)
+        vi = last(evaluate!!(model, rng, SimpleVarInfo{Float64}(OrderedDict()), sampler))
     end
     return vi, nothing
 end
