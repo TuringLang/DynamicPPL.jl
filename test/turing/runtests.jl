@@ -18,6 +18,5 @@ include(joinpath(pathof(Turing), "..", "..", "test", "test_utils", "numerical_te
     include("compiler.jl")
     include("loglikelihoods.jl")
     include("model.jl")
-    include("prob_macro.jl")
     include("varinfo.jl")
 end
