@@ -69,7 +69,7 @@ function AbstractMCMC.step(
     elseif trace_type === SimpleVarInfo
         vi = last(evaluate!!(model, rng, SimpleVarInfo{Float64}(OrderedDict()), sampler))
     else
-        error("Unknown trace type: $trace_type")
+        throw(ArgumentError("Unknown trace type: $trace_type"))
     end
     return vi, nothing
 end
@@ -143,7 +143,7 @@ function AbstractMCMC.step(
 
         return initialstep(rng, model, spl, vi; initial_params, kwargs...)
     else
-        error("Unknown trace type: $trace_type")
+        throw(ArgumentError("Unknown trace type: $trace_type"))
     end
 end
 
