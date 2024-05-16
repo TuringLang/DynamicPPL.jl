@@ -192,7 +192,14 @@
             chain = sample(model, sampler, 1; initial_params=[missing, -1], progress=false)
             @test !ismissing(chain[1].metadata.s.vals[1])
             @test chain[1].metadata.m.vals == [-1]
-            chain_svi = sample(model, sampler, 1; initial_params=[missing, -1], progress=false, tracetype=SimpleVarInfo)
+            chain_svi = sample(
+                model,
+                sampler,
+                1;
+                initial_params=[missing, -1],
+                progress=false,
+                tracetype=SimpleVarInfo,
+            )
             @test !ismissing(chain_svi[1][@varname(s)])
             @test chain_svi[1][@varname(m)] == -1
 
