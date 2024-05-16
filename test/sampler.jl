@@ -246,7 +246,14 @@
                 model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false
             )
             chains2_svi = sample(
-                model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false, tracetype=SimpleVarInfo
+                model,
+                sampler,
+                MCMCThreads(),
+                1,
+                10;
+                initial_params=nothing,
+                progress=false,
+                tracetype=SimpleVarInfo,
             )
             for (c1, c2) in zip(chains1, chains2)
                 @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
