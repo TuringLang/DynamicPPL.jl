@@ -540,9 +540,7 @@ function dot_assume(
     return value, lp, vi
 end
 
-function updategid!(vi::SimpleOrThreadSafeSimple, vn::VarName, spl::Sampler)
-    return nothing
-end
+updategid!(vi::SimpleOrThreadSafeSimple, vn::VarName, spl::Sampler) = nothing
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
