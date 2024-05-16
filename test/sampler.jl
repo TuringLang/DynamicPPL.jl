@@ -240,7 +240,15 @@
             # parallel sampling
             Random.seed!(1234)
             chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
-            chains1_svi = sample(model, sampler, MCMCThreads(), 1, 10; progress=false, tracetype=SimpleVarInfo)
+            chains1_svi = sample(
+                model,
+                sampler,
+                MCMCThreads(),
+                1,
+                10;
+                progress=false,
+                tracetype=SimpleVarInfo,
+            )
             Random.seed!(1234)
             chains2 = sample(
                 model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false
