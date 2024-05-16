@@ -158,7 +158,14 @@
             @test chain[1].metadata.s.vals == [4]
             @test chain[1].metadata.m.vals == [-1]
             @test getlogp(chain[1]) == lptrue
-            chain_svi = sample(model, sampler, 1; initial_params=[4, -1], progress=false, tracetype=SimpleVarInfo)
+            chain_svi = sample(
+                model,
+                sampler,
+                1;
+                initial_params=[4, -1],
+                progress=false,
+                tracetype=SimpleVarInfo,
+            )
             @test chain_svi[1][@varname(s)] == 4
             @test chain_svi[1][@varname(m)] == -1
             @test getlogp(chain_svi[1]) == lptrue
