@@ -231,7 +231,14 @@
             chain1_svi = sample(model, sampler, 1; progress=false, tracetype=SimpleVarInfo)
             Random.seed!(1234)
             chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
-            chain2_svi = sample(model, sampler, 1; initial_params=nothing, progress=false, tracetype=SimpleVarInfo)
+            chain2_svi = sample(
+                model,
+                sampler,
+                1;
+                initial_params=nothing,
+                progress=false,
+                tracetype=SimpleVarInfo,
+            )
             @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
             @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
             @test chain1_svi[1][@varname(m)] == chain2_svi[1][@varname(m)]
