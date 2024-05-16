@@ -60,16 +60,16 @@ function AbstractMCMC.step(
     model::Model,
     sampler::Union{SampleFromUniform,SampleFromPrior},
     state=nothing;
-    tracetype=VarInfo,
+    trace_type=VarInfo,
     kwargs...,
 )
-    if tracetype === VarInfo
+    if trace_type === VarInfo
         vi = VarInfo()
         model(rng, vi, sampler)
-    elseif tracetype === SimpleVarInfo
+    elseif trace_type === SimpleVarInfo
         vi = last(evaluate!!(model, rng, SimpleVarInfo{Float64}(OrderedDict()), sampler))
     else
-        error("Unknown trace type: $tracetype")
+        error("Unknown trace type: $trace_type")
     end
     return vi, nothing
 end
@@ -108,10 +108,10 @@ function AbstractMCMC.step(
     model::Model,
     spl::Sampler;
     initial_params=nothing,
-    tracetype=VarInfo,
+    trace_type=VarInfo,
     kwargs...,
 )
-    if tracetype === VarInfo
+    if trace_type === VarInfo
         # Sample initial values.
         vi = default_varinfo(rng, model, spl)
 
@@ -127,7 +127,7 @@ function AbstractMCMC.step(
         end
 
         return initialstep(rng, model, spl, vi; initial_params, kwargs...)
-    elseif tracetype === SimpleVarInfo
+    elseif trace_type === SimpleVarInfo
         vi = last(
             DynamicPPL.evaluate!!(
                 model,

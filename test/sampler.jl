@@ -12,7 +12,7 @@
 
         chains = sample(model, SampleFromPrior(), N; progress=false)
         chains_svi = sample(
-            model, SampleFromPrior(), N; progress=false, tracetype=SimpleVarInfo
+            model, SampleFromPrior(), N; progress=false, trace_type=SimpleVarInfo
         )
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
@@ -29,7 +29,7 @@
 
         chains = sample(model, SampleFromUniform(), N; progress=false)
         chains_svi = sample(
-            model, SampleFromUniform(), N; progress=false, tracetype=SimpleVarInfo
+            model, SampleFromUniform(), N; progress=false, trace_type=SimpleVarInfo
         )
         @test chains isa Vector{<:VarInfo}
         @test length(chains) == N
@@ -52,7 +52,7 @@
                 N = 1000
                 chain_init = sample(model, SampleFromUniform(), N; progress=false)
                 chain_init_svi = sample(
-                    model, SampleFromUniform(), N; progress=false, tracetype=SimpleVarInfo
+                    model, SampleFromUniform(), N; progress=false, trace_type=SimpleVarInfo
                 )
 
                 for chain in (chain_init, chain_init_svi)
@@ -110,7 +110,7 @@
                 1;
                 initial_params=0.2,
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             @test chain[1].metadata.p.vals == [0.2]
             @test getlogp(chain[1]) == lptrue
@@ -140,7 +140,7 @@
                 10;
                 initial_params=fill(0.2, 10),
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             for c in chains_svi
                 @test c[1][@varname(p)] == 0.2
@@ -164,7 +164,7 @@
                 1;
                 initial_params=[4, -1],
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             @test chain_svi[1][@varname(s)] == 4
             @test chain_svi[1][@varname(m)] == -1
@@ -194,7 +194,7 @@
                 10;
                 initial_params=fill([4, -1], 10),
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             for c in chains_svi
                 @test c[1][@varname(s)] == 4
@@ -212,7 +212,7 @@
                 1;
                 initial_params=[missing, -1],
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             @test !ismissing(chain_svi[1][@varname(s)])
             @test chain_svi[1][@varname(m)] == -1
@@ -239,7 +239,7 @@
                 10;
                 initial_params=fill([missing, -1], 10),
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             for c in chains_svi
                 @test !ismissing(c[1][@varname(s)])
@@ -249,7 +249,7 @@
             # specify `initial_params=nothing`
             Random.seed!(1234)
             chain1 = sample(model, sampler, 1; progress=false)
-            chain1_svi = sample(model, sampler, 1; progress=false, tracetype=SimpleVarInfo)
+            chain1_svi = sample(model, sampler, 1; progress=false, trace_type=SimpleVarInfo)
             Random.seed!(1234)
             chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
             chain2_svi = sample(
@@ -258,7 +258,7 @@
                 1;
                 initial_params=nothing,
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
             @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
@@ -275,7 +275,7 @@
                 1,
                 10;
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             Random.seed!(1234)
             chains2 = sample(
@@ -289,7 +289,7 @@
                 10;
                 initial_params=nothing,
                 progress=false,
-                tracetype=SimpleVarInfo,
+                trace_type=SimpleVarInfo,
             )
             for (c1, c2) in zip(chains1, chains2)
                 @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
