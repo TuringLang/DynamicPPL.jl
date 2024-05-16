@@ -104,7 +104,14 @@
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
             chain = sample(model, sampler, 1; initial_params=0.2, progress=false)
-            chain_svi = sample(model, sampler, 1; initial_params=0.2, progress=false, tracetype=SimpleVarInfo)
+            chain_svi = sample(
+                model,
+                sampler,
+                1;
+                initial_params=0.2,
+                progress=false,
+                tracetype=SimpleVarInfo,
+            )
             @test chain[1].metadata.p.vals == [0.2]
             @test getlogp(chain[1]) == lptrue
             @test chain_svi[1][@varname(p)] == 0.2
