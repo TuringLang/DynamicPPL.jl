@@ -135,6 +135,19 @@ export AbstractVarInfo,
 using Distributions: loglikelihood
 export loglikelihood
 
+# TODO: Remove once we've updated tutorials, etc.
+macro logprob_str(str)
+    return error(
+        "The `@logprob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities.",
+    )
+end
+
+macro prob_str(str)
+    return error(
+        "The `@prob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities.",
+    )
+end
+
 # Used here and overloaded in Turing
 function getspace end
 
