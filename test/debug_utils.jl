@@ -174,4 +174,16 @@
 
         @test !DynamicPPL.has_static_constraints(model)
     end
+
+    @testset "vector with `undef`" begin
+        # Source: https://github.com/TuringLang/Turing.jl/pull/2218
+        @model function demo_undef(ns...)
+            x = Array{Real}(undef, ns...)
+            @. x ~ Normal(0, 2)
+        end
+        for ns in [(2,), (2, 2), (2, 2, 2)]
+            model = demo_undef(ns...)
+            @test check_model(model; error_on_failure=true)
+        end
+    end
 end
