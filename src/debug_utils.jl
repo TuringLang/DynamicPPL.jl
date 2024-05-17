@@ -287,7 +287,15 @@ end
 
 # tilde
 _has_missings(x) = ismissing(x)
-_has_missings(x::AbstractArray) = any(ismissing, x)
+function _has_missings(x::AbstractArray)
+    # Can't just use `any` because `x` might contain `undef`.
+    for i in eachindex(x)
+        if isassigned(x, i) && _has_missings(x[i])
+            return true
+        end
+    end
+    return false
+end
 
 # assume
 function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
