@@ -71,6 +71,11 @@ include("test_util.jl")
             include("ad.jl")
         end
 
+        @testset "prob and logprob macro" begin
+            @test_throws ErrorException prob"..."
+            @test_throws ErrorException logprob"..."
+        end
+
         @testset "doctests" begin
             DocMeta.setdocmeta!(
                 DynamicPPL,
