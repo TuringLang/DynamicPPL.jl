@@ -2,7 +2,6 @@ name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 version = "0.27.1"
 
-
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -62,6 +61,7 @@ MacroTools = "0.5.6"
 OrderedCollections = "1"
 Random = "1.6"
 Requires = "1"
+ReverseDiff = "1"
 Test = "1.6"
 ZygoteRules = "0.2"
 julia = "1.6"
