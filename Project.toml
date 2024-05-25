@@ -2,7 +2,6 @@ name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 version = "0.27.1"
 
-
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
@@ -54,6 +53,7 @@ ConstructionBase = "1.5.4"
 Distributions = "0.25"
 DocStringExtensions = "0.9"
 EnzymeCore = "0.6, 0.7"
+ForwardDiff = "0.10"
 LinearAlgebra = "1.6"
 LogDensityProblems = "2"
 LogDensityProblemsAD = "1.7.0"
