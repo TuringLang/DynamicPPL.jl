@@ -67,11 +67,16 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple,
+    defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(f, args, defaults, context))
+) where {F,argnames,Targs,kwargnames,Tkwargs}
+    missing_args = Tuple(
+        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
+    )
+    missing_kwargs = Tuple(
+        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
+    )
+    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
 end
 
 function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
