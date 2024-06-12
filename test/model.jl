@@ -243,6 +243,11 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test length(test_defaults(missing, 2)()) == 2
     end
 
+    @testset "missing kwarg" begin
+        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
+        @test :x in keys(rand(test_missing_kwarg()))
+    end
+
     @testset "extract priors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             priors = extract_priors(model)
