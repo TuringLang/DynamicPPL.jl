@@ -10,6 +10,7 @@ using OrderedCollections: OrderedDict
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
+using DensityInterface: DensityInterface
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Accessors: Accessors
