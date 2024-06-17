@@ -49,7 +49,7 @@ struct LogDensityFunction{V,M,C}
     varinfo::V
     "model used for evaluation"
     model::M
-    "context used for evaluation"
+    "context used for evaluation; if `nothing`, `model.context` will be used when applicable"
     context::C
 end
 
@@ -66,10 +66,13 @@ end
 function LogDensityFunction(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
-    context::AbstractContext=model.context,
+    context::Union{Nothing,AbstractContext}=nothing,
 )
     return LogDensityFunction(varinfo, model, context)
 end
+
+# If a `context` has been specified, we use that. Otherwise we just use the leaf context of `model`.
+getcontext(f::LogDensityFunction) = f.context === nothing ? leafcontext(f.model) : f.context
 
 # HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
 # we need to define these annoying methods to ensure that we stay compatible with everything.
@@ -90,8 +93,9 @@ getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(f.context)]
 
 # LogDensityProblems interface
 function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
-    vi_new = unflatten(f.varinfo, f.context, θ)
-    return getlogp(last(evaluate!!(f.model, vi_new, f.context)))
+    context = getcontext(f)
+    vi_new = unflatten(f.varinfo, context, θ)
+    return getlogp(last(evaluate!!(f.model, vi_new, context)))
 end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
     return LogDensityProblems.LogDensityOrder{0}()
