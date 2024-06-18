@@ -84,7 +84,6 @@ export AbstractVarInfo,
     reconstruct,
     reconstruct!,
     init,
-    vectorize,
     OrderedDict,
     # Model
     Model,
