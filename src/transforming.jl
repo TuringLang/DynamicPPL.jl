@@ -1,3 +1,14 @@
+"""
+    struct DynamicTransformationContext{isinverse} <: AbstractContext
+
+When a model is evaluated with this context, transform the accompanying `AbstractVarInfo` to
+constrained space if `isinverse` or unconstrained if `!isinverse`.
+
+Note that some `AbstractVarInfo` types, must notably `VarInfo`, override the
+`DynamicTransformationContext` methods with more efficient implementations.
+`DynamicTransformationContext` is a fallback for when we need to evaluate the model to know
+how to do the transformation, used by e.g. `SimpleVarInfo`.
+"""
 struct DynamicTransformationContext{isinverse} <: AbstractContext end
 NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
