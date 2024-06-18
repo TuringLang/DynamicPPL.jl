@@ -177,6 +177,9 @@ end
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
 end
+function tilde_observe(context::PrefixContext, sampler, right, left, vi)
+    return tilde_observe(context.context, sampler, right, left, vi)
+end
 
 """
     tilde_observe!!(context, right, left, vname, vi)
@@ -290,7 +293,7 @@ function dot_tilde_assume(context::AbstractContext, args...)
     return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), context, args...)
 end
 function dot_tilde_assume(rng, context::AbstractContext, args...)
-    return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
+    return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), rng, context, args...)
 end
 
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
@@ -303,7 +306,7 @@ end
 function dot_tilde_assume(::IsParent, context::AbstractContext, args...)
     return dot_tilde_assume(childcontext(context), args...)
 end
-function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
+function dot_tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 

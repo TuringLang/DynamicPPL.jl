@@ -14,10 +14,11 @@ Random.seed!(100)
 include(joinpath(pathof(DynamicPPL), "..", "..", "test", "test_util.jl"))
 include(joinpath(pathof(Turing), "..", "..", "test", "test_utils", "numerical_tests.jl"))
 
+using .NumericalTests: check_numerical
+
 @testset "Turing" begin
     include("compiler.jl")
     include("loglikelihoods.jl")
     include("model.jl")
-    include("prob_macro.jl")
     include("varinfo.jl")
 end

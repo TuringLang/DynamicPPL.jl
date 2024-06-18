@@ -250,19 +250,24 @@ end
 
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
-    return Setfield.@set svi.values = unflatten(svi.values, x)
+    logp = getlogp(svi)
+    vals = unflatten(svi.values, x)
+    T = eltype(x)
+    return SimpleVarInfo{typeof(vals),T,typeof(svi.transformation)}(
+        vals, T(logp), svi.transformation
+    )
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
-    return resetlogp!!(Setfield.@set vi.values = empty!!(vi.values))
+    return resetlogp!!(Accessors.@set vi.values = empty!!(vi.values))
 end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
 getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
 
-setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
-acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
+setlogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = getlogp(vi) + logp
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -322,7 +327,7 @@ Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return Setfield.@set vi.values = set!!(vi.values, vn, val)
+    return Accessors.@set vi.values = set!!(vi.values, vn, val)
 end
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
@@ -341,34 +346,34 @@ end
 function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     dict = values_as(vi)
-    # Attempt to split into `parent` and `child` lenses.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(dict, VarName(vn, l))
+    # Attempt to split into `parent` and `child` optic.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(dict, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     dict_new = if !issuccess
         # Split doesn't exist ⟹ we're working with a new key.
         BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName(vn, keylens)
+        vn_key = VarName(vn, keyoptic)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return Setfield.@set vi.values = dict_new
+    return Accessors.@set vi.values = dict_new
 end
 
 # `NamedTuple`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Setfield.IdentityLens},
+    vn::VarName{sym,typeof(identity)},
     value,
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
+    return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -377,7 +382,7 @@ function BangBang.push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = set!!(vi.values, vn, value)
+    return Accessors.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `AbstractDict`
@@ -405,37 +410,40 @@ end
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
-    return Setfield.@set varinfo.values = _subset(varinfo.values, vns)
+    return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
 end
 
 function _subset(x::AbstractDict, vns)
-    # NOTE: This requires `vns` to be explicitly present in `x`.
-    if any(!Base.Fix1(haskey, x), vns)
+    vns_present = collect(keys(x))
+    vns_found = mapreduce(vcat, vns) do vn
+        return filter(Base.Fix1(subsumes, vn), vns_present)
+    end
+
+    # NOTE: This `vns` to be subsume varnames explicitly present in `x`.
+    if isempty(vns_found)
         throw(
             ArgumentError(
-                "Cannot subset `AbstractDict` with `VarName` that is not an explicit key. " *
-                "For example, if `keys(x) == [@varname(x[1])]`, then subsetting with " *
-                "`@varname(x[1])` is allowed, but subsetting with `@varname(x)` is not.",
+                "Cannot subset `AbstractDict` with `VarName` which does not subsume any keys.",
             ),
         )
     end
     C = ConstructionBase.constructorof(typeof(x))
-    return C(vn => x[vn] for vn in vns)
+    return C(vn => x[vn] for vn in vns_found)
 end
 
 function _subset(x::NamedTuple, vns)
-    # NOTE: Here we can only handle `vns` that contain the `IdentityLens`.
-    if any(Base.Fix1(!==, Setfield.IdentityLens()) ∘ getlens, vns)
+    # NOTE: Here we can only handle `vns` that contain `identity` as optic.
+    if any(Base.Fix1(!==, identity) ∘ getoptic, vns)
         throw(
             ArgumentError(
-                "Cannot subset `NamedTuple` with non-`IdentityLens` `VarName`. " *
+                "Cannot subset `NamedTuple` with non-`identity` `VarName`. " *
                 "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
             ),
         )
     end
 
     syms = map(getsym, vns)
-    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix2(getindex, x), syms)))
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
 end
 
 # `merge`
@@ -521,10 +529,10 @@ function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
-    return Setfield.@set vi.transformation = transformation
+    return Accessors.@set vi.transformation = transformation
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
@@ -551,7 +559,7 @@ end
 
 Return the log joint probability of variables `θ` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
@@ -654,7 +662,7 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = y), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = y), lp_new)
     return settrans!!(vi_new, t)
 end
 
@@ -669,7 +677,7 @@ function invlink!!(
     y = vi.values
     x, logjac = with_logabsdet_jacobian(b, y)
     lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 

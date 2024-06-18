@@ -67,11 +67,16 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple,
+    defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(f, args, defaults, context))
+) where {F,argnames,Targs,kwargnames,Tkwargs}
+    missing_args = Tuple(
+        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
+    )
+    missing_kwargs = Tuple(
+        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
+    )
+    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
 end
 
 function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
@@ -279,11 +284,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest condition
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
  inner.m
 ```
 
@@ -448,7 +453,7 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
@@ -634,11 +639,11 @@ in their trace/`VarInfo`:
 
 ```jldoctest fix
 julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
  inner.m
 ```
 
@@ -830,7 +835,7 @@ julia> fixed(cm)
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
  a.m
 
 julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
@@ -1055,7 +1060,7 @@ Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     return getlogp(last(evaluate!!(model, varinfo, DefaultContext())))
