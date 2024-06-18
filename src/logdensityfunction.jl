@@ -72,7 +72,7 @@ function LogDensityFunction(
 end
 
 # If a `context` has been specified, we use that. Otherwise we just use the leaf context of `model`.
-getcontext(f::LogDensityFunction) = f.context === nothing ? leafcontext(f.model) : f.context
+getcontext(f::LogDensityFunction) = f.context === nothing ? leafcontext(f.model.context) : f.context
 
 # HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
 # we need to define these annoying methods to ensure that we stay compatible with everything.
