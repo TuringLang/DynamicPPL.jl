@@ -356,8 +356,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     if VERSION >= v"1.8"
         @testset "Type stability of models" begin
             models_to_test = [
-                DynamicPPL.TestUtils.DEMO_MODELS...,
-                DynamicPPL.TestUtils.demo_lkjchol(2),
+                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
