@@ -49,7 +49,7 @@ struct LogDensityFunction{V,M,C}
     varinfo::V
     "model used for evaluation"
     model::M
-    "context used for evaluation; if `nothing`, `model.context` will be used when applicable"
+    "context used for evaluation; if `nothing`, `leafcontext(model.context)` will be used when applicable"
     context::C
 end
 
@@ -78,8 +78,8 @@ end
 
 # HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
 # we need to define these annoying methods to ensure that we stay compatible with everything.
-getsampler(f::LogDensityFunction) = getsampler(f.context)
-hassampler(f::LogDensityFunction) = hassampler(f.context)
+getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
+hassampler(f::LogDensityFunction) = hassampler(getcontext(f))
 
 _get_indexer(ctx::AbstractContext) = _get_indexer(NodeTrait(ctx), ctx)
 _get_indexer(ctx::SamplingContext) = ctx.sampler
@@ -91,7 +91,7 @@ _get_indexer(::IsLeaf, ctx::AbstractContext) = Colon()
 
 Return the parameters of the wrapped varinfo as a vector.
 """
-getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(f.context)]
+getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(getcontext(f))]
 
 # LogDensityProblems interface
 function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
