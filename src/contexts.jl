@@ -188,7 +188,7 @@ getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(conte
 """
     struct DefaultContext <: AbstractContext end
 
-The `DefaultContext` is used by default to compute log the joint probability of the data 
+The `DefaultContext` is used by default to compute the log joint probability of the data 
 and parameters when running the model.
 """
 struct DefaultContext <: AbstractContext end
