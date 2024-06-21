@@ -21,7 +21,7 @@ For certain inference methods, it's necessary / much more convenient to work wit
     
     We write "unconstrained" with quotes because there are many ways to transform a constrained variable to an unconstrained one, *and* DynamicPPL can work with a much broader class of bijective transformations of variables, not just ones that go to the entire real line. But for MCMC, unconstraining is the most common transformation so we'll stick with that terminology.
 
-For a large family of constraints encoucntered in practice, it is indeed possible to transform a (partially) contrained model to a completely unconstrained one in such a way that sampling in the unconstrained space is equivalent to sampling in the constrained space.
+For a large family of constraints encountered in practice, it is indeed possible to transform a (partially) constrained model to a completely unconstrained one in such a way that sampling in the unconstrained space is equivalent to sampling in the constrained space.
 
 In DynamicPPL.jl, this is often referred to as *linking* (a term originating in the statistics literature) and is done using transformations from [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl).
 
@@ -37,7 +37,7 @@ end
 
 Here `log_s` is an unconstrained variable, and `s` is a constrained variable that is a deterministic function of `log_s`.
 
-But to ensure that we stay consistent with what the user expects, DynamicPPL.jl does not actually transform the model as above, but can instead makes use of transformed variables internally to achieve the same effect, when desired.
+But to ensure that we stay consistent with what the user expects, DynamicPPL.jl does not actually transform the model as above, but instead makes use of transformed variables internally to achieve the same effect, when desired.
 
 In the end, we'll end up with something that looks like this:
 
@@ -55,7 +55,7 @@ There are two aspects to transforming from the internal representation of a vari
 
  1. Different implementations of [`AbstractVarInfo`](@ref) represent realizations of a model in different ways internally, so we need to transform from this internal representation to the desired representation in the model. For example,
     
-      + [`VarInfo`](@ref) represents a realization of a model as in a "flattened" / vector representation, regardless of form of the variable in the model.
+      + [`VarInfo`](@ref) represents a realization of a model as a "flattened" / vector representation, regardless of the form of the variable in the model.
       + [`SimpleVarInfo`](@ref) represents a realization of a model exactly as in the model (unless it has been transformed; we'll get to that later).
 
  2. We need the ability to transform from "constrained space" to "unconstrained space", as we saw in the previous section.
@@ -91,7 +91,7 @@ DynamicPPL.to_internal_transform
 DynamicPPL.from_internal_transform
 ```
 
-These methods allows us to extract the internal-to-model transformation function depending on the `varinfo`, the variable, and the distribution of the variable:
+These methods allow us to extract the internal-to-model transformation function depending on the `varinfo`, the variable, and the distribution of the variable:
 
   - `varinfo` + `vn` defines the internal representation of the variable.
   - `dist` defines the representation expected within the model scope.
@@ -263,7 +263,7 @@ we see that we indeed satisfy the constraint `m < x`, as desired.
 
 The reason for this is that internally in a model evaluation, we construct the transformation from the internal to the model representation based on the *current* realizations in the model! That is, we take the `dist` in a `x ~ dist` expression _at model evaluation time_ and use that to construct the transformation, thus allowing it to change between model evaluations without invalidating the transformation.
 
-But to be able to do this, we need to know whether the variable is linked / "unconstrained" or not, since the transformation is different in the two cases. Hence we need to be able to determine this at model evaluation time. Hence the the internals end up looking something like this:
+But to be able to do this, we need to know whether the variable is linked / "unconstrained" or not, since the transformation is different in the two cases. Hence we need to be able to determine this at model evaluation time. Hence the internals end up looking something like this:
 
 ```julia
 if istrans(varinfo, varname)
