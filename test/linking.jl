@@ -44,7 +44,9 @@ function Distributions._logpdf(::MyMatrixDistribution, x::AbstractMatrix{<:Real}
 end
 
 # Skip reconstruction in the inverse-map since it's no longer needed.
-DynamicPPL.reconstruct(::TrilFromVec, ::MyMatrixDistribution, x::AbstractVector{<:Real}) = x
+function DynamicPPL.from_linked_vec_transform(dist::MyMatrixDistribution)
+    return TrilFromVec((dist.dim, dist.dim))
+end
 
 # Specify the link-transform to use.
 Bijectors.bijector(dist::MyMatrixDistribution) = TrilToVec((dist.dim, dist.dim))

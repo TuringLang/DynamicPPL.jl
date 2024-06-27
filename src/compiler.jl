@@ -647,8 +647,6 @@ function namedtuple_from_splitargs(splitargs)
     return :(NamedTuple{$names_expr}($vals))
 end
 
-is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
-
 """
     build_output(modeldef, linenumbernode)
 

@@ -80,9 +80,6 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    vectorize,
-    reconstruct,
-    reconstruct!,
     init,
     vectorize,
     OrderedDict,
