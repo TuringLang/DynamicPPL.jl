@@ -8,7 +8,7 @@ using Test
 
 using Random: Random
 using Bijectors: Bijectors
-using Setfield: Setfield
+using Accessors: Accessors
 
 # For backwards compat.
 using DynamicPPL: varname_leaves
@@ -1034,6 +1034,24 @@ As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref)
 """
 function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
     return test_sampler_on_demo_models(sampler, args...; kwargs...)
+end
+
+"""
+    test_context_interface(context)
+
+Test that `context` implements the `AbstractContext` interface.
+"""
+function test_context_interface(context)
+    # Is a subtype of `AbstractContext`.
+    @test context isa DynamicPPL.AbstractContext
+    # Should implement `NodeTrait.`
+    @test DynamicPPL.NodeTrait(context) isa Union{DynamicPPL.IsParent,DynamicPPL.IsLeaf}
+    # If it's a parent.
+    if DynamicPPL.NodeTrait(context) == DynamicPPL.IsParent
+        # Should implement `childcontext` and `setchildcontext`
+        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
+            context
+    end
 end
 
 end

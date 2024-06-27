@@ -192,7 +192,7 @@
             return p
         end
         chain = sample(mat_name_test(), HMC(0.2, 4), 1000)
-        check_numerical(chain, ["p[1,1]"], [0]; atol=0.25)
+        check_numerical(chain, ["p[1, 1]"], [0]; atol=0.25)
 
         @model function marr_name_test()
             p = Array{Array{Any}}(undef, 2)

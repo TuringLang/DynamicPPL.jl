@@ -243,6 +243,11 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test length(test_defaults(missing, 2)()) == 2
     end
 
+    @testset "missing kwarg" begin
+        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
+        @test :x in keys(rand(test_missing_kwarg()))
+    end
+
     @testset "extract priors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             priors = extract_priors(model)
@@ -351,9 +356,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     if VERSION >= v"1.8"
         @testset "Type stability of models" begin
             models_to_test = [
-                # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
-                # DynamicPPL.TestUtils.DEMO_MODELS...,
-                DynamicPPL.TestUtils.demo_lkjchol(2),
+                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
@@ -375,6 +378,24 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                         );
                         true
                     )
+                end
+            end
+        end
+    end
+
+    @testset "values_as_in_model" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                realizations = values_as_in_model(model, varinfo)
+                # Ensure that all variables are found.
+                vns_found = collect(keys(realizations))
+                @test vns ∩ vns_found == vns ∪ vns_found
+                # Ensure that the values are the same.
+                for vn in vns
+                    @test realizations[vn] == varinfo[vn]
                 end
             end
         end

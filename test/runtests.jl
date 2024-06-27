@@ -1,3 +1,4 @@
+using Accessors
 using ADTypes
 using DynamicPPL
 using AbstractMCMC
@@ -13,7 +14,6 @@ using MCMCChains
 using Tracker
 using ReverseDiff
 using Zygote
-using Setfield
 using Compat
 
 using Distributed
@@ -42,7 +42,6 @@ include("test_util.jl")
             include("simple_varinfo.jl")
             include("model.jl")
             include("sampler.jl")
-            include("prob_macro.jl")
             include("independence.jl")
             include("distribution_wrappers.jl")
             include("contexts.jl")
@@ -70,6 +69,11 @@ include("test_util.jl")
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
             include("ad.jl")
+        end
+
+        @testset "prob and logprob macro" begin
+            @test_throws ErrorException prob"..."
+            @test_throws ErrorException logprob"..."
         end
 
         @testset "doctests" begin

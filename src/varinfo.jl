@@ -154,9 +154,17 @@ function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext
     return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
-function replace_values(md::Metadata, vals)
+# TODO: Remove `space` argument when no longer needed. Ref: https://github.com/TuringLang/DynamicPPL.jl/issues/573
+function replace_values(metadata::Metadata, space, x)
     return Metadata(
-        md.idcs, md.vns, md.ranges, vals, md.dists, md.gids, md.orders, md.flags
+        metadata.idcs,
+        metadata.vns,
+        metadata.ranges,
+        x,
+        metadata.dists,
+        metadata.gids,
+        metadata.orders,
+        metadata.flags,
     )
 end
 
@@ -255,8 +263,12 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
 end
 
-function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
+function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
+    # For each `vn` in `vns`, get the variables subsumed by `vn`.
+    vns = mapreduce(vcat, vns_given) do vn
+        filter(Base.Fix1(subsumes, vn), metadata.vns)
+    end
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = Dict(vn => i for (i, vn) in enumerate(vns))
     # Construct new `vals` and `ranges`.
@@ -947,7 +959,7 @@ function link!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
 end
 
 """
@@ -1042,7 +1054,7 @@ function invlink!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1168,7 +1180,7 @@ function link(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
 function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
@@ -1267,7 +1279,7 @@ function invlink(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
 function _invlink(model::Model, varinfo::VarInfo, spl::AbstractSampler)
@@ -1407,10 +1419,10 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     vn_parent = vns[i]
     dist = getdist(md, vn_parent)
     val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
-    # Split the varname into its tail lens.
-    lens = remove_parent_lens(vn_parent, vn)
+    # Split the varname into its tail optic.
+    optic = remove_parent_optic(vn_parent, vn)
     # Update the value for the parent.
-    val_parent_updated = set!!(val_parent, lens, val)
+    val_parent_updated = set!!(val_parent, optic, val)
     setindex!(vi, val_parent_updated, vn_parent)
     return vn_parent
 end

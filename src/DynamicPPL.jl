@@ -12,7 +12,7 @@ using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
-using Setfield: Setfield
+using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
 using LogDensityProblemsAD: LogDensityProblemsAD
 
@@ -89,6 +89,7 @@ export AbstractVarInfo,
     getargnames,
     generated_quantities,
     extract_priors,
+    values_as_in_model,
     # Samplers
     Sampler,
     SampleFromPrior,
@@ -112,9 +113,6 @@ export AbstractVarInfo,
     # Pseudo distributions
     NamedDist,
     NoDist,
-    # Prob macros
-    @prob_str,
-    @logprob_str,
     # Convenience functions
     logprior,
     logjoint,
@@ -126,11 +124,29 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     @submodel,
-    value_iterator_from_chain
+    value_iterator_from_chain,
+    check_model,
+    check_model_and_trace,
+    # Deprecated.
+    @logprob_str,
+    @prob_str
 
 # Reexport
 using Distributions: loglikelihood
 export loglikelihood
+
+# TODO: Remove once we feel comfortable people aren't using it anymore.
+macro logprob_str(str)
+    return :(error(
+        "The `@logprob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
+    ))
+end
+
+macro prob_str(str)
+    return :(error(
+        "The `@prob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
+    ))
+end
 
 # Used here and overloaded in Turing
 function getspace end
@@ -166,7 +182,6 @@ include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
-include("prob_macro.jl")
 include("loglikelihoods.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
@@ -174,6 +189,10 @@ include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
+include("values_as_in_model.jl")
+
+include("debug_utils.jl")
+using .DebugUtils
 
 if !isdefined(Base, :get_extension)
     using Requires
