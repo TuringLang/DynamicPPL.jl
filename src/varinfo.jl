@@ -554,7 +554,7 @@ function setval!(md::Metadata, val::AbstractVector, vn::VarName)
     return md.vals[getrange(md, vn)] = val
 end
 function setval!(md::Metadata, val, vn::VarName)
-    return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
+    return md.vals[getrange(md, vn)] = vectorize(val)
 end
 
 """
@@ -1138,7 +1138,7 @@ end
 function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
     # TODO: Use inplace versions to avoid allocations
     y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, getval(vi, vn))
-    yvec = vectorize(dist, y)
+    yvec = vectorize(y)
     # Determine the new range.
     start = first(getrange(vi, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
@@ -1221,7 +1221,7 @@ function _link_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
         f = link_transform(dist)
         y, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, x)
         # Vectorize value.
-        yvec = vectorize(dist, y)
+        yvec = vectorize(y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1317,7 +1317,7 @@ function _invlink_metadata!(varinfo::VarInfo, metadata::Metadata, target_vns)
         f = invlink_transform(dist)
         x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
         # Vectorize value.
-        xvec = vectorize(dist, x)
+        xvec = vectorize(x)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1593,7 +1593,7 @@ function BangBang.push!!(
         @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
-    val = vectorize(dist, r)
+    val = vectorize(r)
 
     meta = getmetadata(vi, vn)
     meta.idcs[vn] = length(meta.idcs) + 1
