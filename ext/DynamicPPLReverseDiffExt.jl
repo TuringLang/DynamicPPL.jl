@@ -1,7 +1,8 @@
 module DynamicPPLReverseDiffExt
 
 if isdefined(Base, :get_extension)
-    using DynamicPPL: Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+    using DynamicPPL:
+        Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ReverseDiff
 else
     using ..DynamicPPL: Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
