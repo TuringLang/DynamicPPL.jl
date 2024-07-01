@@ -5,7 +5,8 @@ if isdefined(Base, :get_extension)
         Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ReverseDiff
 else
-    using ..DynamicPPL: Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+    using ..DynamicPPL:
+        Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ..ReverseDiff
 end
 
