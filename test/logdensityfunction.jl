@@ -11,7 +11,6 @@ using Test, DynamicPPL, LogDensityProblems
     ∇ℓ = LogDensityProblems.ADgradient(:ReverseDiff, ℓ; compile=Val(false))
     @test DynamicPPL.getmodel(∇ℓ) == model
     @test getmodel(DynamicPPL.setmodel(∇ℓ, model)) == model
-    
     ∇ℓ = LogDensityProblems.ADgradient(:ReverseDiff, ℓ; compile=Val(true))
     new_∇ℓ = DynamicPPL.setmodel(∇ℓ, model)
     @test DynamicPPL.getmodel(new_∇ℓ) == model
