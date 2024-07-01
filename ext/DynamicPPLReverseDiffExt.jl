@@ -1,10 +1,10 @@
 module DynamicPPLReverseDiffExt
 
 if isdefined(Base, :get_extension)
-    using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+    using DynamicPPL: Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ReverseDiff
 else
-    using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+    using ..DynamicPPL: Accessors, ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
     using ..ReverseDiff
 end
 
@@ -21,6 +21,15 @@ function LogDensityProblemsAD.ADgradient(
         # here we use `identity` to possibly concretize the type to `Vector{Float64}` in the case of `Vector{Real}`.
         x=map(identity, DynamicPPL.getparams(ℓ)),
     )
+end
+
+function DynamicPPL.setmodel(f::LogDensityProblemsAD.ReverseDiffLogDensity{L,Nothing}, model::DynamicPPL.Model) where {L}
+    return Accessors.@set f.ℓ = setmodel(f.ℓ, model)
+end
+
+function DynamicPPL.setmodel(f::LogDensityProblemsAD.ReverseDiffLogDensity{L,C}, model::DynamicPPL.Model) where {L,C}
+    new_f = LogDensityProblemsAD.ADGradient(Val(:ReverseDiff), f.ℓ; compile=Val(true)) # TODO: without a input, can get error
+    return Accessors.@set new_f.ℓ = setmodel(f.ℓ, model)
 end
 
 end # module
