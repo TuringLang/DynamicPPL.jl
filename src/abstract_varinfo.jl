@@ -363,6 +363,8 @@ Determine the default `eltype` of the values returned by `vi[spl]`.
     This method is considered legacy, and is likely to be deprecated in the future.
 """
 function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior})
+    # TODO(torfjelde): Does this cause issues with Enzyme.jl?
+    # TODO(torfjelde): Is there _any_ scenario where this isn't just `typeof(getlogp(vi))`?
     T = Base.promote_op(getindex, typeof(vi), typeof(spl))
     if T === Union{}
         # In this case `getindex(vi, spl)` errors
