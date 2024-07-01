@@ -737,7 +737,7 @@ For a `context` that is _not_ a `SamplingContext`, we fall back to
 `matchingvalue(SampleFromPrior(), vi, value)`.
 """
 function matchingvalue(sampler, vi, value)
-    T = typeof(value)
+    T = Core.Typeof(value)
     if hasmissing(T)
         _value = convert(get_matching_type(sampler, vi, T), value)
         if _value === value
