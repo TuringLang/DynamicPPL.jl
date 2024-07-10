@@ -909,13 +909,18 @@ function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
     return evaluate!!(model, VarInfo(), context)
 end
 
-function AbstractPPL.evaluate!!(model::Model, args...)
+function AbstractPPL.evaluate!!(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+)
     return evaluate!!(model, Random.default_rng(), args...)
 end
 
 # without VarInfo
 function AbstractPPL.evaluate!!(
-    model::Model, rng::Random.AbstractRNG, sampler::AbstractSampler, args...
+    model::Model,
+    rng::Random.AbstractRNG,
+    sampler::AbstractSampler,
+    args::AbstractContext...,
 )
     return evaluate!!(model, rng, VarInfo(), sampler, args...)
 end
