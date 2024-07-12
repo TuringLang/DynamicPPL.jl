@@ -396,4 +396,18 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             end
         end
     end
+
+    @testset "Erroneous model call" begin
+        # Calling a model with the wrong arguments used to lead to infinite recursion, see
+        # https://github.com/TuringLang/Turing.jl/issues/2182. This guards against it.
+        @model function a_model(x)
+            m ~ Normal(0, 1)
+            x ~ Normal(m, 1)
+            return nothing
+        end
+        instance = a_model(1.0)
+        # `instance` should be called with rng, context, etc., but one may easily get
+        # confused and call it the way you are meant to call `a_model`.
+        @test_throws MethodError instance(1.0)
+    end
 end
