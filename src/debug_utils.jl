@@ -289,7 +289,7 @@ end
 _isassigned(x::AbstractArray, i) = isassigned(x, i)
 # HACK(torfjelde): Julia v1.7 only supports `isassigned(::AbstractArray, ::Int...)`.
 # TODO(torfjelde): Determine exactly in which version this change was introduced.
-if VERSION < v"1.8"
+if VERSION < v"v1.9.0-alpha1"
     _isassigned(x::AbstractArray, inds::Tuple) = isassigned(x, inds...)
     _isassigned(x::AbstractArray, idx::CartesianIndex) = _isassigned(x, Tuple(idx))
 end
