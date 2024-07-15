@@ -143,7 +143,7 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 initialsampler(spl::Sampler) = SampleFromPrior()
 
 function set_values!!(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Real}, spl::AbstractSampler
+    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}, spl::AbstractSampler
 )
     theta = varinfo[spl]
     length(theta) == length(initial_params) || throw(
@@ -165,7 +165,7 @@ function set_values!!(
 end
 
 # if initialize with scalar, convert to vector
-function set_values!!(varinfo::AbstractVarInfo, initial_params, spl::AbstractSampler)
+function set_values!!(varinfo::AbstractVarInfo, initial_params::Real, spl::AbstractSampler)
     return set_values!!(varinfo, [initial_params], spl)
 end
 
@@ -174,7 +174,7 @@ function set_values!!(
 )
     initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
     return DynamicPPL.TestUtils.update_values!!(
-        varinfo, initial_params, map(VarName, keys(initial_params))
+        varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
     )
 end
 
