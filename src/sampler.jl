@@ -142,38 +142,45 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!!(
-    vi::AbstractVarInfo, initial_params, spl::Sampler, model::Model
-)
-    @debug "Using passed-in initial variable values" initial_params
-
-    # Flatten parameters.
-    init_theta = mapreduce(vcat, initial_params) do x
-        vec([x;])
-    end
-
-    # Get all values.
-    linked = islinked(vi, spl)
-    if linked
-        vi = invlink!!(vi, spl, model)
-    end
-    theta = vi[spl]
-    length(theta) == length(init_theta) || throw(
+function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Real}, spl::AbstractSampler)
+    theta = varinfo[spl]
+    length(theta) == length(initial_params) || throw(
         DimensionMismatch(
-            "Provided initial value size ($(length(init_theta))) doesn't match the model size ($(length(theta)))",
+            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(theta)))",
         ),
     )
 
     # Update values that are provided.
-    for i in eachindex(init_theta)
-        x = init_theta[i]
+    for i in eachindex(initial_params)
+        x = initial_params[i]
         if x !== missing
             theta[i] = x
         end
     end
 
-    # Update in `vi`.
-    vi = setindex!!(vi, theta, spl)
+    # Update in `varinfo`.
+    return setindex!!(varinfo, theta, spl)
+end
+
+function set_values!!(varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler)
+    return DynamicPPL.TestUtils.update_values!!(varinfo, initial_params, keys(varinfo, spl))
+end
+
+function initialize_parameters!!(
+    vi::AbstractVarInfo, initial_params, spl::AbstractSampler, model::Model
+)
+    @debug "Using passed-in initial variable values" initial_params
+
+    # `link` the varinfo if needed.
+    linked = islinked(vi, spl)
+    if linked
+        vi = invlink!!(vi, spl, model)
+    end
+
+    # Set the values in `vi`.
+    vi = set_values!!(vi, initial_params, spl)
+
+    # `invlink` if needed.
     if linked
         vi = link!!(vi, spl, model)
     end
