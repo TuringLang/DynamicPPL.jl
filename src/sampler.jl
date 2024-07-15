@@ -164,10 +164,16 @@ function set_values!!(
     return setindex!!(varinfo, theta, spl)
 end
 
+# if initialize with scalar, convert to vector
+function set_values!!(varinfo::AbstractVarInfo, initial_params, spl::AbstractSampler)
+    return set_values!!(varinfo, [initial_params], spl)
+end
+
 function set_values!!(
     varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
 )
-    return DynamicPPL.TestUtils.update_values!!(varinfo, initial_params, keys(varinfo, spl))
+    initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
+    return DynamicPPL.TestUtils.update_values!!(varinfo, initial_params, map(VarName, keys(initial_params)))
 end
 
 function initialize_parameters!!(
