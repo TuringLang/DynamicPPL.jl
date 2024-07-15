@@ -142,7 +142,9 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Real}, spl::AbstractSampler)
+function set_values!!(
+    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Real}, spl::AbstractSampler
+)
     theta = varinfo[spl]
     length(theta) == length(initial_params) || throw(
         DimensionMismatch(
@@ -162,7 +164,9 @@ function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector{<
     return setindex!!(varinfo, theta, spl)
 end
 
-function set_values!!(varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler)
+function set_values!!(
+    varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
+)
     return DynamicPPL.TestUtils.update_values!!(varinfo, initial_params, keys(varinfo, spl))
 end
 
