@@ -143,7 +143,9 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 initialsampler(spl::Sampler) = SampleFromPrior()
 
 function set_values!!(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}, spl::AbstractSampler
+    varinfo::AbstractVarInfo,
+    initial_params::AbstractVector{<:Union{Real,Missing}},
+    spl::AbstractSampler,
 )
     theta = varinfo[spl]
     length(theta) == length(initial_params) || throw(
