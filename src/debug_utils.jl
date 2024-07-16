@@ -286,11 +286,19 @@ function record_varname!(context::DebugContext, varname::VarName, dist)
 end
 
 # tilde
+_isassigned(x::AbstractArray, i) = isassigned(x, i)
+# HACK(torfjelde): Julia v1.7 only supports `isassigned(::AbstractArray, ::Int...)`.
+# TODO(torfjelde): Determine exactly in which version this change was introduced.
+if VERSION < v"v1.9.0-alpha1"
+    _isassigned(x::AbstractArray, inds::Tuple) = isassigned(x, inds...)
+    _isassigned(x::AbstractArray, idx::CartesianIndex) = _isassigned(x, Tuple(idx))
+end
+
 _has_missings(x) = ismissing(x)
 function _has_missings(x::AbstractArray)
     # Can't just use `any` because `x` might contain `undef`.
     for i in eachindex(x)
-        if isassigned(x, i) && _has_missings(x[i])
+        if _isassigned(x, i) && _has_missings(x[i])
             return true
         end
     end
