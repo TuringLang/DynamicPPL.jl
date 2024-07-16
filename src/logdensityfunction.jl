@@ -89,7 +89,7 @@ Set the `DynamicPPL.Model` in the given log-density function `f` to `model`.
 function setmodel(
     f::LogDensityProblemsAD.ADGradientWrapper,
     model::DynamicPPL.Model,
-    adtype::ADTypes.AbstractADType
+    adtype::ADTypes.AbstractADType,
 )
     # TODO: Should we handle `SciMLBase.NoAD`?
     # For an `ADGradientWrapper` we do the following:
