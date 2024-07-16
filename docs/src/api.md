@@ -110,10 +110,6 @@ Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original 
 unfix
 ```
 
-## Extracting priors 
-
-
-
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
