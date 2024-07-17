@@ -108,7 +108,9 @@ function setmodel(
     #    ReverseDiff.jl in compiled mode will cache the compiled tape, which means that just
     #    replacing the corresponding field with the new model won't be sufficient to obtain
     #    the correct gradients.
-    return LogDensityProblemsAD.ADgradient(adtype, setmodel(LogDensityProblemsAD.parent(f), model))
+    return LogDensityProblemsAD.ADgradient(
+        adtype, setmodel(LogDensityProblemsAD.parent(f), model)
+    )
 end
 function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
     return Accessors.@set f.model = model
