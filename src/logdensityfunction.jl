@@ -77,6 +77,14 @@ function getcontext(f::LogDensityFunction)
 end
 
 """
+    getmodel(f)
+
+Return the `DynamicPPL.Model` wrapped in the given log-density function `f`.
+"""
+getmodel(f::LogDensityProblemsAD.ADGradientWrapper) = getmodel(LogDensityProblemsAD.parent(f))
+getmodel(f::DynamicPPL.LogDensityFunction) = f.model
+
+"""
     setmodel(f, model[, adtype])
 
 Set the `DynamicPPL.Model` in the given log-density function `f` to `model`.
@@ -99,7 +107,7 @@ function setmodel(
     #    ReverseDiff.jl in compiled mode will cache the compiled tape, which means that just
     #    replacing the corresponding field with the new model won't be sufficient to obtain
     #    the correct gradients.
-    return LogDensityProblemsAD.ADgradient(adtype, setmodel(parent(f), model))
+    return LogDensityProblemsAD.ADgradient(adtype, setmodel(LogDensityProblemsAD.parent(f), model))
 end
 function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
     return Accessors.@set f.model = model

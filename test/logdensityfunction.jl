@@ -1,20 +1,23 @@
-using Test, DynamicPPL, LogDensityProblems
+using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, ReverseDiff
 
 @testset "`getmodel` and `setmodel`" begin
-    # TODO: does it worth to test all demo models?
-    model = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    ℓ = DynamicPPL.LogDensityFunction(model)
-    @test DynamicPPL.getmodel(ℓ) == model
-    @test DynamicPPL.setmodel(ℓ, model).model == model
+    @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        ℓ = DynamicPPL.LogDensityFunction(model)
+        @test DynamicPPL.getmodel(ℓ) == model
+        @test DynamicPPL.setmodel(ℓ, model).model == model
 
-    # ReverseDiff related
-    ∇ℓ = LogDensityProblems.ADgradient(:ReverseDiff, ℓ; compile=Val(false))
-    @test DynamicPPL.getmodel(∇ℓ) == model
-    @test getmodel(DynamicPPL.setmodel(∇ℓ, model)) == model
-    ∇ℓ = LogDensityProblems.ADgradient(:ReverseDiff, ℓ; compile=Val(true))
-    new_∇ℓ = DynamicPPL.setmodel(∇ℓ, model)
-    @test DynamicPPL.getmodel(new_∇ℓ) == model
-    @test new_∇ℓ.ℓ.compiledtape != ∇ℓ.ℓ.compiledtape
+        # ReverseDiff related
+        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(false))
+        @test DynamicPPL.getmodel(∇ℓ) == model
+        @test DynamicPPL.getmodel(DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())) ==
+            model
+        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(true))
+        new_∇ℓ = DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())
+        @test DynamicPPL.getmodel(new_∇ℓ) == model
+        # HACK(sunxd): rely on internal implementation detail, i.e., naming of `compiledtape`
+        @test new_∇ℓ.compiledtape != ∇ℓ.compiledtape
+    end
 end
 
 @testset "LogDensityFunction" begin
