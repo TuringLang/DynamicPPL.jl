@@ -81,7 +81,8 @@ end
 
 Return the `DynamicPPL.Model` wrapped in the given log-density function `f`.
 """
-getmodel(f::LogDensityProblemsAD.ADGradientWrapper) = getmodel(LogDensityProblemsAD.parent(f))
+getmodel(f::LogDensityProblemsAD.ADGradientWrapper) =
+    getmodel(LogDensityProblemsAD.parent(f))
 getmodel(f::DynamicPPL.LogDensityFunction) = f.model
 
 """
