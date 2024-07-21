@@ -462,8 +462,6 @@ end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
 
-getindex_internal(vi::UntypedVarInfo, vview::VarView) = view(vi.metadata.vals, vview)
-
 """
     setval!(vi::UntypedVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})
 
