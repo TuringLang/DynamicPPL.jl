@@ -521,7 +521,10 @@ getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
 
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
-getindex_internal(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
+# TODO(torfjelde): Use `view` instead of `getindex`. Requires addressing type-stability issues though,
+# since then we might be returning a `SubArray` rather than an `Array`, which is typically
+# what a bijector would result in, even if the input is a view (`SubArray`).
+getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
