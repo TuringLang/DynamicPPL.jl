@@ -360,7 +360,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             ]
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
-                example_values = DynamicPPL.TestUtils.rand(model)
+                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
                 varinfos = filter(
                     is_typed_varinfo,
                     DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
