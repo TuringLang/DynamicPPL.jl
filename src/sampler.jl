@@ -170,7 +170,7 @@ function set_values!!(
     varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
 )
     initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
-    return DynamicPPL.TestUtils.update_values!!(
+    return update_values!!(
         varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
     )
 end

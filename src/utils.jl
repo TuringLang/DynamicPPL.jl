@@ -797,6 +797,18 @@ function nested_getindex(values::AbstractDict, vn::VarName)
 end
 
 """
+    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+
+Return instance similar to `vi` but with `vns` set to values from `vals`.
+"""
+function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
+    end
+    return vi
+end
+
+"""
     float_type_with_fallback(x)
 
 Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.

@@ -14,18 +14,6 @@ using Accessors: Accessors
 using DynamicPPL: varname_leaves
 
 """
-    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-
-Return instance similar to `vi` but with `vns` set to values from `vals`.
-"""
-function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-    for vn in vns
-        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
-    end
-    return vi
-end
-
-"""
     test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
 
 Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
