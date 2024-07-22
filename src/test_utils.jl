@@ -11,7 +11,7 @@ using Bijectors: Bijectors
 using Accessors: Accessors
 
 # For backwards compat.
-using DynamicPPL: varname_leaves
+using DynamicPPL: varname_leaves, update_values!!
 
 """
     test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
