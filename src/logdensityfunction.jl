@@ -76,6 +76,46 @@ function getcontext(f::LogDensityFunction)
     return f.context === nothing ? leafcontext(f.model.context) : f.context
 end
 
+"""
+    getmodel(f)
+
+Return the `DynamicPPL.Model` wrapped in the given log-density function `f`.
+"""
+getmodel(f::LogDensityProblemsAD.ADGradientWrapper) =
+    getmodel(LogDensityProblemsAD.parent(f))
+getmodel(f::DynamicPPL.LogDensityFunction) = f.model
+
+"""
+    setmodel(f, model[, adtype])
+
+Set the `DynamicPPL.Model` in the given log-density function `f` to `model`.
+
+!!! warning
+    Note that if `f` is a `LogDensityProblemsAD.ADGradientWrapper` wrapping a
+    `DynamicPPL.LogDensityFunction`, performing an update of the `model` in `f`
+    might require recompilation of the gradient tape, depending on the AD backend.
+"""
+function setmodel(
+    f::LogDensityProblemsAD.ADGradientWrapper,
+    model::DynamicPPL.Model,
+    adtype::ADTypes.AbstractADType,
+)
+    # TODO: Should we handle `SciMLBase.NoAD`?
+    # For an `ADGradientWrapper` we do the following:
+    # 1. Update the `Model` in the underlying `LogDensityFunction`.
+    # 2. Re-construct the `ADGradientWrapper` using `ADgradient` using the provided `adtype`
+    #    to ensure that the recompilation of gradient tapes, etc. also occur. For example,
+    #    ReverseDiff.jl in compiled mode will cache the compiled tape, which means that just
+    #    replacing the corresponding field with the new model won't be sufficient to obtain
+    #    the correct gradients.
+    return LogDensityProblemsAD.ADgradient(
+        adtype, setmodel(LogDensityProblemsAD.parent(f), model)
+    )
+end
+function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
+    return Accessors.@set f.model = model
+end
+
 # HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
 # we need to define these annoying methods to ensure that we stay compatible with everything.
 getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
