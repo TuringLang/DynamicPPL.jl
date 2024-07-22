@@ -147,8 +147,8 @@ function set_values!!(
     initial_params::AbstractVector{<:Union{Real,Missing}},
     spl::AbstractSampler,
 )
-    theta = varinfo[spl]
-    length(theta) == length(initial_params) || throw(
+    flattened_param_vals = varinfo[spl]
+    length(flattened_param_vals) == length(initial_params) || throw(
         DimensionMismatch(
             "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(theta)))",
         ),
@@ -158,12 +158,12 @@ function set_values!!(
     for i in eachindex(initial_params)
         x = initial_params[i]
         if x !== missing
-            theta[i] = x
+            flattened_param_vals[i] = x
         end
     end
 
     # Update in `varinfo`.
-    return setindex!!(varinfo, theta, spl)
+    return setindex!!(varinfo, flattened_param_vals, spl)
 end
 
 # if initialize with scalar, convert to vector
