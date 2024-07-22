@@ -84,7 +84,7 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            for inits in (0.2, (; p=0.2))
+            let inits = (; p=0.2)
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.p.vals == [0.2]
                 @test getlogp(chain[1]) == lptrue

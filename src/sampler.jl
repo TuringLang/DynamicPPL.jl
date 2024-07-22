@@ -166,11 +166,6 @@ function set_values!!(
     return setindex!!(varinfo, flattened_param_vals, spl)
 end
 
-# if initialize with scalar, convert to vector
-function set_values!!(varinfo::AbstractVarInfo, initial_params::Real, spl::AbstractSampler)
-    return set_values!!(varinfo, [initial_params], spl)
-end
-
 function set_values!!(
     varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
 )
