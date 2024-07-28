@@ -388,7 +388,7 @@ end
 """
     collect_maybe(x)
 
-Return `collect(x)` if `x` is an array, otherwise return `x`.
+Return `x` if `x` is an array, otherwise return `collect(x)`.
 """
 collect_maybe(x) = collect(x)
 collect_maybe(x::AbstractArray) = x
