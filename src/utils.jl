@@ -320,23 +320,21 @@ vectorize(d, r) = vectorize(r)
 vectorize(r) = tovec(r)
 
 """
-    recombine(dist::Distribution, vals::AbstractVector, n::Int)
+    recombine(dist::Union{UnivariateDistribution,MultivariateDistribution}, vals::AbstractVector, n::Int)
 
 Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
+
+!!! warning
+    This only supports `UnivariateDistribution` and `MultivariateDistribution`, which are the only two
+    distribution types which are allowed on the right-hand side of a `.~` statement in a model.
 """
-function recombine(d::Distribution, val::AbstractVector, n::Int)
-    return recombine(size(d), val, n)
-end
-function recombine(::Tuple{}, val::AbstractVector, n::Int)
+function recombine(::UnivariateDistribution, val::AbstractVector, ::Int)
+    # This is just a no-op, since we're trying to convert a vector into a vector.
     return copy(val)
 end
-function recombine(s::NTuple{1}, val::AbstractVector, n::Int)
-    return copy(reshape(val, s[1], n))
-end
-function recombine(s::NTuple{2}, val::AbstractVector, n::Int)
-    tmp = reshape(val, s..., n)
-    orig = [tmp[:, :, i] for i in 1:n]
-    return orig
+function recombine(d::MultivariateDistribution, val::AbstractVector, n::Int)
+    # Here `val` is of the length `length(d) * n` and so we need to reshape it.
+    return copy(reshape(val, length(d), n))
 end
 
 # Uniform random numbers with range 4 for robust initializations
