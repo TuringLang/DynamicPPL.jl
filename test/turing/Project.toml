@@ -1,6 +1,7 @@
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+HypothesisTests = "09f84164-cd44-5f33-b23f-e6b0d136a0d5"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -11,6 +12,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 [compat]
 Distributions = "0.25"
 DynamicPPL = "0.24, 0.25, 0.26, 0.27, 0.28"
+HypothesisTests = "0.11"
 MCMCChains = "6"
 ReverseDiff = "1.15"
 Turing = "0.33"

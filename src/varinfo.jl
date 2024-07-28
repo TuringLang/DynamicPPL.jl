@@ -894,6 +894,12 @@ Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
     return expr
 end
 
+# FIXME(torfjelde): Don't use `_getvns`.
+Base.keys(vi::UntypedVarInfo, spl::AbstractSampler) = _getvns(vi, spl)
+function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
+    return mapreduce(values, vcat, _getvns(vi, spl))
+end
+
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 
