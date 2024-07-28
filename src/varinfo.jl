@@ -119,6 +119,11 @@ function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
     )
 end
 
+"""
+    untyped_varinfo([rng, ]model[, sampler, context])
+
+Return an untyped `VarInfo` instance for the model `model`.
+"""
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -128,10 +133,15 @@ function untyped_varinfo(
     varinfo = VarInfo()
     return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
 end
-function untyped_varinfo(model::Model, args...)
+function untyped_varinfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
     return untyped_varinfo(Random.default_rng(), model, args...)
 end
 
+"""
+    typed_varinfo([rng, ]model[, sampler, context])
+
+Return a typed `VarInfo` instance for the model `model`.
+"""
 typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
 
 function VarInfo(
