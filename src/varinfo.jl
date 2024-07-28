@@ -113,7 +113,7 @@ const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
 transformation(vi::VarInfo) = DynamicTransformation()
 
 function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
-    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
+    md = replace_values(old_vi.metadata, Val(getspace(spl)), x)
     return VarInfo(
         md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
     )
@@ -155,7 +155,8 @@ function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext
 end
 
 # TODO: Remove `space` argument when no longer needed. Ref: https://github.com/TuringLang/DynamicPPL.jl/issues/573
-function replace_values(metadata::Metadata, space, x)
+replace_values(metadata::Metadata, space, x) = replace_values(metadata, x)
+function replace_values(metadata::Metadata, x)
     return Metadata(
         metadata.idcs,
         metadata.vns,
@@ -168,7 +169,7 @@ function replace_values(metadata::Metadata, space, x)
     )
 end
 
-@generated function newmetadata(
+@generated function replace_values(
     metadata::NamedTuple{names}, ::Val{space}, x
 ) where {names,space}
     exprs = []
