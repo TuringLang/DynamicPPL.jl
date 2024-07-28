@@ -533,6 +533,7 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # TODO(torfjelde): Use `view` instead of `getindex`. Requires addressing type-stability issues though,
 # since then we might be returning a `SubArray` rather than an `Array`, which is typically
 # what a bijector would result in, even if the input is a view (`SubArray`).
+# TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
