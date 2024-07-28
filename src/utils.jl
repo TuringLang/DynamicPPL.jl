@@ -256,6 +256,11 @@ Return the transformation from the vector representation of `x` to original repr
 from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
 from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
 
+"""
+    from_vec_transform_for_size(sz::Tuple)
+
+Return the transformation from the vector representation of a realization of size `sz` to original representation.
+"""
 from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
 from_vec_transform_for_size(::Tuple{()}) = FromVec(())
 from_vec_transform_for_size(::Tuple{<:Any}) = identity
