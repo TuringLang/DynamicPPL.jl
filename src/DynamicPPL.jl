@@ -81,7 +81,6 @@ export AbstractVarInfo,
     @model,
     # Utilities
     init,
-    vectorize,
     OrderedDict,
     # Model
     Model,

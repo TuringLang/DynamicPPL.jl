@@ -75,7 +75,7 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
@@ -84,7 +84,7 @@ function tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
@@ -92,7 +92,7 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
@@ -106,7 +106,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -603,7 +603,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
+        setindex!!(vi, tovec(val[ind]), vns[ind])
     end
     return val
 end

@@ -14,7 +14,7 @@
         elseif is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = rand(dist)
-            vi[vn] = vectorize(dist, r)
+            vi[vn] = DynamicPPL.tovec(r)
             setorder!(vi, vn, get_num_produce(vi))
             r
         else

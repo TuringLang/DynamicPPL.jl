@@ -552,7 +552,7 @@ function setval!(md::Metadata, val::AbstractVector, vn::VarName)
     return md.vals[getrange(md, vn)] = val
 end
 function setval!(md::Metadata, val, vn::VarName)
-    return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
+    return md.vals[getrange(md, vn)] = tovec(val)
 end
 
 """
@@ -1248,7 +1248,7 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         f = internal_to_linked_internal_transform(varinfo, vn, dist)
         y, logjac = with_logabsdet_jacobian(f, x)
         # Vectorize value.
-        yvec = vectorize(dist, y)
+        yvec = tovec(y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1348,7 +1348,7 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
         f = from_linked_internal_transform(varinfo, vn, dist)
         x, logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
-        xvec = vectorize(dist, x)
+        xvec = tovec(x)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1624,7 +1624,7 @@ function BangBang.push!!(
 end
 
 function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
-    val = vectorize(dist, r)
+    val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
     l = length(meta.vals)

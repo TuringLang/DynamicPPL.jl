@@ -320,10 +320,6 @@ tovec(x::Real) = [x]
 tovec(x::AbstractArray) = vec(x)
 tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
-# TODO: Remove these.
-vectorize(d, r) = vectorize(r)
-vectorize(r) = tovec(r)
-
 """
     recombine(dist::Union{UnivariateDistribution,MultivariateDistribution}, vals::AbstractVector, n::Int)
 
