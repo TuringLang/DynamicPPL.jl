@@ -25,7 +25,7 @@ For a large family of constraints encountered in practice, it is indeed possible
 
 In DynamicPPL.jl, this is often referred to as *linking* (a term originating in the statistics literature) and is done using transformations from [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl).
 
-For example, the above model could be transformed into (the following psuedo-code; it's not working code):
+For example, the above model could be transformed into (the following pseudo-code; it's not working code):
 
 ```julia
 @model function demo()
@@ -214,7 +214,7 @@ Unfortunately, this is not possible in general. Consider for example the followi
 end
 ```
 
-Here the variable `x` has is constrained to be on the domain `(m, Inf)`, where `m` is sampled according to a `Normal`.
+Here the variable `x` is constrained to be in the domain `(m, Inf)`, where `m` is sampled according to a `Normal`.
 
 ```@example transformations-internal
 model = demo_dynamic_constraint()
