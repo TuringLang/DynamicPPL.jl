@@ -226,14 +226,14 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 # Useful transformation going from the flattened representation.
-struct FromVec{Sz} <: Bijectors.Bijector
-    sz::Sz
+struct FromVec{Size} <: Bijectors.Bijector
+    size::Size
 end
 
 FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
 
 # TODO: Should we materialize the `reshape`?
-(f::FromVec)(x) = reshape(x, f.sz)
+(f::FromVec)(x) = reshape(x, f.size)
 (f::FromVec{Tuple{}})(x) = only(x)
 # TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
 
