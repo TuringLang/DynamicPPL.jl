@@ -224,7 +224,6 @@
 
     @testset "Static transformation" begin
         model = DynamicPPL.TestUtils.demo_static_transformation()
-        priors = extract_priors(model)
 
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, DynamicPPL.TestUtils.rand_prior_true(model), [@varname(s), @varname(m)]
