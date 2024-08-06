@@ -248,6 +248,16 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
+function untyped_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo(OrderedDict())
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
+function typed_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo{Float64}()
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)
@@ -295,23 +305,17 @@ function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
-# `NamedTuple`
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return maybe_invlink_and_reconstruct(vi, vn, dist, getindex(vi, vn))
+    return from_maybe_linked_internal(vi, vn, dist, getindex(vi, vn))
 end
 function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
-    return reconstruct(dist, vals_linked, length(vns))
+    return recombine(dist, vals_linked, length(vns))
 end
 
-Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
-
-# `AbstractDict`
-function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    return nested_getindex(vi.values, vn)
-end
+Base.getindex(vi::SimpleVarInfo, vn::VarName) = getindex_internal(vi, vn)
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
@@ -323,21 +327,11 @@ Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getinde
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
-# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
-# we simply call `getindex` in `getindex_raw`.
-getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
-function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return reconstruct(dist, getindex_raw(vi, vn))
+getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
+# `AbstractDict`
+function getindex_internal(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
+    return nested_getindex(vi.values, vn)
 end
-getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
-function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
-    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
-    return reconstruct(dist, vals, length(vns))
-end
-
-# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
-getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
@@ -484,7 +478,7 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
+    value_raw = to_maybe_linked_internal(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
@@ -502,9 +496,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        maybe_reconstruct_and_link.((vi,), vns, (dists,), value)
+        to_maybe_linked_internal.((vi,), vns, (dists,), value)
     else
-        maybe_reconstruct_and_link.((vi,), vns, dists, value)
+        to_maybe_linked_internal.((vi,), vns, dists, value)
     end
 
     # Update `vi`
@@ -531,7 +525,7 @@ function dot_assume(
 
     # Update `vi`.
     for (vn, val) in zip(vns, eachcol(value))
-        val_linked = maybe_reconstruct_and_link(vi, vn, dist, val)
+        val_linked = to_maybe_linked_internal(vi, vn, dist, val)
         vi = BangBang.setindex!!(vi, val_linked, vn)
     end
 
@@ -561,7 +555,7 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
     isempty(vi) && return T[]
-    return mapreduce(vectorize, vcat, values(vi.values))
+    return mapreduce(tovec, vcat, values(vi.values))
 end
 function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))
@@ -695,6 +689,15 @@ function invlink!!(
     lp_new = getlogp(vi) + logjac
     vi_new = setlogp!!(Accessors.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
+end
+
+# With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
+from_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
+from_internal_transform(vi::SimpleVarInfo, ::VarName, dist) = identity
+# TODO: Should the following methods specialize on the case where we have a `StaticTransformation{<:Bijectors.NamedTransform}`?
+from_linked_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
+function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
+    return invlink_transform(dist)
 end
 
 # Threadsafe stuff.

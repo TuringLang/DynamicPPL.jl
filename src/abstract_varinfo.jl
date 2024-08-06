@@ -144,9 +144,7 @@ Return an iterator over all `vns` in `vi`.
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s).
 
-If `dist` is specified, the value(s) will be reshaped accordingly.
-
-See also: [`getindex_raw(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
+If `dist` is specified, the value(s) will be massaged into the representation expected by `dist`.
 """ Base.getindex
 
 """
@@ -164,22 +162,14 @@ Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
 Base.getindex(vi::AbstractVarInfo, ::AbstractSampler) = vi[:]
 
 """
-    getindex_raw(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
-    getindex_raw(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
+    getindex_internal(vi::AbstractVarInfo, vn::VarName)
+    getindex_internal(vi::AbstractVarInfo, vns::Vector{<:VarName})
 
-Return the current value(s) of `vn` (`vns`) in `vi`.
-
-If `dist` is specified, the value(s) will be reshaped accordingly.
+Return the current value(s) of `vn` (`vns`) in `vi` as represented internally in `vi`.
 
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
-
-!!! note
-    The difference between `getindex(vi, vn, dist)` and `getindex_raw` is that 
-    `getindex` will also transform the value(s) to the support of the distribution(s). 
-    This is _not_ the case for `getindex_raw`.
-
 """
-function getindex_raw end
+function getindex_internal end
 
 """
     push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
@@ -570,7 +560,7 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
-link(vi::AbstractVarInfo, model::Model) = link(deepcopy(vi), SampleFromPrior(), model)
+link(vi::AbstractVarInfo, model::Model) = link(vi, SampleFromPrior(), model)
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return link(t, deepcopy(vi), SampleFromPrior(), model)
 end
@@ -753,106 +743,44 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-# TODO: Clean up all this linking stuff once and for all!
 """
-    with_logabsdet_jacobian_and_reconstruct([f, ]dist, x)
-
-Like `Bijectors.with_logabsdet_jacobian(f, x)`, but also ensures the resulting
-value is reconstructed to the correct type and shape according to `dist`.
-"""
-function with_logabsdet_jacobian_and_reconstruct(f, dist, x)
-    x_recon = reconstruct(f, dist, x)
-    return with_logabsdet_jacobian(f, x_recon)
-end
-
-# NOTE: Necessary to handle product distributions of `Dirichlet` and similar.
-function with_logabsdet_jacobian_and_reconstruct(
-    f::Bijectors.Inverse{<:Bijectors.SimplexBijector}, dist, y
-)
-    (d, ns...) = size(dist)
-    yreshaped = reshape(y, d - 1, ns...)
-    x, logjac = with_logabsdet_jacobian(f, yreshaped)
-    return x, logjac
-end
-
-# TODO: Once `(inv)link` isn't used heavily in `getindex(vi, vn)`, we can
-# just use `first ∘ with_logabsdet_jacobian` to reduce the maintenance burden.
-# NOTE: `reconstruct` is no-op if `val` is already of correct shape.
-"""
-    reconstruct_and_link(dist, val)
-    reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return linked `val` but reconstruct before linking, if necessary.
-
-Note that unlike [`invlink_and_reconstruct`](@ref), this does not necessarily
-return a reconstructed value, i.e. a value of the same type and shape as expected
-by `dist`.
-
-See also: [`invlink_and_reconstruct`](@ref), [`reconstruct`](@ref).
-"""
-reconstruct_and_link(f, dist, val) = f(reconstruct(f, dist, val))
-reconstruct_and_link(dist, val) = reconstruct_and_link(link_transform(dist), dist, val)
-function reconstruct_and_link(::AbstractVarInfo, ::VarName, dist, val)
-    return reconstruct_and_link(dist, val)
-end
-
-"""
-    invlink_and_reconstruct(dist, val)
-    invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return invlinked and reconstructed `val`.
-
-See also: [`reconstruct_and_link`](@ref), [`reconstruct`](@ref).
-"""
-invlink_and_reconstruct(f, dist, val) = f(reconstruct(f, dist, val))
-function invlink_and_reconstruct(dist, val)
-    return invlink_and_reconstruct(invlink_transform(dist), dist, val)
-end
-function invlink_and_reconstruct(::AbstractVarInfo, ::VarName, dist, val)
-    return invlink_and_reconstruct(dist, val)
-end
-
-"""
-    maybe_link_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
 """
-function maybe_reconstruct_and_link(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return if istrans(vi, vn)
-        reconstruct_and_link(vi, vn, dist, val)
-    else
-        reconstruct(dist, val)
-    end
+function to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
+    f = to_maybe_linked_internal_transform(vi, vn, dist)
+    return f(val)
 end
 
 """
-    maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
+    from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
 Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
 """
-function maybe_invlink_and_reconstruct(vi::AbstractVarInfo, vn::VarName, dist, val)
-    return if istrans(vi, vn)
-        invlink_and_reconstruct(vi, vn, dist, val)
-    else
-        reconstruct(dist, val)
-    end
+function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
+    f = from_maybe_linked_internal_transform(vi, vn, dist)
+    return f(val)
 end
 
 """
-    invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist[, x])
+    invlink_with_logpdf(varinfo::AbstractVarInfo, vn::VarName, dist[, x])
 
 Invlink `x` and compute the logpdf under `dist` including correction from
 the invlink-transformation.
 
-If `x` is not provided, `getval(vi, vn)` will be used.
+If `x` is not provided, `getindex_internal(vi, vn)` will be used.
+
+!!! warning
+    The input value `x` should be according to the internal representation of
+    `varinfo`, e.g. the value returned by `getindex_internal(vi, vn)`.
 """
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
-    return invlink_with_logpdf(vi, vn, dist, getval(vi, vn))
+    return invlink_with_logpdf(vi, vn, dist, getindex_internal(vi, vn))
 end
 function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
-    # NOTE: Will this cause type-instabilities or will union-splitting save us?
-    f = istrans(vi, vn) ? invlink_transform(dist) : identity
-    x, logjac = with_logabsdet_jacobian_and_reconstruct(f, dist, y)
+    f = from_maybe_linked_internal_transform(vi, vn, dist)
+    x, logjac = with_logabsdet_jacobian(f, y)
     return x, logpdf(dist, x) + logjac
 end
 
@@ -860,3 +788,130 @@ end
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
 setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
+
+"""
+    from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from the internal representation of `vn` with `dist`
+in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function from_internal_transform end
+
+"""
+    from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from the linked internal representation of `vn` with `dist`
+in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function from_linked_internal_transform end
+
+"""
+    from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from the possibly linked internal representation of `vn` with `dist`n
+in `varinfo` to a representation compatible with `dist`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return if istrans(varinfo, vn)
+        from_linked_internal_transform(varinfo, vn, dist)
+    else
+        from_internal_transform(varinfo, vn, dist)
+    end
+end
+function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return if istrans(varinfo, vn)
+        from_linked_internal_transform(varinfo, vn)
+    else
+        from_internal_transform(varinfo, vn)
+    end
+end
+
+"""
+    to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from a representation compatible with `dist` to the
+internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_internal_transform(varinfo, vn, dist))
+end
+function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_internal_transform(varinfo, vn))
+end
+
+"""
+    to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from a representation compatible with `dist` to the
+linked internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_linked_internal_transform(varinfo, vn, dist))
+end
+function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_linked_internal_transform(varinfo, vn))
+end
+
+"""
+    to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from a representation compatible with `dist` to a
+possibly linked internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    return inverse(from_maybe_linked_internal_transform(varinfo, vn, dist))
+end
+function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    return inverse(from_maybe_linked_internal_transform(varinfo, vn))
+end
+
+"""
+    internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+
+Return a transformation that transforms from the internal representation of `vn` with `dist`
+in `varinfo` to a _linked_ internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    f_from_internal = from_internal_transform(varinfo, vn, dist)
+    f_to_linked_internal = to_linked_internal_transform(varinfo, vn, dist)
+    return f_to_linked_internal ∘ f_from_internal
+end
+function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    f_from_internal = from_internal_transform(varinfo, vn)
+    f_to_linked_internal = to_linked_internal_transform(varinfo, vn)
+    return f_to_linked_internal ∘ f_from_internal
+end
+
+"""
+    linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
+
+Return a transformation that transforms from a _linked_ internal representation of `vn` with `dist`
+in `varinfo` to the internal representation of `vn` with `dist` in `varinfo`.
+
+If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
+"""
+function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
+    f_from_linked_internal = from_linked_internal_transform(varinfo, vn, dist)
+    f_to_internal = to_internal_transform(varinfo, vn, dist)
+    return f_to_internal ∘ f_from_linked_internal
+end
+
+function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
+    f_from_linked_internal = from_linked_internal_transform(varinfo, vn)
+    f_to_internal = to_internal_transform(varinfo, vn)
+    return f_to_internal ∘ f_from_linked_internal
+end

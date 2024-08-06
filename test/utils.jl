@@ -43,9 +43,9 @@
         @test getargs_tilde(:(@~ Normal.(μ, σ))) === nothing
     end
 
-    @testset "vectorize" begin
+    @testset "tovec" begin
         dist = LKJCholesky(2, 1)
         x = rand(dist)
-        @test vectorize(dist, x) == vec(x.UL)
+        @test DynamicPPL.tovec(x) == vec(x.UL)
     end
 end

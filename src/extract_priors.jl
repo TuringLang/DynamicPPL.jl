@@ -110,9 +110,24 @@ julia> length(extract_priors(rng, model)[@varname(x)])
 9
 ```
 """
-extract_priors(model::Model) = extract_priors(Random.default_rng(), model)
+extract_priors(args::Union{Model,AbstractVarInfo}...) =
+    extract_priors(Random.default_rng(), args...)
 function extract_priors(rng::Random.AbstractRNG, model::Model)
     context = PriorExtractorContext(SamplingContext(rng))
     evaluate!!(model, VarInfo(), context)
+    return context.priors
+end
+
+"""
+    extract_priors(model::Model, varinfo::AbstractVarInfo)
+
+Extract the priors from a model.
+
+This is done by evaluating the model at the values present in `varinfo`
+and recording the distributions that are present at each tilde statement.
+"""
+function extract_priors(model::Model, varinfo::AbstractVarInfo)
+    context = PriorExtractorContext(DefaultContext())
+    evaluate!!(model, deepcopy(varinfo), context)
     return context.priors
 end

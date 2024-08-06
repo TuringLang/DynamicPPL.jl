@@ -159,21 +159,6 @@ function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::D
 end
 getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
 
-getindex_raw(vi::ThreadSafeVarInfo, ::Colon) = getindex_raw(vi.varinfo, Colon())
-getindex_raw(vi::ThreadSafeVarInfo, vn::VarName) = getindex_raw(vi.varinfo, vn)
-function getindex_raw(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
-    return getindex_raw(vi.varinfo, vns)
-end
-function getindex_raw(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
-    return getindex_raw(vi.varinfo, vn, dist)
-end
-function getindex_raw(
-    vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution
-)
-    return getindex_raw(vi.varinfo, vns, dist)
-end
-getindex_raw(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex_raw(vi.varinfo, spl)
-
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
     return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end
@@ -221,7 +206,7 @@ end
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
 istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
 
-getval(vi::ThreadSafeVarInfo, vn::VarName) = getval(vi.varinfo, vn)
+getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 
 function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
@@ -238,4 +223,22 @@ function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVa
     return Accessors.@set varinfo_left.varinfo = merge(
         varinfo_left.varinfo, varinfo_right.varinfo
     )
+end
+
+function invlink_with_logpdf(vi::ThreadSafeVarInfo, vn::VarName, dist, y)
+    return invlink_with_logpdf(vi.varinfo, vn, dist, y)
+end
+
+function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
+    return from_internal_transform(varinfo.varinfo, vn)
+end
+function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName, dist)
+    return from_internal_transform(varinfo.varinfo, vn, dist)
+end
+
+function from_linked_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
+    return from_linked_internal_transform(varinfo.varinfo, vn)
+end
+function from_linked_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName, dist)
+    return from_linked_internal_transform(varinfo.varinfo, vn, dist)
 end

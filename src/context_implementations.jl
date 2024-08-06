@@ -79,7 +79,7 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
@@ -88,7 +88,7 @@ function tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
@@ -96,7 +96,7 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
@@ -110,7 +110,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -228,6 +228,7 @@ function assume(dist::Distribution, vn::VarName, vi)
     return r, logp, vi
 end
 
+# TODO: Remove this thing.
 # SampleFromPrior and SampleFromUniform
 function assume(
     rng::Random.AbstractRNG,
@@ -241,9 +242,8 @@ function assume(
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
-            BangBang.setindex!!(
-                vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r)), vn
-            )
+            f = to_maybe_linked_internal_transform(vi, vn, dist)
+            BangBang.setindex!!(vi, f(r), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -252,7 +252,8 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            push!!(vi, vn, reconstruct_and_link(dist, r), dist, sampler)
+            f = to_linked_internal_transform(vi, dist)
+            push!!(vi, vn, f(r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
@@ -491,6 +492,19 @@ function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any,
     )
 end
 
+# HACK: These methods are only used in the `get_and_set_val!` methods below.
+# FIXME: Remove these.
+function _link_broadcast_new(vi, vn, dist, r)
+    b = to_linked_internal_transform(vi, dist)
+    return b(r)
+end
+
+function _maybe_invlink_broadcast(vi, vn, dist)
+    xvec = getindex_internal(vi, vn)
+    b = from_maybe_linked_internal_transform(vi, vn, dist)
+    return b(xvec)
+end
+
 function get_and_set_val!(
     rng,
     vi::VarInfoOrThreadSafeVarInfo,
@@ -506,11 +520,8 @@ function get_and_set_val!(
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                setindex!!(
-                    vi,
-                    vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
-                    vn,
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[:, i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -521,7 +532,8 @@ function get_and_set_val!(
         for i in 1:n
             vn = vns[i]
             if istrans(vi)
-                push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
+                ri_linked = _link_broadcast_new(vi, vn, dist, r[:, i])
+                push!!(vi, vn, ri_linked, dist, spl)
                 # `push!!` sets the trans-flag to `false` by default.
                 settrans!!(vi, true, vn)
             else
@@ -548,17 +560,13 @@ function get_and_set_val!(
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                setindex!!(
-                    vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            # r = reshape(vi[vec(vns)], size(vns))
-            # FIXME: Remove `reconstruct` in `getindex_raw(::VarInfo, ...)`
-            # and fix the lines below.
-            r_raw = getindex_raw(vi, vec(vns))
-            r = maybe_invlink_and_reconstruct.((vi,), vns, dists, reshape(r_raw, size(vns)))
+            rs = _maybe_invlink_broadcast.((vi,), vns, dists)
+            r = reshape(rs, size(vns))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
@@ -569,10 +577,10 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, reconstruct_and_link.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             # FIXME: This is not great.
-            acclogp_assume!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
+            acclogp_assume!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
@@ -602,8 +610,7 @@ function set_val!(
 )
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
-        dist = dists isa AbstractArray ? dists[ind] : dists
-        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
+        setindex!!(vi, tovec(val[ind]), vns[ind])
     end
     return val
 end
