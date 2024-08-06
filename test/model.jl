@@ -417,16 +417,18 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
     @testset "Product distribution with changing support" begin
         @model function product_dirichlet()
-            x ~ product_distribution(fill(Dirichlet(4), 2, 3))
+            x ~ product_distribution(fill(Dirichlet(ones(4)), 2, 3))
         end
         model = product_dirichlet()
 
         varinfos = [
             DynamicPPL.untyped_varinfo(model),
-            DynamicPPL.typed_varinfo(model)
+            DynamicPPL.typed_varinfo(model),
+            DynamicPPL.typed_simple_varinfo(model),
+            DynamicPPL.untyped_simple_varinfo(model),
         ]
-        @testset "$(varinfo)" for varinfo in varinfos
-            varinfo_linked = DynamicPPL.link(model, varinfo)
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            varinfo_linked = DynamicPPL.link(varinfo, model)
             varinfo_linked_result = last(DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext()))
             @test getlogp(varinfo_linked) == getlogp(varinfo_linked_result)
         end

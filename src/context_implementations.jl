@@ -602,7 +602,6 @@ function set_val!(
 )
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
-        dist = dists isa AbstractArray ? dists[ind] : dists
         setindex!!(vi, tovec(val[ind]), vns[ind])
     end
     return val

@@ -248,6 +248,16 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
+function untyped_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo(OrderedDict())
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
+function typed_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo{Float64}()
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)

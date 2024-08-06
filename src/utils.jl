@@ -304,7 +304,7 @@ end
 function from_linked_vec_transform(dist::LKJCholesky)
     return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
 end
-from_linked_vec_transform(dist::LKJ) = inverse(Bijectors.VecCorrBijector())
+from_linked_vec_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
 
 """
     to_vec_transform(x)
