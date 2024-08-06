@@ -315,7 +315,9 @@ function dot_tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
-function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, left, vns, vi
+)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
