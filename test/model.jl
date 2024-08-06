@@ -414,4 +414,21 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         # confused and call it the way you are meant to call `a_model`.
         @test_throws MethodError instance(1.0)
     end
+
+    @testset "Product distribution with changing support" begin
+        @model function product_dirichlet()
+            x ~ product_distribution(fill(Dirichlet(4), 2, 3))
+        end
+        model = product_dirichlet()
+
+        varinfos = [
+            DynamicPPL.untyped_varinfo(model),
+            DynamicPPL.typed_varinfo(model)
+        ]
+        @testset "$(varinfo)" for varinfo in varinfos
+            varinfo_linked = DynamicPPL.link(model, varinfo)
+            varinfo_linked_result = last(DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext()))
+            @test getlogp(varinfo_linked) == getlogp(varinfo_linked_result)
+        end
+    end
 end

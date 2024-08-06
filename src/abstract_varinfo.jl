@@ -743,16 +743,6 @@ function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::Abstrac
     return unflatten(varinfo, sampler, θ)
 end
 
-# # NOTE: Necessary to handle product distributions of `Dirichlet` and similar.
-# function with_logabsdet_jacobian_and_reconstruct(
-#     f::Bijectors.Inverse{<:Bijectors.SimplexBijector}, dist, y
-# )
-#     (d, ns...) = size(dist)
-#     yreshaped = reshape(y, d - 1, ns...)
-#     x, logjac = with_logabsdet_jacobian(f, yreshaped)
-#     return x, logjac
-# end
-
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 

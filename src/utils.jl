@@ -275,6 +275,16 @@ from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
 
 """
+    from_vec_transform(f, size::Tuple)
+
+Return the transformation from the vector representation of a realization of size `size` to original representation.
+
+This is useful when the transformation alters the size of the realization, in which case we need to account for the
+size of the realization after pushed through the transformation.
+"""
+from_vec_transform(f, sz) = from_vec_transform_for_size(Bijectors.output_size(f, sz))
+
+"""
     from_linked_vec_transform(dist::Distribution)
 
 Return the transformation from the unconstrained vector to the constrained
@@ -285,8 +295,8 @@ By default, this is just `invlink_transform(dist) ∘ from_vec_transform(dist)`.
 See also: [`DynamicPPL.invlink_transform`](@ref), [`DynamicPPL.from_vec_transform`](@ref).
 """
 function from_linked_vec_transform(dist::Distribution)
-    f_vec = from_vec_transform(dist)
     f_invlink = invlink_transform(dist)
+    f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
 end
 
