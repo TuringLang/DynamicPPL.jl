@@ -66,10 +66,14 @@ end
 function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(::IsLeaf, rng::Random.AbstractRNG, context::AbstractContext, sampler, right, vn, vi)
+function tilde_assume(
+    ::IsLeaf, rng::Random.AbstractRNG, context::AbstractContext, sampler, right, vn, vi
+)
     return assume(rng, sampler, right, vn, vi)
 end
-function tilde_assume(::IsParent, rng::Random.AbstractRNG, context::AbstractContext, args...)
+function tilde_assume(
+    ::IsParent, rng::Random.AbstractRNG, context::AbstractContext, args...
+)
     return tilde_assume(rng, childcontext(context), args...)
 end
 
@@ -121,7 +125,9 @@ end
 function tilde_assume(context::PrefixContext, right, vn, vi)
     return tilde_assume(context.context, right, prefix(context, vn), vi)
 end
-function tilde_assume(rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi)
+function tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
+)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
