@@ -119,7 +119,6 @@ function extract_priors(rng::Random.AbstractRNG, model::Model)
 end
 
 """
-
     extract_priors(model::Model, varinfo::AbstractVarInfo)
 
 Extract the priors from a model.
