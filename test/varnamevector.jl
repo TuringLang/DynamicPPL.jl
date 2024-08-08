@@ -421,6 +421,20 @@ end
             end
         end
     end
+
+    @testset "subset" begin
+        vnv = VarNameVector(test_pairs)
+        @test subset(vnv, test_vns) == vnv
+        @test subset(vnv, VarName[]) == VarNameVector()
+        @test merge(subset(vnv, test_vns[1:3]), subset(vnv, test_vns[4:end])) == vnv
+
+        vn = @varname(t[1])
+        vns = vcat(test_vns, [vn])
+        push!(vnv, vn, 2.0, x->x^2)
+        vnv.is_transformed[vnv.varname_to_index[vn]] = true
+        # TODO(mhauru) Should this be fixed? Currently this fails.
+        @test_broken subset(vnv, vns) == vnv
+    end
 end
 
 @testset "VarInfo + VarNameVector" begin

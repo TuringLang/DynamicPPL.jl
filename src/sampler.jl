@@ -142,35 +142,54 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
+function set_values!!(
+    varinfo::AbstractVarInfo,
+    initial_params::AbstractVector{<:Union{Real,Missing}},
+    spl::AbstractSampler,
+)
+    flattened_param_vals = varinfo[spl]
+    length(flattened_param_vals) == length(initial_params) || throw(
+        DimensionMismatch(
+            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(theta)))",
+        ),
+    )
+
+    # Update values that are provided.
+    for i in eachindex(initial_params)
+        x = initial_params[i]
+        if x !== missing
+            flattened_param_vals[i] = x
+        end
+    end
+
+    # Update in `varinfo`.
+    return setindex!!(varinfo, flattened_param_vals, spl)
+end
+
+function set_values!!(
+    varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
+)
+    initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
+    return update_values!!(
+        varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
+    )
+end
+
 function initialize_parameters!!(
-    vi::AbstractVarInfo, initial_params, spl::Sampler, model::Model
+    vi::AbstractVarInfo, initial_params, spl::AbstractSampler, model::Model
 )
     @debug "Using passed-in initial variable values" initial_params
 
-    # Flatten parameters.
-    init_theta = mapreduce(vcat, initial_params) do x
-        vec([x;])
-    end
-
-    # Get all values.
+    # `link` the varinfo if needed.
     linked = islinked(vi, spl)
     if linked
         vi = invlink!!(vi, spl, model)
     end
-    theta = vi[spl]
-    length(theta) == length(init_theta) ||
-        error("Provided initial value doesn't match the dimension of the model")
 
-    # Update values that are provided.
-    for i in 1:length(init_theta)
-        x = init_theta[i]
-        if x !== missing
-            theta[i] = x
-        end
-    end
+    # Set the values in `vi`.
+    vi = set_values!!(vi, initial_params, spl)
 
-    # Update in `vi`.
-    vi = setindex!!(vi, theta, spl)
+    # `invlink` if needed.
     if linked
         vi = link!!(vi, spl, model)
     end

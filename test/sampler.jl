@@ -84,23 +84,25 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            chain = sample(model, sampler, 1; initial_params=0.2, progress=false)
-            @test chain[1].metadata.p.vals == [0.2]
-            @test getlogp(chain[1]) == lptrue
+            let inits = (; p=0.2)
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+                @test chain[1].metadata.p.vals == [0.2]
+                @test getlogp(chain[1]) == lptrue
 
-            # parallel sampling
-            chains = sample(
-                model,
-                sampler,
-                MCMCThreads(),
-                1,
-                10;
-                initial_params=fill(0.2, 10),
-                progress=false,
-            )
-            for c in chains
-                @test c[1].metadata.p.vals == [0.2]
-                @test getlogp(c[1]) == lptrue
+                # parallel sampling
+                chains = sample(
+                    model,
+                    sampler,
+                    MCMCThreads(),
+                    1,
+                    10;
+                    initial_params=fill(inits, 10),
+                    progress=false,
+                )
+                for c in chains
+                    @test c[1].metadata.p.vals == [0.2]
+                    @test getlogp(c[1]) == lptrue
+                end
             end
 
             # model with two variables: initialization s = 4, m = -1
@@ -110,45 +112,49 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            chain = sample(model, sampler, 1; initial_params=[4, -1], progress=false)
-            @test chain[1].metadata.s.vals == [4]
-            @test chain[1].metadata.m.vals == [-1]
-            @test getlogp(chain[1]) == lptrue
+            for inits in ([4, -1], (; s=4, m=-1))
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+                @test chain[1].metadata.s.vals == [4]
+                @test chain[1].metadata.m.vals == [-1]
+                @test getlogp(chain[1]) == lptrue
 
-            # parallel sampling
-            chains = sample(
-                model,
-                sampler,
-                MCMCThreads(),
-                1,
-                10;
-                initial_params=fill([4, -1], 10),
-                progress=false,
-            )
-            for c in chains
-                @test c[1].metadata.s.vals == [4]
-                @test c[1].metadata.m.vals == [-1]
-                @test getlogp(c[1]) == lptrue
+                # parallel sampling
+                chains = sample(
+                    model,
+                    sampler,
+                    MCMCThreads(),
+                    1,
+                    10;
+                    initial_params=fill(inits, 10),
+                    progress=false,
+                )
+                for c in chains
+                    @test c[1].metadata.s.vals == [4]
+                    @test c[1].metadata.m.vals == [-1]
+                    @test getlogp(c[1]) == lptrue
+                end
             end
 
             # set only m = -1
-            chain = sample(model, sampler, 1; initial_params=[missing, -1], progress=false)
-            @test !ismissing(chain[1].metadata.s.vals[1])
-            @test chain[1].metadata.m.vals == [-1]
+            for inits in ([missing, -1], (; s=missing, m=-1), (; m=-1))
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+                @test !ismissing(chain[1].metadata.s.vals[1])
+                @test chain[1].metadata.m.vals == [-1]
 
-            # parallel sampling
-            chains = sample(
-                model,
-                sampler,
-                MCMCThreads(),
-                1,
-                10;
-                initial_params=fill([missing, -1], 10),
-                progress=false,
-            )
-            for c in chains
-                @test !ismissing(c[1].metadata.s.vals[1])
-                @test c[1].metadata.m.vals == [-1]
+                # parallel sampling
+                chains = sample(
+                    model,
+                    sampler,
+                    MCMCThreads(),
+                    1,
+                    10;
+                    initial_params=fill(inits, 10),
+                    progress=false,
+                )
+                for c in chains
+                    @test !ismissing(c[1].metadata.s.vals[1])
+                    @test c[1].metadata.m.vals == [-1]
+                end
             end
 
             # specify `initial_params=nothing`

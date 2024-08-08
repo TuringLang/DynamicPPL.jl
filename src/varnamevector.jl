@@ -9,27 +9,41 @@ $(FIELDS)
 struct VarNameVector{
     K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
 }
-    "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
+    """
+    mapping from the `VarName` to its integer index in `varnames`, `ranges` and `transforms`
+    """
     varname_to_index::OrderedDict{K,Int}
 
-    "vector of identifiers for the random variables, where `varnames[varname_to_index[vn]] == vn`"
+    """
+    vector of identifiers for the random variables, where
+    `varnames[varname_to_index[vn]] == vn`
+    """
     varnames::TVN # AbstractVector{<:VarName}
 
-    "vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
+    """
+    vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has
+    a single index or a set of contiguous indices in `vals`
+    """
     ranges::Vector{UnitRange{Int}}
 
-    "vector of values of all variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
+    """
+    vector of values of all variables; the value(s) of `vn` is/are
+    `vals[ranges[varname_to_index[vn]]]`
+    """
     vals::TVal # AbstractVector{<:Real}
 
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
 
+    # TODO(mhauru) When do we actually need this? Could this be handled by having
+    # `identity` in transforms?
     "specifies whether a variable is transformed or not "
     is_transformed::BitVector
 
     "additional entries which are considered inactive"
     num_inactive::OrderedDict{Int,Int}
 
+    # TODO(mhauru) What does this field do?
     "metadata associated with the varnames"
     metadata::MData
 end
@@ -146,7 +160,7 @@ julia> ForwardDiff.gradient(f, [1.0])
  2.0
 ```
 """
-replace_values(vnv::VarNameVector, vals) = Setfield.@set vnv.vals = vals
+replace_values(vnv::VarNameVector, vals) = Accessors.@set vnv.vals = vals
 
 # Some `VarNameVector` specific functions.
 getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
@@ -386,6 +400,11 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     return VarNameVector(varnames_to_index, vns_both, ranges, vals, transforms)
 end
 
+"""
+    subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
+
+Return a new `VarNameVector` containing the values from `vnv` for variables in `vns`.
+"""
 function subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
     # NOTE: This does not specialize types when possible.
     vnv_new = similar(vnv)
@@ -403,7 +422,7 @@ end
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
 function Base.similar(vnv::VarNameVector)
-    # NOTE: Whether or not we should empty the underlying containers or note
+    # NOTE: Whether or not we should empty the underlying containers or not
     # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
     # result in an empty `AbstractDict`, while the vectors, e.g. `vnv.ranges`,
     # will result in non-empty vectors but with entries as `undef`. But it's
@@ -431,10 +450,16 @@ This is equivalent to negating [`has_inactive(vnv)`](@ref).
 """
 is_contiguous(vnv::VarNameVector) = !has_inactive(vnv)
 
+"""
+    nextrange(vnv::VarNameVector, x)
+
+Return the range of `length(x)` from the end of current data in `vnv`.
+"""
 function nextrange(vnv::VarNameVector, x)
     # If `vnv` is empty, return immediately.
     isempty(vnv) && return 1:length(x)
 
+    # TODO(mhauru) How is offset different from length(vnv.vals)?
     # The offset will be the last range's end + its number of inactive entries.
     vn_last = vnv.varnames[end]
     idx = getidx(vnv, vn_last)
@@ -443,7 +468,14 @@ function nextrange(vnv::VarNameVector, x)
     return (offset + 1):(offset + length(x))
 end
 
-# `push!` and `push!!`: add a variable to the varname vector.
+"""
+    push!(vnv::VarNameVector, vn::VarName, val[, transform])
+
+Add a variable with given value to `vnv`.
+
+By default `transform` is the one that converts the value to a vector, which is how it is
+stored in `vnv`.
+"""
 function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
@@ -486,9 +518,12 @@ end
 """
     update!(vnv::VarNameVector, vn::VarName, val[, transform])
 
-Either add a new entry or update existing entry for  `vn` in `vnv` with the value `val`.
+Either add a new entry or update existing entry for `vn` in `vnv` with the value `val`.
 
 If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
+
+By default `transform` is the one that converts the value to a vector, which is how it is
+stored in `vnv`.
 """
 function update!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     if !haskey(vnv, vn)
@@ -623,8 +658,8 @@ end
 """
     group_by_symbol(vnv::VarNameVector)
 
-Return a dictionary mapping symbols to `VarNameVector`s with
-varnames containing that symbol.
+Return a dictionary mapping symbols to `VarNameVector`s with varnames containing that
+symbol.
 """
 function group_by_symbol(vnv::VarNameVector)
     # Group varnames in `vnv` by the symbol.
@@ -632,17 +667,8 @@ function group_by_symbol(vnv::VarNameVector)
     for vn in vnv.varnames
         push!(get!(d, getsym(vn), Vector{VarName}()), vn)
     end
-
-    # Create a `NamedTuple` from the grouped varnames.
-    nt_vals = map(values(d)) do varnames
-        # TODO: Do we need to specialize the inputs here?
-        VarNameVector(
-            map(identity, varnames),
-            map(Base.Fix1(getindex, vnv), varnames),
-            map(Base.Fix1(gettransform, vnv), varnames),
-        )
-    end
-
+    # Create an `OrderedDict` from the grouped varnames.
+    nt_vals = map(Base.Fix1(subset, vnv), values(d))
     return OrderedDict(zip(keys(d), nt_vals))
 end
 

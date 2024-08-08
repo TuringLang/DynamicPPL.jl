@@ -1,4 +1,4 @@
-using Test, DynamicPPL, Setfield
+using Test, DynamicPPL, Accessors
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -55,7 +55,7 @@ Return `vn` but now with the prefix removed.
 """
 function remove_prefix(vn::VarName)
     return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(
-        getlens(vn)
+        getoptic(vn)
     )
 end
 
@@ -169,7 +169,7 @@ end
                     # Let's check elementwise.
                     for vn_child in
                         DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                        if get(val, getlens(vn_child)) === missing
+                        if getoptic(vn_child)(val) === missing
                             @test contextual_isassumption(context, vn_child)
                         else
                             @test !contextual_isassumption(context, vn_child)
@@ -206,7 +206,7 @@ end
                         @test hasconditioned_nested(context, vn_child)
                         # Value should be the same as extracted above.
                         @test getconditioned_nested(context, vn_child) ===
-                            get(val, getlens(vn_child))
+                            getoptic(vn_child)(val)
                     end
                 end
             end
@@ -233,12 +233,12 @@ end
         vn = VarName{:x}()
         vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
         @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getlens(vn_prefixed) === getlens(vn)
+        @test getoptic(vn_prefixed) === getoptic(vn)
 
         vn = VarName{:x}(((1,),))
         vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
         @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getlens(vn_prefixed) === getlens(vn)
+        @test getoptic(vn_prefixed) === getoptic(vn)
     end
 
     @testset "SamplingContext" begin

@@ -252,7 +252,7 @@ julia> values_as(SimpleVarInfo(data), NamedTuple)
 (x = 1.0, m = [2.0])
 
 julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Any} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
   x => 1.0
   m => [2.0]
 
@@ -302,7 +302,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -328,7 +328,7 @@ julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, Setfield.IdentityLens} where sym, Float64} with 2 entries:
+OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -416,7 +416,7 @@ julia> # Extract one with only `m`.
 
 
 julia> keys(varinfo_subset1)
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
+1-element Vector{VarName{:m, typeof(identity)}}:
  m
 
 julia> varinfo_subset1[@varname(m)]

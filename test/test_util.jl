@@ -89,6 +89,7 @@ function short_varinfo_name(vi::TypedVarInfo)
     return "TypedVarInfo"
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::VectorVarInfo) = "VectorVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
 
