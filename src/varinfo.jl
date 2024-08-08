@@ -154,7 +154,7 @@ end
 
 Returns `true` if `varinfo` uses `VarNameVector` as metadata.
 """
-has_varnamevector(vi) = false
+has_varnamevector(vi::AbstractVarInfo) = false
 function has_varnamevector(vi::VarInfo)
     return vi.metadata isa VarNameVector ||
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNameVector), values(vi.metadata)))
