@@ -35,12 +35,15 @@ struct VarNameVector{
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
 
+    # TODO(mhauru) When do we actually need this? Could this be handled by having
+    # `identity` in transforms?
     "specifies whether a variable is transformed or not "
     is_transformed::BitVector
 
     "additional entries which are considered inactive"
     num_inactive::OrderedDict{Int,Int}
 
+    # TODO(mhauru) What does this field do?
     "metadata associated with the varnames"
     metadata::MData
 end
@@ -456,6 +459,7 @@ function nextrange(vnv::VarNameVector, x)
     # If `vnv` is empty, return immediately.
     isempty(vnv) && return 1:length(x)
 
+    # TODO(mhauru) How is offset different from length(vnv.vals)?
     # The offset will be the last range's end + its number of inactive entries.
     vn_last = vnv.varnames[end]
     idx = getidx(vnv, vn_last)

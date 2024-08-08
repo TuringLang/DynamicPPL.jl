@@ -684,6 +684,9 @@ function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
 
     return metadata
 end
+
+# TODO(mhauru) Isn't this infinite recursion? Shouldn't rather change the `transforms`
+# field?
 function settrans!!(vnv::VarNameVector, trans::Bool, vn::VarName)
     settrans!(vnv, trans, vn)
     return vnv
@@ -1339,7 +1342,7 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         yvec = tovec(y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
-        # Mark as no longer transformed.
+        # Mark as transformed.
         settrans!!(varinfo, true, vn)
         # Return the vectorized transformed value.
         return yvec
@@ -1385,13 +1388,12 @@ function _link_metadata!(
         end
 
         # Otherwise, we derive the transformation from the distribution.
+        # TODO(mhauru) Could move the mutation outside of the map, just for style.
         is_transformed[getidx(metadata, vn)] = true
         internal_to_linked_internal_transform(varinfo, vn, dists[vn])
     end
     # Compute the transformed values.
     ys = map(vns, link_transforms) do vn, f
-        # TODO: Do we need to handle scenarios where `vn` is not in `dists`?
-        dist = dists[vn]
         x = getindex_internal(metadata, vn)
         y, logjac = with_logabsdet_jacobian(f, x)
         # Accumulate the log-abs-det jacobian correction.
