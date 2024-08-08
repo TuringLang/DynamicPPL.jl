@@ -14,7 +14,7 @@ function LogDensityProblemsAD.ADgradient(
     return LogDensityProblemsAD.ADgradient(
         Val(:ReverseDiff),
         ℓ;
-        compile=Val(Tcompile)
+        compile=Val(Tcompile),
         # `getparams` can return `Vector{Real}`, in which case, `ReverseDiff` will initialize the gradients to Integer 0
         # because at https://github.com/JuliaDiff/ReverseDiff.jl/blob/c982cde5494fc166965a9d04691f390d9e3073fd/src/tracked.jl#L473
         # `zero(D)` will return 0 when D is Real.
