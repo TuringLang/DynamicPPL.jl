@@ -663,17 +663,8 @@ function group_by_symbol(vnv::VarNameVector)
     for vn in vnv.varnames
         push!(get!(d, getsym(vn), Vector{VarName}()), vn)
     end
-
-    # Create a `NamedTuple` from the grouped varnames.
-    nt_vals = map(values(d)) do varnames
-        # TODO: Do we need to specialize the inputs here?
-        VarNameVector(
-            map(identity, varnames),
-            map(Base.Fix1(getindex, vnv), varnames),
-            map(Base.Fix1(gettransform, vnv), varnames),
-        )
-    end
-
+    # Create an `OrderedDict` from the grouped varnames.
+    nt_vals = map(Base.Fix1(subset, vnv), values(d))
     return OrderedDict(zip(keys(d), nt_vals))
 end
 
