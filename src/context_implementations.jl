@@ -79,7 +79,7 @@ end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, vectorize(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
@@ -88,7 +88,7 @@ function tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, vectorize(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
@@ -96,7 +96,7 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, vectorize(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
@@ -110,7 +110,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, vectorize(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -242,7 +242,7 @@ function assume(
             unset_flag!(vi, vn, "del")
             r = init(rng, dist, sampler)
             BangBang.setindex!!(
-                vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r)), vn
+                vi, vectorize(maybe_reconstruct_and_link(vi, vn, dist, r)), vn
             )
             setorder!(vi, vn, get_num_produce(vi))
         else
@@ -508,7 +508,7 @@ function get_and_set_val!(
                 vn = vns[i]
                 setindex!!(
                     vi,
-                    vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
+                    vectorize(maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
                     vn,
                 )
                 setorder!(vi, vn, get_num_produce(vi))
@@ -549,7 +549,7 @@ function get_and_set_val!(
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
                 setindex!!(
-                    vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
+                    vi, vectorize(maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
                 )
                 setorder!(vi, vn, get_num_produce(vi))
             end
@@ -603,7 +603,7 @@ function set_val!(
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
         dist = dists isa AbstractArray ? dists[ind] : dists
-        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
+        setindex!!(vi, vectorize(val[ind]), vns[ind])
     end
     return val
 end

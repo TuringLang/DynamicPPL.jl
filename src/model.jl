@@ -1,15 +1,17 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstactContext}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
+        context::Ctx
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, and missing
-arguments `missings`.
+types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
+arguments `missings`, and evaluation context of type `Ctx`.
 
 Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
+`context` is by default `DefaultContext()`.
 
 An argument with a type of `Missing` will be in `missings` by default. However, in
 non-traditional use-cases `missings` can be defined differently. All variables in `missings`
