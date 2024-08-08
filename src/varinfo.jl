@@ -300,6 +300,14 @@ function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
 
+function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
+    syms = Tuple(unique(map(getsym, vns)))
+    metadatas = map(syms) do sym
+        subset(getfield(varinfo.metadata, sym), filter(==(sym) ∘ getsym, vns))
+    end
+    return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
+end
+
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
     # If all the variables are using the same symbol, then we can just extract that field from the metadata.
     metadata = subset(getfield(varinfo.metadata, sym), vns)
@@ -856,6 +864,14 @@ end
 # VarInfo
 
 VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+
+function TypedVarInfo(vi::VectorVarInfo)
+    new_metas = group_by_symbol(vi.metadata)
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple(new_metas)
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
 
 """
     TypedVarInfo(vi::UntypedVarInfo)
