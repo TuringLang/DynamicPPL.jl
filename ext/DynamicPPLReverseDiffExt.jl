@@ -10,7 +10,7 @@ end
 
 function LogDensityProblemsAD.ADgradient(
     ad::ADTypes.AutoReverseDiff{Tcompile}, ℓ::DynamicPPL.LogDensityFunction
-) where Tcompile
+) where {Tcompile}
     return LogDensityProblemsAD.ADgradient(
         Val(:ReverseDiff),
         ℓ;
