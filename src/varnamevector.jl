@@ -9,16 +9,27 @@ $(FIELDS)
 struct VarNameVector{
     K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
 }
-    "mapping from the `VarName` to its integer index in `varnames`, `ranges` and `dists`"
+    """
+    mapping from the `VarName` to its integer index in `varnames`, `ranges` and `transforms`
+    """
     varname_to_index::OrderedDict{K,Int}
 
-    "vector of identifiers for the random variables, where `varnames[varname_to_index[vn]] == vn`"
+    """
+    vector of identifiers for the random variables, where
+    `varnames[varname_to_index[vn]] == vn`
+    """
     varnames::TVN # AbstractVector{<:VarName}
 
-    "vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has a single index or a set of contiguous indices in `vals`"
+    """
+    vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has
+    a single index or a set of contiguous indices in `vals`
+    """
     ranges::Vector{UnitRange{Int}}
 
-    "vector of values of all variables; the value(s) of `vn` is/are `vals[ranges[varname_to_index[vn]]]`"
+    """
+    vector of values of all variables; the value(s) of `vn` is/are
+    `vals[ranges[varname_to_index[vn]]]`
+    """
     vals::TVal # AbstractVector{<:Real}
 
     "vector of transformations whose inverse takes us back to the original space"
@@ -386,6 +397,11 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
     return VarNameVector(varnames_to_index, vns_both, ranges, vals, transforms)
 end
 
+"""
+    subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
+
+Return a new `VarNameVector` containing the values from `vnv` for variables in `vns`.
+"""
 function subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
     # NOTE: This does not specialize types when possible.
     vnv_new = similar(vnv)
@@ -403,7 +419,7 @@ end
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
 function Base.similar(vnv::VarNameVector)
-    # NOTE: Whether or not we should empty the underlying containers or note
+    # NOTE: Whether or not we should empty the underlying containers or not
     # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
     # result in an empty `AbstractDict`, while the vectors, e.g. `vnv.ranges`,
     # will result in non-empty vectors but with entries as `undef`. But it's
@@ -431,6 +447,11 @@ This is equivalent to negating [`has_inactive(vnv)`](@ref).
 """
 is_contiguous(vnv::VarNameVector) = !has_inactive(vnv)
 
+"""
+    nextrange(vnv::VarNameVector, x)
+
+Return the range of `length(x)` from the end of current data in `vnv`.
+"""
 function nextrange(vnv::VarNameVector, x)
     # If `vnv` is empty, return immediately.
     isempty(vnv) && return 1:length(x)
@@ -443,7 +464,14 @@ function nextrange(vnv::VarNameVector, x)
     return (offset + 1):(offset + length(x))
 end
 
-# `push!` and `push!!`: add a variable to the varname vector.
+"""
+    push!(vnv::VarNameVector, vn::VarName, val[, transform])
+
+Add a variable with given value to `vnv`.
+
+By default `transform` is the one that converts the value to a vector, which is how it is
+stored in `vnv`.
+"""
 function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
@@ -486,9 +514,12 @@ end
 """
     update!(vnv::VarNameVector, vn::VarName, val[, transform])
 
-Either add a new entry or update existing entry for  `vn` in `vnv` with the value `val`.
+Either add a new entry or update existing entry for `vn` in `vnv` with the value `val`.
 
 If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
+
+By default `transform` is the one that converts the value to a vector, which is how it is
+stored in `vnv`.
 """
 function update!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
     if !haskey(vnv, vn)
@@ -623,8 +654,8 @@ end
 """
     group_by_symbol(vnv::VarNameVector)
 
-Return a dictionary mapping symbols to `VarNameVector`s with
-varnames containing that symbol.
+Return a dictionary mapping symbols to `VarNameVector`s with varnames containing that
+symbol.
 """
 function group_by_symbol(vnv::VarNameVector)
     # Group varnames in `vnv` by the symbol.
