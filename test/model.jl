@@ -243,6 +243,11 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test length(test_defaults(missing, 2)()) == 2
     end
 
+    @testset "missing kwarg" begin
+        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
+        @test :x in keys(rand(test_missing_kwarg()))
+    end
+
     @testset "extract priors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             priors = extract_priors(model)
@@ -351,13 +356,11 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     if VERSION >= v"1.8"
         @testset "Type stability of models" begin
             models_to_test = [
-                # FIXME: Fix issues with type-stability in `DEMO_MODELS`.
-                # DynamicPPL.TestUtils.DEMO_MODELS...,
-                DynamicPPL.TestUtils.demo_lkjchol(2),
+                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
-                example_values = DynamicPPL.TestUtils.rand(model)
+                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
                 varinfos = filter(
                     is_typed_varinfo,
                     DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
@@ -377,6 +380,59 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                     )
                 end
             end
+        end
+    end
+
+    @testset "values_as_in_model" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                realizations = values_as_in_model(model, varinfo)
+                # Ensure that all variables are found.
+                vns_found = collect(keys(realizations))
+                @test vns ∩ vns_found == vns ∪ vns_found
+                # Ensure that the values are the same.
+                for vn in vns
+                    @test realizations[vn] == varinfo[vn]
+                end
+            end
+        end
+    end
+
+    @testset "Erroneous model call" begin
+        # Calling a model with the wrong arguments used to lead to infinite recursion, see
+        # https://github.com/TuringLang/Turing.jl/issues/2182. This guards against it.
+        @model function a_model(x)
+            m ~ Normal(0, 1)
+            x ~ Normal(m, 1)
+            return nothing
+        end
+        instance = a_model(1.0)
+        # `instance` should be called with rng, context, etc., but one may easily get
+        # confused and call it the way you are meant to call `a_model`.
+        @test_throws MethodError instance(1.0)
+    end
+
+    @testset "Product distribution with changing support" begin
+        @model function product_dirichlet()
+            return x ~ product_distribution(fill(Dirichlet(ones(4)), 2, 3))
+        end
+        model = product_dirichlet()
+
+        varinfos = [
+            DynamicPPL.untyped_varinfo(model),
+            DynamicPPL.typed_varinfo(model),
+            DynamicPPL.typed_simple_varinfo(model),
+            DynamicPPL.untyped_simple_varinfo(model),
+        ]
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            varinfo_linked = DynamicPPL.link(varinfo, model)
+            varinfo_linked_result = last(
+                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())
+            )
+            @test getlogp(varinfo_linked) == getlogp(varinfo_linked_result)
         end
     end
 end

@@ -143,6 +143,12 @@ Sometimes it can be useful to extract the priors of a model. This is the possibl
 extract_priors
 ```
 
+Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are seen in the model can be done using [`values_as_in_model`](@ref).
+
+```@docs
+values_as_in_model
+```
+
 ```@docs
 NamedDist
 ```
@@ -185,6 +191,21 @@ DynamicPPL.TestUtils.posterior_mean
 DynamicPPL.TestUtils.setup_varinfos
 DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
+```
+
+## Debugging Utilities
+
+DynamicPPL provides a few methods for checking validity of a model-definition.
+
+```@docs
+check_model
+check_model_and_trace
+```
+
+And some which might be useful to determine certain properties of the model based on the debug trace.
+
+```@docs
+DynamicPPL.has_static_constraints
 ```
 
 ## Advanced
