@@ -157,7 +157,7 @@ julia> ForwardDiff.gradient(f, [1.0])
  2.0
 ```
 """
-replace_values(vnv::VarNameVector, vals) = Setfield.@set vnv.vals = vals
+replace_values(vnv::VarNameVector, vals) = Accessors.@set vnv.vals = vals
 
 # Some `VarNameVector` specific functions.
 getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
