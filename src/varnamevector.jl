@@ -397,7 +397,9 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
         offset += n
     end
 
-    return VarNameVector(varnames_to_index, vns_both, ranges, vals, transforms)
+    return VarNameVector(
+        varnames_to_index, vns_both, ranges, vals, transforms, is_transformed
+    )
 end
 
 """
@@ -405,8 +407,11 @@ end
 
 Return a new `VarNameVector` containing the values from `vnv` for variables in `vns`.
 """
-function subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
+function subset(vnv::VarNameVector, vns_given::AbstractVector{VN}) where VN<:VarName
     # NOTE: This does not specialize types when possible.
+    vns = mapreduce(vcat, vns_given; init=VN[]) do vn
+        filter(Base.Fix1(subsumes, vn), vnv.varnames)
+    end
     vnv_new = similar(vnv)
     # Return early if possible.
     isempty(vnv) && return vnv_new

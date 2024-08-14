@@ -301,11 +301,8 @@ function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
 end
 
 function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
-    syms = Tuple(unique(map(getsym, vns)))
-    metadatas = map(syms) do sym
-        subset(getfield(varinfo.metadata, sym), filter(==(sym) ∘ getsym, vns))
-    end
-    return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
+    metadata = subset(varinfo.metadata, vns)
+    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
 
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
@@ -771,7 +768,7 @@ end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
-@inline function findinds(f_meta, s, ::Val{space}) where {space}
+@inline function findinds(f_meta::Metadata, s, ::Val{space}) where {space}
     # Get all the idcs of the vns in `space` and that belong to the selector `s`
     return filter(
         (i) ->
@@ -780,7 +777,7 @@ end
         1:length(f_meta.gids),
     )
 end
-@inline function findinds(f_meta)
+@inline function findinds(f_meta::Metadata)
     # Get all the idcs of the vns
     return filter((i) -> isempty(f_meta.gids[i]), 1:length(f_meta.gids))
 end
@@ -2252,6 +2249,9 @@ function values_as(
     iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
     return ConstructionBase.constructorof(D)(iter)
 end
+
+values_as(vi::VectorVarInfo, args...) = values_as(vi.metadata, args...)
+values_as(vi::VectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
 
 function values_from_metadata(md::Metadata)
     return (

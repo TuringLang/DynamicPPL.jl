@@ -642,6 +642,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
+            varinfo_right = DynamicPPL.settrans!!(varinfo_right, true, @varname(x))
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
@@ -649,7 +650,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
             # Right has precedence.
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
-            @test DynamicPPL.getdist(varinfo_merged, @varname(x)) isa Normal
+            @test DynamicPPL.istrans(varinfo_merged, @varname(x))
         end
     end
 
