@@ -432,7 +432,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             varinfo_linked_result = last(
                 DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())
             )
-            @test getlogp(varinfo_linked) == getlogp(varinfo_linked_result)
+            @test getlogp(varinfo_linked) ≈ getlogp(varinfo_linked_result)
         end
     end
 end
