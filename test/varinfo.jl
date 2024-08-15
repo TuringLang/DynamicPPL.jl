@@ -19,7 +19,7 @@ struct MySAlg end
 DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
 @testset "varinfo.jl" begin
-    @testset "TypedVarInfo" begin
+    @testset "TypedVarInfo with Metadata" begin
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2, 3)
             m ~ truncated(Normal(0.0, sqrt(s)), 0.0, 2.0)
@@ -28,7 +28,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         end
         model = gdemo(1.0, 2.0)
 
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         model(vi, SampleFromUniform())
         tvi = TypedVarInfo(vi)
 
@@ -51,6 +51,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             end
         end
     end
+
     @testset "Base" begin
         # Test Base functions:
         #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
@@ -141,12 +142,12 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             unset_flag!(vi, vn_x, "del")
             @test !is_flagged(vi, vn_x, "del")
         end
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         test_varinfo!(vi)
         test_varinfo!(empty!!(TypedVarInfo(vi)))
     end
     @testset "setgid!" begin
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         meta = vi.metadata
         vn = @varname x
         dist = Normal(0, 1)
@@ -196,8 +197,16 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
             s_vns = @varname(s)
 
-            vi_typed = VarInfo(model)
-            vi_untyped = VarInfo()
+            # TODO(mhauru) Should add similar tests for VarNameVector. These ones only apply
+            # to Metadata.
+            vi_typed = VarInfo(
+                Random.default_rng(),
+                model,
+                SampleFromPrior(),
+                DefaultContext(),
+                DynamicPPL.Metadata,
+            )
+            vi_untyped = VarInfo(DynamicPPL.Metadata())
             model(vi_untyped, SampleFromPrior())
 
             for vi in [vi_untyped, vi_typed]
@@ -656,7 +665,13 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
     @testset "VarInfo with selectors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = VarInfo(model)
+            varinfo = VarInfo(
+                Random.default_rng(),
+                model,
+                DynamicPPL.SampleFromPrior(),
+                DynamicPPL.DefaultContext(),
+                DynamicPPL.Metadata,
+            )
             selector = DynamicPPL.Selector()
             spl = Sampler(MySAlg(), model, selector)
 

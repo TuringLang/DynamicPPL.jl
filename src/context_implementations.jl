@@ -234,7 +234,10 @@ function assume(
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
-            unset_flag!(vi, vn, "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # that's okay.
+            unset_flag!(vi, vn, "del", true)
             r = init(rng, dist, sampler)
             f = to_maybe_linked_internal_transform(vi, vn, dist)
             BangBang.setindex!!(vi, f(r), vn)
@@ -508,7 +511,10 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # that's okay.
+            unset_flag!(vi, vns[1], "del", true)
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
@@ -546,7 +552,10 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # that's okay.
+            unset_flag!(vi, vns[1], "del", true)
             f = (vn, dist) -> init(rng, dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)

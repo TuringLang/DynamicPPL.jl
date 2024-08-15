@@ -107,7 +107,7 @@ function VarNameVector(
     varname_to_index = OrderedDict{eltype(varnames),Int}()
     ranges = Vector{UnitRange{Int}}()
     offset = 0
-    for (i, (vn, x)) in enumerate(zip(varnames, vals_vecs))
+    for (vn, x) in zip(varnames, vals_vecs)
         # Add the varname index.
         push!(varname_to_index, vn => length(varname_to_index) + 1)
         # Add the range.
@@ -161,6 +161,8 @@ julia> ForwardDiff.gradient(f, [1.0])
 ```
 """
 replace_values(vnv::VarNameVector, vals) = Accessors.@set vnv.vals = vals
+# TODO(mhauru) Metadata uses the space argument. Do we need to do anything with it?
+replace_values(vnv::VarNameVector, space, vals) = replace_values(vnv, vals)
 
 # Some `VarNameVector` specific functions.
 getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]

@@ -170,8 +170,9 @@ function untyped_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
+    metadata_type::Type=VarNameVector,
 )
-    varinfo = VarInfo()
+    varinfo = VarInfo(metadata_type())
     return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
 end
 function untyped_varinfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
@@ -190,8 +191,9 @@ function VarInfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
+    metadata_type::Type=VarNameVector,
 )
-    return typed_varinfo(rng, model, sampler, context)
+    return typed_varinfo(rng, model, sampler, context, metadata_type)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
@@ -579,7 +581,9 @@ Return the distribution from which `vn` was sampled in `vi`.
 getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
 # HACK: we shouldn't need this
-getdist(::VarNameVector, ::VarName) = nothing
+function getdist(::VarNameVector, ::VarName)
+    throw(ErrorException("getdist does not exist for VarNameVector"))
+end
 
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
 # TODO(mhauru) torfjelde had previously left a comment that there might be a type stability
@@ -857,6 +861,16 @@ function set_flag!(md::Metadata, vn::VarName, flag::String)
     return md.flags[flag][getidx(md, vn)] = true
 end
 
+function set_flag!(vnv::VarNameVector, ::VarName, flag::String)
+    if flag == "del"
+        # The "del" flag is effectively always set for a VarNameVector, so this is a no-op.
+    else
+        throw(ErrorException("Flag $flag not valid for VarNameVector"))
+    end
+    return vnv
+end
+
+
 ####
 #### APIs for typed and untyped VarInfo
 ####
@@ -983,8 +997,14 @@ end
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
-    return push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
+setgid!(vi::VarInfo, gid::Selector, vn::VarName) = setgid!(getmetadata(vi, vn), gid, vn)
+
+function setgid!(m::Metadata, gid::Selector, vn::VarName)
+    return push!(m.gids[getidx(m, vn)], gid)
+end
+
+function setgid!(vnv::VarNameVector, gid::Selector, vn::VarName)
+    throw(ErrorException("Calling setgid! on a VarNameVector isn't valid."))
 end
 
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
@@ -1031,14 +1051,12 @@ and parameters sampled in `vi` to 0.
 """
 reset_num_produce!(vi::VarInfo) = set_num_produce!(vi, 0)
 
-isempty(vi::UntypedVarInfo) = isempty(vi.metadata.idcs)
-isempty(vi::TypedVarInfo) = _isempty(vi.metadata)
+# Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
+isempty(vi::VarInfo) = _isempty(vi.metadata)
+_isempty(metadata::Metadata) = isempty(metadata.idcs)
+_isempty(vnv::VarNameVector) = isempty(vnv)
 @generated function _isempty(metadata::NamedTuple{names}) where {names}
-    expr = Expr(:&&, :true)
-    for f in names
-        push!(expr.args, :(isempty(metadata.$f.idcs)))
-    end
-    return expr
+    return Expr(:&&, (:(isempty(metadata.$f)) for f in names)...)
 end
 
 # X -> R for all variables associated with given sampler
@@ -1088,9 +1106,7 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     if ~istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(
-                vi, vn, dist, internal_to_linked_internal_transform(vi, vn, dist)
-            )
+            _inner_transform!(vi, vn, dist)
             settrans!!(vi, true, vn)
         end
     else
@@ -1118,12 +1134,7 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(
-                                vi,
-                                vn,
-                                dist,
-                                internal_to_linked_internal_transform(vi, vn, dist),
-                            )
+                            _inner_transform!(vi, vn, dist)
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -1194,9 +1205,7 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     if istrans(vi, vns[1])
         for vn in vns
             dist = getdist(vi, vn)
-            _inner_transform!(
-                vi, vn, dist, linked_internal_to_internal_transform(vi, vn, dist)
-            )
+            _inner_transform!( vi, vn, dist)
             settrans!!(vi, false, vn)
         end
     else
@@ -1224,12 +1233,7 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             dist = getdist(vi, vn)
-                            _inner_transform!(
-                                vi,
-                                vn,
-                                dist,
-                                linked_internal_to_internal_transform(vi, vn, dist),
-                            )
+                            _inner_transform!(vi, vn, dist)
                             settrans!!(vi, false, vn)
                         end
                     else
@@ -1242,11 +1246,13 @@ end
     return expr
 end
 
-function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
-    return _inner_transform!(getmetadata(vi, vn), vi, vn, dist, f)
+function _inner_transform!(vi::VarInfo, vn::VarName, f)
+    # TODO(mhauru) Does this code ever get called? It seems like most callers set f to be a
+    # distribution, but _inner_transform! seems to treat it like a transformation.
+    return _inner_transform!(getmetadata(vi, vn), vi, vn, f)
 end
 
-function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, dist, f)
+function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     # TODO: Use inplace versions to avoid allocations
     yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn))
     # Determine the new range.
@@ -1284,7 +1290,7 @@ function link(
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
-function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
+function _link(model::Model, varinfo::Union{UntypedVarInfo, VectorVarInfo}, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
         _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
@@ -1626,8 +1632,7 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     i === nothing && return nothing
 
     vn_parent = vns[i]
-    dist = getdist(md, vn_parent)
-    val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
+    val_parent = getindex(vi, vn_parent)  # TODO: Ensure that we're working with a view here.
     # Split the varname into its tail optic.
     optic = remove_parent_optic(vn_parent, vn)
     # Update the value for the parent.
@@ -1638,30 +1643,47 @@ end
 
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
-getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
+function getindex(vi::VarInfo, vn::VarName)
+    return from_maybe_linked_internal_transform(vi, vn)(getindex_internal(vi, vn))
+end
+
 function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getindex_internal(vi, vn)
     return from_maybe_linked_internal(vi, vn, dist, val)
 end
-# HACK: Allows us to also work with `VarNameVector` where `dist` is not used,
-# but we instead use a transformation stored with the variable.
-function getindex(vi::VarInfo, vn::VarName, ::Nothing)
-    if !haskey(vi, vn)
-        throw(KeyError(vn))
-    end
-    return getmetadata(vi, vn)[vn]
-end
 
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
-    vals_linked = mapreduce(vcat, vns) do vn
-        getindex(vi, vn)
+    vals = map(vn -> getindex(vi, vn), vns)
+
+    et = eltype(vals)
+    # This will catch type unstable cases, where vals has mixed types.
+    if !isconcretetype(et)
+        throw(ArgumentError("All variables must have the same type."))
     end
-    # HACK: I don't like this.
-    dist = getdist(vi, vns[1])
-    return recombine(dist, vals_linked, length(vns))
+    
+    if et <: Vector
+        all_of_equal_dimension = all(x -> length(x) == length(vals[1]), vals)
+        if !all_of_equal_dimension
+            throw(ArgumentError("All variables must have the same dimension."))
+        end
+    end
+
+    # TODO(mhauru) I'm not very pleased with the return type varying like this, even though
+    # this should be type stable.
+    vec_vals = reduce(vcat, vals)
+    if et <: Vector
+        # The individual variables are multivariate, and thus we return the values as a
+        # matrix.
+        return reshape(vec_vals, (:, length(vns)))
+    else
+        # The individual variables are univariate, and thus we return a vector of scalars.
+        return vec_vals
+    end
 end
+
 function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    # TODO(mhauru) Does this ever get called?
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
@@ -1889,23 +1911,42 @@ end
 function is_flagged(metadata::Metadata, vn::VarName, flag::String)
     return metadata.flags[flag][getidx(metadata, vn)]
 end
-# HACK: This is bad. Should we always return `true` here?
-is_flagged(::VarNameVector, ::VarName, flag::String) = flag == "del" ? true : false
+function is_flagged(::VarNameVector, ::VarName, flag::String)
+    if flag == "del"
+        return true
+    else
+        throw(ErrorException("Flag $flag not valid for VarNameVector"))
+    end
+end
 
 """
-    unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+    unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false
 
 Set `vn`'s value for `flag` to `false` in `vi`.
+
+If `ignorable` is `false`, as it is by default, then this will error if setting the flag is
+not possible.
 """
-function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    unset_flag!(getmetadata(vi, vn), vn, flag)
+function unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false)
+    unset_flag!(getmetadata(vi, vn), vn, flag, ignorable)
     return vi
 end
-function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
+function unset_flag!(metadata::Metadata, vn::VarName, flag::String, ignorable::Bool=false)
     metadata.flags[flag][getidx(metadata, vn)] = false
     return metadata
 end
-unset_flag!(vnv::VarNameVector, ::VarName, ::String) = vnv
+
+function unset_flag!(vnv::VarNameVector, ::VarName, flag::String, ignorable::Bool=false)
+    if ignorable
+        return vnv
+    end
+    if flag == "del"
+        throw(ErrorException("The \"del\" flag cannot be unset for VarNameVector"))
+    else
+        throw(ErrorException("Flag $flag not valid for VarNameVector"))
+    end
+    return vnv
+end
 
 """
     set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)
@@ -2011,7 +2052,7 @@ end
 ) where {names}
     updates = map(names) do n
         quote
-            for vn in metadata.$n.vns
+            for vn in Base.keys(metadata.$n)
                 indices_found = kernel!(vi, vn, values, keys_strings)
                 if indices_found !== nothing
                     num_indices_seen += length(indices_found)
