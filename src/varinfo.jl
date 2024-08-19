@@ -1619,9 +1619,9 @@ function nested_setindex_maybe!(
         nothing
     end
 end
-function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
+function _nested_setindex_maybe!(vi::VarInfo, md::Union{Metadata,VarNameVector}, val, vn::VarName)
     # If `vn` is in `vns`, then we can just use the standard `setindex!`.
-    vns = md.vns
+    vns = Base.keys(md)
     if vn in vns
         setindex!(vi, val, vn)
         return vn

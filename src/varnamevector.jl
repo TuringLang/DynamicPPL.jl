@@ -669,14 +669,9 @@ Return a dictionary mapping symbols to `VarNameVector`s with varnames containing
 symbol.
 """
 function group_by_symbol(vnv::VarNameVector)
-    # Group varnames in `vnv` by the symbol.
-    d = OrderedDict{Symbol,Vector{VarName}}()
-    for vn in vnv.varnames
-        push!(get!(d, getsym(vn), Vector{VarName}()), vn)
-    end
-    # Create an `OrderedDict` from the grouped varnames.
-    nt_vals = map(Base.Fix1(subset, vnv), values(d))
-    return OrderedDict(zip(keys(d), nt_vals))
+    symbols = unique(map(getsym, vnv.varnames))
+    nt_vals = map(s -> subset(vnv, [VarName(s)]), symbols)
+    return OrderedDict(zip(symbols, nt_vals))
 end
 
 """
