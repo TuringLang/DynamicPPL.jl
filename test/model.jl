@@ -324,7 +324,6 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         chain = MCMCChains.Chains(
             permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
         )
-        display(chain)
 
         # Test!
         results = generated_quantities(model, chain)
@@ -345,7 +344,6 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             vcat(syms, [:y]);
             info=(varname_to_symbol=vns_to_syms_with_extra,),
         )
-        display(chain_with_extra)
         # Test!
         results = generated_quantities(model, chain_with_extra)
         for (x_true, result) in zip(xs, results)

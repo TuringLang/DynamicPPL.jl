@@ -1261,11 +1261,22 @@ julia> generated_quantities(model, chain)
 ```
 """
 function generated_quantities(model::Model, chain::AbstractChains)
-    varinfo = VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    vns = varnames(chain)
+    vi = VarInfo(model)
     return map(iters) do (sample_idx, chain_idx)
-        setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
-        model(varinfo)
+        varname_dict = Dict(
+            # The call nested_setindex_maybe! is used to handle cases where vn is not
+            # the variable name used in the model, but rather subsumed by one. Except
+            # for the subsumption part, this could be
+            # vn => getindex_varname(chain, sample_idx, vn, chain_idx)
+            # TODO(mhauru) This call to nested_setindex_maybe! is unintuitive.
+            vn => nested_setindex_maybe!(
+                vi, getindex_varname(chain, sample_idx, vn, chain_idx), vn
+            )[vn] for vn in vns
+        )
+        m = fix(model, varname_dict)
+        return m()
     end
 end
 
