@@ -200,7 +200,6 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             # TODO(mhauru) Should add similar tests for VarNameVector. These ones only apply
             # to Metadata.
             vi_typed = VarInfo(
-                Random.default_rng(),
                 model,
                 SampleFromPrior(),
                 DefaultContext(),
@@ -666,7 +665,6 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     @testset "VarInfo with selectors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             varinfo = VarInfo(
-                Random.default_rng(),
                 model,
                 DynamicPPL.SampleFromPrior(),
                 DynamicPPL.DefaultContext(),

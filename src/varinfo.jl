@@ -1105,8 +1105,8 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
-            _inner_transform!(vi, vn, dist)
+            f = internal_to_linked_internal_transform(vi, vn)
+            _inner_transform!(vi, vn, f)
             settrans!!(vi, true, vn)
         end
     else
@@ -1133,8 +1133,8 @@ end
                     if ~istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist)
+                            f = internal_to_linked_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -1204,8 +1204,8 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
-            _inner_transform!( vi, vn, dist)
+            f = linked_internal_to_internal_transform(vi, vn)
+            _inner_transform!(vi, vn, f)
             settrans!!(vi, false, vn)
         end
     else
@@ -1232,8 +1232,8 @@ end
                     if istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            dist = getdist(vi, vn)
-                            _inner_transform!(vi, vn, dist)
+                            f = linked_internal_to_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
                             settrans!!(vi, false, vn)
                         end
                     else
@@ -1247,8 +1247,6 @@ end
 end
 
 function _inner_transform!(vi::VarInfo, vn::VarName, f)
-    # TODO(mhauru) Does this code ever get called? It seems like most callers set f to be a
-    # distribution, but _inner_transform! seems to treat it like a transformation.
     return _inner_transform!(getmetadata(vi, vn), vi, vn, f)
 end
 

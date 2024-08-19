@@ -200,10 +200,15 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
-    @testset "Dynamic constraints" begin
+    @testset "Dynamic constraints, Metadata" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        vi = VarInfo(model)
         spl = SampleFromPrior()
+        vi = VarInfo(
+            model,
+            spl,
+            DefaultContext(),
+            DynamicPPL.Metadata,
+        )
         link!!(vi, spl, model)
 
         for i in 1:10
@@ -212,6 +217,18 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             vi[spl] = r_raw
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
+            model(vi)
+        end
+    end
+
+    @testset "Dynamic constraints, VectorVarInfo" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        vi = VarInfo(model)
+        vi = link!!(vi, model)
+
+        for i in 1:10
+            # Sample with large variations.
+            vi[@varname(m)] = randn() * 10
             model(vi)
         end
     end
