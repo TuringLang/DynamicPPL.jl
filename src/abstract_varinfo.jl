@@ -295,7 +295,7 @@ julia> # Just use an example model to construct the `VarInfo` because we're lazy
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
 julia> # For the sake of brevity, let's just check the type.
-       md = values_as(vi); md.s isa DynamicPPL.Metadata
+       md = values_as(vi); md.s isa Union{DynamicPPL.Metadata, DynamicPPL.VarNameVector}
 true
 
 julia> values_as(vi, NamedTuple)
@@ -321,7 +321,7 @@ julia> # Just use an example model to construct the `VarInfo` because we're lazy
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
 julia> # For the sake of brevity, let's just check the type.
-       values_as(vi) isa DynamicPPL.Metadata
+       values_as(vi) isa Union{DynamicPPL.Metadata, Vector}
 true
 
 julia> values_as(vi, NamedTuple)

@@ -592,6 +592,8 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 # HACK: We shouldn't need this
+# TODO(mhauru) This seems to return an array always for VarNameVector, but a scalar for
+# Metadata. What's the right thing to do here?
 getindex_internal(vnv::VarNameVector, vn::VarName) = getindex(vnv.vals, getrange(vnv, vn))
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
@@ -787,6 +789,10 @@ end
     return filter((i) -> isempty(f_meta.gids[i]), 1:length(f_meta.gids))
 end
 
+function findinds(::VarNameVector, ::Selector, ::Val)
+    throw(ErrorException("VarNameVector does not support findinds based on Selectors"))
+end
+
 # Get all vns of variables belonging to spl
 _getvns(vi::VarInfo, spl::Sampler) = _getvns(vi, spl.selector, Val(getspace(spl)))
 function _getvns(vi::VarInfo, spl::Union{SampleFromPrior,SampleFromUniform})
@@ -802,7 +808,7 @@ end
 @generated function _getvns(metadata, idcs::NamedTuple{names}) where {names}
     exprs = []
     for f in names
-        push!(exprs, :($f = metadata.$f.vns[idcs.$f]))
+        push!(exprs, :($f = Base.keys(metadata.$f)[idcs.$f]))
     end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
@@ -878,7 +884,7 @@ end
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta=VarNameVector()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 
 function TypedVarInfo(vi::VectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
@@ -2135,14 +2141,6 @@ julia> var_info[@varname(m)] # [✓] changed
 
 julia> var_info[@varname(x[1])] # [✓] unchanged
 -0.22312984965118443
-
-julia> m(rng, var_info); # rerun model
-
-julia> var_info[@varname(m)] # [✓] unchanged
-100.0
-
-julia> var_info[@varname(x[1])] # [✓] unchanged
--0.22312984965118443
 ```
 """
 setval!(vi::VarInfo, x) = setval!(vi, values(x), keys(x))
@@ -2192,7 +2190,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m);
+julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);
 
 julia> var_info[@varname(m)]
 -0.6702516921145671

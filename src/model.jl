@@ -1307,7 +1307,7 @@ demo (generic function with 2 methods)
 
 julia> model = demo(randn(10));
 
-julia> parameters = (; s = 1.0, m_shifted=10);
+julia> parameters = (; s = 1.0, m_shifted=10.0);
 
 julia> generated_quantities(model, parameters)
 (0.0,)
@@ -1317,13 +1317,10 @@ julia> generated_quantities(model, values(parameters), keys(parameters))
 ```
 """
 function generated_quantities(model::Model, parameters::NamedTuple)
-    varinfo = VarInfo(model)
-    setval_and_resample!(varinfo, values(parameters), keys(parameters))
-    return model(varinfo)
+    fixed_model = fix(model, parameters)
+    return fixed_model()
 end
 
 function generated_quantities(model::Model, values, keys)
-    varinfo = VarInfo(model)
-    setval_and_resample!(varinfo, values, keys)
-    return model(varinfo)
+    return generated_quantities(model, NamedTuple{keys}(values))
 end
