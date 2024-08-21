@@ -973,6 +973,8 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractCo
     return model.f(args...; kwargs...)
 end
 
+is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
+
 """
     make_evaluate_args_and_kwargs(model, varinfo, context)
 

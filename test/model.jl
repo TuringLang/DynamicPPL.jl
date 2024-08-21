@@ -353,28 +353,32 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         end
     end
 
-    @testset "Type stability of models" begin
-        models_to_test = [
-            DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
-        ]
-        @testset "$(model.f)" for model in models_to_test
-            vns = DynamicPPL.TestUtils.varnames(model)
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = filter(
-                is_typed_varinfo,
-                DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
-            )
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                @test (@inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
-                true)
-
-                varinfo_linked = DynamicPPL.link(varinfo, model)
-                @test (
-                    @inferred(
-                        DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
-                    );
-                    true
+    if VERSION >= v"1.8"
+        @testset "Type stability of models" begin
+            models_to_test = [
+                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
+            ]
+            @testset "$(model.f)" for model in models_to_test
+                vns = DynamicPPL.TestUtils.varnames(model)
+                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+                varinfos = filter(
+                    is_typed_varinfo,
+                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
                 )
+                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                    @test (
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                        true
+                    )
+
+                    varinfo_linked = DynamicPPL.link(varinfo, model)
+                    @test (
+                        @inferred(
+                            DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
+                        );
+                        true
+                    )
+                end
             end
         end
     end
@@ -409,5 +413,26 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         # `instance` should be called with rng, context, etc., but one may easily get
         # confused and call it the way you are meant to call `a_model`.
         @test_throws MethodError instance(1.0)
+    end
+
+    @testset "Product distribution with changing support" begin
+        @model function product_dirichlet()
+            return x ~ product_distribution(fill(Dirichlet(ones(4)), 2, 3))
+        end
+        model = product_dirichlet()
+
+        varinfos = [
+            DynamicPPL.untyped_varinfo(model),
+            DynamicPPL.typed_varinfo(model),
+            DynamicPPL.typed_simple_varinfo(model),
+            DynamicPPL.untyped_simple_varinfo(model),
+        ]
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            varinfo_linked = DynamicPPL.link(varinfo, model)
+            varinfo_linked_result = last(
+                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())
+            )
+            @test getlogp(varinfo_linked) ≈ getlogp(varinfo_linked_result)
+        end
     end
 end

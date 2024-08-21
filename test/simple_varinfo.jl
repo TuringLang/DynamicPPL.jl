@@ -100,7 +100,8 @@
 
             # Should result in same values.
             @test all(
-                DynamicPPL.getindex_raw(vi_invlinked, vn) ≈ get(values_constrained, vn) for
+                DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_invlinked, vn)) ≈
+                DynamicPPL.tovec(get(values_constrained, vn)) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             )
         end
@@ -251,8 +252,11 @@
                 model, deepcopy(vi_linked), DefaultContext()
             )
 
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≠ retval.s  # `s` is unconstrained in original
-            @test DynamicPPL.getindex_raw(vi_linked_result, @varname(s)) == retval.s  # `s` is constrained in result
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≠
+                DynamicPPL.tovec(retval.s)  # `s` is unconstrained in original
+            @test DynamicPPL.tovec(
+                DynamicPPL.getindex_internal(vi_linked_result, @varname(s))
+            ) == DynamicPPL.tovec(retval.s)  # `s` is constrained in result
 
             # `m` should not be transformed.
             @test vi_linked[@varname(m)] == retval.m
@@ -263,9 +267,10 @@
                 model, retval.s, retval.m
             )
 
-            # Realizations in `vi_linked` should all be equal to the unconstrained realization.
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≈ retval_unconstrained.s
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(m)) ≈ retval_unconstrained.m
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≈
+                DynamicPPL.tovec(retval_unconstrained.s)
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(m))) ≈
+                DynamicPPL.tovec(retval_unconstrained.m)
 
             # The resulting varinfo should hold the correct logp.
             lp = getlogp(vi_linked_result)

@@ -18,9 +18,9 @@ using DynamicPPL: varname_leaves, update_values!!
 
 Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
 """
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; isequal=isequal, kwargs...)
+function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...)
     for vn in vns
-        @test isequal(vi[vn], get(vals, vn); kwargs...)
+        @test compare(vi[vn], get(vals, vn); kwargs...)
     end
 end
 

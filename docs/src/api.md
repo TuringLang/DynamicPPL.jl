@@ -218,80 +218,15 @@ Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/A
 
 ### Data Structures of Variables
 
-DynamicPPL provides different data structures for samples from the model and their log density.
-All of them are subtypes of [`AbstractVarInfo`](@ref).
+DynamicPPL provides different data structures used in for storing samples and accumulation of the log-probabilities, all of which are subtypes of [`AbstractVarInfo`](@ref).
 
 ```@docs
 AbstractVarInfo
 ```
 
-### Common API
-
-#### Accumulation of log-probabilities
-
-```@docs
-getlogp
-setlogp!!
-acclogp!!
-resetlogp!!
-```
-
-#### Variables and their realizations
-
-```@docs
-keys
-getindex
-DynamicPPL.getindex_raw
-push!!
-empty!!
-isempty
-```
-
-```@docs
-values_as
-```
-
-#### Transformations
-
-```@docs
-DynamicPPL.AbstractTransformation
-DynamicPPL.NoTransformation
-DynamicPPL.DynamicTransformation
-DynamicPPL.StaticTransformation
-```
-
-```@docs
-DynamicPPL.istrans
-DynamicPPL.settrans!!
-DynamicPPL.transformation
-DynamicPPL.link
-DynamicPPL.invlink
-DynamicPPL.link!!
-DynamicPPL.invlink!!
-DynamicPPL.default_transformation
-DynamicPPL.maybe_invlink_before_eval!!
-DynamicPPL.reconstruct
-```
-
-#### Utils
-
-```@docs
-Base.merge(::AbstractVarInfo)
-DynamicPPL.subset
-DynamicPPL.unflatten
-DynamicPPL.varname_leaves
-DynamicPPL.varname_and_value_leaves
-```
-
-#### `SimpleVarInfo`
-
-```@docs
-SimpleVarInfo
-```
+But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
 #### `VarInfo`
-
-Another data structure is [`VarInfo`](@ref).
 
 ```@docs
 VarInfo
@@ -331,6 +266,71 @@ set_retained_vns_del_by_spl!
 
 ```@docs
 Base.empty!
+```
+
+#### `SimpleVarInfo`
+
+```@docs
+SimpleVarInfo
+```
+
+### Common API
+
+#### Accumulation of log-probabilities
+
+```@docs
+getlogp
+setlogp!!
+acclogp!!
+resetlogp!!
+```
+
+#### Variables and their realizations
+
+```@docs
+keys
+getindex
+DynamicPPL.getindex_internal
+push!!
+empty!!
+isempty
+```
+
+```@docs
+values_as
+```
+
+#### Transformations
+
+```@docs
+DynamicPPL.AbstractTransformation
+DynamicPPL.NoTransformation
+DynamicPPL.DynamicTransformation
+DynamicPPL.StaticTransformation
+```
+
+```@docs
+DynamicPPL.istrans
+DynamicPPL.settrans!!
+DynamicPPL.transformation
+DynamicPPL.link
+DynamicPPL.invlink
+DynamicPPL.link!!
+DynamicPPL.invlink!!
+DynamicPPL.default_transformation
+DynamicPPL.link_transform
+DynamicPPL.invlink_transform
+DynamicPPL.maybe_invlink_before_eval!!
+```
+
+#### Utils
+
+```@docs
+Base.merge(::AbstractVarInfo)
+DynamicPPL.subset
+DynamicPPL.unflatten
+DynamicPPL.varname_leaves
+DynamicPPL.varname_and_value_leaves
 ```
 
 ### Evaluation Contexts

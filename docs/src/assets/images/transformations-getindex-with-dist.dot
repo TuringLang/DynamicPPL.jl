@@ -1,0 +1,20 @@
+digraph {  
+  # `getindex` block
+  subgraph cluster_getindex {
+    label = "getindex";
+    fontname = "Courier";
+
+    getindex [shape=box, label=< x = getindex(varinfo, <FONT COLOR="#3B6EA8">@varname</FONT>(x), Normal()) >, fontname="Courier"];
+    iflinked_getindex [label=< <FONT COLOR="#3B6EA8">if</FONT> istrans(varinfo, varname) >, fontname="Courier"];
+    without_linking_getindex [shape=box, label="f = from_internal_transform(varinfo, varname, dist)", fontname="Courier"];
+    with_linking_getindex [shape=box, label="f = from_linked_internal_transform(varinfo, varname, dist)", fontname="Courier"];
+    return_getindex [shape=box, label=< <FONT COLOR="#3B6EA8">return</FONT> f(getindex_internal(varinfo, varname)) >, style=dashed, fontname="Courier"];
+
+    getindex -> iflinked_getindex;
+    iflinked_getindex -> without_linking_getindex [label=<  <FONT COLOR="#97365B">false</FONT>>, fontname="Courier"];
+    iflinked_getindex -> with_linking_getindex [label=<  <FONT COLOR="#97365B">true</FONT>>, fontname="Courier"];
+    without_linking_getindex -> return_getindex;
+    with_linking_getindex -> return_getindex;
+  }
+}
+
