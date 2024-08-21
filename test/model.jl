@@ -372,6 +372,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             models_to_test = [
                 DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
+            context = DefaultContext()
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -381,14 +382,14 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                     @test (
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo, context));
                         true
                     )
 
                     varinfo_linked = DynamicPPL.link(varinfo, model)
                     @test (
                         @inferred(
-                            DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
+                            DynamicPPL.evaluate!!(model, varinfo_linked, context)
                         );
                         true
                     )

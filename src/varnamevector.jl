@@ -83,6 +83,22 @@ function VarNameVector{K,V}() where {K,V}
     return VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
 
+# The various constructor(orig...) calls are to create concrete element types. E.g. if
+# vnv.vals is a Vector{Real} but all elements are Float64s, [vnv.vals...] will be a
+# Vector{Float64}
+function VarNameVector(vnv::VarNameVector)
+    return VarNameVector(
+        OrderedDict(vnv.varname_to_index...),
+        [vnv.varnames...],
+        [vnv.ranges...],
+        [vnv.vals...],
+        [vnv.transforms...],
+        deepcopy(vnv.is_transformed),
+        deepcopy(vnv.num_inactive),
+        deepcopy(vnv.metadata),
+    )
+end
+
 istrans(vnv::VarNameVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
 function settrans!(vnv::VarNameVector, val::Bool, vn::VarName)
     return vnv.is_transformed[vnv.varname_to_index[vn]] = val
@@ -670,7 +686,7 @@ symbol.
 """
 function group_by_symbol(vnv::VarNameVector)
     symbols = unique(map(getsym, vnv.varnames))
-    nt_vals = map(s -> subset(vnv, [VarName(s)]), symbols)
+    nt_vals = map(s -> VarNameVector(subset(vnv, [VarName(s)])), symbols)
     return OrderedDict(zip(symbols, nt_vals))
 end
 
