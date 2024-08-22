@@ -41,7 +41,7 @@ DynamicPPLReverseDiffExt = ["ReverseDiff"]
 DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 
 [compat]
-ADTypes = "0.2, 1"
+ADTypes = "1"
 AbstractMCMC = "5"
 AbstractPPL = "0.8.4"
 Accessors = "0.1"

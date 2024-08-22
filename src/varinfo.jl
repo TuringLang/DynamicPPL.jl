@@ -1924,6 +1924,8 @@ function is_flagged(::VarNameVector, ::VarName, flag::String)
     end
 end
 
+# TODO(mhauru) The "ignorable" argument is a temporary hack while developing VarNameVector,
+# but still having to support the interface based on Metadata too
 """
     unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false
 
