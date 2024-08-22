@@ -877,7 +877,6 @@ function set_flag!(vnv::VarNameVector, ::VarName, flag::String)
     return vnv
 end
 
-
 ####
 #### APIs for typed and untyped VarInfo
 ####
