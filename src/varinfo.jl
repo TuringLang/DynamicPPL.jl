@@ -113,14 +113,8 @@ const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
 # multiple times.
 transformation(vi::VarInfo) = DynamicTransformation()
 
-function VarInfo(old_vi::UntypedVarInfo, spl, x::AbstractVector)
-    new_vi = deepcopy(old_vi)
-    new_vi[spl] = x
-    return new_vi
-end
-
-function VarInfo(old_vi::TypedVarInfo, spl, x::AbstractVector)
-    md = newmetadata(old_vi.metadata, Val(getspace(spl)), x)
+function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
+    md = replace_values(old_vi.metadata, Val(getspace(spl)), x)
     return VarInfo(
         md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
     )
@@ -166,6 +160,11 @@ function has_varnamevector(vi::VarInfo)
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNameVector), values(vi.metadata)))
 end
 
+"""
+    untyped_varinfo([rng, ]model[, sampler, context])
+
+Return an untyped `VarInfo` instance for the model `model`.
+"""
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -175,10 +174,15 @@ function untyped_varinfo(
     varinfo = VarInfo()
     return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
 end
-function untyped_varinfo(model::Model, args...)
+function untyped_varinfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
     return untyped_varinfo(Random.default_rng(), model, args...)
 end
 
+"""
+    typed_varinfo([rng, ]model[, sampler, context])
+
+Return a typed `VarInfo` instance for the model `model`.
+"""
 typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
 
 function VarInfo(
@@ -201,13 +205,22 @@ function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext
     return VarInfo(rng, model, SampleFromPrior(), context)
 end
 
-function replace_values(md::Metadata, vals)
+# TODO: Remove `space` argument when no longer needed. Ref: https://github.com/TuringLang/DynamicPPL.jl/issues/573
+replace_values(metadata::Metadata, space, x) = replace_values(metadata, x)
+function replace_values(metadata::Metadata, x)
     return Metadata(
-        md.idcs, md.vns, md.ranges, vals, md.dists, md.gids, md.orders, md.flags
+        metadata.idcs,
+        metadata.vns,
+        metadata.ranges,
+        x,
+        metadata.dists,
+        metadata.gids,
+        metadata.orders,
+        metadata.flags,
     )
 end
 
-@generated function newmetadata(
+@generated function replace_values(
     metadata::NamedTuple{names}, ::Val{space}, x
 ) where {names,space}
     exprs = []
@@ -302,8 +315,12 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
 end
 
-function subset(metadata::Metadata, vns::AbstractVector{<:VarName})
+function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
+    # For each `vn` in `vns`, get the variables subsumed by `vn`.
+    vns = mapreduce(vcat, vns_given) do vn
+        filter(Base.Fix1(subsumes, vn), metadata.vns)
+    end
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = Dict(vn => i for (i, vn) in enumerate(vns))
     # Construct new `vals` and `ranges`.
@@ -582,7 +599,7 @@ function setval!(md::Metadata, val::AbstractVector, vn::VarName)
     return md.vals[getrange(md, vn)] = val
 end
 function setval!(md::Metadata, val, vn::VarName)
-    return md.vals[getrange(md, vn)] = vectorize(getdist(md, vn), val)
+    return md.vals[getrange(md, vn)] = tovec(val)
 end
 function setval!(vnv::VarNameVector, val, vn::VarName)
     return setindex_raw!(vnv, tovec(val), vn)
@@ -938,6 +955,12 @@ Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
     return expr
 end
 
+# FIXME(torfjelde): Don't use `_getvns`.
+Base.keys(vi::UntypedVarInfo, spl::AbstractSampler) = _getvns(vi, spl)
+function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
+    return mapreduce(values, vcat, _getvns(vi, spl))
+end
+
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 
@@ -1018,7 +1041,7 @@ function link!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
 end
 
 """
@@ -1115,7 +1138,7 @@ function invlink!!(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1241,7 +1264,7 @@ function link(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
 function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
@@ -1296,7 +1319,7 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         f = internal_to_linked_internal_transform(varinfo, vn, dist)
         y, logjac = with_logabsdet_jacobian(f, x)
         # Vectorize value.
-        yvec = vectorize(dist, y)
+        yvec = tovec(y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1400,7 +1423,7 @@ function invlink(
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Setfield.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
 end
 
 function _invlink(model::Model, varinfo::VarInfo, spl::AbstractSampler)
@@ -1456,7 +1479,7 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
         f = from_linked_internal_transform(varinfo, vn, dist)
         x, logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
-        xvec = vectorize(dist, x)
+        xvec = tovec(x)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
@@ -1589,10 +1612,10 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     vn_parent = vns[i]
     dist = getdist(md, vn_parent)
     val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
-    # Split the varname into its tail lens.
-    lens = remove_parent_lens(vn_parent, vn)
+    # Split the varname into its tail optic.
+    optic = remove_parent_optic(vn_parent, vn)
     # Update the value for the parent.
-    val_parent_updated = set!!(val_parent, lens, val)
+    val_parent_updated = set!!(val_parent, optic, val)
     setindex!(vi, val_parent_updated, vn_parent)
     return vn_parent
 end
@@ -1789,7 +1812,7 @@ function BangBang.push!!(
 end
 
 function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
-    val = vectorize(dist, r)
+    val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
     l = length(meta.vals)
@@ -2213,7 +2236,7 @@ end
 
 function values_from_metadata(md::Metadata)
     return (
-        # `copy` to avoid accidentaly mutation of internal representation.
+        # `copy` to avoid accidentally mutation of internal representation.
         vn => copy(
             from_internal_transform(md, vn, getdist(md, vn))(getindex_internal(md, vn))
         ) for vn in md.vns

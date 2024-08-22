@@ -14,7 +14,9 @@ DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=tr
 
 makedocs(;
     sitename="DynamicPPL",
-    format=Documenter.HTML(),
+    # The API index.html page is fairly large, and violates the default HTML page size
+    # threshold of 200KiB, so we double that.
+    format=Documenter.HTML(; size_threshold=2^10 * 400),
     modules=[DynamicPPL],
     pages=[
         "Home" => "index.md",

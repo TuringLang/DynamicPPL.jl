@@ -110,7 +110,8 @@ julia> length(extract_priors(rng, model)[@varname(x)])
 9
 ```
 """
-extract_priors(args...) = extract_priors(Random.default_rng(), args...)
+extract_priors(args::Union{Model,AbstractVarInfo}...) =
+    extract_priors(Random.default_rng(), args...)
 function extract_priors(rng::Random.AbstractRNG, model::Model)
     context = PriorExtractorContext(SamplingContext(rng))
     evaluate!!(model, VarInfo(), context)
@@ -118,7 +119,6 @@ function extract_priors(rng::Random.AbstractRNG, model::Model)
 end
 
 """
-
     extract_priors(model::Model, varinfo::AbstractVarInfo)
 
 Extract the priors from a model.

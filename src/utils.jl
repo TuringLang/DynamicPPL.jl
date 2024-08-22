@@ -163,6 +163,20 @@ function getargs_assignment(expr::Expr)
     end
 end
 
+"""
+    getargs_coloneq(x)
+
+Return the arguments `L` and `R`, if `x` is an expression of the form `L := R`, or `nothing`
+otherwise.
+"""
+getargs_coloneq(x) = nothing
+function getargs_coloneq(expr::Expr)
+    return MacroTools.@match expr begin
+        (L_ := R_) => (L, R)
+        x_ => nothing
+    end
+end
+
 function to_namedtuple_expr(syms)
     length(syms) == 0 && return :(NamedTuple())
 
@@ -212,14 +226,14 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 # Useful transformation going from the flattened representation.
-struct FromVec{Sz} <: Bijectors.Bijector
-    sz::Sz
+struct FromVec{Size} <: Bijectors.Bijector
+    size::Size
 end
 
 FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
 
 # TODO: Should we materialize the `reshape`?
-(f::FromVec)(x) = reshape(x, f.sz)
+(f::FromVec)(x) = reshape(x, f.size)
 (f::FromVec{Tuple{}})(x) = only(x)
 # TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
 
@@ -242,6 +256,11 @@ Return the transformation from the vector representation of `x` to original repr
 from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
 from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
 
+"""
+    from_vec_transform_for_size(sz::Tuple)
+
+Return the transformation from the vector representation of a realization of size `sz` to original representation.
+"""
 from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
 from_vec_transform_for_size(::Tuple{()}) = FromVec(())
 from_vec_transform_for_size(::Tuple{<:Any}) = identity
@@ -256,6 +275,16 @@ from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
 
 """
+    from_vec_transform(f, size::Tuple)
+
+Return the transformation from the vector representation of a realization of size `size` to original representation.
+
+This is useful when the transformation alters the size of the realization, in which case we need to account for the
+size of the realization after pushed through the transformation.
+"""
+from_vec_transform(f, sz) = from_vec_transform_for_size(Bijectors.output_size(f, sz))
+
+"""
     from_linked_vec_transform(dist::Distribution)
 
 Return the transformation from the unconstrained vector to the constrained
@@ -266,8 +295,8 @@ By default, this is just `invlink_transform(dist) ∘ from_vec_transform(dist)`.
 See also: [`DynamicPPL.invlink_transform`](@ref), [`DynamicPPL.from_vec_transform`](@ref).
 """
 function from_linked_vec_transform(dist::Distribution)
-    f_vec = from_vec_transform(dist)
     f_invlink = invlink_transform(dist)
+    f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
 end
 
@@ -275,7 +304,7 @@ end
 function from_linked_vec_transform(dist::LKJCholesky)
     return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
 end
-from_linked_vec_transform(dist::LKJ) = inverse(Bijectors.VecCorrBijector())
+from_linked_vec_transform(::LKJ) = inverse(Bijectors.VecCorrBijector())
 
 """
     to_vec_transform(x)
@@ -301,28 +330,22 @@ tovec(x::Real) = [x]
 tovec(x::AbstractArray) = vec(x)
 tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
-# TODO: Remove these.
-vectorize(d, r) = vectorize(r)
-vectorize(r) = tovec(r)
-
 """
-    recombine(dist::Distribution, vals::AbstractVector, n::Int)
+    recombine(dist::Union{UnivariateDistribution,MultivariateDistribution}, vals::AbstractVector, n::Int)
 
 Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
+
+!!! warning
+    This only supports `UnivariateDistribution` and `MultivariateDistribution`, which are the only two
+    distribution types which are allowed on the right-hand side of a `.~` statement in a model.
 """
-function recombine(d::Distribution, val::AbstractVector, n::Int)
-    return recombine(size(d), val, n)
-end
-function recombine(::Tuple{}, val::AbstractVector, n::Int)
+function recombine(::UnivariateDistribution, val::AbstractVector, ::Int)
+    # This is just a no-op, since we're trying to convert a vector into a vector.
     return copy(val)
 end
-function recombine(s::NTuple{1}, val::AbstractVector, n::Int)
-    return copy(reshape(val, s[1], n))
-end
-function recombine(s::NTuple{2}, val::AbstractVector, n::Int)
-    tmp = reshape(val, s..., n)
-    orig = [tmp[:, :, i] for i in 1:n]
-    return orig
+function recombine(d::MultivariateDistribution, val::AbstractVector, n::Int)
+    # Here `val` is of the length `length(d) * n` and so we need to reshape it.
+    return copy(reshape(val, length(d), n))
 end
 
 # Uniform random numbers with range 4 for robust initializations
@@ -375,7 +398,7 @@ end
 """
     collect_maybe(x)
 
-Return `collect(x)` if `x` is an array, otherwise return `x`.
+Return `x` if `x` is an array, otherwise return `collect(x)`.
 """
 collect_maybe(x) = collect(x)
 collect_maybe(x::AbstractArray) = x
@@ -383,13 +406,15 @@ collect_maybe(x::AbstractArray) = x
 #######################
 # BangBang.jl related #
 #######################
-function set!!(obj, lens::Setfield.Lens, value)
-    lensmut = BangBang.prefermutation(lens)
-    return Setfield.set(obj, lensmut, value)
+function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
+    opticmut = BangBang.prefermutation(optic)
+    return Accessors.set(obj, opticmut, value)
 end
 function set!!(obj, vn::VarName{sym}, value) where {sym}
-    lens = BangBang.prefermutation(Setfield.PropertyLens{sym}() ∘ AbstractPPL.getlens(vn))
-    return Setfield.set(obj, lens, value)
+    optic = BangBang.prefermutation(
+        AbstractPPL.getoptic(vn) ∘ Accessors.PropertyLens{sym}()
+    )
+    return Accessors.set(obj, optic, value)
 end
 
 #############################
@@ -399,39 +424,41 @@ end
 # we're more likely to specialize on the key in these settings rather than the container.
 # TODO: I'm not sure about this name.
 """
-    canview(lens, container)
+    canview(optic, container)
 
-Return `true` if `lens` can be used to view `container`, and `false` otherwise.
+Return `true` if `optic` can be used to view `container`, and `false` otherwise.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: canview)
-julia> canview(@lens(_.a), (a = 1.0, ))
+```jldoctest; setup=:(using Accessors; using DynamicPPL: canview)
+julia> canview(@o(_.a), (a = 1.0, ))
 true
 
-julia> canview(@lens(_.a), (b = 1.0, )) # property `a` does not exist
+julia> canview(@o(_.a), (b = 1.0, )) # property `a` does not exist
 false
 
-julia> canview(@lens(_.a[1]), (a = [1.0, 2.0], ))
+julia> canview(@o(_.a[1]), (a = [1.0, 2.0], ))
 true
 
-julia> canview(@lens(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
+julia> canview(@o(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
 false
 ```
 """
-canview(lens, container) = false
-canview(::Setfield.IdentityLens, _) = true
-function canview(lens::Setfield.PropertyLens{field}, x) where {field}
+canview(optic, container) = false
+canview(::typeof(identity), _) = true
+function canview(optic::Accessors.PropertyLens{field}, x) where {field}
     return hasproperty(x, field)
 end
 
 # `IndexLens`: only relevant if `x` supports indexing.
-canview(lens::Setfield.IndexLens, x) = false
-canview(lens::Setfield.IndexLens, x::AbstractArray) = checkbounds(Bool, x, lens.indices...)
+canview(optic::Accessors.IndexLens, x) = false
+function canview(optic::Accessors.IndexLens, x::AbstractArray)
+    return checkbounds(Bool, x, optic.indices...)
+end
 
-# `ComposedLens`: check that we can view `.outer` and `.inner`, but using
-# value extracted using `.outer`.
-function canview(lens::Setfield.ComposedLens, x)
-    return canview(lens.outer, x) && canview(lens.inner, get(x, lens.outer))
+# `ComposedOptic`: check that we can view `.inner` and `.outer`, but using
+# value extracted using `.inner`.
+function canview(optic::Accessors.ComposedOptic, x)
+    return canview(optic.inner, x) && canview(optic.outer, optic.inner(x))
 end
 
 """
@@ -452,164 +479,127 @@ x
 ```
 """
 function parent(vn::VarName)
-    p = parent(getlens(vn))
-    return p === nothing ? VarName(vn, Setfield.IdentityLens()) : VarName(vn, p)
+    p = parent(getoptic(vn))
+    return p === nothing ? VarName(vn, identity) : VarName(vn, p)
 end
 
 """
-    parent(lens::Setfield.Lens)
+    parent(optic)
 
-Return the parent lens. If `lens` doesn't have a parent,
+Return the parent optic. If `optic` doesn't have a parent,
 `nothing` is returned.
 
 See also: [`parent_and_child`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent)
-julia> parent(@lens(_.a[1]))
-(@lens _.a)
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent)
+julia> parent(@o(_.a[1]))
+(@o _.a)
 
-julia> # Parent of lens without parents results in `nothing`.
-       (parent ∘ parent)(@lens(_.a[1])) === nothing
+julia> # Parent of optic without parents results in `nothing`.
+       (parent ∘ parent)(@o(_.a[1])) === nothing
 true
 ```
 """
-parent(lens::Setfield.Lens) = first(parent_and_child(lens))
+parent(optic::AbstractPPL.ALLOWED_OPTICS) = first(parent_and_child(optic))
 
 """
-    parent_and_child(lens::Setfield.Lens)
+    parent_and_child(optic)
 
-Return a 2-tuple of lenses `(parent, child)` where `parent` is the
-parent lens of `lens` and `child` is the child lens of `lens`.
+Return a 2-tuple of optics `(parent, child)` where `parent` is the
+parent optic of `optic` and `child` is the child optic of `optic`.
 
-If `lens` does not have a parent, we return `(nothing, lens)`.
+If `optic` does not have a parent, we return `(nothing, optic)`.
 
 See also: [`parent`].
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: parent_and_child)
-julia> parent_and_child(@lens(_.a[1]))
-((@lens _.a), (@lens _[1]))
+```jldoctest; setup=:(using Accessors; using DynamicPPL: parent_and_child)
+julia> parent_and_child(@o(_.a[1]))
+((@o _.a), (@o _[1]))
 
-julia> parent_and_child(@lens(_.a))
-(nothing, (@lens _.a))
+julia> parent_and_child(@o(_.a))
+(nothing, (@o _.a))
 ```
 """
-parent_and_child(lens::Setfield.Lens) = (nothing, lens)
-function parent_and_child(lens::Setfield.ComposedLens)
-    p, child = parent_and_child(lens.inner)
-    parent = p === nothing ? lens.outer : lens.outer ∘ p
+parent_and_child(optic::AbstractPPL.ALLOWED_OPTICS) = (nothing, optic)
+function parent_and_child(optic::Accessors.ComposedOptic)
+    p, child = parent_and_child(optic.outer)
+    parent = p === nothing ? optic.inner : p ∘ optic.inner
     return parent, child
 end
 
 """
-    splitlens(condition, lens)
+    splitoptic(condition, optic)
 
 Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a lens such that `condition(parent)` is `true` and `parent ∘ child == lens`.
+`parent` is a optic such that `condition(parent)` is `true` and `child ∘ parent == optic`.
 
 If `issuccess` is `false`, then no such split could be found.
 
 # Examples
-```jldoctest; setup=:(using Setfield; using DynamicPPL: splitlens)
-julia> p, c, issucesss = splitlens(@lens(_.a[1])) do parent
+```jldoctest; setup=:(using Accessors; using DynamicPPL: splitoptic)
+julia> p, c, issucesss = splitoptic(@o(_.a[1])) do parent
            # Succeeds!
-           parent == @lens(_.a)
+           parent == @o(_.a)
        end
-((@lens _.a), (@lens _[1]), true)
+((@o _.a), (@o _[1]), true)
 
-julia> p ∘ c
-(@lens _.a[1])
+julia> c ∘ p
+(@o _.a[1])
 
-julia> splitlens(@lens(_.a[1])) do parent
+julia> splitoptic(@o(_.a[1])) do parent
            # Fails!
-           parent == @lens(_.b)
+           parent == @o(_.b)
        end
-(nothing, (@lens _.a[1]), false)
+(nothing, (@o _.a[1]), false)
 ```
 """
-function splitlens(condition, lens)
-    current_parent, current_child = parent_and_child(lens)
+function splitoptic(condition, optic)
+    current_parent, current_child = parent_and_child(optic)
     # We stop if either a) `condition` is satisfied, or b) we reached the root.
     while !condition(current_parent) && current_parent !== nothing
         current_parent, c = parent_and_child(current_parent)
-        current_child = c ∘ current_child
+        current_child = current_child ∘ c
     end
 
     return current_parent, current_child, condition(current_parent)
 end
 
 """
-    remove_parent_lens(vn_parent::VarName, vn_child::VarName)
+    remove_parent_optic(vn_parent::VarName, vn_child::VarName)
 
-Remove the parent lens `vn_parent` from `vn_child`.
+Remove the parent optic `vn_parent` from `vn_child`.
 
 # Examples
-```jldoctest
-julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a))
-(@lens _.a)
+```jldoctest; setup = :(using Accessors; using DynamicPPL: remove_parent_optic)
+julia> remove_parent_optic(@varname(x), @varname(x.a))
+(@o _.a)
 
-julia> DynamicPPL.remove_parent_lens(@varname(x), @varname(x.a[1]))
-(@lens _.a[1])
+julia> remove_parent_optic(@varname(x), @varname(x.a[1]))
+(@o _.a[1])
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1]))
-(@lens _[1])
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1]))
+(@o _[1])
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a[1].b))
-(@lens _[1].b)
+julia> remove_parent_optic(@varname(x.a), @varname(x.a[1].b))
+(@o _[1].b)
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a), @varname(x.a))
+julia> remove_parent_optic(@varname(x.a), @varname(x.a))
 ERROR: Could not find x.a in x.a
 
-julia> DynamicPPL.remove_parent_lens(@varname(x.a[2]), @varname(x.a[1]))
+julia> remove_parent_optic(@varname(x.a[2]), @varname(x.a[1]))
 ERROR: Could not find x.a[2] in x.a[1]
 ```
 """
-function remove_parent_lens(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
-    _, child, issuccess = splitlens(getlens(vn_child)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        VarName(vn_child, l) == vn_parent
+function remove_parent_optic(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
+    _, child, issuccess = splitoptic(getoptic(vn_child)) do optic
+        o = optic === nothing ? identity : optic
+        VarName(vn_child, o) == vn_parent
     end
 
     issuccess || error("Could not find $vn_parent in $vn_child")
     return child
-end
-
-# HACK: All of these are related to https://github.com/JuliaFolds/BangBang.jl/issues/233
-# and https://github.com/JuliaFolds/BangBang.jl/pull/238, https://github.com/JuliaFolds2/BangBang.jl/pull/16.
-# This avoids type-instability in `dot_assume` for `SimpleVarInfo`.
-# The following code a copy from https://github.com/JuliaFolds2/BangBang.jl/pull/16 authored by torfjelde
-# Default implementation for `_setindex!` with `AbstractArray`.
-# But this will return `false` even in cases such as
-#
-#     setindex!!([1, 2, 3], [4, 5, 6], :)
-#
-# because `promote_type(eltype(C), T) <: eltype(C)` is `false`.
-# To address this, we specialize on the case where `T<:AbstractArray`.
-# In addition, we need to support a wide range of indexing behaviors:
-#
-# We also need to ensure that the dimensionality of the index is
-# valid, i.e. that we're not returning `true` in cases such as
-#
-#     setindex!!([1, 2, 3], [4, 5], 1)
-#
-# which should return `false`.
-_index_dimension(::Any) = 0
-_index_dimension(::Colon) = 1
-_index_dimension(::AbstractVector) = 1
-_index_dimension(indices::Tuple) = sum(map(_index_dimension, indices))
-
-function BangBang.possible(
-    ::typeof(BangBang._setindex!), ::C, ::T, indices::Vararg
-) where {M,C<:AbstractArray{<:Real},T<:AbstractArray{<:Real,M}}
-    return BangBang.implements(setindex!, C) &&
-           promote_type(eltype(C), eltype(T)) <: eltype(C) &&
-           # This will still return `false` for scenarios such as
-           #
-           #     setindex!!([1, 2, 3], [4, 5, 6], :, 1)
-           #
-           # which are in fact valid. However, this cases are rare.
-           (_index_dimension(indices) == M || _index_dimension(indices) == 1)
 end
 
 # HACK(torfjelde): This makes it so it works on iterators, etc. by default.
@@ -785,8 +775,8 @@ false
 """
 function hasvalue(vals::NamedTuple, vn::VarName{sym}) where {sym}
     # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the lens can view into `nt`.
-    return haskey(vals, sym) && canview(getlens(vn), getproperty(vals, sym))
+    # RHS: Ensure that the optic can view into `nt`.
+    return haskey(vals, sym) && canview(getoptic(vn), getproperty(vals, sym))
 end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
@@ -796,20 +786,20 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     haskey(vals, vn) && return true
 
     # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the lens into the key / `parent` and the extraction lens / `child`.
+    # to split the optic into the key / `parent` and the extraction optic / `child`.
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(vals, VarName(vn, l))
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(vals, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # Return early if no such split could be found.
     issuccess || return false
 
     # At this point we just need to check that we `canview` the value.
-    value = vals[VarName(vn, keylens)]
+    value = vals[VarName(vn, keyoptic)]
 
     return canview(child, value)
 end
@@ -826,13 +816,13 @@ function nested_getindex(values::AbstractDict, vn::VarName)
         return maybeval
     end
 
-    # Split the lens into the key / `parent` and the extraction lens / `child`.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(values, VarName(vn, l))
+    # Split the optic into the key / `parent` and the extraction optic / `child`.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(values, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     # If we found a valid split, then we can extract the value.
     if !issuccess
@@ -842,8 +832,20 @@ function nested_getindex(values::AbstractDict, vn::VarName)
 
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
-    value = values[VarName(vn, keylens)]
-    return get(value, child)
+    value = values[VarName(vn, keyoptic)]
+    return child(value)
+end
+
+"""
+    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+
+Return instance similar to `vi` but with `vns` set to values from `vals`.
+"""
+function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
+    for vn in vns
+        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
+    end
+    return vi
 end
 
 """
@@ -947,20 +949,20 @@ x.z[2][1]
 varname_leaves(vn::VarName, ::Real) = [vn]
 function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))) for
+        VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)) for
         I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName(vn, getlens(vn) ∘ Setfield.IndexLens(Tuple(I))), val[I]) for
-        I in CartesianIndices(val)
+        varname_leaves(VarName(vn, Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), val[I])
+        for I in CartesianIndices(val)
     )
 end
 function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = Setfield.PropertyLens{sym}()
-        varname_leaves(vn ∘ lens, get(val, lens))
+        optic = Accessors.PropertyLens{sym}()
+        varname_leaves(VarName(vn, optic ∘ getoptic(vn)), optic(val))
     end
     return Iterators.flatten(iter)
 end
@@ -999,27 +1001,27 @@ julia> x = reshape(1:4, 2, 2);
 
 julia> # `LowerTriangular`
        foreach(println, varname_and_value_leaves(@varname(x), LowerTriangular(x)))
-(x[1,1], 1)
-(x[2,1], 2)
-(x[2,2], 4)
+(x[1, 1], 1)
+(x[2, 1], 2)
+(x[2, 2], 4)
 
 julia> # `UpperTriangular`
        foreach(println, varname_and_value_leaves(@varname(x), UpperTriangular(x)))
-(x[1,1], 1)
-(x[1,2], 3)
-(x[2,2], 4)
+(x[1, 1], 1)
+(x[1, 2], 3)
+(x[2, 2], 4)
 
 julia> # `Cholesky` with lower-triangular
        foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'L', 0)))
-(x.L[1,1], 1.0)
-(x.L[2,1], 0.0)
-(x.L[2,2], 1.0)
+(x.L[1, 1], 1.0)
+(x.L[2, 1], 0.0)
+(x.L[2, 2], 1.0)
 
 julia> # `Cholesky` with upper-triangular
        foreach(println, varname_and_value_leaves(@varname(x), Cholesky([1.0 0.0; 0.0 1.0], 'U', 0)))
-(x.U[1,1], 1.0)
-(x.U[1,2], 0.0)
-(x.U[2,2], 1.0)
+(x.U[1, 1], 1.0)
+(x.U[1, 2], 0.0)
+(x.U[2, 2], 1.0)
 ```
 """
 function varname_and_value_leaves(vn::VarName, x)
@@ -1069,7 +1071,7 @@ function varname_and_value_leaves_inner(
 )
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             val[I],
         ) for I in CartesianIndices(val)
     )
@@ -1078,15 +1080,17 @@ end
 function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             val[I],
         ) for I in CartesianIndices(val)
     )
 end
 function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
-        lens = DynamicPPL.Setfield.PropertyLens{sym}()
-        varname_and_value_leaves_inner(vn ∘ lens, get(val, lens))
+        optic = DynamicPPL.Accessors.PropertyLens{sym}()
+        varname_and_value_leaves_inner(
+            VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val)
+        )
     end
 
     return Iterators.flatten(iter)
@@ -1095,15 +1099,15 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
     # TODO: Or do we use `PDMat` here?
     return if x.uplo == 'L'
-        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:L}(), x.L)
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:L}() ∘ vn, x.L)
     else
-        varname_and_value_leaves_inner(vn ∘ Setfield.PropertyLens{:U}(), x.U)
+        varname_and_value_leaves_inner(Accessors.PropertyLens{:U}() ∘ vn, x.U)
     end
 end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             x[I],
         )
         # Iteration over the lower-triangular indices.
@@ -1113,10 +1117,23 @@ end
 function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
     return (
         Leaf(
-            VarName(vn, DynamicPPL.getlens(vn) ∘ DynamicPPL.Setfield.IndexLens(Tuple(I))),
+            VarName(vn, DynamicPPL.Accessors.IndexLens(Tuple(I)) ∘ DynamicPPL.getoptic(vn)),
             x[I],
         )
         # Iteration over the upper-triangular indices.
         for I in CartesianIndices(x) if I[1] <= I[2]
     )
 end
+
+broadcast_safe(x) = x
+broadcast_safe(x::Distribution) = (x,)
+broadcast_safe(x::AbstractContext) = (x,)
+
+# Version of `merge` used by `conditioned` and `fixed` to handle
+# the scenario where we might try to merge a dict with an empty
+# tuple.
+# TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
+_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
+_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
+_merge(left::AbstractDict, right::NamedTuple{()}) = left
+_merge(left::NamedTuple{()}, right::AbstractDict) = right

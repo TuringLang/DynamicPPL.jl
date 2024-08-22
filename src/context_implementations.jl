@@ -63,19 +63,23 @@ function tilde_assume(::IsParent, context::AbstractContext, args...)
     return tilde_assume(childcontext(context), args...)
 end
 
-function tilde_assume(rng, context::AbstractContext, args...)
+function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi)
+function tilde_assume(
+    ::IsLeaf, rng::Random.AbstractRNG, context::AbstractContext, sampler, right, vn, vi
+)
     return assume(rng, sampler, right, vn, vi)
 end
-function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
+function tilde_assume(
+    ::IsParent, rng::Random.AbstractRNG, context::AbstractContext, args...
+)
     return tilde_assume(rng, childcontext(context), args...)
 end
 
 function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(PriorContext(), right, vn, vi)
@@ -84,7 +88,7 @@ function tilde_assume(
     rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
@@ -92,7 +96,7 @@ end
 
 function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(LikelihoodContext(), right, vn, vi)
@@ -106,7 +110,7 @@ function tilde_assume(
     vi,
 )
     if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
+        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
         settrans!!(vi, false, vn)
     end
     return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
@@ -121,7 +125,9 @@ end
 function tilde_assume(context::PrefixContext, right, vn, vi)
     return tilde_assume(context.context, right, prefix(context, vn), vi)
 end
-function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
+function tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
+)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
@@ -176,6 +182,9 @@ end
 # `PrefixContext`
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
+end
+function tilde_observe(context::PrefixContext, sampler, right, left, vi)
+    return tilde_observe(context.context, sampler, right, left, vi)
 end
 
 """
@@ -289,8 +298,8 @@ end
 function dot_tilde_assume(context::AbstractContext, args...)
     return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), context, args...)
 end
-function dot_tilde_assume(rng, context::AbstractContext, args...)
-    return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
+function dot_tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
+    return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), rng, context, args...)
 end
 
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
@@ -303,11 +312,13 @@ end
 function dot_tilde_assume(::IsParent, context::AbstractContext, args...)
     return dot_tilde_assume(childcontext(context), args...)
 end
-function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
+function dot_tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
-function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, left, vns, vi
+)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
@@ -599,8 +610,7 @@ function set_val!(
 )
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
-        dist = dists isa AbstractArray ? dists[ind] : dists
-        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
+        setindex!!(vi, tovec(val[ind]), vns[ind])
     end
     return val
 end
