@@ -202,12 +202,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     @testset "Dynamic constraints, Metadata" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         spl = SampleFromPrior()
-        vi = VarInfo(
-            model,
-            spl,
-            DefaultContext(),
-            DynamicPPL.Metadata,
-        )
+        vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata)
         link!!(vi, spl, model)
 
         for i in 1:10
@@ -381,18 +376,16 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                     DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    @test (
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo, context));
+                    @test begin
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo, context))
                         true
-                    )
+                    end
 
                     varinfo_linked = DynamicPPL.link(varinfo, model)
-                    @test (
-                        @inferred(
-                            DynamicPPL.evaluate!!(model, varinfo_linked, context)
-                        );
+                    @test begin
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked, context))
                         true
-                    )
+                    end
                 end
             end
         end

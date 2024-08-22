@@ -129,8 +129,8 @@ end
 Get pairs of `VarName => value` for all the variables in the `varinfo`, picking the values
 from the chain.
 
-This implementation assumes `chain` can be indexed using variable names, and is the preffered
-implementation.
+This implementation assumes `chain` can be indexed using variable names, and is the
+preffered implementation.
 """
 function _varname_pairs_with_varname_indexing(
     chain::MCMCChains.Chains, varinfo, sample_idx, chain_idx
@@ -155,11 +155,11 @@ end
 """
 Check which keys in `key_strings` are subsumed by `vn_string` and return the their values.
 
-The subsumtion check is done with `DynamicPPL.subsumes_string`, which is quite weak, and
+The subsumption check is done with `DynamicPPL.subsumes_string`, which is quite weak, and
 won't catch all cases. We should get rid of this if we can.
 """
 # TODO(mhauru) See docstring above.
-function vcat_subsumed_values(vn_string, values, key_strings)
+function _vcat_subsumed_values(vn_string, values, key_strings)
     indices = findall(Base.Fix1(DynamicPPL.subsumes_string, vn_string), key_strings)
     return !isempty(indices) ? reduce(vcat, values[indices]) : nothing
 end
@@ -183,7 +183,7 @@ function _varname_pairs_without_varname_indexing(
     keys = Base.keys(chain)
     keys_strings = map(string, keys)
     varname_pairs = [
-        vn => vcat_subsumed_values(string(vn), values, keys_strings) for
+        vn => _vcat_subsumed_values(string(vn), values, keys_strings) for
         vn in Base.keys(varinfo)
     ]
     return varname_pairs
