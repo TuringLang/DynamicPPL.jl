@@ -789,8 +789,20 @@ end
     return filter((i) -> isempty(f_meta.gids[i]), 1:length(f_meta.gids))
 end
 
-function findinds(::VarNameVector, ::Selector, ::Val)
-    throw(ErrorException("VarNameVector does not support findinds based on Selectors"))
+function findinds(vnv::VarNameVector, ::Selector, ::Val{space}) where {space}
+    # New Metadata objects are created with an empty list of gids, which is intrepreted as
+    # all Selectors applying to all variables. We assume the same behavior for
+    # VarNameVector, and thus ignore the Selector argument.
+    if space !== ()
+        msg = "VarNameVector does not support selecting variables based on samplers"
+        throw(ErrorException(msg))
+    else
+        return findinds(vnv)
+    end
+end
+
+function findinds(vnv::VarNameVector)
+    return 1:length(vnv.varnames)
 end
 
 # Get all vns of variables belonging to spl
@@ -1495,7 +1507,7 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
         # Return early if we're already in constrained space OR if we're not
-        # supposed to touch this `vn`, e.g. when `vn` does not belong to the current sampler. 
+        # supposed to touch this `vn`, e.g. when `vn` does not belong to the current sampler.
         # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
         if !istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
@@ -1592,9 +1604,9 @@ end
 
 Check whether `vi` is in the transformed space for a particular sampler `spl`.
 
-Turing's Hamiltonian samplers use the `link` and `invlink` functions from 
+Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl) to map a constrained variable
-(for example, one bounded to the space `[0, 1]`) from its constrained space to the set of 
+(for example, one bounded to the space `[0, 1]`) from its constrained space to the set of
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
 function islinked(vi::UntypedVarInfo, spl::Union{Sampler,SampleFromPrior})
