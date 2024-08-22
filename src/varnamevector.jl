@@ -1,12 +1,12 @@
 """
-    VarNameVector
+    VarNamedVector
 
 A container that works like a `Vector` and an `OrderedDict` but is neither.
 
 # Fields
 $(FIELDS)
 """
-struct VarNameVector{
+struct VarNamedVector{
     K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
 }
     """
@@ -48,7 +48,7 @@ struct VarNameVector{
     metadata::MData
 end
 
-function ==(vnv_left::VarNameVector, vnv_right::VarNameVector)
+function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
     return vnv_left.varname_to_index == vnv_right.varname_to_index &&
            vnv_left.varnames == vnv_right.varnames &&
            vnv_left.ranges == vnv_right.ranges &&
@@ -59,7 +59,7 @@ function ==(vnv_left::VarNameVector, vnv_right::VarNameVector)
            vnv_left.metadata == vnv_right.metadata
 end
 
-function VarNameVector(
+function VarNamedVector(
     varname_to_index,
     varnames,
     ranges,
@@ -67,7 +67,7 @@ function VarNameVector(
     transforms,
     is_transformed=fill!(BitVector(undef, length(varnames)), 0),
 )
-    return VarNameVector(
+    return VarNamedVector(
         varname_to_index,
         varnames,
         ranges,
@@ -79,15 +79,15 @@ function VarNameVector(
     )
 end
 # TODO: Do we need this?
-function VarNameVector{K,V}() where {K,V}
-    return VarNameVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
+function VarNamedVector{K,V}() where {K,V}
+    return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
 
 # The various constructor(orig...) calls are to create concrete element types. E.g. if
 # vnv.vals is a Vector{Real} but all elements are Float64s, [vnv.vals...] will be a
 # Vector{Float64}
-function VarNameVector(vnv::VarNameVector)
-    return VarNameVector(
+function VarNamedVector(vnv::VarNamedVector)
+    return VarNamedVector(
         OrderedDict(vnv.varname_to_index...),
         [vnv.varnames...],
         [vnv.ranges...],
@@ -99,16 +99,18 @@ function VarNameVector(vnv::VarNameVector)
     )
 end
 
-istrans(vnv::VarNameVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
-function settrans!(vnv::VarNameVector, val::Bool, vn::VarName)
+istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
+function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
     return vnv.is_transformed[vnv.varname_to_index[vn]] = val
 end
 
-VarNameVector() = VarNameVector{VarName,Real}()
-VarNameVector(xs::Pair...) = VarNameVector(OrderedDict(xs...))
-VarNameVector(x::AbstractDict) = VarNameVector(keys(x), values(x))
-VarNameVector(varnames, vals) = VarNameVector(collect_maybe(varnames), collect_maybe(vals))
-function VarNameVector(
+VarNamedVector() = VarNamedVector{VarName,Real}()
+VarNamedVector(xs::Pair...) = VarNamedVector(OrderedDict(xs...))
+VarNamedVector(x::AbstractDict) = VarNamedVector(keys(x), values(x))
+function VarNamedVector(varnames, vals)
+    return VarNamedVector(collect_maybe(varnames), collect_maybe(vals))
+end
+function VarNamedVector(
     varnames::AbstractVector, vals::AbstractVector, transforms=map(from_vec_transform, vals)
 )
     # TODO: Check uniqueness of `varnames`?
@@ -133,13 +135,13 @@ function VarNameVector(
         offset = r[end]
     end
 
-    return VarNameVector(
+    return VarNamedVector(
         varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms
     )
 end
 
 """
-    replace_values(vnv::VarNameVector, vals::AbstractVector)
+    replace_values(vnv::VarNamedVector, vals::AbstractVector)
 
 Replace the values in `vnv` with `vals`.
 
@@ -154,9 +156,9 @@ in one go or if we want to change the how the values are stored, e.g. alter the 
 # Example
 
 ```jldoctest varnamevector-replace-values
-julia> using DynamicPPL: VarNameVector, replace_values
+julia> using DynamicPPL: VarNamedVector, replace_values
 
-julia> vnv = VarNameVector(@varname(x) => [1.0]);
+julia> vnv = VarNamedVector(@varname(x) => [1.0]);
 
 julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
 true
@@ -176,81 +178,81 @@ julia> ForwardDiff.gradient(f, [1.0])
  2.0
 ```
 """
-replace_values(vnv::VarNameVector, vals) = Accessors.@set vnv.vals = vals
+replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
 # TODO(mhauru) Metadata uses the space argument. Do we need to do anything with it?
-replace_values(vnv::VarNameVector, space, vals) = replace_values(vnv, vals)
+replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
 
-# Some `VarNameVector` specific functions.
-getidx(vnv::VarNameVector, vn::VarName) = vnv.varname_to_index[vn]
+# Some `VarNamedVector` specific functions.
+getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
 
-getrange(vnv::VarNameVector, idx::Int) = vnv.ranges[idx]
-getrange(vnv::VarNameVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
+getrange(vnv::VarNamedVector, idx::Int) = vnv.ranges[idx]
+getrange(vnv::VarNamedVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 
-gettransform(vnv::VarNameVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
+gettransform(vnv::VarNamedVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
 
 """
-    has_inactive(vnv::VarNameVector)
+    has_inactive(vnv::VarNamedVector)
 
 Returns `true` if `vnv` has inactive ranges. 
 """
-has_inactive(vnv::VarNameVector) = !isempty(vnv.num_inactive)
+has_inactive(vnv::VarNamedVector) = !isempty(vnv.num_inactive)
 
 """
-    num_inactive(vnv::VarNameVector)
+    num_inactive(vnv::VarNamedVector)
 
 Return the number of inactive entries in `vnv`.
 """
-num_inactive(vnv::VarNameVector) = sum(values(vnv.num_inactive))
+num_inactive(vnv::VarNamedVector) = sum(values(vnv.num_inactive))
 
 """
-    num_inactive(vnv::VarNameVector, vn::VarName)
+    num_inactive(vnv::VarNamedVector, vn::VarName)
 
 Returns the number of inactive entries for `vn` in `vnv`.
 """
-num_inactive(vnv::VarNameVector, vn::VarName) = num_inactive(vnv, getidx(vnv, vn))
-num_inactive(vnv::VarNameVector, idx::Int) = get(vnv.num_inactive, idx, 0)
+num_inactive(vnv::VarNamedVector, vn::VarName) = num_inactive(vnv, getidx(vnv, vn))
+num_inactive(vnv::VarNamedVector, idx::Int) = get(vnv.num_inactive, idx, 0)
 
 """
-    num_allocated(vnv::VarNameVector)
+    num_allocated(vnv::VarNamedVector)
 
 Returns the number of allocated entries in `vnv`.
 """
-num_allocated(vnv::VarNameVector) = length(vnv.vals)
+num_allocated(vnv::VarNamedVector) = length(vnv.vals)
 
 """
-    num_allocated(vnv::VarNameVector, vn::VarName)
+    num_allocated(vnv::VarNamedVector, vn::VarName)
 
 Returns the number of allocated entries for `vn` in `vnv`.
 """
-num_allocated(vnv::VarNameVector, vn::VarName) = num_allocated(vnv, getidx(vnv, vn))
-function num_allocated(vnv::VarNameVector, idx::Int)
+num_allocated(vnv::VarNamedVector, vn::VarName) = num_allocated(vnv, getidx(vnv, vn))
+function num_allocated(vnv::VarNamedVector, idx::Int)
     return length(getrange(vnv, idx)) + num_inactive(vnv, idx)
 end
 
 # Basic array interface.
-Base.eltype(vnv::VarNameVector) = eltype(vnv.vals)
-Base.length(vnv::VarNameVector) =
+Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
+Base.length(vnv::VarNamedVector) =
     if isempty(vnv.num_inactive)
         length(vnv.vals)
     else
         sum(length, vnv.ranges)
     end
-Base.size(vnv::VarNameVector) = (length(vnv),)
-Base.isempty(vnv::VarNameVector) = isempty(vnv.varnames)
+Base.size(vnv::VarNamedVector) = (length(vnv),)
+Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
 
 # TODO: We should probably remove this
-Base.IndexStyle(::Type{<:VarNameVector}) = IndexLinear()
+Base.IndexStyle(::Type{<:VarNamedVector}) = IndexLinear()
 
 # Dictionary interface.
-Base.keys(vnv::VarNameVector) = vnv.varnames
-Base.values(vnv::VarNameVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
-Base.pairs(vnv::VarNameVector) = (vn => vnv[vn] for vn in keys(vnv))
+Base.keys(vnv::VarNamedVector) = vnv.varnames
+Base.values(vnv::VarNamedVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
+Base.pairs(vnv::VarNamedVector) = (vn => vnv[vn] for vn in keys(vnv))
 
-Base.haskey(vnv::VarNameVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
+Base.haskey(vnv::VarNamedVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
 # `getindex` & `setindex!`
-Base.getindex(vnv::VarNameVector, i::Int) = getindex_raw(vnv, i)
-function Base.getindex(vnv::VarNameVector, vn::VarName)
+Base.getindex(vnv::VarNamedVector, i::Int) = getindex_raw(vnv, i)
+function Base.getindex(vnv::VarNamedVector, vn::VarName)
     x = getindex_raw(vnv, vn)
     f = gettransform(vnv, vn)
     return f(x)
@@ -269,7 +271,7 @@ function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
     return range_idx
 end
 
-function adjusted_ranges(vnv::VarNameVector)
+function adjusted_ranges(vnv::VarNamedVector)
     # Every range following inactive entries needs to be shifted.
     offset = 0
     ranges_adj = similar(vnv.ranges)
@@ -283,7 +285,7 @@ function adjusted_ranges(vnv::VarNameVector)
     return ranges_adj
 end
 
-function index_to_raw_index(vnv::VarNameVector, i::Int)
+function index_to_raw_index(vnv::VarNamedVector, i::Int)
     # If we don't have any inactive entries, there's nothing to do.
     has_inactive(vnv) || return i
 
@@ -299,11 +301,11 @@ function index_to_raw_index(vnv::VarNameVector, i::Int)
     return r[i_remainder]
 end
 
-getindex_raw(vnv::VarNameVector, i::Int) = vnv.vals[index_to_raw_index(vnv, i)]
-getindex_raw(vnv::VarNameVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
+getindex_raw(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_raw_index(vnv, i)]
+getindex_raw(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
 # `getindex` for `Colon`
-function Base.getindex(vnv::VarNameVector, ::Colon)
+function Base.getindex(vnv::VarNamedVector, ::Colon)
     return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex, vnv.vals), vcat, vnv.ranges)
     else
@@ -311,7 +313,7 @@ function Base.getindex(vnv::VarNameVector, ::Colon)
     end
 end
 
-function getindex_raw(vnv::VarNameVector, ::Colon)
+function getindex_raw(vnv::VarNamedVector, ::Colon)
     return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex_raw, vnv.vals), vcat, vnv.ranges)
     else
@@ -320,21 +322,21 @@ function getindex_raw(vnv::VarNameVector, ::Colon)
 end
 
 # HACK: remove this as soon as possible.
-Base.getindex(vnv::VarNameVector, spl::AbstractSampler) = vnv[:]
+Base.getindex(vnv::VarNamedVector, spl::AbstractSampler) = vnv[:]
 
-Base.setindex!(vnv::VarNameVector, val, i::Int) = setindex_raw!(vnv, val, i)
-function Base.setindex!(vnv::VarNameVector, val, vn::VarName)
+Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_raw!(vnv, val, i)
+function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
     f = inverse(gettransform(vnv, vn))
     return setindex_raw!(vnv, f(val), vn)
 end
 
-setindex_raw!(vnv::VarNameVector, val, i::Int) = vnv.vals[index_to_raw_index(vnv, i)] = val
-function setindex_raw!(vnv::VarNameVector, val::AbstractVector, vn::VarName)
+setindex_raw!(vnv::VarNamedVector, val, i::Int) = vnv.vals[index_to_raw_index(vnv, i)] = val
+function setindex_raw!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
 
 # `empty!(!)`
-function Base.empty!(vnv::VarNameVector)
+function Base.empty!(vnv::VarNamedVector)
     # TODO: Or should the semantics be different, e.g. keeping `varnames`?
     empty!(vnv.varname_to_index)
     empty!(vnv.varnames)
@@ -344,9 +346,9 @@ function Base.empty!(vnv::VarNameVector)
     empty!(vnv.num_inactive)
     return nothing
 end
-BangBang.empty!!(vnv::VarNameVector) = (empty!(vnv); return vnv)
+BangBang.empty!!(vnv::VarNamedVector) = (empty!(vnv); return vnv)
 
-function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
+function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     # Return early if possible.
     isempty(left_vnv) && return deepcopy(right_vnv)
     isempty(right_vnv) && return deepcopy(left_vnv)
@@ -415,17 +417,17 @@ function Base.merge(left_vnv::VarNameVector, right_vnv::VarNameVector)
         offset += n
     end
 
-    return VarNameVector(
+    return VarNamedVector(
         varnames_to_index, vns_both, ranges, vals, transforms, is_transformed
     )
 end
 
 """
-    subset(vnv::VarNameVector, vns::AbstractVector{<:VarName})
+    subset(vnv::VarNamedVector, vns::AbstractVector{<:VarName})
 
-Return a new `VarNameVector` containing the values from `vnv` for variables in `vns`.
+Return a new `VarNamedVector` containing the values from `vnv` for variables in `vns`.
 """
-function subset(vnv::VarNameVector, vns_given::AbstractVector{VN}) where {VN<:VarName}
+function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # NOTE: This does not specialize types when possible.
     vns = mapreduce(vcat, vns_given; init=VN[]) do vn
         filter(Base.Fix1(subsumes, vn), vnv.varnames)
@@ -444,7 +446,7 @@ end
 # `similar`
 similar_metadata(::Nothing) = nothing
 similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
-function Base.similar(vnv::VarNameVector)
+function Base.similar(vnv::VarNamedVector)
     # NOTE: Whether or not we should empty the underlying containers or not
     # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
     # result in an empty `AbstractDict`, while the vectors, e.g. `vnv.ranges`,
@@ -452,7 +454,7 @@ function Base.similar(vnv::VarNameVector)
     # much easier to write the rest of the code assuming that `undef` is not
     # present, and so for now we empty the underlying containers, thus differing
     # from the behavior of `similar` for `AbstractArray`s.
-    return VarNameVector(
+    return VarNamedVector(
         similar(vnv.varname_to_index),
         similar(vnv.varnames, 0),
         similar(vnv.ranges, 0),
@@ -465,20 +467,20 @@ function Base.similar(vnv::VarNameVector)
 end
 
 """
-    is_contiguous(vnv::VarNameVector)
+    is_contiguous(vnv::VarNamedVector)
 
 Returns `true` if the underlying data of `vnv` is stored in a contiguous array.
 
 This is equivalent to negating [`has_inactive(vnv)`](@ref).
 """
-is_contiguous(vnv::VarNameVector) = !has_inactive(vnv)
+is_contiguous(vnv::VarNamedVector) = !has_inactive(vnv)
 
 """
-    nextrange(vnv::VarNameVector, x)
+    nextrange(vnv::VarNamedVector, x)
 
 Return the range of `length(x)` from the end of current data in `vnv`.
 """
-function nextrange(vnv::VarNameVector, x)
+function nextrange(vnv::VarNamedVector, x)
     # If `vnv` is empty, return immediately.
     isempty(vnv) && return 1:length(x)
 
@@ -492,14 +494,16 @@ function nextrange(vnv::VarNameVector, x)
 end
 
 """
-    push!(vnv::VarNameVector, vn::VarName, val[, transform])
+    push!(vnv::VarNamedVector, vn::VarName, val[, transform])
 
 Add a variable with given value to `vnv`.
 
 By default `transform` is the one that converts the value to a vector, which is how it is
 stored in `vnv`.
 """
-function Base.push!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
+function Base.push!(
+    vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val)
+)
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
     # NOTE: We need to compute the `nextrange` BEFORE we start mutating
@@ -526,11 +530,11 @@ function shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
 end
 
 """
-    shift_subsequent_ranges_by!(vnv::VarNameVector, idx::Int, n)
+    shift_subsequent_ranges_by!(vnv::VarNamedVector, idx::Int, n)
 
 Shifts the ranges of variables in `vnv` starting from index `idx` by `n`.
 """
-function shift_subsequent_ranges_by!(vnv::VarNameVector, idx::Int, n)
+function shift_subsequent_ranges_by!(vnv::VarNamedVector, idx::Int, n)
     for i in (idx + 1):length(vnv.ranges)
         vnv.ranges[i] = vnv.ranges[i] .+ n
     end
@@ -539,7 +543,7 @@ end
 
 # `update!` and `update!!`: update a variable in the varname vector.
 """
-    update!(vnv::VarNameVector, vn::VarName, val[, transform])
+    update!(vnv::VarNamedVector, vn::VarName, val[, transform])
 
 Either add a new entry or update existing entry for `vn` in `vnv` with the value `val`.
 
@@ -548,7 +552,7 @@ If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
 By default `transform` is the one that converts the value to a vector, which is how it is
 stored in `vnv`.
 """
-function update!(vnv::VarNameVector, vn::VarName, val, transform=from_vec_transform(val))
+function update!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val))
     if !haskey(vnv, vn)
         # Here we just add a new entry.
         return push!(vnv, vn, val, transform)
@@ -656,11 +660,11 @@ function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
 end
 
 """
-    contiguify!(vnv::VarNameVector)
+    contiguify!(vnv::VarNamedVector)
 
 Re-contiguify the underlying vector and shrink if possible.
 """
-function contiguify!(vnv::VarNameVector)
+function contiguify!(vnv::VarNamedVector)
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
     vals = vnv[:]
@@ -679,26 +683,26 @@ function contiguify!(vnv::VarNameVector)
 end
 
 """
-    group_by_symbol(vnv::VarNameVector)
+    group_by_symbol(vnv::VarNamedVector)
 
-Return a dictionary mapping symbols to `VarNameVector`s with varnames containing that
+Return a dictionary mapping symbols to `VarNamedVector`s with varnames containing that
 symbol.
 """
-function group_by_symbol(vnv::VarNameVector)
+function group_by_symbol(vnv::VarNamedVector)
     symbols = unique(map(getsym, vnv.varnames))
-    nt_vals = map(s -> VarNameVector(subset(vnv, [VarName(s)])), symbols)
+    nt_vals = map(s -> VarNamedVector(subset(vnv, [VarName(s)])), symbols)
     return OrderedDict(zip(symbols, nt_vals))
 end
 
 """
-    shift_index_left!(vnv::VarNameVector, idx::Int)
+    shift_index_left!(vnv::VarNamedVector, idx::Int)
 
 Shift the index `idx` to the left by one and update the relevant fields.
 
 !!! warning
     This does not check if index we're shifting to is already occupied.
 """
-function shift_index_left!(vnv::VarNameVector, idx::Int)
+function shift_index_left!(vnv::VarNamedVector, idx::Int)
     # Shift the index in the lookup table.
     vn = vnv.varnames[idx]
     vnv.varname_to_index[vn] = idx - 1
@@ -711,21 +715,21 @@ function shift_index_left!(vnv::VarNameVector, idx::Int)
 end
 
 """
-    shift_subsequent_indices_left!(vnv::VarNameVector, idx::Int)
+    shift_subsequent_indices_left!(vnv::VarNamedVector, idx::Int)
 
 Shift the indices for all variables after `idx` to the left by one and update
 the relevant fields.
 
 This just
 """
-function shift_subsequent_indices_left!(vnv::VarNameVector, idx::Int)
+function shift_subsequent_indices_left!(vnv::VarNamedVector, idx::Int)
     # Shift the indices for all variables after `idx`.
     for idx_to_shift in (idx + 1):length(vnv.varnames)
         shift_index_left!(vnv, idx_to_shift)
     end
 end
 
-function Base.delete!(vnv::VarNameVector, vn::VarName)
+function Base.delete!(vnv::VarNamedVector, vn::VarName)
     # Error if we don't have the variable.
     !haskey(vnv, vn) && throw(ArgumentError("variable name $vn does not exist"))
 
@@ -761,7 +765,7 @@ function Base.delete!(vnv::VarNameVector, vn::VarName)
 end
 
 """
-    values_as(vnv::VarNameVector[, T])
+    values_as(vnv::VarNamedVector[, T])
 
 Return the values/realizations in `vnv` as type `T`, if implemented.
 
@@ -770,9 +774,9 @@ If no type `T` is provided, return values as stored in `vnv`.
 # Examples
 
 ```jldoctest
-julia> using DynamicPPL: VarNameVector
+julia> using DynamicPPL: VarNamedVector
 
-julia> vnv = VarNameVector(@varname(x) => 1, @varname(y) => [2.0]);
+julia> vnv = VarNamedVector(@varname(x) => 1, @varname(y) => [2.0]);
 
 julia> values_as(vnv) == [1.0, 2.0]
 true
@@ -787,14 +791,14 @@ julia> values_as(vnv, NamedTuple) == (x = 1.0, y = [2.0])
 true
 ```
 """
-values_as(vnv::VarNameVector) = values_as(vnv, Vector)
-values_as(vnv::VarNameVector, ::Type{Vector}) = vnv[:]
-function values_as(vnv::VarNameVector, ::Type{Vector{T}}) where {T}
+values_as(vnv::VarNamedVector) = values_as(vnv, Vector)
+values_as(vnv::VarNamedVector, ::Type{Vector}) = vnv[:]
+function values_as(vnv::VarNamedVector, ::Type{Vector{T}}) where {T}
     return convert(Vector{T}, values_as(vnv, Vector))
 end
-function values_as(vnv::VarNameVector, ::Type{NamedTuple})
+function values_as(vnv::VarNamedVector, ::Type{NamedTuple})
     return NamedTuple(zip(map(Symbol, keys(vnv)), values(vnv)))
 end
-function values_as(vnv::VarNameVector, ::Type{D}) where {D<:AbstractDict}
+function values_as(vnv::VarNamedVector, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(pairs(vnv))
 end

@@ -197,7 +197,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
             s_vns = @varname(s)
 
-            # TODO(mhauru) Should add similar tests for VarNameVector. These ones only apply
+            # TODO(mhauru) Should add similar tests for VarNamedVector. These ones only apply
             # to Metadata.
             vi_typed = VarInfo(
                 model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
@@ -415,7 +415,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     end
 
                     if DynamicPPL.has_varnamevector(varinfo) && mutating
-                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNameVector`.
+                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNamedVector`.
                         @test_broken false
                         continue
                     end

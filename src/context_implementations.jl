@@ -241,7 +241,7 @@ function assume(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
-            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
             # that's okay.
             unset_flag!(vi, vn, "del", true)
             r = init(rng, dist, sampler)
@@ -520,7 +520,7 @@ function get_and_set_val!(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
-            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
             # that's okay.
             unset_flag!(vi, vns[1], "del", true)
             r = init(rng, dist, spl, n)
@@ -561,7 +561,7 @@ function get_and_set_val!(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
             # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
-            # to ignore the fact that for VarNameVector this does nothing, but I'm unsure if
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
             # that's okay.
             unset_flag!(vi, vns[1], "del", true)
             f = (vn, dist) -> init(rng, dist, spl)
