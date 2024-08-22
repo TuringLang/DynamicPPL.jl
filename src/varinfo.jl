@@ -1294,7 +1294,9 @@ function link(
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
-function _link(model::Model, varinfo::Union{UntypedVarInfo, VectorVarInfo}, spl::AbstractSampler)
+function _link(
+    model::Model, varinfo::Union{UntypedVarInfo,VectorVarInfo}, spl::AbstractSampler
+)
     varinfo = deepcopy(varinfo)
     return VarInfo(
         _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
@@ -1623,7 +1625,9 @@ function nested_setindex_maybe!(
         nothing
     end
 end
-function _nested_setindex_maybe!(vi::VarInfo, md::Union{Metadata,VarNameVector}, val, vn::VarName)
+function _nested_setindex_maybe!(
+    vi::VarInfo, md::Union{Metadata,VarNameVector}, val, vn::VarName
+)
     # If `vn` is in `vns`, then we can just use the standard `setindex!`.
     vns = Base.keys(md)
     if vn in vns
@@ -1665,7 +1669,7 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName})
     if !isconcretetype(et)
         throw(ArgumentError("All variables must have the same type."))
     end
-    
+
     if et <: Vector
         all_of_equal_dimension = all(x -> length(x) == length(vals[1]), vals)
         if !all_of_equal_dimension

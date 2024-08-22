@@ -200,10 +200,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             # TODO(mhauru) Should add similar tests for VarNameVector. These ones only apply
             # to Metadata.
             vi_typed = VarInfo(
-                model,
-                SampleFromPrior(),
-                DefaultContext(),
-                DynamicPPL.Metadata,
+                model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
             )
             vi_untyped = VarInfo(DynamicPPL.Metadata())
             model(vi_untyped, SampleFromPrior())

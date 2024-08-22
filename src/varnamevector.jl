@@ -425,7 +425,7 @@ end
 
 Return a new `VarNameVector` containing the values from `vnv` for variables in `vns`.
 """
-function subset(vnv::VarNameVector, vns_given::AbstractVector{VN}) where VN<:VarName
+function subset(vnv::VarNameVector, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # NOTE: This does not specialize types when possible.
     vns = mapreduce(vcat, vns_given; init=VN[]) do vn
         filter(Base.Fix1(subsumes, vn), vnv.varnames)
