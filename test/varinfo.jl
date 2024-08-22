@@ -414,7 +414,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                         continue
                     end
 
-                    if DynamicPPL.has_varnamevector(varinfo) && mutating
+                    if DynamicPPL.has_varnamedvector(varinfo) && mutating
                         # NOTE: Can't handle mutating `link!` and `invlink!` `VarNamedVector`.
                         @test_broken false
                         continue

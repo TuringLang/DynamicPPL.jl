@@ -7,7 +7,7 @@ A container that works like a `Vector` and an `OrderedDict` but is neither.
 $(FIELDS)
 """
 struct VarNamedVector{
-    K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector,MData
+    K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector
 }
     """
     mapping from the `VarName` to its integer index in `varnames`, `ranges` and `transforms`
@@ -42,10 +42,6 @@ struct VarNamedVector{
 
     "additional entries which are considered inactive"
     num_inactive::OrderedDict{Int,Int}
-
-    # TODO(mhauru) What does this field do?
-    "metadata associated with the varnames"
-    metadata::MData
 end
 
 function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
@@ -55,8 +51,7 @@ function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
            vnv_left.vals == vnv_right.vals &&
            vnv_left.transforms == vnv_right.transforms &&
            vnv_left.is_transformed == vnv_right.is_transformed &&
-           vnv_left.num_inactive == vnv_right.num_inactive &&
-           vnv_left.metadata == vnv_right.metadata
+           vnv_left.num_inactive == vnv_right.num_inactive
 end
 
 function VarNamedVector(
@@ -75,7 +70,6 @@ function VarNamedVector(
         transforms,
         is_transformed,
         OrderedDict{Int,Int}(),
-        nothing,
     )
 end
 # TODO: Do we need this?
@@ -90,12 +84,11 @@ function VarNamedVector(vnv::VarNamedVector)
     return VarNamedVector(
         OrderedDict(vnv.varname_to_index...),
         [vnv.varnames...],
-        [vnv.ranges...],
+        copy(vnv.ranges),
         [vnv.vals...],
         [vnv.transforms...],
-        deepcopy(vnv.is_transformed),
-        deepcopy(vnv.num_inactive),
-        deepcopy(vnv.metadata),
+        copy(vnv.is_transformed),
+        copy(vnv.num_inactive),
     )
 end
 
@@ -155,7 +148,7 @@ in one go or if we want to change the how the values are stored, e.g. alter the 
 
 # Example
 
-```jldoctest varnamevector-replace-values
+```jldoctest varnamedvector-replace-values
 julia> using DynamicPPL: VarNamedVector, replace_values
 
 julia> vnv = VarNamedVector(@varname(x) => [1.0]);
@@ -167,7 +160,7 @@ true
 This is also useful when we want to differentiate wrt. the values
 using automatic differentiation, e.g. ForwardDiff.jl.
 
-```jldoctest varnamevector-replace-values
+```jldoctest varnamedvector-replace-values
 julia> using ForwardDiff: ForwardDiff
 
 julia> f(x) = sum(abs2, replace_values(vnv, x)[@varname(x)])
@@ -193,7 +186,7 @@ gettransform(vnv::VarNamedVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
 """
     has_inactive(vnv::VarNamedVector)
 
-Returns `true` if `vnv` has inactive ranges. 
+Returns `true` if `vnv` has inactive ranges.
 """
 has_inactive(vnv::VarNamedVector) = !isempty(vnv.num_inactive)
 
@@ -443,9 +436,6 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:V
     return vnv_new
 end
 
-# `similar`
-similar_metadata(::Nothing) = nothing
-similar_metadata(x::Union{AbstractArray,AbstractDict}) = similar(x)
 function Base.similar(vnv::VarNamedVector)
     # NOTE: Whether or not we should empty the underlying containers or not
     # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
@@ -462,7 +452,6 @@ function Base.similar(vnv::VarNamedVector)
         similar(vnv.transforms, 0),
         BitVector(),
         similar(vnv.num_inactive),
-        similar_metadata(vnv.metadata),
     )
 end
 

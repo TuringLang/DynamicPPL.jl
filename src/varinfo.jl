@@ -121,8 +121,8 @@ function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
 end
 
 # No-op if we're already working with a `VarNamedVector`.
-metadata_to_varnamevector(vnv::VarNamedVector) = vnv
-function metadata_to_varnamevector(md::Metadata)
+metadata_to_varnamedvector(vnv::VarNamedVector) = vnv
+function metadata_to_varnamedvector(md::Metadata)
     idcs = copy(md.idcs)
     vns = copy(md.vns)
     ranges = copy(md.ranges)
@@ -138,24 +138,24 @@ function metadata_to_varnamevector(md::Metadata)
 end
 
 function VectorVarInfo(vi::UntypedVarInfo)
-    md = metadata_to_varnamevector(vi.metadata)
+    md = metadata_to_varnamedvector(vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 function VectorVarInfo(vi::TypedVarInfo)
-    md = map(metadata_to_varnamevector, vi.metadata)
+    md = map(metadata_to_varnamedvector, vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 """
-    has_varnamevector(varinfo::VarInfo)
+    has_varnamedvector(varinfo::VarInfo)
 
 Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
 """
-has_varnamevector(vi::AbstractVarInfo) = false
-function has_varnamevector(vi::VarInfo)
+has_varnamedvector(vi::AbstractVarInfo) = false
+function has_varnamedvector(vi::VarInfo)
     return vi.metadata isa VarNamedVector ||
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
@@ -1080,7 +1080,7 @@ end
 # X -> R for all variables associated with given sampler
 function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamevector(vi) && return link(t, vi, spl, model)
+    has_varnamedvector(vi) && return link(t, vi, spl, model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
     _link!(vi, spl)
     return vi
@@ -1170,7 +1170,7 @@ function invlink!!(
     t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamevector(vi) && return invlink(t, vi, spl, model)
+    has_varnamedvector(vi) && return invlink(t, vi, spl, model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi

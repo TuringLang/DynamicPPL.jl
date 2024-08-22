@@ -106,7 +106,6 @@ function relax_container_types(vnv::VarNamedVector, vns, vals)
         transforms_new,
         vnv.is_transformed,
         vnv.num_inactive,
-        vnv.metadata,
     )
 end
 
@@ -450,7 +449,7 @@ end
             model, value_true, varnames; include_threadsafe=false
         )
         # Filter out those which are not based on `VarNamedVector`.
-        varinfos = filter(DynamicPPL.has_varnamevector, varinfos)
+        varinfos = filter(DynamicPPL.has_varnamedvector, varinfos)
         # Get the true log joint.
         logp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
 
