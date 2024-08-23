@@ -159,7 +159,7 @@ end
         vnv_base = VarNamedVector([vn_left, vn_right], [val_left, val_right])
 
         # We'll need the transformations later.
-        # TODO: Should we test other transformations than just `FromVec`?
+        # TODO: Should we test other transformations than just `ReshapeTransform`?
         from_vec_left = DynamicPPL.from_vec_transform(val_left)
         from_vec_right = DynamicPPL.from_vec_transform(val_right)
         to_vec_left = inverse(from_vec_left)

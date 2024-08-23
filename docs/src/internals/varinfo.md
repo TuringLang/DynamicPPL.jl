@@ -229,7 +229,7 @@ This does incur a runtime cost as it requires re-allocation of the `ranges` in a
 
 !!! note
     
-    Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing he `VarName`'s transformation with a `DynamicPPL.FromVec`.
+    Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing the `VarName`'s transformation with a `DynamicPPL.ReshapeTransform`.
 
 Continuing from the example from the previous section, we can use a `VarInfo` with a `VarNameVector` as the `metadata` field:
 
