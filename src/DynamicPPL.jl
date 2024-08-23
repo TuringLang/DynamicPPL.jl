@@ -214,6 +214,9 @@ end
         @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
             "../ext/DynamicPPLReverseDiffExt.jl"
         )
+        @require Tapir = "07d77754-e150-4737-8c94-cd238a1fb45b" include(
+            "../ext/DynamicPPLTapirExt.jl"
+        )
         @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
             "../ext/DynamicPPLZygoteRulesExt.jl"
         )
