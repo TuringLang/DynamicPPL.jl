@@ -175,6 +175,13 @@ replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
 # TODO(mhauru) Metadata uses the space argument. Do we need to do anything with it?
 replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
 
+function unflatten(vnv::VarNamedVector, vals::AbstractVector)
+    new_vnv = deepcopy(vnv)
+    recontiguify_ranges!(new_vnv.ranges)
+    empty!(new_vnv.num_inactive)
+    return replace_values(new_vnv, vals)
+end
+
 # Some `VarNamedVector` specific functions.
 getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
 
@@ -251,6 +258,11 @@ function Base.getindex(vnv::VarNamedVector, vn::VarName)
     return f(x)
 end
 
+Base.get(vnv::VarNamedVector, vn::VarName) = getindex(vnv, vn)
+function Base.get(vnv::VarNamedVector, vn::VarName, default)
+    return haskey(vnv, vn) ? getindex(vnv, vn) : default
+end
+
 function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
     # TODO: Assume `ranges` to be sorted and contiguous, and use `searchsortedfirst`
     # for a more efficient approach.
@@ -315,7 +327,9 @@ function getindex_raw(vnv::VarNamedVector, ::Colon)
 end
 
 # HACK: remove this as soon as possible.
-Base.getindex(vnv::VarNamedVector, spl::AbstractSampler) = vnv[:]
+function Base.getindex(vnv::VarNamedVector, spl::AbstractSampler)
+    throw(ErrorException("Cannot index a VarNamedVector with a sampler."))
+end
 
 Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_raw!(vnv, val, i)
 function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
@@ -327,6 +341,11 @@ setindex_raw!(vnv::VarNamedVector, val, i::Int) = vnv.vals[index_to_raw_index(vn
 function setindex_raw!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
+
+# set!! is the function defined in utils.jl that tries to do fancy stuff with optics when
+# setting the value of a generic container using a VarName. We can bypass all that because
+# VarNamedVector handles VarNames natively.
+set!!(vnv::VarNamedVector, vn::VarName, val) = update!!(vnv, vn, val)
 
 # `empty!(!)`
 function Base.empty!(vnv::VarNamedVector)
@@ -509,6 +528,44 @@ function Base.push!(
 end
 
 """
+    loosen_types(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
+
+Loosen the types of `vnv` to allow varname type `KNew` and transformation type `TransNew`.
+
+If `KNew` is a subtype of `K` and `TransNew` is a subtype of the element type of the `TTrans`
+this is a no-op and `vnv` is returned as is. Otherwise a copy of `vnv` is created with the
+same data but more abstract types, so that variables of type `KNew` and transformations of
+type `TransNew` can be pushed to it.
+"""
+function loosen_types(
+    vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew}
+) where {K,V,TVN,TVal,TTrans,KNew,TransNew}
+    if KNew <: K && TransNew <: eltype(TTrans)
+        return vnv
+    else
+        vn_type = promote_type(K, KNew)
+        transform_type = promote_type(eltype(TTrans), TransNew)
+        return VarNamedVector{vn_type,V,TVN,TVal,Vector{transform_type}}(
+            vnv.varname_to_index,
+            vnv.varnames,
+            vnv.ranges,
+            vnv.vals,
+            vnv.transforms,
+            vnv.is_transformed,
+            vnv.num_inactive,
+        )
+    end
+end
+
+function BangBang.push!!(
+    vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val)
+)
+    vnv = loosen_types(vnv, typeof(vn), typeof(transform))
+    push!(vnv, vn, val, transform)
+    return vnv
+end
+
+"""
     shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
 
 Shifts the elements of `x` starting from index `start` by `n` to the right.
@@ -632,9 +689,15 @@ function update!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_trans
     vnv.transforms[idx] = transform
 
     # TODO: Should we maybe sweep over inactive ranges and re-contiguify
-    # if we the total number of inactive elements is "large" in some sense?
+    # if the total number of inactive elements is "large" in some sense?
 
     return nothing
+end
+
+function update!!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val))
+    vnv = loosen_types(vnv, typeof(vn), typeof(transform))
+    update!(vnv, vn, val, transform)
+    return vnv
 end
 
 function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
@@ -656,14 +719,15 @@ Re-contiguify the underlying vector and shrink if possible.
 function contiguify!(vnv::VarNamedVector)
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
-    vals = vnv[:]
+    old_vals = copy(vnv.vals)
+    old_ranges = copy(vnv.ranges)
     # And then we re-contiguify the ranges.
     recontiguify_ranges!(vnv.ranges)
     # Clear the inactive ranges.
     empty!(vnv.num_inactive)
     # Now we update the values.
-    for (i, r) in enumerate(vnv.ranges)
-        vnv.vals[r] = vals[r]
+    for (old_range, new_range) in zip(old_ranges, vnv.ranges)
+        vnv.vals[new_range] = old_vals[old_range]
     end
     # And (potentially) shrink the underlying vector.
     resize!(vnv.vals, vnv.ranges[end][end])

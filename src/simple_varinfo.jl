@@ -322,7 +322,7 @@ Base.getindex(vi::SimpleVarInfo, vn::VarName) = getindex_internal(vi, vn)
 function Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
     return map(Base.Fix1(getindex, vi), vns)
 end
-# HACK: Needed to disambiguiate.
+# HACK: Needed to disambiguate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
@@ -399,12 +399,26 @@ end
 function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
-    r,
+    value,
     dist::Distribution,
     gidset::Set{Selector},
 )
-    vi.values[vn] = r
+    vi.values[vn] = value
     return vi
+end
+
+function BangBang.push!!(
+    vi::SimpleVarInfo{<:VarNamedVector},
+    vn::VarName,
+    value,
+    dist::Distribution,
+    gidset::Set{Selector},
+)
+    # The semantics of push!! for SimpleVarInfo and VarNamedVector are different. For
+    # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
+    # Hence we need to call update!! here, which has the same semantics as push!! does for
+    # SimpleVarInfo.
+    return Accessors.@set vi.values = update!!(vi.values, vn, value)
 end
 
 const SimpleOrThreadSafeSimple{T,V,C} = Union{
@@ -455,6 +469,8 @@ function _subset(x::NamedTuple, vns)
     syms = map(getsym, vns)
     return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
 end
+
+_subset(x::VarNamedVector, vns) = subset(x, vns)
 
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
@@ -562,6 +578,9 @@ function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
 end
 function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
     return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
+function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
+    return values_as(vi.values, T)
 end
 
 """
