@@ -41,10 +41,35 @@ But to ensure that we stay consistent with what the user expects, DynamicPPL.jl 
 
 In the end, we'll end up with something that looks like this:
 
-```@raw html
-<div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../../assets/images/transformations.dot.png" />
-</div>
+```mermaid
+%%{ init: { 'themeVariables': { 'lineColor': '#000000' } } }%%
+%%{ init: { 'flowchart': { 'curve': 'linear' } } }%%
+graph TD
+    subgraph assume ["assume"]
+        style assume fill:#ffffff,font-family:Courier
+
+        A["x ~ Normal()"]:::boxStyle
+        B["vn = <span style='color:#3B6EA8 !important;'>@varname</span>(x)<br>dist = Normal()<br>x, vi = ..."]:::boxStyle
+        C["assume(vn, dist, vi)"]:::boxStyle
+        D(["<span style='color:#3B6EA8 !important;'>if</span> istrans(vi, vn)"]):::boxStyle
+        E["f = from_internal_transform(vi, vn, dist)"]:::boxStyle
+        F["f = from_linked_internal_transform(vi, vn, dist)"]:::boxStyle
+        G["x, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn, dist))"]:::boxStyle
+        H["<span style='color:#3B6EA8 !important;'>return</span> x, logpdf(dist, x) - logjac, vi"]:::boxStyle
+        
+        A -.->|<span style='color:#3B6EA8 ; background-color:#ffffff;'>@model</span>| B
+        B -.->|<span style='color:#000000 ; background-color:#ffffff;'>tilde-pipeline</span>| C
+        C --> D
+        D -->|<span style='color:#97365B ; background-color:#ffffff;'>false</span>| E
+        D -->|<span style='color:#97365B ; background-color:#ffffff;'>true</span>| F
+        E --> G
+        F --> G
+        G --> H
+    end
+
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+    
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000
 ```
 
 Below we'll see how this is done.
@@ -197,10 +222,27 @@ One might wonder why we need both `to_internal_transform` and `to_linked_interna
 
 That is, why can't we just do
 
-```@raw html
-<div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../../assets/images/transformations-assume-without-istrans.dot.png" />
-</div>
+```mermaid
+%%{ init: { 'flowchart': { 'curve': 'linear' } } }%%
+%%{ init: { 'themeVariables': { 'lineColor': '#000000' } } }%%
+graph TD
+    subgraph assume ["assume"]
+        style assume fill:#ffffff,font-family:Courier
+
+        A["assume(varinfo, <span style='color:#3B6EA8 !important;'>@varname</span>(x), Normal())"]:::boxStyle
+        B["f = from_internal_transform(varinfo, varname, dist)"]:::boxStyle
+        C["x, logjac = with_logabsdet_jacobian(f, assume_internal(varinfo, varname, dist))"]:::boxStyle
+        D["<span style='color:#3B6EA8 !important;'>return</span> x, logpdf(dist, x) - logjac, varinfo"]:::dashedBox
+        
+        A --> B
+        B --> C
+        C --> D
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000
 ```
 
 Unfortunately, this is not possible in general. Consider for example the following model:
@@ -277,10 +319,32 @@ That is, if the variable is linked / "unconstrained", we use the [`DynamicPPL.fr
 
 And so the earlier diagram becomes:
 
-```@raw html
-<div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../../assets/images/transformations-assume.dot.png" />
-</div>
+```mermaid
+%%{ init: { 'flowchart': { 'curve': 'linear' } } }%%
+%%{ init: { 'themeVariables': { 'lineColor': '#000000' } } }%%
+graph TD
+    subgraph assume ["assume"]
+        style assume fill:#ffffff,font-family:Courier
+
+        A["assume(varinfo, <span style='color:#3B6EA8 !important;'>@varname</span>(x), Normal())"]:::boxStyle
+        B(["<span style='color:#3B6EA8 !important;'>if</span> istrans(varinfo, varname)"]):::boxStyle
+        C["f = from_internal_transform(varinfo, varname, dist)"]:::boxStyle
+        D["f = from_linked_internal_transform(varinfo, varname, dist)"]:::boxStyle
+        E["x, logjac = with_logabsdet_jacobian(f, assume_internal(varinfo, varname, dist))"]:::boxStyle
+        F["<span style='color:#3B6EA8 !important;'>return</span> x, logpdf(dist, x) - logjac, varinfo"]:::dashedBox
+        
+        A --> B
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>false</span>| C
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>true</span>| D
+        C --> E
+        D --> E
+        E --> F
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000
 ```
 
 !!! note
@@ -294,18 +358,58 @@ This is also the reason why we have two definitions of `getindex`:
 
 For `getindex` we have the following diagram:
 
-```@raw html
-<div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../../assets/images/transformations-getindex-with-dist.dot.png" />
-</div>
+```mermaid
+%%{ init: { 'flowchart': { 'curve': 'linear' } } }%%
+%%{ init: { 'themeVariables': { 'lineColor': '#000000' } } }%%
+graph TD
+    subgraph getindex ["getindex"]
+        style getindex fill:#ffffff,font-family:Courier
+
+        A["x = getindex(varinfo, <span style='color:#3B6EA8 !important;'>@varname</span>(x), Normal())"]:::boxStyle
+        B(["<span style='color:#3B6EA8 !important;'>if</span> istrans(varinfo, varname)"]):::boxStyle
+        C["f = from_internal_transform(varinfo, varname, dist)"]:::boxStyle
+        D["f = from_linked_internal_transform(varinfo, varname, dist)"]:::boxStyle
+        E["<span style='color:#3B6EA8 !important;'>return</span> f(getindex_internal(varinfo, varname))"]:::dashedBox
+        
+        A --> B
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>false</span>| C
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>true</span>| D
+        C --> E
+        D --> E
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000
 ```
 
 While if `dist` is not provided, we have:
 
-```@raw html
-<div style="flex-direction: row; display: flex; justify-content: space-around; margin: 1em;">
-<img style="border-radius: 5px;" src="../../assets/images/transformations-getindex-without-dist.dot.png" />
-</div>
+```mermaid
+%%{ init: { 'flowchart': { 'curve': 'linear' } } }%%
+%%{ init: { 'themeVariables': { 'lineColor': '#000000' } } }%%
+graph TD
+    subgraph getindex ["getindex"]
+        style getindex fill:#ffffff,font-family:Courier
+
+        A["x = getindex(varinfo, <span style='color:#3B6EA8 !important;'>@varname</span>(x))"]:::boxStyle
+        B(["<span style='color:#3B6EA8 !important;'>if</span> istrans(varinfo, varname)"]):::boxStyle
+        C["f = from_internal_transform(varinfo, varname)"]:::boxStyle
+        D["f = from_linked_internal_transform(varinfo, varname)"]:::boxStyle
+        E["<span style='color:#3B6EA8 !important;'>return</span> f(getindex_internal(varinfo, varname))"]:::dashedBox
+        
+        A --> B
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>false</span>| C
+        B -->|<span style='color:#97365B ; background-color:#ffffff;'>true</span>| D
+        C --> E
+        D --> E
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000
 ```
 
 Notice that `dist` is not present here, but otherwise the diagrams are the same.

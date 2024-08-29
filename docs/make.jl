@@ -8,6 +8,7 @@ using DynamicPPL: AbstractPPL
 # in the doctest as run in `test/runtests.jl`, and so we need to stay
 # consistent with that.
 using Distributions
+using DocumenterMermaid
 
 # Doctest setup
 DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
