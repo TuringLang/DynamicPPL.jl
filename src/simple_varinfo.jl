@@ -329,8 +329,10 @@ Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
 getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 # `AbstractDict`
-function getindex_internal(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    return nested_getindex(vi.values, vn)
+function getindex_internal(
+    vi::SimpleVarInfo{<:Union{AbstractDict,VarNamedVector}}, vn::VarName
+)
+    return getvalue(vi.values, vn)
 end
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)

@@ -259,10 +259,7 @@ function Base.getindex(vnv::VarNamedVector, vn::VarName)
     return f(x)
 end
 
-Base.get(vnv::VarNamedVector, vn::VarName) = getindex(vnv, vn)
-function Base.get(vnv::VarNamedVector, vn::VarName, default)
-    return haskey(vnv, vn) ? getindex(vnv, vn) : default
-end
+Base.get(vnv::VarNamedVector, vn::VarName) = getvalue(vnv, vn)
 
 function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
     # TODO: Assume `ranges` to be sorted and contiguous, and use `searchsortedfirst`
@@ -855,4 +852,64 @@ function values_as(vnv::VarNamedVector, ::Type{NamedTuple})
 end
 function values_as(vnv::VarNamedVector, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(pairs(vnv))
+end
+
+# TODO(mhauru) This is tricky to implement in the general case, and the below implementation
+# only covers some simple cases. It's probably sufficient in most situations though.
+function hasvalue(vnv::VarNamedVector, vn::VarName)
+    haskey(vnv, vn) && return true
+    any(subsumes(vn, k) for k in keys(vnv)) && return true
+    # Handle the easy case where the right symbol isn't even present.
+    !any(k -> getsym(k) == getsym(vn), keys(vnv)) && return false
+
+    optic = getoptic(vn)
+    if optic isa Accessors.IndexLens || optic isa Accessors.ComposedOptic
+        # If vn is of the form @varname(somesymbol[someindex]), we check whether we store
+        # @varname(somesymbol) and can index into it with someindex. If we rather have a
+        # composed optic with the last part being an index lens, we do a similar check but
+        # stripping out the last index lens part. If these pass, the answer is definitely
+        # "yes". If not, we still don't know for sure.
+        # TODO(mhauru) What about casese where vnv stores both @varname(x) and
+        # @varname(x[1]) or @varname(x.a)? Those should probably be banned, but currently
+        # aren't.
+        head, tail = if optic isa Accessors.ComposedOptic
+            decomp_optic = Accessors.decompose(optic)
+            first(decomp_optic), Accessors.compose(decomp_optic[2:end]...)
+        else
+            optic, identity
+        end
+        parent_varname = VarName{getsym(vn)}(tail)
+        if haskey(vnv, parent_varname)
+            valvec = getindex(vnv, parent_varname)
+            return canview(head, valvec)
+        end
+    end
+    throw(ErrorException("hasvalue has not been fully implemented for this VarName: $(vn)"))
+end
+
+# TODO(mhauru) Like hasvalue, this is only partially implemented.
+function getvalue(vnv::VarNamedVector, vn::VarName)
+    !hasvalue(vnv, vn) && throw(KeyError(vn))
+    haskey(vnv, vn) && getindex(vnv, vn)
+
+    subsumed_keys = filter(k -> subsumes(vn, k), keys(vnv))
+    if length(subsumed_keys) > 0
+        # TODO(mhauru) What happens if getindex returns e.g. matrices, and we vcat them?
+        return mapreduce(k -> getindex(vnv, k), vcat, subsumed_keys)
+    end
+
+    optic = getoptic(vn)
+    # See hasvalue for some comments on the logic of this if block.
+    if optic isa Accessors.IndexLens || optic isa Accessors.ComposedOptic
+        head, tail = if optic isa Accessors.ComposedOptic
+            decomp_optic = Accessors.decompose(optic)
+            first(decomp_optic), Accessors.compose(decomp_optic[2:end]...)
+        else
+            optic, identity
+        end
+        parent_varname = VarName{getsym(vn)}(tail)
+        valvec = getindex(vnv, parent_varname)
+        return head(valvec)
+    end
+    throw(ErrorException("getvalue has not been fully implemented for this VarName: $(vn)"))
 end
