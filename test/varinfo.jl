@@ -121,6 +121,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_base!!(TypedVarInfo(vi))
         test_base!!(SimpleVarInfo())
         test_base!!(SimpleVarInfo(Dict()))
+        test_base!!(SimpleVarInfo(VarNamedVector()))
     end
     @testset "flags" begin
         # Test flag setting:
@@ -338,6 +339,14 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ## `SimpleVarInfo{<:VarNamedVector}`
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(VarNamedVector()), true)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
