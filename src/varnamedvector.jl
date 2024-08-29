@@ -176,10 +176,11 @@ replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
 replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
 
 function unflatten(vnv::VarNamedVector, vals::AbstractVector)
-    new_vnv = deepcopy(vnv)
-    recontiguify_ranges!(new_vnv.ranges)
-    empty!(new_vnv.num_inactive)
-    return replace_values(new_vnv, vals)
+    new_ranges = deepcopy(vnv.ranges)
+    recontiguify_ranges!(new_ranges)
+    return VarNamedVector(
+        vnv.varname_to_index, vnv.varnames, new_ranges, vals, vnv.transforms
+    )
 end
 
 # Some `VarNamedVector` specific functions.
