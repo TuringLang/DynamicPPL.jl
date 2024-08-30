@@ -53,7 +53,9 @@ struct VarNamedVector{
 
     """
     vector of booleans indicating whether a variable has been transformed to unconstrained
-    Euclidean space or not, i.e. whether its domain is all of `ℝ^ⁿ`.
+    Euclidean space or not, i.e. whether its domain is all of `ℝ^ⁿ`. Having
+    `is_unconstrained[varname_to_index[vn]] == false` does not necessarily mean that a
+    variable is constrained, but rather that it's not guaranteed to not be.
     """
     is_unconstrained::BitVector
 
@@ -64,18 +66,84 @@ struct VarNamedVector{
     entries always come after the last active entry for the given variable.
     """
     num_inactive::OrderedDict{Int,Int}
+
+    function VarNamedVector(
+        varname_to_index,
+        varnames::TVN,
+        ranges,
+        vals::TVal,
+        transforms::TTrans,
+        is_unconstrained,
+        num_inactive,
+    ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector}
+    # function VarNamedVector{K,V,TVN,TVal,TTrans}(
+    #     varname_to_index, varnames, ranges, vals, transforms, is_unconstrained, num_inactive
+    # ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans}
+        if length(varnames) != length(ranges) ||
+            length(varnames) != length(transforms) ||
+            length(varnames) != length(is_unconstrained) ||
+            length(varnames) != length(varname_to_index)
+            msg = """
+                Inputs to VarNamedVector have inconsistent lengths. Got lengths \
+                varnames: $(length(varnames)), \
+                ranges: $(length(ranges)), \
+                transforms: $(length(transforms)), \
+                is_unconstrained: $(length(is_unconstrained)), \
+                varname_to_index: $(length(varname_to_index))."""
+            throw(ArgumentError(msg))
+        end
+
+        num_vals = mapreduce(length, (+), ranges; init=0) + sum(values(num_inactive))
+        if num_vals != length(vals)
+            msg = """
+                The total number of elements in `vals` does not match the sum of the \
+                lengths of the ranges and the number of inactive entries."""
+            throw(ArgumentError(msg))
+        end
+
+        if Set(values(varname_to_index)) != Set(1:length(varnames))
+            msg = "The values of `varname_to_index` are not valid indices."
+            throw(ArgumentError(msg))
+        end
+
+        if !issubset(Set(keys(num_inactive)), Set(values(varname_to_index)))
+            msg = "The keys of `num_inactive` are not valid indices."
+            throw(ArgumentError(msg))
+        end
+
+        # Check that the varnames don't overlap. The time cost is quadratic number of
+        # variables. If this ever becomes an issue, we should be able to go down to at least
+        # N log N by sorting based on subsumes-order.
+        for vn1 in keys(varname_to_index)
+            for vn2 in keys(varname_to_index)
+                vn1 === vn2 && continue
+                if subsumes(vn1, vn2)
+                    msg = """
+                    Variables in a VarNamedVector should not subsume each other, \
+                    but $vn1 subsumes $vn2"""
+                    throw(ArgumentError(msg))
+                end
+            end
+        end
+
+
+        # We could also have a test to check that the ranges don't overlap, but that sounds
+        # unlikely to occur, and implementing it in linear time would require a tiny bit of
+        # thought.
+
+        return new{K,V,TVN,TVal,TTrans}(
+            varname_to_index,
+            varnames,
+            ranges,
+            vals,
+            transforms,
+            is_unconstrained,
+            num_inactive,
+        )
+    end
 end
 
-function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
-    return vnv_left.varname_to_index == vnv_right.varname_to_index &&
-           vnv_left.varnames == vnv_right.varnames &&
-           vnv_left.ranges == vnv_right.ranges &&
-           vnv_left.vals == vnv_right.vals &&
-           vnv_left.transforms == vnv_right.transforms &&
-           vnv_left.is_unconstrained == vnv_right.is_unconstrained &&
-           vnv_left.num_inactive == vnv_right.num_inactive
-end
-
+# Default values for is_unconstrained (all false) and num_inactive (empty).
 function VarNamedVector(
     varname_to_index,
     varnames,
@@ -94,7 +162,9 @@ function VarNamedVector(
         OrderedDict{Int,Int}(),
     )
 end
-# TODO: Do we need this?
+
+# TODO(mhauru) Are we sure we want the last one to be of type Any[]? Might this call
+# unnecessary type instability?
 function VarNamedVector{K,V}() where {K,V}
     return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
@@ -102,6 +172,7 @@ end
 # The various constructor(orig...) calls are to create concrete element types. E.g. if
 # vnv.vals is a Vector{Real} but all elements are Float64s, [vnv.vals...] will be a
 # Vector{Float64}
+# TODO(mhauru) This probably shouldn't be a constructor. Maybe call it `concretise`?
 function VarNamedVector(vnv::VarNamedVector)
     return VarNamedVector(
         OrderedDict(vnv.varname_to_index...),
@@ -132,8 +203,6 @@ end
 function VarNamedVector(
     varnames::AbstractVector, vals::AbstractVector, transforms=map(from_vec_transform, vals)
 )
-    # TODO: Check uniqueness of `varnames`?
-
     # Convert `vals` into a vector of vectors.
     vals_vecs = map(tovec, vals)
 
