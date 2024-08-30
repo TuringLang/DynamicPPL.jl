@@ -614,9 +614,6 @@ end
 function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
 end
-function setval!(vnv::VarNamedVector, val, vn::VarName)
-    return setindex_raw!(vnv, tovec(val), vn)
-end
 
 """
     getall(vi::VarInfo)
@@ -1884,11 +1881,6 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     push!(meta.flags["trans"], false)
 
     return meta
-end
-
-function Base.push!(vnv::VarNamedVector, vn, r, dist, gidset, num_produce)
-    f = from_vec_transform(dist)
-    return push!(vnv, vn, r, f)
 end
 
 """

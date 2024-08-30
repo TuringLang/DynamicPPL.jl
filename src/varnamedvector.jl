@@ -97,6 +97,10 @@ function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
     return vnv.is_transformed[vnv.varname_to_index[vn]] = val
 end
 
+# TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). This would
+# allow expanding the VarName and element types only as necessary, which would help keep
+# them concrete. However, making that change here opens some other cans of worms that I
+# don't want to deal with right now.
 VarNamedVector() = VarNamedVector{VarName,Real}()
 VarNamedVector(xs::Pair...) = VarNamedVector(OrderedDict(xs...))
 VarNamedVector(x::AbstractDict) = VarNamedVector(keys(x), values(x))
@@ -339,6 +343,10 @@ function setindex_raw!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
 
+function setval!(vnv::VarNamedVector, val, vn::VarName)
+    return setindex_raw!(vnv, tovec(val), vn)
+end
+
 # set!! is the function defined in utils.jl that tries to do fancy stuff with optics when
 # setting the value of a generic container using a VarName. We can bypass all that because
 # VarNamedVector handles VarNames natively.
@@ -554,6 +562,11 @@ function BangBang.push!!(
     vnv = loosen_types(vnv, typeof(vn), typeof(transform))
     push!(vnv, vn, val, transform)
     return vnv
+end
+
+function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+    f = from_vec_transform(dist)
+    return push!!(vnv, vn, val, f)
 end
 
 """
