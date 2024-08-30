@@ -172,7 +172,6 @@ julia> ForwardDiff.gradient(f, [1.0])
 ```
 """
 replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
-# TODO(mhauru) Metadata uses the space argument. Do we need to do anything with it?
 replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
 
 function unflatten(vnv::VarNamedVector, vals::AbstractVector)
@@ -487,15 +486,7 @@ is_contiguous(vnv::VarNamedVector) = !has_inactive(vnv)
 Return the range of `length(x)` from the end of current data in `vnv`.
 """
 function nextrange(vnv::VarNamedVector, x)
-    # If `vnv` is empty, return immediately.
-    isempty(vnv) && return 1:length(x)
-
-    # TODO(mhauru) How is offset different from length(vnv.vals)?
-    # The offset will be the last range's end + its number of inactive entries.
-    vn_last = vnv.varnames[end]
-    idx = getidx(vnv, vn_last)
-    offset = last(getrange(vnv, idx)) + num_inactive(vnv, idx)
-
+    offset = length(vnv.vals)
     return (offset + 1):(offset + length(x))
 end
 
@@ -536,19 +527,21 @@ same data but more abstract types, so that variables of type `KNew` and transfor
 type `TransNew` can be pushed to it.
 """
 function loosen_types(
-    vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew}
-) where {K,V,TVN,TVal,TTrans,KNew,TransNew}
-    if KNew <: K && TransNew <: eltype(TTrans)
+    vnv::VarNamedVector, ::Type{KNew}, ::Type{TransNew}
+) where {KNew,TransNew}
+    K = eltype(vnv.varnames)
+    Trans = eltype(vnv.transforms)
+    if KNew <: K && TransNew <: Trans
         return vnv
     else
         vn_type = promote_type(K, KNew)
-        transform_type = promote_type(eltype(TTrans), TransNew)
-        return VarNamedVector{vn_type,V,TVN,TVal,Vector{transform_type}}(
-            vnv.varname_to_index,
-            vnv.varnames,
+        transform_type = promote_type(Trans, TransNew)
+        return VarNamedVector(
+            OrderedDict{vn_type,Int}(vnv.varname_to_index),
+            Vector{vn_type}(vnv.varnames),
             vnv.ranges,
             vnv.vals,
-            vnv.transforms,
+            Vector{transform_type}(vnv.transforms),
             vnv.is_transformed,
             vnv.num_inactive,
         )
