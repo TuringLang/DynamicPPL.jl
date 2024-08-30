@@ -76,9 +76,6 @@ struct VarNamedVector{
         is_unconstrained,
         num_inactive,
     ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector}
-    # function VarNamedVector{K,V,TVN,TVal,TTrans}(
-    #     varname_to_index, varnames, ranges, vals, transforms, is_unconstrained, num_inactive
-    # ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans}
         if length(varnames) != length(ranges) ||
             length(varnames) != length(transforms) ||
             length(varnames) != length(is_unconstrained) ||
@@ -111,7 +108,7 @@ struct VarNamedVector{
             throw(ArgumentError(msg))
         end
 
-        # Check that the varnames don't overlap. The time cost is quadratic number of
+        # Check that the varnames don't overlap. The time cost is quadratic in number of
         # variables. If this ever becomes an issue, we should be able to go down to at least
         # N log N by sorting based on subsumes-order.
         for vn1 in keys(varname_to_index)
@@ -125,7 +122,6 @@ struct VarNamedVector{
                 end
             end
         end
-
 
         # We could also have a test to check that the ranges don't overlap, but that sounds
         # unlikely to occur, and implementing it in linear time would require a tiny bit of
@@ -185,15 +181,10 @@ function VarNamedVector(vnv::VarNamedVector)
     )
 end
 
-istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[vnv.varname_to_index[vn]]
-function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
-    return vnv.is_unconstrained[vnv.varname_to_index[vn]] = val
-end
-
 # TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). This would
 # allow expanding the VarName and element types only as necessary, which would help keep
-# them concrete. However, making that change here opens some other cans of worms that I
-# don't want to deal with right now.
+# them concrete. However, making that change here opens some other cans of worms related to
+# how VarInfo uses BangBang, that I don't want to deal with right now.
 VarNamedVector() = VarNamedVector{VarName,Real}()
 VarNamedVector(xs::Pair...) = VarNamedVector(OrderedDict(xs...))
 VarNamedVector(x::AbstractDict) = VarNamedVector(keys(x), values(x))
@@ -210,71 +201,30 @@ function VarNamedVector(
     if !(eltype(varnames) <: VarName)
         varnames = convert(Vector{VarName}, varnames)
     end
-    varname_to_index = OrderedDict{eltype(varnames),Int}()
+    varname_to_index = OrderedDict{eltype(varnames),Int}(
+        vn => i for (i, vn) in enumerate(varnames)
+    )
+    vals = reduce(vcat, vals_vecs)
+    # Make the ranges.
     ranges = Vector{UnitRange{Int}}()
     offset = 0
-    for (vn, x) in zip(varnames, vals_vecs)
-        # Add the varname index.
-        push!(varname_to_index, vn => length(varname_to_index) + 1)
-        # Add the range.
+    for x in vals_vecs
         r = (offset + 1):(offset + length(x))
         push!(ranges, r)
-        # Update the offset.
         offset = r[end]
     end
 
-    return VarNamedVector(
-        varname_to_index, varnames, ranges, reduce(vcat, vals_vecs), transforms
-    )
+    return VarNamedVector(varname_to_index, varnames, ranges, vals, transforms)
 end
 
-"""
-    replace_values(vnv::VarNamedVector, vals::AbstractVector)
-
-Replace the values in `vnv` with `vals`.
-
-This is useful when we want to update the entire underlying vector of values
-in one go or if we want to change the how the values are stored, e.g. alter the `eltype`.
-
-!!! warning
-    This replaces the raw underlying values, and so care should be taken when using this
-    function. For example, if `vnv` has any inactive entries, then the provided `vals`
-    should also contain the inactive entries to avoid unexpected behavior.
-
-# Example
-
-```jldoctest varnamedvector-replace-values
-julia> using DynamicPPL: VarNamedVector, replace_values
-
-julia> vnv = VarNamedVector(@varname(x) => [1.0]);
-
-julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
-true
-```
-
-This is also useful when we want to differentiate wrt. the values
-using automatic differentiation, e.g. ForwardDiff.jl.
-
-```jldoctest varnamedvector-replace-values
-julia> using ForwardDiff: ForwardDiff
-
-julia> f(x) = sum(abs2, replace_values(vnv, x)[@varname(x)])
-f (generic function with 1 method)
-
-julia> ForwardDiff.gradient(f, [1.0])
-1-element Vector{Float64}:
- 2.0
-```
-"""
-replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
-replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
-
-function unflatten(vnv::VarNamedVector, vals::AbstractVector)
-    new_ranges = deepcopy(vnv.ranges)
-    recontiguify_ranges!(new_ranges)
-    return VarNamedVector(
-        vnv.varname_to_index, vnv.varnames, new_ranges, vals, vnv.transforms
-    )
+function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
+    return vnv_left.varname_to_index == vnv_right.varname_to_index &&
+           vnv_left.varnames == vnv_right.varnames &&
+           vnv_left.ranges == vnv_right.ranges &&
+           vnv_left.vals == vnv_right.vals &&
+           vnv_left.transforms == vnv_right.transforms &&
+           vnv_left.is_unconstrained == vnv_right.is_unconstrained &&
+           vnv_left.num_inactive == vnv_right.num_inactive
 end
 
 # Some `VarNamedVector` specific functions.
@@ -283,7 +233,28 @@ getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
 getrange(vnv::VarNamedVector, idx::Int) = vnv.ranges[idx]
 getrange(vnv::VarNamedVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 
-gettransform(vnv::VarNamedVector, vn::VarName) = vnv.transforms[getidx(vnv, vn)]
+gettransform(vnv::VarNamedVector, idx::Int) = vnv.transforms[idx]
+gettransform(vnv::VarNamedVector, vn::VarName) = gettransform(vnv, getidx(vnv, vn))
+
+# TODO(mhauru) Eventually I would like to rename the istrans function to is_unconstrained,
+# but that's significantly breaking.
+"""
+    istrans(vnv::VarNamedVector, vn::VarName)
+
+Return a boolean for whether `vn` is guaranteed to have been transformed so that all of
+Euclidean space is its domain.
+"""
+istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[getidx(vnv, vn)]
+
+"""
+    settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
+
+Set the value for whether `vn` is guaranteed to have been transformed so that all of
+Euclidean space is its domain.
+"""
+function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
+    return vnv.is_unconstrained[vnv.varname_to_index[vn]] = val
+end
 
 """
     has_inactive(vnv::VarNamedVector)
@@ -310,14 +281,14 @@ num_inactive(vnv::VarNamedVector, idx::Int) = get(vnv.num_inactive, idx, 0)
 """
     num_allocated(vnv::VarNamedVector)
 
-Returns the number of allocated entries in `vnv`.
+Returns the number of allocated entries in `vnv`, both active and inactive.
 """
 num_allocated(vnv::VarNamedVector) = length(vnv.vals)
 
 """
     num_allocated(vnv::VarNamedVector, vn::VarName)
 
-Returns the number of allocated entries for `vn` in `vnv`.
+Returns the number of allocated entries for `vn` in `vnv`, both active and inactive.
 """
 num_allocated(vnv::VarNamedVector, vn::VarName) = num_allocated(vnv, getidx(vnv, vn))
 function num_allocated(vnv::VarNamedVector, idx::Int)
@@ -327,7 +298,7 @@ end
 # Basic array interface.
 Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
 Base.length(vnv::VarNamedVector) =
-    if isempty(vnv.num_inactive)
+    if !has_inactive(vnv)
         length(vnv.vals)
     else
         sum(length, vnv.ranges)
@@ -456,6 +427,56 @@ function Base.empty!(vnv::VarNamedVector)
 end
 BangBang.empty!!(vnv::VarNamedVector) = (empty!(vnv); return vnv)
 
+"""
+    replace_values(vnv::VarNamedVector, vals::AbstractVector)
+
+Replace the values in `vnv` with `vals`.
+
+This is useful when we want to update the entire underlying vector of values
+in one go or if we want to change the how the values are stored, e.g. alter the `eltype`.
+
+!!! warning
+    This replaces the raw underlying values, and so care should be taken when using this
+    function. For example, if `vnv` has any inactive entries, then the provided `vals`
+    should also contain the inactive entries to avoid unexpected behavior.
+
+# Example
+
+```jldoctest varnamedvector-replace-values
+julia> using DynamicPPL: VarNamedVector, replace_values
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0]);
+
+julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
+true
+```
+
+This is also useful when we want to differentiate wrt. the values
+using automatic differentiation, e.g. ForwardDiff.jl.
+
+```jldoctest varnamedvector-replace-values
+julia> using ForwardDiff: ForwardDiff
+
+julia> f(x) = sum(abs2, replace_values(vnv, x)[@varname(x)])
+f (generic function with 1 method)
+
+julia> ForwardDiff.gradient(f, [1.0])
+1-element Vector{Float64}:
+ 2.0
+```
+"""
+replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
+# TODO(mhauru) The space argument is used by the old Gibbs sampler. To be removed.
+replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
+
+function unflatten(vnv::VarNamedVector, vals::AbstractVector)
+    new_ranges = deepcopy(vnv.ranges)
+    recontiguify_ranges!(new_ranges)
+    return VarNamedVector(
+        vnv.varname_to_index, vnv.varnames, new_ranges, vals, vnv.transforms
+    )
+end
+
 function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     # Return early if possible.
     isempty(left_vnv) && return deepcopy(right_vnv)
@@ -489,7 +510,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     F = promote_type(F_left, F_right)
 
     # Allocate.
-    varnames_to_index = OrderedDict{V,Int}()
+    varname_to_index = OrderedDict{V,Int}()
     ranges = UnitRange{Int}[]
     vals = T[]
     transforms = F[]
@@ -502,7 +523,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
         # Extract the necessary information from `left` or `right`.
         if vn in vns_left && !(vn in vns_right)
             # `vn` is only in `left`.
-            varnames_to_index[vn] = idx
+            varname_to_index[vn] = idx
             val = getindex_raw(left_vnv, vn)
             n = length(val)
             r = (offset + 1):(offset + n)
@@ -510,7 +531,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
             is_unconstrained[idx] = istrans(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
-            varnames_to_index[vn] = idx
+            varname_to_index[vn] = idx
             val = getindex_raw(right_vnv, vn)
             n = length(val)
             r = (offset + 1):(offset + n)
@@ -526,7 +547,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     end
 
     return VarNamedVector(
-        varnames_to_index, vns_both, ranges, vals, transforms, is_unconstrained
+        varname_to_index, vns_both, ranges, vals, transforms, is_unconstrained
     )
 end
 
