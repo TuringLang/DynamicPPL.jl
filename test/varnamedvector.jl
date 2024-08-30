@@ -104,7 +104,7 @@ function relax_container_types(vnv::VarNamedVector, vns, vals)
         vnv.ranges,
         vals_new,
         transforms_new,
-        vnv.is_transformed,
+        vnv.is_unconstrained,
         vnv.num_inactive,
     )
 end
@@ -430,7 +430,7 @@ end
         vn = @varname(t[1])
         vns = vcat(test_vns, [vn])
         push!(vnv, vn, 2.0, x -> x^2)
-        vnv.is_transformed[vnv.varname_to_index[vn]] = true
+        vnv.is_unconstrained[vnv.varname_to_index[vn]] = true
         # TODO(mhauru) Should this be fixed? Currently this fails.
         @test_broken subset(vnv, vns) == vnv
     end

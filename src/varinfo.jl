@@ -1396,7 +1396,7 @@ function _link_metadata!(
     # Need to extract the priors from the model.
     dists = extract_priors(model, varinfo)
 
-    is_transformed = copy(metadata.is_transformed)
+    is_unconstrained = copy(metadata.is_unconstrained)
 
     # Construct the linking transformations.
     link_transforms = map(vns) do vn
@@ -1407,7 +1407,7 @@ function _link_metadata!(
 
         # Otherwise, we derive the transformation from the distribution.
         # TODO(mhauru) Could move the mutation outside of the map, just for style.
-        is_transformed[getidx(metadata, vn)] = true
+        is_unconstrained[getidx(metadata, vn)] = true
         internal_to_linked_internal_transform(varinfo, vn, dists[vn])
     end
     # Compute the transformed values.
@@ -1443,7 +1443,7 @@ function _link_metadata!(
         ranges_new,
         reduce(vcat, yvecs),
         transforms,
-        is_transformed,
+        is_unconstrained,
     )
 end
 
@@ -1555,7 +1555,7 @@ function _invlink_metadata!(
     #       => Only need to allocate for transformations.
 
     vns = keys(metadata)
-    is_transformed = copy(metadata.is_transformed)
+    is_unconstrained = copy(metadata.is_unconstrained)
 
     # Compute the transformed values.
     xs = map(vns) do vn
@@ -1566,7 +1566,7 @@ function _invlink_metadata!(
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
-        is_transformed[getidx(metadata, vn)] = false
+        is_unconstrained[getidx(metadata, vn)] = false
         # Return the transformed value.
         return x
     end
@@ -1592,7 +1592,7 @@ function _invlink_metadata!(
         ranges_new,
         reduce(vcat, xvecs),
         transforms,
-        is_transformed,
+        is_unconstrained,
     )
 end
 

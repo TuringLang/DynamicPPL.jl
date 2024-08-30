@@ -35,10 +35,8 @@ struct VarNamedVector{
     "vector of transformations whose inverse takes us back to the original space"
     transforms::TTrans
 
-    # TODO(mhauru) When do we actually need this? Could this be handled by having
-    # `identity` in transforms?
     "specifies whether a variable is transformed or not "
-    is_transformed::BitVector
+    is_unconstrained::BitVector
 
     "additional entries which are considered inactive"
     num_inactive::OrderedDict{Int,Int}
@@ -50,7 +48,7 @@ function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
            vnv_left.ranges == vnv_right.ranges &&
            vnv_left.vals == vnv_right.vals &&
            vnv_left.transforms == vnv_right.transforms &&
-           vnv_left.is_transformed == vnv_right.is_transformed &&
+           vnv_left.is_unconstrained == vnv_right.is_unconstrained &&
            vnv_left.num_inactive == vnv_right.num_inactive
 end
 
@@ -60,7 +58,7 @@ function VarNamedVector(
     ranges,
     vals,
     transforms,
-    is_transformed=fill!(BitVector(undef, length(varnames)), 0),
+    is_unconstrained=fill!(BitVector(undef, length(varnames)), 0),
 )
     return VarNamedVector(
         varname_to_index,
@@ -68,7 +66,7 @@ function VarNamedVector(
         ranges,
         vals,
         transforms,
-        is_transformed,
+        is_unconstrained,
         OrderedDict{Int,Int}(),
     )
 end
@@ -87,14 +85,14 @@ function VarNamedVector(vnv::VarNamedVector)
         copy(vnv.ranges),
         [vnv.vals...],
         [vnv.transforms...],
-        copy(vnv.is_transformed),
+        copy(vnv.is_unconstrained),
         copy(vnv.num_inactive),
     )
 end
 
-istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_transformed[vnv.varname_to_index[vn]]
+istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[vnv.varname_to_index[vn]]
 function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
-    return vnv.is_transformed[vnv.varname_to_index[vn]] = val
+    return vnv.is_unconstrained[vnv.varname_to_index[vn]] = val
 end
 
 # TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). This would
@@ -402,7 +400,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     ranges = UnitRange{Int}[]
     vals = T[]
     transforms = F[]
-    is_transformed = BitVector(undef, length(vns_both))
+    is_unconstrained = BitVector(undef, length(vns_both))
 
     # Range offset.
     offset = 0
@@ -416,7 +414,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
             n = length(val)
             r = (offset + 1):(offset + n)
             f = gettransform(left_vnv, vn)
-            is_transformed[idx] = istrans(left_vnv, vn)
+            is_unconstrained[idx] = istrans(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
             varnames_to_index[vn] = idx
@@ -424,7 +422,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
             n = length(val)
             r = (offset + 1):(offset + n)
             f = gettransform(right_vnv, vn)
-            is_transformed[idx] = istrans(right_vnv, vn)
+            is_unconstrained[idx] = istrans(right_vnv, vn)
         end
         # Update.
         append!(vals, val)
@@ -435,7 +433,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     end
 
     return VarNamedVector(
-        varnames_to_index, vns_both, ranges, vals, transforms, is_transformed
+        varnames_to_index, vns_both, ranges, vals, transforms, is_unconstrained
     )
 end
 
@@ -520,7 +518,7 @@ function Base.push!(
     push!(vnv.ranges, r_new)
     append!(vnv.vals, val_vec)
     push!(vnv.transforms, transform)
-    push!(vnv.is_transformed, false)
+    push!(vnv.is_unconstrained, false)
     return nothing
 end
 
@@ -555,7 +553,7 @@ function loosen_types(
             vnv.ranges,
             vnv.vals,
             Vector{transform_type}(vnv.transforms),
-            vnv.is_transformed,
+            vnv.is_unconstrained,
             vnv.num_inactive,
         )
     end
