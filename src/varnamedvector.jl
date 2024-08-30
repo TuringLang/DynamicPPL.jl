@@ -1,7 +1,19 @@
 """
     VarNamedVector
 
-A container that works like a `Vector` and an `OrderedDict` but is neither.
+A container that stores values in a vectorised form, but indexable by variable names.
+
+When indexed by integers or `Colon`s, e.g. `vnv[2]` or `vnv[:]`, `VarNamedVector` behaves
+like a `Vector`, and returns the values as they are stored. The stored form is always
+vectorised, for instance matrix variables have been flattened, and may be further
+transformed to achieve linking.
+
+When indexed by `VarName`s, e.g. `vnv[@varname(x)]`, `VarNamedVector` returns the values
+in the original space. For instance, a linked matrix variable is first inverse linked and
+then reshaped to its original form before returning it to the caller.
+
+`VarNamedVector` also stores a boolean for whether a variable has been transformed to
+unconstrained Euclidean space or not.
 
 # Fields
 $(FIELDS)
@@ -10,19 +22,19 @@ struct VarNamedVector{
     K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector
 }
     """
-    mapping from the `VarName` to its integer index in `varnames`, `ranges` and `transforms`
+    mapping from a `VarName` to its integer index in `varnames`, `ranges` and `transforms`
     """
     varname_to_index::OrderedDict{K,Int}
 
     """
-    vector of identifiers for the random variables, where
-    `varnames[varname_to_index[vn]] == vn`
+    vector of `VarNames` for the variables, where `varnames[varname_to_index[vn]] == vn`
     """
     varnames::TVN # AbstractVector{<:VarName}
 
     """
     vector of index ranges in `vals` corresponding to `varnames`; each `VarName` `vn` has
-    a single index or a set of contiguous indices in `vals`
+    a single index or a set of contiguous indices, such that the values of `vn` can be found
+    at `vals[ranges[varname_to_index[vn]]]`
     """
     ranges::Vector{UnitRange{Int}}
 
@@ -32,13 +44,25 @@ struct VarNamedVector{
     """
     vals::TVal # AbstractVector{<:Real}
 
-    "vector of transformations whose inverse takes us back to the original space"
+    """
+    vector of transformations, so that `transforms[varname_to_index[vn]]` is a callable
+    that transformes the value of `vn` back to its original space, undoing any linking and
+    vectorisation
+    """
     transforms::TTrans
 
-    "specifies whether a variable is transformed or not "
+    """
+    vector of booleans indicating whether a variable has been transformed to unconstrained
+    Euclidean space or not, i.e. whether its domain is all of `ℝ^ⁿ`.
+    """
     is_unconstrained::BitVector
 
-    "additional entries which are considered inactive"
+    """
+    mapping from a variable index to the number of inactive entries for that variable.
+    Inactive entries are elements in `vals` that are not part of the value of any variable.
+    They arise when transformations change the dimension of the value stored. In active
+    entries always come after the last active entry for the given variable.
+    """
     num_inactive::OrderedDict{Int,Int}
 end
 
