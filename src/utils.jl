@@ -864,6 +864,7 @@ end
 Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
 """
 float_type_with_fallback(::Type) = Real
+float_type_with_fallback(::Type{Union{}}) = Real
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
