@@ -524,6 +524,11 @@ function Base.push!(
     return nothing
 end
 
+function Base.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+    f = from_vec_transform(dist)
+    return push!(vnv, vn, val, f)
+end
+
 """
     loosen_types(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
 
