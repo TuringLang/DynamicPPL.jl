@@ -324,9 +324,14 @@ function Base.getindex(vnv::VarNamedVector, vn::VarName)
     return f(x)
 end
 
-Base.get(vnv::VarNamedVector, vn::VarName) = getvalue(vnv, vn)
+"""
+    find_containing_range(ranges::AbstractVector{<:AbstractRange}, x)
 
-function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
+Find the first range in `ranges` that contains `x`.
+
+Throw an `ArgumentError` if `x` is not in any of the ranges.
+"""
+function find_containing_range(ranges::AbstractVector{<:AbstractRange}, x)
     # TODO: Assume `ranges` to be sorted and contiguous, and use `searchsortedfirst`
     # for a more efficient approach.
     range_idx = findfirst(Base.Fix1(∈, x), ranges)
@@ -339,6 +344,11 @@ function find_range_from_sorted(ranges::AbstractVector{<:AbstractRange}, x)
     return range_idx
 end
 
+"""
+    adjusted_ranges(vnv::VarNamedVector)
+
+Return what `vnv.ranges` would be if there were no inactive entries.
+"""
 function adjusted_ranges(vnv::VarNamedVector)
     # Every range following inactive entries needs to be shifted.
     offset = 0
@@ -353,14 +363,22 @@ function adjusted_ranges(vnv::VarNamedVector)
     return ranges_adj
 end
 
-function index_to_raw_index(vnv::VarNamedVector, i::Int)
+"""
+    index_to_vals_index(vnv::VarNamedVector, i::Int)
+
+Convert an integer index that ignores inactive entries to an index that accounts for them.
+
+This is needed when the user wants to index `vnv` like a vector, but shouldn't have to care
+about inactive entries in `vnv.vals`.
+"""
+function index_to_vals_index(vnv::VarNamedVector, i::Int)
     # If we don't have any inactive entries, there's nothing to do.
     has_inactive(vnv) || return i
 
     # Get the adjusted ranges.
     ranges_adj = adjusted_ranges(vnv)
     # Determine the adjusted range that the index corresponds to.
-    r_idx = find_range_from_sorted(ranges_adj, i)
+    r_idx = find_containing_range(ranges_adj, i)
     r = vnv.ranges[r_idx]
     # Determine how much of the index `i` is used to get to this range.
     i_used = r_idx == 1 ? 0 : sum(length, ranges_adj[1:(r_idx - 1)])
@@ -369,7 +387,15 @@ function index_to_raw_index(vnv::VarNamedVector, i::Int)
     return r[i_remainder]
 end
 
-getindex_raw(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_raw_index(vnv, i)]
+"""
+    getindex_raw(vnv::VarNamedVector, i::Int)
+    getindex_raw(vnv::VarNamedVector, vn::VarName)
+
+Like `getindex`, but returns the values as they are stored in `vnv` without transforming.
+
+For integer indices this is the same as `getindex`, but for `VarName`s this is different.
+"""
+getindex_raw(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_vals_index(vnv, i)]
 getindex_raw(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
 # `getindex` for `Colon`
@@ -381,15 +407,10 @@ function Base.getindex(vnv::VarNamedVector, ::Colon)
     end
 end
 
-function getindex_raw(vnv::VarNamedVector, ::Colon)
-    return if has_inactive(vnv)
-        mapreduce(Base.Fix1(getindex_raw, vnv.vals), vcat, vnv.ranges)
-    else
-        vnv.vals
-    end
-end
+getindex_raw(vnv::VarNamedVector, ::Colon) = getindex(vnv, Colon())
 
-# HACK: remove this as soon as possible.
+# TODO(mhauru): Remove this as soon as possible. Only needed because of the old Gibbs
+# sampler.
 function Base.getindex(vnv::VarNamedVector, spl::AbstractSampler)
     throw(ErrorException("Cannot index a VarNamedVector with a sampler."))
 end
@@ -400,21 +421,22 @@ function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
     return setindex_raw!(vnv, f(val), vn)
 end
 
-setindex_raw!(vnv::VarNamedVector, val, i::Int) = vnv.vals[index_to_raw_index(vnv, i)] = val
+"""
+    setindex_raw!(vnv::VarNamedVector, val, i::Int)
+    setindex_raw!(vnv::VarNamedVector, val, vn::VarName)
+
+Like `setindex!`, but sets the values as they are stored in `vnv` without transforming.
+
+For integer indices this is the same as `setindex!`, but for `VarName`s this is different.
+"""
+function setindex_raw!(vnv::VarNamedVector, val, i::Int)
+    return vnv.vals[index_to_vals_index(vnv, i)] = val
+end
+
 function setindex_raw!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
 
-function setval!(vnv::VarNamedVector, val, vn::VarName)
-    return setindex_raw!(vnv, tovec(val), vn)
-end
-
-# set!! is the function defined in utils.jl that tries to do fancy stuff with optics when
-# setting the value of a generic container using a VarName. We can bypass all that because
-# VarNamedVector handles VarNames natively.
-set!!(vnv::VarNamedVector, vn::VarName, val) = update!!(vnv, vn, val)
-
-# `empty!(!)`
 function Base.empty!(vnv::VarNamedVector)
     # TODO: Or should the semantics be different, e.g. keeping `varnames`?
     empty!(vnv.varname_to_index)
@@ -422,6 +444,7 @@ function Base.empty!(vnv::VarNamedVector)
     empty!(vnv.ranges)
     empty!(vnv.vals)
     empty!(vnv.transforms)
+    empty!(vnv.is_unconstrained)
     empty!(vnv.num_inactive)
     return nothing
 end
@@ -430,10 +453,10 @@ BangBang.empty!!(vnv::VarNamedVector) = (empty!(vnv); return vnv)
 """
     replace_values(vnv::VarNamedVector, vals::AbstractVector)
 
-Replace the values in `vnv` with `vals`.
+Replace the values in `vnv` with `vals`, as they are stored internally.
 
-This is useful when we want to update the entire underlying vector of values
-in one go or if we want to change the how the values are stored, e.g. alter the `eltype`.
+This is useful when we want to update the entire underlying vector of values in one go or if
+we want to change the how the values are stored, e.g. alter the `eltype`.
 
 !!! warning
     This replaces the raw underlying values, and so care should be taken when using this
@@ -451,8 +474,8 @@ julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
 true
 ```
 
-This is also useful when we want to differentiate wrt. the values
-using automatic differentiation, e.g. ForwardDiff.jl.
+This is also useful when we want to differentiate wrt. the values using automatic
+differentiation, e.g. ForwardDiff.jl.
 
 ```jldoctest varnamedvector-replace-values
 julia> using ForwardDiff: ForwardDiff
@@ -466,9 +489,40 @@ julia> ForwardDiff.gradient(f, [1.0])
 ```
 """
 replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
-# TODO(mhauru) The space argument is used by the old Gibbs sampler. To be removed.
-replace_values(vnv::VarNamedVector, space, vals) = replace_values(vnv, vals)
 
+# TODO(mhauru) The space argument is used by the old Gibbs sampler. To be removed.
+function replace_values(vnv::VarNamedVector, ::Val{space}, vals) where {space}
+    if length(space) > 0
+        msg = "Selecting values in a VarNamedVector with a space is not supported."
+        throw(ArgumentError(msg))
+    end
+    return replace_values(vnv, vals)
+end
+
+"""
+    unflatten(vnv::VarNamedVector, vals::AbstractVector)
+
+Return a new instance of `vnv` with the values of `vals` assigned to the variables.
+
+This assumes that `vals` have been transformed by the same transformations that that the
+values in `vnv` have been transformed by. However, unlike [`replace_values`](@ref),
+`unflatten` does account for inactive entries in `vnv`, so that the user does not have to
+care about them.
+
+This is in a sense the reverse operation of `vnv[:]`.
+
+Unflatten recontiguifies the internal storage, getting rid of any inactive entries.
+
+# Example
+
+```jldoctest varnamedvector-unflatten
+julia> using DynamicPPL: VarNamedVector, unflatten
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0, 2.0], @varname(y) => [3.0]);
+
+julia> unflatten(vnv, vnv[:]) == vnv
+true
+"""
 function unflatten(vnv::VarNamedVector, vals::AbstractVector)
     new_ranges = deepcopy(vnv.ranges)
     recontiguify_ranges!(new_ranges)
@@ -491,10 +545,6 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     T_left = eltype(left_vnv.vals)
     T_right = eltype(right_vnv.vals)
     T = promote_type(T_left, T_right)
-    # TODO: Is this necessary?
-    if !(T <: Real)
-        T = Real
-    end
 
     # Determine `eltype` of `varnames`.
     V_left = eltype(left_vnv.varnames)
@@ -520,24 +570,22 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     offset = 0
 
     for (idx, vn) in enumerate(vns_both)
+        varname_to_index[vn] = idx
         # Extract the necessary information from `left` or `right`.
         if vn in vns_left && !(vn in vns_right)
             # `vn` is only in `left`.
-            varname_to_index[vn] = idx
             val = getindex_raw(left_vnv, vn)
-            n = length(val)
-            r = (offset + 1):(offset + n)
             f = gettransform(left_vnv, vn)
             is_unconstrained[idx] = istrans(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
-            varname_to_index[vn] = idx
+            # Note that in a `merge` the right value has precedence.
             val = getindex_raw(right_vnv, vn)
-            n = length(val)
-            r = (offset + 1):(offset + n)
             f = gettransform(right_vnv, vn)
             is_unconstrained[idx] = istrans(right_vnv, vn)
         end
+        n = length(val)
+        r = (offset + 1):(offset + n)
         # Update.
         append!(vals, val)
         push!(ranges, r)
@@ -555,6 +603,22 @@ end
     subset(vnv::VarNamedVector, vns::AbstractVector{<:VarName})
 
 Return a new `VarNamedVector` containing the values from `vnv` for variables in `vns`.
+
+Which variables to include is determined by the `VarName`'s `subsumes` relation, meaning
+that e.g. `subset(vnv, [@varname(x)])` will include variables like `@varname(x.a[1])`.
+
+# Example
+
+```jldoctest varnamedvector-subset
+julia> using DynamicPPL: VarNamedVector, @varname, subset
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0, 2.0], @varname(y) => [3.0]);
+
+julia> subset(vnv, [@varname(x)]) == VarNamedVector(@varname(x) => [1.0, 2.0])
+true
+
+julia> subset(vnv, [@varname(x[2])]) == VarNamedVector(@varname(x[2]) => [2.0])
+true
 """
 function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # NOTE: This does not specialize types when possible.
@@ -572,6 +636,24 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:V
     return vnv_new
 end
 
+"""
+    similar(vnv::VarNamedVector)
+
+Return a new `VarNamedVector` with the same structure as `vnv`, but with empty values.
+
+In this respect `vnv` behaves more like a dictionary than an array: `similar(vnv)` will
+be entirely empty, rather than have `undef` values in it.
+
+# Example
+
+```julia-doctest-varnamedvector-similar
+julia> using DynamicPPL: VarNamedVector, @varname, similar
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0, 2.0], @varname(x[3]) => [3.0]);
+
+julia> similar(vnv) == VarNamedVector{VarName{:x}, Float64}()
+true
+"""
 function Base.similar(vnv::VarNamedVector)
     # NOTE: Whether or not we should empty the underlying containers or not
     # is somewhat ambiguous. For example, `similar(vnv.varname_to_index)` will
@@ -623,8 +705,8 @@ function Base.push!(
 )
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
-    # NOTE: We need to compute the `nextrange` BEFORE we start mutating
-    # the underlying; otherwise we might get some strange behaviors.
+    # NOTE: We need to compute the `nextrange` BEFORE we start mutating the underlying
+    # storage.
     val_vec = tovec(val)
     r_new = nextrange(vnv, val_vec)
     vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
@@ -636,6 +718,8 @@ function Base.push!(
     return nothing
 end
 
+# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# Remove this method as soon as possible.
 function Base.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
     f = from_vec_transform(dist)
     return push!(vnv, vn, val, f)
@@ -819,6 +903,15 @@ function update!!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_tran
     vnv = loosen_types(vnv, typeof(vn), typeof(transform))
     update!(vnv, vn, val, transform)
     return vnv
+end
+
+# set!! is the function defined in utils.jl that tries to do fancy stuff with optics when
+# setting the value of a generic container using a VarName. We can bypass all that because
+# VarNamedVector handles VarNames natively.
+set!!(vnv::VarNamedVector, vn::VarName, val) = update!!(vnv, vn, val)
+
+function setval!(vnv::VarNamedVector, val, vn::VarName)
+    return setindex_raw!(vnv, tovec(val), vn)
 end
 
 function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})
@@ -1036,3 +1129,5 @@ function getvalue(vnv::VarNamedVector, vn::VarName)
     end
     throw(ErrorException("getvalue has not been fully implemented for this VarName: $(vn)"))
 end
+
+Base.get(vnv::VarNamedVector, vn::VarName) = getvalue(vnv, vn)
