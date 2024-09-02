@@ -165,22 +165,6 @@ function VarNamedVector{K,V}() where {K,V}
     return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
 
-# The various constructor(orig...) calls are to create concrete element types. E.g. if
-# vnv.vals is a Vector{Real} but all elements are Float64s, [vnv.vals...] will be a
-# Vector{Float64}
-# TODO(mhauru) This probably shouldn't be a constructor. Maybe call it `concretise`?
-function VarNamedVector(vnv::VarNamedVector)
-    return VarNamedVector(
-        OrderedDict(vnv.varname_to_index...),
-        [vnv.varnames...],
-        copy(vnv.ranges),
-        [vnv.vals...],
-        [vnv.transforms...],
-        copy(vnv.is_unconstrained),
-        copy(vnv.num_inactive),
-    )
-end
-
 # TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). This would
 # allow expanding the VarName and element types only as necessary, which would help keep
 # them concrete. However, making that change here opens some other cans of worms related to
@@ -726,16 +710,40 @@ function Base.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
 end
 
 """
-    loosen_types(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
+    loosen_types!!(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
 
 Loosen the types of `vnv` to allow varname type `KNew` and transformation type `TransNew`.
 
-If `KNew` is a subtype of `K` and `TransNew` is a subtype of the element type of the `TTrans`
-this is a no-op and `vnv` is returned as is. Otherwise a copy of `vnv` is created with the
-same data but more abstract types, so that variables of type `KNew` and transformations of
-type `TransNew` can be pushed to it.
+If `KNew` is a subtype of `K` and `TransNew` is a subtype of the element type of the
+`TTrans` then this is a no-op and `vnv` is returned as is. Otherwise a new `VarNamedVector`
+is returned with the same data but more abstract types, so that variables of type `KNew` and
+transformations of type `TransNew` can be pushed to it. Some of the underlying storage is
+shared between `vnv` and the return value, and thus mutating one may affect the other.
+
+# See also
+[`tighten_types`](@ref)
+
+# Example
+
+```jldoctest varnamedvector-loosen-types
+julia> using DynamicPPL: VarNamedVector, @varname, loosen_types!!
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0]);
+
+julia> vnv_new = loosen_types!!(vnv, VarName{:x}, Real);
+
+julia> push!(vnv, @varname(y), Float32[2.0])
+ERROR: MethodError: Cannot `convert` an object of type
+  VarName{y,typeof(identity)} to an object of type
+  VarName{x,typeof(identity)}
+[...]
+
+julia> vnv_loose = DynamicPPL.loosen_types!!(vnv, typeof(@varname(y)), Float32);
+
+julia> push!(vnv_loose, @varname(y), Float32[2.0]); vnv_loose  # Passes without issues.
+VarNamedVector{VarName{sym, typeof(identity)} where sym, Float64, Vector{VarName{sym, typeof(identity)} where sym}, Vector{Float64}, Vector{Any}}(OrderedDict{VarName{sym, typeof(identity)} where sym, Int64}(x => 1, y => 2), VarName{sym, typeof(identity)} where sym[x, y], UnitRange{Int64}[1:1, 2:2], [1.0, 2.0], Any[identity, identity], Bool[0, 0], OrderedDict{Int64, Int64}())
 """
-function loosen_types(
+function loosen_types!!(
     vnv::VarNamedVector, ::Type{KNew}, ::Type{TransNew}
 ) where {KNew,TransNew}
     K = eltype(vnv.varnames)
@@ -757,10 +765,33 @@ function loosen_types(
     end
 end
 
+"""
+    tighten_types(vnv::VarNamedVector)
+
+Return a copy of `vnv` with the most concrete types possible.
+
+For instance, if `vnv` has element type `Real`, but all the values are actually `Float64`s,
+then `tighten_types(vnv)` will have element type `Float64`.
+
+# See also
+[`loosen_types!!`](@ref)
+"""
+function tighten_types(vnv::VarNamedVector)
+    return VarNamedVector(
+        OrderedDict(vnv.varname_to_index...),
+        [vnv.varnames...],
+        copy(vnv.ranges),
+        [vnv.vals...],
+        [vnv.transforms...],
+        copy(vnv.is_unconstrained),
+        copy(vnv.num_inactive),
+    )
+end
+
 function BangBang.push!!(
     vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val)
 )
-    vnv = loosen_types(vnv, typeof(vn), typeof(transform))
+    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform))
     push!(vnv, vn, val, transform)
     return vnv
 end
@@ -900,7 +931,7 @@ function update!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_trans
 end
 
 function update!!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val))
-    vnv = loosen_types(vnv, typeof(vn), typeof(transform))
+    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform))
     update!(vnv, vn, val, transform)
     return vnv
 end
@@ -957,7 +988,7 @@ symbol.
 """
 function group_by_symbol(vnv::VarNamedVector)
     symbols = unique(map(getsym, vnv.varnames))
-    nt_vals = map(s -> VarNamedVector(subset(vnv, [VarName(s)])), symbols)
+    nt_vals = map(s -> tighten_types(subset(vnv, [VarName(s)])), symbols)
     return OrderedDict(zip(symbols, nt_vals))
 end
 
