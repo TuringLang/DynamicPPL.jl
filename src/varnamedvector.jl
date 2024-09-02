@@ -447,7 +447,7 @@ we want to change the how the values are stored, e.g. alter the `eltype`.
     function. For example, if `vnv` has any inactive entries, then the provided `vals`
     should also contain the inactive entries to avoid unexpected behavior.
 
-# Example
+# Examples
 
 ```jldoctest varnamedvector-replace-values
 julia> using DynamicPPL: VarNamedVector, replace_values
@@ -497,7 +497,7 @@ This is in a sense the reverse operation of `vnv[:]`.
 
 Unflatten recontiguifies the internal storage, getting rid of any inactive entries.
 
-# Example
+# Examples
 
 ```jldoctest varnamedvector-unflatten
 julia> using DynamicPPL: VarNamedVector, unflatten
@@ -591,7 +591,7 @@ Return a new `VarNamedVector` containing the values from `vnv` for variables in 
 Which variables to include is determined by the `VarName`'s `subsumes` relation, meaning
 that e.g. `subset(vnv, [@varname(x)])` will include variables like `@varname(x.a[1])`.
 
-# Example
+# Examples
 
 ```jldoctest varnamedvector-subset
 julia> using DynamicPPL: VarNamedVector, @varname, subset
@@ -628,7 +628,7 @@ Return a new `VarNamedVector` with the same structure as `vnv`, but with empty v
 In this respect `vnv` behaves more like a dictionary than an array: `similar(vnv)` will
 be entirely empty, rather than have `undef` values in it.
 
-# Example
+# Examples
 
 ```julia-doctest-varnamedvector-similar
 julia> using DynamicPPL: VarNamedVector, @varname, similar
@@ -723,7 +723,7 @@ shared between `vnv` and the return value, and thus mutating one may affect the 
 # See also
 [`tighten_types`](@ref)
 
-# Example
+# Examples
 
 ```jldoctest varnamedvector-loosen-types
 julia> using DynamicPPL: VarNamedVector, @varname, loosen_types!!
@@ -796,6 +796,8 @@ function BangBang.push!!(
     return vnv
 end
 
+# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# Remove this method as soon as possible.
 function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
     f = from_vec_transform(dist)
     return push!!(vnv, vn, val, f)
@@ -823,7 +825,6 @@ function shift_subsequent_ranges_by!(vnv::VarNamedVector, idx::Int, n)
     return nothing
 end
 
-# `update!` and `update!!`: update a variable in the varname vector.
 """
     update!(vnv::VarNamedVector, vn::VarName, val[, transform])
 
@@ -960,6 +961,35 @@ end
     contiguify!(vnv::VarNamedVector)
 
 Re-contiguify the underlying vector and shrink if possible.
+
+# Examples
+
+```jldoctest varnamedvector-contiguify
+julia> using DynamicPPL: VarNamedVector, @varname, contiguify!, update!, has_inactive
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0, 2.0, 3.0], @varname(y) => [3.0]);
+
+julia> update!(vnv, @varname(x), [23.0, 24.0]);
+
+julia> has_inactive(vnv)
+true
+
+julia> length(vnv.vals)
+4
+
+julia> contiguify!(vnv);
+
+julia> has_inactive(vnv)
+false
+
+julia> length(vnv.vals)
+3
+
+julia> vnv[@varname(x)]  # All the values are still there.
+2-element Vector{Float64}:
+ 23.0
+ 24.0
+```
 """
 function contiguify!(vnv::VarNamedVector)
     # Extract the re-contiguified values.
@@ -985,6 +1015,24 @@ end
 
 Return a dictionary mapping symbols to `VarNamedVector`s with varnames containing that
 symbol.
+
+# Examples
+
+```jldoctest varnamedvector-group-by-symbol
+julia> using DynamicPPL: VarNamedVector, @varname, group_by_symbol
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0], @varname(y) => [2.0], @varname(x[1]) => [3.0]);
+
+julia> d = group_by_symbol(vnv);
+
+julia> collect(keys(d))
+[Symbol("x"), Symbol("y")]
+
+julia> d[@varname(x)] == VarNamedVector(@varname(x) => [1.0], @varname(x[1]) => [3.0])
+true
+
+julia> d[@varname(y)] == VarNamedVector(@varname(y) => [2.0])
+true
 """
 function group_by_symbol(vnv::VarNamedVector)
     symbols = unique(map(getsym, vnv.varnames))
@@ -997,6 +1045,9 @@ end
 
 Shift the index `idx` to the left by one and update the relevant fields.
 
+This only affects `vnv.varname_to_index` and `vnv.num_inactive` and is only valid as a
+helper function for [`shift_subsequent_indices_left!`](@ref).
+
 !!! warning
     This does not check if index we're shifting to is already occupied.
 """
@@ -1006,7 +1057,7 @@ function shift_index_left!(vnv::VarNamedVector, idx::Int)
     vnv.varname_to_index[vn] = idx - 1
     # Shift the index in the inactive ranges.
     if haskey(vnv.num_inactive, idx)
-        # Done in increasing order =>  don't need to worry about
+        # Done in increasing order => don't need to worry about
         # potentially shifting the same index twice.
         vnv.num_inactive[idx - 1] = pop!(vnv.num_inactive, idx)
     end
@@ -1015,10 +1066,11 @@ end
 """
     shift_subsequent_indices_left!(vnv::VarNamedVector, idx::Int)
 
-Shift the indices for all variables after `idx` to the left by one and update
-the relevant fields.
+Shift the indices for all variables after `idx` to the left by one and update the relevant
+    fields.
 
-This just
+This only affects `vnv.varname_to_index` and `vnv.num_inactive` and is only valid as a
+helper function for [`delete!`](@ref).
 """
 function shift_subsequent_indices_left!(vnv::VarNamedVector, idx::Int)
     # Shift the indices for all variables after `idx`.
