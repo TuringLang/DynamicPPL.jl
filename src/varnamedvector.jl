@@ -614,7 +614,8 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:V
     isempty(vnv) && return vnv_new
 
     for vn in vns
-        push!(vnv_new, vn, getindex_internal(vnv, vn), gettransform(vnv, vn))
+        push!(vnv_new, vn, getindex_raw(vnv, vn), gettransform(vnv, vn))
+        settrans!(vnv_new, istrans(vnv, vn), vn)
     end
 
     return vnv_new

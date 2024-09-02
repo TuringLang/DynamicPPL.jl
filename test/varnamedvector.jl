@@ -110,18 +110,18 @@ function relax_container_types(vnv::VarNamedVector, vns, vals)
 end
 
 @testset "VarNamedVector" begin
-    # Need to test element-related operations:
+    # Test element-related operations:
     # - `getindex`
     # - `setindex!`
     # - `push!`
     # - `update!`
     #
-    # And these should all be tested for different types of values:
+    # And these are all be tested for different types of values:
     # - scalar
     # - vector
     # - matrix
 
-    # Need to test operations on `VarNamedVector`:
+    # Test operations on `VarNamedVector`:
     # - `empty!`
     # - `iterate`
     # - `convert` to
@@ -301,6 +301,7 @@ end
                 end
             end
         end
+
         @testset "update!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
@@ -427,12 +428,12 @@ end
         @test subset(vnv, VarName[]) == VarNamedVector()
         @test merge(subset(vnv, test_vns[1:3]), subset(vnv, test_vns[4:end])) == vnv
 
+        # Test that subset preseres transformations and unconstrainedness.
         vn = @varname(t[1])
         vns = vcat(test_vns, [vn])
         push!(vnv, vn, 2.0, x -> x^2)
         vnv.is_unconstrained[vnv.varname_to_index[vn]] = true
-        # TODO(mhauru) Should this be fixed? Currently this fails.
-        @test_broken subset(vnv, vns) == vnv
+        @test subset(vnv, vns) == vnv
     end
 end
 
