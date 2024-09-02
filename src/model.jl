@@ -3,7 +3,7 @@
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
-        context::Ctx
+        context::Ctx=DefaultContext()
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
@@ -1079,7 +1079,7 @@ end
 Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
 
 # Examples
-	
+
 ```jldoctest
 julia> using MCMCChains, Distributions
 
@@ -1095,7 +1095,7 @@ julia> # construct a chain of samples using MCMCChains
        chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> logjoint(demo_model([1., 2.]), chain);
-```   
+```
 """
 function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
@@ -1126,7 +1126,7 @@ end
 Return an array of log prior probabilities evaluated at each sample in an MCMC `chain`.
 
 # Examples
-	
+
 ```jldoctest
 julia> using MCMCChains, Distributions
 
@@ -1142,7 +1142,7 @@ julia> # construct a chain of samples using MCMCChains
        chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> logprior(demo_model([1., 2.]), chain);
-```   
+```
 """
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
@@ -1173,7 +1173,7 @@ end
 Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 
 # Examples
-	
+
 ```jldoctest
 julia> using MCMCChains, Distributions
 
@@ -1189,7 +1189,7 @@ julia> # construct a chain of samples using MCMCChains
        chain = Chains(rand(10, 2, 3), [:s, :m]);
 
 julia> loglikelihood(demo_model([1., 2.]), chain);
-```  
+```
 """
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
