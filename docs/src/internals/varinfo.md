@@ -132,13 +132,13 @@ Hence we obtain a "type-stable when possible"-representation by wrapping it in a
 
 ## Efficient storage and iteration
 
-Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`VarNameVector`](@ref):
+Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`VarNamedVector`](@ref):
 
 ```@docs
-DynamicPPL.VarNameVector
+DynamicPPL.VarNamedVector
 ```
 
-In a [`VarNameVector{<:VarName,Vector{T}}`](@ref), we achieve the desirata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
+In a [`VarNamedVector{<:VarName,Vector{T}}`](@ref), we achieve the desirata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
 
 This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each `VarName` a unique `Int` index in the `varname_to_index` field, which is then used to index into the following fields:
 
@@ -146,7 +146,7 @@ This does require a bit of book-keeping, in particular when it comes to insertio
   - `ranges::Vector{UnitRange{Int}}`: the ranges of indices in the `Vector{T}` that correspond to each `VarName`.
   - `transforms::Vector`: the transforms associated with each `VarName`.
 
-Mutating functions, e.g. `setindex!(vnv::VarNameVector, val, vn::VarName)`, are then treated according to the following rules:
+Mutating functions, e.g. `setindex!(vnv::VarNamedVector, val, vn::VarName)`, are then treated according to the following rules:
 
  1. If `vn` is not already present: add it to the end of `vnv.varnames`, add the `val` to the underlying `vnv.vals`, etc.
 
@@ -156,7 +156,7 @@ Mutating functions, e.g. `setindex!(vnv::VarNameVector, val, vn::VarName)`, are 
      2. If `val` has a *smaller length* than the existing value for `vn`: replace existing value and mark the remaining indices as "inactive" by increasing the entry in `vnv.num_inactive` field.
      3. If `val` has a *larger length* than the existing value for `vn`: expand the underlying `vnv.vals` to accommodate the new value, update all `VarName`s occuring after `vn`, and update the `vnv.ranges` to point to the new range for `vn`.
 
-This means that `VarNameVector` is allowed to grow as needed, while "shrinking" (i.e. insertion of smaller elements) is handled by simply marking the redundant indices as "inactive". This turns out to be efficient for use-cases that we are generally interested in.
+This means that `VarNamedVector` is allowed to grow as needed, while "shrinking" (i.e. insertion of smaller elements) is handled by simply marking the redundant indices as "inactive". This turns out to be efficient for use-cases that we are generally interested in.
 
 For example, we want to optimize code-paths which effectively boil down to inner-loop in the following example:
 
@@ -195,7 +195,7 @@ DynamicPPL.contiguify!
 For example, one might encounter the following scenario:
 
 ```@example varinfo-design
-vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
+vnv = DynamicPPL.VarNamedVector(@varname(x) => [true])
 println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
@@ -210,7 +210,7 @@ end
 We can then insert a call to [`DynamicPPL.contiguify!`](@ref) after every insertion whenever the allocation grows too large to reduce overall memory usage:
 
 ```@example varinfo-design
-vnv = DynamicPPL.VarNameVector(@varname(x) => [true])
+vnv = DynamicPPL.VarNamedVector(@varname(x) => [true])
 println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))")
 
 for i in 1:5
@@ -225,13 +225,13 @@ for i in 1:5
 end
 ```
 
-This does incur a runtime cost as it requires re-allocation of the `ranges` in addition to a `resize!` of the underlying `Vector{T}`. However, this also ensures that the the underlying `Vector{T}` is contiguous, which is important for performance. Hence, if we're about to do a lot of work with the `VarNameVector` without insertions, etc., it can be worth it to do a sweep to ensure that the underlying `Vector{T}` is contiguous.
+This does incur a runtime cost as it requires re-allocation of the `ranges` in addition to a `resize!` of the underlying `Vector{T}`. However, this also ensures that the the underlying `Vector{T}` is contiguous, which is important for performance. Hence, if we're about to do a lot of work with the `VarNamedVector` without insertions, etc., it can be worth it to do a sweep to ensure that the underlying `Vector{T}` is contiguous.
 
 !!! note
     
     Higher-dimensional arrays, e.g. `Matrix`, are handled by simply vectorizing them before storing them in the `Vector{T}`, and composing the `VarName`'s transformation with a `DynamicPPL.ReshapeTransform`.
 
-Continuing from the example from the previous section, we can use a `VarInfo` with a `VarNameVector` as the `metadata` field:
+Continuing from the example from the previous section, we can use a `VarInfo` with a `VarNamedVector` as the `metadata` field:
 
 ```@example varinfo-design
 # Type-unstable
@@ -287,23 +287,23 @@ DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 
 ### Performance summary
 
-In the end, we have the following "rough" performance characteristics for `VarNameVector`:
+In the end, we have the following "rough" performance characteristics for `VarNamedVector`:
 
-| Method                                  | Is blazingly fast?                                                                           |
-|:---------------------------------------:|:--------------------------------------------------------------------------------------------:|
-| `getindex`                              | ${\color{green} \checkmark}$                                                                 |
-| `setindex!`                             | ${\color{green} \checkmark}$                                                                 |
-| `push!`                                 | ${\color{green} \checkmark}$                                                                 |
-| `delete!`                               | ${\color{red} \times}$                                                                       |
-| `update!` on existing `VarName`         | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
-| `values_as(::VarNameVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
+| Method                                   | Is blazingly fast?                                                                           |
+|:----------------------------------------:|:--------------------------------------------------------------------------------------------:|
+| `getindex`                               | ${\color{green} \checkmark}$                                                                 |
+| `setindex!`                              | ${\color{green} \checkmark}$                                                                 |
+| `push!`                                  | ${\color{green} \checkmark}$                                                                 |
+| `delete!`                                | ${\color{red} \times}$                                                                       |
+| `update!` on existing `VarName`          | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
+| `values_as(::VarNamedVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
 
 ## Other methods
 
 ```@docs
-DynamicPPL.replace_values(::VarNameVector, vals::AbstractVector)
+DynamicPPL.replace_values(::VarNamedVector, vals::AbstractVector)
 ```
 
 ```@docs; canonical=false
-DynamicPPL.values_as(::VarNameVector)
+DynamicPPL.values_as(::VarNamedVector)
 ```
