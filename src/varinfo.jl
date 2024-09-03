@@ -592,8 +592,6 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 # HACK: We shouldn't need this
-# TODO(mhauru) This seems to return an array always for VarNamedVector, but a scalar for
-# Metadata. What's the right thing to do here?
 getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex(vnv.vals, getrange(vnv, vn))
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
@@ -1404,7 +1402,6 @@ function _link_metadata!(
         end
 
         # Otherwise, we derive the transformation from the distribution.
-        # TODO(mhauru) Could move the mutation outside of the map, just for style.
         is_unconstrained[getidx(metadata, vn)] = true
         internal_to_linked_internal_transform(varinfo, vn, dists[vn])
     end
@@ -1464,7 +1461,7 @@ end
 function _invlink(model::Model, varinfo::VarInfo, spl::AbstractSampler)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        _invlink_metadata!!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
@@ -1488,7 +1485,7 @@ end
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(vals.args, :(_invlink_metadata!(model, varinfo, metadata.$f, vns.$f)))
+            push!(vals.args, :(_invlink_metadata!!(model, varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
@@ -1496,7 +1493,7 @@ end
 
     return :(NamedTuple{$names}($vals))
 end
-function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
+function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 
     # Construct the new transformed values, and keep track of their lengths.
@@ -1545,53 +1542,20 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
     )
 end
 
-function _invlink_metadata!(
+function _invlink_metadata!!(
     model::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
-    # HACK: We ignore `target_vns` here.
-    # TODO: Make use of `update!` to aovid copying values.
-    #       => Only need to allocate for transformations.
-
-    vns = keys(metadata)
-    is_unconstrained = copy(metadata.is_unconstrained)
-
-    # Compute the transformed values.
-    xs = map(vns) do vn
-        f = gettransform(metadata, vn)
-        y = getindex_internal(metadata, vn)
-        # No need to use `with_reconstruct` as `f` will include this.
-        x, logjac = with_logabsdet_jacobian(f, y)
-        # Accumulate the log-abs-det jacobian correction.
+    vns = target_vns === nothing ? keys(metadata) : target_vns
+    for vn in vns
+        transform = gettransform(metadata, vn)
+        old_val = getindex_raw(metadata, vn)
+        new_val, logjac = with_logabsdet_jacobian(transform, old_val)
+        # TODO(mhauru) We are calling a !! function but ignoring the return value.
         acclogp!!(varinfo, -logjac)
-        # Mark as no longer transformed.
-        is_unconstrained[getidx(metadata, vn)] = false
-        # Return the transformed value.
-        return x
+        metadata = update!!(metadata, vn, new_val)
+        settrans!(metadata, false, vn)
     end
-    # Compose the transformations to form a full transformation from
-    # unconstrained vector representation to constrained space.
-    transforms = map(from_vec_transform, xs)
-    # Convert to vector representation.
-    xvecs = map(tovec, xs)
-
-    # Determine new ranges.
-    ranges_new = similar(metadata.ranges)
-    offset = 0
-    for (i, v) in enumerate(xvecs)
-        r_start, r_end = offset + 1, length(v) + offset
-        offset = r_end
-        ranges_new[i] = r_start:r_end
-    end
-
-    # Now we just create a new metadata with the new `vals` and `ranges`.
-    return VarNamedVector(
-        metadata.varname_to_index,
-        metadata.varnames,
-        ranges_new,
-        reduce(vcat, xvecs),
-        transforms,
-        is_unconstrained,
-    )
+    return metadata
 end
 
 """
@@ -1698,7 +1662,6 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName})
 end
 
 function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    # TODO(mhauru) Does this ever get called?
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
