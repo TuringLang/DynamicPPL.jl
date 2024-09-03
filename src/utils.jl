@@ -48,7 +48,7 @@ true
     i.e., regardless of whether you evaluate the log prior, the log likelihood or the log joint density.
     If you would like to avoid this behaviour you should check the evaluation context.
     It can be accessed with the internal variable `__context__`.
-    For instance, in the following example the log density is not accumulated when only the log prior is computed:  
+    For instance, in the following example the log density is not accumulated when only the log prior is computed:
     ```jldoctest; setup = :(using Distributions)
     julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
 
@@ -225,21 +225,30 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-# Useful transformation going from the flattened representation.
-struct FromVec{Size} <: Bijectors.Bijector
+"""
+    ReshapeTransform(size::Size)
+
+A `Bijector` that transforms an `AbstractVector` to a realization of size `size`. As a
+special case, if `size` is an empty tuple it transforms a singleton vector into a scalar.
+
+This transformation can be inverted by calling `tovec`.
+"""
+struct ReshapeTransform{Size} <: Bijectors.Bijector
     size::Size
 end
 
-FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
+ReshapeTransform(x::Union{Real,AbstractArray}) = ReshapeTransform(size(x))
 
 # TODO: Should we materialize the `reshape`?
-(f::FromVec)(x) = reshape(x, f.size)
-(f::FromVec{Tuple{}})(x) = only(x)
+(f::ReshapeTransform)(x::AbstractVector) = reshape(x, f.size)
+(f::ReshapeTransform{Tuple{}})(x::AbstractVector) = only(x)
 # TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
 
-Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
-# We want to use the inverse of `FromVec` so it preserves the size information.
-Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:FromVec}, x) = (tovec(x), 0)
+Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), 0)
+# We want to use the inverse of `ReshapeTransform` so it preserves the size information.
+function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ReshapeTransform}, x)
+    return (tovec(x), 0)
+end
 
 struct ToChol <: Bijectors.Bijector
     uplo::Char
@@ -254,15 +263,16 @@ Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = 
 Return the transformation from the vector representation of `x` to original representation.
 """
 from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
-from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
+from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ ReshapeTransform(size(C.UL))
 
 """
     from_vec_transform_for_size(sz::Tuple)
 
-Return the transformation from the vector representation of a realization of size `sz` to original representation.
+Return the transformation from the vector representation of a realization of size `sz` to
+original representation.
 """
-from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
-from_vec_transform_for_size(::Tuple{()}) = FromVec(())
+from_vec_transform_for_size(sz::Tuple) = ReshapeTransform(sz)
+from_vec_transform_for_size(::Tuple{()}) = ReshapeTransform(())
 from_vec_transform_for_size(::Tuple{<:Any}) = identity
 
 """
@@ -272,7 +282,7 @@ Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
-from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
+from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 """
     from_vec_transform(f, size::Tuple)
@@ -854,6 +864,7 @@ end
 Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
 """
 float_type_with_fallback(::Type) = Real
+float_type_with_fallback(::Type{Union{}}) = Real
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """

@@ -37,20 +37,35 @@ function setup_varinfos(
     model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
 )
     # VarInfo
-    vi_untyped = VarInfo()
-    model(vi_untyped)
-    vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
+    vi_untyped_metadata = VarInfo(DynamicPPL.Metadata())
+    vi_untyped_vnv = VarInfo(DynamicPPL.VarNamedVector())
+    model(vi_untyped_metadata)
+    model(vi_untyped_vnv)
+    vi_typed_metadata = DynamicPPL.TypedVarInfo(vi_untyped_metadata)
+    vi_typed_vnv = DynamicPPL.TypedVarInfo(vi_untyped_vnv)
+
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
+    svi_vnv = SimpleVarInfo(VarNamedVector())
 
     # SimpleVarInfo{<:Any,<:Ref}
     svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
     svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
+    svi_vnv_ref = SimpleVarInfo(VarNamedVector(), Ref(getlogp(svi_vnv)))
 
-    lp = getlogp(vi_typed)
+    lp = getlogp(vi_typed_metadata)
     varinfos = map((
-        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
+        vi_untyped_metadata,
+        vi_untyped_vnv,
+        vi_typed_metadata,
+        vi_typed_vnv,
+        svi_typed,
+        svi_untyped,
+        svi_vnv,
+        svi_typed_ref,
+        svi_untyped_ref,
+        svi_vnv_ref,
     )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)

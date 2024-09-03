@@ -85,12 +85,14 @@ Return string representing a short description of `vi`.
 short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
     "threadsafe($(short_varinfo_name(vi.varinfo)))"
 function short_varinfo_name(vi::TypedVarInfo)
-    DynamicPPL.has_varnamevector(vi) && return "TypedVarInfo with VarNameVector"
+    DynamicPPL.has_varnamedvector(vi) && return "TypedVarInfo with VarNamedVector"
     return "TypedVarInfo"
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::VectorVarInfo) = "VectorVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
+short_varinfo_name(::SimpleVarInfo{<:VarNamedVector}) = "SimpleVarInfo{<:VarNamedVector}"
 
 # convenient functions for testing model.jl
 # function to modify the representation of values based on their length

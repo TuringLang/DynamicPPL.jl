@@ -7,7 +7,7 @@ decrease_size_for_test(x::Real) = x
 decrease_size_for_test(x::AbstractVector) = first(x)
 decrease_size_for_test(x::AbstractArray) = first(eachslice(x; dims=1))
 
-function need_varnames_relaxation(vnv::VarNameVector, vn::VarName, val)
+function need_varnames_relaxation(vnv::VarNamedVector, vn::VarName, val)
     if isconcretetype(eltype(vnv.varnames))
         # If the container is concrete, we need to make sure that the varname types match.
         # E.g. if `vnv.varnames` has `eltype` `VarName{:x, IndexLens{Tuple{Int64}}}` then
@@ -20,22 +20,22 @@ function need_varnames_relaxation(vnv::VarNameVector, vn::VarName, val)
 
     return false
 end
-function need_varnames_relaxation(vnv::VarNameVector, vns, vals)
+function need_varnames_relaxation(vnv::VarNamedVector, vns, vals)
     return any(need_varnames_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
 end
 
-function need_values_relaxation(vnv::VarNameVector, vn::VarName, val)
+function need_values_relaxation(vnv::VarNamedVector, vn::VarName, val)
     if isconcretetype(eltype(vnv.vals))
         return promote_type(eltype(vnv.vals), eltype(val)) != eltype(vnv.vals)
     end
 
     return false
 end
-function need_values_relaxation(vnv::VarNameVector, vns, vals)
+function need_values_relaxation(vnv::VarNamedVector, vns, vals)
     return any(need_values_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
 end
 
-function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
+function need_transforms_relaxation(vnv::VarNamedVector, vn::VarName, val)
     return if isconcretetype(eltype(vnv.transforms))
         # If the container is concrete, we need to make sure that the sizes match.
         # => If the sizes don't match, we need to relax the container type.
@@ -50,13 +50,13 @@ function need_transforms_relaxation(vnv::VarNameVector, vn::VarName, val)
         false
     end
 end
-function need_transforms_relaxation(vnv::VarNameVector, vns, vals)
+function need_transforms_relaxation(vnv::VarNamedVector, vns, vals)
     return any(need_transforms_relaxation(vnv, vn, val) for (vn, val) in zip(vns, vals))
 end
 
 """
-    relax_container_types(vnv::VarNameVector, vn::VarName, val)
-    relax_container_types(vnv::VarNameVector, vns, val)
+    relax_container_types(vnv::VarNamedVector, vn::VarName, val)
+    relax_container_types(vnv::VarNamedVector, vns, val)
 
 Relax the container types of `vnv` if necessary to accommodate `vn` and `val`.
 
@@ -74,10 +74,10 @@ Similarly:
   transformations type in `vnv`, then the underlying transformation type will
   be changed to `Any`.
 """
-function relax_container_types(vnv::VarNameVector, vn::VarName, val)
+function relax_container_types(vnv::VarNamedVector, vn::VarName, val)
     return relax_container_types(vnv, [vn], [val])
 end
-function relax_container_types(vnv::VarNameVector, vns, vals)
+function relax_container_types(vnv::VarNamedVector, vns, vals)
     if need_varnames_relaxation(vnv, vns, vals)
         varname_to_index_new = convert(OrderedDict{VarName,Int}, vnv.varname_to_index)
         varnames_new = convert(Vector{VarName}, vnv.varnames)
@@ -98,31 +98,30 @@ function relax_container_types(vnv::VarNameVector, vns, vals)
         vnv.vals
     end
 
-    return VarNameVector(
+    return VarNamedVector(
         varname_to_index_new,
         varnames_new,
         vnv.ranges,
         vals_new,
         transforms_new,
-        vnv.is_transformed,
+        vnv.is_unconstrained,
         vnv.num_inactive,
-        vnv.metadata,
     )
 end
 
-@testset "VarNameVector" begin
-    # Need to test element-related operations:
+@testset "VarNamedVector" begin
+    # Test element-related operations:
     # - `getindex`
     # - `setindex!`
     # - `push!`
     # - `update!`
     #
-    # And these should all be tested for different types of values:
+    # And these are all be tested for different types of values:
     # - scalar
     # - vector
     # - matrix
 
-    # Need to test operations on `VarNameVector`:
+    # Test operations on `VarNamedVector`:
     # - `empty!`
     # - `iterate`
     # - `convert` to
@@ -143,12 +142,12 @@ end
 
     @testset "constructor: no args" begin
         # Empty.
-        vnv = VarNameVector()
+        vnv = VarNamedVector()
         @test isempty(vnv)
         @test eltype(vnv) == Real
 
         # Empty with types.
-        vnv = VarNameVector{VarName,Float64}()
+        vnv = VarNamedVector{VarName,Float64}()
         @test isempty(vnv)
         @test eltype(vnv) == Float64
     end
@@ -157,17 +156,17 @@ end
     @testset "$(vn_left) and $(vn_right)" for (vn_left, vn_right) in test_varnames_iter
         val_left = test_pairs[vn_left]
         val_right = test_pairs[vn_right]
-        vnv_base = VarNameVector([vn_left, vn_right], [val_left, val_right])
+        vnv_base = VarNamedVector([vn_left, vn_right], [val_left, val_right])
 
         # We'll need the transformations later.
-        # TODO: Should we test other transformations than just `FromVec`?
+        # TODO: Should we test other transformations than just `ReshapeTransform`?
         from_vec_left = DynamicPPL.from_vec_transform(val_left)
         from_vec_right = DynamicPPL.from_vec_transform(val_right)
         to_vec_left = inverse(from_vec_left)
         to_vec_right = inverse(from_vec_right)
 
         # Compare to alternative constructors.
-        vnv_from_dict = VarNameVector(
+        vnv_from_dict = VarNamedVector(
             OrderedDict(vn_left => val_left, vn_right => val_right)
         )
         @test vnv_base == vnv_from_dict
@@ -302,6 +301,7 @@ end
                 end
             end
         end
+
         @testset "update!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
@@ -375,7 +375,7 @@ end
         @testset "deterministic" begin
             n = 5
             vn = @varname(x)
-            vnv = VarNameVector(OrderedDict(vn => [true]))
+            vnv = VarNamedVector(OrderedDict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
             # Growing should not create inactive ranges.
             for i in 1:n
@@ -401,7 +401,7 @@ end
         @testset "random" begin
             n = 5
             vn = @varname(x)
-            vnv = VarNameVector(OrderedDict(vn => [true]))
+            vnv = VarNamedVector(OrderedDict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
 
             # Insert a bunch of random-length vectors.
@@ -421,9 +421,23 @@ end
             end
         end
     end
+
+    @testset "subset" begin
+        vnv = VarNamedVector(test_pairs)
+        @test subset(vnv, test_vns) == vnv
+        @test subset(vnv, VarName[]) == VarNamedVector()
+        @test merge(subset(vnv, test_vns[1:3]), subset(vnv, test_vns[4:end])) == vnv
+
+        # Test that subset preseres transformations and unconstrainedness.
+        vn = @varname(t[1])
+        vns = vcat(test_vns, [vn])
+        push!(vnv, vn, 2.0, x -> x^2)
+        vnv.is_unconstrained[vnv.varname_to_index[vn]] = true
+        @test subset(vnv, vns) == vnv
+    end
 end
 
-@testset "VarInfo + VarNameVector" begin
+@testset "VarInfo + VarNamedVector" begin
     models = DynamicPPL.TestUtils.DEMO_MODELS
     @testset "$(model.f)" for model in models
         # NOTE: Need to set random seed explicitly to avoid using the same seed
@@ -435,8 +449,8 @@ end
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, value_true, varnames; include_threadsafe=false
         )
-        # Filter out those which are not based on `VarNameVector`.
-        varinfos = filter(DynamicPPL.has_varnamevector, varinfos)
+        # Filter out those which are not based on `VarNamedVector`.
+        varinfos = filter(DynamicPPL.has_varnamedvector, varinfos)
         # Get the true log joint.
         logp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
 

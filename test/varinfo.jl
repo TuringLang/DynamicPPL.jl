@@ -19,7 +19,7 @@ struct MySAlg end
 DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
 @testset "varinfo.jl" begin
-    @testset "TypedVarInfo" begin
+    @testset "TypedVarInfo with Metadata" begin
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2, 3)
             m ~ truncated(Normal(0.0, sqrt(s)), 0.0, 2.0)
@@ -28,7 +28,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         end
         model = gdemo(1.0, 2.0)
 
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         model(vi, SampleFromUniform())
         tvi = TypedVarInfo(vi)
 
@@ -51,6 +51,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             end
         end
     end
+
     @testset "Base" begin
         # Test Base functions:
         #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
@@ -120,6 +121,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_base!!(TypedVarInfo(vi))
         test_base!!(SimpleVarInfo())
         test_base!!(SimpleVarInfo(Dict()))
+        test_base!!(SimpleVarInfo(VarNamedVector()))
     end
     @testset "flags" begin
         # Test flag setting:
@@ -141,12 +143,12 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             unset_flag!(vi, vn_x, "del")
             @test !is_flagged(vi, vn_x, "del")
         end
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         test_varinfo!(vi)
         test_varinfo!(empty!!(TypedVarInfo(vi)))
     end
     @testset "setgid!" begin
-        vi = VarInfo()
+        vi = VarInfo(DynamicPPL.Metadata())
         meta = vi.metadata
         vn = @varname x
         dist = Normal(0, 1)
@@ -196,8 +198,12 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
             s_vns = @varname(s)
 
-            vi_typed = VarInfo(model)
-            vi_untyped = VarInfo()
+            # TODO(mhauru) Should add similar tests for VarNamedVector. These ones only apply
+            # to Metadata.
+            vi_typed = VarInfo(
+                model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
+            )
+            vi_untyped = VarInfo(DynamicPPL.Metadata())
             model(vi_untyped, SampleFromPrior())
 
             for vi in [vi_untyped, vi_typed]
@@ -338,6 +344,14 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ## `SimpleVarInfo{<:VarNamedVector}`
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(VarNamedVector()), true)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
+        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
     end
 
     @testset "values_as" begin
@@ -409,8 +423,8 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                         continue
                     end
 
-                    if DynamicPPL.has_varnamevector(varinfo) && mutating
-                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNameVector`.
+                    if DynamicPPL.has_varnamedvector(varinfo) && mutating
+                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNamedVector`.
                         @test_broken false
                         continue
                     end
@@ -642,6 +656,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
+            varinfo_right = DynamicPPL.settrans!!(varinfo_right, true, @varname(x))
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
@@ -649,13 +664,18 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
             # Right has precedence.
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
-            @test DynamicPPL.getdist(varinfo_merged, @varname(x)) isa Normal
+            @test DynamicPPL.istrans(varinfo_merged, @varname(x))
         end
     end
 
     @testset "VarInfo with selectors" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = VarInfo(model)
+            varinfo = VarInfo(
+                model,
+                DynamicPPL.SampleFromPrior(),
+                DynamicPPL.DefaultContext(),
+                DynamicPPL.Metadata,
+            )
             selector = DynamicPPL.Selector()
             spl = Sampler(MySAlg(), model, selector)
 

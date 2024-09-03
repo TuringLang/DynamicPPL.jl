@@ -101,7 +101,7 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
 end
-const VectorVarInfo = VarInfo{<:VarNameVector}
+const VectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
 const TypedVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
@@ -120,9 +120,9 @@ function VarInfo(old_vi::VarInfo, spl, x::AbstractVector)
     )
 end
 
-# No-op if we're already working with a `VarNameVector`.
-metadata_to_varnamevector(vnv::VarNameVector) = vnv
-function metadata_to_varnamevector(md::Metadata)
+# No-op if we're already working with a `VarNamedVector`.
+metadata_to_varnamedvector(vnv::VarNamedVector) = vnv
+function metadata_to_varnamedvector(md::Metadata)
     idcs = copy(md.idcs)
     vns = copy(md.vns)
     ranges = copy(md.ranges)
@@ -132,32 +132,32 @@ function metadata_to_varnamevector(md::Metadata)
         from_vec_transform(dist)
     end
 
-    return VarNameVector(
+    return VarNamedVector(
         OrderedDict{eltype(keys(idcs)),Int}(idcs), vns, ranges, vals, transforms
     )
 end
 
 function VectorVarInfo(vi::UntypedVarInfo)
-    md = metadata_to_varnamevector(vi.metadata)
+    md = metadata_to_varnamedvector(vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 function VectorVarInfo(vi::TypedVarInfo)
-    md = map(metadata_to_varnamevector, vi.metadata)
+    md = map(metadata_to_varnamedvector, vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
 """
-    has_varnamevector(varinfo::VarInfo)
+    has_varnamedvector(varinfo::VarInfo)
 
-Returns `true` if `varinfo` uses `VarNameVector` as metadata.
+Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
 """
-has_varnamevector(vi) = false
-function has_varnamevector(vi::VarInfo)
-    return vi.metadata isa VarNameVector ||
-           (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNameVector), values(vi.metadata)))
+has_varnamedvector(vi::AbstractVarInfo) = false
+function has_varnamedvector(vi::VarInfo)
+    return vi.metadata isa VarNamedVector ||
+           (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
 """
@@ -170,8 +170,9 @@ function untyped_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
+    metadata_type::Type=VarNamedVector,
 )
-    varinfo = VarInfo()
+    varinfo = VarInfo(metadata_type())
     return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
 end
 function untyped_varinfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
@@ -190,8 +191,9 @@ function VarInfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
+    metadata_type::Type=VarNamedVector,
 )
-    return typed_varinfo(rng, model, sampler, context)
+    return typed_varinfo(rng, model, sampler, context, metadata_type)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
@@ -300,6 +302,11 @@ function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
 
+function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
+    metadata = subset(varinfo.metadata, vns)
+    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
+end
+
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
     # If all the variables are using the same symbol, then we can just extract that field from the metadata.
     metadata = subset(getfield(varinfo.metadata, sym), vns)
@@ -379,7 +386,7 @@ function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     )
 end
 
-function merge_metadata(vnv_left::VarNameVector, vnv_right::VarNameVector)
+function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
     return merge(vnv_left, vnv_right)
 end
 
@@ -518,8 +525,6 @@ end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
 
-getindex_internal(vi::UntypedVarInfo, vview::VarView) = view(vi.metadata.vals, vview)
-
 """
     setval!(vi::UntypedVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})
 
@@ -576,12 +581,20 @@ Return the distribution from which `vn` was sampled in `vi`.
 getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
 # HACK: we shouldn't need this
-getdist(::VarNameVector, ::VarName) = nothing
+function getdist(::VarNamedVector, ::VarName)
+    throw(ErrorException("getdist does not exist for VarNamedVector"))
+end
 
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
-getindex_internal(md::Metadata, vn::VarName) = view(md.vals, getrange(md, vn))
+# TODO(torfjelde): Use `view` instead of `getindex`. Requires addressing type-stability issues though,
+# since then we might be returning a `SubArray` rather than an `Array`, which is typically
+# what a bijector would result in, even if the input is a view (`SubArray`).
+# TODO(torfjelde): An alternative is to implement `view` directly instead.
+getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 # HACK: We shouldn't need this
-getindex_internal(vnv::VarNameVector, vn::VarName) = view(vnv.vals, getrange(vnv, vn))
+# TODO(mhauru) This seems to return an array always for VarNamedVector, but a scalar for
+# Metadata. What's the right thing to do here?
+getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex(vnv.vals, getrange(vnv, vn))
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
@@ -601,9 +614,6 @@ end
 function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
 end
-function setval!(vnv::VarNameVector, val, vn::VarName)
-    return setindex_raw!(vnv, tovec(val), vn)
-end
 
 """
     getall(vi::VarInfo)
@@ -621,7 +631,7 @@ function getall(md::Metadata)
         Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
     )
 end
-getall(vnv::VarNameVector) = vnv.vals
+getall(vnv::VarNamedVector) = vnv.vals
 
 """
     setall!(vi::VarInfo, val)
@@ -637,7 +647,7 @@ function _setall!(metadata::Metadata, val)
         metadata.vals[r] .= val[r]
     end
 end
-function _setall!(vnv::VarNameVector, val)
+function _setall!(vnv::VarNamedVector, val)
     # TODO: Do something more efficient here.
     for i in 1:length(vnv)
         vnv[i] = val[i]
@@ -675,7 +685,10 @@ function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
 
     return metadata
 end
-function settrans!!(vnv::VarNameVector, trans::Bool, vn::VarName)
+
+# TODO(mhauru) Isn't this infinite recursion? Shouldn't rather change the `transforms`
+# field?
+function settrans!!(vnv::VarNamedVector, trans::Bool, vn::VarName)
     settrans!(vnv, trans, vn)
     return vnv
 end
@@ -759,7 +772,7 @@ end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
-@inline function findinds(f_meta, s, ::Val{space}) where {space}
+@inline function findinds(f_meta::Metadata, s, ::Val{space}) where {space}
     # Get all the idcs of the vns in `space` and that belong to the selector `s`
     return filter(
         (i) ->
@@ -768,9 +781,25 @@ end
         1:length(f_meta.gids),
     )
 end
-@inline function findinds(f_meta)
+@inline function findinds(f_meta::Metadata)
     # Get all the idcs of the vns
     return filter((i) -> isempty(f_meta.gids[i]), 1:length(f_meta.gids))
+end
+
+function findinds(vnv::VarNamedVector, ::Selector, ::Val{space}) where {space}
+    # New Metadata objects are created with an empty list of gids, which is intrepreted as
+    # all Selectors applying to all variables. We assume the same behavior for
+    # VarNamedVector, and thus ignore the Selector argument.
+    if space !== ()
+        msg = "VarNamedVector does not support selecting variables based on samplers"
+        throw(ErrorException(msg))
+    else
+        return findinds(vnv)
+    end
+end
+
+function findinds(vnv::VarNamedVector)
+    return 1:length(vnv.varnames)
 end
 
 # Get all vns of variables belonging to spl
@@ -788,7 +817,7 @@ end
 @generated function _getvns(metadata, idcs::NamedTuple{names}) where {names}
     exprs = []
     for f in names
-        push!(exprs, :($f = metadata.$f.vns[idcs.$f]))
+        push!(exprs, :($f = Base.keys(metadata.$f)[idcs.$f]))
     end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
@@ -848,13 +877,30 @@ function set_flag!(md::Metadata, vn::VarName, flag::String)
     return md.flags[flag][getidx(md, vn)] = true
 end
 
+function set_flag!(vnv::VarNamedVector, ::VarName, flag::String)
+    if flag == "del"
+        # The "del" flag is effectively always set for a VarNamedVector, so this is a no-op.
+    else
+        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
+    end
+    return vnv
+end
+
 ####
 #### APIs for typed and untyped VarInfo
 ####
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta=VarNamedVector()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+
+function TypedVarInfo(vi::VectorVarInfo)
+    new_metas = group_by_symbol(vi.metadata)
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple(new_metas)
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
 
 """
     TypedVarInfo(vi::UntypedVarInfo)
@@ -966,8 +1012,14 @@ end
 
 Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
 """
-function setgid!(vi::VarInfo, gid::Selector, vn::VarName)
-    return push!(getmetadata(vi, vn).gids[getidx(vi, vn)], gid)
+setgid!(vi::VarInfo, gid::Selector, vn::VarName) = setgid!(getmetadata(vi, vn), gid, vn)
+
+function setgid!(m::Metadata, gid::Selector, vn::VarName)
+    return push!(m.gids[getidx(m, vn)], gid)
+end
+
+function setgid!(vnv::VarNamedVector, gid::Selector, vn::VarName)
+    throw(ErrorException("Calling setgid! on a VarNamedVector isn't valid."))
 end
 
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
@@ -1014,20 +1066,18 @@ and parameters sampled in `vi` to 0.
 """
 reset_num_produce!(vi::VarInfo) = set_num_produce!(vi, 0)
 
-isempty(vi::UntypedVarInfo) = isempty(vi.metadata.idcs)
-isempty(vi::TypedVarInfo) = _isempty(vi.metadata)
+# Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
+isempty(vi::VarInfo) = _isempty(vi.metadata)
+_isempty(metadata::Metadata) = isempty(metadata.idcs)
+_isempty(vnv::VarNamedVector) = isempty(vnv)
 @generated function _isempty(metadata::NamedTuple{names}) where {names}
-    expr = Expr(:&&, :true)
-    for f in names
-        push!(expr.args, :(isempty(metadata.$f.idcs)))
-    end
-    return expr
+    return Expr(:&&, (:(isempty(metadata.$f)) for f in names)...)
 end
 
 # X -> R for all variables associated with given sampler
 function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
-    # If we're working with a `VarNameVector`, we always use immutable.
-    has_varnamevector(vi) && return link(t, vi, spl, model)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return link(t, vi, spl, model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
     _link!(vi, spl)
     return vi
@@ -1070,10 +1120,8 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
-            _inner_transform!(
-                vi, vn, dist, internal_to_linked_internal_transform(vi, vn, dist)
-            )
+            f = internal_to_linked_internal_transform(vi, vn)
+            _inner_transform!(vi, vn, f)
             settrans!!(vi, true, vn)
         end
     else
@@ -1100,13 +1148,8 @@ end
                     if ~istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            dist = getdist(vi, vn)
-                            _inner_transform!(
-                                vi,
-                                vn,
-                                dist,
-                                internal_to_linked_internal_transform(vi, vn, dist),
-                            )
+                            f = internal_to_linked_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
                             settrans!!(vi, true, vn)
                         end
                     else
@@ -1123,8 +1166,8 @@ end
 function invlink!!(
     t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model
 )
-    # If we're working with a `VarNameVector`, we always use immutable.
-    has_varnamevector(vi) && return invlink(t, vi, spl, model)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return invlink(t, vi, spl, model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, spl)
     return vi
@@ -1176,10 +1219,8 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
     vns = _getvns(vi, spl)
     if istrans(vi, vns[1])
         for vn in vns
-            dist = getdist(vi, vn)
-            _inner_transform!(
-                vi, vn, dist, linked_internal_to_internal_transform(vi, vn, dist)
-            )
+            f = linked_internal_to_internal_transform(vi, vn)
+            _inner_transform!(vi, vn, f)
             settrans!!(vi, false, vn)
         end
     else
@@ -1206,13 +1247,8 @@ end
                     if istrans(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
-                            dist = getdist(vi, vn)
-                            _inner_transform!(
-                                vi,
-                                vn,
-                                dist,
-                                linked_internal_to_internal_transform(vi, vn, dist),
-                            )
+                            f = linked_internal_to_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
                             settrans!!(vi, false, vn)
                         end
                     else
@@ -1225,11 +1261,11 @@ end
     return expr
 end
 
-function _inner_transform!(vi::VarInfo, vn::VarName, dist, f)
-    return _inner_transform!(getmetadata(vi, vn), vi, vn, dist, f)
+function _inner_transform!(vi::VarInfo, vn::VarName, f)
+    return _inner_transform!(getmetadata(vi, vn), vi, vn, f)
 end
 
-function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, dist, f)
+function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     # TODO: Use inplace versions to avoid allocations
     yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn))
     # Determine the new range.
@@ -1267,7 +1303,9 @@ function link(
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, spl, model)
 end
 
-function _link(model::Model, varinfo::UntypedVarInfo, spl::AbstractSampler)
+function _link(
+    model::Model, varinfo::Union{UntypedVarInfo,VectorVarInfo}, spl::AbstractSampler
+)
     varinfo = deepcopy(varinfo)
     return VarInfo(
         _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
@@ -1322,7 +1360,7 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
         yvec = tovec(y)
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
-        # Mark as no longer transformed.
+        # Mark as transformed.
         settrans!!(varinfo, true, vn)
         # Return the vectorized transformed value.
         return yvec
@@ -1351,14 +1389,14 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
 end
 
 function _link_metadata!(
-    model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
+    model::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
     # HACK: We ignore `target_vns` here.
     vns = keys(metadata)
     # Need to extract the priors from the model.
     dists = extract_priors(model, varinfo)
 
-    is_transformed = copy(metadata.is_transformed)
+    is_unconstrained = copy(metadata.is_unconstrained)
 
     # Construct the linking transformations.
     link_transforms = map(vns) do vn
@@ -1368,13 +1406,12 @@ function _link_metadata!(
         end
 
         # Otherwise, we derive the transformation from the distribution.
-        is_transformed[getidx(metadata, vn)] = true
+        # TODO(mhauru) Could move the mutation outside of the map, just for style.
+        is_unconstrained[getidx(metadata, vn)] = true
         internal_to_linked_internal_transform(varinfo, vn, dists[vn])
     end
     # Compute the transformed values.
     ys = map(vns, link_transforms) do vn, f
-        # TODO: Do we need to handle scenarios where `vn` is not in `dists`?
-        dist = dists[vn]
         x = getindex_internal(metadata, vn)
         y, logjac = with_logabsdet_jacobian(f, x)
         # Accumulate the log-abs-det jacobian correction.
@@ -1400,13 +1437,13 @@ function _link_metadata!(
     end
 
     # Now we just create a new metadata with the new `vals` and `ranges`.
-    return VarNameVector(
+    return VarNamedVector(
         metadata.varname_to_index,
         metadata.varnames,
         ranges_new,
         reduce(vcat, yvecs),
         transforms,
-        is_transformed,
+        is_unconstrained,
     )
 end
 
@@ -1467,7 +1504,7 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
         # Return early if we're already in constrained space OR if we're not
-        # supposed to touch this `vn`, e.g. when `vn` does not belong to the current sampler. 
+        # supposed to touch this `vn`, e.g. when `vn` does not belong to the current sampler.
         # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
         if !istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
@@ -1511,14 +1548,14 @@ function _invlink_metadata!(::Model, varinfo::VarInfo, metadata::Metadata, targe
 end
 
 function _invlink_metadata!(
-    model::Model, varinfo::VarInfo, metadata::VarNameVector, target_vns
+    model::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
     # HACK: We ignore `target_vns` here.
     # TODO: Make use of `update!` to aovid copying values.
     #       => Only need to allocate for transformations.
 
     vns = keys(metadata)
-    is_transformed = copy(metadata.is_transformed)
+    is_unconstrained = copy(metadata.is_unconstrained)
 
     # Compute the transformed values.
     xs = map(vns) do vn
@@ -1529,7 +1566,7 @@ function _invlink_metadata!(
         # Accumulate the log-abs-det jacobian correction.
         acclogp!!(varinfo, -logjac)
         # Mark as no longer transformed.
-        is_transformed[getidx(metadata, vn)] = false
+        is_unconstrained[getidx(metadata, vn)] = false
         # Return the transformed value.
         return x
     end
@@ -1549,13 +1586,13 @@ function _invlink_metadata!(
     end
 
     # Now we just create a new metadata with the new `vals` and `ranges`.
-    return VarNameVector(
+    return VarNamedVector(
         metadata.varname_to_index,
         metadata.varnames,
         ranges_new,
         reduce(vcat, xvecs),
         transforms,
-        is_transformed,
+        is_unconstrained,
     )
 end
 
@@ -1564,9 +1601,9 @@ end
 
 Check whether `vi` is in the transformed space for a particular sampler `spl`.
 
-Turing's Hamiltonian samplers use the `link` and `invlink` functions from 
+Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl) to map a constrained variable
-(for example, one bounded to the space `[0, 1]`) from its constrained space to the set of 
+(for example, one bounded to the space `[0, 1]`) from its constrained space to the set of
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
 """
 function islinked(vi::UntypedVarInfo, spl::Union{Sampler,SampleFromPrior})
@@ -1597,9 +1634,11 @@ function nested_setindex_maybe!(
         nothing
     end
 end
-function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
+function _nested_setindex_maybe!(
+    vi::VarInfo, md::Union{Metadata,VarNamedVector}, val, vn::VarName
+)
     # If `vn` is in `vns`, then we can just use the standard `setindex!`.
-    vns = md.vns
+    vns = Base.keys(md)
     if vn in vns
         setindex!(vi, val, vn)
         return vn
@@ -1610,8 +1649,7 @@ function _nested_setindex_maybe!(vi::VarInfo, md::Metadata, val, vn::VarName)
     i === nothing && return nothing
 
     vn_parent = vns[i]
-    dist = getdist(md, vn_parent)
-    val_parent = getindex(vi, vn_parent, dist)  # TODO: Ensure that we're working with a view here.
+    val_parent = getindex(vi, vn_parent)  # TODO: Ensure that we're working with a view here.
     # Split the varname into its tail optic.
     optic = remove_parent_optic(vn_parent, vn)
     # Update the value for the parent.
@@ -1622,30 +1660,47 @@ end
 
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
-getindex(vi::VarInfo, vn::VarName) = getindex(vi, vn, getdist(vi, vn))
+function getindex(vi::VarInfo, vn::VarName)
+    return from_maybe_linked_internal_transform(vi, vn)(getindex_internal(vi, vn))
+end
+
 function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     val = getindex_internal(vi, vn)
     return from_maybe_linked_internal(vi, vn, dist, val)
 end
-# HACK: Allows us to also work with `VarNameVector` where `dist` is not used,
-# but we instead use a transformation stored with the variable.
-function getindex(vi::VarInfo, vn::VarName, ::Nothing)
-    if !haskey(vi, vn)
-        throw(KeyError(vn))
-    end
-    return getmetadata(vi, vn)[vn]
-end
 
 function getindex(vi::VarInfo, vns::Vector{<:VarName})
-    vals_linked = mapreduce(vcat, vns) do vn
-        getindex(vi, vn)
+    vals = map(vn -> getindex(vi, vn), vns)
+
+    et = eltype(vals)
+    # This will catch type unstable cases, where vals has mixed types.
+    if !isconcretetype(et)
+        throw(ArgumentError("All variables must have the same type."))
     end
-    # HACK: I don't like this.
-    dist = getdist(vi, vns[1])
-    return recombine(dist, vals_linked, length(vns))
+
+    if et <: Vector
+        all_of_equal_dimension = all(x -> length(x) == length(vals[1]), vals)
+        if !all_of_equal_dimension
+            throw(ArgumentError("All variables must have the same dimension."))
+        end
+    end
+
+    # TODO(mhauru) I'm not very pleased with the return type varying like this, even though
+    # this should be type stable.
+    vec_vals = reduce(vcat, vals)
+    if et <: Vector
+        # The individual variables are multivariate, and thus we return the values as a
+        # matrix.
+        return reshape(vec_vals, (:, length(vns)))
+    else
+        # The individual variables are univariate, and thus we return a vector of scalars.
+        return vec_vals
+    end
 end
+
 function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
+    # TODO(mhauru) Does this ever get called?
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
@@ -1828,11 +1883,6 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     return meta
 end
 
-function Base.push!(vnv::VarNameVector, vn, r, dist, gidset, num_produce)
-    f = from_vec_transform(dist)
-    return push!(vnv, vn, r, f)
-end
-
 """
     setorder!(vi::VarInfo, vn::VarName, index::Int)
 
@@ -1847,7 +1897,7 @@ function setorder!(metadata::Metadata, vn::VarName, index::Int)
     metadata.orders[metadata.idcs[vn]] = index
     return metadata
 end
-setorder!(vnv::VarNameVector, ::VarName, ::Int) = vnv
+setorder!(vnv::VarNamedVector, ::VarName, ::Int) = vnv
 
 """
     getorder(vi::VarInfo, vn::VarName)
@@ -1873,23 +1923,44 @@ end
 function is_flagged(metadata::Metadata, vn::VarName, flag::String)
     return metadata.flags[flag][getidx(metadata, vn)]
 end
-# HACK: This is bad. Should we always return `true` here?
-is_flagged(::VarNameVector, ::VarName, flag::String) = flag == "del" ? true : false
+function is_flagged(::VarNamedVector, ::VarName, flag::String)
+    if flag == "del"
+        return true
+    else
+        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
+    end
+end
 
+# TODO(mhauru) The "ignorable" argument is a temporary hack while developing VarNamedVector,
+# but still having to support the interface based on Metadata too
 """
-    unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+    unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false
 
 Set `vn`'s value for `flag` to `false` in `vi`.
+
+If `ignorable` is `false`, as it is by default, then this will error if setting the flag is
+not possible.
 """
-function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    unset_flag!(getmetadata(vi, vn), vn, flag)
+function unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false)
+    unset_flag!(getmetadata(vi, vn), vn, flag, ignorable)
     return vi
 end
-function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
+function unset_flag!(metadata::Metadata, vn::VarName, flag::String, ignorable::Bool=false)
     metadata.flags[flag][getidx(metadata, vn)] = false
     return metadata
 end
-unset_flag!(vnv::VarNameVector, ::VarName, ::String) = vnv
+
+function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String, ignorable::Bool=false)
+    if ignorable
+        return vnv
+    end
+    if flag == "del"
+        throw(ErrorException("The \"del\" flag cannot be unset for VarNamedVector"))
+    else
+        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
+    end
+    return vnv
+end
 
 """
     set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)
@@ -1995,7 +2066,7 @@ end
 ) where {names}
     updates = map(names) do n
         quote
-            for vn in metadata.$n.vns
+            for vn in Base.keys(metadata.$n)
                 indices_found = kernel!(vi, vn, values, keys_strings)
                 if indices_found !== nothing
                     num_indices_seen += length(indices_found)
@@ -2079,14 +2150,6 @@ julia> var_info[@varname(m)] # [✓] changed
 
 julia> var_info[@varname(x[1])] # [✓] unchanged
 -0.22312984965118443
-
-julia> m(rng, var_info); # rerun model
-
-julia> var_info[@varname(m)] # [✓] unchanged
-100.0
-
-julia> var_info[@varname(x[1])] # [✓] unchanged
--0.22312984965118443
 ```
 """
 setval!(vi::VarInfo, x) = setval!(vi, values(x), keys(x))
@@ -2136,7 +2199,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m);
+julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);
 
 julia> var_info[@varname(m)]
 -0.6702516921145671
@@ -2234,6 +2297,9 @@ function values_as(
     return ConstructionBase.constructorof(D)(iter)
 end
 
+values_as(vi::VectorVarInfo, args...) = values_as(vi.metadata, args...)
+values_as(vi::VectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
+
 function values_from_metadata(md::Metadata)
     return (
         # `copy` to avoid accidentally mutation of internal representation.
@@ -2243,7 +2309,7 @@ function values_from_metadata(md::Metadata)
     )
 end
 
-values_from_metadata(md::VarNameVector) = pairs(md)
+values_from_metadata(md::VarNamedVector) = pairs(md)
 
 # Transforming from internal representation to distribution representation.
 # Without `dist` argument: base on `dist` extracted from self.
@@ -2253,7 +2319,7 @@ end
 function from_internal_transform(md::Metadata, vn::VarName)
     return from_internal_transform(md, vn, getdist(md, vn))
 end
-function from_internal_transform(md::VarNameVector, vn::VarName)
+function from_internal_transform(md::VarNamedVector, vn::VarName)
     return gettransform(md, vn)
 end
 # With both `vn` and `dist` arguments: base on provided `dist`.
@@ -2261,7 +2327,7 @@ function from_internal_transform(vi::VarInfo, vn::VarName, dist)
     return from_internal_transform(getmetadata(vi, vn), vn, dist)
 end
 from_internal_transform(::Metadata, ::VarName, dist) = from_vec_transform(dist)
-function from_internal_transform(::VarNameVector, ::VarName, dist)
+function from_internal_transform(::VarNamedVector, ::VarName, dist)
     return from_vec_transform(dist)
 end
 
@@ -2272,7 +2338,7 @@ end
 function from_linked_internal_transform(md::Metadata, vn::VarName)
     return from_linked_internal_transform(md, vn, getdist(md, vn))
 end
-function from_linked_internal_transform(md::VarNameVector, vn::VarName)
+function from_linked_internal_transform(md::VarNamedVector, vn::VarName)
     return gettransform(md, vn)
 end
 # With both `vn` and `dist` arguments: base on provided `dist`.
@@ -2283,6 +2349,6 @@ end
 function from_linked_internal_transform(::Metadata, ::VarName, dist)
     return from_linked_vec_transform(dist)
 end
-function from_linked_internal_transform(::VarNameVector, ::VarName, dist)
+function from_linked_internal_transform(::VarNamedVector, ::VarName, dist)
     return from_linked_vec_transform(dist)
 end
