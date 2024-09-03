@@ -686,8 +686,6 @@ function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
     return metadata
 end
 
-# TODO(mhauru) Isn't this infinite recursion? Shouldn't rather change the `transforms`
-# field?
 function settrans!!(vnv::VarNamedVector, trans::Bool, vn::VarName)
     settrans!(vnv, trans, vn)
     return vnv
