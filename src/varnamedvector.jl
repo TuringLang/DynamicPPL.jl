@@ -93,8 +93,9 @@ struct VarNamedVector{
         num_vals = mapreduce(length, (+), ranges; init=0) + sum(values(num_inactive))
         if num_vals != length(vals)
             msg = """
-                The total number of elements in `vals` does not match the sum of the \
-                lengths of the ranges and the number of inactive entries."""
+            The total number of elements in `vals` ($(length(vals))) does not match the \
+                sum of the lengths of the ranges and the number of inactive entries \
+                ($(num_vals))."""
             throw(ArgumentError(msg))
         end
 
@@ -176,11 +177,15 @@ function VarNamedVector(varnames, vals)
     return VarNamedVector(collect_maybe(varnames), collect_maybe(vals))
 end
 function VarNamedVector(
-    varnames::AbstractVector, vals::AbstractVector, transforms=map(from_vec_transform, vals)
+    varnames::AbstractVector,
+    vals::AbstractVector,
+    transforms=fill(identity, length(varnames)),
 )
     # Convert `vals` into a vector of vectors.
     vals_vecs = map(tovec, vals)
-
+    transforms = map(
+        (t, val) -> _compose_no_identity(t, from_vec_transform(val)), transforms, vals
+    )
     # TODO: Is this really the way to do this?
     if !(eltype(varnames) <: VarName)
         varnames = convert(Vector{VarName}, varnames)
@@ -515,6 +520,15 @@ function unflatten(vnv::VarNamedVector, vals::AbstractVector)
     )
 end
 
+# TODO(mhauru) To be removed once the old Gibbs sampler is removed.
+function unflatten(vnv::VarNamedVector, spl::AbstractSampler, vals::AbstractVector)
+    if length(getspace(spl)) > 0
+        msg = "Selecting values in a VarNamedVector with a space is not supported."
+        throw(ArgumentError(msg))
+    end
+    return unflatten(vnv, vals)
+end
+
 function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     # Return early if possible.
     isempty(left_vnv) && return deepcopy(right_vnv)
@@ -678,21 +692,37 @@ function nextrange(vnv::VarNamedVector, x)
 end
 
 """
+    _compose_no_identity(f, g)
+
+Like `f ∘ g`, but if `f` or `g` is `identity` it is omitted.
+
+This helps avoid trivial cases of `ComposedFunction` that would cause unnecessary type
+conflicts.
+"""
+_compose_no_identity(f, g) = f ∘ g
+_compose_no_identity(::typeof(identity), g) = g
+_compose_no_identity(f, ::typeof(identity)) = f
+_compose_no_identity(::typeof(identity), ::typeof(identity)) = identity
+
+"""
     push!(vnv::VarNamedVector, vn::VarName, val[, transform])
 
 Add a variable with given value to `vnv`.
 
-By default `transform` is the one that converts the value to a vector, which is how it is
-stored in `vnv`.
+`transform` should be a function that converts `val` to the original representation, by
+default it's `identity`.
 """
-function Base.push!(
-    vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val)
-)
+function Base.push!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
     # Error if we already have the variable.
     haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
     # NOTE: We need to compute the `nextrange` BEFORE we start mutating the underlying
     # storage.
-    val_vec = tovec(val)
+    if !(val isa AbstractVector)
+        val_vec = tovec(val)
+        transform = _compose_no_identity(transform, from_vec_transform(val))
+    else
+        val_vec = val
+    end
     r_new = nextrange(vnv, val_vec)
     vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
     push!(vnv.varnames, vn)
@@ -707,7 +737,7 @@ end
 # Remove this method as soon as possible.
 function Base.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
     f = from_vec_transform(dist)
-    return push!(vnv, vn, val, f)
+    return push!(vnv, vn, tovec(val), f)
 end
 
 """
@@ -780,19 +810,19 @@ then `tighten_types(vnv)` will have element type `Float64`.
 function tighten_types(vnv::VarNamedVector)
     return VarNamedVector(
         OrderedDict(vnv.varname_to_index...),
-        [vnv.varnames...],
+        map(identity, vnv.varnames),
         copy(vnv.ranges),
-        [vnv.vals...],
-        [vnv.transforms...],
+        map(identity, vnv.vals),
+        map(identity, vnv.transforms),
         copy(vnv.is_unconstrained),
         copy(vnv.num_inactive),
     )
 end
 
-function BangBang.push!!(
-    vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val)
-)
-    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform))
+function BangBang.push!!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
+    vnv = loosen_types!!(
+        vnv, typeof(vn), typeof(_compose_no_identity(transform, from_vec_transform(val)))
+    )
     push!(vnv, vn, val, transform)
     return vnv
 end
@@ -801,7 +831,7 @@ end
 # Remove this method as soon as possible.
 function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
     f = from_vec_transform(dist)
-    return push!!(vnv, vn, val, f)
+    return push!!(vnv, vn, tovec(val), f)
 end
 
 """
@@ -833,17 +863,22 @@ Either add a new entry or update existing entry for `vn` in `vnv` with the value
 
 If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
 
-By default `transform` is the one that converts the value to a vector, which is how it is
-stored in `vnv`.
+`transform` should be a function that converts `val` to the original representation, by
+default it's `identity`.
 """
-function update!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val))
+function update!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
     if !haskey(vnv, vn)
         # Here we just add a new entry.
         return push!(vnv, vn, val, transform)
     end
 
     # Here we update an existing entry.
-    val_vec = tovec(val)
+    if !(val isa AbstractVector)
+        val_vec = tovec(val)
+        transform = _compose_no_identity(transform, from_vec_transform(val))
+    else
+        val_vec = val
+    end
     idx = getidx(vnv, vn)
     # Extract the old range.
     r_old = getrange(vnv, idx)
@@ -932,8 +967,10 @@ function update!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_trans
     return nothing
 end
 
-function update!!(vnv::VarNamedVector, vn::VarName, val, transform=from_vec_transform(val))
-    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform))
+function update!!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
+    vnv = loosen_types!!(
+        vnv, typeof(vn), typeof(_compose_no_identity(transform, from_vec_transform(val)))
+    )
     update!(vnv, vn, val, transform)
     return vnv
 end

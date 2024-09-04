@@ -1339,7 +1339,7 @@ function _link(
 )
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _link_metadata!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        _link_metadata!!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
@@ -1363,7 +1363,7 @@ end
     vals = Expr(:tuple)
     for f in names
         if inspace(f, space) || length(space) == 0
-            push!(vals.args, :(_link_metadata!(model, varinfo, metadata.$f, vns.$f)))
+            push!(vals.args, :(_link_metadata!!(model, varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
@@ -1371,7 +1371,7 @@ end
 
     return :(NamedTuple{$names}($vals))
 end
-function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
+function _link_metadata!!(model::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 
     # Construct the new transformed values, and keep track of their lengths.
@@ -1419,62 +1419,27 @@ function _link_metadata!(model::Model, varinfo::VarInfo, metadata::Metadata, tar
     )
 end
 
-function _link_metadata!(
+function _link_metadata!!(
     model::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
-    # HACK: We ignore `target_vns` here.
-    vns = keys(metadata)
-    # Need to extract the priors from the model.
+    vns = target_vns === nothing ? keys(metadata) : target_vns
     dists = extract_priors(model, varinfo)
-
-    is_unconstrained = copy(metadata.is_unconstrained)
-
-    # Construct the linking transformations.
-    link_transforms = map(vns) do vn
-        # If `vn` is not part of `target_vns`, the `identity` transformation is used.
-        if (target_vns !== nothing && vn ∉ target_vns)
-            return identity
-        end
-
-        # Otherwise, we derive the transformation from the distribution.
-        is_unconstrained[getidx(metadata, vn)] = true
-        internal_to_linked_internal_transform(varinfo, vn, dists[vn])
+    for vn in vns
+        # First transform from however the variable is stored in vnv to the model
+        # representation.
+        transform_to_orig = gettransform(metadata, vn)
+        val_old = getindex_raw(metadata, vn)
+        val_orig, logjac1 = with_logabsdet_jacobian(transform_to_orig, val_old)
+        # Then transform from the model representation to the linked representation.
+        transform_from_linked = from_linked_vec_transform(dists[vn])
+        transform_to_linked = inverse(transform_from_linked)
+        val_new, logjac2 = with_logabsdet_jacobian(transform_to_linked, val_orig)
+        # TODO(mhauru) We are calling a !! function but ignoring the return value.
+        acclogp!!(varinfo, -logjac1 - logjac2)
+        metadata = update!!(metadata, vn, val_new, transform_from_linked)
+        settrans!(metadata, true, vn)
     end
-    # Compute the transformed values.
-    ys = map(vns, link_transforms) do vn, f
-        x = getindex_internal(metadata, vn)
-        y, logjac = with_logabsdet_jacobian(f, x)
-        # Accumulate the log-abs-det jacobian correction.
-        acclogp!!(varinfo, -logjac)
-        # Return the transformed value.
-        return y
-    end
-    # Extract the from-vec transformations.
-    fromvec_transforms = map(from_vec_transform, ys)
-    # Compose the transformations to form a full transformation from
-    # unconstrained vector representation to constrained space.
-    transforms = map(∘, map(inverse, link_transforms), fromvec_transforms)
-    # Convert to vector representation.
-    yvecs = map(tovec, ys)
-
-    # Determine new ranges.
-    ranges_new = similar(metadata.ranges)
-    offset = 0
-    for (i, v) in enumerate(yvecs)
-        r_start, r_end = offset + 1, length(v) + offset
-        offset = r_end
-        ranges_new[i] = r_start:r_end
-    end
-
-    # Now we just create a new metadata with the new `vals` and `ranges`.
-    return VarNamedVector(
-        metadata.varname_to_index,
-        metadata.varnames,
-        ranges_new,
-        reduce(vcat, yvecs),
-        transforms,
-        is_unconstrained,
-    )
+    return metadata
 end
 
 function invlink(

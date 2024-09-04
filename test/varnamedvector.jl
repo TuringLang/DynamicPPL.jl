@@ -428,11 +428,13 @@ end
         @test subset(vnv, VarName[]) == VarNamedVector()
         @test merge(subset(vnv, test_vns[1:3]), subset(vnv, test_vns[4:end])) == vnv
 
-        # Test that subset preseres transformations and unconstrainedness.
+        # Test that subset preserves transformations and unconstrainedness.
         vn = @varname(t[1])
         vns = vcat(test_vns, [vn])
-        push!(vnv, vn, 2.0, x -> x^2)
-        vnv.is_unconstrained[vnv.varname_to_index[vn]] = true
+        vnv = push!!(vnv, vn, 2.0, x -> x^2)
+        DynamicPPL.settrans!(vnv, true, @varname(t[1]))
+        @test vnv[@varname(t[1])] == 4.0
+        @test istrans(vnv, @varname(t[1]))
         @test subset(vnv, vns) == vnv
     end
 end
