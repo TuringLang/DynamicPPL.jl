@@ -627,7 +627,7 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
 # HACK: We shouldn't need this
-getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex(vnv.vals, getrange(vnv, vn))
+getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex_raw(vnv, vn)
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
@@ -664,7 +664,7 @@ function getall(md::Metadata)
         Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
     )
 end
-getall(vnv::VarNamedVector) = vnv.vals
+getall(vnv::VarNamedVector) = getindex_raw(vnv, Colon())
 
 """
     setall!(vi::VarInfo, val)
