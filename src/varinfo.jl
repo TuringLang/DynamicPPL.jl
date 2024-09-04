@@ -200,7 +200,42 @@ VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
 # TODO: deprecate.
-unflatten(vi::VarInfo, spl::AbstractSampler, x::AbstractVector) = VarInfo(vi, spl, x)
+function unflatten(vi::VarInfo, spl::AbstractSampler, x::AbstractVector)
+    md = unflatten(vi.metadata, spl, x)
+    return VarInfo(md, Base.RefValue{eltype(x)}(getlogp(vi)), Ref(get_num_produce(vi)))
+end
+
+# The Val(getspace(spl)) is used to dispatch into the below generated function.
+function unflatten(metadata::NamedTuple, spl::AbstractSampler, x::AbstractVector)
+    return unflatten(metadata, Val(getspace(spl)), x)
+end
+
+@generated function unflatten(
+    metadata::NamedTuple{names}, ::Val{space}, x
+) where {names,space}
+    exprs = []
+    offset = :(0)
+    for f in names
+        mdf = :(metadata.$f)
+        if inspace(f, space) || length(space) == 0
+            len = :(sum(length, $mdf.ranges))
+            push!(exprs, :($f = unflatten($mdf, x[($offset + 1):($offset + $len)])))
+            offset = :($offset + $len)
+        else
+            push!(exprs, :($f = $mdf))
+        end
+    end
+    length(exprs) == 0 && return :(NamedTuple())
+    return :($(exprs...),)
+end
+
+# For Metadata unflatten and replace_values are the same. For VarNamedVector they are not.
+function unflatten(md::Metadata, x::AbstractVector)
+    return replace_values(md, x)
+end
+function unflatten(md::Metadata, spl::AbstractSampler, x::AbstractVector)
+    return replace_values(md, spl, x)
+end
 
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
