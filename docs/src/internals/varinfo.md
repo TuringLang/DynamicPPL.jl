@@ -47,9 +47,7 @@ We also want some additional methods that are *not* part of the `Dict` or `Vecto
 
 In addition, we want to be able to access the transformed / "unconstrained" realization for a particular `VarName` and so we also need corresponding methods for this:
 
-  - `getindex_raw` and `setindex_raw!` for extracting and mutating the, possibly unconstrained / transformed, realization for a particular `VarName`.
-
-  - `getindex_internal` and `setindex_internal!` for extracting and mutating the internal representaton of a particular `VarName`.
+  - `getindex_internal` and `setindex_internal!` for extracting and mutating the internal, possibly unconstrained, representaton of a particular `VarName`.
 
 Finally, we want want the underlying representation used in `metadata` to have a few performance-related properties:
 
@@ -97,7 +95,7 @@ varinfo_typed = DynamicPPL.typed_varinfo(demo())
 typeof(varinfo_typed.metadata)
 ```
 
-But they both work as expected but one results in concrete typing and the other does not:
+They both work as expected but one results in concrete typing and the other does not:
 
 ```@example varinfo-design
 varinfo_untyped[@varname(x)], varinfo_untyped[@varname(y)]
@@ -120,7 +118,7 @@ Notice that the untyped `VarInfo` uses `Vector{Real}` to store the boolean entri
     
     In this case we'll end up with a `NamedTuple((:x,), Tuple{Vx})` where `Vx` is a container with `eltype` `Union{Bool, Float64}` or something worse. This is *not* type-stable but will still be functional.
     
-    In practice, rarely observe such mixing of types, therefore in DynamicPPL, and more widely in Turing.jl, we use a `NamedTuple` approach for type-stability with great success.
+    In practice, we rarely observe such mixing of types, therefore in DynamicPPL, and more widely in Turing.jl, we use a `NamedTuple` approach for type-stability with great success.
 
 !!! warning
     
@@ -138,11 +136,11 @@ Efficient storage and iteration we achieve through implementation of the `metada
 DynamicPPL.VarNamedVector
 ```
 
-In a [`VarNamedVector{<:VarName,Vector{T}}`](@ref), we achieve the desirata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
+In a [`VarNamedVector{<:VarName,T}`](@ref), we achieve the desiderata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
 
 This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each `VarName` a unique `Int` index in the `varname_to_index` field, which is then used to index into the following fields:
 
-  - `varnames::Vector{VarName}`: the `VarName`s in the order they appear in the `Vector{T}`.
+  - `varnames::Vector{<:VarName}`: the `VarName`s in the order they appear in the `Vector{T}`.
   - `ranges::Vector{UnitRange{Int}}`: the ranges of indices in the `Vector{T}` that correspond to each `VarName`.
   - `transforms::Vector`: the transforms associated with each `VarName`.
 
