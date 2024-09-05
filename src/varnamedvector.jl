@@ -657,13 +657,13 @@ function Base.similar(vnv::VarNamedVector)
     # present, and so for now we empty the underlying containers, thus differing
     # from the behavior of `similar` for `AbstractArray`s.
     return VarNamedVector(
-        similar(vnv.varname_to_index),
+        empty(vnv.varname_to_index),
         similar(vnv.varnames, 0),
         similar(vnv.ranges, 0),
         similar(vnv.vals, 0),
         similar(vnv.transforms, 0),
         BitVector(),
-        similar(vnv.num_inactive),
+        empty(vnv.num_inactive),
     )
 end
 
@@ -1069,7 +1069,7 @@ true
 """
 function group_by_symbol(vnv::VarNamedVector)
     symbols = unique(map(getsym, vnv.varnames))
-    nt_vals = map(s -> tighten_types(subset(vnv, [VarName(s)])), symbols)
+    nt_vals = map(s -> tighten_types(subset(vnv, [VarName{s}()])), symbols)
     return OrderedDict(zip(symbols, nt_vals))
 end
 
