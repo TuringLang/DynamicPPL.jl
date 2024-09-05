@@ -198,22 +198,36 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
             s_vns = @varname(s)
 
-            # TODO(mhauru) Should add similar tests for VarNamedVector. These ones only apply
-            # to Metadata.
             vi_typed = VarInfo(
                 model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
             )
             vi_untyped = VarInfo(DynamicPPL.Metadata())
+            vi_vnv = VarInfo(VarNamedVector())
+            vi_vnv_typed = VarInfo(
+                model, SampleFromPrior(), DefaultContext(), DynamicPPL.VarNamedVector
+            )
             model(vi_untyped, SampleFromPrior())
+            model(vi_vnv, SampleFromPrior())
 
-            for vi in [vi_untyped, vi_typed]
+            model_name = model == model_uv ? "univariate" : "multivariate"
+            @testset "$(model_name), $(short_varinfo_name(vi))" for vi in [
+                vi_untyped, vi_typed, vi_vnv, vi_vnv_typed
+            ]
+                Random.seed!(23)
                 vicopy = deepcopy(vi)
 
                 ### `setval` ###
-                DynamicPPL.setval!(vicopy, (m=zeros(5),))
+                # TODO(mhauru) The interface here seems inconsistent between Metadata and
+                # VarNamedVector. I'm lazy to fix it though, because I think we need to
+                # rework it soon anyway.
+                if vi in [vi_vnv, vi_vnv_typed]
+                    DynamicPPL.setval!(vicopy, zeros(5), m_vns)
+                else
+                    DynamicPPL.setval!(vicopy, (m=zeros(5),))
+                end
                 # Setting `m` fails for univariate due to limitations of `setval!`
                 # and `setval_and_resample!`. See docstring of `setval!` for more info.
-                if model == model_uv
+                if model == model_uv && vi in [vi_untyped, vi_typed]
                     @test_broken vicopy[m_vns] == zeros(5)
                 else
                     @test vicopy[m_vns] == zeros(5)
@@ -243,6 +257,13 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     # Trying to re-run model with `MvNormal` on `vi_untyped` will call
                     # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
                     # so we skip this particular case.
+                    continue
+                end
+
+                if vi in [vi_vnv, vi_vnv_typed]
+                    # `setval_and_resample!` works differently for `VarNamedVector`: All
+                    # values will be resampled when model(vicopy) is called. Hence the below
+                    # tests are not applicable.
                     continue
                 end
 
