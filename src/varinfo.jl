@@ -2150,9 +2150,9 @@ end
 Set the values in `vi` to the provided values and those which are not present
 in `x` or `chains` to *be* resampled.
 
-Note that this does *not* resample the values not provided! It will call `setflag!(vi, vn, "del")`
-for variables `vn` for which no values are provided, which means that the next time we call `model(vi)` these
-variables will be resampled.
+Note that this does *not* resample the values not provided! It will call
+`setflag!(vi, vn, "del")` for variables `vn` for which no values are provided, which means
+that the next time we call `model(vi)` these variables will be resampled.
 
 ## Note
 - This suffers from the same limitations as [`setval!`](@ref). See `setval!` for more info.
@@ -2172,6 +2172,8 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
+# Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For
+# VarInfo{<:VarNamedVector} the flag is effectively always set.
 julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);
 
 julia> var_info[@varname(m)]
