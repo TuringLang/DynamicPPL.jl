@@ -80,22 +80,13 @@ struct VarNamedVector{
             length(varnames) != length(transforms) ||
             length(varnames) != length(is_unconstrained) ||
             length(varnames) != length(varname_to_index)
-            msg = """
-                Inputs to VarNamedVector have inconsistent lengths. Got lengths \
-                varnames: $(length(varnames)), \
-                ranges: $(length(ranges)), \
-                transforms: $(length(transforms)), \
-                is_unconstrained: $(length(is_unconstrained)), \
-                varname_to_index: $(length(varname_to_index))."""
+            msg = "Inputs to VarNamedVector have inconsistent lengths. Got lengths varnames: $(length(varnames)), ranges: $(length(ranges)), transforms: $(length(transforms)), is_unconstrained: $(length(is_unconstrained)), varname_to_index: $(length(varname_to_index))."
             throw(ArgumentError(msg))
         end
 
         num_vals = mapreduce(length, (+), ranges; init=0) + sum(values(num_inactive))
         if num_vals != length(vals)
-            msg = """
-            The total number of elements in `vals` ($(length(vals))) does not match the \
-                sum of the lengths of the ranges and the number of inactive entries \
-                ($(num_vals))."""
+            msg = "The total number of elements in `vals` ($(length(vals))) does not match the sum of the lengths of the ranges and the number of inactive entries ($(num_vals))."
             throw(ArgumentError(msg))
         end
 
@@ -116,9 +107,7 @@ struct VarNamedVector{
             for vn2 in keys(varname_to_index)
                 vn1 === vn2 && continue
                 if subsumes(vn1, vn2)
-                    msg = """
-                    Variables in a VarNamedVector should not subsume each other, \
-                    but $vn1 subsumes $vn2"""
+                    msg = "Variables in a VarNamedVector should not subsume each other, but $vn1 subsumes $vn2."
                     throw(ArgumentError(msg))
                 end
             end
