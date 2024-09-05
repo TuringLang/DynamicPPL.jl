@@ -228,7 +228,9 @@ invlink_transform(dist) = inverse(link_transform(dist))
 """
     UnwrapSingletonTransform
 
-A transformation that unwraps a singleton vector into a scalar.
+A transformation that unwraps a singleton array into a scalar.
+
+This transformation can be inverted by calling `tovec`.
 """
 struct UnwrapSingletonTransform <: Bijectors.Bijector end
 
@@ -244,8 +246,7 @@ end
 """
     ReshapeTransform(size::Size)
 
-A `Bijector` that transforms an `AbstractVector` to a realization of size `size`. As a
-special case, if `size` is an empty tuple it transforms a singleton vector into a scalar.
+A `Bijector` that transforms an `AbstractVector` to a realization of size `size`.
 
 This transformation can be inverted by calling `tovec`.
 """
@@ -253,7 +254,7 @@ struct ReshapeTransform{Size} <: Bijectors.Bijector
     size::Size
 end
 
-ReshapeTransform(x::Union{Real,AbstractArray}) = ReshapeTransform(size(x))
+ReshapeTransform(x::AbstractArray) = ReshapeTransform(size(x))
 
 # TODO: Should we materialize the `reshape`?
 (f::ReshapeTransform)(x) = reshape(x, f.size)
