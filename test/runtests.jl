@@ -11,6 +11,7 @@ using ForwardDiff
 using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
+using Tapir
 using Tracker
 using ReverseDiff
 using Zygote
@@ -68,6 +69,7 @@ include("test_util.jl")
 
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
+            include("ext/DynamicPPLTapirExt.jl")
             include("ad.jl")
         end
 
