@@ -1,10 +1,10 @@
 module DynamicPPLMCMCChainsExt
 
 if isdefined(Base, :get_extension)
-    using DynamicPPL: DynamicPPL
+    using DynamicPPL: DynamicPPL, Random
     using MCMCChains: MCMCChains
 else
-    using ..DynamicPPL: DynamicPPL
+    using ..DynamicPPL: DynamicPPL, Random
     using ..MCMCChains: MCMCChains
 end
 
@@ -57,6 +57,59 @@ function DynamicPPL.generated_quantities(
         # `deepcopy` the `varinfo` before passing it to `model`.
         model(deepcopy(varinfo))
     end
+end
+
+function DynamicPPL.predict(
+    model::DynamicPPL.Model, chain::MCMCChains.Chains; include_all=false
+)
+    return predict(Random.default_rng(), model, chain; include_all=include_all)
+end
+function DynamicPPL.predict(
+    rng::Random.AbstractRNG,
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains;
+    include_all=false,
+)
+    params_only_chain = MCMCChains.get_sections(chain, :parameters)
+
+    varname_to_symbol = if :varname_to_symbol in keys(params_only_chain.info)
+        # the mapping is introduced in Turing by
+        # https://github.com/TuringLang/Turing.jl/commit/8d8416ac6c7363c6003ee6ea1fbaac26b4fc8dc3
+        params_only_chain.info[:varname_to_symbol]
+    else
+        # if not using Turing, then we need to construct the mapping ourselves
+        Dict{DynamicPPL.VarName,Symbol}([
+            DynamicPPL.@varname($sym) => sym for
+            sym in params_only_chain.name_map.parameters
+        ])
+    end
+
+    num_of_chains = size(params_only_chain, 3)
+    # num_of_params = 
+    num_of_samples = size(params_only_chain, 1)
+
+    predictions = []
+    for chain_idx in 1:num_of_chains
+        predictions_single_chain = []
+        for sample_idx in 1:num_of_samples
+            d_to_fix = OrderedDict{DynamicPPL.VarName,Any}()
+
+            # construct the dictionary to fix the model
+            for (vn, sym) in varname_to_symbol
+                d_to_fix[vn] = params_only_chain[sample_idx, sym, chain_idx]
+            end
+
+            # fix the model and sample from it
+            fixed_model = DynamicPPL.fix(model, d_to_fix)
+            predictive_sample = rand(rng, fixed_model)
+
+            # TODO: Turing version uses `Transition` and `bundle_samples` to form new chains: is it worth it to move Transition to AbstractMCMC?
+            push!(predictions, predictive_sample)
+        end
+        push!(predictions, predictions_single_chain)
+    end
+
+    return predictions
 end
 
 end

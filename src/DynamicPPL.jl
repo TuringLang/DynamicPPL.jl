@@ -150,6 +150,8 @@ end
 # Used here and overloaded in Turing
 function getspace end
 
+function predict end
+
 """
     AbstractVarInfo
 
