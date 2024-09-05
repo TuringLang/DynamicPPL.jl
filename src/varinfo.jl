@@ -2172,9 +2172,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-# Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For
-# VarInfo{<:VarNamedVector} the flag is effectively always set.
-julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);
+julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);  # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
 
 julia> var_info[@varname(m)]
 -0.6702516921145671

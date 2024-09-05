@@ -217,13 +217,9 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
     @testset "Dynamic constraints, VectorVarInfo" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        vi = VarInfo(model)
-        vi = link!!(vi, model)
-
         for i in 1:10
-            # Sample with large variations.
-            vi[@varname(m)] = randn() * 10
-            model(vi)
+            vi = VarInfo(model)
+            @test vi[@varname(x)] >= vi[@varname(m)]
         end
     end
 
