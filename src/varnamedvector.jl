@@ -46,7 +46,7 @@ struct VarNamedVector{
 
     """
     vector of transformations, so that `transforms[varname_to_index[vn]]` is a callable
-    that transformes the value of `vn` back to its original space, undoing any linking and
+    that transforms the value of `vn` back to its original space, undoing any linking and
     vectorisation
     """
     transforms::TTrans
@@ -62,8 +62,8 @@ struct VarNamedVector{
     """
     mapping from a variable index to the number of inactive entries for that variable.
     Inactive entries are elements in `vals` that are not part of the value of any variable.
-    They arise when transformations change the dimension of the value stored. In active
-    entries always come after the last active entry for the given variable.
+    They arise when a variable is set to a new value with a different dimension, in-place.
+    Inactive entries always come after the last active entry for the given variable.
     """
     num_inactive::OrderedDict{Int,Int}
 
@@ -149,7 +149,7 @@ function VarNamedVector(
     )
 end
 
-# TODO(mhauru) Are we sure we want the last one to be of type Any[]? Might this call
+# TODO(mhauru) Are we sure we want the last one to be of type Any[]? Might this cause
 # unnecessary type instability?
 function VarNamedVector{K,V}() where {K,V}
     return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
@@ -205,7 +205,6 @@ function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
            vnv_left.num_inactive == vnv_right.num_inactive
 end
 
-# Some `VarNamedVector` specific functions.
 getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
 
 getrange(vnv::VarNamedVector, idx::Int) = vnv.ranges[idx]
@@ -219,8 +218,8 @@ gettransform(vnv::VarNamedVector, vn::VarName) = gettransform(vnv, getidx(vnv, v
 """
     istrans(vnv::VarNamedVector, vn::VarName)
 
-Return a boolean for whether `vn` is guaranteed to have been transformed so that all of
-Euclidean space is its domain.
+Return a boolean for whether `vn` is guaranteed to have been transformed so that its domain
+is all of Euclidean space.
 """
 istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[getidx(vnv, vn)]
 
@@ -289,7 +288,6 @@ Base.length(vnv::VarNamedVector) =
 Base.size(vnv::VarNamedVector) = (length(vnv),)
 Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
 
-# TODO: We should probably remove this
 Base.IndexStyle(::Type{<:VarNamedVector}) = IndexLinear()
 
 # Dictionary interface.
@@ -686,6 +684,9 @@ function nextrange(vnv::VarNamedVector, x)
     return (offset + 1):(offset + length(x))
 end
 
+# TODO(mhauru) Might add another specialisation to _compose_no_identity, where if
+# ReshapeTransforms are composed with each other or with a an UnwrapSingeltonTransform, only
+# the latter one would be kept.
 """
     _compose_no_identity(f, g)
 

@@ -190,8 +190,10 @@ end
 values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
 values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
-function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return unset_flag!(vi.varinfo, vn, flag)
+function unset_flag!(
+    vi::ThreadSafeVarInfo, vn::VarName, flag::String, ignoreable::Bool=false
+)
+    return unset_flag!(vi.varinfo, vn, flag, ignoreable)
 end
 function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
