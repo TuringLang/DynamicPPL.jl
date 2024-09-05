@@ -79,7 +79,7 @@
             # The implementation of haskey and getvalue fo VarNamedVector is incomplete, the
             # next test is here to remind of us that.
             svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a.b), [1.0]))
-            @test_broken (svi[@varname(m.a.b.c.d)]; true)
+            @test_broken !haskey(svi, @varname(m.a.b.c.d))
         end
     end
 
@@ -153,9 +153,9 @@
             svi_nt,
             svi_dict,
             svi_vnv,
-            DynamicPPL.settrans!!(svi_nt, true),
-            DynamicPPL.settrans!!(svi_dict, true),
-            DynamicPPL.settrans!!(svi_vnv, true),
+            DynamicPPL.settrans!!(deepcopy(svi_nt), true),
+            DynamicPPL.settrans!!(deepcopy(svi_dict), true),
+            DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
         )
             # RandOM seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
