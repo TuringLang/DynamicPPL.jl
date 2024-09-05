@@ -245,6 +245,11 @@ function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
     return vnv.is_unconstrained[vnv.varname_to_index[vn]] = val
 end
 
+function settrans!!(vnv::VarNamedVector, val::Bool, vn::VarName)
+    settrans!(vnv, val, vn)
+    return vnv
+end
+
 """
     has_inactive(vnv::VarNamedVector)
 
@@ -406,6 +411,7 @@ end
 
 Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_raw!(vnv, val, i)
 function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
+    # Since setindex! does not change the transform, we need to apply it to `val`.
     f = inverse(gettransform(vnv, vn))
     return setindex_raw!(vnv, f(val), vn)
 end

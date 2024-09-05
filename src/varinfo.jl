@@ -127,13 +127,22 @@ function metadata_to_varnamedvector(md::Metadata)
     vns = copy(md.vns)
     ranges = copy(md.ranges)
     vals = copy(md.vals)
-    transforms = map(md.dists) do dist
-        # TODO: Handle linked distributions.
-        from_vec_transform(dist)
+    is_unconstrained = map(Base.Fix1(istrans, md), md.vns)
+    transforms = map(md.dists, is_unconstrained) do dist, trans
+        if trans
+            return from_linked_vec_transform(dist)
+        else
+            return from_vec_transform(dist)
+        end
     end
 
     return VarNamedVector(
-        OrderedDict{eltype(keys(idcs)),Int}(idcs), vns, ranges, vals, transforms
+        OrderedDict{eltype(keys(idcs)),Int}(idcs),
+        vns,
+        ranges,
+        vals,
+        transforms,
+        is_unconstrained,
     )
 end
 
@@ -191,6 +200,8 @@ function VarInfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
+    # TODO(mhauru) Revisit the default. We probably don't want it to be VarNamedVector just
+    # yet.
     metadata_type::Type=VarNamedVector,
 )
     return typed_varinfo(rng, model, sampler, context, metadata_type)
@@ -339,6 +350,7 @@ end
 
 function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
+    # TODO(mhauru) Should we make deepcopies new RefValues for the logp and num_produce?
     return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
 end
 
@@ -615,7 +627,7 @@ Return the distribution from which `vn` was sampled in `vi`.
 """
 getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
 getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
-# HACK: we shouldn't need this
+# TODO(mhauru) Remove this once the old Gibbs sampler stuff is gone.
 function getdist(::VarNamedVector, ::VarName)
     throw(ErrorException("getdist does not exist for VarNamedVector"))
 end
@@ -626,7 +638,8 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # what a bijector would result in, even if the input is a view (`SubArray`).
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
-# HACK: We shouldn't need this
+# TODO(mhauru) Maybe rename getindex_raw to getindex_internal and obviate the need for this
+# method.
 getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex_raw(vnv, vn)
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
@@ -681,7 +694,7 @@ function _setall!(metadata::Metadata, val)
     end
 end
 function _setall!(vnv::VarNamedVector, val)
-    # TODO: Do something more efficient here.
+    # TODO(mhauru) Do something more efficient here.
     for i in 1:length(vnv)
         vnv[i] = val[i]
     end
@@ -717,11 +730,6 @@ function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
     end
 
     return metadata
-end
-
-function settrans!!(vnv::VarNamedVector, trans::Bool, vn::VarName)
-    settrans!(vnv, trans, vn)
-    return vnv
 end
 
 function settrans!!(vi::VarInfo, trans::Bool)
@@ -895,6 +903,8 @@ end
     return results
 end
 
+# TODO(mhauru) These set_flag! methods return the VarInfo. They should probably be called
+# set_flag!!.
 """
     set_flag!(vi::VarInfo, vn::VarName, flag::String)
 
@@ -923,6 +933,8 @@ end
 
 # VarInfo
 
+# TODO(mhauru) Revisit the default for meta. We probably should keep it as Metadata as long
+# as the old Gibbs sampler is in use.
 VarInfo(meta=VarNamedVector()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 
 function TypedVarInfo(vi::VectorVarInfo)
@@ -1899,8 +1911,8 @@ end
 
 Set `vn`'s value for `flag` to `false` in `vi`.
 
-If `ignorable` is `false`, as it is by default, then this will error if setting the flag is
-not possible.
+Setting some flags for some `VarInfo` types is not possible, and by default attempting to do
+so will error. If `ignorable` is set to `true` then this will silently be ignored instead.
 """
 function unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false)
     unset_flag!(getmetadata(vi, vn), vn, flag, ignorable)
