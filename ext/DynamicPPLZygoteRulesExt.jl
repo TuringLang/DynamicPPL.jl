@@ -19,7 +19,7 @@ ZygoteRules.@adjoint function DynamicPPL.dot_observe(
         DynamicPPL.increment_num_produce!(vi)
         return sum(map(Distributions.loglikelihood, dists, value)), vi
     end
-    return ZygoteRules.pullback(__context__, dot_observe_fallback, spl, dists, value, vi)
+    return ZygoteRules.pullback(dot_observe_fallback, __context__, spl, dists, value, vi)
 end
 
 end # module
