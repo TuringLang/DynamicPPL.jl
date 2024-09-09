@@ -24,4 +24,10 @@ ChainRulesCore.@non_differentiable DynamicPPL.updategid!(
 # No need + causes issues for some AD backends, e.g. Zygote.
 ChainRulesCore.@non_differentiable DynamicPPL.infer_nested_eltype(x)
 
+ChainRulesCore.@non_differentiable DynamicPPL.recontiguify_ranges!(ranges)
+# TODO(mhauru) A workaround for https://github.com/FluxML/Zygote.jl/issues/1523, remove when
+# fixed. Note that this is some serious type piracy. Needed because VarNamedVector uses
+# BitVectors.
+ChainRulesCore.@non_differentiable BitVector(a, b)
+
 end # module
