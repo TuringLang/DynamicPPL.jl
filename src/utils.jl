@@ -297,8 +297,8 @@ from_vec_transform_for_size(::Tuple{<:Any}) = identity
 Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
-from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
+from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 """
