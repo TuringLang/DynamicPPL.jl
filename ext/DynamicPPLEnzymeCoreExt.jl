@@ -10,6 +10,6 @@ end
 
 @inline EnzymeCore.EnzymeRules.inactive_type(::Type{<:DynamicPPL.SamplingContext}) = true
 
-@inline EnzymeCore.EnzymeRules.inactive(::typeof(DynamicPPL.istrans), ::AbstractVarInfo) = nothing
+@inline EnzymeCore.EnzymeRules.inactive_noinl(::typeof(DynamicPPL.istrans), args...) = nothing
 
 end
