@@ -22,6 +22,7 @@ using Pkg
 using Random
 using Serialization
 using Test
+using Logging
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
@@ -31,6 +32,7 @@ const GROUP = get(ENV, "GROUP", "All")
 
 Random.seed!(100)
 
+#include(joinpath(DIRECTORY_DynamicPPL,"test","test_util.jl"))
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin

@@ -426,6 +426,15 @@ function dot_assume(
     vns::AbstractVector{<:VarName},
     vi::AbstractVarInfo,
 )
+    r, lp, vi = dot_assume_vec(dist, var, vns, vi)
+    return r, sum(lp), vi
+end
+function dot_assume_vec(
+    dist::MultivariateDistribution,
+    var::AbstractMatrix,
+    vns::AbstractVector{<:VarName},
+    vi::AbstractVarInfo,
+)
     @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
     # NOTE: We cannot work with `var` here because we might have a model of the form
     #
@@ -434,7 +443,7 @@ function dot_assume(
     #
     # in which case `var` will have `undef` elements, even if `m` is present in `vi`.
     r = vi[vns, dist]
-    lp = sum(zip(vns, eachcol(r))) do (vn, ri)
+    lp = map(zip(vns, eachcol(r))) do (vn, ri)
         return Bijectors.logpdf_with_trans(dist, ri, istrans(vi, vn))
     end
     return r, lp, vi
@@ -455,21 +464,29 @@ function dot_assume(
 end
 
 function dot_assume(
+    dist::Union{Distribution,AbstractArray{<:Distribution}}, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
+)
+    # possibility to acesss the single logpriors
+    r, lp, vi = dot_assume_vec(dist, var, vns, vi)
+    return r, sum(lp), vi
+end
+
+function dot_assume_vec(
     dist::Distribution, var::AbstractArray, vns::AbstractArray{<:VarName}, vi
 )
     r = getindex.((vi,), vns, (dist,))
-    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns)))
+    lp = Bijectors.logpdf_with_trans.((dist,), r, istrans.((vi,), vns))
     return r, lp, vi
 end
 
-function dot_assume(
+function dot_assume_vec(
     dists::AbstractArray{<:Distribution},
     var::AbstractArray,
     vns::AbstractArray{<:VarName},
     vi,
 )
     r = getindex.((vi,), vns, dists)
-    lp = sum(Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns)))
+    lp = Bijectors.logpdf_with_trans.(dists, r, istrans.((vi,), vns))
     return r, lp, vi
 end
 
