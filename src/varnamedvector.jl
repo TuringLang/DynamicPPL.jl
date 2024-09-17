@@ -702,6 +702,7 @@ _compose_no_identity(::typeof(identity), ::typeof(identity)) = identity
 
 """
     push!(vnv::VarNamedVector, vn::VarName, val[, transform])
+    push!(vnv::VarNamedVector, vn => val[, transform])
 
 Add a variable with given value to `vnv`.
 
@@ -727,6 +728,11 @@ function Base.push!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
     push!(vnv.transforms, transform)
     push!(vnv.is_unconstrained, false)
     return nothing
+end
+
+function Base.push!(vnv::VarNamedVector, pair, transform=identity)
+    vn, val = pair
+    return push!(vnv, vn, val, transform)
 end
 
 # TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.

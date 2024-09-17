@@ -25,6 +25,7 @@ To ensure that `VarInfo` is simple and intuitive to work with, we want `VarInfo`
   - `haskey(::Dict)`: check if a particular `VarName` is present in `metadata`.
   - `getindex(::Dict, ::VarName)`: return the realization corresponding to a particular `VarName`.
   - `setindex!(::Dict, val, ::VarName)`: set the realization corresponding to a particular `VarName`.
+  - `push!(::Dict, ::Pair)`: add a new key-value pair to the container.
   - `delete!(::Dict, ::VarName)`: delete the realization corresponding to a particular `VarName`.
   - `empty!(::Dict)`: delete all realizations in `metadata`.
   - `merge(::Dict, ::Dict)`: merge two `metadata` structures according to similar rules as `Dict`.
@@ -41,7 +42,7 @@ To ensure that `VarInfo` is simple and intuitive to work with, we want `VarInfo`
 
 We also want some additional methods that are *not* part of the `Dict` or `Vector` interface:
 
-  - `push!(container, ::VarName, value[, transform])`:  add a new element to the container, _but_ for this we also need the `VarName` to associate to the new `value`, so the semantics are different from `push!` for a `Vector`.
+  - `push!(container, varname::VarName, value[, transform])`: add a new element to the container, but with an optional transformation that has been applied to `value`, and should be reverted when returning `container[varname]`. One can also provide a `Pair` instead of a `VarName` and a `value`.
 
   - `update!(container, ::VarName, value[, transform])`: similar to `push!` but if the `VarName` is already present in the container, then we update the corresponding value instead of adding a new element.
 
