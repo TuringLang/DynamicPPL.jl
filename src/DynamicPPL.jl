@@ -116,7 +116,6 @@ export AbstractVarInfo,
     logprior,
     logjoint,
     pointwise_loglikelihoods,
-    pointwise_logpriors,
     varwise_logpriors,
     condition,
     decondition,
@@ -184,7 +183,6 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("loglikelihoods.jl")
-include("logpriors.jl")
 include("logpriors_var.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
