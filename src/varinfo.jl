@@ -339,19 +339,22 @@ end
 
 function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
+    return VarInfo(metadata, deepcopy(varinfo.logp), deepcopy(varinfo.num_produce))
 end
 
 function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    # TODO(mhauru) Should we make deepcopies new RefValues for the logp and num_produce?
-    return VarInfo(metadata, varinfo.logp, varinfo.num_produce)
+    return VarInfo(metadata, deepcopy(varinfo.logp), deepcopy(varinfo.num_produce))
 end
 
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
     # If all the variables are using the same symbol, then we can just extract that field from the metadata.
     metadata = subset(getfield(varinfo.metadata, sym), vns)
-    return VarInfo(NamedTuple{(sym,)}(tuple(metadata)), varinfo.logp, varinfo.num_produce)
+    return VarInfo(
+        NamedTuple{(sym,)}(tuple(metadata)),
+        deepcopy(varinfo.logp),
+        deepcopy(varinfo.num_produce),
+    )
 end
 
 function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
@@ -360,7 +363,9 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
         subset(getfield(varinfo.metadata, sym), filter(==(sym) ∘ getsym, vns))
     end
 
-    return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
+    return VarInfo(
+        NamedTuple{syms}(metadatas), deepcopy(varinfo.logp), deepcopy(varinfo.num_produce)
+    )
 end
 
 function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
