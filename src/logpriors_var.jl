@@ -1,48 +1,46 @@
-# Context version
-struct PointwisePriorContext{A,Ctx} <: AbstractContext
+"""
+Context that records logp after tilde_assume!!
+for each VarName used by [`varwise_logpriors`](@ref).
+"""
+struct VarwisePriorContext{A,Ctx} <: AbstractContext
     logpriors::A
     context::Ctx
 end
 
-function PointwisePriorContext(
-    priors=OrderedDict{VarName,Vector{Float64}}(),
+function VarwisePriorContext(
+    logpriors=OrderedDict{Symbol,Float64}(),
     context::AbstractContext=DynamicPPL.PriorContext(),
-        #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
+    #OrderedDict{Symbol,Vector{Float64}}(),PriorContext()),
 )
-    return PointwisePriorContext{typeof(priors),typeof(context)}(
-        priors, context
+    return VarwisePriorContext{typeof(logpriors),typeof(context)}(
+        logpriors, context
     )
 end
 
-NodeTrait(::PointwisePriorContext) = IsParent()
-childcontext(context::PointwisePriorContext) = context.context
-function setchildcontext(context::PointwisePriorContext, child)
-    return PointwisePriorContext(context.logpriors, child)
+NodeTrait(::VarwisePriorContext) = IsParent()
+childcontext(context::VarwisePriorContext) = context.context
+function setchildcontext(context::VarwisePriorContext, child)
+    return VarwisePriorContext(context.logpriors, child)
 end
 
-
-function tilde_assume!!(context::PointwisePriorContext, right, vn, vi)
-    #@info "PointwisePriorContext tilde_assume!! called for $vn"
-    value, logp, vi = tilde_assume(context, right, vn, vi)
-    push!(context, vn, logp)
-    return value, acclogp_assume!!(context, vi, logp)
+function tilde_assume(context::VarwisePriorContext, right, vn, vi)
+    #@info "VarwisePriorContext tilde_assume!! called for $vn"
+    value, logp, vi = tilde_assume(context.context, right, vn, vi)
+    #sym = DynamicPPL.getsym(vn)
+    new_context = acc_logp!(context, vn, logp)
+    return value, logp, vi
 end
 
-function dot_tilde_assume!!(context::PointwisePriorContext, right, left, vn, vi)
-    #@info "PointwisePriorContext dot_tilde_assume!! called for $vn"
+function dot_tilde_assume(context::VarwisePriorContext, right, left, vn, vi)
+    #@info "VarwisePriorContext dot_tilde_assume!! called for $vn"
     # @show vn, left, right, typeof(context).name
-    value, logps, vi = dot_assume_vec(right, left, vn, vi)
-    # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
-    #_, _, vns = unwrap_right_left_vns(right, left, vn)
-    vns = vn
-    for (vn, logp) in zip(vns, logps)
-        # Track log-prior value.
-        push!(context, vn, logp)
-    end
-    return value, acclogp!!(vi, sum(logps)), vi
+    value, logp, vi = dot_tilde_assume(context.context, right, left, vn, vi)
+    new_context = acc_logp!(context, vn, logp)
+    return value, logp, vi
 end
 
-function tilde_observe(context::PointwisePriorContext, right, left, vi)
+
+function tilde_observe(context::VarwisePriorContext, right, left, vi)
     # Since we are evaluating the prior, the log probability of all the observations
     # is set to 0. This has the effect of ignoring the likelihood.
     return 0.0, vi
@@ -50,58 +48,12 @@ function tilde_observe(context::PointwisePriorContext, right, left, vi)
     #return tmp
 end
 
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{VarName,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logpriors
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
-end
-
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{VarName,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logpriors[vn] = logp
-end
-
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logpriors
-    ℓ = get!(lookup, string(vn), Float64[])
-    return push!(ℓ, logp)
-end
-
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{String,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logpriors[string(vn)] = logp
-end
-
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::String,
-    logp::Real,
-)
-    lookup = context.logpriors
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
-end
-
-function Base.push!(
-    context::PointwisePriorContext{<:AbstractDict{String,Float64}},
-    vn::String,
-    logp::Real,
-)
-    return context.logpriors[vn] = logp
+function acc_logp!(context::VarwisePriorContext, vn::Union{VarName,AbstractVector{<:VarName}}, logp)
+    #sym = DynamicPPL.getsym(vn)  # leads to duplicates
+    # if vn is a Vector leads to Symbol("VarName{:s, IndexLens{Tuple{Int64}}}[s[1], s[2]]")    
+    sym = Symbol(vn) 
+    context.logpriors[sym] = logp
+    return (context)
 end
 
 
@@ -203,8 +155,47 @@ end
 # ```
 
 # """
-function pointwise_logpriors(model::Model, varinfo::AbstractVarInfo)
-    context = PointwisePriorContext()
-    model(varinfo, context)
-    return context.logpriors
+function varwise_logpriors(
+    model::Model, varinfo::AbstractVarInfo,
+    context::AbstractContext=PriorContext()
+)
+#    top_context = VarwisePriorContext(OrderedDict{Symbol,Float64}(), context)
+    top_context = VarwisePriorContext(OrderedDict{Symbol,Float64}(), context)
+    model(varinfo, top_context)
+    return top_context.logpriors
+end
+
+function varwise_logpriors(model::Model, chain::AbstractChains,
+    context::AbstractContext=PriorContext();
+    top_context::VarwisePriorContext{T} = VarwisePriorContext(OrderedDict{Symbol,Float64}(), context)
+    ) where T
+    # pass top-context as keyword to allow adapt Number type of log-prior
+    get_values = (vi) -> begin
+        model(vi, top_context)
+        values(top_context.logpriors)
+    end
+    arr =  map_model(get_values, model, chain)
+    par_names = collect(keys(top_context.logpriors))
+    return(arr, par_names)
+end
+
+function map_model(get_values, model::Model, chain::AbstractChains)
+    niters = size(chain, 1)
+    nchains = size(chain, 3)
+    vi = VarInfo(model)
+    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    # initialize the array by the first result
+    (sample_idx, chain_idx), iters2 = Iterators.peel(iters)
+    setval!(vi, chain, sample_idx, chain_idx)
+    values1 = get_values(vi)
+    arr = Array{eltype(values1)}(undef, niters, length(values1), nchains)
+    arr[sample_idx, :, chain_idx] .= values1
+    #(sample_idx, chain_idx), iters3 = Iterators.peel(iters2)
+    for (sample_idx, chain_idx) in iters2
+        # Update the values
+        setval!(vi, chain, sample_idx, chain_idx)
+        values_i = get_values(vi)
+        arr[sample_idx, :, chain_idx] .= values_i
+    end
+    return(arr)
 end

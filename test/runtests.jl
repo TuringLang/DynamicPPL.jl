@@ -23,6 +23,8 @@ using Random
 using Serialization
 using Test
 using Logging
+using Distributions
+using LinearAlgebra # Diagonal
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 

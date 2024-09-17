@@ -23,28 +23,53 @@
     end
 end
 
-() -> begin
-    m = DynamicPPL.TestUtils.demo_assume_index_observe()
-    example_values = DynamicPPL.TestUtils.rand_prior_true(m)
-    vi = VarInfo(m)
-    for vn in DynamicPPL.TestUtils.varnames(m)
+@testset "pointwise_logpriors" begin
+    # test equality of the single log-prios (not just the sum)
+    # by returning them from the model as generated values
+    @model function exdemo_assume_index_observe(
+        x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
+    ) where {TV}
+        # `assume` with indexing and `observe`
+        s = TV(undef, length(x))
+        for i in eachindex(s)
+            s[i] ~ InverseGamma(2, 3)
+        end
+        m = TV(undef, length(x))
+        for i in eachindex(m)
+            m[i] ~ Normal(0, sqrt(s[i]))
+        end
+        x ~ MvNormal(m, Diagonal(s))
+        # here also return the log-priors for testing
+        return (;
+            s=s,
+            m=m,
+            x=x,
+            logp=getlogp(__varinfo__),
+            ld=(;
+                s=logpdf.(Ref(InverseGamma(2, 3)), s),
+                m=[logpdf(Normal(0, sqrt(s[i])), m[i]) for i in eachindex(m)],
+                x=logpdf(MvNormal(m, Diagonal(s)), x),
+            ),
+        )
+    end
+    mex = exdemo_assume_index_observe()
+    morig = DynamicPPL.TestUtils.demo_assume_index_observe()
+    example_values = DynamicPPL.TestUtils.rand_prior_true(morig)
+    vi = VarInfo(mex)
+    #Main.@infiltrate_main
+    for vn in DynamicPPL.TestUtils.varnames(mex)
         vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
     end
-    ret_m = first(evaluate!!(m, vi, SamplingContext()))
-    @test sum(map(k -> sum(ret_m.ld[k]), eachindex(ret_m.ld))) ≈ ret_m.logp
-    () -> begin
-        #by_generated_quantities
-        s = vcat(example_values...)
-        vnames = ["s[1]", "s[2]", "m[1]", "m[2]"]
-        stup = (; zip(Symbol.(vnames), s)...)
-        ret_m = generated_quantities(m, stup)
-        @test sum(map(k -> sum(ret_m.ld[k]), eachindex(ret_m.ld))) ≈ ret_m.logp
-        #chn = Chains(reshape(s, 1, : , 1), vnames);
-        chn = Chains(reshape(s, 1, :, 1)) # causes warning but works
-        ret_m = @test_logs (:warn,) generated_quantities(m, chn)[1, 1]
-        @test sum(map(k -> sum(ret_m.ld[k]), eachindex(ret_m.ld))) ≈ ret_m.logp
+    () -> begin # for interactive execution at the repl need the global keyword
+        for vn in DynamicPPL.TestUtils.varnames(mex)
+            global vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
+        end
     end
-end
+    ret_m = first(evaluate!!(mex, vi, SamplingContext()))
+    true_logpriors = ret_m.ld[[:s, :m]]
+    logpriors = DynamicPPL.pointwise_logpriors(mex, vi)
+    @test all(vcat(values(logpriors)...) .≈ vcat(true_logpriors...))
+end;
 
 @testset "logpriors.jl" begin
     #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
@@ -70,5 +95,72 @@ end
         logp1 = getlogp(vi)
         logp = logprior(m, vi)
         @test !isfinite(getlogp(vi)) || sum(x -> sum(x), values(tmp)) ≈ logp
-    end;
+    end
+end;
+
+@testset "logpriors_var.jl" begin
+    mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2, PriorContext())
+    mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
+    #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    # m = DynamicPPL.TestUtils.demo_assume_index_observe() # logp at i-level?
+    @testset "$(m.f)" for (i, m) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
+        #@show i
+        example_values = DynamicPPL.TestUtils.rand_prior_true(m)
+
+        # Instantiate a `VarInfo` with the example values.
+        vi = VarInfo(m)
+        () -> begin
+            for vn in DynamicPPL.TestUtils.varnames(m)
+                global vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
+            end
+        end
+        for vn in DynamicPPL.TestUtils.varnames(m)
+            vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
+        end
+
+        #chains = sample(m, SampleFromPrior(), 2; progress=false)
+
+        # Compute the pointwise loglikelihoods.
+        logpriors = DynamicPPL.varwise_logpriors(m, vi)
+        logp1 = getlogp(vi)
+        logp = logprior(m, vi)
+        @test !isfinite(logp) || sum(x -> sum(x), values(logpriors)) ≈ logp
+        #
+        # test on modifying child-context
+        logpriors_mod = DynamicPPL.varwise_logpriors(m, vi, mod_ctx2)
+        logp1 = getlogp(vi)
+        # Following line assumes no Likelihood contributions 
+        #   requires lowest Context to be PriorContext
+        @test !isfinite(logp1) || sum(x -> sum(x), values(logpriors_mod)) ≈ logp1 #
+        @test all(values(logpriors_mod) .≈ values(logpriors) .* 1.2 .* 1.4)
+    end
+end;
+
+@testset "logpriors_var chain" begin
+    @model function demo(xs, y)
+        s ~ InverseGamma(2, 3)
+        m ~ Normal(0, √s)
+        for i in eachindex(xs)
+            xs[i] ~ Normal(m, √s)
+        end
+        y ~ Normal(m, √s)
+    end
+    xs_true, y_true = ([0.3290767977680923, 0.038972110187911684, -0.5797496780649221], -0.7321425592768186)#randn(3), randn()
+    model = demo(xs_true, y_true)
+    () -> begin
+        # generate the sample used below
+        chain = sample(model, MH(), 10)
+        arr0 = Array(chain)
+    end
+    arr0 = [1.8585322626573435 -0.05900855284939967; 1.7304068220366808 -0.6386249100228161; 1.7304068220366808 -0.6386249100228161; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039]; # generated in function above
+    # split into two chains for testing
+    arr1 = permutedims(reshape(arr0, 5,2,:),(1,3,2))
+    chain = Chains(arr1, [:s, :m]);
+    tmp1 = varwise_logpriors(model, chain)
+    tmp = Chains(tmp1...); # can be used to create a Chains object
+    vi = VarInfo(model)
+    i_sample, i_chain = (1,2)
+    DynamicPPL.setval!(vi, chain, i_sample, i_chain)
+    lp1 =  DynamicPPL.varwise_logpriors(model, vi)
+    @test all(tmp1[1][i_sample,:,i_chain] .≈ values(lp1))
 end;
