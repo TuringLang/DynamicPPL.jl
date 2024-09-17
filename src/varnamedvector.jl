@@ -298,9 +298,9 @@ Base.pairs(vnv::VarNamedVector) = (vn => vnv[vn] for vn in keys(vnv))
 Base.haskey(vnv::VarNamedVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
 
 # `getindex` & `setindex!`
-Base.getindex(vnv::VarNamedVector, i::Int) = getindex_raw(vnv, i)
+Base.getindex(vnv::VarNamedVector, i::Int) = getindex_internal(vnv, i)
 function Base.getindex(vnv::VarNamedVector, vn::VarName)
-    x = getindex_raw(vnv, vn)
+    x = getindex_internal(vnv, vn)
     f = gettransform(vnv, vn)
     return f(x)
 end
@@ -369,15 +369,15 @@ function index_to_vals_index(vnv::VarNamedVector, i::Int)
 end
 
 """
-    getindex_raw(vnv::VarNamedVector, i::Int)
-    getindex_raw(vnv::VarNamedVector, vn::VarName)
+    getindex_internal(vnv::VarNamedVector, i::Int)
+    getindex_internal(vnv::VarNamedVector, vn::VarName)
 
 Like `getindex`, but returns the values as they are stored in `vnv` without transforming.
 
 For integer indices this is the same as `getindex`, but for `VarName`s this is different.
 """
-getindex_raw(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_vals_index(vnv, i)]
-getindex_raw(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
+getindex_internal(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_vals_index(vnv, i)]
+getindex_internal(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
 # `getindex` for `Colon`
 function Base.getindex(vnv::VarNamedVector, ::Colon)
@@ -388,7 +388,7 @@ function Base.getindex(vnv::VarNamedVector, ::Colon)
     end
 end
 
-getindex_raw(vnv::VarNamedVector, ::Colon) = getindex(vnv, Colon())
+getindex_internal(vnv::VarNamedVector, ::Colon) = getindex(vnv, Colon())
 
 # TODO(mhauru): Remove this as soon as possible. Only needed because of the old Gibbs
 # sampler.
@@ -396,26 +396,26 @@ function Base.getindex(vnv::VarNamedVector, spl::AbstractSampler)
     throw(ErrorException("Cannot index a VarNamedVector with a sampler."))
 end
 
-Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_raw!(vnv, val, i)
+Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_internal!(vnv, val, i)
 function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
     # Since setindex! does not change the transform, we need to apply it to `val`.
     f = inverse(gettransform(vnv, vn))
-    return setindex_raw!(vnv, f(val), vn)
+    return setindex_internal!(vnv, f(val), vn)
 end
 
 """
-    setindex_raw!(vnv::VarNamedVector, val, i::Int)
-    setindex_raw!(vnv::VarNamedVector, val, vn::VarName)
+    setindex_internal!(vnv::VarNamedVector, val, i::Int)
+    setindex_internal!(vnv::VarNamedVector, val, vn::VarName)
 
 Like `setindex!`, but sets the values as they are stored in `vnv` without transforming.
 
 For integer indices this is the same as `setindex!`, but for `VarName`s this is different.
 """
-function setindex_raw!(vnv::VarNamedVector, val, i::Int)
+function setindex_internal!(vnv::VarNamedVector, val, i::Int)
     return vnv.vals[index_to_vals_index(vnv, i)] = val
 end
 
-function setindex_raw!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
+function setindex_internal!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
     return vnv.vals[getrange(vnv, vn)] = val
 end
 
@@ -565,13 +565,13 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
         # Extract the necessary information from `left` or `right`.
         if vn in vns_left && !(vn in vns_right)
             # `vn` is only in `left`.
-            val = getindex_raw(left_vnv, vn)
+            val = getindex_internal(left_vnv, vn)
             f = gettransform(left_vnv, vn)
             is_unconstrained[idx] = istrans(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
             # Note that in a `merge` the right value has precedence.
-            val = getindex_raw(right_vnv, vn)
+            val = getindex_internal(right_vnv, vn)
             f = gettransform(right_vnv, vn)
             is_unconstrained[idx] = istrans(right_vnv, vn)
         end
@@ -621,7 +621,7 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:V
     isempty(vnv) && return vnv_new
 
     for vn in vns
-        push!(vnv_new, vn, getindex_raw(vnv, vn), gettransform(vnv, vn))
+        push!(vnv_new, vn, getindex_internal(vnv, vn), gettransform(vnv, vn))
         settrans!(vnv_new, istrans(vnv, vn), vn)
     end
 
@@ -977,7 +977,7 @@ end
 set!!(vnv::VarNamedVector, vn::VarName, val) = update!!(vnv, vn, val)
 
 function setval!(vnv::VarNamedVector, val, vn::VarName)
-    return setindex_raw!(vnv, tovec(val), vn)
+    return setindex_internal!(vnv, tovec(val), vn)
 end
 
 function recontiguify_ranges!(ranges::AbstractVector{<:AbstractRange})

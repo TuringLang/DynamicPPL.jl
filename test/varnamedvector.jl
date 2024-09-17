@@ -228,25 +228,26 @@ end
             @test vnv[vn_right] == val_right .+ 100
         end
 
-        # `getindex_raw`
-        @testset "getindex_raw" begin
+        # `getindex_internal`
+        @testset "getindex_internal" begin
             # With `VarName` index.
-            @test DynamicPPL.getindex_raw(vnv_base, vn_left) == to_vec_left(val_left)
-            @test DynamicPPL.getindex_raw(vnv_base, vn_right) == to_vec_right(val_right)
+            @test DynamicPPL.getindex_internal(vnv_base, vn_left) == to_vec_left(val_left)
+            @test DynamicPPL.getindex_internal(vnv_base, vn_right) ==
+                to_vec_right(val_right)
             # With `Int` index.
             val_vec = vcat(to_vec_left(val_left), to_vec_right(val_right))
             @test all(
-                DynamicPPL.getindex_raw(vnv_base, i) == val_vec[i] for
+                DynamicPPL.getindex_internal(vnv_base, i) == val_vec[i] for
                 i in 1:length(val_vec)
             )
         end
 
-        # `setindex_raw!`
-        @testset "setindex_raw!" begin
+        # `setindex_internal!`
+        @testset "setindex_internal!" begin
             vnv = deepcopy(vnv_base)
-            DynamicPPL.setindex_raw!(vnv, to_vec_left(val_left .+ 100), vn_left)
+            DynamicPPL.setindex_internal!(vnv, to_vec_left(val_left .+ 100), vn_left)
             @test vnv[vn_left] == val_left .+ 100
-            DynamicPPL.setindex_raw!(vnv, to_vec_right(val_right .+ 100), vn_right)
+            DynamicPPL.setindex_internal!(vnv, to_vec_right(val_right .+ 100), vn_right)
             @test vnv[vn_right] == val_right .+ 100
         end
 

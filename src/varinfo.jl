@@ -637,9 +637,6 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # what a bijector would result in, even if the input is a view (`SubArray`).
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
-# TODO(mhauru) Maybe rename getindex_raw to getindex_internal and obviate the need for this
-# method.
-getindex_internal(vnv::VarNamedVector, vn::VarName) = getindex_raw(vnv, vn)
 
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
@@ -676,7 +673,7 @@ function getall(md::Metadata)
         Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
     )
 end
-getall(vnv::VarNamedVector) = getindex_raw(vnv, Colon())
+getall(vnv::VarNamedVector) = getindex_internal(vnv, Colon())
 
 """
     setall!(vi::VarInfo, val)
@@ -1439,7 +1436,7 @@ function _link_metadata!!(
         # First transform from however the variable is stored in vnv to the model
         # representation.
         transform_to_orig = gettransform(metadata, vn)
-        val_old = getindex_raw(metadata, vn)
+        val_old = getindex_internal(metadata, vn)
         val_orig, logjac1 = with_logabsdet_jacobian(transform_to_orig, val_old)
         # Then transform from the model representation to the linked representation.
         transform_from_linked = from_linked_vec_transform(dists[vn])
@@ -1559,7 +1556,7 @@ function _invlink_metadata!!(
     vns = target_vns === nothing ? keys(metadata) : target_vns
     for vn in vns
         transform = gettransform(metadata, vn)
-        old_val = getindex_raw(metadata, vn)
+        old_val = getindex_internal(metadata, vn)
         new_val, logjac = with_logabsdet_jacobian(transform, old_val)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
         acclogp!!(varinfo, -logjac)
