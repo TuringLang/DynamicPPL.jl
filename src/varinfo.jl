@@ -158,12 +158,6 @@ function VectorVarInfo(vi::TypedVarInfo)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
 
-"""
-    has_varnamedvector(varinfo::VarInfo)
-
-Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
-"""
-has_varnamedvector(vi::AbstractVarInfo) = false
 function has_varnamedvector(vi::VarInfo)
     return vi.metadata isa VarNamedVector ||
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))

@@ -363,6 +363,13 @@ function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromP
     return eltype(T)
 end
 
+"""
+    has_varnamedvector(varinfo::VarInfo)
+
+Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
+"""
+has_varnamedvector(vi::AbstractVarInfo) = false
+
 # TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
 # the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
 # might result in a `Vector{Any}`.
@@ -554,7 +561,7 @@ end
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`. 
+Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -573,7 +580,7 @@ end
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their constrained space, using the (inverse of) 
+Transform the variables in `vi` to their constrained space, using the (inverse of)
 transformation `t`, mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
