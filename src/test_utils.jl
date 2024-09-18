@@ -1059,7 +1059,10 @@ function TestLogModifyingChildContext(
         mod, context
     )
 end
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
+# Samplers call leafcontext(model.context) when evaluating log-densities
+# Hence, in order to be used need to say that its a leaf-context
+#DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
+DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsLeaf()
 DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
 function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
     return TestLogModifyingChildContext(context.mod, child)
@@ -1074,5 +1077,14 @@ function DynamicPPL.dot_tilde_assume(context::TestLogModifyingChildContext, righ
     value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
     return value, logp*context.mod, vi
 end
+function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+    value, logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
+    return value, logp*context.mod, vi
+end
+function DynamicPPL.dot_tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+    return DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
+    return value, logp*context.mod, vi
+end
+
 
 end

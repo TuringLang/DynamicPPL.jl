@@ -28,6 +28,7 @@ end
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
     #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
     # m = DynamicPPL.TestUtils.demo_assume_index_observe() # logp at i-level?
+    # m = DynamicPPL.TestUtils.demo_assume_dot_observe() # failing test?
     @testset "$(m.f)" for (i, m) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
         #@show i
         example_values = DynamicPPL.TestUtils.rand_prior_true(m)
@@ -53,7 +54,8 @@ end
         #
         # test on modifying child-context
         logpriors_mod = DynamicPPL.varwise_logpriors(m, vi, mod_ctx2)
-        logp1 = getlogp(vi)
+        logp1 = getlogp(vi) 
+        #logp_mod = logprior(m, vi) # uses prior context but not mod_ctx2
         # Following line assumes no Likelihood contributions 
         #   requires lowest Context to be PriorContext
         @test !isfinite(logp1) || sum(x -> sum(x), values(logpriors_mod)) ≈ logp1 #
@@ -62,25 +64,24 @@ end
 end;
 
 @testset "logpriors_var chain" begin
-    @model function demo(xs, y)
+    @model function demo(x, ::Type{TV}=Vector{Float64}) where {TV}
         s ~ InverseGamma(2, 3)
-        m ~ Normal(0, √s)
-        for i in eachindex(xs)
-            xs[i] ~ Normal(m, √s)
+        m = TV(undef, length(x))
+        for i in eachindex(x)
+            m[i] ~ Normal(0, √s)
         end
-        y ~ Normal(m, √s)
-    end
-    xs_true, y_true = ([0.3290767977680923, 0.038972110187911684, -0.5797496780649221], -0.7321425592768186)#randn(3), randn()
-    model = demo(xs_true, y_true)
+        x ~ MvNormal(m, √s)        
+    end    
+    x_true = [0.3290767977680923, 0.038972110187911684, -0.5797496780649221]
+    model = demo(x_true)
     () -> begin
         # generate the sample used below
-        chain = sample(model, MH(), 10)
-        arr0 = Array(chain)
+        chain = sample(model, MH(), MCMCThreads(), 10, 2)
+        arr0 = stack(Array(chain, append_chains=false))
+        @show(arr0);
     end
-    arr0 = [1.8585322626573435 -0.05900855284939967; 1.7304068220366808 -0.6386249100228161; 1.7304068220366808 -0.6386249100228161; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039; 0.8732539292509538 -0.004885395480653039]; # generated in function above
-    # split into two chains for testing
-    arr1 = permutedims(reshape(arr0, 5,2,:),(1,3,2))
-    chain = Chains(arr1, [:s, :m]);
+    arr0 = [5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 0.9199555480151707 -0.1304320097505629 1.0669120062696917 -0.05253734412139093; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183;;; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 2.5409470583244933 1.7838744695696407 0.7013562890105632 -3.0843947804314658; 0.8296370582311665 1.5360702767879642 -1.5964695255693102 0.16928084806166913; 2.6246697053824954 0.8096845024785173 -1.2621822861663752 1.1414885535466166; 1.1304261861894538 0.7325784741344005 -1.1866016911837542 -0.1639319562090826; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 0.9838526141898173 -0.20198797220982412 2.0569535882007006 -1.1560724118010939]
+    chain = Chains(arr0, [:s, Symbol("m[1]"), Symbol("m[2]"), Symbol("m[3]")]);
     tmp1 = varwise_logpriors(model, chain)
     tmp = Chains(tmp1...); # can be used to create a Chains object
     vi = VarInfo(model)

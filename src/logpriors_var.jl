@@ -40,13 +40,8 @@ function dot_tilde_assume(context::VarwisePriorContext, right, left, vn, vi)
 end
 
 
-function tilde_observe(context::VarwisePriorContext, right, left, vi)
-    # Since we are evaluating the prior, the log probability of all the observations
-    # is set to 0. This has the effect of ignoring the likelihood.
-    return 0.0, vi
-    #tmp = tilde_observe(context.context, SampleFromPrior(), right, left, vi)
-    #return tmp
-end
+tilde_observe(context::VarwisePriorContext, right, left, vi) = 0, vi
+dot_tilde_observe(::VarwisePriorContext, right, left, vi) = 0, vi
 
 function acc_logp!(context::VarwisePriorContext, vn::Union{VarName,AbstractVector{<:VarName}}, logp)
     #sym = DynamicPPL.getsym(vn)  # leads to duplicates
@@ -56,105 +51,52 @@ function acc_logp!(context::VarwisePriorContext, vn::Union{VarName,AbstractVecto
     return (context)
 end
 
+"""
+    varwise_logpriors(model::Model, chain::Chains; context)
 
-# """
-#     pointwise_logpriors(model::Model, chain::Chains, keytype = String)
+Runs `model` on each sample in `chain` returning a tuple `(values, var_names)`
+with var_names corresponding to symbols of the prior components, and values being 
+array of shape `(num_samples, num_components, num_chains)`.
 
-# Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
-# with keys corresponding to symbols of the observations, and values being matrices
-# of shape `(num_chains, num_samples)`.
+`context` specifies child context that handles computation of log-priors.
 
-# `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-# Currently, only `String` and `VarName` are supported.
+# Example
+```julia; setup = :(using Distributions)
+using DynamicPPL, Turing
 
-# # Notes
-# Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
-# both being `<:Real`. Then the *observe* (i.e. when the left-hand side is an
-# *observation*) statements can be implemented in three ways:
-# 1. using a `for` loop:
-# ```julia
-# for i in eachindex(y)
-#     y[i] ~ Normal(μ, σ)
-# end
-# ```
-# 2. using `.~`:
-# ```julia
-# y .~ Normal(μ, σ)
-# ```
-# 3. using `MvNormal`:
-# ```julia
-# y ~ MvNormal(fill(μ, n), σ^2 * I)
-# ```
+@model function demo(x, ::Type{TV}=Vector{Float64}) where {TV}
+        s ~ InverseGamma(2, 3)
+        m = TV(undef, length(x))
+        for i in eachindex(x)
+            m[i] ~ Normal(0, √s)
+        end
+        x ~ MvNormal(m, √s)        
+    end  
 
-# In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,
-# while in (3) `y` will be treated as a _single_ n-dimensional observation.
+model = demo(randn(3), randn());
 
-# This is important to keep in mind, in particular if the computation is used
-# for downstream computations.
+chain = sample(model, MH(), 10); 
 
-# # Examples
-# ## From chain
-# ```julia-repl
-# julia> using DynamicPPL, Turing
+lp = varwise_logpriors(model, chain)
+# Can be used to construct a new Chains object
+#lpc = MCMCChains(varwise_logpriors(model, chain)...)
 
-# julia> @model function demo(xs, y)
-#            s ~ InverseGamma(2, 3)
-#            m ~ Normal(0, √s)
-#            for i in eachindex(xs)
-#                xs[i] ~ Normal(m, √s)
-#            end
+# got a logdensity for each parameter prior 
+(but fewer if used `.~` assignments, see below)
+lp[2] == names(chain, :parameters)
 
-#            y ~ Normal(m, √s)
-#        end
-# demo (generic function with 1 method)
+# for each sample in the Chains object
+size(lp[1])[[1,3]] == size(chain)[[1,3]]
+```
 
-# julia> model = demo(randn(3), randn());
-
-# julia> chain = sample(model, MH(), 10);
-
-# julia> pointwise_logpriors(model, chain)
-# OrderedDict{String,Array{Float64,2}} with 4 entries:
-#   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-#   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-#   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-#   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
-
-# julia> pointwise_logpriors(model, chain, String)
-# OrderedDict{String,Array{Float64,2}} with 4 entries:
-#   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-#   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-#   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-#   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
-
-# julia> pointwise_logpriors(model, chain, VarName)
-# OrderedDict{VarName,Array{Float64,2}} with 4 entries:
-#   xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-#   xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-#   xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-#   y     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
-# ```
-
-# ## Broadcasting
-# Note that `x .~ Dist()` will treat `x` as a collection of
-# _independent_ observations rather than as a single observation.
-
-# ```jldoctest; setup = :(using Distributions)
-# julia> @model function demo(x)
-#            x .~ Normal()
-#        end;
-
-# julia> m = demo([1.0, ]);
-
-# julia> ℓ = pointwise_logpriors(m, VarInfo(m)); first(ℓ[@varname(x[1])])
-# -1.4189385332046727
-
-# julia> m = demo([1.0; 1.0]);
-
-# julia> ℓ = pointwise_logpriors(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
-# (-1.4189385332046727, -1.4189385332046727)
-# ```
-
-# """
+# Broadcasting
+Note that `m .~ Dist()` will treat `m` as a collection of
+_independent_ prior rather than as a single prior,
+but `varwise_logpriors` returns the single 
+sum of log-likelihood of components of `m` only.
+If one needs the log-density of the components, one needs to rewrite
+the model with an explicit loop.
+"""
 function varwise_logpriors(
     model::Model, varinfo::AbstractVarInfo,
     context::AbstractContext=PriorContext()
