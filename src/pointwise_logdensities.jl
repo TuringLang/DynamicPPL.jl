@@ -1,83 +1,83 @@
 # Context version
-struct PointwiseLikelihoodContext{A,Ctx} <: AbstractContext
-    loglikelihoods::A
+struct PointwiseLogdensityContext{A,Ctx} <: AbstractContext
+    logdensities::A
     context::Ctx
 end
 
-function PointwiseLikelihoodContext(
+function PointwiseLogdensityContext(
     likelihoods=OrderedDict{VarName,Vector{Float64}}(),
-    context::AbstractContext=LikelihoodContext(),
+    context::AbstractContext=DefaultContext(),
 )
-    return PointwiseLikelihoodContext{typeof(likelihoods),typeof(context)}(
+    return PointwiseLogdensityContext{typeof(likelihoods),typeof(context)}(
         likelihoods, context
     )
 end
 
-NodeTrait(::PointwiseLikelihoodContext) = IsParent()
-childcontext(context::PointwiseLikelihoodContext) = context.context
-function setchildcontext(context::PointwiseLikelihoodContext, child)
-    return PointwiseLikelihoodContext(context.loglikelihoods, child)
+NodeTrait(::PointwiseLogdensityContext) = IsParent()
+childcontext(context::PointwiseLogdensityContext) = context.context
+function setchildcontext(context::PointwiseLogdensityContext, child)
+    return PointwiseLogdensityContext(context.logdensities, child)
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{VarName,Vector{Float64}}},
+    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Vector{Float64}}},
     vn::VarName,
     logp::Real,
 )
-    lookup = context.loglikelihoods
+    lookup = context.logdensities
     ℓ = get!(lookup, vn, Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{VarName,Float64}},
+    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Float64}},
     vn::VarName,
     logp::Real,
 )
-    return context.loglikelihoods[vn] = logp
+    return context.logdensities[vn] = logp
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Vector{Float64}}},
+    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
     vn::VarName,
     logp::Real,
 )
-    lookup = context.loglikelihoods
+    lookup = context.logdensities
     ℓ = get!(lookup, string(vn), Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}},
+    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
     vn::VarName,
     logp::Real,
 )
-    return context.loglikelihoods[string(vn)] = logp
+    return context.logdensities[string(vn)] = logp
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Vector{Float64}}},
+    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
     vn::String,
     logp::Real,
 )
-    lookup = context.loglikelihoods
+    lookup = context.logdensities
     ℓ = get!(lookup, vn, Float64[])
     return push!(ℓ, logp)
 end
 
 function Base.push!(
-    context::PointwiseLikelihoodContext{<:AbstractDict{String,Float64}},
+    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
     vn::String,
     logp::Real,
 )
-    return context.loglikelihoods[vn] = logp
+    return context.logdensities[vn] = logp
 end
 
-function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
+function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return tilde_observe!!(context.context, right, left, vi)
 end
-function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
+function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
     logp, vi = tilde_observe(context.context, right, left, vi)
@@ -88,11 +88,11 @@ function tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, v
     return left, acclogp!!(vi, logp)
 end
 
-function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vi)
+function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return dot_tilde_observe!!(context.context, right, left, vi)
 end
-function dot_tilde_observe!!(context::PointwiseLikelihoodContext, right, left, vn, vi)
+function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
@@ -129,8 +129,49 @@ function _pointwise_tilde_observe(
     end
 end
 
+function tilde_assume(context::PointwiseLogdensityContext, right, vn, vi)
+    #@info "PointwiseLogdensityContext tilde_assume!! called for $vn"
+    value, logp, vi = tilde_assume(context.context, right, vn, vi)
+    #sym = DynamicPPL.getsym(vn)
+    new_context = acc_logp!(context, vn, logp)
+    return value, logp, vi
+end
+
+function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vn, vi)
+    #@info "PointwiseLogdensityContext dot_tilde_assume!! called for $vn"
+    # @show vn, left, right, typeof(context).name
+    value, logp, vi = dot_tilde_assume(context.context, right, left, vn, vi)
+    new_context = acc_logp!(context, vn, logp)
+    return value, logp, vi
+end
+
+function acc_logp!(context::PointwiseLogdensityContext, vn::VarName, logp)
+    push!(context, vn, logp)
+    return (context)
+end
+
+function acc_logp!(context::PointwiseLogdensityContext, vns::AbstractVector{<:VarName}, logp)
+    # construct a new VarName from given sequence of VarName
+    # assume that all items in vns have an IndexLens optic
+    indices = tuplejoin(map(vn -> getoptic(vn).indices, vns)...)
+    vn = VarName(first(vns), Accessors.IndexLens(indices))
+    push!(context, vn, logp)
+    return (context)
+end
+
+#https://discourse.julialang.org/t/efficient-tuple-concatenation/5398/8
+@inline tuplejoin(x) = x
+@inline tuplejoin(x, y) = (x..., y...)
+@inline tuplejoin(x, y, z...) = (x..., tuplejoin(y, z...)...)
+
+() -> begin
+    # code that generates julia-repl in docstring below
+    # using DynamicPPL, Turing
+    # TODO when Turing version that is compatible with DynamicPPL 0.29 becomes available
+end
+
 """
-    pointwise_loglikelihoods(model::Model, chain::Chains, keytype = String)
+    pointwise_logdensities(model::Model, chain::Chains, keytype = String)
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
 with keys corresponding to symbols of the observations, and values being matrices
@@ -184,21 +225,21 @@ julia> model = demo(randn(3), randn());
 
 julia> chain = sample(model, MH(), 10);
 
-julia> pointwise_loglikelihoods(model, chain)
+julia> pointwise_logdensities(model, chain)
 OrderedDict{String,Array{Float64,2}} with 4 entries:
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
-julia> pointwise_loglikelihoods(model, chain, String)
+julia> pointwise_logdensities(model, chain, String)
 OrderedDict{String,Array{Float64,2}} with 4 entries:
   "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
   "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
   "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
 
-julia> pointwise_loglikelihoods(model, chain, VarName)
+julia> pointwise_logdensities(model, chain, VarName)
 OrderedDict{VarName,Array{Float64,2}} with 4 entries:
   xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
   xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
@@ -217,20 +258,21 @@ julia> @model function demo(x)
 
 julia> m = demo([1.0, ]);
 
-julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first(ℓ[@varname(x[1])])
+julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x[1])])
 -1.4189385332046727
 
 julia> m = demo([1.0; 1.0]);
 
-julia> ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
+julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
 (-1.4189385332046727, -1.4189385332046727)
 ```
 
 """
-function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
+function pointwise_logdensities(model::Model, chain, 
+    context::AbstractContext=DefaultContext(), keytype::Type{T}=String) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
-    context = PointwiseLikelihoodContext(OrderedDict{T,Vector{Float64}}())
+    point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -238,20 +280,24 @@ function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) 
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, context)
+        model(vi, point_context)
     end
 
     niters = size(chain, 1)
     nchains = size(chain, 3)
-    loglikelihoods = OrderedDict(
+    logdensities = OrderedDict(
         varname => reshape(logliks, niters, nchains) for
-        (varname, logliks) in context.loglikelihoods
+        (varname, logliks) in point_context.logdensities
     )
-    return loglikelihoods
+    return logdensities
 end
 
-function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    context = PointwiseLikelihoodContext(OrderedDict{VarName,Vector{Float64}}())
-    model(varinfo, context)
-    return context.loglikelihoods
+function pointwise_logdensities(model::Model,   
+    varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext())
+    point_context = PointwiseLogdensityContext(
+        OrderedDict{VarName,Vector{Float64}}(), context)
+    model(varinfo, point_context)
+    return point_context.logdensities
 end
+
+

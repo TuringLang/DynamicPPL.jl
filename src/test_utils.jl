@@ -1078,12 +1078,13 @@ function DynamicPPL.dot_tilde_assume(context::TestLogModifyingChildContext, righ
     return value, logp*context.mod, vi
 end
 function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
-    value, logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
-    return value, logp*context.mod, vi
+    # @info "called tilde_observe TestLogModifyingChildContext for left=$left, right=$right"
+    logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
+    return logp*context.mod, vi
 end
 function DynamicPPL.dot_tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
-    return DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
-    return value, logp*context.mod, vi
+    logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
+    return logp*context.mod, vi
 end
 
 

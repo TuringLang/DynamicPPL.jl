@@ -57,9 +57,11 @@ include("test_util.jl")
 
             include("serialization.jl")
 
-            include("loglikelihoods.jl")
+            include("pointwise_logdensitiesjl")
 
             include("lkj.jl")
+
+            include("deprecated.jl")
         end
 
         @testset "compat" begin
