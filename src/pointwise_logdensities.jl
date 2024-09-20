@@ -19,6 +19,13 @@ function setchildcontext(context::PointwiseLogdensityContext, child)
     return PointwiseLogdensityContext(context.logdensities, child)
 end
 
+function _include_prior(context::PointwiseLogdensityContext)
+    return leafcontext(context) isa Union{PriorContext,DefaultContext}
+end
+function _include_likelihood(context::PointwiseLogdensityContext)
+    return leafcontext(context) isa Union{LikelihoodContext,DefaultContext}
+end
+
 function Base.push!(
     context::PointwiseLogdensityContext{<:AbstractDict{VarName,Vector{Float64}}},
     vn::VarName,
@@ -78,6 +85,11 @@ function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
     return tilde_observe!!(context.context, right, left, vi)
 end
 function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
+    # Completely defer to child context if we are not tracking likelihoods.
+    if !(_include_likelihood(context))
+        return tilde_observe!!(context.context, right, left, vn, vi)
+    end
+
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
     logp, vi = tilde_observe(context.context, right, left, vi)
@@ -93,6 +105,11 @@ function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, v
     return dot_tilde_observe!!(context.context, right, left, vi)
 end
 function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
+    # Completely defer to child context if we are not tracking likelihoods.
+    if !(_include_likelihood(context))
+        return dot_tilde_observe!!(context.context, right, left, vn, vi)
+    end
+
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
@@ -130,6 +147,10 @@ function _pointwise_tilde_observe(
 end
 
 function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
+    # Completely defer to child context if we are not tracking prior densities.
+    _include_prior(context) || return tilde_assume!!(context.context, right, vn, vi)
+
+    # Otherwise, capture the return values.
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
     # Track loglikelihood value.
     push!(context, vn, logp)
@@ -138,6 +159,11 @@ function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
 end
 
 function dot_tilde_assume!!(context::PointwiseLogdensityContext, right, left, vns, vi)
+    # Completely defer to child context if we are not tracking prior densities.
+    if !(_include_prior(context))
+        return dot_tilde_assume!!(context.context, right, left, vns, vi)
+    end
+
     value, logps = _pointwise_tilde_assume(context, right, left, vns, vi)
     # Track loglikelihood values.
     for (vn, logp) in zip(vns, logps)
@@ -173,7 +199,7 @@ end
     pointwise_logdensities(model::Model, chain::Chains, keytype = String)
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
-with keys corresponding to symbols of the observations, and values being matrices
+with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
@@ -268,7 +294,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 
 """
 function pointwise_logdensities(
-    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
+    model::Model, chain, context::AbstractContext=DefaultContext()
 ) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
@@ -300,4 +326,64 @@ function pointwise_logdensities(
     )
     model(varinfo, point_context)
     return point_context.logdensities
+end
+
+"""
+    pointwise_loglikelihoods(model, chain[, context])
+
+Compute the pointwise log-likelihoods of the model given the chain.
+
+This is the same as `pointwise_logdensities(model, chain, context)`, but only
+including the likelihood terms.
+
+See also: [`pointwise_logdensities`](@ref).
+"""
+function pointwise_loglikelihoods(
+    model::Model, chain, context::AbstractContext=LikelihoodContext()
+) where {T}
+    if !(leafcontext(context) isa LikelihoodContext)
+        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
+    end
+
+    return pointwise_logdensities(model, chain, context)
+end
+
+function pointwise_loglikelihoods(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=LikelihoodContext()
+) where {T}
+    if !(leafcontext(context) isa LikelihoodContext)
+        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
+    end
+
+    return pointwise_logdensities(model, chain, context)
+end
+
+"""
+    pointwise_prior_logdensities(model, chain[, context])
+
+Compute the pointwise log-prior-densities of the model given the chain.
+
+This is the same as `pointwise_logdensities(model, chain, context)`, but only
+including the prior terms.
+
+See also: [`pointwise_logdensities`](@ref).
+"""
+function pointwise_prior_logdensities(
+    model::Model, chain, context::AbstractContext=PriorContext()
+) where {T}
+    if !(leafcontext(context) isa PriorContext)
+        throw(ArgumentError("Leaf context should be a PriorContext"))
+    end
+
+    return pointwise_logdensities(model, chain, context)
+end
+
+function pointwise_prior_logdensities(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=PriorContext()
+) where {T}
+    if !(leafcontext(context) isa PriorContext)
+        throw(ArgumentError("Leaf context should be a PriorContext"))
+    end
+
+    return pointwise_logdensities(model, chain, context)
 end
