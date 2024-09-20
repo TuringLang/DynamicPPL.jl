@@ -10,15 +10,14 @@
 
         # Compute the pointwise loglikelihoods.
         lls = pointwise_loglikelihoods(m, vi)
-        loglikelihood = sum(sum, values(lls))
 
-        #if isempty(lls)
-        if loglikelihood ≈ 0.0 #isempty(lls)
+        if isempty(lls)
             # One of the models with literal observations, so we just skip.
             # TODO: Think of better way to detect this special case 
             continue
         end
 
+        loglikelihood = sum(sum, values(lls))
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(m, example_values...)
 
         #priors = 
@@ -26,4 +25,3 @@
         @test loglikelihood ≈ loglikelihood_true
     end
 end
-
