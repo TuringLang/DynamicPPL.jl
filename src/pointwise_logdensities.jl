@@ -196,14 +196,19 @@ function _pointwise_tilde_assume(
 end
 
 """
-    pointwise_logdensities(model::Model, chain::Chains, keytype = String)
+    pointwise_logdensities(model::Model, chain::Chains[, keytype::Type, context::AbstractContext])
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
 with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
-`keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-Currently, only `String` and `VarName` are supported.
+# Arguments
+- `model`: the `Model` to run.
+- `chain`: the `Chains` to run the model on.
+- `keytype`: the type of the keys used in the returned `OrderedDict` are.
+  Currently, only `String` and `VarName` are supported.
+- `context`: the context to use when running the model. Default: `DefaultContext`.
+  The [`leafcontext`](@ref) is used to decide which variables to include.
 
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
@@ -294,7 +299,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 
 """
 function pointwise_logdensities(
-    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
@@ -329,7 +334,7 @@ function pointwise_logdensities(
 end
 
 """
-    pointwise_loglikelihoods(model, chain[, context])
+    pointwise_loglikelihoods(model, chain[, keytype, context])
 
 Compute the pointwise log-likelihoods of the model given the chain.
 
@@ -341,14 +346,14 @@ See also: [`pointwise_logdensities`](@ref).
 function pointwise_loglikelihoods(
     model::Model,
     chain,
-    context::AbstractContext=LikelihoodContext(),
     keytype::Type{T}=String,
+    context::AbstractContext=LikelihoodContext(),
 ) where {T}
     if !(leafcontext(context) isa LikelihoodContext)
         throw(ArgumentError("Leaf context should be a LikelihoodContext"))
     end
 
-    return pointwise_logdensities(model, chain, context, keytype)
+    return pointwise_logdensities(model, chain, T, context)
 end
 
 function pointwise_loglikelihoods(
@@ -362,7 +367,7 @@ function pointwise_loglikelihoods(
 end
 
 """
-    pointwise_prior_logdensities(model, chain[, context])
+    pointwise_prior_logdensities(model, chain[, keytype, context])
 
 Compute the pointwise log-prior-densities of the model given the chain.
 
@@ -372,13 +377,13 @@ including the prior terms.
 See also: [`pointwise_logdensities`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, context::AbstractContext=PriorContext(), keytype::Type{T}=String
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=PriorContext()
 ) where {T}
     if !(leafcontext(context) isa PriorContext)
         throw(ArgumentError("Leaf context should be a PriorContext"))
     end
 
-    return pointwise_logdensities(model, chain, context, keytype)
+    return pointwise_logdensities(model, chain, T, context)
 end
 
 function pointwise_prior_logdensities(
