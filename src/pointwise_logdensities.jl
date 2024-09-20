@@ -294,7 +294,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 
 """
 function pointwise_logdensities(
-    model::Model, chain, context::AbstractContext=DefaultContext()
+    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
 ) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
@@ -339,23 +339,26 @@ including the likelihood terms.
 See also: [`pointwise_logdensities`](@ref).
 """
 function pointwise_loglikelihoods(
-    model::Model, chain, context::AbstractContext=LikelihoodContext()
+    model::Model,
+    chain,
+    context::AbstractContext=LikelihoodContext(),
+    keytype::Type{T}=String,
 ) where {T}
     if !(leafcontext(context) isa LikelihoodContext)
         throw(ArgumentError("Leaf context should be a LikelihoodContext"))
     end
 
-    return pointwise_logdensities(model, chain, context)
+    return pointwise_logdensities(model, chain, context, keytype)
 end
 
 function pointwise_loglikelihoods(
     model::Model, varinfo::AbstractVarInfo, context::AbstractContext=LikelihoodContext()
-) where {T}
+)
     if !(leafcontext(context) isa LikelihoodContext)
         throw(ArgumentError("Leaf context should be a LikelihoodContext"))
     end
 
-    return pointwise_logdensities(model, chain, context)
+    return pointwise_logdensities(model, varinfo, context)
 end
 
 """
@@ -369,21 +372,21 @@ including the prior terms.
 See also: [`pointwise_logdensities`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, context::AbstractContext=PriorContext()
+    model::Model, chain, context::AbstractContext=PriorContext(), keytype::Type{T}=String
 ) where {T}
     if !(leafcontext(context) isa PriorContext)
         throw(ArgumentError("Leaf context should be a PriorContext"))
     end
 
-    return pointwise_logdensities(model, chain, context)
+    return pointwise_logdensities(model, chain, context, keytype)
 end
 
 function pointwise_prior_logdensities(
     model::Model, varinfo::AbstractVarInfo, context::AbstractContext=PriorContext()
-) where {T}
+)
     if !(leafcontext(context) isa PriorContext)
         throw(ArgumentError("Leaf context should be a PriorContext"))
     end
 
-    return pointwise_logdensities(model, chain, context)
+    return pointwise_logdensities(model, varinfo, context)
 end
