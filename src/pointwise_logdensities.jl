@@ -129,45 +129,44 @@ function _pointwise_tilde_observe(
     end
 end
 
-function tilde_assume(context::PointwiseLogdensityContext, right, vn, vi)
-    #@info "PointwiseLogdensityContext tilde_assume!! called for $vn"
+function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
-    #sym = DynamicPPL.getsym(vn)
-    new_context = acc_logp!(context, vn, logp)
-    return value, logp, vi
-end
-
-function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vn, vi)
-    #@info "PointwiseLogdensityContext dot_tilde_assume!! called for $vn"
-    # @show vn, left, right, typeof(context).name
-    value, logp, vi = dot_tilde_assume(context.context, right, left, vn, vi)
-    new_context = acc_logp!(context, vn, logp)
-    return value, logp, vi
-end
-
-function acc_logp!(context::PointwiseLogdensityContext, vn::VarName, logp)
+    # Track loglikelihood value.
     push!(context, vn, logp)
-    return (context)
+
+    return value, acclogp!!(vi, logp)
 end
 
-function acc_logp!(context::PointwiseLogdensityContext, vns::AbstractVector{<:VarName}, logp)
-    # construct a new VarName from given sequence of VarName
-    # assume that all items in vns have an IndexLens optic
-    indices = tuplejoin(map(vn -> getoptic(vn).indices, vns)...)
-    vn = VarName(first(vns), Accessors.IndexLens(indices))
-    push!(context, vn, logp)
-    return (context)
+function dot_tilde_assume!!(context::PointwiseLogdensityContext, right, left, vns, vi)
+    value, logps = _pointwise_tilde_assume(context, right, left, vns, vi)
+    # Track loglikelihood values.
+    for (vn, logp) in zip(vns, logps)
+        push!(context, vn, logp)
+    end
+    return value, acclogp!!(vi, sum(logps))
 end
 
-#https://discourse.julialang.org/t/efficient-tuple-concatenation/5398/8
-@inline tuplejoin(x) = x
-@inline tuplejoin(x, y) = (x..., y...)
-@inline tuplejoin(x, y, z...) = (x..., tuplejoin(y, z...)...)
+function _pointwise_tilde_assume(context, right, left, vns, vi)
+    # We need to drop the `vi` returned.
+    values_and_logps = broadcast(right, left, vns) do r, l, vn
+        val, logp, _ = tilde_assume(context, r, vn, vi)
+        return val, logp
+    end
+    return map(first, values_and_logps), map(last, values_and_logps)
+end
 
-() -> begin
-    # code that generates julia-repl in docstring below
-    # using DynamicPPL, Turing
-    # TODO when Turing version that is compatible with DynamicPPL 0.29 becomes available
+function _pointwise_tilde_assume(
+    context, right::MultivariateDistribution, left::AbstractMatrix, vns, vi
+)
+    # We need to drop the `vi` returned.
+    values_and_logps = map(eachcol(left), vns) do l, vn
+        val, logp, _ = tilde_assume(context, right, vn, vi)
+        return val, logp
+    end
+    # HACK(torfjelde): Due to the way we handle `.~`, we should use `recombine` to stay consistent.
+    # But this also means that we need to first flatten the entire `values` component before recombining.
+    values = recombine(right, mapreduce(vec ∘ first, vcat, values_and_logps), length(vns))
+    return values, map(last, values_and_logps)
 end
 
 """
@@ -268,8 +267,9 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 ```
 
 """
-function pointwise_logdensities(model::Model, chain, 
-    context::AbstractContext=DefaultContext(), keytype::Type{T}=String) where {T}
+function pointwise_logdensities(
+    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
+) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
     point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
@@ -292,12 +292,12 @@ function pointwise_logdensities(model::Model, chain,
     return logdensities
 end
 
-function pointwise_logdensities(model::Model,   
-    varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext())
+function pointwise_logdensities(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
+)
     point_context = PointwiseLogdensityContext(
-        OrderedDict{VarName,Vector{Float64}}(), context)
+        OrderedDict{VarName,Vector{Float64}}(), context
+    )
     model(varinfo, point_context)
     return point_context.logdensities
 end
-
-
