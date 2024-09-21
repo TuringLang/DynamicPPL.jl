@@ -57,7 +57,7 @@ include("test_util.jl")
 
             include("serialization.jl")
 
-            include("pointwise_logdensitiesjl")
+            include("pointwise_logdensities.jl")
 
             include("lkj.jl")
 

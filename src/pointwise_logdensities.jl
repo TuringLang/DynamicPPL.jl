@@ -132,37 +132,49 @@ end
 function tilde_assume(context::PointwiseLogdensityContext, right, vn, vi)
     #@info "PointwiseLogdensityContext tilde_assume!! called for $vn"
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
-    #sym = DynamicPPL.getsym(vn)
-    new_context = acc_logp!(context, vn, logp)
+    push!(context, vn, logp)
     return value, logp, vi
 end
 
-function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vn, vi)
-    #@info "PointwiseLogdensityContext dot_tilde_assume!! called for $vn"
-    # @show vn, left, right, typeof(context).name
-    value, logp, vi = dot_tilde_assume(context.context, right, left, vn, vi)
-    new_context = acc_logp!(context, vn, logp)
+function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns, vi)
+    #@info "PointwiseLogdensityContext dot_tilde_assume called for $vns"
+    value, logp, vi_new = dot_tilde_assume(context.context, right, left, vns, vi)
+    # dispatch recording of log-densities based on type of right
+    logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
+    sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
     return value, logp, vi
 end
 
-function acc_logp!(context::PointwiseLogdensityContext, vn::VarName, logp)
-    push!(context, vn, logp)
-    return (context)
+function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::UnivariateDistribution, left, vns, vi, logp)
+    # forward to tilde_assume for each variable
+    map(vns) do vn
+        value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
+        logp_i
+    end
 end
 
-function acc_logp!(context::PointwiseLogdensityContext, vns::AbstractVector{<:VarName}, logp)
-    # construct a new VarName from given sequence of VarName
-    # assume that all items in vns have an IndexLens optic
-    indices = tuplejoin(map(vn -> getoptic(vn).indices, vns)...)
-    vn = VarName(first(vns), Accessors.IndexLens(indices))
-    push!(context, vn, logp)
-    return (context)
+function record_dot_tilde_assume(context::PointwiseLogdensityContext, rights::AbstractVector{<:Distribution}, left, vns, vi, logp)
+    # forward to tilde_assume for each variable and distribution
+    logps = map(vns, rights) do vn, right
+        # use current context to record vn
+        value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
+        logp_i
+    end
 end
 
-#https://discourse.julialang.org/t/efficient-tuple-concatenation/5398/8
-@inline tuplejoin(x) = x
-@inline tuplejoin(x, y) = (x..., y...)
-@inline tuplejoin(x, y, z...) = (x..., tuplejoin(y, z...)...)
+function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::MultivariateDistribution, left, vns, vi, logp)
+    #@info "PointwiseLogdensityContext record_dot_tilde_assume multivariate called for $vns"
+    # For multivariate distribution on the right there is only a single density.
+    # Need to construct a combined VarName.
+    # Assume that all vns have an IndexLens with a Colon at the first position
+    # and a single number at the second position.
+    indices = map(vn -> getoptic(vn).indices[2], vns)
+    indices_combined = (:,indices)
+    #indices = tuplejoin(map(vn -> getoptic(vn).indices[2], vns)...)
+    vn = VarName(first(vns), Accessors.IndexLens(indices_combined))
+    push!(context, vn, logp)
+    return logp
+end
 
 () -> begin
     # code that generates julia-repl in docstring below

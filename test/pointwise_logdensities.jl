@@ -3,7 +3,7 @@
     prior_context = PriorContext()
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    #m = DynamicPPL.TestUtils.DEMO_MODELS[12]
     @testset "$(m.f)" for (i, m) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
         #@show i
         example_values = DynamicPPL.TestUtils.rand_prior_true(m)
