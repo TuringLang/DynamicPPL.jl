@@ -4,6 +4,7 @@
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
     #m = DynamicPPL.TestUtils.DEMO_MODELS[12]
+    #m = model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2()
     @testset "$(m.f)" for (i, m) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
         #@show i
         example_values = DynamicPPL.TestUtils.rand_prior_true(m)
@@ -25,13 +26,13 @@
         # Compute the pointwise loglikelihoods.
         lls = pointwise_logdensities(m, vi, likelihood_context)
         #lls2 = pointwise_loglikelihoods(m, vi)
-        loglikelihood = sum(sum, values(lls))
-        if loglikelihood ≈ 0.0 #isempty(lls)
+        loglikelihood_sum = sum(sum, values(lls))
+        if loglikelihood_sum ≈ 0.0 #isempty(lls)
             # One of the models with literal observations, so we just skip.
             # TODO: Think of better way to detect this special case 
             loglikelihood_true = 0.0
         end
-        @test loglikelihood ≈ loglikelihood_true
+        @test loglikelihood_sum ≈ loglikelihood_true
 
         # Compute the pointwise logdensities of the priors.
         lps_prior = pointwise_logdensities(m, vi, prior_context)

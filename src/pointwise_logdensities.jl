@@ -98,7 +98,7 @@ function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, v
 
     # We want to treat `.~` as a collection of independent observations,
     # hence we need the `logp` for each of them. Broadcasting the univariate
-    # `tilde_obseve` does exactly this.
+    # `tilde_observe` does exactly this.
     logps = _pointwise_tilde_observe(context.context, right, left, vi)
 
     # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
@@ -129,8 +129,8 @@ function _pointwise_tilde_observe(
     end
 end
 
-function tilde_assume(context::PointwiseLogdensityContext, right, vn, vi)
-    #@info "PointwiseLogdensityContext tilde_assume!! called for $vn"
+function tilde_assume(context::PointwiseLogdensityContext, right::Distribution, vn, vi)
+    #@info "PointwiseLogdensityContext tilde_assume called for $vn"
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
     push!(context, vn, logp)
     return value, logp, vi
@@ -145,7 +145,7 @@ function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns,
     return value, logp, vi
 end
 
-function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::UnivariateDistribution, left, vns, vi, logp)
+function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::Distribution, left, vns, vi, logp)
     # forward to tilde_assume for each variable
     map(vns) do vn
         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
@@ -155,25 +155,11 @@ end
 
 function record_dot_tilde_assume(context::PointwiseLogdensityContext, rights::AbstractVector{<:Distribution}, left, vns, vi, logp)
     # forward to tilde_assume for each variable and distribution
-    logps = map(vns, rights) do vn, right
+    map(vns, rights) do vn, right
         # use current context to record vn
         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
         logp_i
     end
-end
-
-function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::MultivariateDistribution, left, vns, vi, logp)
-    #@info "PointwiseLogdensityContext record_dot_tilde_assume multivariate called for $vns"
-    # For multivariate distribution on the right there is only a single density.
-    # Need to construct a combined VarName.
-    # Assume that all vns have an IndexLens with a Colon at the first position
-    # and a single number at the second position.
-    indices = map(vn -> getoptic(vn).indices[2], vns)
-    indices_combined = (:,indices)
-    #indices = tuplejoin(map(vn -> getoptic(vn).indices[2], vns)...)
-    vn = VarName(first(vns), Accessors.IndexLens(indices_combined))
-    push!(context, vn, logp)
-    return logp
 end
 
 () -> begin
