@@ -175,6 +175,11 @@ end
 function _pointwise_tilde_assume(context, right, left, vns, vi)
     # We need to drop the `vi` returned.
     values_and_logps = broadcast(right, left, vns) do r, l, vn
+        # HACK(torfjelde): This drops the `vi` returned, which means the `vi` is not updated
+        # in case of immutable varinfos. But a) atm we're only using mutable varinfos for this,
+        # and b) even if the variables aren't stored in the vi correctly, we're not going to use
+        # this vi for anything downstream anyways, i.e. I don't see a case where this would matter
+        # for this particular use case.
         val, logp, _ = tilde_assume(context, r, vn, vi)
         return val, logp
     end
