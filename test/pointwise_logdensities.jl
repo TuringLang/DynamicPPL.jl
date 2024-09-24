@@ -3,9 +3,12 @@
     prior_context = PriorContext()
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    #m = DynamicPPL.TestUtils.DEMO_MODELS[12]
+    #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
     #m = model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2()
-    @testset "$(m.f)" for (i, m) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
+    demo_models = (
+        DynamicPPL.TestUtils.DEMO_MODELS..., 
+        DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2())
+    @testset "$(m.f)" for (i, m) in enumerate(demo_models)
         #@show i
         example_values = DynamicPPL.TestUtils.rand_prior_true(m)
 
@@ -26,23 +29,19 @@
         # Compute the pointwise loglikelihoods.
         lls = pointwise_logdensities(m, vi, likelihood_context)
         #lls2 = pointwise_loglikelihoods(m, vi)
-        loglikelihood_sum = sum(sum, values(lls))
-        if loglikelihood_sum ≈ 0.0 #isempty(lls)
+        if isempty(lls)
             # One of the models with literal observations, so we just skip.
-            # TODO: Think of better way to detect this special case 
             loglikelihood_true = 0.0
+        else
+            loglikelihood_sum = sum(sum, values(lls))
+            @test loglikelihood_sum ≈ loglikelihood_true
         end
-        @test loglikelihood_sum ≈ loglikelihood_true
 
         # Compute the pointwise logdensities of the priors.
         lps_prior = pointwise_logdensities(m, vi, prior_context)
         logp = sum(sum, values(lps_prior))
-        if false # isempty(lps_prior)
-            # One of the models with only observations so we just skip.
-        else
-            logp1 = getlogp(vi)
-            @test !isfinite(logp_true) || logp ≈ logp_true
-        end
+        logp1 = getlogp(vi)
+        @test !isfinite(logp_true) || logp ≈ logp_true
 
         # Compute both likelihood and logdensity of prior
         # using the default DefaultContex        
@@ -56,7 +55,6 @@
         @test logp ≈ (logp_true + loglikelihood_true) * 1.2 * 1.4
     end
 end
-
 
 @testset "pointwise_logdensities chain" begin
     @model function demo(x, ::Type{TV}=Vector{Float64}) where {TV}
@@ -73,9 +71,9 @@ end
         # generate the sample used below
         chain = sample(model, MH(), MCMCThreads(), 10, 2)
         arr0 = stack(Array(chain, append_chains=false))
-        @show(arr0);
+        @show(arr0[1:2,:,:]);
     end
-    arr0 = [5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 0.9199555480151707 -0.1304320097505629 1.0669120062696917 -0.05253734412139093; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183; 1.0982766276744311 0.9593277181079177 0.005558174156359029 -0.45842032209694183;;; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 2.5409470583244933 1.7838744695696407 0.7013562890105632 -3.0843947804314658; 0.8296370582311665 1.5360702767879642 -1.5964695255693102 0.16928084806166913; 2.6246697053824954 0.8096845024785173 -1.2621822861663752 1.1414885535466166; 1.1304261861894538 0.7325784741344005 -1.1866016911837542 -0.1639319562090826; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 2.5669872989791473 -0.43642462460747317 0.07057300935786101 0.5168578624259272; 0.9838526141898173 -0.20198797220982412 2.0569535882007006 -1.1560724118010939]
+    arr0[1:2, :, :] = [5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317;;; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497]
     chain = Chains(arr0, [:s, Symbol("m[1]"), Symbol("m[2]"), Symbol("m[3]")]);
     tmp1 = pointwise_logdensities(model, chain)
     vi = VarInfo(model)

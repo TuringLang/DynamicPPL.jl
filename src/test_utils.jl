@@ -1116,10 +1116,8 @@ function TestLogModifyingChildContext(
         mod, context
     )
 end
-# Samplers call leafcontext(model.context) when evaluating log-densities
-# Hence, in order to be used need to say that its a leaf-context
-#DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsLeaf()
+
+DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
 DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
 function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
     return TestLogModifyingChildContext(context.mod, child)

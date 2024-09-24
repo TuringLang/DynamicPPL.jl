@@ -73,11 +73,26 @@ function Base.push!(
     return context.logdensities[vn] = logp
 end
 
+
+function _include_prior(context::PointwiseLogdensityContext)
+    return leafcontext(context) isa Union{PriorContext,DefaultContext}
+end
+function _include_likelihood(context::PointwiseLogdensityContext)
+    return leafcontext(context) isa Union{LikelihoodContext,DefaultContext}
+end
+
+
+
 function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return tilde_observe!!(context.context, right, left, vi)
 end
 function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
+   # Completely defer to child context if we are not tracking likelihoods.
+    if !(_include_likelihood(context))
+        return tilde_observe!!(context.context, right, left, vn, vi)
+    end    
+    
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
     logp, vi = tilde_observe(context.context, right, left, vi)
@@ -93,6 +108,11 @@ function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, v
     return dot_tilde_observe!!(context.context, right, left, vi)
 end
 function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
+    # Completely defer to child context if we are not tracking likelihoods.
+    if !(_include_likelihood(context))
+        return dot_tilde_observe!!(context.context, right, left, vn, vi)
+    end
+
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `dot_tilde_observe!`.
 
@@ -132,16 +152,19 @@ end
 function tilde_assume(context::PointwiseLogdensityContext, right::Distribution, vn, vi)
     #@info "PointwiseLogdensityContext tilde_assume called for $vn"
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
-    push!(context, vn, logp)
+    if _include_prior(context)
+        push!(context, vn, logp)
+    end
     return value, logp, vi
 end
 
 function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns, vi)
     #@info "PointwiseLogdensityContext dot_tilde_assume called for $vns"
     value, logp, vi_new = dot_tilde_assume(context.context, right, left, vns, vi)
-    # dispatch recording of log-densities based on type of right
-    logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
-    sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
+    if _include_prior(context)
+        logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
+        sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
+    end
     return value, logp, vi
 end
 
@@ -172,7 +195,7 @@ end
     pointwise_logdensities(model::Model, chain::Chains, keytype = String)
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
-with keys corresponding to symbols of the observations, and values being matrices
+with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
