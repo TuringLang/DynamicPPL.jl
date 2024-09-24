@@ -1835,6 +1835,20 @@ function BangBang.push!!(
     return vi
 end
 
+function Base.push!(vi::VectorVarInfo, vn::VarName, val, args...)
+    push!(getmetadata(vi, vn), vn, val, args...)
+    return vi
+end
+
+function Base.push!(vi::VectorVarInfo, pair::Pair, args...)
+    vn, val = pair
+    return push!(vi, vn, val, args...)
+end
+
+# TODO(mhauru) push! can't be implemented in-place for TypedVarInfo if the symbol doesn't
+# exist in the TypedVarInfo already. We could implement it in the cases where it it does
+# exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
+
 function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
@@ -1850,6 +1864,11 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     push!(meta.flags["trans"], false)
 
     return meta
+end
+
+function Base.delete!(vi::VarInfo, vn::VarName)
+    delete!(getmetadata(vi, vn), vn)
+    return vi
 end
 
 """

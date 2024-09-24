@@ -297,7 +297,10 @@ end
                     # Should not be possible to `push!` existing varname.
                     @test_throws ArgumentError push!(vnv, vn, val)
                 else
-                    push!(vnv, vn, val)
+                    vnv_copy = deepcopy(vnv)
+                    push!(vnv_copy, vn, val)
+                    @test vnv_copy[vn] == val
+                    push!(vnv, (vn => val))
                     @test vnv[vn] == val
                 end
             end

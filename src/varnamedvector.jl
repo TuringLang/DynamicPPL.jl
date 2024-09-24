@@ -3,20 +3,107 @@
 
 A container that stores values in a vectorised form, but indexable by variable names.
 
-When indexed by integers or `Colon`s, e.g. `vnv[2]` or `vnv[:]`, `VarNamedVector` behaves
+When indexed with integers or `Colon`s, e.g. `vnv[2]` or `vnv[:]`, `VarNamedVector` behaves
 like a `Vector`, and returns the values as they are stored. The stored form is always
 vectorised, for instance matrix variables have been flattened, and may be further
 transformed to achieve linking.
 
-When indexed by `VarName`s, e.g. `vnv[@varname(x)]`, `VarNamedVector` returns the values
+When indexed with `VarName`s, e.g. `vnv[@varname(x)]`, `VarNamedVector` returns the values
 in the original space. For instance, a linked matrix variable is first inverse linked and
 then reshaped to its original form before returning it to the caller.
 
 `VarNamedVector` also stores a boolean for whether a variable has been transformed to
 unconstrained Euclidean space or not.
 
+Internally, `VarNamedVector` stores the values of all variables in a single contiguous
+vector.
+
 # Fields
+
 $(FIELDS)
+
+# Extended help
+
+The values for different variables are internally all stored in a single vector. For
+instance,
+```jldoctest varnamedvector-struct
+julia> using DynamicPPL: VarNamedVector, @varname, push!, update!
+
+julia> vnv = VarNamedVector();
+
+julia> push!(vnv, @varname(x) => [0.0, 1.0]);
+
+julia> push!(vnv, @varname(y) => fill(3, (3,3)));
+
+julia> vnv.vals
+11-element Vector{Real}:
+ 0.0
+ 1.0
+ 3
+ 3
+ 3
+ 3
+ 3
+ 3
+ 3
+ 3
+ 3
+```
+
+The `varnames`, `ranges`, and `varname_to_index` fields keep track of which value belongs to
+which variable. The `transforms` field stores the transformations that needed to transform
+the vectorised internal storage back to its original form:
+
+```jldoctest varnamedvector-struct
+julia> vnv.transforms[vnv.varname_to_index[@varname(y)]]
+DynamicPPL.ReshapeTransform{Tuple{Int64, Int64}}((3, 3))
+```
+
+If a variable is updated with a new value that is of a smaller dimension than the old
+value, rather than resizing `vnv.vals`, some elements in `vnv.vals` are marked as inactive.
+
+```jldoctest varnamedvector-struct
+julia> update!(vnv, @varname(y), fill(2, (2, 2)))
+
+julia> vnv.vals
+11-element Vector{Real}:
+ 0.0
+ 1.0
+ 2
+ 2
+ 2
+ 2
+ 3
+ 3
+ 3
+ 3
+ 3
+
+julia> vnv.num_inactive
+OrderedDict{Int64, Int64} with 1 entry:
+  2 => 5
+```
+
+This helps avoid unnecessary memory allocations for values that repeatedly change dimension.
+The user does not have to worry about the inactive entries as long as they use functions
+like `update!` and `getindex!` rather than directly accessing `vnv.vals`.
+
+```jldoctest varnamedvector-struct
+julia> vnv[@varname(y)]
+2×2 Matrix{Real}:
+ 2  2
+ 2  2
+
+
+julia> vnv[:]
+6-element Vector{Real}:
+ 0.0
+ 1.0
+ 2
+ 2
+ 2
+ 2
+```
 """
 struct VarNamedVector{
     K<:VarName,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector
@@ -64,6 +151,7 @@ struct VarNamedVector{
     Inactive entries are elements in `vals` that are not part of the value of any variable.
     They arise when a variable is set to a new value with a different dimension, in-place.
     Inactive entries always come after the last active entry for the given variable.
+    See the extended help with `??VarNamedVector` for more details.
     """
     num_inactive::OrderedDict{Int,Int}
 
@@ -80,23 +168,40 @@ struct VarNamedVector{
             length(varnames) != length(transforms) ||
             length(varnames) != length(is_unconstrained) ||
             length(varnames) != length(varname_to_index)
-            msg = "Inputs to VarNamedVector have inconsistent lengths. Got lengths varnames: $(length(varnames)), ranges: $(length(ranges)), transforms: $(length(transforms)), is_unconstrained: $(length(is_unconstrained)), varname_to_index: $(length(varname_to_index))."
+            msg = (
+                "Inputs to VarNamedVector have inconsistent lengths. Got lengths varnames: " *
+                "$(length(varnames)), ranges: " *
+                "$(length(ranges)), " *
+                "transforms: $(length(transforms)), " *
+                "is_unconstrained: $(length(is_unconstrained)), " *
+                "varname_to_index: $(length(varname_to_index))."
+            )
             throw(ArgumentError(msg))
         end
 
         num_vals = mapreduce(length, (+), ranges; init=0) + sum(values(num_inactive))
         if num_vals != length(vals)
-            msg = "The total number of elements in `vals` ($(length(vals))) does not match the sum of the lengths of the ranges and the number of inactive entries ($(num_vals))."
+            msg = (
+                "The total number of elements in `vals` ($(length(vals))) does not match " *
+                "the sum of the lengths of the ranges and the number of inactive entries " *
+                "($(num_vals))."
+            )
             throw(ArgumentError(msg))
         end
 
-        if Set(values(varname_to_index)) != Set(1:length(varnames))
-            msg = "The values of `varname_to_index` are not valid indices."
+        if Set(values(varname_to_index)) != Set(axes(varnames, 1))
+            msg = (
+                "The set of values of `varname_to_index` is not the set of valid indices " *
+                "for `varnames`."
+            )
             throw(ArgumentError(msg))
         end
 
         if !issubset(Set(keys(num_inactive)), Set(values(varname_to_index)))
-            msg = "The keys of `num_inactive` are not valid indices."
+            msg = (
+                "The keys of `num_inactive` are not a subset of the values of " *
+                "`varname_to_index`."
+            )
             throw(ArgumentError(msg))
         end
 
@@ -107,7 +212,10 @@ struct VarNamedVector{
             for vn2 in keys(varname_to_index)
                 vn1 === vn2 && continue
                 if subsumes(vn1, vn2)
-                    msg = "Variables in a VarNamedVector should not subsume each other, but $vn1 subsumes $vn2."
+                    msg = (
+                        "Variables in a VarNamedVector should not subsume each other, " *
+                        "but $vn1 subsumes $vn2, i.e. $vn2 describes a subrange of $vn1."
+                    )
                     throw(ArgumentError(msg))
                 end
             end
@@ -241,7 +349,9 @@ end
 """
     has_inactive(vnv::VarNamedVector)
 
-Returns `true` if `vnv` has inactive ranges.
+Returns `true` if `vnv` has inactive entries.
+
+See also: [`num_inactive`](@ref)
 """
 has_inactive(vnv::VarNamedVector) = !isempty(vnv.num_inactive)
 
@@ -249,6 +359,8 @@ has_inactive(vnv::VarNamedVector) = !isempty(vnv.num_inactive)
     num_inactive(vnv::VarNamedVector)
 
 Return the number of inactive entries in `vnv`.
+
+See also: [`has_inactive`](@ref), [`num_allocated`](@ref)
 """
 num_inactive(vnv::VarNamedVector) = sum(values(vnv.num_inactive))
 
@@ -262,16 +374,19 @@ num_inactive(vnv::VarNamedVector, idx::Int) = get(vnv.num_inactive, idx, 0)
 
 """
     num_allocated(vnv::VarNamedVector)
+    num_allocated(vnv::VarNamedVector[, vn::VarName])
+    num_allocated(vnv::VarNamedVector[, idx::Int])
 
-Returns the number of allocated entries in `vnv`, both active and inactive.
+Return the number of allocated entries in `vnv`, both active and inactive.
+
+If either a `VarName` or an `Int` index is specified, only count entries allocated for that
+variable.
+
+Allocated entries take up memory in `vnv.vals`, but, if inactive, may not currently hold any
+meaningful data. One can remove them with [`contiguify!`](@ref), but doing so may cause more
+memory allocations in the future if variables change dimension.
 """
 num_allocated(vnv::VarNamedVector) = length(vnv.vals)
-
-"""
-    num_allocated(vnv::VarNamedVector, vn::VarName)
-
-Returns the number of allocated entries for `vn` in `vnv`, both active and inactive.
-"""
 num_allocated(vnv::VarNamedVector, vn::VarName) = num_allocated(vnv, getidx(vnv, vn))
 function num_allocated(vnv::VarNamedVector, idx::Int)
     return length(getrange(vnv, idx)) + num_inactive(vnv, idx)
@@ -279,12 +394,13 @@ end
 
 # Basic array interface.
 Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
-Base.length(vnv::VarNamedVector) =
+function Base.length(vnv::VarNamedVector)
     if !has_inactive(vnv)
-        length(vnv.vals)
+        return length(vnv.vals)
     else
-        sum(length, vnv.ranges)
+        return sum(length, vnv.ranges)
     end
+end
 Base.size(vnv::VarNamedVector) = (length(vnv),)
 Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
 

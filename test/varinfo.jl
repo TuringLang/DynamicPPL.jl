@@ -111,6 +111,13 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @test vi[vn] == 3 * r
             @test vi[SampleFromPrior()][1] == 3 * r
 
+            # TODO(mhauru) Implement these functions for SimpleVarInfo too.
+            if vi isa VarInfo
+                delete!(vi, vn)
+                @test isempty(vi)
+                vi = push!!(vi, vn, r, dist, gid)
+            end
+
             vi = empty!!(vi)
             @test isempty(vi)
             return push!!(vi, vn, r, dist, gid)
