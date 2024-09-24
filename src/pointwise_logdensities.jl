@@ -322,3 +322,62 @@ function pointwise_logdensities(model::Model,
 end
 
 
+
+
+"""
+    pointwise_loglikelihoods(model, chain[, keytype, context])
+Compute the pointwise log-likelihoods of the model given the chain.
+This is the same as `pointwise_logdensities(model, chain, context)`, but only
+including the likelihood terms.
+See also: [`pointwise_logdensities`](@ref).
+"""
+function pointwise_loglikelihoods(
+    model::Model,
+    chain,
+    keytype::Type{T}=String,
+    context::AbstractContext=LikelihoodContext(),
+) where {T}
+    if !(leafcontext(context) isa LikelihoodContext)
+        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
+    end
+
+    return pointwise_logdensities(model, chain, T, context)
+end
+
+function pointwise_loglikelihoods(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=LikelihoodContext()
+)
+    if !(leafcontext(context) isa LikelihoodContext)
+        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
+    end
+
+    return pointwise_logdensities(model, varinfo, context)
+end
+
+"""
+    pointwise_prior_logdensities(model, chain[, keytype, context])
+Compute the pointwise log-prior-densities of the model given the chain.
+This is the same as `pointwise_logdensities(model, chain, context)`, but only
+including the prior terms.
+See also: [`pointwise_logdensities`](@ref).
+"""
+function pointwise_prior_logdensities(
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=PriorContext()
+) where {T}
+    if !(leafcontext(context) isa PriorContext)
+        throw(ArgumentError("Leaf context should be a PriorContext"))
+    end
+
+    return pointwise_logdensities(model, chain, T, context)
+end
+
+function pointwise_prior_logdensities(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=PriorContext()
+)
+    if !(leafcontext(context) isa PriorContext)
+        throw(ArgumentError("Leaf context should be a PriorContext"))
+    end
+
+    return pointwise_logdensities(model, varinfo, context)
+end
+

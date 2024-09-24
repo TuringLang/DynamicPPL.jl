@@ -60,8 +60,6 @@ include("test_util.jl")
             include("pointwise_logdensities.jl")
 
             include("lkj.jl")
-
-            include("deprecated.jl")
         end
 
         @testset "compat" begin

@@ -27,7 +27,7 @@
         logp_true = logprior(m, vi)
 
         # Compute the pointwise loglikelihoods.
-        lls = pointwise_logdensities(m, vi, likelihood_context)
+        lls = pointwise_loglikelihoods(m, vi)
         #lls2 = pointwise_loglikelihoods(m, vi)
         if isempty(lls)
             # One of the models with literal observations, so we just skip.
@@ -38,7 +38,7 @@
         end
 
         # Compute the pointwise logdensities of the priors.
-        lps_prior = pointwise_logdensities(m, vi, prior_context)
+        lps_prior = pointwise_prior_logdensities(m, vi)
         logp = sum(sum, values(lps_prior))
         logp1 = getlogp(vi)
         @test !isfinite(logp_true) || logp ≈ logp_true
@@ -55,6 +55,7 @@
         @test logp ≈ (logp_true + loglikelihood_true) * 1.2 * 1.4
     end
 end
+
 
 @testset "pointwise_logdensities chain" begin
     @model function demo(x, ::Type{TV}=Vector{Float64}) where {TV}

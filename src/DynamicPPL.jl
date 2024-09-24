@@ -115,8 +115,9 @@ export AbstractVarInfo,
     # Convenience functions
     logprior,
     logjoint,
-    pointwise_loglikelihoods,
+    pointwise_prior_logdensities,    
     pointwise_logdensities,
+    pointwise_loglikelihoods,
     condition,
     decondition,
     fix,
@@ -190,7 +191,6 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
-include("deprecated.jl")
 
 include("debug_utils.jl")
 using .DebugUtils
