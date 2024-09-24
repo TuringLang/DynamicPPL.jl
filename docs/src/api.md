@@ -124,22 +124,16 @@ Return values of the model function for a collection of samples can be obtained 
 generated_quantities
 ```
 
-For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref).
+For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
+[`pointwise_prior_logdensities`](@ref) or both, i.e. all variables, using 
+[`pointwise_logdensities`](@ref).
 
 ```@docs
+pointwise_logdensities
 pointwise_loglikelihoods
+pointwise_prior_logdensities
 ```
 
-Similarly, one can compute the pointwise log-priors of each sampled random variable
-with [`varwise_logpriors`](@ref).
-Differently from `pointwise_loglikelihoods` it reports only a
-single value for `.~` assignements. 
-If one needs to access the parts for single indices, one can
-reformulate the model to use an explicit loop instead.
-
-```@docs
-varwise_logpriors
-```
 
 For converting a chain into a format that can more easily be fed into a `Model` again, for example using `condition`, you can use [`value_iterator_from_chain`](@ref).
 
