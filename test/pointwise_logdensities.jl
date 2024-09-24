@@ -1,6 +1,4 @@
 @testset "logdensities_likelihoods.jl" begin
-    likelihood_context = LikelihoodContext()
-    prior_context = PriorContext()
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
     #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
@@ -28,6 +26,7 @@
 
         # Compute the pointwise loglikelihoods.
         lls = pointwise_loglikelihoods(m, vi)
+        @test :s ∉ getsym.(keys(lls))
         #lls2 = pointwise_loglikelihoods(m, vi)
         if isempty(lls)
             # One of the models with literal observations, so we just skip.
@@ -39,6 +38,7 @@
 
         # Compute the pointwise logdensities of the priors.
         lps_prior = pointwise_prior_logdensities(m, vi)
+        @test :x ∉ getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
         logp1 = getlogp(vi)
         @test !isfinite(logp_true) || logp ≈ logp_true
@@ -74,7 +74,7 @@ end
         arr0 = stack(Array(chain, append_chains=false))
         @show(arr0[1:2,:,:]);
     end
-    arr0[1:2, :, :] = [5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317;;; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497]
+    arr0 = [5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317;;; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497]
     chain = Chains(arr0, [:s, Symbol("m[1]"), Symbol("m[2]"), Symbol("m[3]")]);
     tmp1 = pointwise_logdensities(model, chain)
     vi = VarInfo(model)

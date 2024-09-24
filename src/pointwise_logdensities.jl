@@ -149,40 +149,86 @@ function _pointwise_tilde_observe(
     end
 end
 
-function tilde_assume(context::PointwiseLogdensityContext, right::Distribution, vn, vi)
-    #@info "PointwiseLogdensityContext tilde_assume called for $vn"
+# function tilde_assume(context::PointwiseLogdensityContext, right::Distribution, vn, vi)
+#     #@info "PointwiseLogdensityContext tilde_assume called for $vn"
+#     value, logp, vi = tilde_assume(context.context, right, vn, vi)
+#     if _include_prior(context)
+#         push!(context, vn, logp)
+#     end
+#     return value, logp, vi
+# end
+
+# function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns, vi)
+#     #@info "PointwiseLogdensityContext dot_tilde_assume called for $vns"
+#     value, logp, vi_new = dot_tilde_assume(context.context, right, left, vns, vi)
+#     if _include_prior(context)
+#         logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
+#         sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
+#     end
+#     return value, logp, vi
+# end
+
+# function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::Distribution, left, vns, vi, logp)
+#     # forward to tilde_assume for each variable
+#     map(vns) do vn
+#         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
+#         logp_i
+#     end
+# end
+
+# function record_dot_tilde_assume(context::PointwiseLogdensityContext, rights::AbstractVector{<:Distribution}, left, vns, vi, logp)
+#     # forward to tilde_assume for each variable and distribution
+#     map(vns, rights) do vn, right
+#         # use current context to record vn
+#         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
+#         logp_i
+#     end
+# end
+
+function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
+    !_include_prior(context) && return(tilde_assume!!(context.context, right, vn, vi))
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
-    if _include_prior(context)
+    # Track loglikelihood value.
+    push!(context, vn, logp)
+    return value, acclogp!!(vi, logp)
+end
+
+function dot_tilde_assume!!(context::PointwiseLogdensityContext, right, left, vns, vi)
+    !_include_prior(context) && return(
+        dot_tilde_assume!!(context.context, right, left, vns, vi))
+    value, logps = _pointwise_tilde_assume(context, right, left, vns, vi)
+    # Track loglikelihood values.
+    for (vn, logp) in zip(vns, logps)
         push!(context, vn, logp)
     end
-    return value, logp, vi
+    return value, acclogp!!(vi, sum(logps))
 end
 
-function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns, vi)
-    #@info "PointwiseLogdensityContext dot_tilde_assume called for $vns"
-    value, logp, vi_new = dot_tilde_assume(context.context, right, left, vns, vi)
-    if _include_prior(context)
-        logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
-        sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
+function _pointwise_tilde_assume(context, right, left, vns, vi)
+    # We need to drop the `vi` returned.
+    values_and_logps = broadcast(right, left, vns) do r, l, vn
+        # HACK(torfjelde): This drops the `vi` returned, which means the `vi` is not updated
+        # in case of immutable varinfos. But a) atm we're only using mutable varinfos for this,
+        # and b) even if the variables aren't stored in the vi correctly, we're not going to use
+        # this vi for anything downstream anyways, i.e. I don't see a case where this would matter
+        # for this particular use case.
+        val, logp, _ = tilde_assume(context, r, vn, vi)
+        return val, logp
     end
-    return value, logp, vi
+    return map(first, values_and_logps), map(last, values_and_logps)
 end
-
-function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::Distribution, left, vns, vi, logp)
-    # forward to tilde_assume for each variable
-    map(vns) do vn
-        value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
-        logp_i
+function _pointwise_tilde_assume(
+    context, right::MultivariateDistribution, left::AbstractMatrix, vns, vi
+)
+    # We need to drop the `vi` returned.
+    values_and_logps = map(eachcol(left), vns) do l, vn
+        val, logp, _ = tilde_assume(context, right, vn, vi)
+        return val, logp
     end
-end
-
-function record_dot_tilde_assume(context::PointwiseLogdensityContext, rights::AbstractVector{<:Distribution}, left, vns, vi, logp)
-    # forward to tilde_assume for each variable and distribution
-    map(vns, rights) do vn, right
-        # use current context to record vn
-        value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
-        logp_i
-    end
+    # HACK(torfjelde): Due to the way we handle `.~`, we should use `recombine` to stay consistent.
+    # But this also means that we need to first flatten the entire `values` component before recombining.
+    values = recombine(right, mapreduce(vec ∘ first, vcat, values_and_logps), length(vns))
+    return values, map(last, values_and_logps)
 end
 
 () -> begin
@@ -326,6 +372,7 @@ end
 
 """
     pointwise_loglikelihoods(model, chain[, keytype, context])
+    
 Compute the pointwise log-likelihoods of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the likelihood terms.
@@ -356,6 +403,7 @@ end
 
 """
     pointwise_prior_logdensities(model, chain[, keytype, context])
+
 Compute the pointwise log-prior-densities of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the prior terms.
