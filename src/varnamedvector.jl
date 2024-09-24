@@ -161,8 +161,8 @@ struct VarNamedVector{
         ranges,
         vals::TVal,
         transforms::TTrans,
-        is_unconstrained,
-        num_inactive,
+        is_unconstrained=fill!(BitVector(undef, length(varnames)), 0),
+        num_inactive=OrderedDict{Int,Int}(),
     ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector}
         if length(varnames) != length(ranges) ||
             length(varnames) != length(transforms) ||
@@ -237,28 +237,7 @@ struct VarNamedVector{
     end
 end
 
-# Default values for is_unconstrained (all false) and num_inactive (empty).
-function VarNamedVector(
-    varname_to_index,
-    varnames,
-    ranges,
-    vals,
-    transforms,
-    is_unconstrained=fill!(BitVector(undef, length(varnames)), 0),
-)
-    return VarNamedVector(
-        varname_to_index,
-        varnames,
-        ranges,
-        vals,
-        transforms,
-        is_unconstrained,
-        OrderedDict{Int,Int}(),
-    )
-end
-
-# TODO(mhauru) Are we sure we want the last one to be of type Any[]? Might this cause
-# unnecessary type instability?
+# TODO(mhauru) Are we sure we want the last one to be of type Any[]?
 function VarNamedVector{K,V}() where {K,V}
     return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
