@@ -1,33 +1,32 @@
 @testset "logdensities_likelihoods.jl" begin
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    #m = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    #m = model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2()
+    #model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    #model = model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2()
     demo_models = (
         DynamicPPL.TestUtils.DEMO_MODELS..., 
         DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2())
-    @testset "$(m.f)" for (i, m) in enumerate(demo_models)
+    @testset "$(model.f)" for (i, model) in enumerate(demo_models)
         #@show i
-        example_values = DynamicPPL.TestUtils.rand_prior_true(m)
+        example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
-        vi = VarInfo(m)
+        vi = VarInfo(model)
         () -> begin # when interactively debugging, need the global keyword
-            for vn in DynamicPPL.TestUtils.varnames(m)
+            for vn in DynamicPPL.TestUtils.varnames(model)
                 global vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
             end
         end
-        for vn in DynamicPPL.TestUtils.varnames(m)
+        for vn in DynamicPPL.TestUtils.varnames(model)
             vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
         end
 
-        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(m, example_values...)        
-        logp_true = logprior(m, vi)
+        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(model, example_values...)        
+        logp_true = logprior(model, vi)
 
         # Compute the pointwise loglikelihoods.
-        lls = pointwise_loglikelihoods(m, vi)
+        lls = pointwise_loglikelihoods(model, vi)
         @test :s ∉ getsym.(keys(lls))
-        #lls2 = pointwise_loglikelihoods(m, vi)
         if isempty(lls)
             # One of the models with literal observations, so we just skip.
             loglikelihood_true = 0.0
