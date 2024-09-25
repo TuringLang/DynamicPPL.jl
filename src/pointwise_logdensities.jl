@@ -196,12 +196,6 @@ function _pointwise_tilde_assume(
     return values, map(last, values_and_logps)
 end
 
-() -> begin
-    # code that generates julia-repl in docstring below
-    # using DynamicPPL, Turing
-    # TODO when Turing version that is compatible with DynamicPPL 0.29 becomes available
-end
-
 """
     pointwise_logdensities(model::Model, chain::Chains, keytype = String)
 
