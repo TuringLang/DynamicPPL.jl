@@ -1110,7 +1110,6 @@ end
 function TestLogModifyingChildContext(
     mod=1.2,
     context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext(),
-        #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
 )
     return TestLogModifyingChildContext{typeof(mod),typeof(context)}(
         mod, context
