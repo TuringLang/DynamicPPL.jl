@@ -44,7 +44,7 @@
 
         # Compute both likelihood and logdensity of prior
         # using the default DefaultContex        
-        lps = pointwise_logdensities(m, vi)
+        lps = pointwise_logdensities(model, vi)
         logp = sum(sum, values(lps))
         @test logp ≈ (logp_true + loglikelihood_true)
 
