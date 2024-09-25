@@ -40,7 +40,6 @@
         lps_prior = pointwise_prior_logdensities(model, vi)
         @test :x ∉ getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
-        logp1 = getlogp(vi)
         @test !isfinite(logp_true) || logp ≈ logp_true
 
         # Compute both likelihood and logdensity of prior
