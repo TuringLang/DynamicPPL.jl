@@ -149,41 +149,6 @@ function _pointwise_tilde_observe(
     end
 end
 
-# function tilde_assume(context::PointwiseLogdensityContext, right::Distribution, vn, vi)
-#     #@info "PointwiseLogdensityContext tilde_assume called for $vn"
-#     value, logp, vi = tilde_assume(context.context, right, vn, vi)
-#     if _include_prior(context)
-#         push!(context, vn, logp)
-#     end
-#     return value, logp, vi
-# end
-
-# function dot_tilde_assume(context::PointwiseLogdensityContext, right, left, vns, vi)
-#     #@info "PointwiseLogdensityContext dot_tilde_assume called for $vns"
-#     value, logp, vi_new = dot_tilde_assume(context.context, right, left, vns, vi)
-#     if _include_prior(context)
-#         logps = record_dot_tilde_assume(context, right, left, vns, vi, logp)
-#         sum(logps) ≈ logp || error("Expected sum of individual logp equal origina, but differed sum($(join(logps, ","))) != $logp_orig")
-#     end
-#     return value, logp, vi
-# end
-
-# function record_dot_tilde_assume(context::PointwiseLogdensityContext, right::Distribution, left, vns, vi, logp)
-#     # forward to tilde_assume for each variable
-#     map(vns) do vn
-#         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
-#         logp_i
-#     end
-# end
-
-# function record_dot_tilde_assume(context::PointwiseLogdensityContext, rights::AbstractVector{<:Distribution}, left, vns, vi, logp)
-#     # forward to tilde_assume for each variable and distribution
-#     map(vns, rights) do vn, right
-#         # use current context to record vn
-#         value_i, logp_i, vi_i = tilde_assume(context, right, vn, vi)
-#         logp_i
-#     end
-# end
 
 function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
     !_include_prior(context) && return(tilde_assume!!(context.context, right, vn, vi))
