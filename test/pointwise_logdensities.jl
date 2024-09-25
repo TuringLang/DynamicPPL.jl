@@ -37,7 +37,7 @@
         end
 
         # Compute the pointwise logdensities of the priors.
-        lps_prior = pointwise_prior_logdensities(m, vi)
+        lps_prior = pointwise_prior_logdensities(model, vi)
         @test :x ∉ getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
         logp1 = getlogp(vi)
