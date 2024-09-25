@@ -1114,9 +1114,7 @@ struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
     context::Ctx
 end
 function TestLogModifyingChildContext(
-    mod=1.2,
-    context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext(),
-    #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
+    mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
 )
     return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
 end
