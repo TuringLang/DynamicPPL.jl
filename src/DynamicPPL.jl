@@ -115,7 +115,7 @@ export AbstractVarInfo,
     # Convenience functions
     logprior,
     logjoint,
-    pointwise_prior_logdensities,    
+    pointwise_prior_logdensities,
     pointwise_logdensities,
     pointwise_loglikelihoods,
     condition,

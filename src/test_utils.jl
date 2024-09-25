@@ -667,23 +667,24 @@ function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)
     return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
 end
 
-# model with truly two 3 columns in of d=2 (rather than ProductMatrix of single factor) to explore dot_tilde_assume with MultivariateDistribution
+# model with truly 3 columns (rather than ProductMatrix of single factor, d=1) 
+# to explore dot_tilde_assume with MultivariateDistribution
 @model function demo_dot_assume_matrix_dot_observe_matrix2(
-    x=transpose([1.5 2.0;1.6 2.1;1.45 2.05]), ::Type{TV}=Array{Float64}
+    x=transpose([1.5 2.0; 1.6 2.1; 1.45 2.05]), ::Type{TV}=Array{Float64}
 ) where {TV}
-    d = size(x,1)
-    n = size(x,2)
+    d = size(x, 1)
+    n = size(x, 2)
     s = TV(undef, d, n)
     # for i in 1:n
     #     s[:,i] ~ product_distribution([InverseGamma(2, 3) for _ in 1:d])
     # end
     s .~ product_distribution([InverseGamma(2, 3) for _ in 1:d])
     m = TV(undef, d, n)
-    Sigma_x = Diagonal(s[:,1])
+    Sigma_x = Diagonal(s[:, 1])
     for i in 1:n
-        diag_s = Diagonal(s[:,i])
-        m[:,i] ~ MvNormal(zeros(d), diag_s)
-        x[:,i] ~ MvNormal(m[:,i], Sigma_x) 
+        diag_s = Diagonal(s[:, i])
+        m[:, i] ~ MvNormal(zeros(d), diag_s)
+        x[:, i] ~ MvNormal(m[:, i], Sigma_x)
     end
 
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
@@ -691,23 +692,23 @@ end
 function logprior_true(
     model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)}, s, m
 )
-    n = size(model.args.x,1)
-    d = size(model.args.x,2)
+    n = size(model.args.x, 1)
+    d = size(model.args.x, 2)
     logd = map(1:d) do i_d
-        s_vec = Diagonal(s[:,i_d])
+        s_vec = Diagonal(s[:, i_d])
         loglikelihood(InverseGamma(2, 3), s_vec) +
-        logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m[:,i_d])
+        logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m[:, i_d])
     end
     return sum(logd)
 end
 function loglikelihood_true(
     model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)}, s, m
 )
-    n = size(model.args.x,2)
-    d = size(model.args.x,1)
-    s_vec = Diagonal(s[:,1])
+    n = size(model.args.x, 2)
+    d = size(model.args.x, 1)
+    s_vec = Diagonal(s[:, 1])
     logd = map(1:n) do i
-        loglikelihood(MvNormal(m[:,i], Diagonal(s_vec)), model.args.x[:,i])
+        loglikelihood(MvNormal(m[:, i], Diagonal(s_vec)), model.args.x[:, i])
     end
     return sum(logd)
 end
@@ -718,10 +719,15 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)})
     s = m = zeros(2, 3) # used for varname concretization only
-    return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(s[:, 3], true), 
-    @varname(m[:,1], true), @varname(m[:,2], true), @varname(m[:,3], true)]
+    return [
+        @varname(s[:, 1], true),
+        @varname(s[:, 2], true),
+        @varname(s[:, 3], true),
+        @varname(m[:, 1], true),
+        @varname(m[:, 2], true),
+        @varname(m[:, 3], true)
+    ]
 end
-
 
 @model function demo_assume_matrix_dot_observe_matrix(
     x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
@@ -1110,11 +1116,9 @@ end
 function TestLogModifyingChildContext(
     mod=1.2,
     context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext(),
-        #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
+    #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
 )
-    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(
-        mod, context
-    )
+    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
 end
 
 DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
@@ -1125,22 +1129,25 @@ end
 function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
     #@info "TestLogModifyingChildContext tilde_assume!! called for $vn"
     value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
-    return value, logp*context.mod, vi
+    return value, logp * context.mod, vi
 end
-function DynamicPPL.dot_tilde_assume(context::TestLogModifyingChildContext, right, left, vn, vi)
+function DynamicPPL.dot_tilde_assume(
+    context::TestLogModifyingChildContext, right, left, vn, vi
+)
     #@info "TestLogModifyingChildContext dot_tilde_assume!! called for $vn"
     value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
-    return value, logp*context.mod, vi
+    return value, logp * context.mod, vi
 end
 function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
     # @info "called tilde_observe TestLogModifyingChildContext for left=$left, right=$right"
     logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
-    return logp*context.mod, vi
+    return logp * context.mod, vi
 end
-function DynamicPPL.dot_tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+function DynamicPPL.dot_tilde_observe(
+    context::TestLogModifyingChildContext, right, left, vi
+)
     logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
-    return logp*context.mod, vi
+    return logp * context.mod, vi
 end
-
 
 end

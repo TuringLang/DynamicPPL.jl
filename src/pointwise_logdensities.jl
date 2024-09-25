@@ -73,7 +73,6 @@ function Base.push!(
     return context.logdensities[vn] = logp
 end
 
-
 function _include_prior(context::PointwiseLogdensityContext)
     return leafcontext(context) isa Union{PriorContext,DefaultContext}
 end
@@ -81,18 +80,16 @@ function _include_likelihood(context::PointwiseLogdensityContext)
     return leafcontext(context) isa Union{LikelihoodContext,DefaultContext}
 end
 
-
-
 function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
     # Defer literal `observe` to child-context.
     return tilde_observe!!(context.context, right, left, vi)
 end
 function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
-   # Completely defer to child context if we are not tracking likelihoods.
+    # Completely defer to child context if we are not tracking likelihoods.
     if !(_include_likelihood(context))
         return tilde_observe!!(context.context, right, left, vn, vi)
-    end    
-    
+    end
+
     # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
     # we have to intercept the call to `tilde_observe!`.
     logp, vi = tilde_observe(context.context, right, left, vi)
@@ -149,9 +146,8 @@ function _pointwise_tilde_observe(
     end
 end
 
-
 function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
-    !_include_prior(context) && return(tilde_assume!!(context.context, right, vn, vi))
+    !_include_prior(context) && return (tilde_assume!!(context.context, right, vn, vi))
     value, logp, vi = tilde_assume(context.context, right, vn, vi)
     # Track loglikelihood value.
     push!(context, vn, logp)
@@ -159,8 +155,8 @@ function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
 end
 
 function dot_tilde_assume!!(context::PointwiseLogdensityContext, right, left, vns, vi)
-    !_include_prior(context) && return(
-        dot_tilde_assume!!(context.context, right, left, vns, vi))
+    !_include_prior(context) &&
+        return (dot_tilde_assume!!(context.context, right, left, vns, vi))
     value, logps = _pointwise_tilde_assume(context, right, left, vns, vi)
     # Track loglikelihood values.
     for (vn, logp) in zip(vns, logps)
@@ -294,8 +290,9 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 ```
 
 """
-function pointwise_logdensities(model::Model, chain, 
-    context::AbstractContext=DefaultContext(), keytype::Type{T}=String) where {T}
+function pointwise_logdensities(
+    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
+) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
     point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
@@ -318,16 +315,15 @@ function pointwise_logdensities(model::Model, chain,
     return logdensities
 end
 
-function pointwise_logdensities(model::Model,   
-    varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext())
+function pointwise_logdensities(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
+)
     point_context = PointwiseLogdensityContext(
-        OrderedDict{VarName,Vector{Float64}}(), context)
+        OrderedDict{VarName,Vector{Float64}}(), context
+    )
     model(varinfo, point_context)
     return point_context.logdensities
 end
-
-
-
 
 """
     pointwise_loglikelihoods(model, chain[, keytype, context])
@@ -387,4 +383,3 @@ function pointwise_prior_logdensities(
 
     return pointwise_logdensities(model, varinfo, context)
 end
-
