@@ -49,7 +49,7 @@
         @test logp ≈ (logp_true + loglikelihood_true)
 
         # Test that modifications of Setup are picked up
-        lps = pointwise_logdensities(m, vi, mod_ctx2)
+        lps = pointwise_logdensities(model, vi, mod_ctx2)
         logp = sum(sum, values(lps))
         @test logp ≈ (logp_true + loglikelihood_true) * 1.2 * 1.4
     end
