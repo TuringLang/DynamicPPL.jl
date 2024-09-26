@@ -26,7 +26,7 @@ using Logging
 using Distributions
 using LinearAlgebra # Diagonal
 
-using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
+using DynamicPPL: getargs_dottilde, getargs_tilde, Selector, getsym
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")

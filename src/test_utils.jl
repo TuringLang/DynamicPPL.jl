@@ -667,68 +667,6 @@ function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)
     return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
 end
 
-# model with truly 3 columns (rather than ProductMatrix of single factor, d=1) 
-# to explore dot_tilde_assume with MultivariateDistribution
-@model function demo_dot_assume_matrix_dot_observe_matrix2(
-    x=transpose([1.5 2.0; 1.6 2.1; 1.45 2.05]), ::Type{TV}=Array{Float64}
-) where {TV}
-    d = size(x, 1)
-    n = size(x, 2)
-    s = TV(undef, d, n)
-    # for i in 1:n
-    #     s[:,i] ~ product_distribution([InverseGamma(2, 3) for _ in 1:d])
-    # end
-    s .~ product_distribution([InverseGamma(2, 3) for _ in 1:d])
-    m = TV(undef, d, n)
-    Sigma_x = Diagonal(s[:, 1])
-    for i in 1:n
-        diag_s = Diagonal(s[:, i])
-        m[:, i] ~ MvNormal(zeros(d), diag_s)
-        x[:, i] ~ MvNormal(m[:, i], Sigma_x)
-    end
-
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
-end
-function logprior_true(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)}, s, m
-)
-    n = size(model.args.x, 1)
-    d = size(model.args.x, 2)
-    logd = map(1:d) do i_d
-        s_vec = Diagonal(s[:, i_d])
-        loglikelihood(InverseGamma(2, 3), s_vec) +
-        logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m[:, i_d])
-    end
-    return sum(logd)
-end
-function loglikelihood_true(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)}, s, m
-)
-    n = size(model.args.x, 2)
-    d = size(model.args.x, 1)
-    s_vec = Diagonal(s[:, 1])
-    logd = map(1:n) do i
-        loglikelihood(MvNormal(m[:, i], Diagonal(s_vec)), model.args.x[:, i])
-    end
-    return sum(logd)
-end
-function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)}, s, m
-)
-    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
-end
-function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)})
-    s = m = zeros(2, 3) # used for varname concretization only
-    return [
-        @varname(s[:, 1], true),
-        @varname(s[:, 2], true),
-        @varname(s[:, 3], true),
-        @varname(m[:, 1], true),
-        @varname(m[:, 2], true),
-        @varname(m[:, 3], true)
-    ]
-end
-
 @model function demo_assume_matrix_dot_observe_matrix(
     x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
 ) where {TV}
@@ -810,7 +748,6 @@ const MultivariateAssumeDemoModels = Union{
     Model{typeof(demo_dot_assume_observe_submodel)},
     Model{typeof(demo_dot_assume_dot_observe_matrix)},
     Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
-    Model{typeof(demo_dot_assume_matrix_dot_observe_matrix2)},
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.

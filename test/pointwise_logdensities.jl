@@ -1,23 +1,11 @@
 @testset "logdensities_likelihoods.jl" begin
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    #model = DynamicPPL.TestUtils.DEMO_MODELS[1]
-    #model = model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2()
-    demo_models = (
-        DynamicPPL.TestUtils.DEMO_MODELS...,
-        DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix2(),
-    )
-    @testset "$(model.f)" for (i, model) in enumerate(demo_models)
-        #@show i
+    @testset "$(model.f)" for (i, model) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
         vi = VarInfo(model)
-        () -> begin # when interactively debugging, need the global keyword
-            for vn in DynamicPPL.TestUtils.varnames(model)
-                global vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
-            end
-        end
         for vn in DynamicPPL.TestUtils.varnames(model)
             vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
         end
