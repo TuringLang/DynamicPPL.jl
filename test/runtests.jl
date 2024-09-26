@@ -34,7 +34,6 @@ const GROUP = get(ENV, "GROUP", "All")
 
 Random.seed!(100)
 
-#include(joinpath(DIRECTORY_DynamicPPL,"test","test_util.jl"))
 include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
