@@ -150,7 +150,7 @@ function set_values!!(
     flattened_param_vals = varinfo[spl]
     length(flattened_param_vals) == length(initial_params) || throw(
         DimensionMismatch(
-            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(theta)))",
+            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(flattened_param_vals)))",
         ),
     )
 
