@@ -46,34 +46,27 @@
 end
 
 @testset "pointwise_logdensities chain" begin
-    @model function demo(x, ::Type{TV}=Vector{Float64}) where {TV}
-        s ~ InverseGamma(2, 3)
-        m = TV(undef, length(x))
-        for i in eachindex(x)
-            m[i] ~ Normal(0, √s)
-        end
-        return x ~ MvNormal(m, √s)
-    end
-    x_true = [0.3290767977680923, 0.038972110187911684, -0.5797496780649221]
-    model = demo(x_true)
-    () -> begin
-        # generate the sample used below
-        chain = sample(model, MH(), MCMCThreads(), 10, 2)
-        arr0 = stack(Array(chain; append_chains=false))
-        @show(arr0[1:2, :, :])
-    end
-    arr0 = [
-        5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317; 5.590726417006858 -3.3407908212996493 -3.5126580698975687 -0.02830755634462317;;;
-        3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497; 3.5612802961176797 -5.167692608117693 1.3768066487740864 -0.9154694769223497
+    # We'll just test one, since `pointwise_logdensities(::Model, ::AbstractVarInfo)` is tested extensively,
+    # and this is what is used to implement `pointwise_logdensities(::Model, ::Chains)`. This test suite is just
+    # to ensure that we don't accidentally break the the version on `Chains`.
+    model = DynamicPPL.TestUtils.demo_dot_assume_dot_observe()
+    # FIXME(torfjelde): Make use of `varname_and_value_leaves` once we've introduced
+    # an impl of this for containers.
+    vns = DynamicPPL.TestUtils.varnames(model)
+    # Get some random `NamedTuple` samples from the prior.
+    vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ = 1:5]
+    # Concatenate the vector representations and create a `Chains` from it.
+    vals_arr = reduce(hcat, (mapreduce(DynamicPPL.tovec, vcat, values(nt) for nt in vals))
+    chain = Chains(permutedims(vals_arr), map(Symbol, vns))
+    logjoints_pointwise = pointwise_logdensities(model, chain)
+    # Get the sum of the logjoints for each of the iterations.
+    logjoints = [
+        sum(logjoints_pointwise[vn][idx] for vn in vns)
+        for idx = 1:5
     ]
-    chain = Chains(arr0, [:s, Symbol("m[1]"), Symbol("m[2]"), Symbol("m[3]")])
-    tmp1 = pointwise_logdensities(model, chain)
-    vi = VarInfo(model)
-    i_sample, i_chain = (1, 2)
-    DynamicPPL.setval!(vi, chain, i_sample, i_chain)
-    lp1 = DynamicPPL.pointwise_logdensities(model, vi)
-    # k = first(keys(lp1))
-    for k in keys(lp1)
-        @test tmp1[string(k)][i_sample, i_chain] .≈ lp1[k][1]
+    for (val, logp) in zip(vals, logjoints)
+        # Compare true logjoint with the one obtained from `pointwise_logdensities`.
+        logjoint_true = DynamicPPL.TestUtils.logjoint_true(model, val...)
+        @test logp ≈ logjoint_true
     end
 end;
