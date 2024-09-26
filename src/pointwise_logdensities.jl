@@ -291,7 +291,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 
 """
 function pointwise_logdensities(
-    model::Model, chain, context::AbstractContext=DefaultContext(), keytype::Type{T}=String
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
     # Get the data by executing the model once
     vi = VarInfo(model)
