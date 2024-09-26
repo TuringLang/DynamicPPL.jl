@@ -56,12 +56,12 @@ end
     # Get some random `NamedTuple` samples from the prior.
     vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ = 1:5]
     # Concatenate the vector representations and create a `Chains` from it.
-    vals_arr = reduce(hcat, (mapreduce(DynamicPPL.tovec, vcat, values(nt) for nt in vals))
-    chain = Chains(permutedims(vals_arr), map(Symbol, vns))
+    vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
+    chain = Chains(permutedims(vals_arr), map(Symbol, vns));
     logjoints_pointwise = pointwise_logdensities(model, chain)
     # Get the sum of the logjoints for each of the iterations.
     logjoints = [
-        sum(logjoints_pointwise[vn][idx] for vn in vns)
+        sum(logjoints_pointwise[string(vn)][idx] for vn in vns)
         for idx = 1:5
     ]
     for (val, logp) in zip(vals, logjoints)
