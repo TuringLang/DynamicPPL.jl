@@ -162,7 +162,9 @@
             chain1 = sample(model, sampler, 1; progress=false)
             Random.seed!(1234)
             chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
-            @test_throws DimensionMismatch sample(model, sampler, 1; progress=false, initial_params=zeros(10))
+            @test_throws DimensionMismatch sample(
+                model, sampler, 1; progress=false, initial_params=zeros(10)
+            )
             @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
             @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
 
