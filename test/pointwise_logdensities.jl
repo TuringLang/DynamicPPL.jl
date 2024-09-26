@@ -21,7 +21,7 @@
             # One of the models with literal observations, so we'll set this to 0 for subsequent comparisons.
             loglikelihood_true = 0.0
         else
-            @test [:x] ==  unique(DynamicPPL.getsym.(keys(lls)))
+            @test [:x] == unique(DynamicPPL.getsym.(keys(lls)))
             loglikelihood_sum = sum(sum, values(lls))
             @test loglikelihood_sum ≈ loglikelihood_true
         end
