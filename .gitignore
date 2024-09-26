@@ -4,4 +4,4 @@
 .DS_Store
 Manifest.toml
 **.~undo-tree~
-tmp/interactive.jl
+/tmp
