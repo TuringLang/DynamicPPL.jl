@@ -1062,19 +1062,16 @@ function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child
     return TestLogModifyingChildContext(context.mod, child)
 end
 function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
-    #@info "TestLogModifyingChildContext tilde_assume!! called for $vn"
     value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
     return value, logp * context.mod, vi
 end
 function DynamicPPL.dot_tilde_assume(
     context::TestLogModifyingChildContext, right, left, vn, vi
 )
-    #@info "TestLogModifyingChildContext dot_tilde_assume!! called for $vn"
     value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
     return value, logp * context.mod, vi
 end
 function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
-    # @info "called tilde_observe TestLogModifyingChildContext for left=$left, right=$right"
     logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
     return logp * context.mod, vi
 end

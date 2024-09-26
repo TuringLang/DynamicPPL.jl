@@ -22,11 +22,10 @@ using Pkg
 using Random
 using Serialization
 using Test
-using Logging
 using Distributions
 using LinearAlgebra # Diagonal
 
-using DynamicPPL: getargs_dottilde, getargs_tilde, Selector, getsym
+using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")

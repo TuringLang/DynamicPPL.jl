@@ -1,7 +1,7 @@
 @testset "logdensities_likelihoods.jl" begin
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    @testset "$(model.f)" for (i, model) in enumerate(DynamicPPL.TestUtils.DEMO_MODELS)
+    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
@@ -17,9 +17,9 @@
 
         # Compute the pointwise loglikelihoods.
         lls = pointwise_loglikelihoods(model, vi)
-        @test :s ∉ getsym.(keys(lls))
+        @test [:x] ==  unique(DynamicPPL.getsym.(keys(lls)))
         if isempty(lls)
-            # One of the models with literal observations, so we just skip.
+            # One of the models with literal observations, so we'll set this to 0 for subsequent comparisons.
             loglikelihood_true = 0.0
         else
             loglikelihood_sum = sum(sum, values(lls))
@@ -28,9 +28,9 @@
 
         # Compute the pointwise logdensities of the priors.
         lps_prior = pointwise_prior_logdensities(model, vi)
-        @test :x ∉ getsym.(keys(lps_prior))
+        @test :x ∉ DynamicPPL.getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
-        @test !isfinite(logp_true) || logp ≈ logp_true
+        @test logp ≈ logp_true
 
         # Compute both likelihood and logdensity of prior
         # using the default DefaultContex        
