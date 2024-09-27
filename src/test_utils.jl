@@ -1042,4 +1042,50 @@ function test_context_interface(context)
     end
 end
 
+"""
+Context that multiplies each log-prior by mod
+used to test whether varwise_logpriors respects child-context.
+"""
+struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
+    mod::T
+    context::Ctx
+end
+function TestLogModifyingChildContext(
+    mod=1.2,
+    context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext(),
+        #OrderedDict{VarName,Vector{Float64}}(),PriorContext()),
+)
+    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(
+        mod, context
+    )
+end
+# Samplers call leafcontext(model.context) when evaluating log-densities
+# Hence, in order to be used need to say that its a leaf-context
+#DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
+DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsLeaf()
+DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
+function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
+    return TestLogModifyingChildContext(context.mod, child)
+end
+function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
+    #@info "TestLogModifyingChildContext tilde_assume!! called for $vn"
+    value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
+    return value, logp*context.mod, vi
+end
+function DynamicPPL.dot_tilde_assume(context::TestLogModifyingChildContext, right, left, vn, vi)
+    #@info "TestLogModifyingChildContext dot_tilde_assume!! called for $vn"
+    value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
+    return value, logp*context.mod, vi
+end
+function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+    # @info "called tilde_observe TestLogModifyingChildContext for left=$left, right=$right"
+    logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
+    return logp*context.mod, vi
+end
+function DynamicPPL.dot_tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+    logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
+    return logp*context.mod, vi
+end
+
+
 end
