@@ -238,7 +238,6 @@ julia> @model function demo(xs, y)
            for i in eachindex(xs)
                xs[i] ~ Normal(m, √s)
            end
-
            y ~ Normal(m, √s)
        end
 demo (generic function with 2 methods)
