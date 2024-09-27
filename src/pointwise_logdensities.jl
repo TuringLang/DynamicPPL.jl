@@ -229,8 +229,8 @@ for downstream computations.
 
 # Examples
 ## From chain
-```julia-repl
-julia> using DynamicPPL, Turing
+```jldoctest pointwise-logdensities-chains; setup=:(using Distributions)
+julia> using MCMCChains
 
 julia> @model function demo(xs, y)
            s ~ InverseGamma(2, 3)
@@ -241,32 +241,43 @@ julia> @model function demo(xs, y)
 
            y ~ Normal(m, √s)
        end
-demo (generic function with 1 method)
+demo (generic function with 2 methods)
 
-julia> model = demo(randn(3), randn());
+julia> # Example observations.
+       model = demo([1.0, 2.0, 3.0], [4.0]);
 
-julia> chain = sample(model, MH(), 10);
+julia> # A chain with 3 iterations.
+       chain = Chains(
+           reshape(1.:6., 3, 2),
+           [:s, :m]
+       );
 
 julia> pointwise_logdensities(model, chain)
-OrderedDict{String,Array{Float64,2}} with 4 entries:
-  "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-  "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-  "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+OrderedDict{String, Matrix{Float64}} with 6 entries:
+  "s"     => [-0.802775; -1.38222; -2.09861;;]
+  "m"     => [-8.91894; -7.51551; -7.46824;;]
+  "xs[1]" => [-5.41894; -5.26551; -5.63491;;]
+  "xs[2]" => [-2.91894; -3.51551; -4.13491;;]
+  "xs[3]" => [-1.41894; -2.26551; -2.96824;;]
+  "y"     => [-0.918939; -1.51551; -2.13491;;]
 
 julia> pointwise_logdensities(model, chain, String)
-OrderedDict{String,Array{Float64,2}} with 4 entries:
-  "xs[1]" => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-  "xs[2]" => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-  "xs[3]" => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-  "y"     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+OrderedDict{String, Matrix{Float64}} with 6 entries:
+  "s"     => [-0.802775; -1.38222; -2.09861;;]
+  "m"     => [-8.91894; -7.51551; -7.46824;;]
+  "xs[1]" => [-5.41894; -5.26551; -5.63491;;]
+  "xs[2]" => [-2.91894; -3.51551; -4.13491;;]
+  "xs[3]" => [-1.41894; -2.26551; -2.96824;;]
+  "y"     => [-0.918939; -1.51551; -2.13491;;]
 
 julia> pointwise_logdensities(model, chain, VarName)
-OrderedDict{VarName,Array{Float64,2}} with 4 entries:
-  xs[1] => [-1.42932; -2.68123; … ; -1.66333; -1.66333]
-  xs[2] => [-1.6724; -0.861339; … ; -1.62359; -1.62359]
-  xs[3] => [-1.42862; -2.67573; … ; -1.66251; -1.66251]
-  y     => [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+OrderedDict{VarName, Matrix{Float64}} with 6 entries:
+  s     => [-0.802775; -1.38222; -2.09861;;]
+  m     => [-8.91894; -7.51551; -7.46824;;]
+  xs[1] => [-5.41894; -5.26551; -5.63491;;]
+  xs[2] => [-2.91894; -3.51551; -4.13491;;]
+  xs[3] => [-1.41894; -2.26551; -2.96824;;]
+  y     => [-0.918939; -1.51551; -2.13491;;]
 ```
 
 ## Broadcasting
