@@ -69,13 +69,19 @@ nothing # hide
 We often want to calculate the (unnormalized) probability density for an event.
 This probability might be a prior, a likelihood, or a posterior (joint) density.
 DynamicPPL provides convenient functions for this.
-For example, we can calculate the joint probability of a set of samples (here drawn from the prior) with [`logjoint`](@ref):
+To begin, let's define a model `gdemo`, condition it on a dataset, and draw a sample.
+The returned sample only contains `μ`, since the value of `x` has already been fixed:
 
 ```@example probinterface
 model = gdemo(length(dataset)) | (x=dataset,)
 
 Random.seed!(124)
 sample = rand(model)
+```
+
+We can then calculate the joint probability of a set of samples (here drawn from the prior) with [`logjoint`](@ref).
+
+```@example probinterface
 logjoint(model, sample)
 ```
 
@@ -87,10 +93,16 @@ using DataStructures
 
 Random.seed!(124)
 sample_dict = rand(OrderedDict, model)
+```
+
+`logjoint` can also be used on this sample:
+
+```@example probinterface
 logjoint(model, sample_dict)
 ```
 
-The prior probability and the likelihood of a set of samples can be calculated with the functions [`loglikelihood`](@ref) and [`logjoint`](@ref), respectively:
+The prior probability and the likelihood of a set of samples can be calculated with the functions [`logprior`](@ref) and [`loglikelihood`](@ref) respectively.
+The log joint probability is the sum of these two quantities:
 
 ```@example probinterface
 logjoint(model, sample) ≈ loglikelihood(model, sample) + logprior(model, sample)
