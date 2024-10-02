@@ -22,6 +22,8 @@ using Pkg
 using Random
 using Serialization
 using Test
+using Distributions
+using LinearAlgebra # Diagonal
 
 using Combinatorics: combinations
 
@@ -56,7 +58,7 @@ include("test_util.jl")
 
             include("serialization.jl")
 
-            include("loglikelihoods.jl")
+            include("pointwise_logdensities.jl")
 
             include("lkj.jl")
         end
@@ -96,6 +98,9 @@ include("test_util.jl")
                 # Errors from macros sometimes result in `LoadError: LoadError:`
                 # rather than `LoadError:`, depending on Julia version.
                 r"ERROR: (LoadError:\s)+",
+                # Older versions do not have `;;]` but instead just `]` at end of the line
+                # => need to treat `;;]` and `]` as the same, i.e. ignore them if at the end of a line
+                r"(;;){0,1}\]$"m,
             ]
             doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
         end

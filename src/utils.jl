@@ -1113,6 +1113,46 @@ function varname_and_value_leaves(vn::VarName, x)
 end
 
 """
+    varname_and_value_leaves(container)
+
+Return an iterator over all varname-value pairs that are represented by `container`.
+
+This is the same as [`varname_and_value_leaves(vn::VarName, x)`](@ref) but over a container
+containing multiple varnames.
+
+See also: [`varname_and_value_leaves(vn::VarName, x)`](@ref).
+
+# Examples
+```jldoctest varname-and-value-leaves-container
+julia> using DynamicPPL: varname_and_value_leaves
+
+julia> # With an `OrderedDict`
+       dict = OrderedDict(@varname(y) => 1, @varname(z) => [[2.0], [3.0]]);
+
+julia> foreach(println, varname_and_value_leaves(dict))
+(y, 1)
+(z[1][1], 2.0)
+(z[2][1], 3.0)
+
+julia> # With a `NamedTuple`
+       nt = (y = 1, z = [[2.0], [3.0]]);
+
+julia> foreach(println, varname_and_value_leaves(nt))
+(y, 1)
+(z[1][1], 2.0)
+(z[2][1], 3.0)
+```
+"""
+function varname_and_value_leaves(container::OrderedDict)
+    return Iterators.flatten(varname_and_value_leaves(k, v) for (k, v) in container)
+end
+function varname_and_value_leaves(container::NamedTuple)
+    return Iterators.flatten(
+        varname_and_value_leaves(VarName{k}(), v) for (k, v) in pairs(container)
+    )
+end
+
+"""
     Leaf{T}
 
 A container that represents the leaf of a nested structure, implementing

@@ -133,6 +133,8 @@ export AbstractVarInfo,
     # Convenience functions
     logprior,
     logjoint,
+    pointwise_prior_logdensities,
+    pointwise_logdensities,
     pointwise_loglikelihoods,
     condition,
     decondition,
@@ -200,7 +202,7 @@ include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
-include("loglikelihoods.jl")
+include("pointwise_logdensities.jl")
 include("submodel_macro.jl")
 include("test_utils.jl")
 include("transforming.jl")
