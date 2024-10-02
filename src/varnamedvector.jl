@@ -1,5 +1,3 @@
-# TODO(mhauru) The docstring is an unfinished mess. I got stuck when I started to think
-# about whether functions other than `setindex_internal!` need to take transformations.
 """
     VarNamedVector
 
@@ -1278,9 +1276,7 @@ end
 # VarNamedVector handles VarNames natively. However, it's semantics are slightly different
 # from setindex!'s: It allows resetting variables that already have a value with values of
 # a different type/size.
-function set!!(vnv::VarNamedVector, vn::VarName, val)
-    return reset!!(vnv, val, vn)
-end
+set!!(vnv::VarNamedVector, vn::VarName, val) = reset!!(vnv, val, vn)
 
 function setval!(vnv::VarNamedVector, val, vn::VarName)
     return setindex_internal!(vnv, tovec(val), vn)
