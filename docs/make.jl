@@ -22,7 +22,6 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "API" => "api.md",
-        "Tutorials" => ["tutorials/prob-interface.md"],
         "Internals" => ["internals/transformations.md"],
     ],
     checkdocs=:exports,
