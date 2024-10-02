@@ -584,7 +584,7 @@ Add a variable with given value to `vnv`.
 
 Like `setindex!`, but errors if the key `vn` already exists.
 """
-function insert!(vnv::VarNamedVector, val, vn::VarName)
+function Base.insert!(vnv::VarNamedVector, val, vn::VarName)
     if haskey(vnv, vn)
         throw("Variable $vn already exists in VarNamedVector.")
     end
