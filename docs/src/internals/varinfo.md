@@ -30,25 +30,16 @@ To ensure that `VarInfo` is simple and intuitive to work with, we want `VarInfo`
   - `empty!(::Dict)`: delete all realizations in `metadata`.
   - `merge(::Dict, ::Dict)`: merge two `metadata` structures according to similar rules as `Dict`.
 
-*But* for general-purpose samplers, we often want to work with a simple flattened structure, typically a `Vector{<:Real}`. Therefore we also want `varinfo` to be able to replicate the following functionality of `Vector{<:Real}`:
+*But* for general-purpose samplers, we often want to work with a simple flattened structure, typically a `Vector{<:Real}`. One can access a vectorised version of a variable's value with the following vector-like functions:
 
-  - `getindex(::Vector{<:Real}, ::Int)`: return the i-th value in the flat representation of `metadata`.
-    
-      + For example, if `metadata` contains a realization of `x ~ MvNormal(zeros(3), I)`, then `getindex(varinfo, 1)` should return the realization of `x[1]`, `getindex(varinfo, 2)` should return the realization of `x[2]`, etc.
+  - `getindex_internal(::VarInfo, ::VarName)`: get the flattened value of a single variable.
+  - `getindex_internal(::VarInfo, ::Colon)`: get the flattened values of all variables.
+  - `setindex_internal!(::VarInfo, ::AbstractVector, ::VarName)`: set the flattened value of a variable.
+  - `length_internal(::VarInfo)`: return the length of the flat representation of `metadata`.
 
-  - `setindex!(::Vector{<:Real}, val, ::Int)`: set the i-th value in the flat representation of `metadata`.
-  - `length(::Vector{<:Real})`: return the length of the flat representation of `metadata`.
-  - `similar(::Vector{<:Real})`: return a new instance with the same `eltype` as the input.
+The functions have `_internal` in their name because internally `VarInfo` always stores values as vectorised.
 
-We also want some additional methods that are *not* part of the `Dict` or `Vector` interface:
-
-  - `push!(container, varname::VarName, value[, transform])`: add a new element to the container, but with an optional transformation that has been applied to `value`, and should be reverted when returning `container[varname]`. One can also provide a `Pair` instead of a `VarName` and a `value`.
-
-  - `update!(container, ::VarName, value[, transform])`: similar to `push!` but if the `VarName` is already present in the container, then we update the corresponding value instead of adding a new element.
-
-In addition, we want to be able to access the transformed / "unconstrained" realization for a particular `VarName` and so we also need corresponding methods for this:
-
-  - `getindex_internal` and `setindex_internal!` for extracting and mutating the internal, possibly unconstrained, representaton of a particular `VarName`.
+Moreover, a link transformation can be applied to a `VarInfo` with `link!!` (and reversed with `invlink!!`), which applies a reversible transformation to the internal storage format of a variable that makes the range of the random variable cover all of Euclidean space. `getindex_internal` and `setindex_internal!` give direct access to the vectorised value after such a transformation, which is what samplers often need to be able sample in unconstrained space. One can also manually set a transformation by giving `setindex_internal!` a fourth, optional argument, that is a function that maps internally stored value to the actual value of the variable.
 
 Finally, we want want the underlying representation used in `metadata` to have a few performance-related properties:
 
@@ -147,7 +138,7 @@ This does require a bit of book-keeping, in particular when it comes to insertio
   - `ranges::Vector{UnitRange{Int}}`: the ranges of indices in the `Vector{T}` that correspond to each `VarName`.
   - `transforms::Vector`: the transforms associated with each `VarName`.
 
-Mutating functions, e.g. `setindex!(vnv::VarNamedVector, val, vn::VarName)`, are then treated according to the following rules:
+Mutating functions, e.g. `setindex_internal!(vnv::VarNamedVector, val, vn::VarName)`, are then treated according to the following rules:
 
  1. If `vn` is not already present: add it to the end of `vnv.varnames`, add the `val` to the underlying `vnv.vals`, etc.
 
@@ -293,8 +284,7 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 | Method                                   | Is blazingly fast?                                                                           |
 |:----------------------------------------:|:--------------------------------------------------------------------------------------------:|
 | `getindex`                               | ${\color{green} \checkmark}$                                                                 |
-| `setindex!`                              | ${\color{green} \checkmark}$                                                                 |
-| `push!`                                  | ${\color{green} \checkmark}$                                                                 |
+| `setindex!` on a new `VarName`           | ${\color{green} \checkmark}$                                                                 |
 | `delete!`                                | ${\color{red} \times}$                                                                       |
 | `update!` on existing `VarName`          | ${\color{green} \checkmark}$ if smaller or same size / ${\color{red} \times}$ if larger size |
 | `values_as(::VarNamedVector, Vector{T})` | ${\color{green} \checkmark}$ if contiguous / ${\color{orange} \div}$ otherwise               |
@@ -302,7 +292,7 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 ## Other methods
 
 ```@docs
-DynamicPPL.replace_values(::VarNamedVector, vals::AbstractVector)
+DynamicPPL.replace_raw_storage(::VarNamedVector, vals::AbstractVector)
 ```
 
 ```@docs; canonical=false
