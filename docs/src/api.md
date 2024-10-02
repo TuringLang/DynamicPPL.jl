@@ -294,10 +294,18 @@ resetlogp!!
 ```@docs
 keys
 getindex
-DynamicPPL.getindex_internal
+reset!
+update!
 push!!
 empty!!
 isempty
+getindex_internal
+setindex_internal!
+update_internal!
+insert_internal!
+length_internal
+loosen_types!!
+tighten_types
 ```
 
 ```@docs

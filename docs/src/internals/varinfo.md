@@ -192,7 +192,7 @@ println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocat
 
 for i in 1:5
     x = fill(true, rand(1:100))
-    DynamicPPL.update!(vnv, @varname(x), x)
+    DynamicPPL.update!(vnv, x, @varname(x))
     println(
         "After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))",
     )
@@ -207,7 +207,7 @@ println("Before insertion: number of allocated entries  $(DynamicPPL.num_allocat
 
 for i in 1:5
     x = fill(true, rand(1:100))
-    DynamicPPL.update!(vnv, @varname(x), x)
+    DynamicPPL.update!(vnv, x, @varname(x))
     if DynamicPPL.num_allocated(vnv) > 10
         DynamicPPL.contiguify!(vnv)
     end
@@ -260,7 +260,7 @@ haskey(varinfo_untyped_vnv, @varname(x))
 Or insert a differently-sized value for `@varname(x)`
 
 ```@example varinfo-design
-DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(true, 1))
+DynamicPPL.insert!(varinfo_untyped_vnv.metadata, fill(true, 1), @varname(x))
 varinfo_untyped_vnv[@varname(x)]
 ```
 
@@ -269,7 +269,7 @@ DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))
 ```
 
 ```@example varinfo-design
-DynamicPPL.update!(varinfo_untyped_vnv.metadata, @varname(x), fill(true, 4))
+DynamicPPL.update!(varinfo_untyped_vnv.metadata, fill(true, 4), @varname(x))
 varinfo_untyped_vnv[@varname(x)]
 ```
 
