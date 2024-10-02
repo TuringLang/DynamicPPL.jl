@@ -1113,7 +1113,7 @@ isempty(vi::VarInfo) = _isempty(vi.metadata)
 _isempty(metadata::Metadata) = isempty(metadata.idcs)
 _isempty(vnv::VarNamedVector) = isempty(vnv)
 @generated function _isempty(metadata::NamedTuple{names}) where {names}
-    return Expr(:&&, (:(isempty(metadata.$f)) for f in names)...)
+    return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
 # X -> R for all variables associated with given sampler
