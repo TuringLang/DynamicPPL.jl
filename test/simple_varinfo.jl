@@ -58,19 +58,19 @@
         end
 
         @testset "VarNamedVector" begin
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m), 1.0))
+            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m) => 1.0))
             @test getlogp(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m), [1.0]))
+            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m) => [1.0]))
             @test getlogp(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
             @test svi[@varname(m)][1] == svi[@varname(m[1])]
 
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a), [1.0]))
+            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a) => [1.0]))
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m.a))
             @test haskey(svi, @varname(m.a[1]))
@@ -78,7 +78,7 @@
             @test !haskey(svi, @varname(m.a.b))
             # The implementation of haskey and getvalue fo VarNamedVector is incomplete, the
             # next test is here to remind of us that.
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a.b), [1.0]))
+            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a.b) => [1.0]))
             @test_broken !haskey(svi, @varname(m.a.b.c.d))
         end
     end
@@ -145,7 +145,7 @@
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
         vnv = VarNamedVector()
         for (k, v) in pairs(DynamicPPL.TestUtils.rand_prior_true(model))
-            vnv = push!!(vnv, VarName{k}(), v)
+            vnv = push!!(vnv, VarName{k}() => v)
         end
         svi_vnv = SimpleVarInfo(vnv)
 

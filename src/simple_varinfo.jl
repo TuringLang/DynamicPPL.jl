@@ -420,7 +420,7 @@ function BangBang.push!!(
     # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
     # Hence we need to call update!! here, which has the same semantics as push!! does for
     # SimpleVarInfo.
-    return Accessors.@set vi.values = update!!(vi.values, vn, value)
+    return Accessors.@set vi.values = setindex!!(vi.values, value, vn)
 end
 
 const SimpleOrThreadSafeSimple{T,V,C} = Union{

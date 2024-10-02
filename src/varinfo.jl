@@ -691,8 +691,8 @@ function _setall!(metadata::Metadata, val)
 end
 function _setall!(vnv::VarNamedVector, val)
     # TODO(mhauru) Do something more efficient here.
-    for i in 1:length(vnv)
-        vnv[i] = val[i]
+    for i in 1:length_internal(vnv)
+        setindex_internal!(vnv, val[i], i)
     end
 end
 @generated function _setall!(metadata::NamedTuple{names}, val) where {names}
@@ -1444,7 +1444,7 @@ function _link_metadata!!(
         val_new, logjac2 = with_logabsdet_jacobian(transform_to_linked, val_orig)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
         acclogp!!(varinfo, -logjac1 - logjac2)
-        metadata = update!!(metadata, vn, val_new, transform_from_linked)
+        metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
         settrans!(metadata, true, vn)
     end
     return metadata
@@ -1560,7 +1560,8 @@ function _invlink_metadata!!(
         new_val, logjac = with_logabsdet_jacobian(transform, old_val)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
         acclogp!!(varinfo, -logjac)
-        metadata = update!!(metadata, vn, new_val)
+        new_transform = from_vec_transform(new_val)
+        metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
         settrans!(metadata, false, vn)
     end
     return metadata
@@ -1587,7 +1588,7 @@ end
 @generated function _islinked(vi, vns::NamedTuple{names}) where {names}
     out = []
     for f in names
-        push!(out, :(length(vns.$f) == 0 ? false : istrans(vi, vns.$f[1])))
+        push!(out, :(isempty(vns.$f) ? false : istrans(vi, vns.$f[1])))
     end
     return Expr(:||, false, out...)
 end
@@ -1700,6 +1701,8 @@ end
     return expr
 end
 
+# TODO(mhauru) I think the below implementation of setindex! is a mistake. It should be
+# called setindex_internal! since it directly writes to the `vals` field of the metadata.
 """
     setindex!(vi::VarInfo, val, vn::VarName)
 

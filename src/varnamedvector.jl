@@ -1,22 +1,46 @@
+# TODO(mhauru) The docstring is an unfinished mess. I got stuck when I started to think
+# about whether functions other than `setindex_internal!` need to take transformations.
 """
     VarNamedVector
 
 A container that stores values in a vectorised form, but indexable by variable names.
 
-When indexed with integers or `Colon`s, e.g. `vnv[2]` or `vnv[:]`, `VarNamedVector` behaves
-like a `Vector`, and returns the values as they are stored. The stored form is always
-vectorised, for instance matrix variables have been flattened, and may be further
-transformed to achieve linking.
+A `VarNamedVector` can be thought of as an ordered mapping from `VarName`s to pairs of
+`(internal_value, transform)`. Here `internal_value` is a vectorised value for the variable
+and `transform` is a function such that `transform(internal_value)` is the "original" value
+of the variable, the one that the user sees. For instance, if the variable has a matrix
+value, `internal_value` could bea flattened `Vector` of its elements, and `transform` would
+be a `reshape` call.
 
-When indexed with `VarName`s, e.g. `vnv[@varname(x)]`, `VarNamedVector` returns the values
-in the original space. For instance, a linked matrix variable is first inverse linked and
-then reshaped to its original form before returning it to the caller.
+`transform` may implement simply vectorisation, but it may do more. Most importantly, it may
+implement linking, where the internal storage of a random variable is in a form where all
+values in Euclidean space are valid. This is useful for sampling, because the sampler can
+make changes to `internal_value` without worrying about constraints on the space of
+the random variable.
 
-`VarNamedVector` also stores a boolean for whether a variable has been transformed to
-unconstrained Euclidean space or not.
+The way to access this storage format directly is through the functions `getindex_internal`
+and `setindex_internal`. The `transform` argument for `setindex_internal` is optional, by
+default it is either the identity, or the existing transform if a value already exists for
+this `VarName`.
+
+`VarNamedVector` also provides a `Dict`-like interface that hides away the internal
+vectorisation. This can be accessed with `getindex` and `setindex!`. `setindex!` only takes
+the value, the transform is automatically set to be a simple vectorisation. The only notable
+deviation from the behavior of a `Dict` is that `setindex!` will throw an error if one tries
+to set a new value for a variable that lives in a different "space" than the old one (e.g.
+is of a different type or size). This is because `setindex!` does not change the transform
+of a variable, e.g. preserve linking, and thus the new value must be compatible with the old
+transform.
+
+For now, a third value is in fact stored for each `VarName`: a boolean indicating whether
+the variable has been transformed to unconstrained Euclidean space or not. This is only in
+place temporarily due to the needs of our old Gibbs sampler.
 
 Internally, `VarNamedVector` stores the values of all variables in a single contiguous
-vector.
+vector. This makes some operations more efficient, and means that one can access the entire
+contents of the internal storage quickly with `getindex_internal(vnv, :)`. The other fields
+of `VarNamedVector` are mostly used to keep track of which part of the internal storage
+belongs to which `VarName`.
 
 # Fields
 
@@ -27,27 +51,26 @@ $(FIELDS)
 The values for different variables are internally all stored in a single vector. For
 instance,
 ```jldoctest varnamedvector-struct
-julia> using DynamicPPL: VarNamedVector, @varname, push!, update!
+julia> using DynamicPPL: VarNamedVector, @varname, setindex!, update!
 
 julia> vnv = VarNamedVector();
 
-julia> push!(vnv, @varname(x) => [0.0, 1.0]);
+julia> setindex!(vnv, [0.0, 0.0, 0.0, 0.0], @varname(x));
 
-julia> push!(vnv, @varname(y) => fill(3, (3,3)));
+julia> setindex!(vnv, reshape(1:6, (2,3)), @varname(y));
 
 julia> vnv.vals
-11-element Vector{Real}:
+10-element Vector{Real}:
  0.0
- 1.0
+ 0.0
+ 0.0
+ 0.0
+ 1
+ 2
  3
- 3
- 3
- 3
- 3
- 3
- 3
- 3
- 3
+ 4
+ 5
+ 6
 ```
 
 The `varnames`, `ranges`, and `varname_to_index` fields keep track of which value belongs to
@@ -56,53 +79,53 @@ the vectorised internal storage back to its original form:
 
 ```jldoctest varnamedvector-struct
 julia> vnv.transforms[vnv.varname_to_index[@varname(y)]]
-DynamicPPL.ReshapeTransform{Tuple{Int64, Int64}}((3, 3))
+DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{Int64, Int64}}((6,), (2, 3))
 ```
 
 If a variable is updated with a new value that is of a smaller dimension than the old
 value, rather than resizing `vnv.vals`, some elements in `vnv.vals` are marked as inactive.
 
 ```jldoctest varnamedvector-struct
-julia> update!(vnv, @varname(y), fill(2, (2, 2)))
+julia> update!(vnv, [46.0, 48.0], @varname(x))
 
 julia> vnv.vals
-11-element Vector{Real}:
- 0.0
- 1.0
- 2
- 2
- 2
- 2
- 3
- 3
- 3
- 3
- 3
+10-element Vector{Real}:
+ 46.0
+ 48.0
+  0.0
+  0.0
+  1
+  2
+  3
+  4
+  5
+  6
 
 julia> vnv.num_inactive
 OrderedDict{Int64, Int64} with 1 entry:
-  2 => 5
+  1 => 2
 ```
 
 This helps avoid unnecessary memory allocations for values that repeatedly change dimension.
 The user does not have to worry about the inactive entries as long as they use functions
-like `update!` and `getindex!` rather than directly accessing `vnv.vals`.
+like `setindex!` and `getindex!` rather than directly accessing `vnv.vals`.
 
 ```jldoctest varnamedvector-struct
-julia> vnv[@varname(y)]
-2×2 Matrix{Real}:
- 2  2
- 2  2
+julia> vnv[@varname(x)]
+2-element Vector{Float64}:
+ 46.0
+ 48.0
 
-
-julia> vnv[:]
-6-element Vector{Real}:
- 0.0
- 1.0
- 2
- 2
- 2
- 2
+julia> getindex_internal(vnv, :)
+8-element Vector{Real}:
+ 46.0
+ 48.0
+  1
+  2
+  3
+  4
+  5
+  6
 ```
 """
 struct VarNamedVector{
@@ -254,13 +277,13 @@ function VarNamedVector(varnames, vals)
 end
 function VarNamedVector(
     varnames::AbstractVector,
-    vals::AbstractVector,
+    orig_vals::AbstractVector,
     transforms=fill(identity, length(varnames)),
 )
     # Convert `vals` into a vector of vectors.
-    vals_vecs = map(tovec, vals)
+    vals_vecs = map(tovec, orig_vals)
     transforms = map(
-        (t, val) -> _compose_no_identity(t, from_vec_transform(val)), transforms, vals
+        (t, val) -> _compose_no_identity(t, from_vec_transform(val)), transforms, orig_vals
     )
     # TODO: Is this really the way to do this?
     if !(eltype(varnames) <: VarName)
@@ -371,29 +394,33 @@ function num_allocated(vnv::VarNamedVector, idx::Int)
     return length(getrange(vnv, idx)) + num_inactive(vnv, idx)
 end
 
-# Basic array interface.
+# Basic Dictionary interface.
 Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
-function Base.length(vnv::VarNamedVector)
+Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
+Base.IndexStyle(::Type{<:VarNamedVector}) = IndexLinear()
+
+# Dictionary interface.
+Base.length(vnv::VarNamedVector) = length(vnv.varnames)
+Base.keys(vnv::VarNamedVector) = vnv.varnames
+Base.values(vnv::VarNamedVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
+Base.pairs(vnv::VarNamedVector) = (vn => vnv[vn] for vn in keys(vnv))
+Base.haskey(vnv::VarNamedVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
+
+"""
+    length_internal(vnv::VarNamedVector)
+
+Return the length of the internal storage vector of `vnv`, ignoring inactive entries.
+"""
+function length_internal(vnv::VarNamedVector)
     if !has_inactive(vnv)
         return length(vnv.vals)
     else
         return sum(length, vnv.ranges)
     end
 end
-Base.size(vnv::VarNamedVector) = (length(vnv),)
-Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
 
-Base.IndexStyle(::Type{<:VarNamedVector}) = IndexLinear()
+# Getting and setting values
 
-# Dictionary interface.
-Base.keys(vnv::VarNamedVector) = vnv.varnames
-Base.values(vnv::VarNamedVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
-Base.pairs(vnv::VarNamedVector) = (vn => vnv[vn] for vn in keys(vnv))
-
-Base.haskey(vnv::VarNamedVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
-
-# `getindex` & `setindex!`
-Base.getindex(vnv::VarNamedVector, i::Int) = getindex_internal(vnv, i)
 function Base.getindex(vnv::VarNamedVector, vn::VarName)
     x = getindex_internal(vnv, vn)
     f = gettransform(vnv, vn)
@@ -464,18 +491,13 @@ function index_to_vals_index(vnv::VarNamedVector, i::Int)
 end
 
 """
-    getindex_internal(vnv::VarNamedVector, i::Int)
     getindex_internal(vnv::VarNamedVector, vn::VarName)
 
-Like `getindex`, but returns the values as they are stored in `vnv` without transforming.
-
-For integer indices this is the same as `getindex`, but for `VarName`s this is different.
+Like `getindex`, but returns the values as they are stored in `vnv`, without transforming.
 """
-getindex_internal(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_vals_index(vnv, i)]
 getindex_internal(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
-# `getindex` for `Colon`
-function Base.getindex(vnv::VarNamedVector, ::Colon)
+function getindex_internal(vnv::VarNamedVector, ::Colon)
     return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex, vnv.vals), vcat, vnv.ranges)
     else
@@ -483,35 +505,469 @@ function Base.getindex(vnv::VarNamedVector, ::Colon)
     end
 end
 
-getindex_internal(vnv::VarNamedVector, ::Colon) = getindex(vnv, Colon())
-
 # TODO(mhauru): Remove this as soon as possible. Only needed because of the old Gibbs
 # sampler.
 function Base.getindex(vnv::VarNamedVector, spl::AbstractSampler)
     throw(ErrorException("Cannot index a VarNamedVector with a sampler."))
 end
 
-Base.setindex!(vnv::VarNamedVector, val, i::Int) = setindex_internal!(vnv, val, i)
 function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
-    # Since setindex! does not change the transform, we need to apply it to `val`.
+    if haskey(vnv, vn)
+        return update!(vnv, val, vn)
+    else
+        return insert!(vnv, val, vn)
+    end
+end
+
+"""
+    reset!(vnv::VarNamedVector, val, vn::VarName)
+
+Reset the value of `vn` in `vnv` to `val`.
+
+This differs from `setindex!` in that it will always change the transform of the variable
+to be the default vectorisation transform. This undoes any possible linking.
+
+# Examples
+
+```jldoctest varnamedvector-reset
+julia> using DynamicPPL: VarNamedVector, @varname, reset!
+
+julia> vnv = VarNamedVector();
+
+julia> vnv[@varname(x)] = reshape(1:9, (3, 3));
+
+julia> setindex!(vnv, 2.0, @varname(x))
+ERROR: An error occurred while assigning the value 2.0 to variable x. If you are changing the type or size of a variable you'll need to call reset!
+[...]
+
+julia> reset!(vnv, 2.0, @varname(x));
+
+julia> vnv[@varname(x)]
+2.0
+```
+"""
+function reset!(vnv::VarNamedVector, val, vn::VarName)
+    f = from_vec_transform(val)
+    retval = setindex_internal!(vnv, tovec(val), vn, f)
+    settrans!(vnv, false, vn)
+    return retval
+end
+
+"""
+    update!(vnv::VarNamedVector, val, vn::VarName)
+
+Update the value of `vn` in `vnv` to `val`.
+
+Like `setindex!`, but errors if the key `vn` doesn't exist.
+"""
+function update!(vnv::VarNamedVector, val, vn::VarName)
+    if !haskey(vnv, vn)
+        throw(KeyError(vn))
+    end
     f = inverse(gettransform(vnv, vn))
-    return setindex_internal!(vnv, f(val), vn)
+    internal_val = try
+        f(val)
+    catch
+        error(
+            "An error occurred while assigning the value $val to variable $vn. " *
+            "If you are changing the type or size of a variable you'll need to call " *
+            "reset!",
+        )
+    end
+    return setindex_internal!(vnv, internal_val, vn)
+end
+
+"""
+    insert!(vnv::VarNamedVector, val, vn::VarName)
+
+Add a variable with given value to `vnv`.
+
+Like `setindex!`, but errors if the key `vn` already exists.
+"""
+function insert!(vnv::VarNamedVector, val, vn::VarName)
+    if haskey(vnv, vn)
+        throw("Variable $vn already exists in VarNamedVector.")
+    end
+    return reset!(vnv, val, vn)
+end
+
+"""
+    push!(vnv::VarNamedVector, pair::Pair)
+
+Add a variable with given value to `vnv`. Pair should be a `VarName` and a value.
+"""
+function Base.push!(vnv::VarNamedVector, pair::Pair)
+    vn, val = pair
+    # TODO(mhauru) Or should this rather call `reset!`? It would be more inline with what
+    # Dict does, but could also cause confusion.
+    return setindex!(vnv, val, vn)
 end
 
 """
     setindex_internal!(vnv::VarNamedVector, val, i::Int)
-    setindex_internal!(vnv::VarNamedVector, val, vn::VarName)
+    setindex_internal!(vnv::VarNamedVector, val, vn::VarName[, transform])
 
-Like `setindex!`, but sets the values as they are stored in `vnv` without transforming.
+Like `setindex!`, but sets the values as they are stored internally in `vnv`.
 
-For integer indices this is the same as `setindex!`, but for `VarName`s this is different.
+Optionally can set the transformation, such that `transform(val)` is the original value of
+the variable. By default, the transform is the identity if creating a new entry in `vnv`, or
+the existing transform if updating an existing entry.
 """
 function setindex_internal!(vnv::VarNamedVector, val, i::Int)
     return vnv.vals[index_to_vals_index(vnv, i)] = val
 end
 
-function setindex_internal!(vnv::VarNamedVector, val::AbstractVector, vn::VarName)
-    return vnv.vals[getrange(vnv, vn)] = val
+function setindex_internal!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
+    if haskey(vnv, vn)
+        return update_internal!(vnv, val, vn, transform)
+    else
+        return insert_internal!(vnv, val, vn, transform)
+    end
+end
+
+"""
+    insert_internal!(vnv::VarNamedVector, val::AbstractVector, vn::VarName[, transform])
+
+Add a variable with given value to `vnv`.
+
+Like `setindex_internal!`, but errors if the key `vn` already exists.
+
+`transform` should be a function that converts `val` to the original representation. By
+default it's `identity`.
+"""
+function insert_internal!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
+    if transform === nothing
+        transform = identity
+    end
+    haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
+    # NOTE: We need to compute the `nextrange` BEFORE we start mutating the underlying
+    # storage.
+    r_new = nextrange(vnv, val)
+    vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
+    push!(vnv.varnames, vn)
+    push!(vnv.ranges, r_new)
+    append!(vnv.vals, val)
+    push!(vnv.transforms, transform)
+    push!(vnv.is_unconstrained, false)
+    return nothing
+end
+
+"""
+    update_internal!(vnv::VarNamedVector, vn::VarName, val::AbstractVector[, transform])
+
+Update an existing entry for `vn` in `vnv` with the value `val`.
+
+Like `setindex_internal!`, but errors if the key `vn` doesn't exist.
+
+`transform` should be a function that converts `val` to the original representation. By
+default it's the same as the old transform for `vn`.
+"""
+function update_internal!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
+    # Here we update an existing entry.
+    if !haskey(vnv, vn)
+        throw(KeyError(vn))
+    end
+    idx = getidx(vnv, vn)
+    # Extract the old range.
+    r_old = getrange(vnv, idx)
+    start_old, end_old = first(r_old), last(r_old)
+    n_old = length(r_old)
+    # Compute the new range.
+    n_new = length(val)
+    start_new = start_old
+    end_new = start_old + n_new - 1
+    r_new = start_new:end_new
+
+    #=
+    Suppose we currently have the following:
+
+      | x | x | o | o | o | y | y | y |    <- Current entries
+
+    where 'O' denotes an inactive entry, and we're going to
+    update the variable `x` to be of size `k` instead of 2.
+
+    We then have a few different scenarios:
+    1. `k > 5`: All inactive entries become active + need to shift `y` to the right.
+        E.g. if `k = 7`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | x | x | x | x | y | y | y |    <- New entries
+
+    2. `k = 5`: All inactive entries become active.
+        Then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | x | x | y | y | y |            <- New entries
+
+    3. `k < 5`: Some inactive entries become active, some remain inactive.
+        E.g. if `k = 3`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | x | o | o | y | y | y |            <- New entries
+
+    4. `k = 2`: No inactive entries become active.
+        Then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | x | o | o | o | y | y | y |            <- New entries
+
+    5. `k < 2`: More entries become inactive.
+        E.g. if `k = 1`, then
+
+          | x | x | o | o | o | y | y | y |            <- Current entries
+          | x | o | o | o | o | y | y | y |            <- New entries
+    =#
+
+    # Compute the allocated space for `vn`.
+    had_inactive = haskey(vnv.num_inactive, idx)
+    n_allocated = had_inactive ? n_old + vnv.num_inactive[idx] : n_old
+
+    if n_new > n_allocated
+        # Then we need to grow the underlying vector.
+        n_extra = n_new - n_allocated
+        # Allocate.
+        resize!(vnv.vals, length(vnv.vals) + n_extra)
+        # Shift current values.
+        shift_right!(vnv.vals, end_old + 1, n_extra)
+        # No more inactive entries.
+        had_inactive && delete!(vnv.num_inactive, idx)
+        # Update the ranges for all variables after this one.
+        shift_subsequent_ranges_by!(vnv, idx, n_extra)
+    elseif n_new == n_allocated
+        # => No more inactive entries.
+        had_inactive && delete!(vnv.num_inactive, idx)
+    else
+        # `n_new < n_allocated`
+        # => Need to update the number of inactive entries.
+        vnv.num_inactive[idx] = n_allocated - n_new
+    end
+
+    # Update the range for this variable.
+    vnv.ranges[idx] = r_new
+    # Update the value.
+    vnv.vals[r_new] = val
+    if transform !== nothing
+        # Update the transform.
+        vnv.transforms[idx] = transform
+    end
+
+    # TODO: Should we maybe sweep over inactive ranges and re-contiguify
+    # if the total number of inactive elements is "large" in some sense?
+
+    return nothing
+end
+
+# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# Remove this method as soon as possible.
+function BangBang.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+    f = from_vec_transform(dist)
+    return setindex_internal!(vnv, tovec(val), vn, f)
+end
+
+# BangBang versions of the above functions.
+# The only difference is that update_internal!! and insert_internal!! check whether the
+# container types of the VarNamedVector vector need to be expanded to accommodate the new
+# values. If so, they create a new instance, otherwise they mutate in place. All the others
+# functions, e.g. setindex!!, setindex_internal!!, etc., are carbon copies of the ! versions
+# with every ! call replaced with a !! call.
+
+"""
+    loosen_types!!(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
+
+Loosen the types of `vnv` to allow varname type `KNew` and transformation type `TransNew`.
+
+If `KNew` is a subtype of `K` and `TransNew` is a subtype of the element type of the
+`TTrans` then this is a no-op and `vnv` is returned as is. Otherwise a new `VarNamedVector`
+is returned with the same data but more abstract types, so that variables of type `KNew` and
+transformations of type `TransNew` can be pushed to it. Some of the underlying storage is
+shared between `vnv` and the return value, and thus mutating one may affect the other.
+
+# See also
+[`tighten_types`](@ref)
+
+# Examples
+
+```jldoctest varnamedvector-loosen-types
+julia> using DynamicPPL: VarNamedVector, @varname, loosen_types!!, setindex_internal!
+
+julia> vnv = VarNamedVector(@varname(x) => [1.0]);
+
+julia> y_trans(x) = reshape(x, (2, 2));
+
+julia> setindex_internal!(vnv, collect(1:4), @varname(y), y_trans)
+ERROR: MethodError: Cannot `convert` an object of type
+  VarName{y,typeof(identity)} to an object of type
+  VarName{x,typeof(identity)}
+[...]
+
+julia> vnv_loose = DynamicPPL.loosen_types!!(vnv, typeof(@varname(y)), typeof(y_trans));
+
+julia> setindex_internal!(vnv_loose, collect(1:4), @varname(y), y_trans)
+
+julia> vnv_loose[@varname(y)]
+2×2 Matrix{Float64}:
+ 1.0  3.0
+ 2.0  4.0
+```
+"""
+function loosen_types!!(
+    vnv::VarNamedVector, ::Type{KNew}, ::Type{TransNew}
+) where {KNew,TransNew}
+    K = eltype(vnv.varnames)
+    Trans = eltype(vnv.transforms)
+    if KNew <: K && TransNew <: Trans
+        return vnv
+    else
+        vn_type = promote_type(K, KNew)
+        transform_type = promote_type(Trans, TransNew)
+        return VarNamedVector(
+            OrderedDict{vn_type,Int}(vnv.varname_to_index),
+            Vector{vn_type}(vnv.varnames),
+            vnv.ranges,
+            vnv.vals,
+            Vector{transform_type}(vnv.transforms),
+            vnv.is_unconstrained,
+            vnv.num_inactive,
+        )
+    end
+end
+
+"""
+    tighten_types(vnv::VarNamedVector)
+
+Return a copy of `vnv` with the most concrete types possible.
+
+For instance, if `vnv` has its vector of transforms have eltype `Any`, but all the
+transforms are actually identity transformations, this function will return a new
+`VarNamedVector` with the transforms vector having eltype `typeof(identity)`.
+
+This is a lot like the reverse of [`loosen_types!!`](@ref), but with two notable
+differences: Unlike `loosen_types!!`, this function does not mutate `vnv`; it also changes
+not only the key and transform eltypes, but also the values eltype.
+
+# See also
+[`loosen_types!!`](@ref)
+
+# Examples
+
+```jldoctest varnamedvector-tighten-types
+julia> using DynamicPPL: VarNamedVector, @varname, loosen_types!!, setindex_internal!
+
+julia> vnv = VarNamedVector();
+
+julia> setindex!(vnv, [23], @varname(x))
+
+julia> eltype(vnv)
+Real
+
+julia> vnv.transforms
+1-element Vector{Any}:
+ identity (generic function with 1 method)
+
+julia> vnv_tight = DynamicPPL.tighten_types(vnv)
+VarNamedVector{VarName{:y, typeof(identity)}, Int64, Vector{VarName{:y, typeof(identity)}}, Vector{Int64}, Vector{typeof(identity)}}(OrderedDict(y => 1), [y], UnitRange{Int64}[1:1], [23], [identity], Bool[0], OrderedDict{Int64, Int64}())
+
+julia> eltype(vnv_tight)
+Int64
+
+julia> vnv_tight.transforms
+1-element Vector{typeof(identity)}:
+ identity (generic function with 1 method)
+```
+"""
+function tighten_types(vnv::VarNamedVector)
+    return VarNamedVector(
+        OrderedDict(vnv.varname_to_index...),
+        map(identity, vnv.varnames),
+        copy(vnv.ranges),
+        map(identity, vnv.vals),
+        map(identity, vnv.transforms),
+        copy(vnv.is_unconstrained),
+        copy(vnv.num_inactive),
+    )
+end
+
+function BangBang.setindex!!(vnv::VarNamedVector, val, vn::VarName)
+    if haskey(vnv, vn)
+        return update!!(vnv, val, vn)
+    else
+        return insert!!(vnv, val, vn)
+    end
+end
+
+function reset!!(vnv::VarNamedVector, val, vn::VarName)
+    f = from_vec_transform(val)
+    vnv = setindex_internal!!(vnv, tovec(val), vn, f)
+    vnv = settrans!!(vnv, false, vn)
+    return vnv
+end
+
+function update!!(vnv::VarNamedVector, val, vn::VarName)
+    if !haskey(vnv, vn)
+        throw(KeyError(vn))
+    end
+    f = inverse(gettransform(vnv, vn))
+    internal_val = try
+        f(val)
+    catch
+        error(
+            "An error occurred while assigning the value $val to variable $vn. " *
+            "If you are changing the type or size of a variable you'll need to either " *
+            "`delete!` it first or use `setindex_internal!`",
+        )
+    end
+    return setindex_internal!!(vnv, internal_val, vn)
+end
+
+function insert!!(vnv::VarNamedVector, val, vn::VarName)
+    if haskey(vnv, vn)
+        throw("Variable $vn already exists in VarNamedVector.")
+    end
+    return reset!!(vnv, val, vn)
+end
+
+function setindex_internal!!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
+    if haskey(vnv, vn)
+        return update_internal!!(vnv, val, vn, transform)
+    else
+        return insert_internal!!(vnv, val, vn, transform)
+    end
+end
+
+function insert_internal!!(vnv::VarNamedVector, val, vn::VarName, transform=nothing)
+    if transform === nothing
+        transform = identity
+    end
+    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform))
+    insert_internal!(vnv, val, vn, transform)
+    return vnv
+end
+
+function update_internal!!(vnv::VarNamedVector, val, vn::VarName, transform=nothing)
+    transform_resolved = transform === nothing ? gettransform(vnv, vn) : transform
+    vnv = loosen_types!!(vnv, typeof(vn), typeof(transform_resolved))
+    update_internal!(vnv, val, vn, transform)
+    return vnv
+end
+
+function BangBang.push!!(vnv::VarNamedVector, pair::Pair)
+    vn, val = pair
+    return setindex!!(vnv, val, vn)
+end
+
+# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# Remove this method as soon as possible.
+function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+    f = from_vec_transform(dist)
+    return setindex_internal!!(vnv, tovec(val), vn, f)
 end
 
 function Base.empty!(vnv::VarNamedVector)
@@ -528,7 +984,7 @@ end
 BangBang.empty!!(vnv::VarNamedVector) = (empty!(vnv); return vnv)
 
 """
-    replace_values(vnv::VarNamedVector, vals::AbstractVector)
+    replace_raw_storage(vnv::VarNamedVector, vals::AbstractVector)
 
 Replace the values in `vnv` with `vals`, as they are stored internally.
 
@@ -542,22 +998,22 @@ we want to change the how the values are stored, e.g. alter the `eltype`.
 
 # Examples
 
-```jldoctest varnamedvector-replace-values
-julia> using DynamicPPL: VarNamedVector, replace_values
+```jldoctest varnamedvector-replace-raw-storage
+julia> using DynamicPPL: VarNamedVector, replace_raw_storage
 
 julia> vnv = VarNamedVector(@varname(x) => [1.0]);
 
-julia> replace_values(vnv, [2.0])[@varname(x)] == [2.0]
+julia> replace_raw_storage(vnv, [2.0])[@varname(x)] == [2.0]
 true
 ```
 
 This is also useful when we want to differentiate wrt. the values using automatic
 differentiation, e.g. ForwardDiff.jl.
 
-```jldoctest varnamedvector-replace-values
+```jldoctest varnamedvector-replace-raw-storage
 julia> using ForwardDiff: ForwardDiff
 
-julia> f(x) = sum(abs2, replace_values(vnv, x)[@varname(x)])
+julia> f(x) = sum(abs2, replace_raw_storage(vnv, x)[@varname(x)])
 f (generic function with 1 method)
 
 julia> ForwardDiff.gradient(f, [1.0])
@@ -565,15 +1021,15 @@ julia> ForwardDiff.gradient(f, [1.0])
  2.0
 ```
 """
-replace_values(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
+replace_raw_storage(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
 
 # TODO(mhauru) The space argument is used by the old Gibbs sampler. To be removed.
-function replace_values(vnv::VarNamedVector, ::Val{space}, vals) where {space}
+function replace_raw_storage(vnv::VarNamedVector, ::Val{space}, vals) where {space}
     if length(space) > 0
         msg = "Selecting values in a VarNamedVector with a space is not supported."
         throw(ArgumentError(msg))
     end
-    return replace_values(vnv, vals)
+    return replace_raw_storage(vnv, vals)
 end
 
 """
@@ -582,7 +1038,7 @@ end
 Return a new instance of `vnv` with the values of `vals` assigned to the variables.
 
 This assumes that `vals` have been transformed by the same transformations that that the
-values in `vnv` have been transformed by. However, unlike [`replace_values`](@ref),
+values in `vnv` have been transformed by. However, unlike [`replace_raw_storage`](@ref),
 `unflatten` does account for inactive entries in `vnv`, so that the user does not have to
 care about them.
 
@@ -716,7 +1172,7 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:V
     isempty(vnv) && return vnv_new
 
     for vn in vns
-        push!(vnv_new, vn, getindex_internal(vnv, vn), gettransform(vnv, vn))
+        insert_internal!(vnv_new, getindex_internal(vnv, vn), vn, gettransform(vnv, vn))
         settrans!(vnv_new, istrans(vnv, vn), vn)
     end
 
@@ -796,142 +1252,6 @@ _compose_no_identity(f, ::typeof(identity)) = f
 _compose_no_identity(::typeof(identity), ::typeof(identity)) = identity
 
 """
-    push!(vnv::VarNamedVector, vn::VarName, val[, transform])
-    push!(vnv::VarNamedVector, vn => val[, transform])
-
-Add a variable with given value to `vnv`.
-
-`transform` should be a function that converts `val` to the original representation, by
-default it's `identity`.
-"""
-function Base.push!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
-    # Error if we already have the variable.
-    haskey(vnv, vn) && throw(ArgumentError("variable name $vn already exists"))
-    # NOTE: We need to compute the `nextrange` BEFORE we start mutating the underlying
-    # storage.
-    if !(val isa AbstractVector)
-        val_vec = tovec(val)
-        transform = _compose_no_identity(transform, from_vec_transform(val))
-    else
-        val_vec = val
-    end
-    r_new = nextrange(vnv, val_vec)
-    vnv.varname_to_index[vn] = length(vnv.varname_to_index) + 1
-    push!(vnv.varnames, vn)
-    push!(vnv.ranges, r_new)
-    append!(vnv.vals, val_vec)
-    push!(vnv.transforms, transform)
-    push!(vnv.is_unconstrained, false)
-    return nothing
-end
-
-function Base.push!(vnv::VarNamedVector, pair, transform=identity)
-    vn, val = pair
-    return push!(vnv, vn, val, transform)
-end
-
-# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
-# Remove this method as soon as possible.
-function Base.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
-    f = from_vec_transform(dist)
-    return push!(vnv, vn, tovec(val), f)
-end
-
-"""
-    loosen_types!!(vnv::VarNamedVector{K,V,TVN,TVal,TTrans}, ::Type{KNew}, ::Type{TransNew})
-
-Loosen the types of `vnv` to allow varname type `KNew` and transformation type `TransNew`.
-
-If `KNew` is a subtype of `K` and `TransNew` is a subtype of the element type of the
-`TTrans` then this is a no-op and `vnv` is returned as is. Otherwise a new `VarNamedVector`
-is returned with the same data but more abstract types, so that variables of type `KNew` and
-transformations of type `TransNew` can be pushed to it. Some of the underlying storage is
-shared between `vnv` and the return value, and thus mutating one may affect the other.
-
-# See also
-[`tighten_types`](@ref)
-
-# Examples
-
-```jldoctest varnamedvector-loosen-types
-julia> using DynamicPPL: VarNamedVector, @varname, loosen_types!!
-
-julia> vnv = VarNamedVector(@varname(x) => [1.0]);
-
-julia> vnv_new = loosen_types!!(vnv, VarName{:x}, Real);
-
-julia> push!(vnv, @varname(y), Float32[2.0])
-ERROR: MethodError: Cannot `convert` an object of type
-  VarName{y,typeof(identity)} to an object of type
-  VarName{x,typeof(identity)}
-[...]
-
-julia> vnv_loose = DynamicPPL.loosen_types!!(vnv, typeof(@varname(y)), Float32);
-
-julia> push!(vnv_loose, @varname(y), Float32[2.0]); vnv_loose  # Passes without issues.
-VarNamedVector{VarName{sym, typeof(identity)} where sym, Float64, Vector{VarName{sym, typeof(identity)} where sym}, Vector{Float64}, Vector{Any}}(OrderedDict{VarName{sym, typeof(identity)} where sym, Int64}(x => 1, y => 2), VarName{sym, typeof(identity)} where sym[x, y], UnitRange{Int64}[1:1, 2:2], [1.0, 2.0], Any[identity, identity], Bool[0, 0], OrderedDict{Int64, Int64}())
-"""
-function loosen_types!!(
-    vnv::VarNamedVector, ::Type{KNew}, ::Type{TransNew}
-) where {KNew,TransNew}
-    K = eltype(vnv.varnames)
-    Trans = eltype(vnv.transforms)
-    if KNew <: K && TransNew <: Trans
-        return vnv
-    else
-        vn_type = promote_type(K, KNew)
-        transform_type = promote_type(Trans, TransNew)
-        return VarNamedVector(
-            OrderedDict{vn_type,Int}(vnv.varname_to_index),
-            Vector{vn_type}(vnv.varnames),
-            vnv.ranges,
-            vnv.vals,
-            Vector{transform_type}(vnv.transforms),
-            vnv.is_unconstrained,
-            vnv.num_inactive,
-        )
-    end
-end
-
-"""
-    tighten_types(vnv::VarNamedVector)
-
-Return a copy of `vnv` with the most concrete types possible.
-
-For instance, if `vnv` has element type `Real`, but all the values are actually `Float64`s,
-then `tighten_types(vnv)` will have element type `Float64`.
-
-# See also
-[`loosen_types!!`](@ref)
-"""
-function tighten_types(vnv::VarNamedVector)
-    return VarNamedVector(
-        OrderedDict(vnv.varname_to_index...),
-        map(identity, vnv.varnames),
-        copy(vnv.ranges),
-        map(identity, vnv.vals),
-        map(identity, vnv.transforms),
-        copy(vnv.is_unconstrained),
-        copy(vnv.num_inactive),
-    )
-end
-
-function BangBang.push!!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
-    vnv = loosen_types!!(
-        vnv, typeof(vn), typeof(_compose_no_identity(transform, from_vec_transform(val)))
-    )
-    push!(vnv, vn, val, transform)
-    return vnv
-end
-
-# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
-# Remove this method as soon as possible.
-function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
-    f = from_vec_transform(dist)
-    return push!!(vnv, vn, tovec(val), f)
-end
-
-"""
     shift_right!(x::AbstractVector{<:Real}, start::Int, n::Int)
 
 Shifts the elements of `x` starting from index `start` by `n` to the right.
@@ -953,129 +1273,14 @@ function shift_subsequent_ranges_by!(vnv::VarNamedVector, idx::Int, n)
     return nothing
 end
 
-"""
-    update!(vnv::VarNamedVector, vn::VarName, val[, transform])
-
-Either add a new entry or update existing entry for `vn` in `vnv` with the value `val`.
-
-If `vn` does not exist in `vnv`, this is equivalent to [`push!`](@ref).
-
-`transform` should be a function that converts `val` to the original representation, by
-default it's `identity`.
-"""
-function update!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
-    if !haskey(vnv, vn)
-        # Here we just add a new entry.
-        return push!(vnv, vn, val, transform)
-    end
-
-    # Here we update an existing entry.
-    if !(val isa AbstractVector)
-        val_vec = tovec(val)
-        transform = _compose_no_identity(transform, from_vec_transform(val))
-    else
-        val_vec = val
-    end
-    idx = getidx(vnv, vn)
-    # Extract the old range.
-    r_old = getrange(vnv, idx)
-    start_old, end_old = first(r_old), last(r_old)
-    n_old = length(r_old)
-    # Compute the new range.
-    n_new = length(val_vec)
-    start_new = start_old
-    end_new = start_old + n_new - 1
-    r_new = start_new:end_new
-
-    #=
-    Suppose we currently have the following:
-
-      | x | x | o | o | o | y | y | y |    <- Current entries
-
-    where 'O' denotes an inactive entry, and we're going to
-    update the variable `x` to be of size `k` instead of 2.
-
-    We then have a few different scenarios:
-    1. `k > 5`: All inactive entries become active + need to shift `y` to the right.
-        E.g. if `k = 7`, then
-
-          | x | x | o | o | o | y | y | y |            <- Current entries
-          | x | x | x | x | x | x | x | y | y | y |    <- New entries
-
-    2. `k = 5`: All inactive entries become active.
-        Then
-
-          | x | x | o | o | o | y | y | y |            <- Current entries
-          | x | x | x | x | x | y | y | y |            <- New entries
-
-    3. `k < 5`: Some inactive entries become active, some remain inactive.
-        E.g. if `k = 3`, then
-
-          | x | x | o | o | o | y | y | y |            <- Current entries
-          | x | x | x | o | o | y | y | y |            <- New entries
-
-    4. `k = 2`: No inactive entries become active.
-        Then
-
-          | x | x | o | o | o | y | y | y |            <- Current entries
-          | x | x | o | o | o | y | y | y |            <- New entries
-
-    5. `k < 2`: More entries become inactive.
-        E.g. if `k = 1`, then
-
-          | x | x | o | o | o | y | y | y |            <- Current entries
-          | x | o | o | o | o | y | y | y |            <- New entries
-    =#
-
-    # Compute the allocated space for `vn`.
-    had_inactive = haskey(vnv.num_inactive, idx)
-    n_allocated = had_inactive ? n_old + vnv.num_inactive[idx] : n_old
-
-    if n_new > n_allocated
-        # Then we need to grow the underlying vector.
-        n_extra = n_new - n_allocated
-        # Allocate.
-        resize!(vnv.vals, length(vnv.vals) + n_extra)
-        # Shift current values.
-        shift_right!(vnv.vals, end_old + 1, n_extra)
-        # No more inactive entries.
-        had_inactive && delete!(vnv.num_inactive, idx)
-        # Update the ranges for all variables after this one.
-        shift_subsequent_ranges_by!(vnv, idx, n_extra)
-    elseif n_new == n_allocated
-        # => No more inactive entries.
-        had_inactive && delete!(vnv.num_inactive, idx)
-    else
-        # `n_new < n_allocated`
-        # => Need to update the number of inactive entries.
-        vnv.num_inactive[idx] = n_allocated - n_new
-    end
-
-    # Update the range for this variable.
-    vnv.ranges[idx] = r_new
-    # Update the value.
-    vnv.vals[r_new] = val_vec
-    # Update the transform.
-    vnv.transforms[idx] = transform
-
-    # TODO: Should we maybe sweep over inactive ranges and re-contiguify
-    # if the total number of inactive elements is "large" in some sense?
-
-    return nothing
-end
-
-function update!!(vnv::VarNamedVector, vn::VarName, val, transform=identity)
-    vnv = loosen_types!!(
-        vnv, typeof(vn), typeof(_compose_no_identity(transform, from_vec_transform(val)))
-    )
-    update!(vnv, vn, val, transform)
-    return vnv
-end
-
 # set!! is the function defined in utils.jl that tries to do fancy stuff with optics when
 # setting the value of a generic container using a VarName. We can bypass all that because
-# VarNamedVector handles VarNames natively.
-set!!(vnv::VarNamedVector, vn::VarName, val) = update!!(vnv, vn, val)
+# VarNamedVector handles VarNames natively. However, it's semantics are slightly different
+# from setindex!'s: It allows resetting variables that already have a value with values of
+# a different type/size.
+function set!!(vnv::VarNamedVector, vn::VarName, val)
+    return reset!!(vnv, val, vn)
+end
 
 function setval!(vnv::VarNamedVector, val, vn::VarName)
     return setindex_internal!(vnv, tovec(val), vn)
@@ -1104,7 +1309,7 @@ julia> using DynamicPPL: VarNamedVector, @varname, contiguify!, update!, has_ina
 
 julia> vnv = VarNamedVector(@varname(x) => [1.0, 2.0, 3.0], @varname(y) => [3.0]);
 
-julia> update!(vnv, @varname(x), [23.0, 24.0]);
+julia> update!(vnv, [23.0, 24.0], @varname(x));
 
 julia> has_inactive(vnv)
 true
@@ -1277,7 +1482,7 @@ true
 ```
 """
 values_as(vnv::VarNamedVector) = values_as(vnv, Vector)
-values_as(vnv::VarNamedVector, ::Type{Vector}) = vnv[:]
+values_as(vnv::VarNamedVector, ::Type{Vector}) = getindex_internal(vnv, :)
 function values_as(vnv::VarNamedVector, ::Type{Vector{T}}) where {T}
     return convert(Vector{T}, values_as(vnv, Vector))
 end

@@ -226,43 +226,80 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 """
-    UnwrapSingletonTransform
+    UnwrapSingletonTransform(input_size::InSize)
 
-A transformation that unwraps a singleton array into a scalar.
+A transformation that unwraps a singleton array, returning a scalar.
 
-This transformation can be inverted by calling `tovec`.
+The `input_size` field is the expected size of the input. In practice this only determines
+the number of indices, since all dimensions must be 1 for a singleton. `input_size` is used
+to check the validity of the input, but also to determine the correct inverse operation.
+
+By default `input_size` is `(1,)`, in which case `tovec` is the inverse.
 """
-struct UnwrapSingletonTransform <: Bijectors.Bijector end
+struct UnwrapSingletonTransform{InSize} <: Bijectors.Bijector
+    input_size::InSize
+end
 
-(f::UnwrapSingletonTransform)(x) = only(x)
+UnwrapSingletonTransform() = UnwrapSingletonTransform((1,))
+
+function (f::UnwrapSingletonTransform)(x)
+    if size(x) != f.input_size
+        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
+    end
+    return only(x)
+end
 
 Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x) = (f(x), 0)
 function Bijectors.with_logabsdet_jacobian(
-    ::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
+    inv_f::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
 )
-    return (tovec(x), 0)
+    f = inv_f.orig
+    return (reshape([x], f.input_size), 0)
 end
 
 """
-    ReshapeTransform(size::Size)
+    ReshapeTransform(input_size::InSize, output_size::OutSize)
 
-A `Bijector` that transforms an `AbstractVector` to a realization of size `size`.
+A `Bijector` that transforms arrays of size `input_size` to arrays of size `output_size`.
 
-This transformation can be inverted by calling `tovec`.
+`input_size` is not needed for the implementation of the transformation. It is only used to
+check that the input is of the expected size, and to determine the correct inverse
+operation.
+
+By default `input_size` is the vectorized version of `output_size`. In this case this
+transformation is the inverse of `tovec` called on an array.
 """
-struct ReshapeTransform{Size} <: Bijectors.Bijector
-    size::Size
+struct ReshapeTransform{InSize,OutSize} <: Bijectors.Bijector
+    input_size::InSize
+    output_size::OutSize
+end
+
+function ReshapeTransform(output_size::Tuple)
+    input_size = (prod(output_size),)
+    return ReshapeTransform(input_size, output_size)
 end
 
 ReshapeTransform(x::AbstractArray) = ReshapeTransform(size(x))
 
 # TODO: Should we materialize the `reshape`?
-(f::ReshapeTransform)(x) = reshape(x, f.size)
+function (f::ReshapeTransform)(x)
+    if size(x) != f.input_size
+        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
+    end
+    # The call to `tovec` is only needed in case `x` is a scalar.
+    return reshape(tovec(x), f.output_size)
+end
+
+function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
+    f = inv_f.orig
+    inverse = ReshapeTransform(f.output_size, f.input_size)
+    return inverse(x)
+end
 
 Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), 0)
-# We want to use the inverse of `ReshapeTransform` so it preserves the size information.
-function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ReshapeTransform}, x)
-    return (tovec(x), 0)
+
+function Bijectors.with_logabsdet_jacobian(inv_f::Bijectors.Inverse{<:ReshapeTransform}, x)
+    return (inv_f(x), 0)
 end
 
 struct ToChol <: Bijectors.Bijector
@@ -271,6 +308,12 @@ end
 
 Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
 Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
+function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)
+    return error(
+        "Inverse{ToChol} is only defined for Cholesky factorizations. " *
+        "Got a $(typeof(y)) instead.",
+    )
+end
 
 """
     from_vec_transform(x)
@@ -335,7 +378,9 @@ end
 function from_linked_vec_transform(dist::UnivariateDistribution)
     f_invlink = invlink_transform(dist)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
-    return UnwrapSingletonTransform() ∘ f_invlink ∘ f_vec
+    f_combined = f_invlink ∘ f_vec
+    sz = Bijectors.output_size(f_combined, size(dist))
+    return UnwrapSingletonTransform(sz) ∘ f_combined
 end
 
 # Specializations that circumvent the `from_vec_transform` machinery.

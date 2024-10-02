@@ -186,49 +186,43 @@ end
             @test !should_have_restricted_transform_type || has_restricted_transform_type
         end
 
-        # `eltype`
         @test eltype(vnv_base) == promote_type(eltype(val_left), eltype(val_right))
-        # `length`
-        @test length(vnv_base) == length(val_left) + length(val_right)
+        @test length_internal(vnv_base) == length(val_left) + length(val_right)
 
-        # `isempty`
         @test !isempty(vnv_base)
 
-        # `empty!`
         @testset "empty!" begin
             vnv = deepcopy(vnv_base)
             empty!(vnv)
             @test isempty(vnv)
         end
 
-        # `similar`
         @testset "similar" begin
             vnv = similar(vnv_base)
             @test isempty(vnv)
             @test typeof(vnv) == typeof(vnv_base)
         end
 
-        # `getindex`
         @testset "getindex" begin
             # With `VarName` index.
             @test vnv_base[vn_left] == val_left
             @test vnv_base[vn_right] == val_right
 
-            # With `Int` index.
+            # getindex_internal with `Int` index.
             val_vec = vcat(to_vec_left(val_left), to_vec_right(val_right))
-            @test all(vnv_base[i] == val_vec[i] for i in 1:length(val_vec))
+            @test all(
+                getindex_internal(vnv_base, i) == val_vec[i] for i in eachindex(val_vec)
+            )
         end
 
-        # `setindex!`
-        @testset "setindex!" begin
+        @testset "update!" begin
             vnv = deepcopy(vnv_base)
-            vnv[vn_left] = val_left .+ 100
+            update!(vnv, val_left .+ 100, vn_left)
             @test vnv[vn_left] == val_left .+ 100
-            vnv[vn_right] = val_right .+ 100
+            update!(vnv, val_right .+ 100, vn_right)
             @test vnv[vn_right] == val_right .+ 100
         end
 
-        # `getindex_internal`
         @testset "getindex_internal" begin
             # With `VarName` index.
             @test DynamicPPL.getindex_internal(vnv_base, vn_left) == to_vec_left(val_left)
@@ -238,20 +232,18 @@ end
             val_vec = vcat(to_vec_left(val_left), to_vec_right(val_right))
             @test all(
                 DynamicPPL.getindex_internal(vnv_base, i) == val_vec[i] for
-                i in 1:length(val_vec)
+                i in eachindex(val_vec)
             )
         end
 
-        # `setindex_internal!`
-        @testset "setindex_internal!" begin
+        @testset "update_internal!" begin
             vnv = deepcopy(vnv_base)
-            DynamicPPL.setindex_internal!(vnv, to_vec_left(val_left .+ 100), vn_left)
+            DynamicPPL.update_internal!(vnv, to_vec_left(val_left .+ 100), vn_left)
             @test vnv[vn_left] == val_left .+ 100
-            DynamicPPL.setindex_internal!(vnv, to_vec_right(val_right .+ 100), vn_right)
+            DynamicPPL.update_internal!(vnv, to_vec_right(val_right .+ 100), vn_right)
             @test vnv[vn_right] == val_right .+ 100
         end
 
-        # `delete!`
         @testset "delete!" begin
             vnv = deepcopy(vnv_base)
             delete!(vnv, vn_left)
@@ -261,7 +253,6 @@ end
             @test !haskey(vnv, vn_right)
         end
 
-        # `merge`
         @testset "merge" begin
             # When there are no inactive entries, `merge` on itself result in the same.
             @test merge(vnv_base, vnv_base) == vnv_base
@@ -288,46 +279,38 @@ end
             @test collect(keys(vnv_merged)) == [vn_right, vn_left]
         end
 
-        # `push!` & `update!`
         @testset "push!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
-                if vn == vn_left || vn == vn_right
-                    # Should not be possible to `push!` existing varname.
-                    @test_throws ArgumentError push!(vnv, vn, val)
-                else
-                    vnv_copy = deepcopy(vnv)
-                    push!(vnv_copy, vn, val)
-                    @test vnv_copy[vn] == val
-                    push!(vnv, (vn => val))
-                    @test vnv[vn] == val
-                end
+                vnv_copy = deepcopy(vnv)
+                push!(vnv, (vn => val))
+                @test vnv[vn] == val
             end
         end
 
-        @testset "update!" begin
+        @testset "setindex!" begin
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
             @testset "$vn" for vn in test_vns
                 val = test_pairs[vn]
                 expected_length = if haskey(vnv, vn)
                     # If it's already present, the resulting length will be unchanged.
-                    length(vnv)
+                    length_internal(vnv)
                 else
-                    length(vnv) + length(val)
+                    length_internal(vnv) + length(val)
                 end
 
-                DynamicPPL.update!(vnv, vn, val .+ 1)
-                x = vnv[:]
+                vnv[vn] = val .+ 1
+                x = getindex_internal(vnv, :)
                 @test vnv[vn] == val .+ 1
-                @test length(vnv) == expected_length
-                @test length(x) == length(vnv)
+                @test length_internal(vnv) == expected_length
+                @test length(x) == length_internal(vnv)
 
                 # There should be no redundant values in the underlying vector.
                 @test !DynamicPPL.has_inactive(vnv)
 
                 # `getindex` with `Int` index.
-                @test all(vnv[i] == x[i] for i in 1:length(x))
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -337,19 +320,20 @@ end
                 vn_already_present = haskey(vnv, vn)
                 expected_length = if vn_already_present
                     # If it's already present, the resulting length will be altered.
-                    length(vnv) + length(val) - length(val_original)
+                    length_internal(vnv) + length(val) - length(val_original)
                 else
-                    length(vnv) + length(val)
+                    length_internal(vnv) + length(val)
                 end
 
-                DynamicPPL.update!(vnv, vn, val .+ 1)
-                x = vnv[:]
+                haskey(vnv, vn) && delete!(vnv, vn)
+                vnv[vn] = val .+ 1
+                x = getindex_internal(vnv, :)
                 @test vnv[vn] == val .+ 1
-                @test length(vnv) == expected_length
-                @test length(x) == length(vnv)
+                @test length_internal(vnv) == expected_length
+                @test length(x) == length_internal(vnv)
 
                 # `getindex` with `Int` index.
-                @test all(vnv[i] == x[i] for i in 1:length(x))
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -359,18 +343,20 @@ end
                 vn_already_present = haskey(vnv, vn)
                 expected_length = if vn_already_present
                     # If it's already present, the resulting length will be altered.
-                    length(vnv) + length(val) - length(val_original)
+                    length_internal(vnv) + length(val) - length(val_original)
                 else
-                    length(vnv) + length(val)
+                    length_internal(vnv) + length(val)
                 end
-                DynamicPPL.update!(vnv, vn, val .+ 1)
-                x = vnv[:]
+
+                haskey(vnv, vn) && delete!(vnv, vn)
+                vnv[vn] = val .+ 1
+                x = getindex_internal(vnv, :)
                 @test vnv[vn] == val .+ 1
-                @test length(vnv) == expected_length
-                @test length(x) == length(vnv)
+                @test length_internal(vnv) == expected_length
+                @test length(x) == length_internal(vnv)
 
                 # `getindex` with `Int` index.
-                @test all(vnv[i] == x[i] for i in 1:length(x))
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
             end
         end
     end
@@ -384,19 +370,19 @@ end
             # Growing should not create inactive ranges.
             for i in 1:n
                 x = fill(true, i)
-                DynamicPPL.update!(vnv, vn, x)
+                DynamicPPL.update_internal!(vnv, x, vn, identity)
                 @test !DynamicPPL.has_inactive(vnv)
             end
 
             # Same size should not create inactive ranges.
             x = fill(true, n)
-            DynamicPPL.update!(vnv, vn, x)
+            DynamicPPL.update_internal!(vnv, x, vn, identity)
             @test !DynamicPPL.has_inactive(vnv)
 
             # Shrinking should create inactive ranges.
             for i in (n - 1):-1:1
                 x = fill(true, i)
-                DynamicPPL.update!(vnv, vn, x)
+                DynamicPPL.update_internal!(vnv, x, vn, identity)
                 @test DynamicPPL.has_inactive(vnv)
                 @test DynamicPPL.num_inactive(vnv, vn) == n - i
             end
@@ -411,7 +397,7 @@ end
             # Insert a bunch of random-length vectors.
             for i in 1:100
                 x = fill(true, rand(1:n))
-                DynamicPPL.update!(vnv, vn, x)
+                DynamicPPL.update!(vnv, x, vn)
             end
             # Should never be allocating more than `n` elements.
             @test DynamicPPL.num_allocated(vnv, vn) ≤ n
@@ -419,7 +405,7 @@ end
             # If we compaticfy, then it should always be the same size as just inserted.
             for i in 1:10
                 x = fill(true, rand(1:n))
-                DynamicPPL.update!(vnv, vn, x)
+                DynamicPPL.update!(vnv, x, vn)
                 DynamicPPL.contiguify!(vnv)
                 @test DynamicPPL.num_allocated(vnv, vn) == length(x)
             end
@@ -435,9 +421,9 @@ end
         # Test that subset preserves transformations and unconstrainedness.
         vn = @varname(t[1])
         vns = vcat(test_vns, [vn])
-        vnv = push!!(vnv, vn, 2.0, x -> x^2)
+        vnv = setindex_internal!!(vnv, [2.0], vn, x -> x .^ 2)
         DynamicPPL.settrans!(vnv, true, @varname(t[1]))
-        @test vnv[@varname(t[1])] == 4.0
+        @test vnv[@varname(t[1])] == [4.0]
         @test istrans(vnv, @varname(t[1]))
         @test subset(vnv, vns) == vnv
     end

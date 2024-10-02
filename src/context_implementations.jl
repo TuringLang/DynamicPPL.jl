@@ -241,11 +241,13 @@ function assume(
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
             # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
-            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
-            # that's okay.
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure
+            # if that's okay.
             unset_flag!(vi, vn, "del", true)
             r = init(rng, dist, sampler)
             f = to_maybe_linked_internal_transform(vi, vn, dist)
+            # TODO(mhauru) This should probably be call a function called setindex_internal!
+            # Also, if we use !! we shouldn't ignore the return value.
             BangBang.setindex!!(vi, f(r), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
