@@ -28,7 +28,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 [compat]
 ADTypes = "0.2, 1"
 AbstractMCMC = "5"
-AbstractPPL = "0.8.2"
+AbstractPPL = "0.8.2, 0.9"
 Accessors = "0.1"
 Bijectors = "0.13"
 Compat = "4.3.0"
