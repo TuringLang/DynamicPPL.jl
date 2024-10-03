@@ -10,13 +10,18 @@ on:
   merge_group:
     types: [checks_requested]
 
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         version:
-          - '1.6' # minimum supported version
+          - 'min' # minimum supported version
           - '1' # current stable version
         os:
           - ubuntu-latest
@@ -48,9 +53,9 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
-      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-buildpkg@v1
 
-      - uses: julia-actions/julia-runtest@latest
+      - uses: julia-actions/julia-runtest@v1
         env:
           GROUP: All
           JULIA_NUM_THREADS: ${{ matrix.num_threads }}
@@ -63,7 +68,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
-      - uses: coverallsapp/github-action@master
+      - uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: lcov.info
