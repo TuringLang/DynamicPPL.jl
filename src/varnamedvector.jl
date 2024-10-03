@@ -257,15 +257,15 @@ struct VarNamedVector{
     end
 end
 
-# TODO(mhauru) Are we sure we want the last one to be of type Any[]?
 function VarNamedVector{K,V}() where {K,V}
     return VarNamedVector(OrderedDict{K,Int}(), K[], UnitRange{Int}[], V[], Any[])
 end
 
-# TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). This would
-# allow expanding the VarName and element types only as necessary, which would help keep
-# them concrete. However, making that change here opens some other cans of worms related to
-# how VarInfo uses BangBang, that I don't want to deal with right now.
+# TODO(mhauru) I would like for this to be VarNamedVector(Union{}, Union{}). Simlarly the
+# transform vector type above could then be Union{}[]. This would allow expanding the
+# VarName and element types only as necessary, which would help keep them concrete. However,
+# making that change here opens some other cans of worms related to how VarInfo uses
+# BangBang, that I don't want to deal with right now.
 VarNamedVector() = VarNamedVector{VarName,Real}()
 VarNamedVector(xs::Pair...) = VarNamedVector(OrderedDict(xs...))
 VarNamedVector(x::AbstractDict) = VarNamedVector(keys(x), values(x))
