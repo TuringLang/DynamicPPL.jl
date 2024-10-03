@@ -49,7 +49,7 @@ $(FIELDS)
 The values for different variables are internally all stored in a single vector. For
 instance,
 ```jldoctest varnamedvector-struct
-julia> using DynamicPPL: VarNamedVector, @varname, setindex!, update!
+julia> using DynamicPPL: ReshapeTransform, VarNamedVector, @varname, setindex!, update!
 
 julia> vnv = VarNamedVector();
 
@@ -76,8 +76,8 @@ which variable. The `transforms` field stores the transformations that needed to
 the vectorised internal storage back to its original form:
 
 ```jldoctest varnamedvector-struct
-julia> vnv.transforms[vnv.varname_to_index[@varname(y)]]
-DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{Int64, Int64}}((6,), (2, 3))
+julia> vnv.transforms[vnv.varname_to_index[@varname(y)]] == DynamicPPL.ReshapeTransform((6,), (2,3))
+true
 ```
 
 If a variable is updated with a new value that is of a smaller dimension than the old
@@ -99,9 +99,8 @@ julia> vnv.vals
   5
   6
 
-julia> vnv.num_inactive
-OrderedDict{Int64, Int64} with 1 entry:
-  1 => 2
+julia> println(vnv.num_inactive);
+OrderedDict(1 => 2)
 ```
 
 This helps avoid unnecessary memory allocations for values that repeatedly change dimension.
@@ -868,11 +867,10 @@ julia> vnv.transforms
 1-element Vector{Any}:
  identity (generic function with 1 method)
 
-julia> vnv_tight = DynamicPPL.tighten_types(vnv)
-VarNamedVector{VarName{:y, typeof(identity)}, Int64, Vector{VarName{:y, typeof(identity)}}, Vector{Int64}, Vector{typeof(identity)}}(OrderedDict(y => 1), [y], UnitRange{Int64}[1:1], [23], [identity], Bool[0], OrderedDict{Int64, Int64}())
+julia> vnv_tight = DynamicPPL.tighten_types(vnv);
 
-julia> eltype(vnv_tight)
-Int64
+julia> eltype(vnv_tight) == Int
+true
 
 julia> vnv_tight.transforms
 1-element Vector{typeof(identity)}:
