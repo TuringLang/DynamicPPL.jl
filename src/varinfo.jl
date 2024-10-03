@@ -1046,8 +1046,11 @@ function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
     return mapreduce(values, vcat, _getvns(vi, spl))
 end
 
-Base.haskey(vi::VectorVarInfo, vn::VarName) = haskey(vi.metadata, vn)
-Base.haskey(vi::VarInfo, vn::VarName) = vn in keys(vi)
+function Base.haskey(vi::VarInfo, vn::VarName) = _haskey(vi.metadata, vn)
+function _haskey(metadata::NamedTuple, vn::VarName{sym}) where {sym}
+    sym in keys(metadata) || return false
+    return haskey(metadata[sym], vn)
+end
 
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
