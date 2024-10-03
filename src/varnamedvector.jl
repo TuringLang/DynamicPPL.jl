@@ -799,8 +799,6 @@ julia> y_trans(x) = reshape(x, (2, 2));
 
 julia> setindex_internal!(vnv, collect(1:4), @varname(y), y_trans)
 ERROR: MethodError: Cannot `convert` an object of type
-  VarName{y,typeof(identity)} to an object of type
-  VarName{x,typeof(identity)}
 [...]
 
 julia> vnv_loose = DynamicPPL.loosen_types!!(vnv, typeof(@varname(y)), typeof(y_trans));
