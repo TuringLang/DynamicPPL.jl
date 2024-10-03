@@ -1046,16 +1046,6 @@ function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
     return mapreduce(values, vcat, _getvns(vi, spl))
 end
 
-Base.haskey(vi::VarInfo, vn::VarName) = _haskey(vi.metadata, vn)
-# _haskey is only needed to avoid type piracy of haskey(::NamedTuple, ::VarName). For
-# everything other than NamedTuple it's the same has haskey.
-function _haskey(metadata::NamedTuple, vn::VarName{sym}) where {sym}
-    sym in keys(metadata) || return false
-    return haskey(metadata[sym], vn)
-end
-_haskey(any, vn) = haskey(any, vn)
-Base.haskey(md::Metadata, vn::VarName) = haskey(md.vns, vn)
-
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 
@@ -1770,15 +1760,15 @@ end
     return map(vn -> vi[vn], f_vns)
 end
 
-haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
+Base.haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
 
 """
     haskey(vi::VarInfo, vn::VarName)
 
 Check whether `vn` has been sampled in `vi`.
 """
-haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
-function haskey(vi::TypedVarInfo, vn::VarName)
+Base.haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
+function Base.haskey(vi::TypedVarInfo, vn::VarName)
     md_haskey = map(vi.metadata) do metadata
         haskey(metadata, vn)
     end
