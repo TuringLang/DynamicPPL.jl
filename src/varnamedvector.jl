@@ -391,17 +391,16 @@ function num_allocated(vnv::VarNamedVector, idx::Int)
     return length(getrange(vnv, idx)) + num_inactive(vnv, idx)
 end
 
-# Basic Dictionary interface.
-Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
-Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
-Base.IndexStyle(::Type{<:VarNamedVector}) = IndexLinear()
-
 # Dictionary interface.
+Base.isempty(vnv::VarNamedVector) = isempty(vnv.varnames)
 Base.length(vnv::VarNamedVector) = length(vnv.varnames)
 Base.keys(vnv::VarNamedVector) = vnv.varnames
 Base.values(vnv::VarNamedVector) = Iterators.map(Base.Fix1(getindex, vnv), vnv.varnames)
 Base.pairs(vnv::VarNamedVector) = (vn => vnv[vn] for vn in keys(vnv))
 Base.haskey(vnv::VarNamedVector, vn::VarName) = haskey(vnv.varname_to_index, vn)
+
+# Vector-like interface.
+Base.eltype(vnv::VarNamedVector) = eltype(vnv.vals)
 
 """
     length_internal(vnv::VarNamedVector)
