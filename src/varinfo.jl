@@ -1046,11 +1046,15 @@ function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
     return mapreduce(values, vcat, _getvns(vi, spl))
 end
 
-function Base.haskey(vi::VarInfo, vn::VarName) = _haskey(vi.metadata, vn)
+Base.haskey(vi::VarInfo, vn::VarName) = _haskey(vi.metadata, vn)
+# _haskey is only needed to avoid type piracy of haskey(::NamedTuple, ::VarName). For
+# everything other than NamedTuple it's the same has haskey.
 function _haskey(metadata::NamedTuple, vn::VarName{sym}) where {sym}
     sym in keys(metadata) || return false
     return haskey(metadata[sym], vn)
 end
+_haskey(any, vn) = haskey(any, vn)
+Base.haskey(md::Metadata, vn::VarName) = haskey(md.vns, vn)
 
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
