@@ -126,13 +126,13 @@ Hence we obtain a "type-stable when possible"-representation by wrapping it in a
 
 ## Efficient storage and iteration
 
-Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`VarNamedVector`](@ref):
+Efficient storage and iteration we achieve through implementation of the `metadata`. In particular, we do so with [`DynamicPPL.VarNamedVector`](@ref):
 
 ```@docs
 DynamicPPL.VarNamedVector
 ```
 
-In a [`VarNamedVector{<:VarName,T}`](@ref), we achieve the desiderata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
+In a [`DynamicPPL.VarNamedVector{<:VarName,T}`](@ref), we achieve the desiderata by storing the values for different `VarName`s contiguously in a `Vector{T}` and keeping track of which ranges correspond to which `VarName`s.
 
 This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each `VarName` a unique `Int` index in the `varname_to_index` field, which is then used to index into the following fields:
 
@@ -294,9 +294,9 @@ In the end, we have the following "rough" performance characteristics for `VarNa
 ## Other methods
 
 ```@docs
-DynamicPPL.replace_raw_storage(::VarNamedVector, vals::AbstractVector)
+DynamicPPL.replace_raw_storage(::DynamicPPL.VarNamedVector, vals::AbstractVector)
 ```
 
 ```@docs; canonical=false
-DynamicPPL.values_as(::VarNamedVector)
+DynamicPPL.values_as(::DynamicPPL.VarNamedVector)
 ```
