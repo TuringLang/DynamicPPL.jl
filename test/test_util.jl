@@ -89,10 +89,12 @@ function short_varinfo_name(vi::TypedVarInfo)
     return "TypedVarInfo"
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
-short_varinfo_name(::VectorVarInfo) = "VectorVarInfo"
+short_varinfo_name(::DynamicPPL.VectorVarInfo) = "VectorVarInfo"
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
-short_varinfo_name(::SimpleVarInfo{<:VarNamedVector}) = "SimpleVarInfo{<:VarNamedVector}"
+function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector})
+    return "SimpleVarInfo{<:VarNamedVector}"
+end
 
 # convenient functions for testing model.jl
 # function to modify the representation of values based on their length

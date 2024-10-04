@@ -47,12 +47,12 @@ function setup_varinfos(
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
-    svi_vnv = SimpleVarInfo(VarNamedVector())
+    svi_vnv = SimpleVarInfo(DynamicPPL.VarNamedVector())
 
     # SimpleVarInfo{<:Any,<:Ref}
     svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
     svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
-    svi_vnv_ref = SimpleVarInfo(VarNamedVector(), Ref(getlogp(svi_vnv)))
+    svi_vnv_ref = SimpleVarInfo(DynamicPPL.VarNamedVector(), Ref(getlogp(svi_vnv)))
 
     lp = getlogp(vi_typed_metadata)
     varinfos = map((

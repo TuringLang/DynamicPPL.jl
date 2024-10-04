@@ -58,19 +58,19 @@
         end
 
         @testset "VarNamedVector" begin
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m) => 1.0))
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => 1.0))
             @test getlogp(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m) => [1.0]))
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => [1.0]))
             @test getlogp(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
             @test svi[@varname(m)][1] == svi[@varname(m[1])]
 
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a) => [1.0]))
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m.a) => [1.0]))
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m.a))
             @test haskey(svi, @varname(m.a[1]))
@@ -78,7 +78,9 @@
             @test !haskey(svi, @varname(m.a.b))
             # The implementation of haskey and getvalue fo VarNamedVector is incomplete, the
             # next test is here to remind of us that.
-            svi = SimpleVarInfo(push!!(VarNamedVector(), @varname(m.a.b) => [1.0]))
+            svi = SimpleVarInfo(
+                push!!(DynamicPPL.VarNamedVector(), @varname(m.a.b) => [1.0])
+            )
             @test_broken !haskey(svi, @varname(m.a.b.c.d))
         end
     end
@@ -89,7 +91,7 @@
         @testset "$(typeof(vi))" for vi in (
             SimpleVarInfo(Dict()),
             SimpleVarInfo(values_constrained),
-            SimpleVarInfo(VarNamedVector()),
+            SimpleVarInfo(DynamicPPL.VarNamedVector()),
             VarInfo(model),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
@@ -143,7 +145,7 @@
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
-        vnv = VarNamedVector()
+        vnv = DynamicPPL.VarNamedVector()
         for (k, v) in pairs(DynamicPPL.TestUtils.rand_prior_true(model))
             vnv = push!!(vnv, VarName{k}() => v)
         end
@@ -232,7 +234,7 @@
         # Initialize.
         svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
         svi_nt = last(DynamicPPL.evaluate!!(model, svi_nt, SamplingContext()))
-        svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(VarNamedVector()), true)
+        svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
         svi_vnv = last(DynamicPPL.evaluate!!(model, svi_vnv, SamplingContext()))
 
         for svi in (svi_nt, svi_vnv)

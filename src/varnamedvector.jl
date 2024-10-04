@@ -49,7 +49,7 @@ $(FIELDS)
 The values for different variables are internally all stored in a single vector. For
 instance,
 ```jldoctest varnamedvector-struct
-julia> using DynamicPPL: ReshapeTransform, VarNamedVector, @varname, setindex!, update!
+julia> using DynamicPPL: ReshapeTransform, VarNamedVector, @varname, setindex!, update!, getindex_internal
 
 julia> vnv = VarNamedVector();
 

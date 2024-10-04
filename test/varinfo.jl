@@ -112,7 +112,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @test vi[SampleFromPrior()][1] == 3 * r
 
             # TODO(mhauru) Implement these functions for other VarInfo types too.
-            if vi isa VectorVarInfo
+            if vi isa DynamicPPL.VectorVarInfo
                 delete!(vi, vn)
                 @test isempty(vi)
                 vi = push!!(vi, vn, r, dist, gid)
@@ -128,7 +128,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_base!!(TypedVarInfo(vi))
         test_base!!(SimpleVarInfo())
         test_base!!(SimpleVarInfo(Dict()))
-        test_base!!(SimpleVarInfo(VarNamedVector()))
+        test_base!!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
     @testset "flags" begin
         # Test flag setting:
@@ -209,7 +209,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
             )
             vi_untyped = VarInfo(DynamicPPL.Metadata())
-            vi_vnv = VarInfo(VarNamedVector())
+            vi_vnv = VarInfo(DynamicPPL.VarNamedVector())
             vi_vnv_typed = VarInfo(
                 model, SampleFromPrior(), DefaultContext(), DynamicPPL.VarNamedVector
             )
@@ -374,7 +374,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(VarNamedVector()), true)
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
