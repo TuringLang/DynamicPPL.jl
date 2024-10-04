@@ -1443,6 +1443,7 @@ function _link_metadata!!(
         transform_to_linked = inverse(transform_from_linked)
         val_new, logjac2 = with_logabsdet_jacobian(transform_to_linked, val_orig)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
+        # Fix this when attending to issue #653.
         acclogp!!(varinfo, -logjac1 - logjac2)
         metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
         settrans!(metadata, true, vn)
