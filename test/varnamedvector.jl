@@ -220,6 +220,16 @@ end
                 to_vec_right(val_right)
         end
 
+        @testset "getindex_internal with Ints" begin
+            for (i, val) in enumerate(to_vec_left(val_left))
+                @test DynamicPPL.getindex_internal(vnv_base, i) == val
+            end
+            offset = length(to_vec_left(val_left))
+            for (i, val) in enumerate(to_vec_right(val_right))
+                @test DynamicPPL.getindex_internal(vnv_base, offset + i) == val
+            end
+        end
+
         @testset "update!" begin
             vnv = deepcopy(vnv_base)
             update!(vnv, val_left .+ 100, vn_left)
@@ -371,6 +381,16 @@ end
             end
         end
 
+        @testset "setindex_internal! with Ints" begin
+            vnv = deepcopy(vnv_base)
+            for i in 1:length_internal(vnv_base)
+                setindex_internal!(vnv, i, i)
+            end
+            for i in 1:length_internal(vnv_base)
+                @test getindex_internal(vnv, i) == i
+            end
+        end
+
         @testset "setindex_internal!!" begin
             # Not setting the transformation.
             vnv = deepcopy(vnv_base)
@@ -418,6 +438,7 @@ end
                 @test vnv[vn] == val .+ 1
                 @test length_internal(vnv) == expected_length
                 @test length(x) == length_internal(vnv)
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
 
                 # There should be no redundant values in the underlying vector.
                 @test !DynamicPPL.has_inactive(vnv)
@@ -441,6 +462,7 @@ end
                 @test vnv[vn] == val .+ 1
                 @test length_internal(vnv) == expected_length
                 @test length(x) == length_internal(vnv)
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
             end
 
             vnv = relax_container_types(deepcopy(vnv_base), test_vns, test_vals)
@@ -461,6 +483,7 @@ end
                 @test vnv[vn] == val .+ 1
                 @test length_internal(vnv) == expected_length
                 @test length(x) == length_internal(vnv)
+                @test all(getindex_internal(vnv, i) == x[i] for i in eachindex(x))
             end
         end
     end

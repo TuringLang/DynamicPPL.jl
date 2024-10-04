@@ -493,6 +493,13 @@ Like `getindex`, but returns the values as they are stored in `vnv`, without tra
 """
 getindex_internal(vnv::VarNamedVector, vn::VarName) = vnv.vals[getrange(vnv, vn)]
 
+"""
+    getindex_internal(vnv::VarNamedVector, i::Int)
+
+Gets the `i`th element of the internal storage vector, ignoring inactive entries.
+"""
+getindex_internal(vnv::VarNamedVector, i::Int) = vnv.vals[index_to_vals_index(vnv, i)]
+
 function getindex_internal(vnv::VarNamedVector, ::Colon)
     return if has_inactive(vnv)
         mapreduce(Base.Fix1(getindex, vnv.vals), vcat, vnv.ranges)
@@ -601,6 +608,14 @@ end
 
 """
     setindex_internal!(vnv::VarNamedVector, val, i::Int)
+
+Sets the `i`th element of the internal storage vector, ignoring inactive entries.
+"""
+function setindex_internal!(vnv::VarNamedVector, val, i::Int)
+    return vnv.vals[index_to_vals_index(vnv, i)] = val
+end
+
+"""
     setindex_internal!(vnv::VarNamedVector, val, vn::VarName[, transform])
 
 Like `setindex!`, but sets the values as they are stored internally in `vnv`.
@@ -609,10 +624,6 @@ Optionally can set the transformation, such that `transform(val)` is the origina
 the variable. By default, the transform is the identity if creating a new entry in `vnv`, or
 the existing transform if updating an existing entry.
 """
-function setindex_internal!(vnv::VarNamedVector, val, i::Int)
-    return vnv.vals[index_to_vals_index(vnv, i)] = val
-end
-
 function setindex_internal!(
     vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
 )

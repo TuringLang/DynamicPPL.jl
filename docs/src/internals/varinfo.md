@@ -34,7 +34,9 @@ To ensure that `VarInfo` is simple and intuitive to work with, we want `VarInfo`
 
   - `getindex_internal(::VarInfo, ::VarName)`: get the flattened value of a single variable.
   - `getindex_internal(::VarInfo, ::Colon)`: get the flattened values of all variables.
+  - `getindex_internal(::VarInfo, i::Int)`: get `i`th value of the flattened vector of all values
   - `setindex_internal!(::VarInfo, ::AbstractVector, ::VarName)`: set the flattened value of a variable.
+  - `setindex_internal!(::VarInfo, val, i::Int)`: set the `i`th value of the flattened vector of all values
   - `length_internal(::VarInfo)`: return the length of the flat representation of `metadata`.
 
 The functions have `_internal` in their name because internally `VarInfo` always stores values as vectorised.
