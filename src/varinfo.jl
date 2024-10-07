@@ -173,9 +173,9 @@ function untyped_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
-    metadata_type::Type=VarNamedVector,
+    metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    varinfo = VarInfo(metadata_type())
+    varinfo = VarInfo(metadata)
     return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
 end
 function untyped_varinfo(model::Model, args::Union{AbstractSampler,AbstractContext,Type}...)
@@ -194,11 +194,9 @@ function VarInfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
-    # TODO(mhauru) Revisit the default. We probably don't want it to be VarNamedVector just
-    # yet.
-    metadata_type::Type=VarNamedVector,
+    metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    return typed_varinfo(rng, model, sampler, context, metadata_type)
+    return typed_varinfo(rng, model, sampler, context, metadata)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
@@ -929,9 +927,7 @@ end
 
 # VarInfo
 
-# TODO(mhauru) Revisit the default for meta. We probably should keep it as Metadata as long
-# as the old Gibbs sampler is in use.
-VarInfo(meta=VarNamedVector()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
 
 function TypedVarInfo(vi::VectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
@@ -2191,7 +2187,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata);  # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
+julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata());  # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
 
 julia> var_info[@varname(m)]
 -0.6702516921145671
