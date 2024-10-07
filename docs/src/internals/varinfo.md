@@ -80,7 +80,7 @@ For example, with the model above we have
 ```@example varinfo-design
 # Type-unstable `VarInfo`
 varinfo_untyped = DynamicPPL.untyped_varinfo(
-    demo(), SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
+    demo(), SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata()
 )
 typeof(varinfo_untyped.metadata)
 ```
