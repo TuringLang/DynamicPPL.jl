@@ -206,12 +206,12 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             s_vns = @varname(s)
 
             vi_typed = VarInfo(
-                model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata
+                model, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata()
             )
             vi_untyped = VarInfo(DynamicPPL.Metadata())
             vi_vnv = VarInfo(DynamicPPL.VarNamedVector())
             vi_vnv_typed = VarInfo(
-                model, SampleFromPrior(), DefaultContext(), DynamicPPL.VarNamedVector
+                model, SampleFromPrior(), DefaultContext(), DynamicPPL.VarNamedVector()
             )
             model(vi_untyped, SampleFromPrior())
             model(vi_vnv, SampleFromPrior())
@@ -702,7 +702,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 model,
                 DynamicPPL.SampleFromPrior(),
                 DynamicPPL.DefaultContext(),
-                DynamicPPL.Metadata,
+                DynamicPPL.Metadata(),
             )
             selector = DynamicPPL.Selector()
             spl = Sampler(MySAlg(), model, selector)

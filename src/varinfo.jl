@@ -1020,7 +1020,7 @@ end
 
 # `keys`
 Base.keys(md::Metadata) = md.vns
-Base.keys(vi::VarInfo) = keys(vi.metadata)
+Base.keys(vi::VarInfo) = Base.keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
 # on other methods in the codebase which requires `Vector{<:VarName}`.

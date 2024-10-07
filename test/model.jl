@@ -202,7 +202,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     @testset "Dynamic constraints, Metadata" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         spl = SampleFromPrior()
-        vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata)
+        vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata())
         link!!(vi, spl, model)
 
         for i in 1:10
