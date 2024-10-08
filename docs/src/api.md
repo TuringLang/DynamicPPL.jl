@@ -294,10 +294,19 @@ resetlogp!!
 ```@docs
 keys
 getindex
-DynamicPPL.getindex_internal
 push!!
 empty!!
 isempty
+DynamicPPL.getindex_internal
+DynamicPPL.setindex_internal!
+DynamicPPL.update_internal!
+DynamicPPL.insert_internal!
+DynamicPPL.length_internal
+DynamicPPL.reset!
+DynamicPPL.update!
+DynamicPPL.insert!
+DynamicPPL.loosen_types!!
+DynamicPPL.tighten_types
 ```
 
 ```@docs

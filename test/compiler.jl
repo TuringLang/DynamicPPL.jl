@@ -309,11 +309,11 @@ module Issue537 end
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == @varname(y)
+        @test first(Base.keys(vi1.metadata.y)) == @varname(y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == @varname(y[2][:, 1])
+        @test first(Base.keys(vi2.metadata.y)) == @varname(y[2][:, 1])
         @test haskey(vi3.metadata, :y)
-        @test vi3.metadata.y.vns[1] == @varname(y[1])
+        @test first(Base.keys(vi3.metadata.y)) == @varname(y[1])
 
         # Conditioning
         f1_c = f1() | (y=1,)

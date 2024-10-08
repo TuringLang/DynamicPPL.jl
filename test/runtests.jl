@@ -25,6 +25,8 @@ using Test
 using Distributions
 using LinearAlgebra # Diagonal
 
+using Combinatorics: combinations
+
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
@@ -40,6 +42,7 @@ include("test_util.jl")
         @testset "interface" begin
             include("utils.jl")
             include("compiler.jl")
+            include("varnamedvector.jl")
             include("varinfo.jl")
             include("simple_varinfo.jl")
             include("model.jl")
