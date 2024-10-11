@@ -342,4 +342,19 @@
         model = state_space(y, length(t))
         @test size(sample(model, NUTS(; adtype=AutoReverseDiff(true)), n), 1) == n
     end
+
+    if Threads.nthreads() > 1
+        @testset "DynamicPPL#684: OrderedDict with multiple types when multithreaded" begin
+            @model function f(x)
+                ns ~ filldist(Normal(0, 2.0), 3)
+                m ~ Uniform(0, 1)
+                x ~ Normal(m, 1)
+            end
+            model = f(1)
+            chain = sample(model, NUTS(), MCMCThreads(), 10, 2);
+            loglikelihood(model, chain)
+            logprior(model, chain)
+            logjoint(model, chain)
+        end
+    end
 end
