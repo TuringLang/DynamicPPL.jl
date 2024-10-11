@@ -348,10 +348,10 @@
             @model function f(x)
                 ns ~ filldist(Normal(0, 2.0), 3)
                 m ~ Uniform(0, 1)
-                x ~ Normal(m, 1)
+                return x ~ Normal(m, 1)
             end
             model = f(1)
-            chain = sample(model, NUTS(), MCMCThreads(), 10, 2);
+            chain = sample(model, NUTS(), MCMCThreads(), 10, 2)
             loglikelihood(model, chain)
             logprior(model, chain)
             logjoint(model, chain)
