@@ -490,7 +490,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    gids = metadata_right.gids  # NOTE: giving precedence to `metadata_right`
+    gids = Set{Selector}[]
     orders = Int[]
     flags = Dict{String,BitVector}()
     # Initialize the `flags`.
@@ -520,6 +520,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             dist_right = getdist(metadata_right, vn)
             # Give precedence to `metadata_right`.
             push!(dists, dist_right)
+            gid = metadata_right.gids[getidx(metadata_right, vn)]
+            push!(gids, gid)
             # `orders`: giving precedence to `metadata_right`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
@@ -539,6 +541,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             # `dists`
             dist_left = getdist(metadata_left, vn)
             push!(dists, dist_left)
+            gid = metadata_left.gids[getidx(metadata_left, vn)]
+            push!(gids, gid)
             # `orders`
             push!(orders, getorder(metadata_left, vn))
             # `flags`
@@ -557,6 +561,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             # `dists`
             dist_right = getdist(metadata_right, vn)
             push!(dists, dist_right)
+            gid = metadata_right.gids[getidx(metadata_right, vn)]
+            push!(gids, gid)
             # `orders`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
