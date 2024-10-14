@@ -154,6 +154,18 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_varinfo!(vi)
         test_varinfo!(empty!!(TypedVarInfo(vi)))
     end
+
+    @testset "push!! to TypedVarInfo" begin
+        vn_x = @varname x
+        vn_y = @varname y
+        untyped_vi = VarInfo()
+        untyped_vi = push!!(untyped_vi, vn_x, 1.0, Normal(0, 1), Selector())
+        typed_vi = TypedVarInfo(untyped_vi)
+        typed_vi = push!!(typed_vi, vn_y, 2.0, Normal(0, 1), Selector())
+        @test typed_vi[vn_x] == 1.0
+        @test typed_vi[vn_y] == 2.0
+    end
+
     @testset "setgid!" begin
         vi = VarInfo(DynamicPPL.Metadata())
         meta = vi.metadata

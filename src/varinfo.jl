@@ -1832,13 +1832,30 @@ function BangBang.push!!(
     vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
-    meta = getmetadata(vi, vn)
-    push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+    sym = getsym(vn)
+    if vi isa TypedVarInfo && ~haskey(vi.metadata, sym)
+        # The NamedTuple doesn't have an entry for this variable, let's add one.
+        val = tovec(r)
+        md = Metadata(
+            Dict(vn => 1),
+            [vn],
+            [1:length(val)],
+            val,
+            [dist],
+            [gidset],
+            [get_num_produce(vi)],
+            Dict{String,BitVector}("trans" => [false], "del" => [false]),
+        )
+        vi = Accessors.@set vi.metadata[sym] = md
+    else
+        meta = getmetadata(vi, vn)
+        push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+    end
 
     return vi
 end
@@ -1870,7 +1887,6 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
-
     return meta
 end
 
