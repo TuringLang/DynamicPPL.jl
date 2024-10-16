@@ -567,7 +567,8 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     vns_supported_standard
                 end
 
-            @testset ("$(convert(Vector{VarName}, vns_subset)) empty") for vns_subset in vns_supported
+            @testset ("$(convert(Vector{VarName}, vns_subset)) empty") for vns_subset in
+                                                                           vns_supported
                 varinfo_subset = subset(varinfo, VarName[])
                 @test isempty(varinfo_subset)
             end

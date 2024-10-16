@@ -368,7 +368,7 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     )
 end
 
-function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where VN<:VarName
+function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
     # For each `vn` in `vns`, get the variables subsumed by `vn`.
     vns = mapreduce(vcat, vns_given; init=VN[]) do vn
