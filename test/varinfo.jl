@@ -154,6 +154,18 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_varinfo!(vi)
         test_varinfo!(empty!!(TypedVarInfo(vi)))
     end
+
+    @testset "push!! to TypedVarInfo" begin
+        vn_x = @varname x
+        vn_y = @varname y
+        untyped_vi = VarInfo()
+        untyped_vi = push!!(untyped_vi, vn_x, 1.0, Normal(0, 1), Selector())
+        typed_vi = TypedVarInfo(untyped_vi)
+        typed_vi = push!!(typed_vi, vn_y, 2.0, Normal(0, 1), Selector())
+        @test typed_vi[vn_x] == 1.0
+        @test typed_vi[vn_y] == 2.0
+    end
+
     @testset "setgid!" begin
         vi = VarInfo(DynamicPPL.Metadata())
         meta = vi.metadata
@@ -693,6 +705,19 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             # Right has precedence.
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
             @test DynamicPPL.istrans(varinfo_merged, @varname(x))
+        end
+
+        # The below used to error, testing to avoid regression.
+        @testset "merge gids" begin
+            gidset_left = Set([Selector(1)])
+            vi_left = VarInfo()
+            vi_left = push!!(vi_left, @varname(x), 1.0, Normal(), gidset_left)
+            gidset_right = Set([Selector(2)])
+            vi_right = VarInfo()
+            vi_right = push!!(vi_right, @varname(y), 2.0, Normal(), gidset_right)
+            varinfo_merged = merge(vi_left, vi_right)
+            @test DynamicPPL.getgid(varinfo_merged, @varname(x)) == gidset_left
+            @test DynamicPPL.getgid(varinfo_merged, @varname(y)) == gidset_right
         end
     end
 

@@ -490,7 +490,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    gids = metadata_right.gids  # NOTE: giving precedence to `metadata_right`
+    gids = Set{Selector}[]
     orders = Int[]
     flags = Dict{String,BitVector}()
     # Initialize the `flags`.
@@ -520,6 +520,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             dist_right = getdist(metadata_right, vn)
             # Give precedence to `metadata_right`.
             push!(dists, dist_right)
+            gid = metadata_right.gids[getidx(metadata_right, vn)]
+            push!(gids, gid)
             # `orders`: giving precedence to `metadata_right`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
@@ -539,6 +541,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             # `dists`
             dist_left = getdist(metadata_left, vn)
             push!(dists, dist_left)
+            gid = metadata_left.gids[getidx(metadata_left, vn)]
+            push!(gids, gid)
             # `orders`
             push!(orders, getorder(metadata_left, vn))
             # `flags`
@@ -557,6 +561,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
             # `dists`
             dist_right = getdist(metadata_right, vn)
             push!(dists, dist_right)
+            gid = metadata_right.gids[getidx(metadata_right, vn)]
+            push!(gids, gid)
             # `orders`
             push!(orders, getorder(metadata_right, vn))
             # `flags`
@@ -1826,13 +1832,30 @@ function BangBang.push!!(
     vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
 )
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an exisitng variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
     end
 
-    meta = getmetadata(vi, vn)
-    push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+    sym = getsym(vn)
+    if vi isa TypedVarInfo && ~haskey(vi.metadata, sym)
+        # The NamedTuple doesn't have an entry for this variable, let's add one.
+        val = tovec(r)
+        md = Metadata(
+            Dict(vn => 1),
+            [vn],
+            [1:length(val)],
+            val,
+            [dist],
+            [gidset],
+            [get_num_produce(vi)],
+            Dict{String,BitVector}("trans" => [false], "del" => [false]),
+        )
+        vi = Accessors.@set vi.metadata[sym] = md
+    else
+        meta = getmetadata(vi, vn)
+        push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+    end
 
     return vi
 end
@@ -1864,7 +1887,6 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
-
     return meta
 end
 
