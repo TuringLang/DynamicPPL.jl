@@ -264,20 +264,24 @@ function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
     return VarInfo(NamedTuple{syms}(metadatas), varinfo.logp, varinfo.num_produce)
 end
 
-function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
+function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
     # For each `vn` in `vns`, get the variables subsumed by `vn`.
-    vns = mapreduce(vcat, vns_given) do vn
+    vns = mapreduce(vcat, vns_given; init=VN[]) do vn
         filter(Base.Fix1(subsumes, vn), metadata.vns)
     end
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
-    indices = Dict(vn => i for (i, vn) in enumerate(vns))
+    indices = if isempty(vns)
+        Dict{VarName,Int}()
+    else
+        Dict(vn => i for (i, vn) in enumerate(vns))
+    end
     # Construct new `vals` and `ranges`.
     vals_original = metadata.vals
     ranges_original = metadata.ranges
     # Allocate the new `vals`. and `ranges`.
-    vals = similar(metadata.vals, sum(length, ranges_original[indices_for_vns]))
-    ranges = similar(ranges_original)
+    vals = similar(metadata.vals, sum(length, ranges_original[indices_for_vns]; init=0))
+    ranges = similar(ranges_original, length(vns))
     # The new range `r` for `vns[i]` is offset by `offset` and
     # has the same length as the original range `r_original`.
     # The new `indices` (from above) ensures ordering according to `vns`.
@@ -311,7 +315,7 @@ function subset(metadata::Metadata, vns_given::AbstractVector{<:VarName})
         ranges,
         vals,
         metadata.dists[indices_for_vns],
-        metadata.gids,
+        metadata.gids[indices_for_vns],
         metadata.orders[indices_for_vns],
         flags,
     )

@@ -429,22 +429,17 @@ function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
     return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
 end
 
-function _subset(x::AbstractDict, vns)
+function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
     vns_present = collect(keys(x))
-    vns_found = mapreduce(vcat, vns) do vn
+    vns_found = mapreduce(vcat, vns; init=VN[]) do vn
         return filter(Base.Fix1(subsumes, vn), vns_present)
     end
-
-    # NOTE: This `vns` to be subsume varnames explicitly present in `x`.
-    if isempty(vns_found)
-        throw(
-            ArgumentError(
-                "Cannot subset `AbstractDict` with `VarName` which does not subsume any keys.",
-            ),
-        )
-    end
     C = ConstructionBase.constructorof(typeof(x))
-    return C(vn => x[vn] for vn in vns_found)
+    if isempty(vns_found)
+        return C()
+    else
+        return C(vn => x[vn] for vn in vns_found)
+    end
 end
 
 function _subset(x::NamedTuple, vns)
