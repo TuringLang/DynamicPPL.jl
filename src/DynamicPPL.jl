@@ -125,6 +125,7 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     @submodel,
+    @returned_quantities,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
