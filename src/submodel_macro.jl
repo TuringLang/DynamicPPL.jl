@@ -277,7 +277,7 @@ julia> @model function demo2(x, y)
 ```
 
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
-```jldoctest submodel-return-quantities
+```jldoctest submodel-returned-quantities
 julia> vi = VarInfo(demo2(missing, 0.4));
 
 julia> @varname(x) in keys(vi)
@@ -293,7 +293,7 @@ false
 
 We can check that the log joint probability of the model accumulated in `vi` is correct:
 
-```jldoctest submodel-return-quantities
+```jldoctest submodel-returned-quantities
 julia> x = vi[@varname(x)];
 
 julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
@@ -301,7 +301,7 @@ true
 ```
 
 ## With prefixing
-```jldoctest submodel-return-quantities-prefix; setup=:(using Distributions)
+```jldoctest submodel-returned-quantities-prefix; setup=:(using Distributions)
 julia> @model function demo1(x)
            x ~ Normal()
            return 1 + abs(x)
@@ -316,7 +316,7 @@ julia> @model function demo2(x, y, z)
 
 When we sample from the model `demo2(missing, missing, 0.4)` random variables `sub1.x` and
 `sub2.x` will be sampled:
-```jldoctest submodel-return-quantities-prefix
+```jldoctest submodel-returned-quantities-prefix
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
 
 julia> @varname(var"sub1.x") in keys(vi)
@@ -328,7 +328,7 @@ true
 
 Variables `a` and `b` are not tracked since they can be computed from the random variables `sub1.x` and
 `sub2.x` that were tracked when running `demo1`:
-```jldoctest submodel-return-quantities-prefix
+```jldoctest submodel-returned-quantities-prefix
 julia> @varname(a) in keys(vi)
 false
 
@@ -338,7 +338,7 @@ false
 
 We can check that the log joint probability of the model accumulated in `vi` is correct:
 
-```jldoctest submodel-return-quantities-prefix
+```jldoctest submodel-returned-quantities-prefix
 julia> sub1_x = vi[@varname(var"sub1.x")];
 
 julia> sub2_x = vi[@varname(var"sub2.x")];
@@ -352,7 +352,7 @@ true
 ```
 
 ## Different ways of setting the prefix
-```jldoctest submodel-return-quantities-prefix-alts; setup=:(using DynamicPPL, Distributions)
+```jldoctest submodel-returned-quantities-prefix-alts; setup=:(using DynamicPPL, Distributions)
 julia> @model inner() = x ~ Normal()
 inner (generic function with 2 methods)
 
