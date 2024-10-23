@@ -14,10 +14,11 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with [`@submodel`](@ref).
+One can nest models and call another model inside the model function with [`@submodel`](@ref) and [`@returned_quantities`](@ref).
 
 ```@docs
 @submodel
+@returned_quantities
 ```
 
 ### Type
