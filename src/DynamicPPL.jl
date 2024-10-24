@@ -110,6 +110,7 @@ export AbstractVarInfo,
     dot_tilde_assume,
     dot_tilde_observe,
     # Pseudo distributions
+    WrappedDistribution,
     NamedDist,
     NoDist,
     # Convenience functions
