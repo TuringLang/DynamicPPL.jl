@@ -411,7 +411,7 @@ function returned_quantities_expr(prefix_expr, expr, ctx=esc(:__context__))
         error("$(prefix_left) is not a valid kwarg")
     end
 
-    # The user expects `@submodel ...` to return the
+    # The user expects `@returned_quantities ...` to return the
     # return-value of the `...`, hence we need to capture
     # the return-value and handle it correctly.
     @gensym retval
