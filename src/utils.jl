@@ -286,8 +286,15 @@ function (f::ReshapeTransform)(x)
     if size(x) != f.input_size
         throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
     end
-    # The call to `tovec` is only needed in case `x` is a scalar.
-    return reshape(tovec(x), f.output_size)
+    if f.output_size == ()
+        # Specially handle the case where x is a singleton array, see
+        # https://github.com/JuliaDiff/ReverseDiff.jl/issues/265 and
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/698
+        return x[]
+    else
+        # The call to `tovec` is only needed in case `x` is a scalar.
+        return reshape(tovec(x), f.output_size)
+    end
 end
 
 function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
