@@ -319,7 +319,7 @@ The result of `prefix_expr` must will be converted to a `Symbol` and used as the
     for static prefixes. For more control over the prefixing, use the method directly.
 """
 macro prefix(model, prefix_expr)
-    return :($prefix($(esc(model)), $Val{$(esc(prefix_expr))}()))
+    return :($prefix($(esc(model)), $Val{$Symbol($(esc(prefix_expr)))}()))
 end
 
 struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
