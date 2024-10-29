@@ -307,8 +307,8 @@ julia> @model function demo1(x)
        end;
 
 julia> @model function demo2(x, y, z)
-            a = @returned_quantities prefix(demo1(x), Val{:sub1}())
-            b = @returned_quantities prefix(demo1(y), Val{:sub2}())
+            a = @returned_quantities @prefix(demo1(x), :sub1)
+            b = @returned_quantities @prefix(demo1(y), :sub2)
             return z ~ Uniform(-a, b)
        end;
 ```
@@ -362,22 +362,15 @@ submodel_noprefix (generic function with 2 methods)
 julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
 true
 
-julia> # Explicitely don't use any prefix.
-       @model submodel_prefix_false() = a = @returned_quantities prefix=false inner()
-submodel_prefix_false (generic function with 2 methods)
-
-julia> @varname(x) in keys(VarInfo(submodel_prefix_false()))
-true
-
 julia> # Using a static string.
-       @model submodel_prefix_string() = a = @returned_quantities prefix="my prefix" inner()
+       @model submodel_prefix_string() = a = @returned_quantities @prefix inner() "my prefix"
 submodel_prefix_string (generic function with 2 methods)
 
 julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
 true
 
 julia> # Using string interpolation.
-       @model submodel_prefix_interpolation() = a = @returned_quantities prefix="\$(nameof(inner()))" inner()
+       @model submodel_prefix_interpolation() = a = @returned_quantities @prefix inner() "\$(nameof(inner()))"
 submodel_prefix_interpolation (generic function with 2 methods)
 
 julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
