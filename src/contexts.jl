@@ -294,6 +294,34 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     end
 end
 
+"""
+    prefix(model::Model, x)
+
+Return `model` but with all random variables prefixed by `x`.
+
+If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+"""
+prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
+function prefix(model::Model, ::Val{x}) where {x}
+    contextualize(model, PrefixContext{Symbol(x)}(model.context))
+end
+
+"""
+    @prefix(model, prefix_expr)
+
+Return `model` but with all random variables prefixed by `prefix_expr`.
+
+The result of `prefix_expr` must will be converted to a `Symbol` and used as the prefix.
+
+!!! note
+    This is effectively just a convenience macro for the method [`prefix(::Model, x)`](@ref),
+    which automatically converts the result of `prefix_expr` into a `Val` to avoid runtime overheads
+    for static prefixes. For more control over the prefixing, use the method directly.
+"""
+macro prefix(model, prefix_expr)
+    return :($prefix($(esc(model)), $Val{$(esc(prefix_expr))}()))
+end
+
 struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx

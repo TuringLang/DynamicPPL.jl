@@ -250,16 +250,15 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
 end
 
 """
-    @returned_quantities [prefix=...] model
+    @returned_quantities model
 
 Run `model` nested inside of another model and return the return-values of the `model`.
 
-Valid expressions for `prefix=...` are:
-- `prefix=false`: no prefix is used. This is the default.
-- `prefix=expression`: results in the prefix `Symbol(expression)`.
-
-Prefixing makes it possible to run the same model multiple times while keeping track of
-all random variables correctly, i.e. without name clashes.
+!!! warning
+    It's generally recommended to use [`prefix(::Model, x)`](@ref) or
+    [`@prefix(model, prefix_expr)`](@ref) in combination with `@returned_quantities`
+    to ensure that the variables in `model` are unique and do not clash with other variables in the
+    parent model or in other submodels.
 
 # Examples
 
@@ -308,8 +307,8 @@ julia> @model function demo1(x)
        end;
 
 julia> @model function demo2(x, y, z)
-            a = @returned_quantities prefix="sub1" demo1(x)
-            b = @returned_quantities prefix="sub2" demo1(y)
+            a = @returned_quantities prefix(demo1(x), Val{:sub1}())
+            b = @returned_quantities prefix(demo1(y), Val{:sub2}())
             return z ~ Uniform(-a, b)
        end;
 ```
