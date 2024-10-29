@@ -303,7 +303,7 @@ If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for p
 """
 prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
 function prefix(model::Model, ::Val{x}) where {x}
-    contextualize(model, PrefixContext{Symbol(x)}(model.context))
+    return contextualize(model, PrefixContext{Symbol(x)}(model.context))
 end
 
 """
