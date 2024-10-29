@@ -1051,7 +1051,9 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
         evaluate!!(
             model,
             SimpleVarInfo{Float64}(OrderedDict()),
-            SamplingContext(rng, SampleFromPrior(), model.context),
+            # NOTE: Use `leafcontext` here so we a) avoid overriding the leaf context of `model`,
+            # and b) avoid double-stacking the parent contexts.
+            SamplingContext(rng, SampleFromPrior(), leafcontext(model.context)),
         ),
     )
     return values_as(x, T)
