@@ -363,21 +363,21 @@ julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
 true
 
 julia> # Using a static string.
-       @model submodel_prefix_string() = a = @returned_quantities @prefix inner() "my prefix"
+       @model submodel_prefix_string() = a = @returned_quantities @prefix(inner(), "my prefix")
 submodel_prefix_string (generic function with 2 methods)
 
 julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
 true
 
 julia> # Using string interpolation.
-       @model submodel_prefix_interpolation() = a = @returned_quantities @prefix inner() "\$(nameof(inner()))"
+       @model submodel_prefix_interpolation() = a = @returned_quantities @prefix(inner(), "\$(nameof(inner()))")
 submodel_prefix_interpolation (generic function with 2 methods)
 
 julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
 true
 
 julia> # Or using some arbitrary expression.
-       @model submodel_prefix_expr() = a = @returned_quantities prefix=1 + 2 inner()
+       @model submodel_prefix_expr() = a = @returned_quantities @prefix(inner(), 1 + 2)
 submodel_prefix_expr (generic function with 2 methods)
 
 julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
@@ -385,37 +385,27 @@ true
 ```
 """
 macro returned_quantities(expr)
-    return returned_quantities_expr(:(prefix = false), expr)
-end
-
-macro returned_quantities(prefix_expr, expr)
-    return returned_quantities_expr(prefix_expr, expr)
+    return returned_quantities_expr(expr)
 end
 
 """
-    @returned_quantities_expr model
+    returned_quantities_expr(model_expr[, ctx_expr])
 
 Returns an expression that captures the return-values of a model in addition to the varinfo.
-"""
-function returned_quantities_expr(prefix_expr, expr, ctx=esc(:__context__))
-    prefix_left, prefix = getargs_assignment(prefix_expr)
-    if prefix_left !== :prefix
-        error("$(prefix_left) is not a valid kwarg")
-    end
 
+!!! warning
+    This is only meant to be used in the body of `@model`.
+"""
+function returned_quantities_expr(model_expr, ctx_expr=esc(:__context__))
     # The user expects `@returned_quantities ...` to return the
     # return-value of the `...`, hence we need to capture
     # the return-value and handle it correctly.
     @gensym retval
 
-    # Prefix.
-    if prefix !== nothing
-        ctx = prefix_submodel_context(prefix, ctx)
-    end
     return quote
         # Evaluate the model and capture the return values + varinfo.
         $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
-            $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
+            $(esc(model_expr)), $(esc(:__varinfo__)), $(ctx_expr)
         )
 
         # Return the return-value of the model.
