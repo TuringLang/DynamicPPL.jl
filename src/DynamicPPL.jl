@@ -199,6 +199,8 @@ include("values_as_in_model.jl")
 include("debug_utils.jl")
 using .DebugUtils
 
+include("deprecated.jl")
+
 if !isdefined(Base, :get_extension)
     using Requires
 end

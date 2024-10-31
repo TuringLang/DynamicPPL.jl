@@ -1,0 +1,1 @@
+@deprecate generated_quantities returned_quantities

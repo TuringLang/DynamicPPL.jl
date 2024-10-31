@@ -1206,9 +1206,9 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
-    generated_quantities(model::Model, parameters::NamedTuple)
-    generated_quantities(model::Model, values, keys)
-    generated_quantities(model::Model, values, keys)
+    returned_quantities(model::Model, parameters::NamedTuple)
+    returned_quantities(model::Model, values, keys)
+    returned_quantities(model::Model, values, keys)
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
 
@@ -1233,18 +1233,18 @@ julia> model = demo(randn(10));
 
 julia> parameters = (; s = 1.0, m_shifted=10.0);
 
-julia> generated_quantities(model, parameters)
+julia> returned_quantities(model, parameters)
 (0.0,)
 
-julia> generated_quantities(model, values(parameters), keys(parameters))
+julia> returned_quantities(model, values(parameters), keys(parameters))
 (0.0,)
 ```
 """
-function generated_quantities(model::Model, parameters::NamedTuple)
+function returned_quantities(model::Model, parameters::NamedTuple)
     fixed_model = fix(model, parameters)
     return fixed_model()
 end
 
-function generated_quantities(model::Model, values, keys)
-    return generated_quantities(model, NamedTuple{keys}(values))
+function returned_quantities(model::Model, values, keys)
+    return returned_quantities(model, NamedTuple{keys}(values))
 end
