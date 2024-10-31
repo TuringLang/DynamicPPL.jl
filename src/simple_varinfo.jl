@@ -322,15 +322,17 @@ Base.getindex(vi::SimpleVarInfo, vn::VarName) = getindex_internal(vi, vn)
 function Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
     return map(Base.Fix1(getindex, vi), vns)
 end
-# HACK: Needed to disambiguiate.
+# HACK: Needed to disambiguate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
 getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
 # `AbstractDict`
-function getindex_internal(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    return nested_getindex(vi.values, vn)
+function getindex_internal(
+    vi::SimpleVarInfo{<:Union{AbstractDict,VarNamedVector}}, vn::VarName
+)
+    return getvalue(vi.values, vn)
 end
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
@@ -399,12 +401,26 @@ end
 function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
-    r,
+    value,
     dist::Distribution,
     gidset::Set{Selector},
 )
-    vi.values[vn] = r
+    vi.values[vn] = value
     return vi
+end
+
+function BangBang.push!!(
+    vi::SimpleVarInfo{<:VarNamedVector},
+    vn::VarName,
+    value,
+    dist::Distribution,
+    gidset::Set{Selector},
+)
+    # The semantics of push!! for SimpleVarInfo and VarNamedVector are different. For
+    # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
+    # Hence we need to call update!! here, which has the same semantics as push!! does for
+    # SimpleVarInfo.
+    return Accessors.@set vi.values = setindex!!(vi.values, value, vn)
 end
 
 const SimpleOrThreadSafeSimple{T,V,C} = Union{
@@ -423,22 +439,17 @@ function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
     return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
 end
 
-function _subset(x::AbstractDict, vns)
+function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
     vns_present = collect(keys(x))
-    vns_found = mapreduce(vcat, vns) do vn
+    vns_found = mapreduce(vcat, vns; init=VN[]) do vn
         return filter(Base.Fix1(subsumes, vn), vns_present)
     end
-
-    # NOTE: This `vns` to be subsume varnames explicitly present in `x`.
-    if isempty(vns_found)
-        throw(
-            ArgumentError(
-                "Cannot subset `AbstractDict` with `VarName` which does not subsume any keys.",
-            ),
-        )
-    end
     C = ConstructionBase.constructorof(typeof(x))
-    return C(vn => x[vn] for vn in vns_found)
+    if isempty(vns_found)
+        return C()
+    else
+        return C(vn => x[vn] for vn in vns_found)
+    end
 end
 
 function _subset(x::NamedTuple, vns)
@@ -455,6 +466,8 @@ function _subset(x::NamedTuple, vns)
     syms = map(getsym, vns)
     return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
 end
+
+_subset(x::VarNamedVector, vns) = subset(x, vns)
 
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
@@ -562,6 +575,9 @@ function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
 end
 function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
     return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
+end
+function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
+    return values_as(vi.values, T)
 end
 
 """
@@ -708,3 +724,5 @@ end
 function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
     return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
 end
+
+has_varnamedvector(vi::SimpleVarInfo) = vi.values isa VarNamedVector

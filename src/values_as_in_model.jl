@@ -177,7 +177,7 @@ julia> # Approach 1: Convert back to constrained space using `invlink` and extra
 julia> # (×) Fails! Because `VarInfo` _saves_ the original distributions
        # used in the very first model evaluation, hence the support of `y`
        # is not updated even though `x` has changed.
-       lb ≤ varinfo_invlinked[@varname(y)] ≤ ub
+       lb ≤ first(varinfo_invlinked[@varname(y)]) ≤ ub
 false
 
 julia> # Approach 2: Extract realizations using `values_as_in_model`.

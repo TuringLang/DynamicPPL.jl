@@ -295,7 +295,7 @@ julia> # Just use an example model to construct the `VarInfo` because we're lazy
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
 julia> # For the sake of brevity, let's just check the type.
-       md = values_as(vi); md.s isa DynamicPPL.Metadata
+       md = values_as(vi); md.s isa Union{DynamicPPL.Metadata, DynamicPPL.VarNamedVector}
 true
 
 julia> values_as(vi, NamedTuple)
@@ -321,7 +321,7 @@ julia> # Just use an example model to construct the `VarInfo` because we're lazy
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
 julia> # For the sake of brevity, let's just check the type.
-       values_as(vi) isa DynamicPPL.Metadata
+       values_as(vi) isa Union{DynamicPPL.Metadata, Vector}
 true
 
 julia> values_as(vi, NamedTuple)
@@ -349,7 +349,7 @@ Determine the default `eltype` of the values returned by `vi[spl]`.
     This should generally not be called explicitly, as it's only used in
     [`matchingvalue`](@ref) to determine the default type to use in place of
     type-parameters passed to the model.
-    
+
     This method is considered legacy, and is likely to be deprecated in the future.
 """
 function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior})
@@ -362,6 +362,13 @@ function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromP
     end
     return eltype(T)
 end
+
+"""
+    has_varnamedvector(varinfo::VarInfo)
+
+Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
+"""
+has_varnamedvector(vi::AbstractVarInfo) = false
 
 # TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
 # the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
@@ -554,7 +561,7 @@ end
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`. 
+Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.
 
@@ -573,7 +580,7 @@ end
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
-Transform the variables in `vi` to their constrained space, using the (inverse of) 
+Transform the variables in `vi` to their constrained space, using the (inverse of)
 transformation `t`, mutating `vi` if possible.
 
 If `t` is not provided, `default_transformation(model, vi)` will be used.

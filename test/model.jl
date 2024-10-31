@@ -122,7 +122,6 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                 @test logjoints[i] ≈
                     DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
-            println("\n model $(model) passed !!! \n")
         end
     end
 
@@ -200,10 +199,10 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
-    @testset "Dynamic constraints" begin
+    @testset "Dynamic constraints, Metadata" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        vi = VarInfo(model)
         spl = SampleFromPrior()
+        vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata())
         link!!(vi, spl, model)
 
         for i in 1:10
@@ -213,6 +212,14 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)
+        end
+    end
+
+    @testset "Dynamic constraints, VectorVarInfo" begin
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        for i in 1:10
+            vi = VarInfo(model)
+            @test vi[@varname(x)] >= vi[@varname(m)]
         end
     end
 
@@ -324,7 +331,6 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         chain = MCMCChains.Chains(
             permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
         )
-        display(chain)
 
         # Test!
         results = generated_quantities(model, chain)
@@ -345,7 +351,6 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             vcat(syms, [:y]);
             info=(varname_to_symbol=vns_to_syms_with_extra,),
         )
-        display(chain_with_extra)
         # Test!
         results = generated_quantities(model, chain_with_extra)
         for (x_true, result) in zip(xs, results)
@@ -358,6 +363,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             models_to_test = [
                 DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
+            context = DefaultContext()
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -366,18 +372,16 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                     DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    @test (
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()));
+                    @test begin
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo, context))
                         true
-                    )
+                    end
 
                     varinfo_linked = DynamicPPL.link(varinfo, model)
-                    @test (
-                        @inferred(
-                            DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext())
-                        );
+                    @test begin
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked, context))
                         true
-                    )
+                    end
                 end
             end
         end

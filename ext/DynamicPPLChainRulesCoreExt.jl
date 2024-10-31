@@ -24,4 +24,6 @@ ChainRulesCore.@non_differentiable DynamicPPL.updategid!(
 # No need + causes issues for some AD backends, e.g. Zygote.
 ChainRulesCore.@non_differentiable DynamicPPL.infer_nested_eltype(x)
 
+ChainRulesCore.@non_differentiable DynamicPPL.recontiguify_ranges!(ranges)
+
 end # module

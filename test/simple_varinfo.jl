@@ -56,13 +56,43 @@
             @test !haskey(svi, @varname(m.a[2]))
             @test !haskey(svi, @varname(m.a.b))
         end
+
+        @testset "VarNamedVector" begin
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => 1.0))
+            @test getlogp(svi) == 0.0
+            @test haskey(svi, @varname(m))
+            @test !haskey(svi, @varname(m[1]))
+
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => [1.0]))
+            @test getlogp(svi) == 0.0
+            @test haskey(svi, @varname(m))
+            @test haskey(svi, @varname(m[1]))
+            @test !haskey(svi, @varname(m[2]))
+            @test svi[@varname(m)][1] == svi[@varname(m[1])]
+
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m.a) => [1.0]))
+            @test haskey(svi, @varname(m))
+            @test haskey(svi, @varname(m.a))
+            @test haskey(svi, @varname(m.a[1]))
+            @test !haskey(svi, @varname(m.a[2]))
+            @test !haskey(svi, @varname(m.a.b))
+            # The implementation of haskey and getvalue fo VarNamedVector is incomplete, the
+            # next test is here to remind of us that.
+            svi = SimpleVarInfo(
+                push!!(DynamicPPL.VarNamedVector(), @varname(m.a.b) => [1.0])
+            )
+            @test_broken !haskey(svi, @varname(m.a.b.c.d))
+        end
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
                                                           DynamicPPL.TestUtils.DEMO_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$(typeof(vi))" for vi in (
-            SimpleVarInfo(Dict()), SimpleVarInfo(values_constrained), VarInfo(model)
+            SimpleVarInfo(Dict()),
+            SimpleVarInfo(values_constrained),
+            SimpleVarInfo(DynamicPPL.VarNamedVector()),
+            VarInfo(model),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
@@ -115,12 +145,19 @@
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
+        vnv = DynamicPPL.VarNamedVector()
+        for (k, v) in pairs(DynamicPPL.TestUtils.rand_prior_true(model))
+            vnv = push!!(vnv, VarName{k}() => v)
+        end
+        svi_vnv = SimpleVarInfo(vnv)
 
         @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
             svi_nt,
             svi_dict,
-            DynamicPPL.settrans!!(svi_nt, true),
-            DynamicPPL.settrans!!(svi_dict, true),
+            svi_vnv,
+            DynamicPPL.settrans!!(deepcopy(svi_nt), true),
+            DynamicPPL.settrans!!(deepcopy(svi_dict), true),
+            DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
         )
             # RandOM seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
@@ -195,30 +232,34 @@
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
 
         # Initialize.
-        svi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        svi = last(DynamicPPL.evaluate!!(model, svi, SamplingContext()))
+        svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        svi_nt = last(DynamicPPL.evaluate!!(model, svi_nt, SamplingContext()))
+        svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
+        svi_vnv = last(DynamicPPL.evaluate!!(model, svi_vnv, SamplingContext()))
 
-        # Sample with large variations in unconstrained space.
-        for i in 1:10
-            for vn in keys(svi)
-                svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+        for svi in (svi_nt, svi_vnv)
+            # Sample with large variations in unconstrained space.
+            for i in 1:10
+                for vn in keys(svi)
+                    svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+                end
+                retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
+                @test retval.m == svi[@varname(m)]  # `m` is unconstrained
+                @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
+
+                retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, retval.m, retval.x
+                )
+
+                # Realizations from model should all be equal to the unconstrained realization.
+                for vn in DynamicPPL.TestUtils.varnames(model)
+                    @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
+                end
+
+                # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
+                lp = getlogp(svi)
+                @test lp ≈ lp_true
             end
-            retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
-            @test retval.m == svi[@varname(m)]  # `m` is unconstrained
-            @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
-
-            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
-                model, retval.m, retval.x
-            )
-
-            # Realizations from model should all be equal to the unconstrained realization.
-            for vn in DynamicPPL.TestUtils.varnames(model)
-                @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
-            end
-
-            # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
-            lp = getlogp(svi)
-            @test lp ≈ lp_true
         end
     end
 

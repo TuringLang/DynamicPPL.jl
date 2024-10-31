@@ -37,20 +37,35 @@ function setup_varinfos(
     model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
 )
     # VarInfo
-    vi_untyped = VarInfo()
-    model(vi_untyped)
-    vi_typed = DynamicPPL.TypedVarInfo(vi_untyped)
+    vi_untyped_metadata = VarInfo(DynamicPPL.Metadata())
+    vi_untyped_vnv = VarInfo(DynamicPPL.VarNamedVector())
+    model(vi_untyped_metadata)
+    model(vi_untyped_vnv)
+    vi_typed_metadata = DynamicPPL.TypedVarInfo(vi_untyped_metadata)
+    vi_typed_vnv = DynamicPPL.TypedVarInfo(vi_untyped_vnv)
+
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
     svi_untyped = SimpleVarInfo(OrderedDict())
+    svi_vnv = SimpleVarInfo(DynamicPPL.VarNamedVector())
 
     # SimpleVarInfo{<:Any,<:Ref}
     svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
     svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
+    svi_vnv_ref = SimpleVarInfo(DynamicPPL.VarNamedVector(), Ref(getlogp(svi_vnv)))
 
-    lp = getlogp(vi_typed)
+    lp = getlogp(vi_typed_metadata)
     varinfos = map((
-        vi_untyped, vi_typed, svi_typed, svi_untyped, svi_typed_ref, svi_untyped_ref
+        vi_untyped_metadata,
+        vi_untyped_vnv,
+        vi_typed_metadata,
+        vi_typed_vnv,
+        svi_typed,
+        svi_untyped,
+        svi_vnv,
+        svi_typed_ref,
+        svi_untyped_ref,
+        svi_vnv_ref,
     )) do vi
         # Set them all to the same values.
         DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
@@ -1040,6 +1055,46 @@ function test_context_interface(context)
         @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
             context
     end
+end
+
+"""
+Context that multiplies each log-prior by mod
+used to test whether varwise_logpriors respects child-context.
+"""
+struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
+    mod::T
+    context::Ctx
+end
+function TestLogModifyingChildContext(
+    mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
+)
+    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
+end
+
+DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
+DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
+function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
+    return TestLogModifyingChildContext(context.mod, child)
+end
+function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
+    value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
+    return value, logp * context.mod, vi
+end
+function DynamicPPL.dot_tilde_assume(
+    context::TestLogModifyingChildContext, right, left, vn, vi
+)
+    value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
+    return value, logp * context.mod, vi
+end
+function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+    logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
+    return logp * context.mod, vi
+end
+function DynamicPPL.dot_tilde_observe(
+    context::TestLogModifyingChildContext, right, left, vi
+)
+    logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
+    return logp * context.mod, vi
 end
 
 end

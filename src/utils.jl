@@ -48,7 +48,7 @@ true
     i.e., regardless of whether you evaluate the log prior, the log likelihood or the log joint density.
     If you would like to avoid this behaviour you should check the evaluation context.
     It can be accessed with the internal variable `__context__`.
-    For instance, in the following example the log density is not accumulated when only the log prior is computed:  
+    For instance, in the following example the log density is not accumulated when only the log prior is computed:
     ```jldoctest; setup = :(using Distributions)
     julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
 
@@ -225,21 +225,89 @@ invlink_transform(dist) = inverse(link_transform(dist))
 # Helper functions for vectorize/reconstruct values #
 #####################################################
 
-# Useful transformation going from the flattened representation.
-struct FromVec{Size} <: Bijectors.Bijector
-    size::Size
+"""
+    UnwrapSingletonTransform(input_size::InSize)
+
+A transformation that unwraps a singleton array, returning a scalar.
+
+The `input_size` field is the expected size of the input. In practice this only determines
+the number of indices, since all dimensions must be 1 for a singleton. `input_size` is used
+to check the validity of the input, but also to determine the correct inverse operation.
+
+By default `input_size` is `(1,)`, in which case `tovec` is the inverse.
+"""
+struct UnwrapSingletonTransform{InSize} <: Bijectors.Bijector
+    input_size::InSize
 end
 
-FromVec(x::Union{Real,AbstractArray}) = FromVec(size(x))
+UnwrapSingletonTransform() = UnwrapSingletonTransform((1,))
+
+function (f::UnwrapSingletonTransform)(x)
+    if size(x) != f.input_size
+        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
+    end
+    return only(x)
+end
+
+Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x) = (f(x), 0)
+function Bijectors.with_logabsdet_jacobian(
+    inv_f::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
+)
+    f = inv_f.orig
+    return (reshape([x], f.input_size), 0)
+end
+
+"""
+    ReshapeTransform(input_size::InSize, output_size::OutSize)
+
+A `Bijector` that transforms arrays of size `input_size` to arrays of size `output_size`.
+
+`input_size` is not needed for the implementation of the transformation. It is only used to
+check that the input is of the expected size, and to determine the correct inverse
+operation.
+
+By default `input_size` is the vectorized version of `output_size`. In this case this
+transformation is the inverse of `tovec` called on an array.
+"""
+struct ReshapeTransform{InSize,OutSize} <: Bijectors.Bijector
+    input_size::InSize
+    output_size::OutSize
+end
+
+function ReshapeTransform(output_size::Tuple)
+    input_size = (prod(output_size),)
+    return ReshapeTransform(input_size, output_size)
+end
+
+ReshapeTransform(x::AbstractArray) = ReshapeTransform(size(x))
 
 # TODO: Should we materialize the `reshape`?
-(f::FromVec)(x) = reshape(x, f.size)
-(f::FromVec{Tuple{}})(x) = only(x)
-# TODO: Specialize for `Tuple{<:Any}` since this correspond to a `Vector`.
+function (f::ReshapeTransform)(x)
+    if size(x) != f.input_size
+        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
+    end
+    if f.output_size == ()
+        # Specially handle the case where x is a singleton array, see
+        # https://github.com/JuliaDiff/ReverseDiff.jl/issues/265 and
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/698
+        return fill(x[], ())
+    else
+        # The call to `tovec` is only needed in case `x` is a scalar.
+        return reshape(tovec(x), f.output_size)
+    end
+end
 
-Bijectors.with_logabsdet_jacobian(f::FromVec, x) = (f(x), 0)
-# We want to use the inverse of `FromVec` so it preserves the size information.
-Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:FromVec}, x) = (tovec(x), 0)
+function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
+    f = inv_f.orig
+    inverse = ReshapeTransform(f.output_size, f.input_size)
+    return inverse(x)
+end
+
+Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), 0)
+
+function Bijectors.with_logabsdet_jacobian(inv_f::Bijectors.Inverse{<:ReshapeTransform}, x)
+    return (inv_f(x), 0)
+end
 
 struct ToChol <: Bijectors.Bijector
     uplo::Char
@@ -247,22 +315,30 @@ end
 
 Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
 Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
+function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)
+    return error(
+        "Inverse{ToChol} is only defined for Cholesky factorizations. " *
+        "Got a $(typeof(y)) instead.",
+    )
+end
 
 """
     from_vec_transform(x)
 
 Return the transformation from the vector representation of `x` to original representation.
 """
-from_vec_transform(x::Union{Real,AbstractArray}) = from_vec_transform_for_size(size(x))
-from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ FromVec(size(C.UL))
+from_vec_transform(x::AbstractArray) = from_vec_transform_for_size(size(x))
+from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ ReshapeTransform(size(C.UL))
+from_vec_transform(::Real) = UnwrapSingletonTransform()
 
 """
     from_vec_transform_for_size(sz::Tuple)
 
-Return the transformation from the vector representation of a realization of size `sz` to original representation.
+Return the transformation from the vector representation of a realization of size `sz` to
+original representation.
 """
-from_vec_transform_for_size(sz::Tuple) = FromVec(sz)
-from_vec_transform_for_size(::Tuple{()}) = FromVec(())
+from_vec_transform_for_size(sz::Tuple) = ReshapeTransform(sz)
+# TODO(mhauru) Is the below used? If not, this function can be removed.
 from_vec_transform_for_size(::Tuple{<:Any}) = identity
 
 """
@@ -272,7 +348,8 @@ Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
-from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ FromVec(size(dist))
+from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
+from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 """
     from_vec_transform(f, size::Tuple)
@@ -298,6 +375,19 @@ function from_linked_vec_transform(dist::Distribution)
     f_invlink = invlink_transform(dist)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
+end
+
+# UnivariateDistributions need to be handled as a special case, because size(dist) is (),
+# which makes the usual machinery think we are dealing with a 0-dim array, whereas in
+# actuality we are dealing with a scalar.
+# TODO(mhauru) Hopefully all this can go once the old Gibbs sampler is removed and
+# VarNamedVector takes over from Metadata.
+function from_linked_vec_transform(dist::UnivariateDistribution)
+    f_invlink = invlink_transform(dist)
+    f_vec = from_vec_transform(inverse(f_invlink), size(dist))
+    f_combined = f_invlink ∘ f_vec
+    sz = Bijectors.output_size(f_combined, size(dist))
+    return UnwrapSingletonTransform(sz) ∘ f_combined
 end
 
 # Specializations that circumvent the `from_vec_transform` machinery.
@@ -854,6 +944,7 @@ end
 Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
 """
 float_type_with_fallback(::Type) = Real
+float_type_with_fallback(::Type{Union{}}) = Real
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
@@ -1026,6 +1117,46 @@ julia> # `Cholesky` with upper-triangular
 """
 function varname_and_value_leaves(vn::VarName, x)
     return Iterators.map(value, Iterators.flatten(varname_and_value_leaves_inner(vn, x)))
+end
+
+"""
+    varname_and_value_leaves(container)
+
+Return an iterator over all varname-value pairs that are represented by `container`.
+
+This is the same as [`varname_and_value_leaves(vn::VarName, x)`](@ref) but over a container
+containing multiple varnames.
+
+See also: [`varname_and_value_leaves(vn::VarName, x)`](@ref).
+
+# Examples
+```jldoctest varname-and-value-leaves-container
+julia> using DynamicPPL: varname_and_value_leaves
+
+julia> # With an `OrderedDict`
+       dict = OrderedDict(@varname(y) => 1, @varname(z) => [[2.0], [3.0]]);
+
+julia> foreach(println, varname_and_value_leaves(dict))
+(y, 1)
+(z[1][1], 2.0)
+(z[2][1], 3.0)
+
+julia> # With a `NamedTuple`
+       nt = (y = 1, z = [[2.0], [3.0]]);
+
+julia> foreach(println, varname_and_value_leaves(nt))
+(y, 1)
+(z[1][1], 2.0)
+(z[2][1], 3.0)
+```
+"""
+function varname_and_value_leaves(container::OrderedDict)
+    return Iterators.flatten(varname_and_value_leaves(k, v) for (k, v) in container)
+end
+function varname_and_value_leaves(container::NamedTuple)
+    return Iterators.flatten(
+        varname_and_value_leaves(VarName{k}(), v) for (k, v) in pairs(container)
+    )
 end
 
 """
