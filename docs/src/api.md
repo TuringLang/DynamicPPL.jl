@@ -126,10 +126,10 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`generated_quantities`](@ref).
+Return values of the model function for a collection of samples can be obtained with [`returned_quantities`](@ref).
 
 ```@docs
-generated_quantities
+returned_quantities
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
