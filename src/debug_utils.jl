@@ -5,6 +5,7 @@ using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
 using Random: Random
 using Accessors: Accessors
+using InteractiveUtils: InteractiveUtils
 
 using DocStringExtensions
 using Distributions
@@ -676,6 +677,38 @@ function has_static_constraints(
 
     # Check if the distributions are the same across all runs.
     return all_the_same(transforms)
+end
+
+"""
+    model_warntype(model[, varinfo, context])
+
+Check the type stability of the model's evaluator, warning about any potential issues.
+
+This simply calls `@code_warntype` on the model's evaluator, filling in internal arguments where needed.
+"""
+function model_warntype(model::Model, varinfo::AbstractVarInfo=VarInfo(model), context::AbstractContext=DefaultContext())
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
+    return if isempty(kwargs)
+        InteractiveUtils.@code_warntype model.f(args...)
+    else
+        InteractiveUtils.@code_warntype model.f(args...; kwargs...)
+    end
+end
+
+"""
+    model_typed(model[, varinfo, context])
+
+Return the type inference for the model's evaluator.
+
+This simply calls `@code_typed` on the model's evaluator, filling in internal arguments where needed.
+"""
+function model_typed(model::Model, varinfo::AbstractVarInfo=VarInfo(model), context::AbstractContext=DefaultContext())
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
+    return if isempty(kwargs)
+        InteractiveUtils.@code_typed model.f(args...)
+    else
+        InteractiveUtils.@code_typed model.f(args...; kwargs...)
+    end
 end
 
 end
