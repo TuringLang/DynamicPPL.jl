@@ -686,7 +686,11 @@ Check the type stability of the model's evaluator, warning about any potential i
 
 This simply calls `@code_warntype` on the model's evaluator, filling in internal arguments where needed.
 """
-function model_warntype(model::Model, varinfo::AbstractVarInfo=VarInfo(model), context::AbstractContext=DefaultContext())
+function model_warntype(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext(),
+)
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
         InteractiveUtils.@code_warntype model.f(args...)
@@ -702,7 +706,11 @@ Return the type inference for the model's evaluator.
 
 This simply calls `@code_typed` on the model's evaluator, filling in internal arguments where needed.
 """
-function model_typed(model::Model, varinfo::AbstractVarInfo=VarInfo(model), context::AbstractContext=DefaultContext())
+function model_typed(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext(),
+)
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
         InteractiveUtils.@code_typed model.f(args...)
