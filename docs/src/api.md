@@ -24,7 +24,6 @@ One can nest models and call another model inside the model function with [`@sub
 In the context of nesting models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
 
 ```@docs
-prefix(::DynamicPPL.Model, x)
 @prefix
 ```
 
