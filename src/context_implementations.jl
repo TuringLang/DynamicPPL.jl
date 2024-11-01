@@ -77,44 +77,6 @@ function tilde_assume(
     return tilde_assume(rng, childcontext(context), args...)
 end
 
-function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(PriorContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
-end
-
-function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(LikelihoodContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    vi,
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
-end
 function tilde_assume(::LikelihoodContext, right, vn, vi)
     return assume(NoDist(right), vn, vi)
 end
@@ -328,37 +290,6 @@ function dot_tilde_assume(
 end
 
 # `LikelihoodContext`
-function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
-    end
-end
-
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
     return dot_assume(nodist(right), left, vn, vi)
 end
@@ -366,38 +297,6 @@ function dot_tilde_assume(
     rng::Random.AbstractRNG, context::LikelihoodContext, sampler, right, left, vn, vi
 )
     return dot_assume(rng, sampler, nodist(right), vn, left, vi)
-end
-
-# `PriorContext`
-function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(PriorContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
-    end
 end
 
 # `PrefixContext`
