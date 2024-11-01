@@ -501,6 +501,13 @@ NodeTrait(::FixedContext) = IsParent()
 childcontext(context::FixedContext) = context.context
 setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
 
+has_fixed_symbol(context::FixedContext, vn::VarName) = has_symbol(context.values, vn)
+
+has_symbol(d::AbstractDict, vn::VarName) = haskey(d, vn)
+@generated function has_symbol(::NamedTuple{names}, ::VarName{sym}) where {names, sym}
+    return sym in names
+end
+
 """
     hasfixed(context::AbstractContext, vn::VarName)
 

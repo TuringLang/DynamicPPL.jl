@@ -312,8 +312,13 @@ end
 
 # `FixedContext`
 function dot_tilde_assume(context::FixedContext, right, left, vns, vi)
+    if !has_fixed_symbol(context, first(vns))
+        # Defer to `childcontext`.
+        return tilde_assume(childcontext(context), right, left, vns, vi)
+    end
+
     # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
-    # So we need to check each of the vns.
+    # We _might_ also have some of the variables fixed, but not all.
     logp = 0
     # TODO(torfjelde): Add a check to see if the `Symbol` of `vns` exists in `FixedContext`.
     # If the `Symbol` is not present, we can just skip this check completely. Such a check can
@@ -327,7 +332,9 @@ function dot_tilde_assume(context::FixedContext, right, left, vns, vi)
                 left[I_left...] = getfixed(context, vn)
             else
                 # Defer to `tilde_assume`.
-                left[I_left...], logp_inner, vi = tilde_assume(context, right_bc[I_right...], vn, vi)
+                left[I_left...], logp_inner, vi = tilde_assume(
+                    childcontext(context), right_bc[I_right...], vn, vi
+                )
                 logp += logp_inner
             end
         end
@@ -336,7 +343,14 @@ function dot_tilde_assume(context::FixedContext, right, left, vns, vi)
     return left, logp, vi
 end
 
-function dot_tilde_assume(rng::Random.AbstractRNG, context::FixedContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, context::FixedContext, sampler, right, left, vns, vi
+)
+
+    if !has_fixed_symbol(context, first(vns))
+        # Defer to `childcontext`.
+        return tilde_assume(rng, childcontext(context), sampler, right, left, vns, vi)
+    end
     # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
     # So we need to check each of the vns.
     logp = 0
@@ -352,7 +366,9 @@ function dot_tilde_assume(rng::Random.AbstractRNG, context::FixedContext, sample
                 left[I_left...] = getfixed(context, vn)
             else
                 # Defer to `tilde_assume`.
-                left[I_left...], logp_inner, vi = tilde_assume(rng, context, sampler, right_bc[I_right...], vn, vi)
+                left[I_left...], logp_inner, vi = tilde_assume(
+                    rng, childcontext(context), sampler, right_bc[I_right...], vn, vi
+                )
                 logp += logp_inner
             end
         end
