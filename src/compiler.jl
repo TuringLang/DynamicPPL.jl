@@ -235,6 +235,17 @@ function unwrap_right_left_vns(
     left::AbstractArray,
     vn::VarName,
 )
+    # Need to check that we don't end up double-counting log-probabilities.
+    combined_axes = Broadcast.combine_axes(left, right)
+    if prod(length, combined_axes) > length(left)
+        throw(
+            ArgumentError(
+                "a `.~` statement cannot result in a broadcasted expression with more elements than the left-hand side",
+            ),
+        )
+    end
+
+    # Extract the sub-varnames.
     vns = map(CartesianIndices(left)) do i
         return Accessors.IndexLens(Tuple(i)) ∘ vn
     end

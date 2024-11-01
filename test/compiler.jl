@@ -729,4 +729,13 @@ module Issue537 end
         res = model()
         @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
     end
+
+    @testset "invalid .~ expressions" begin
+        @model function demo_with_invalid_dot_tilde()
+            m = Matrix{Float64}(undef, 1, 2)
+            m .~ [Normal(); Normal()]
+        end
+
+        @test_throws ArgumentError demo_with_invalid_dot_tilde()()
+    end
 end
