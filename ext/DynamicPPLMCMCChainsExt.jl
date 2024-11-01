@@ -108,6 +108,7 @@ function DynamicPPL.generated_quantities(
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
+        # TODO: Use `fix` once we've addressed https://github.com/TuringLang/DynamicPPL.jl/issues/702.
         # Update the varinfo with the current sample and make variables not present in `chain`
         # to be sampled.
         DynamicPPL.setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
