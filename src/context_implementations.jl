@@ -304,10 +304,61 @@ function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
     return dot_tilde_assume(context.context, right, left, prefix.(Ref(context), vn), vi)
 end
 
-function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, vi)
+function dot_tilde_assume(rng::Random.AbstractRNG, context::PrefixContext, sampler, right, left, vn, vi)
     return dot_tilde_assume(
         rng, context.context, sampler, right, left, prefix.(Ref(context), vn), vi
     )
+end
+
+# `FixedContext`
+function dot_tilde_assume(context::FixedContext, right, left, vns, vi)
+    # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
+    # So we need to check each of the vns.
+    logp = 0
+    # TODO(torfjelde): Add a check to see if the `Symbol` of `vns` exists in `FixedContext`.
+    # If the `Symbol` is not present, we can just skip this check completely. Such a check can
+    # then be compiled away in cases where the `Symbol` is not present.
+    left_bc = Broadcast.broadcastable(left)
+    right_bc = Broadcast.broadcastable(right)
+    for I_left in Iterators.product(Broadcast.broadcast_axes(left_bc)...)
+        for I_right in Iterators.product(Broadcast.broadcast_axes(right_bc)...)
+            vn = vns[I_left...]
+            if hasfixed(context, vn)
+                left[I_left...] = getfixed(context, vn)
+            else
+                # Defer to `tilde_assume`.
+                left[I_left...], logp_inner, vi = tilde_assume(context, right_bc[I_right...], vn, vi)
+                logp += logp_inner
+            end
+        end
+    end
+
+    return left, logp, vi
+end
+
+function dot_tilde_assume(rng::Random.AbstractRNG, context::FixedContext, sampler, right, left, vns, vi)
+    # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
+    # So we need to check each of the vns.
+    logp = 0
+    # TODO(torfjelde): Add a check to see if the `Symbol` of `vns` exists in `FixedContext`.
+    # If the `Symbol` is not present, we can just skip this check completely. Such a check can
+    # then be compiled away in cases where the `Symbol` is not present.
+    left_bc = Broadcast.broadcastable(left)
+    right_bc = Broadcast.broadcastable(right)
+    for I_left in Iterators.product(Broadcast.broadcast_axes(left_bc)...)
+        for I_right in Iterators.product(Broadcast.broadcast_axes(right_bc)...)
+            vn = vns[I_left...]
+            if hasfixed(context, vn)
+                left[I_left...] = getfixed(context, vn)
+            else
+                # Defer to `tilde_assume`.
+                left[I_left...], logp_inner, vi = tilde_assume(rng, context, sampler, right_bc[I_right...], vn, vi)
+                logp += logp_inner
+            end
+        end
+    end
+
+    return left, logp, vi
 end
 
 """
