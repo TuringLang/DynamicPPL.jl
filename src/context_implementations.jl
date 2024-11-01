@@ -304,7 +304,9 @@ function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
     return dot_tilde_assume(context.context, right, left, prefix.(Ref(context), vn), vi)
 end
 
-function dot_tilde_assume(rng::Random.AbstractRNG, context::PrefixContext, sampler, right, left, vn, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, left, vn, vi
+)
     return dot_tilde_assume(
         rng, context.context, sampler, right, left, prefix.(Ref(context), vn), vi
     )
@@ -346,7 +348,6 @@ end
 function dot_tilde_assume(
     rng::Random.AbstractRNG, context::FixedContext, sampler, right, left, vns, vi
 )
-
     if !has_fixed_symbol(context, first(vns))
         # Defer to `childcontext`.
         return tilde_assume(rng, childcontext(context), sampler, right, left, vns, vi)

@@ -733,7 +733,7 @@ module Issue537 end
     @testset "invalid .~ expressions" begin
         @model function demo_with_invalid_dot_tilde()
             m = Matrix{Float64}(undef, 1, 2)
-            m .~ [Normal(); Normal()]
+            return m .~ [Normal(); Normal()]
         end
 
         @test_throws ArgumentError demo_with_invalid_dot_tilde()()
