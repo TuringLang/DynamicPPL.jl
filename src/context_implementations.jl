@@ -402,12 +402,12 @@ end
 
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
-    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), vi)
+    return dot_tilde_assume(context.context, right, left, prefix.(Ref(context), vn), vi)
 end
 
 function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, vi)
     return dot_tilde_assume(
-        rng, context.context, sampler, right, prefix.(Ref(context), vn), vi
+        rng, context.context, sampler, right, left, prefix.(Ref(context), vn), vi
     )
 end
 
