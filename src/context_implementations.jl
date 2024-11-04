@@ -316,7 +316,7 @@ end
 function dot_tilde_assume(context::FixedContext, right, left, vns, vi)
     if !has_fixed_symbol(context, first(vns))
         # Defer to `childcontext`.
-        return tilde_assume(childcontext(context), right, left, vns, vi)
+        return dot_tilde_assume(childcontext(context), right, left, vns, vi)
     end
 
     # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
@@ -350,7 +350,7 @@ function dot_tilde_assume(
 )
     if !has_fixed_symbol(context, first(vns))
         # Defer to `childcontext`.
-        return tilde_assume(rng, childcontext(context), sampler, right, left, vns, vi)
+        return dot_tilde_assume(rng, childcontext(context), sampler, right, left, vns, vi)
     end
     # If we're reached here, then we didn't hit the initial `getfixed` call in the model body.
     # So we need to check each of the vns.
