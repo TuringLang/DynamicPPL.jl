@@ -78,10 +78,10 @@ function tilde_assume(
 end
 
 function tilde_assume(::LikelihoodContext, right, vn, vi)
-    return assume(NoDist(right), vn, vi)
+    return assume(nodist(right), vn, vi)
 end
 function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, vi)
-    return assume(rng, sampler, NoDist(right), vn, vi)
+    return assume(rng, sampler, nodist(right), vn, vi)
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
