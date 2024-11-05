@@ -709,7 +709,7 @@ function model_warntype(
 end
 
 """
-    model_codetyped(model[, varinfo, context]; optimize=true)
+    model_typed(model[, varinfo, context]; optimize=true)
 
 Return the type inference for the model's evaluator.
 
@@ -723,7 +723,7 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 # Keyword Arguments
 - `optimize::Bool`: Whether to generate optimized code. Default: `true`.
 """
-function model_codetyped(
+function model_typed(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     context::AbstractContext=DefaultContext();

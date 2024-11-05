@@ -192,7 +192,7 @@
         @model demo_with_kwargs(x; z=1) = y ~ Normal(x, z)
 
         for model in [demo_without_kwargs(1.0), demo_with_kwargs(1.0)]
-            codeinfo, retype = DynamicPPL.DebugUtils.model_codetyped(model)
+            codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model)
             @test codeinfo isa Core.CodeInfo
             @test retype <: Tuple
 

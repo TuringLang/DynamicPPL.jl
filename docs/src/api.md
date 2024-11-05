@@ -216,7 +216,7 @@ For determining whether one might have type instabilities in the model, the foll
 
 ```@docs
 DynamicPPL.DebugUtils.model_warntype
-DynamicPPL.DebugUtils.model_codetyped
+DynamicPPL.DebugUtils.model_typed
 ```
 
 ## Advanced
