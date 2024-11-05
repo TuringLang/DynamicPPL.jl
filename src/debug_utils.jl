@@ -698,13 +698,13 @@ function model_warntype(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     context::AbstractContext=DefaultContext();
-    optimize::Bool=false
+    optimize::Bool=false,
 )
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
-        InteractiveUtils.@code_warntype optimize=optimize model.f(args...)
+        InteractiveUtils.@code_warntype optimize = optimize model.f(args...)
     else
-        InteractiveUtils.@code_warntype optimize=optimize model.f(args...; kwargs...)
+        InteractiveUtils.@code_warntype optimize = optimize model.f(args...; kwargs...)
     end
 end
 
@@ -727,13 +727,13 @@ function model_codetyped(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     context::AbstractContext=DefaultContext();
-    optimize::Bool=true
+    optimize::Bool=true,
 )
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
-        InteractiveUtils.@code_typed optimize=optimize model.f(args...)
+        InteractiveUtils.@code_typed optimize = optimize model.f(args...)
     else
-        InteractiveUtils.@code_typed optimize=optimize model.f(args...; kwargs...)
+        InteractiveUtils.@code_typed optimize = optimize model.f(args...; kwargs...)
     end
 end
 
