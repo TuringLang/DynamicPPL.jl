@@ -186,4 +186,14 @@
             @test check_model(model; error_on_failure=true)
         end
     end
+
+    @testset "model_warntype & model_codetyped" begin
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        codeinfo, retype = DynamicPPL.DebugUtils.model_codetyped(model)
+        @test codeinfo isa Core.CodeInfo
+        @test retype <: Tuple
+
+        # Just make sure the following is runnable.
+        @test (DynamicPPL.DebugUtils.model_warntype(model); true)
+    end
 end
