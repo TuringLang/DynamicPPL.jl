@@ -138,24 +138,43 @@ end
     end
 
     @testset "PrefixContext" begin
-        ctx = @inferred PrefixContext{:f}(
-            PrefixContext{:e}(
-                PrefixContext{:d}(
-                    PrefixContext{:c}(
-                        PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+        @testset "prefixing" begin
+            ctx = @inferred PrefixContext{:f}(
+                PrefixContext{:e}(
+                    PrefixContext{:d}(
+                        PrefixContext{:c}(
+                            PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+                        ),
                     ),
                 ),
-            ),
-        )
-        vn = VarName{:x}()
-        vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-        @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getoptic(vn_prefixed) === getoptic(vn)
+            )
+            vn = VarName{:x}()
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
+            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
+            @test getoptic(vn_prefixed) === getoptic(vn)
 
-        vn = VarName{:x}(((1,),))
-        vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-        @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getoptic(vn_prefixed) === getoptic(vn)
+            vn = VarName{:x}(((1,),))
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
+            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
+            @test getoptic(vn_prefixed) === getoptic(vn)
+        end
+
+        context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
+        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            # Sample with the context.
+            varinfo = DynamicPPL.VarInfo()
+            DynamicPPL.evaluate!!(model, varinfo, context)
+            # Extract the resulting symbols.
+            vns_varinfo_syms = Set(map(DynamicPPL.getsym, keys(varinfo)))
+
+            # Extract the ground truth symbols.
+            vns_syms = Set([
+                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for vn in DynamicPPL.TestUtils.varnames(model)
+            ])
+
+            # Check that all variables are prefixed correctly.
+            @test vns_syms == vns_varinfo_syms
+        end
     end
 
     @testset "SamplingContext" begin
