@@ -43,7 +43,11 @@ Base.size(dist::NoDist) = Base.size(dist.dist)
 
 Distributions.rand(rng::Random.AbstractRNG, d::NoDist) = rand(rng, d.dist)
 # NOTE(torfjelde): Need this to avoid stack overflow.
-function Distributions.rand!(rng::Random.AbstractRNG, d::NoDist{Distributions.ArrayLikeVariate{N}}, x::AbstractArray{<:Real, N}) where {N}
+function Distributions.rand!(
+    rng::Random.AbstractRNG,
+    d::NoDist{Distributions.ArrayLikeVariate{N}},
+    x::AbstractArray{<:Real,N},
+) where {N}
     return Distributions.rand!(rng, d.dist, x)
 end
 Distributions.logpdf(d::NoDist{<:Univariate}, ::Real) = 0

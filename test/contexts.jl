@@ -59,7 +59,9 @@ end
         PrefixContext{:x}(DefaultContext()),
         PointwiseLogdensityContext(),
         ConditionContext((x=1.0,)),
-        ConditionContext((x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))),
+        ConditionContext(
+            (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
+        ),
         ConditionContext((x=1.0,), PrefixContext{:a}(ConditionContext((var"a.y"=2.0,)))),
         ConditionContext((x=[1.0, missing],)),
     ]
@@ -169,7 +171,8 @@ end
 
             # Extract the ground truth symbols.
             vns_syms = Set([
-                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for vn in DynamicPPL.TestUtils.varnames(model)
+                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for
+                vn in DynamicPPL.TestUtils.varnames(model)
             ])
 
             # Check that all variables are prefixed correctly.

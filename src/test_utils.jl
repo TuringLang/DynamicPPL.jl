@@ -1088,7 +1088,9 @@ TestParentContext() = TestParentContext(DefaultContext())
 DynamicPPL.NodeTrait(::TestParentContext) = DynamicPPL.IsParent()
 DynamicPPL.childcontext(context::TestParentContext) = context.context
 DynamicPPL.setchildcontext(::TestParentContext, child) = TestParentContext(child)
-Base.show(io::IO, c::TestParentContext) = print(io, "TestParentContext(", DynamicPPL.childcontext(c), ")")
+function Base.show(io::IO, c::TestParentContext)
+    return print(io, "TestParentContext(", DynamicPPL.childcontext(c), ")")
+end
 
 """
     test_context(context::AbstractContext, model::Model)
@@ -1103,19 +1105,27 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     # `NodeTrait`.
     node_trait = DynamicPPL.NodeTrait(context)
     # Throw error immediately if it it's missing a `NodeTrait` implementation.
-    node_trait isa Union{DynamicPPL.IsLeaf, DynamicPPL.IsParent} || throw(ValueError("Invalid NodeTrait: $node_trait"))
+    node_trait isa Union{DynamicPPL.IsLeaf,DynamicPPL.IsParent} ||
+        throw(ValueError("Invalid NodeTrait: $node_trait"))
 
     # The interface methods.
     if node_trait isa DynamicPPL.IsParent
         # `childcontext` and `setchildcontext`
         # With new child context
         childcontext_new = TestParentContext()
-        @test DynamicPPL.childcontext(DynamicPPL.setchildcontext(context, childcontext_new)) == childcontext_new
+        @test DynamicPPL.childcontext(
+            DynamicPPL.setchildcontext(context, childcontext_new)
+        ) == childcontext_new
     end
 
     # To see change, let's make sure we're using a different leaf context than the current.
-    leafcontext_new = DynamicPPL.leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-    @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) == leafcontext_new
+    leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
+        PriorContext()
+    else
+        DefaultContext()
+    end
+    @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
+        leafcontext_new
 
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
     # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
