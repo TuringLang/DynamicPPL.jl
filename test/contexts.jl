@@ -18,16 +18,6 @@ using DynamicPPL:
 
 using EnzymeCore
 
-# Dummy context to test nested behaviors.
-struct ParentContext{C<:AbstractContext} <: AbstractContext
-    context::C
-end
-ParentContext() = ParentContext(DefaultContext())
-DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::ParentContext) = context.context
-DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
-Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
-
 # TODO: Should we maybe put this in DPPL itself?
 function Base.iterate(context::AbstractContext)
     if NodeTrait(context) isa IsLeaf
@@ -63,88 +53,22 @@ end
     child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 
     parent_contexts = [
-        ParentContext(DefaultContext()),
+        DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         SamplingContext(),
         MiniBatchContext(DefaultContext(), 0.0),
         PrefixContext{:x}(DefaultContext()),
         PointwiseLogdensityContext(),
         ConditionContext((x=1.0,)),
-        ConditionContext((x=1.0,), ParentContext(ConditionContext((y=2.0,)))),
+        ConditionContext((x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))),
         ConditionContext((x=1.0,), PrefixContext{:a}(ConditionContext((var"a.y"=2.0,)))),
         ConditionContext((x=[1.0, missing],)),
     ]
 
     contexts = vcat(child_contexts, parent_contexts)
 
-    @testset "NodeTrait" begin
-        @testset "$context" for context in contexts
-            # Every `context` should have a `NodeTrait`.
-            @test NodeTrait(context) isa NodeTrait
-        end
-    end
-
-    @testset "leafcontext" begin
-        @testset "$context" for context in child_contexts
-            @test leafcontext(context) === context
-        end
-
-        @testset "$context" for context in parent_contexts
-            @test NodeTrait(leafcontext(context)) isa IsLeaf
-        end
-    end
-
-    @testset "setleafcontext" begin
-        @testset "$context" for context in child_contexts
-            # Setting to itself should return itself.
-            @test setleafcontext(context, context) === context
-
-            # Setting to a different context should return that context.
-            new_leaf = context isa DefaultContext ? PriorContext() : DefaultContext()
-            @test setleafcontext(context, new_leaf) === new_leaf
-
-            # Also works for parent contexts.
-            new_leaf = ParentContext(context)
-            @test setleafcontext(context, new_leaf) === new_leaf
-        end
-
-        @testset "$context" for context in parent_contexts
-            # Leaf contexts.
-            new_leaf =
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            @test leafcontext(setleafcontext(context, new_leaf)) === new_leaf
-
-            # Setting parent contexts as "leaf" means that the new leaf should be
-            # the leaf of the parent context we just set as the leaf.
-            new_leaf = ParentContext((
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            ))
-            @test leafcontext(setleafcontext(context, new_leaf)) === leafcontext(new_leaf)
-        end
-    end
-
-    # `IsParent` interface.
-    @testset "childcontext" begin
-        @testset "$context" for context in parent_contexts
-            @test childcontext(context) isa AbstractContext
-        end
-    end
-
-    @testset "setchildcontext" begin
-        @testset "nested contexts" begin
-            # Both of the following should result in the same context.
-            context1 = ParentContext(ParentContext(ParentContext()))
-            context2 = setchildcontext(
-                ParentContext(), setchildcontext(ParentContext(), ParentContext())
-            )
-            @test context1 === context2
-        end
-
-        @testset "$context" for context in parent_contexts
-            # Setting the child context to a leaf should now change the `leafcontext` accordingly.
-            new_leaf =
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            new_context = setchildcontext(context, new_leaf)
-            @test childcontext(new_context) === leafcontext(new_context) === new_leaf
+    @testset "$(context)" for context in contexts
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            DynamicPPL.TestUtils.test_context(context, model)
         end
     end
 
@@ -209,25 +133,6 @@ end
                             getoptic(vn_child)(val)
                     end
                 end
-            end
-        end
-    end
-
-    @testset "Evaluation" begin
-        @testset "$context" for context in contexts
-            @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-                # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
-                # context might alter which variables are present, their names, etc., e.g. `PrefixContext`.
-                # Untyped varinfo.
-                varinfo_untyped = DynamicPPL.VarInfo()
-                # With `SamplingContext`.
-                @test (DynamicPPL.evaluate!!(model, varinfo_untyped, SamplingContext(context)); true)
-                # Without `SamplingContext`.
-                @test (DynamicPPL.evaluate!!(model, varinfo_untyped, context); true)
-                # Typed varinfo.
-                varinfo_typed = DynamicPPL.TypedVarInfo(varinfo_untyped)
-                @test (DynamicPPL.evaluate!!(model, varinfo_typed, SamplingContext(context)); true)
-                @test (DynamicPPL.evaluate!!(model, varinfo_typed, context); true)
             end
         end
     end
