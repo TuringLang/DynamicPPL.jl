@@ -685,6 +685,14 @@ end
 Check the type stability of the model's evaluator, warning about any potential issues.
 
 This simply calls `@code_warntype` on the model's evaluator, filling in internal arguments where needed.
+
+# Arguments
+- `model::Model`: The model to check.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Keyword Arguments
+- `optimize::Bool`: Whether to generate optimized code. Default: `false`.
 """
 function model_warntype(
     model::Model,
@@ -701,13 +709,21 @@ function model_warntype(
 end
 
 """
-    model_typed(model[, varinfo, context]; optimize=true)
+    model_codetyped(model[, varinfo, context]; optimize=true)
 
 Return the type inference for the model's evaluator.
 
 This simply calls `@code_typed` on the model's evaluator, filling in internal arguments where needed.
+
+# Arguments
+- `model::Model`: The model to check.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Keyword Arguments
+- `optimize::Bool`: Whether to generate optimized code. Default: `true`.
 """
-function model_typed(
+function model_codetyped(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     context::AbstractContext=DefaultContext();

@@ -212,6 +212,13 @@ And some which might be useful to determine certain properties of the model base
 DynamicPPL.has_static_constraints
 ```
 
+For determining whether one might have type instabilities in the model, the following can be useful
+
+```@docs
+DynamicPPL.DebugUtils.model_warntype
+DynamicPPL.DebugUtils.model_codetyped
+```
+
 ## Advanced
 
 ### Variable names
