@@ -215,8 +215,20 @@ end
 
     @testset "Evaluation" begin
         @testset "$context" for context in contexts
-            # Just making sure that we can actually sample with each of the contexts.
-            @test (gdemo_default(SamplingContext(context)); true)
+            @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+                # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
+                # context might alter which variables are present, their names, etc., e.g. `PrefixContext`.
+                # Untyped varinfo.
+                varinfo_untyped = DynamicPPL.VarInfo()
+                # With `SamplingContext`.
+                @test (DynamicPPL.evaluate!!(model, varinfo_untyped, SamplingContext(context)); true)
+                # Without `SamplingContext`.
+                @test (DynamicPPL.evaluate!!(model, varinfo_untyped, context); true)
+                # Typed varinfo.
+                varinfo_typed = DynamicPPL.TypedVarInfo(varinfo_untyped)
+                @test (DynamicPPL.evaluate!!(model, varinfo_typed, SamplingContext(context)); true)
+                @test (DynamicPPL.evaluate!!(model, varinfo_typed, context); true)
+            end
         end
     end
 
