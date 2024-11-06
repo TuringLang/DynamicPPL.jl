@@ -300,6 +300,22 @@ end
 Return `model` but with all random variables prefixed by `x`.
 
 If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), :my_prefix))
+(var"my_prefix.x" = 1,)
+
+julia> # One can also use `Val` to avoid runtime overheads.
+       rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
 """
 prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
 function prefix(model::Model, ::Val{x}) where {x}
@@ -314,9 +330,19 @@ Return `model` but with all random variables prefixed by `prefix_expr`.
 The result of `prefix_expr` must will be converted to a `Symbol` and used as the prefix.
 
 !!! note
-    This is effectively just a convenience macro for the method [`prefix(::Model, x)`](@ref),
+    This is effectively just a convenience macro for the method [`DynamicPPL.prefix(::Model, x)`](@ref),
     which automatically converts the result of `prefix_expr` into a `Val` to avoid runtime overheads
     for static prefixes. For more control over the prefixing, use the method directly.
+
+# Examples
+
+```jldoctest
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(@prefix(demo(), :my_prefix))
+(var"my_prefix.x" = 1,)
+```
 """
 macro prefix(model, prefix_expr)
     return :($prefix($(esc(model)), $Val{$Symbol($(esc(prefix_expr)))}()))
