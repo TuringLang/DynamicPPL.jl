@@ -1248,3 +1248,15 @@ end
 function returned_quantities(model::Model, values, keys)
     return returned_quantities(model, NamedTuple{keys}(values))
 end
+
+"""
+    @returned_quantities(model, input)
+
+Execute `model` and extract the return-values of `model` for `input`.
+
+!!! note
+    This macro is in fact a simple wrapper around the method [`DynamicPPL.returned_quantities`](@ref).
+"""
+macro returned_quantities(model_expr, input_expr)
+    return :($returned_quantities($(esc(model_expr)), $(esc(input_expr))))
+end

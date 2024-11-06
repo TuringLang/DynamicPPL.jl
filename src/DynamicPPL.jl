@@ -86,7 +86,6 @@ export AbstractVarInfo,
     Model,
     getmissings,
     getargnames,
-    returned_quantities,
     extract_priors,
     values_as_in_model,
     # Samplers
