@@ -263,7 +263,7 @@ end
 Run `model` nested inside of another model and return the return-values of the `model`.
 
 !!! warning
-    It's generally recommended to use [`DynamicPPL.prefix(::Model, x)`](@ref) or
+    It's generally recommended to use [`@prefix(::Model, input)`](@ref) or
     [`@prefix(model, prefix_expr)`](@ref) in combination with `@returned_quantities`
     to ensure that the variables in `model` are unique and do not clash with other variables in the
     parent model or in other submodels.
