@@ -25,6 +25,7 @@ In the context of nesting models, it's also useful to prefix the variables in su
 
 ```@docs
 @prefix
+DynamicPPL.prefix
 ```
 
 ### Type
@@ -129,6 +130,7 @@ Return values of the model function for a collection of samples can be obtained 
 
 ```@docs
 @returned_quantities(model, input)
+DynamicPPL.returned_quantities
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
