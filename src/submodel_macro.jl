@@ -207,6 +207,8 @@ function prefix_submodel_context(prefix::Bool, ctx)
     return ctx
 end
 
+const SUBMODEL_DEPWARN_MSG = "`@submodel model` is deprecated, use `@returned_quantities model` instead."
+
 function submodel(prefix_expr, expr, ctx=esc(:__context__))
     prefix_left, prefix = getargs_assignment(prefix_expr)
     if prefix_left !== :prefix
@@ -225,6 +227,9 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
+            # Raise deprecation warning to let user know that we recommend using `@returned_quantities`.
+            $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
+
             $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
@@ -241,6 +246,9 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
+            # Raise deprecation warning to let user know that we recommend using `@returned_quantities`.
+            $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
+
             $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
