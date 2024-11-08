@@ -679,6 +679,16 @@ function has_static_constraints(
     return all_the_same(transforms)
 end
 
+function _make_evaluate_args_and_kwargs(model, varinfo, context)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
+    return if isempty(kwargs)
+        (model.f, Base.typesof(args...))
+    else
+        (Core.kwcall, Tuple{typeof(kwargs), Core.Typeof(model.f), map(Core.Typeof, args)...})
+    end
+end
+
+
 """
     model_warntype(model[, varinfo, context]; optimize=true)
 
@@ -700,12 +710,8 @@ function model_warntype(
     context::AbstractContext=DefaultContext();
     optimize::Bool=false,
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
-    return if isempty(kwargs)
-        InteractiveUtils.@code_warntype optimize = optimize model.f(args...)
-    else
-        InteractiveUtils.@code_warntype optimize = optimize model.f(args...; kwargs...)
-    end
+    ftype, argtypes = _make_evaluate_args_and_kwargs(model, varinfo, context)
+    return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
@@ -729,12 +735,8 @@ function model_typed(
     context::AbstractContext=DefaultContext();
     optimize::Bool=true,
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
-    return if isempty(kwargs)
-        InteractiveUtils.@code_typed optimize = optimize model.f(args...)
-    else
-        InteractiveUtils.@code_typed optimize = optimize model.f(args...; kwargs...)
-    end
+    ftype, argtypes = _make_evaluate_args_and_kwargs(model, varinfo, context)
+    return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 
 end
