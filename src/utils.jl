@@ -286,8 +286,15 @@ function (f::ReshapeTransform)(x)
     if size(x) != f.input_size
         throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
     end
-    # The call to `tovec` is only needed in case `x` is a scalar.
-    return reshape(tovec(x), f.output_size)
+    if f.output_size == ()
+        # Specially handle the case where x is a singleton array, see
+        # https://github.com/JuliaDiff/ReverseDiff.jl/issues/265 and
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/698
+        return fill(x[], ())
+    else
+        # The call to `tovec` is only needed in case `x` is a scalar.
+        return reshape(tovec(x), f.output_size)
+    end
 end
 
 function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
@@ -934,10 +941,10 @@ end
 """
     float_type_with_fallback(x)
 
-Return type corresponding to `float(typeof(x))` if possible; otherwise return `Real`.
+Return type corresponding to `float(typeof(x))` if possible; otherwise return `float(Real)`.
 """
-float_type_with_fallback(::Type) = Real
-float_type_with_fallback(::Type{Union{}}) = Real
+float_type_with_fallback(::Type) = float(Real)
+float_type_with_fallback(::Type{Union{}}) = float(Real)
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
