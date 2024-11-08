@@ -68,7 +68,7 @@ returned_quantities(m, chain) # <= results in a `Vector` of returned values
 ```
 ## Concrete (and simple)
 ```julia
-julia> using DynamicPPL, Turing
+julia> using Turing
 
 julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
@@ -87,7 +87,7 @@ julia> model = demo(randn(10));
 
 julia> chain = sample(model, MH(), 10);
 
-julia> returned_quantities(model, chain)
+julia> DynamicPPL.returned_quantities(model, chain)
 10×1 Array{Tuple{Float64},2}:
  (2.1964758025119338,)
  (2.1964758025119338,)

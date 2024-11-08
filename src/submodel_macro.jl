@@ -4,6 +4,10 @@
 
 Run a Turing `model` nested inside of a Turing model.
 
+!!! warning
+    This is deprecated and will be removed in a future release.
+    Use [`@returned_quantities(model)`](@ref) instead.
+
 # Examples
 
 ```jldoctest submodel; setup=:(using Distributions)
@@ -21,6 +25,9 @@ julia> @model function demo2(x, y)
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
+┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+│   caller = ip:0x0
+└ @ Core :-1
 
 julia> @varname(x) in keys(vi)
 true
@@ -62,6 +69,10 @@ Valid expressions for `prefix=...` are:
 The prefix makes it possible to run the same Turing model multiple times while
 keeping track of all random variables correctly.
 
+!!! warning
+    This is deprecated and will be removed in a future release.
+    Use [`@returned_quantities`](@ref) combined with [`@prefix`](@ref) instead.
+
 # Examples
 ## Example models
 ```jldoctest submodelprefix; setup=:(using Distributions)
@@ -81,6 +92,9 @@ When we sample from the model `demo2(missing, missing, 0.4)` random variables `s
 `sub2.x` will be sampled:
 ```jldoctest submodelprefix
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
+┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+│   caller = ip:0x0
+└ @ Core :-1
 
 julia> @varname(var"sub1.x") in keys(vi)
 true
@@ -124,6 +138,9 @@ julia> # When `prefix` is unspecified, no prefix is used.
 submodel_noprefix (generic function with 2 methods)
 
 julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
+┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Explicitely don't use any prefix.

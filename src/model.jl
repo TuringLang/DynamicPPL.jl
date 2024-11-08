@@ -1218,6 +1218,8 @@ If a `NamedTuple` is given, `keys=keys(parameters)` and `values=values(parameter
 ```jldoctest
 julia> using DynamicPPL, Distributions
 
+julia> using DynamicPPL: returned_quantities
+
 julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
            m_shifted ~ Normal(10, √s)
