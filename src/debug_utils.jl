@@ -679,7 +679,27 @@ function has_static_constraints(
     return all_the_same(transforms)
 end
 
-function _make_evaluate_args_and_kwargs(model, varinfo, context)
+"""
+    gen_evaluator_call_with_types(model[, varinfo, context])
+
+Generate the evaluator call and the types of the arguments.
+
+# Arguments
+- `model::Model`: The model whose evaluator is of interest.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Returns
+A 2-tuple with the following elements:
+- `ftype::Type`: The function type of the evaluator. This is either `model.f` or `Core.kwcall`, depending on whether
+    the model has keyword arguments.
+- `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
+"""
+function gen_evaluator_call_with_types(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext()
+)
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
         (model.f, Base.typesof(args...))
@@ -709,7 +729,7 @@ function model_warntype(
     context::AbstractContext=DefaultContext();
     optimize::Bool=false,
 )
-    ftype, argtypes = _make_evaluate_args_and_kwargs(model, varinfo, context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
@@ -734,7 +754,7 @@ function model_typed(
     context::AbstractContext=DefaultContext();
     optimize::Bool=true,
 )
-    ftype, argtypes = _make_evaluate_args_and_kwargs(model, varinfo, context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 
