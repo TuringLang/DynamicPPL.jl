@@ -691,7 +691,7 @@ Generate the evaluator call and the types of the arguments.
 
 # Returns
 A 2-tuple with the following elements:
-- `ftype::Type`: The function type of the evaluator. This is either `model.f` or `Core.kwcall`, depending on whether
+- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
     the model has keyword arguments.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
