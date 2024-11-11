@@ -1127,6 +1127,10 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
         leafcontext_new
 
+    # Setting the child context to a leaf should now change the leafcontext accordingly.
+    context_with_new_leaf = DynamicPPL.setleafcontext(context, leafcontext_new)
+    @test childcontext(context_with_new_leaf) === leafcontext(context_with_new_leaf) === leafcontext_new
+
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
     # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
     # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
