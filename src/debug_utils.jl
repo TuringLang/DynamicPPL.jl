@@ -684,10 +684,9 @@ function _make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
         (model.f, Base.typesof(args...))
     else
-        (Core.kwcall, Tuple{typeof(kwargs), Core.Typeof(model.f), map(Core.Typeof, args)...})
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
     end
 end
-
 
 """
     model_warntype(model[, varinfo, context]; optimize=true)
