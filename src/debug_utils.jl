@@ -698,7 +698,7 @@ A 2-tuple with the following elements:
 function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
-    context::AbstractContext=DefaultContext()
+    context::AbstractContext=DefaultContext(),
 )
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
     return if isempty(kwargs)
