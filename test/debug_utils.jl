@@ -186,4 +186,18 @@
             @test check_model(model; error_on_failure=true)
         end
     end
+
+    @testset "model_warntype & model_codetyped" begin
+        @model demo_without_kwargs(x) = y ~ Normal(x, 1)
+        @model demo_with_kwargs(x; z=1) = y ~ Normal(x, z)
+
+        for model in [demo_without_kwargs(1.0), demo_with_kwargs(1.0)]
+            codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model)
+            @test codeinfo isa Core.CodeInfo
+            @test retype <: Tuple
+
+            # Just make sure the following is runnable.
+            @test (DynamicPPL.DebugUtils.model_warntype(model); true)
+        end
+    end
 end

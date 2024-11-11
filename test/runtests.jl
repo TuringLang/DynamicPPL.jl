@@ -61,6 +61,8 @@ include("test_util.jl")
             include("pointwise_logdensities.jl")
 
             include("lkj.jl")
+
+            include("debug_utils.jl")
         end
 
         @testset "compat" begin
