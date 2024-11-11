@@ -1128,7 +1128,7 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
         leafcontext_new
 
     # Setting the child context to a leaf should now change the leafcontext accordingly.
-    context_with_new_leaf = DynamicPPL.setleafcontext(context, leafcontext_new)
+    context_with_new_leaf = DynamicPPL.setchildcontext(context, leafcontext_new)
     @test childcontext(context_with_new_leaf) ===
         leafcontext(context_with_new_leaf) ===
         leafcontext_new
