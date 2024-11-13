@@ -317,12 +317,6 @@ julia> [first(t.θ.x) for t in transitions] # extract samples for `x`
 ```
 """
 function transitions_from_chain(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains; kwargs...
-)
-    return transitions_from_chain(Random.default_rng(), model, chain; kwargs...)
-end
-
-function transitions_from_chain(
     rng::DynamicPPL.Random.AbstractRNG,
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains;

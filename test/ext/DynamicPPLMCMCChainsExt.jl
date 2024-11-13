@@ -141,17 +141,16 @@ end
         return y ~ MvNormal(mu, error^2 * I)
     end
 
-    # Some data
     x = randn(2, 100)
     y = [1 + 2 * a + 3 * b for (a, b) in eachcol(x)]
 
     param_names = Dict(
-        simple_linear1 => [:intercept, :coef],
-        simple_linear2 => [:intercept, :coef],
-        simple_linear3 => [:intercept, Symbol.(["coef[$i]" for i in 1:2])...],
-        simple_linear4 => [:intercept, :coef1, :coef2],
+        simple_linear1 => [:intercept, Symbol("coef[1]"), Symbol("coef[2]"), :error],
+        simple_linear2 => [:intercept, Symbol("coef[1]"), Symbol("coef[2]"), :error],
+        simple_linear3 => [:intercept, Symbol("coef[1]"), Symbol("coef[2]"), :error],
+        simple_linear4 => [:intercept, :coef1, :coef2, :error],
     )
-    for model in [simple_linear1, simple_linear2, simple_linear3, simple_linear4]
+    @testset "$model" for model in [simple_linear1, simple_linear2, simple_linear3, simple_linear4]
         m = model(x, y)
         chain = sample(
             DynamicPPL.LogDensityFunction(m, DynamicPPL.VarInfo(m)),
