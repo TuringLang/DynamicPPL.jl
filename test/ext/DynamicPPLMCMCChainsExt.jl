@@ -150,7 +150,8 @@ end
         simple_linear3 => [:intercept, Symbol("coef[1]"), Symbol("coef[2]"), :error],
         simple_linear4 => [:intercept, :coef1, :coef2, :error],
     )
-    @testset "$model" for model in [simple_linear1, simple_linear2, simple_linear3, simple_linear4]
+    @testset "$model" for model in
+                          [simple_linear1, simple_linear2, simple_linear3, simple_linear4]
         m = model(x, y)
         chain = sample(
             DynamicPPL.LogDensityFunction(m, DynamicPPL.VarInfo(m)),
