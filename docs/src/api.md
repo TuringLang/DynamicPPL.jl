@@ -14,18 +14,22 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with [`@submodel`](@ref) and [`@returned_quantities(model)`](@ref).
+One can nest models and call another model inside the model function with `left ~ to_sampleable(model)`.
+
+```@docs
+to_sampleable
+```
+
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_sampleable(model)`](@ref)
 
 ```@docs
 @submodel
-@returned_quantities(model)
 ```
 
 In the context of nesting models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
 
 ```@docs
-@prefix
-DynamicPPL.prefix
+prefix
 ```
 
 ### Type
@@ -126,11 +130,10 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`@returned_quantities`](@ref).
+Return values of the model function for a collection of samples can be obtained with [`returned_quantities`](@ref).
 
 ```@docs
-@returned_quantities(model, input)
-DynamicPPL.returned_quantities
+returned_quantities
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using

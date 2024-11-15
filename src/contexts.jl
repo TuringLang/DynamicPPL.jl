@@ -322,32 +322,6 @@ function prefix(model::Model, ::Val{x}) where {x}
     return contextualize(model, PrefixContext{Symbol(x)}(model.context))
 end
 
-"""
-    @prefix(model, prefix_expr)
-
-Return `model` but with all random variables prefixed by `prefix_expr`.
-
-The result of `prefix_expr` must will be converted to a `Symbol` and used as the prefix.
-
-!!! note
-    This is effectively just a convenience macro for the method [`DynamicPPL.prefix(::Model, x)`](@ref),
-    which automatically converts the result of `prefix_expr` into a `Val` to avoid runtime overheads
-    for static prefixes. For more control over the prefixing, use the method directly.
-
-# Examples
-
-```jldoctest
-julia> @model demo() = x ~ Dirac(1)
-demo (generic function with 2 methods)
-
-julia> rand(@prefix(demo(), :my_prefix))
-(var"my_prefix.x" = 1,)
-```
-"""
-macro prefix(model, prefix_expr)
-    return :($prefix($(esc(model)), $Val{$Symbol($(esc(prefix_expr)))}()))
-end
-
 struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
     context::Ctx
