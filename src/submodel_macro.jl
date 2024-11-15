@@ -25,7 +25,7 @@ julia> @model function demo2(x, y)
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
-┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+┌ Warning: `@submodel model` is deprecated, use `left ~ to_sampleable(model)` instead.
 │   caller = ip:0x0
 └ @ Core :-1
 
@@ -138,7 +138,7 @@ julia> # When `prefix` is unspecified, no prefix is used.
 submodel_noprefix (generic function with 2 methods)
 
 julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
-┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+┌ Warning: `@submodel model` is deprecated, use `left ~ to_sampleable(model)` instead.
 │   caller = ip:0x0
 └ @ Core :-1
 true
