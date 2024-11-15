@@ -45,14 +45,14 @@
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()
-                @submodel z = ModelInner()
+                z ~ to_sampleable(ModelInner())
                 return x ~ Normal()
             end
             model = ModelOuterBroken()
             @test_throws ErrorException check_model(model; error_on_failure=true)
 
             @model function ModelOuterWorking()
-                @submodel prefix = true z = ModelInner()
+                z = to_sampleable(prefix(ModelInner(), "z"))
                 x ~ Normal()
                 return z
             end

@@ -224,7 +224,7 @@ function prefix_submodel_context(prefix::Bool, ctx)
     return ctx
 end
 
-const SUBMODEL_DEPWARN_MSG = "`@submodel model` is deprecated, use `left ~ to_sampleable(model)` instead."
+const SUBMODEL_DEPWARN_MSG = "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ to_sampleable(model)` and `left ~ to_sampleable(prefix(model, ...))`, respectively, instead."
 
 function submodel(prefix_expr, expr, ctx=esc(:__context__))
     prefix_left, prefix = getargs_assignment(prefix_expr)
