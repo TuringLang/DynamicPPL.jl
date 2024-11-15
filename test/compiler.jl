@@ -393,7 +393,7 @@ module Issue537 end
             outer()()
         )
 
-        @model outer_with_prefix() = @submodel prefix="sub" x = inner()
+        @model outer_with_prefix() = @submodel prefix = "sub" x = inner()
         @test_logs(
             (
                 :warn,
