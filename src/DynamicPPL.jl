@@ -129,6 +129,7 @@ export AbstractVarInfo,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
+    to_sampleable,
     # Deprecated.
     @logprob_str,
     @prob_str

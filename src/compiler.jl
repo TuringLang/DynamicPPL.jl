@@ -1,5 +1,11 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
+struct SampleableModelWrapper{M}
+    model::M
+end
+
+to_sampleable(model::DynamicPPL.Model) = SampleableModelWrapper(model)
+
 """
     need_concretize(expr)
 
@@ -427,28 +433,34 @@ function generate_tilde(left, right)
     # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
-        )
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $(DynamicPPL.isfixed(left, vn))
-            $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
-        elseif $isassumption
-            $(generate_tilde_assume(left, dist, vn))
-        else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
-            end
 
-            $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __context__,
-                $(DynamicPPL.check_tilde_rhs)($dist),
-                $(maybe_view(left)),
-                $vn,
-                __varinfo__,
+        if $dist isa $(SampleableModelWrapper)
+            $left, __varinfo__ = $(_evaluate!!)($dist.model, __varinfo__, __context__)
+            $left
+        else
+            $vn = $(DynamicPPL.resolve_varnames)(
+                $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
             )
-            $value
+            $isassumption = $(DynamicPPL.isassumption(left, vn))
+            if $(DynamicPPL.isfixed(left, vn))
+                $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
+            elseif $isassumption
+                $(generate_tilde_assume(left, dist, vn))
+            else
+                # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
+                if !$(DynamicPPL.inargnames)($vn, __model__)
+                    $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
+                end
+
+                $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
+                    __context__,
+                    $(DynamicPPL.check_tilde_rhs)($dist),
+                    $(maybe_view(left)),
+                    $vn,
+                    __varinfo__,
+                )
+                $value
+            end
         end
     end
 end
