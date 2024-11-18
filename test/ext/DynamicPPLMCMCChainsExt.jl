@@ -35,11 +35,13 @@ end
     # Infer
     m_lin_reg = linear_reg(xs_train, ys_train)
     chain_lin_reg = sample(
-        DynamicPPL.LogDensityFunction(m_lin_reg, DynamicPPL.VarInfo(m_lin_reg)),
+        DynamicPPL.LogDensityFunction(m_lin_reg),
         AdvancedHMC.NUTS(0.65),
-        200;
+        1000;
         chain_type=MCMCChains.Chains,
         param_names=[:β],
+        discard_initial=100,
+        n_adapt=100,
     )
 
     # Predict on two last indices
@@ -156,9 +158,11 @@ end
         chain = sample(
             DynamicPPL.LogDensityFunction(m, DynamicPPL.VarInfo(m)),
             AdvancedHMC.NUTS(0.65),
-            100;
+            1000;
             chain_type=MCMCChains.Chains,
             param_names=param_names[model],
+            discard_initial=100,
+            n_adapt=100,
         )
         chain_predict = DynamicPPL.predict(model(x, missing), chain)
         mean_prediction = [mean(chain_predict["y[$i]"].data) for i in 1:length(y)]
