@@ -50,6 +50,8 @@ end
 
     ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
 
+    # test like this depends on the variance of the posterior
+    # this only makes sense if the posterior variance is about 0.002
     @test sum(abs2, ys_test - ys_pred) ≤ 0.1
 
     # Ensure that `rng` is respected
