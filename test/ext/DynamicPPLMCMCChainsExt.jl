@@ -163,7 +163,7 @@ end
             DynamicPPL.LogDensityFunction(m),
             AdvancedHMC.NUTS(0.65),
             400;
-            initial_params = rand(4),
+            initial_params=rand(4),
             chain_type=MCMCChains.Chains,
             param_names=param_names[model],
             discard_initial=100,
