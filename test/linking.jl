@@ -75,8 +75,8 @@ end
         model = demo()
 
         example_values = rand(NamedTuple, model)
-        vis = TU.setup_varinfos(model, example_values, (@varname(m),))
-        @testset "$(TU.short_varinfo_name(vi))" for vi in vis
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(m),))
+        @testset "$(short_varinfo_name(vi))" for vi in vis
             # Evaluate once to ensure we have `logp` value.
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
             vi_linked = if mutable
@@ -109,10 +109,10 @@ end
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
                 values_original = rand(NamedTuple, model)
-                vis = TU.setup_varinfos(
+                vis = DynamicPPL.TestUtils.setup_varinfos(
                     model, values_original, (@varname(x),)
                 )
-                @testset "$(TU.short_varinfo_name(vi))" for vi in vis
+                @testset "$(short_varinfo_name(vi))" for vi in vis
                     val = vi[@varname(x), dist]
                     # Ensure that `reconstruct` works as intended.
                     @test val isa Cholesky
@@ -150,8 +150,8 @@ end
         @testset "d=$d" for d in [2, 3, 5]
             model = demo_dirichlet(d)
             example_values = rand(NamedTuple, model)
-            vis = TU.setup_varinfos(model, example_values, (@varname(x),))
-            @testset "$(TU.short_varinfo_name(vi))" for vi in vis
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            @testset "$(short_varinfo_name(vi))" for vi in vis
                 lp = logpdf(Dirichlet(d, 1.0), vi[:])
                 @test length(vi[:]) == d
                 lp_model = logjoint(model, vi)
@@ -189,8 +189,8 @@ end
         ]
             model = demo_highdim_dirichlet(ns...)
             example_values = rand(NamedTuple, model)
-            vis = TU.setup_varinfos(model, example_values, (@varname(x),))
-            @testset "$(TU.short_varinfo_name(vi))" for vi in vis
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            @testset "$(short_varinfo_name(vi))" for vi in vis
                 # Linked.
                 vi_linked = if mutable
                     DynamicPPL.link!!(deepcopy(vi), model)

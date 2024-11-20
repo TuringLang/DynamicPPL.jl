@@ -1,19 +1,19 @@
 @testset "check_model" begin
     @testset "context interface" begin
         # HACK: Require a model to instantiate it, so let's just grab one.
-        model = first(TU.DEMO_MODELS)
+        model = first(DynamicPPL.TestUtils.DEMO_MODELS)
         context = DynamicPPL.DebugUtils.DebugContext(model)
-        TU.test_context_interface(context)
+        DynamicPPL.TestUtils.test_context_interface(context)
     end
 
-    @testset "$(model.f)" for model in TU.DEMO_MODELS
+    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         issuccess, trace = check_model_and_trace(model)
         # These models should all work.
         @test issuccess
 
         # Check that the trace contains all the variables in the model.
         varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
-        for vn in TU.varnames(model)
+        for vn in DynamicPPL.TestUtils.varnames(model)
             @test vn in varnames_in_trace
         end
 
@@ -156,7 +156,7 @@
     end
 
     @testset "comparing multiple traces" begin
-        model = TU.demo_dynamic_constraint()
+        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         issuccess_1, trace_1 = check_model_and_trace(model)
         issuccess_2, trace_2 = check_model_and_trace(model)
         @test issuccess_1 && issuccess_2

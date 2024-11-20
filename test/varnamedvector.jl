@@ -578,29 +578,29 @@ end
 end
 
 @testset "VarInfo + VarNamedVector" begin
-    models = TU.DEMO_MODELS
+    models = DynamicPPL.TestUtils.DEMO_MODELS
     @testset "$(model.f)" for model in models
         # NOTE: Need to set random seed explicitly to avoid using the same seed
         # for initialization as for sampling in the inner testset below.
         Random.seed!(42)
-        value_true = TU.rand_prior_true(model)
-        vns = TU.varnames(model)
-        varnames = TU.varnames(model)
-        varinfos = TU.setup_varinfos(
+        value_true = DynamicPPL.TestUtils.rand_prior_true(model)
+        vns = DynamicPPL.TestUtils.varnames(model)
+        varnames = DynamicPPL.TestUtils.varnames(model)
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, value_true, varnames; include_threadsafe=false
         )
         # Filter out those which are not based on `VarNamedVector`.
         varinfos = filter(DynamicPPL.has_varnamedvector, varinfos)
         # Get the true log joint.
-        logp_true = TU.logjoint_true(model, value_true...)
+        logp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
 
-        @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # Need to make sure we're using a different random seed from the
             # one used in the above call to `rand_prior_true`.
             Random.seed!(43)
 
             # Are values correct?
-            TU.test_values(varinfo, value_true, vns)
+            DynamicPPL.TestUtils.test_values(varinfo, value_true, vns)
 
             # Is evaluation correct?
             varinfo_eval = last(
@@ -609,7 +609,7 @@ end
             # Log density should be the same.
             @test getlogp(varinfo_eval) ≈ logp_true
             # Values should be the same.
-            TU.test_values(varinfo_eval, value_true, vns)
+            DynamicPPL.TestUtils.test_values(varinfo_eval, value_true, vns)
 
             # Is sampling correct?
             varinfo_sample = last(
@@ -618,7 +618,7 @@ end
             # Log density should be different.
             @test getlogp(varinfo_sample) != getlogp(varinfo)
             # Values should be different.
-            TU.test_values(
+            DynamicPPL.TestUtils.test_values(
                 varinfo_sample, value_true, vns; compare=!isequal
             )
         end

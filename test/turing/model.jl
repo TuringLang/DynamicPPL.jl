@@ -1,17 +1,17 @@
 @testset "model.jl" begin
     @testset "setval! & generated_quantities" begin
-        @testset "$model" for model in TU.DEMO_MODELS
+        @testset "$model" for model in DynamicPPL.TestUtils.DEMO_MODELS
             chain = sample(model, Prior(), 10)
             # A simple way of checking that the computation is determinstic: run twice and compare.
             res1 = generated_quantities(model, MCMCChains.get_sections(chain, :parameters))
             res2 = generated_quantities(model, MCMCChains.get_sections(chain, :parameters))
             @test all(res1 .== res2)
-            TU.test_setval!(model, MCMCChains.get_sections(chain, :parameters))
+            test_setval!(model, MCMCChains.get_sections(chain, :parameters))
         end
     end
 
     @testset "value_iterator_from_chain" begin
-        @testset "$model" for model in TU.DEMO_MODELS
+        @testset "$model" for model in DynamicPPL.TestUtils.DEMO_MODELS
             chain = sample(model, Prior(), 10; progress=false)
             for (i, d) in enumerate(value_iterator_from_chain(model, chain))
                 for vn in keys(d)

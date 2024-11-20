@@ -1,6 +1,6 @@
 @testset "threadsafe.jl" begin
     @testset "constructor" begin
-        vi = VarInfo(TU.gdemo_default)
+        vi = VarInfo(gdemo_default)
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
         @test threadsafe_vi.varinfo === vi
@@ -11,7 +11,7 @@
 
     # TODO: Add more tests of the public API
     @testset "API" begin
-        vi = VarInfo(TU.gdemo_default)
+        vi = VarInfo(gdemo_default)
         threadsafe_vi = DynamicPPL.ThreadSafeVarInfo(vi)
 
         lp = getlogp(vi)
