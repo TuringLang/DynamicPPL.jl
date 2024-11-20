@@ -12,7 +12,7 @@
                    logpdf(dist, 2.0)
         end
 
-        test_model_ad(gdemo_default, logp_gdemo_default)
+        TU.test_model_ad(TU.gdemo_default, logp_gdemo_default)
 
         @model function wishart_ad()
             return v ~ Wishart(7, [1 0.5; 0.5 1])
@@ -24,7 +24,7 @@
             return logpdf(dist, reshape(x, 2, 2))
         end
 
-        test_model_ad(wishart_ad(), logp_wishart_ad)
+        TU.test_model_ad(wishart_ad(), logp_wishart_ad)
     end
 
     # https://github.com/TuringLang/Turing.jl/issues/1595

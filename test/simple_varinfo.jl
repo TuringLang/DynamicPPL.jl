@@ -86,15 +86,15 @@
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
-                                                          DynamicPPL.TestUtils.DEMO_MODELS
-        values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
+                                                          TU.DEMO_MODELS
+        values_constrained = TU.rand_prior_true(model)
         @testset "$(typeof(vi))" for vi in (
             SimpleVarInfo(Dict()),
             SimpleVarInfo(values_constrained),
             SimpleVarInfo(DynamicPPL.VarNamedVector()),
             VarInfo(model),
         )
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
@@ -103,7 +103,7 @@
             # `link!!`
             vi_linked = link!!(deepcopy(vi), model)
             lp_linked = getlogp(vi_linked)
-            values_unconstrained, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+            values_unconstrained, lp_linked_true = TU.logjoint_true_with_logabsdet_jacobian(
                 model, values_constrained...
             )
             # Should result in the correct logjoint.
@@ -120,7 +120,7 @@
             # `invlink!!`
             vi_invlinked = invlink!!(deepcopy(vi_linked), model)
             lp_invlinked = getlogp(vi_invlinked)
-            lp_invlinked_true = DynamicPPL.TestUtils.logjoint_true(
+            lp_invlinked_true = TU.logjoint_true(
                 model, values_constrained...
             )
             # Should result in the correct logjoint.
@@ -132,21 +132,21 @@
             @test all(
                 DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_invlinked, vn)) ≈
                 DynamicPPL.tovec(get(values_constrained, vn)) for
-                vn in DynamicPPL.TestUtils.varnames(model)
+                vn in TU.varnames(model)
             )
         end
     end
 
     @testset "SimpleVarInfo on $(nameof(model))" for model in
-                                                     DynamicPPL.TestUtils.DEMO_MODELS
-        model = DynamicPPL.TestUtils.demo_dot_assume_matrix_dot_observe_matrix()
+                                                     TU.DEMO_MODELS
+        model = TU.demo_dot_assume_matrix_dot_observe_matrix()
 
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
+        svi_nt = SimpleVarInfo(TU.rand_prior_true(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
         vnv = DynamicPPL.VarNamedVector()
-        for (k, v) in pairs(DynamicPPL.TestUtils.rand_prior_true(model))
+        for (k, v) in pairs(TU.rand_prior_true(model))
             vnv = push!!(vnv, VarName{k}() => v)
         end
         svi_vnv = SimpleVarInfo(vnv)
@@ -168,7 +168,7 @@
             _, svi_new = DynamicPPL.evaluate!!(model, svi, SamplingContext())
 
             # Realization for `m` should be different wp. 1.
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 @test svi_new[vn] != get(retval, vn)
             end
 
@@ -176,35 +176,35 @@
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            values_eval_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
+            values_eval_constrained = TU.rand_prior_true(model)
             if DynamicPPL.istrans(svi)
-                _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
+                _values_prior, logpri_true = TU.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
-                values_eval, logπ_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                values_eval, logπ_true = TU.logjoint_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
                 # Make sure that these two computation paths provide the same
                 # transformed values.
                 @test values_eval == _values_prior
             else
-                logpri_true = DynamicPPL.TestUtils.logprior_true(
+                logpri_true = TU.logprior_true(
                     model, values_eval_constrained...
                 )
-                logπ_true = DynamicPPL.TestUtils.logjoint_true(
+                logπ_true = TU.logjoint_true(
                     model, values_eval_constrained...
                 )
                 values_eval = values_eval_constrained
             end
 
             # No logabsdet-jacobian correction needed for the likelihood.
-            loglik_true = DynamicPPL.TestUtils.loglikelihood_true(
+            loglik_true = TU.loglikelihood_true(
                 model, values_eval_constrained...
             )
 
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
 
@@ -217,7 +217,7 @@
             loglik = loglikelihood(model, svi_eval)
 
             # Values should not have changed.
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 @test svi_eval[vn] == get(values_eval, vn)
             end
 
@@ -229,7 +229,7 @@
     end
 
     @testset "Dynamic constraints" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        model = TU.demo_dynamic_constraint()
 
         # Initialize.
         svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
@@ -247,12 +247,12 @@
                 @test retval.m == svi[@varname(m)]  # `m` is unconstrained
                 @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
 
-                retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                retval_unconstrained, lp_true = TU.logjoint_true_with_logabsdet_jacobian(
                     model, retval.m, retval.x
                 )
 
                 # Realizations from model should all be equal to the unconstrained realization.
-                for vn in DynamicPPL.TestUtils.varnames(model)
+                for vn in TU.varnames(model)
                     @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
                 end
 
@@ -264,12 +264,12 @@
     end
 
     @testset "Static transformation" begin
-        model = DynamicPPL.TestUtils.demo_static_transformation()
+        model = TU.demo_static_transformation()
 
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, DynamicPPL.TestUtils.rand_prior_true(model), [@varname(s), @varname(m)]
+        varinfos = TU.setup_varinfos(
+            model, TU.rand_prior_true(model), [@varname(s), @varname(m)]
         )
-        @testset "$(short_varinfo_name(vi))" for vi in varinfos
+        @testset "$(TU.short_varinfo_name(vi))" for vi in varinfos
             # Initialize varinfo and link.
             vi_linked = DynamicPPL.link!!(vi, model)
 
@@ -304,7 +304,7 @@
             @test vi_linked_result[@varname(m)] == retval.m
 
             # Compare to truth.
-            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+            retval_unconstrained, lp_true = TU.logjoint_true_with_logabsdet_jacobian(
                 model, retval.s, retval.m
             )
 

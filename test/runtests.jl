@@ -28,6 +28,7 @@ using LinearAlgebra # Diagonal
 using Combinatorics: combinations
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
+import DynamicPPLTestExt.TestExtUtils as TU
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")

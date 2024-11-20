@@ -33,8 +33,8 @@
     end
 
     @testset "init" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
+            @testset "$(model.f)" for model in TU.DEMO_MODELS
                 N = 1000
                 chain_init = sample(model, SampleFromUniform(), N; progress=false)
 

@@ -158,7 +158,7 @@
     end
     @testset "sample" begin
         alg = Gibbs(HMC(0.2, 3, :m), PG(10, :s))
-        chn = sample(gdemo_default, alg, 1000)
+        chn = sample(TU.gdemo_default, alg, 1000)
     end
     @testset "vectorization @." begin
         @model function vdemo1(x)

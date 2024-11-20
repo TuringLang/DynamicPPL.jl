@@ -229,7 +229,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             model(vi_vnv, SampleFromPrior())
 
             model_name = model == model_uv ? "univariate" : "multivariate"
-            @testset "$(model_name), $(short_varinfo_name(vi))" for vi in [
+            @testset "$(model_name), $(TU.short_varinfo_name(vi))" for vi in [
                 vi_untyped, vi_typed, vi_vnv, vi_vnv_typed
             ]
                 Random.seed!(23)
@@ -395,17 +395,17 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     end
 
     @testset "values_as" begin
-        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            vns = DynamicPPL.TestUtils.varnames(model)
+        @testset "$(nameof(model))" for model in TU.DEMO_MODELS
+            example_values = TU.rand_prior_true(model)
+            vns = TU.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+            varinfos = TU.setup_varinfos(
                 model, example_values, vns; include_threadsafe=true
             )
-            @testset "$(short_varinfo_name(vi))" for vi in varinfos
+            @testset "$(TU.short_varinfo_name(vi))" for vi in varinfos
                 # Just making sure.
-                DynamicPPL.TestUtils.test_values(vi, example_values, vns)
+                TU.test_values(vi, example_values, vns)
 
                 @testset "NamedTuple" begin
                     vals = values_as(vi, NamedTuple)
@@ -439,16 +439,16 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
     @testset "unflatten + linking" begin
         @testset "Model: $(model.f)" for model in [
-            DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
-            DynamicPPL.TestUtils.demo_lkjchol(),
+            TU.demo_one_variable_multiple_constraints(),
+            TU.demo_lkjchol(),
         ]
             @testset "mutating=$mutating" for mutating in [false, true]
-                value_true = DynamicPPL.TestUtils.rand_prior_true(model)
-                varnames = DynamicPPL.TestUtils.varnames(model)
-                varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                value_true = TU.rand_prior_true(model)
+                varnames = TU.varnames(model)
+                varinfos = TU.setup_varinfos(
                     model, value_true, varnames; include_threadsafe=true
                 )
-                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
                     if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
                         # NOTE: this is broken since we'll end up trying to set
                         #
@@ -486,8 +486,8 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                     )
                     @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
 
-                    lp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
-                    value_linked_true, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    lp_true = TU.logjoint_true(model, value_true...)
+                    value_linked_true, lp_linked_true = TU.logjoint_true_with_logabsdet_jacobian(
                         model, value_true...
                     )
 
@@ -526,7 +526,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         vns = [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
         # `VarInfo` supports, effectively, arbitrary subsetting.
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(
+        varinfos = TU.setup_varinfos(
             model, model(), vns; include_threadsafe=true
         )
         varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
@@ -564,7 +564,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         # in the model.
         vns_supported_simple = filter(∈(vns), vns_supported_standard)
 
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+        @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
             # All variables.
             check_varinfo_keys(varinfo, vns)
 
@@ -624,7 +624,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         # For certain varinfos we should have errors.
         # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `identity`.
         varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:NamedTuple}), varinfos)]
-        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
+        @testset "$(TU.short_varinfo_name(varinfo)): failure cases" begin
             @test_throws ArgumentError subset(
                 varinfo, [@varname(s), @varname(m), @varname(x[1])]
             )
@@ -632,15 +632,15 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     end
 
     @testset "merge" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            vns = DynamicPPL.TestUtils.varnames(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
+            vns = TU.varnames(model)
+            varinfos = TU.setup_varinfos(
                 model,
-                DynamicPPL.TestUtils.rand_prior_true(model),
+                TU.rand_prior_true(model),
                 vns;
                 include_threadsafe=true,
             )
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
                     # Merging itself should be a no-op.
                     varinfo_merged = merge(varinfo, varinfo)
@@ -678,13 +678,13 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 end
 
                 @testset "with different value" begin
-                    x = DynamicPPL.TestUtils.rand_prior_true(model)
-                    varinfo_changed = DynamicPPL.TestUtils.update_values!!(
+                    x = TU.rand_prior_true(model)
+                    varinfo_changed = TU.update_values!!(
                         deepcopy(varinfo), x, vns
                     )
                     # After `merge`, we should have the same values as `x`.
                     varinfo_merged = merge(varinfo, varinfo_changed)
-                    DynamicPPL.TestUtils.test_values(varinfo_merged, x, vns)
+                    TU.test_values(varinfo_merged, x, vns)
                 end
             end
         end
@@ -729,7 +729,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     end
 
     @testset "VarInfo with selectors" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
             varinfo = VarInfo(
                 model,
                 DynamicPPL.SampleFromPrior(),
@@ -739,7 +739,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             selector = DynamicPPL.Selector()
             spl = Sampler(MySAlg(), model, selector)
 
-            vns = DynamicPPL.TestUtils.varnames(model)
+            vns = TU.varnames(model)
             vns_s = filter(vn -> DynamicPPL.getsym(vn) === :s, vns)
             vns_m = filter(vn -> DynamicPPL.getsym(vn) === :m, vns)
             for vn in vns_s

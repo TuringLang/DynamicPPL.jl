@@ -1,8 +1,8 @@
 using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, ReverseDiff
 
 @testset "`getmodel` and `setmodel`" begin
-    @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    @testset "$(nameof(model))" for model in TU.DEMO_MODELS
+        model = TU.DEMO_MODELS[1]
         ℓ = DynamicPPL.LogDensityFunction(model)
         @test DynamicPPL.getmodel(ℓ) == model
         @test DynamicPPL.setmodel(ℓ, model).model == model
@@ -21,10 +21,10 @@ using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, Rever
 end
 
 @testset "LogDensityFunction" begin
-    @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-        vns = DynamicPPL.TestUtils.varnames(model)
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+    @testset "$(nameof(model))" for model in TU.DEMO_MODELS
+        example_values = TU.rand_prior_true(model)
+        vns = TU.varnames(model)
+        varinfos = TU.setup_varinfos(model, example_values, vns)
 
         @testset "$(varinfo)" for varinfo in varinfos
             logdensity = DynamicPPL.LogDensityFunction(model, varinfo)
