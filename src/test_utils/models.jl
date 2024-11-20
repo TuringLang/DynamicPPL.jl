@@ -1,195 +1,11 @@
-module TestUtils
-
-using AbstractMCMC
-using DynamicPPL
-using LinearAlgebra
-using Distributions
-using Test
-
-using Random: Random
-using Bijectors: Bijectors
-using Accessors: Accessors
-
-# For backwards compat.
-using DynamicPPL: varname_leaves, update_values!!
-
-"""
-    test_values(vi::AbstractVarInfo, vals::NamedTuple, vns)
-
-Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
-"""
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...)
-    for vn in vns
-        @test compare(vi[vn], get(vals, vn); kwargs...)
-    end
-end
-
-"""
-    setup_varinfos(model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false)
-
-Return a tuple of instances for different implementations of `AbstractVarInfo` with
-each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
-
-If `include_threadsafe` is `true`, then the returned tuple will also include thread-safe versions
-of the varinfo instances.
-"""
-function setup_varinfos(
-    model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
-)
-    # VarInfo
-    vi_untyped_metadata = VarInfo(DynamicPPL.Metadata())
-    vi_untyped_vnv = VarInfo(DynamicPPL.VarNamedVector())
-    model(vi_untyped_metadata)
-    model(vi_untyped_vnv)
-    vi_typed_metadata = DynamicPPL.TypedVarInfo(vi_untyped_metadata)
-    vi_typed_vnv = DynamicPPL.TypedVarInfo(vi_untyped_vnv)
-
-    # SimpleVarInfo
-    svi_typed = SimpleVarInfo(example_values)
-    svi_untyped = SimpleVarInfo(OrderedDict())
-    svi_vnv = SimpleVarInfo(DynamicPPL.VarNamedVector())
-
-    # SimpleVarInfo{<:Any,<:Ref}
-    svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
-    svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
-    svi_vnv_ref = SimpleVarInfo(DynamicPPL.VarNamedVector(), Ref(getlogp(svi_vnv)))
-
-    lp = getlogp(vi_typed_metadata)
-    varinfos = map((
-        vi_untyped_metadata,
-        vi_untyped_vnv,
-        vi_typed_metadata,
-        vi_typed_vnv,
-        svi_typed,
-        svi_untyped,
-        svi_vnv,
-        svi_typed_ref,
-        svi_untyped_ref,
-        svi_vnv_ref,
-    )) do vi
-        # Set them all to the same values.
-        DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
-    end
-
-    if include_threadsafe
-        varinfos = (varinfos..., map(DynamicPPL.ThreadSafeVarInfo ∘ deepcopy, varinfos)...)
-    end
-
-    return varinfos
-end
-
-"""
-    logprior_true(model, args...)
-
-Return the `logprior` of `model` for `args`.
-
-This should generally be implemented by hand for every specific `model`.
-
-See also: [`logjoint_true`](@ref), [`loglikelihood_true`](@ref).
-"""
-function logprior_true end
-
-"""
-    loglikelihood_true(model, args...)
-
-Return the `loglikelihood` of `model` for `args`.
-
-This should generally be implemented by hand for every specific `model`.
-
-See also: [`logjoint_true`](@ref), [`logprior_true`](@ref).
-"""
-function loglikelihood_true end
-
-"""
-    logjoint_true(model, args...)
-
-Return the `logjoint` of `model` for `args`.
-
-Defaults to `logprior_true(model, args...) + loglikelihood_true(model, args..)`.
-
-This should generally be implemented by hand for every specific `model`
-so that the returned value can be used as a ground-truth for testing things like:
-
-1. Validity of evaluation of `model` using a particular implementation of `AbstractVarInfo`.
-2. Validity of a sampler when combined with DynamicPPL by running the sampler twice: once targeting ground-truth functions, e.g. `logjoint_true`, and once targeting `model`.
-
-And more.
-
-See also: [`logprior_true`](@ref), [`loglikelihood_true`](@ref).
-"""
-function logjoint_true(model::Model, args...)
-    return logprior_true(model, args...) + loglikelihood_true(model, args...)
-end
-
-"""
-    logjoint_true_with_logabsdet_jacobian(model::Model, args...)
-
-Return a tuple `(args_unconstrained, logjoint)` of `model` for `args`.
-
-Unlike [`logjoint_true`](@ref), the returned logjoint computation includes the
-log-absdet-jacobian adjustment, thus computing logjoint for the unconstrained variables.
-
-Note that `args` are assumed be in the support of `model`, while `args_unconstrained`
-will be unconstrained.
-
-This should generally not be implemented directly, instead one should implement
-[`logprior_true_with_logabsdet_jacobian`](@ref) for a given `model`.
-
-See also: [`logjoint_true`](@ref), [`logprior_true_with_logabsdet_jacobian`](@ref).
-"""
-function logjoint_true_with_logabsdet_jacobian(model::Model, args...)
-    args_unconstrained, lp = logprior_true_with_logabsdet_jacobian(model, args...)
-    return args_unconstrained, lp + loglikelihood_true(model, args...)
-end
-
-"""
-    logprior_true_with_logabsdet_jacobian(model::Model, args...)
-
-Return a tuple `(args_unconstrained, logprior_unconstrained)` of `model` for `args...`.
-
-Unlike [`logprior_true`](@ref), the returned logprior computation includes the
-log-absdet-jacobian adjustment, thus computing logprior for the unconstrained variables.
-
-Note that `args` are assumed be in the support of `model`, while `args_unconstrained`
-will be unconstrained.
-
-See also: [`logprior_true`](@ref).
-"""
-function logprior_true_with_logabsdet_jacobian end
-
-"""
-    varnames(model::Model)
-
-Return a collection of `VarName` as they are expected to appear in the model.
-
-Even though it is recommended to implement this by hand for a particular `Model`,
-a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
-"""
-function varnames(model::Model)
-    return collect(
-        keys(last(DynamicPPL.evaluate!!(model, SimpleVarInfo(Dict()), SamplingContext())))
-    )
-end
-
-"""
-    posterior_mean(model::Model)
-
-Return a `NamedTuple` compatible with `varnames(model)` where the values represent
-the posterior mean under `model`.
-
-"Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
-"""
-function posterior_mean end
-
-"""
-    rand_prior_true([rng::AbstractRNG, ]model::DynamicPPL.Model)
-
-Return a `NamedTuple` of realizations from the prior of `model` compatible with `varnames(model)`.
-"""
-function rand_prior_true(model::DynamicPPL.Model)
-    return rand_prior_true(Random.default_rng(), model)
-end
+# models.jl
+# ---------
+#
+# Contains a list of DynamicPPL models, each containing implementations of
+# `logprior_true`, `loglikelihood_true`, `varnames`, and
+# `logprior_true_with_logabsdet_jacobian` for testing purposes.
+#
+# Some additionally contain an implementation of `rand_prior_true`.
 
 """
     demo_dynamic_constraint()
@@ -202,7 +18,6 @@ A model with variables `m` and `x` with `x` having support depending on `m`.
 
     return (m=m, x=x)
 end
-
 function logprior_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
     return logpdf(Normal(), m) + logpdf(truncated(Normal(), m, Inf), x)
 end
@@ -232,7 +47,6 @@ x[2] ~ InverseGamma(2, 3)
 x[3] ~ truncated(Normal(), -5, 20)
 x[4:5] ~ Dirichlet([1.0, 2.0])
 ```
-
 """
 @model function demo_one_variable_multiple_constraints(
     ::Type{TV}=Vector{Float64}
@@ -242,10 +56,8 @@ x[4:5] ~ Dirichlet([1.0, 2.0])
     x[2] ~ InverseGamma(2, 3)
     x[3] ~ truncated(Normal(), -5, 20)
     x[4:5] ~ Dirichlet([1.0, 2.0])
-
     return (x=x,)
 end
-
 function logprior_true(model::Model{typeof(demo_one_variable_multiple_constraints)}, x)
     return (
         logpdf(Normal(), x[1]) +
@@ -274,7 +86,6 @@ function logprior_true_with_logabsdet_jacobian(
     )
     return (x=x_unconstrained,), logprior_true(model, x) - Δlogp
 end
-
 function rand_prior_true(
     rng::Random.AbstractRNG, model::Model{typeof(demo_one_variable_multiple_constraints)}
 )
@@ -323,6 +134,47 @@ end
 function rand_prior_true(rng::Random.AbstractRNG, model::Model{typeof(demo_lkjchol)})
     x = rand(rng, LKJCholesky(model.args.d, 1.0))
     return (x=x,)
+end
+
+# Model to test `StaticTransformation` with.
+"""
+    demo_static_transformation()
+
+Simple model for which [`default_transformation`](@ref) returns a [`StaticTransformation`](@ref).
+"""
+@model function demo_static_transformation()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+
+    return (; s, m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+end
+
+function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
+    b = Bijectors.Stacked(Bijectors.elementwise(exp), identity)
+    return DynamicPPL.StaticTransformation(b)
+end
+
+posterior_mean(::Model{typeof(demo_static_transformation)}) = (s=49 / 24, m=7 / 6)
+function logprior_true(::Model{typeof(demo_static_transformation)}, s, m)
+    return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
+end
+function loglikelihood_true(::Model{typeof(demo_static_transformation)}, s, m)
+    return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_static_transformation)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
+
+function rand_prior_true(
+    rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
+)
+    s = rand(rng, InverseGamma(2, 3))
+    m = rand(rng, Normal(0, sqrt(s)))
+    return (s=s, m=m)
 end
 
 # A collection of models for which the posterior should be "similar".
@@ -548,12 +400,12 @@ function varnames(model::Model{typeof(demo_assume_literal_dot_observe)})
     return [@varname(s), @varname(m)]
 end
 
+# Only used as a submodel
 @model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
     s = TV(undef, 2)
     s .~ InverseGamma(2, 3)
     m = TV(undef, 2)
     m .~ Normal.(0, sqrt.(s))
-
     return s, m
 end
 
@@ -916,185 +768,3 @@ const DEMO_MODELS = (
     demo_dot_assume_matrix_dot_observe_matrix(),
     demo_assume_matrix_dot_observe_matrix(),
 )
-
-# Model to test `StaticTransformation` with.
-"""
-    demo_static_transformation()
-
-Simple model for which [`default_transformation`](@ref) returns a [`StaticTransformation`](@ref).
-"""
-@model function demo_static_transformation()
-    s ~ InverseGamma(2, 3)
-    m ~ Normal(0, sqrt(s))
-    1.5 ~ Normal(m, sqrt(s))
-    2.0 ~ Normal(m, sqrt(s))
-
-    return (; s, m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
-end
-
-function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
-    b = Bijectors.Stacked(Bijectors.elementwise(exp), identity)
-    return DynamicPPL.StaticTransformation(b)
-end
-
-posterior_mean(::Model{typeof(demo_static_transformation)}) = (s=49 / 24, m=7 / 6)
-function logprior_true(::Model{typeof(demo_static_transformation)}, s, m)
-    return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
-end
-function loglikelihood_true(::Model{typeof(demo_static_transformation)}, s, m)
-    return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
-end
-function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_static_transformation)}, s, m
-)
-    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
-end
-
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
-)
-    s = rand(rng, InverseGamma(2, 3))
-    m = rand(rng, Normal(0, sqrt(s)))
-    return (s=s, m=m)
-end
-
-"""
-    marginal_mean_of_samples(chain, varname)
-
-Return the mean of variable represented by `varname` in `chain`.
-"""
-marginal_mean_of_samples(chain, varname) = mean(Array(chain[Symbol(varname)]))
-
-"""
-    test_sampler(models, sampler, args...; kwargs...)
-
-Test that `sampler` produces correct marginal posterior means on each model in `models`.
-
-In short, this method iterates through `models`, calls `AbstractMCMC.sample` on the
-`model` and `sampler` to produce a `chain`, and then checks `marginal_mean_of_samples(chain, vn)`
-for every (leaf) varname `vn` against the corresponding value returned by
-[`posterior_mean`](@ref) for each model.
-
-To change how comparison is done for a particular `chain` type, one can overload
-[`marginal_mean_of_samples`](@ref) for the corresponding type.
-
-# Arguments
-- `models`: A collection of instaces of [`DynamicPPL.Model`](@ref) to test on.
-- `sampler`: The `AbstractMCMC.AbstractSampler` to test.
-- `args...`: Arguments forwarded to `sample`.
-
-# Keyword arguments
-- `varnames_filter`: A filter to apply to `varnames(model)`, allowing comparison for only
-    a subset of the varnames.
-- `atol=1e-1`: Absolute tolerance used in `@test`.
-- `rtol=1e-3`: Relative tolerance used in `@test`.
-- `kwargs...`: Keyword arguments forwarded to `sample`.
-"""
-function test_sampler(
-    models,
-    sampler::AbstractMCMC.AbstractSampler,
-    args...;
-    varnames_filter=Returns(true),
-    atol=1e-1,
-    rtol=1e-3,
-    sampler_name=typeof(sampler),
-    kwargs...,
-)
-    @testset "$(sampler_name) on $(nameof(model))" for model in models
-        chain = AbstractMCMC.sample(model, sampler, args...; kwargs...)
-        target_values = posterior_mean(model)
-        for vn in filter(varnames_filter, varnames(model))
-            # We want to compare elementwise which can be achieved by
-            # extracting the leaves of the `VarName` and the corresponding value.
-            for vn_leaf in varname_leaves(vn, get(target_values, vn))
-                target_value = get(target_values, vn_leaf)
-                chain_mean_value = marginal_mean_of_samples(chain, vn_leaf)
-                @test chain_mean_value ≈ target_value atol = atol rtol = rtol
-            end
-        end
-    end
-end
-
-"""
-    test_sampler_on_demo_models(meanfunction, sampler, args...; kwargs...)
-
-Test `sampler` on every model in [`DEMO_MODELS`](@ref).
-
-This is just a proxy for `test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
-"""
-function test_sampler_on_demo_models(
-    sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
-)
-    return test_sampler(DEMO_MODELS, sampler, args...; kwargs...)
-end
-
-"""
-    test_sampler_continuous(sampler, args...; kwargs...)
-
-Test that `sampler` produces the correct marginal posterior means on all models in `demo_models`.
-
-As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref).
-"""
-function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
-    return test_sampler_on_demo_models(sampler, args...; kwargs...)
-end
-
-"""
-    test_context_interface(context)
-
-Test that `context` implements the `AbstractContext` interface.
-"""
-function test_context_interface(context)
-    # Is a subtype of `AbstractContext`.
-    @test context isa DynamicPPL.AbstractContext
-    # Should implement `NodeTrait.`
-    @test DynamicPPL.NodeTrait(context) isa Union{DynamicPPL.IsParent,DynamicPPL.IsLeaf}
-    # If it's a parent.
-    if DynamicPPL.NodeTrait(context) == DynamicPPL.IsParent
-        # Should implement `childcontext` and `setchildcontext`
-        @test DynamicPPL.setchildcontext(context, DynamicPPL.childcontext(context)) ==
-            context
-    end
-end
-
-"""
-Context that multiplies each log-prior by mod
-used to test whether varwise_logpriors respects child-context.
-"""
-struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
-    mod::T
-    context::Ctx
-end
-function TestLogModifyingChildContext(
-    mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
-)
-    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
-end
-
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
-function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
-    return TestLogModifyingChildContext(context.mod, child)
-end
-function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
-    return value, logp * context.mod, vi
-end
-function DynamicPPL.dot_tilde_assume(
-    context::TestLogModifyingChildContext, right, left, vn, vi
-)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
-    return value, logp * context.mod, vi
-end
-function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
-    logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
-    return logp * context.mod, vi
-end
-function DynamicPPL.dot_tilde_observe(
-    context::TestLogModifyingChildContext, right, left, vi
-)
-    logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
-    return logp * context.mod, vi
-end
-
-end
