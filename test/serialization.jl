@@ -2,7 +2,7 @@
     @testset "saving and loading" begin
         # Save model.
         file = joinpath(mktempdir(), "gdemo_default.jls")
-        serialize(file, gdemo_default)
+        serialize(file, TU.gdemo_default)
 
         # Sample from deserialized model.
         gdemo_default_copy = deserialize(file)

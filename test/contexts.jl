@@ -167,8 +167,7 @@ end
                     vn_without_prefix = remove_prefix(vn)
 
                     # Let's check elementwise.
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
+                    for vn_child in TU.varname_leaves(vn_without_prefix, val)
                         if getoptic(vn_child)(val) === missing
                             @test contextual_isassumption(context, vn_child)
                         else
@@ -200,8 +199,7 @@ end
                     # `ConditionContext` with the conditioned variable.
                     vn_without_prefix = remove_prefix(vn)
 
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
+                    for vn_child in TU.varname_leaves(vn_without_prefix, val)
                         # `vn_child` should be in `context`.
                         @test hasconditioned_nested(context, vn_child)
                         # Value should be the same as extracted above.
@@ -216,7 +214,7 @@ end
     @testset "Evaluation" begin
         @testset "$context" for context in contexts
             # Just making sure that we can actually sample with each of the contexts.
-            @test (gdemo_default(SamplingContext(context)); true)
+            @test (TU.gdemo_default(SamplingContext(context)); true)
         end
     end
 
@@ -258,7 +256,7 @@ end
     end
 
     @testset "FixedContext" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
             retval = model()
             s, m = retval.s, retval.m
 

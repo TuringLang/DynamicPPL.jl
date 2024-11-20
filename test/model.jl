@@ -31,7 +31,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default # defined in test/test_util.jl
+        model = TU.gdemo_default
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -55,9 +55,9 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        for model in DynamicPPL.TestUtils.DEMO_MODELS # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
+        for model in TU.DEMO_MODELS # length(TU.DEMO_MODELS)=12
             var_info = VarInfo(model)
-            vns = DynamicPPL.TestUtils.varnames(model)
+            vns = TU.varnames(model)
             syms = unique(DynamicPPL.getsym.(vns))
 
             # generate a chain of sample parameter values.
@@ -113,20 +113,17 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
                     samples_dict[key] = existing_value
                 end
                 samples = (; samples_dict...)
-                samples = modify_value_representation(samples) # `modify_value_representation` defined in test/test_util.jl
-                @test logpriors[i] ≈
-                    DynamicPPL.TestUtils.logprior_true(model, samples[:s], samples[:m])
-                @test loglikelihoods[i] ≈ DynamicPPL.TestUtils.loglikelihood_true(
-                    model, samples[:s], samples[:m]
-                )
-                @test logjoints[i] ≈
-                    DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
+                samples = TU.modify_value_representation(samples)
+                @test logpriors[i] ≈ TU.logprior_true(model, samples[:s], samples[:m])
+                @test loglikelihoods[i] ≈
+                    TU.loglikelihood_true(model, samples[:s], samples[:m])
+                @test logjoints[i] ≈ TU.logjoint_true(model, samples[:s], samples[:m])
             end
         end
     end
 
     @testset "rng" begin
-        model = gdemo_default
+        model = TU.gdemo_default
 
         for sampler in (SampleFromPrior(), SampleFromUniform())
             for i in 1:10
@@ -144,7 +141,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "defaults without VarInfo, Sampler, and Context" begin
-        model = gdemo_default
+        model = TU.gdemo_default
 
         Random.seed!(100)
         s, m = model()
@@ -184,7 +181,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "Internal methods" begin
-        model = gdemo_default
+        model = TU.gdemo_default
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -200,7 +197,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "Dynamic constraints, Metadata" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        model = TU.demo_dynamic_constraint()
         spl = SampleFromPrior()
         vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata())
         link!!(vi, spl, model)
@@ -216,7 +213,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "Dynamic constraints, VectorVarInfo" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
+        model = TU.demo_dynamic_constraint()
         for i in 1:10
             vi = VarInfo(model)
             @test vi[@varname(x)] >= vi[@varname(m)]
@@ -224,7 +221,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "rand" begin
-        model = gdemo_default
+        model = TU.gdemo_default
 
         Random.seed!(1776)
         s, m = model()
@@ -256,7 +253,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "extract priors" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
             priors = extract_priors(model)
 
             # We know that any variable starting with `s` should have `InverseGamma`
@@ -274,45 +271,44 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "TestUtils" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            x = DynamicPPL.TestUtils.rand_prior_true(model)
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
+            x = TU.rand_prior_true(model)
             # `rand_prior_true` should return a `NamedTuple`.
             @test x isa NamedTuple
 
             # `rand` with a `AbstractDict` should have `varnames` as keys.
             x_rand_dict = rand(OrderedDict, model)
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 @test haskey(x_rand_dict, vn)
             end
             # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
             x_rand_nt = rand(NamedTuple, model)
-            for vn in DynamicPPL.TestUtils.varnames(model)
+            for vn in TU.varnames(model)
                 @test haskey(x_rand_nt, Symbol(vn))
             end
 
             # Ensure log-probability computations are implemented.
-            @test logprior(model, x) ≈ DynamicPPL.TestUtils.logprior_true(model, x...)
-            @test loglikelihood(model, x) ≈
-                DynamicPPL.TestUtils.loglikelihood_true(model, x...)
-            @test logjoint(model, x) ≈ DynamicPPL.TestUtils.logjoint_true(model, x...)
+            @test logprior(model, x) ≈ TU.logprior_true(model, x...)
+            @test loglikelihood(model, x) ≈ TU.loglikelihood_true(model, x...)
+            @test logjoint(model, x) ≈ TU.logjoint_true(model, x...)
             @test logjoint(model, x) !=
-                DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
+                TU.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
             vi = last(
                 DynamicPPL.evaluate!!(
                     model, SimpleVarInfo(OrderedDict()), SamplingContext()
                 ),
             )
-            @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
+            @test all(collect(keys(vi)) .== TU.varnames(model))
             # Ensure `posterior_mean` is implemented.
-            @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
+            @test TU.posterior_mean(model) isa typeof(x)
         end
     end
 
     @testset "generated_quantities on `LKJCholesky`" begin
         n = 10
         d = 2
-        model = DynamicPPL.TestUtils.demo_lkjchol(d)
+        model = TU.demo_lkjchol(d)
         xs = [model().x for _ in 1:n]
 
         # Extract varnames and values.
@@ -360,18 +356,15 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
     if VERSION >= v"1.8"
         @testset "Type stability of models" begin
-            models_to_test = [
-                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
-            ]
+            models_to_test = [TU.DEMO_MODELS..., TU.demo_lkjchol(2)]
             context = DefaultContext()
             @testset "$(model.f)" for model in models_to_test
-                vns = DynamicPPL.TestUtils.varnames(model)
-                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+                vns = TU.varnames(model)
+                example_values = TU.rand_prior_true(model)
                 varinfos = filter(
-                    is_typed_varinfo,
-                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
+                    is_typed_varinfo, TU.setup_varinfos(model, example_values, vns)
                 )
-                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
                     @test begin
                         @inferred(DynamicPPL.evaluate!!(model, varinfo, context))
                         true
@@ -388,11 +381,11 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "values_as_in_model" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            vns = DynamicPPL.TestUtils.varnames(model)
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+        @testset "$(model.f)" for model in TU.DEMO_MODELS
+            vns = TU.varnames(model)
+            example_values = TU.rand_prior_true(model)
+            varinfos = TU.setup_varinfos(model, example_values, vns)
+            @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
                 realizations = values_as_in_model(model, varinfo)
                 # Ensure that all variables are found.
                 vns_found = collect(keys(realizations))
@@ -431,7 +424,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             DynamicPPL.typed_simple_varinfo(model),
             DynamicPPL.untyped_simple_varinfo(model),
         ]
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+        @testset "$(TU.short_varinfo_name(varinfo))" for varinfo in varinfos
             varinfo_linked = DynamicPPL.link(varinfo, model)
             varinfo_linked_result = last(
                 DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())

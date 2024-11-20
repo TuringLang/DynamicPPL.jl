@@ -1,18 +1,16 @@
 @testset "logdensities_likelihoods.jl" begin
-    mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
-    mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+    mod_ctx = TU.TestLogModifyingChildContext(1.2)
+    mod_ctx2 = TU.TestLogModifyingChildContext(1.4, mod_ctx)
+    @testset "$(model.f)" for model in TU.DEMO_MODELS
+        example_values = TU.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
         vi = VarInfo(model)
-        for vn in DynamicPPL.TestUtils.varnames(model)
+        for vn in TU.varnames(model)
             vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
         end
 
-        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
-            model, example_values...
-        )
+        loglikelihood_true = TU.loglikelihood_true(model, example_values...)
         logp_true = logprior(model, vi)
 
         # Compute the pointwise loglikelihoods.
@@ -49,14 +47,14 @@ end
     # We'll just test one, since `pointwise_logdensities(::Model, ::AbstractVarInfo)` is tested extensively,
     # and this is what is used to implement `pointwise_logdensities(::Model, ::Chains)`. This test suite is just
     # to ensure that we don't accidentally break the the version on `Chains`.
-    model = DynamicPPL.TestUtils.demo_dot_assume_dot_observe()
+    model = TU.demo_dot_assume_dot_observe()
     # FIXME(torfjelde): Make use of `varname_and_value_leaves` once we've introduced
     # an impl of this for containers.
     # NOTE(torfjelde): This only returns the varnames of the _random_ variables, i.e. excl. observed.
-    vns = DynamicPPL.TestUtils.varnames(model)
+    vns = TU.varnames(model)
     # Get some random `NamedTuple` samples from the prior.
     num_iters = 3
-    vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
+    vals = [TU.rand_prior_true(model) for _ in 1:num_iters]
     # Concatenate the vector representations and create a `Chains` from it.
     vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
     chain = Chains(permutedims(vals_arr), map(Symbol, vns))
@@ -90,9 +88,9 @@ end
     for (val, logjoint, logprior, loglikelihood) in
         zip(vals, logjoints, logpriors, loglikelihoods)
         # Compare true logjoint with the one obtained from `pointwise_logdensities`.
-        logjoint_true = DynamicPPL.TestUtils.logjoint_true(model, val...)
-        logprior_true = DynamicPPL.TestUtils.logprior_true(model, val...)
-        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(model, val...)
+        logjoint_true = TU.logjoint_true(model, val...)
+        logprior_true = TU.logprior_true(model, val...)
+        loglikelihood_true = TU.loglikelihood_true(model, val...)
 
         @test logjoint ≈ logjoint_true
         @test logprior ≈ logprior_true
