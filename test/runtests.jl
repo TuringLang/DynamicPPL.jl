@@ -28,15 +28,12 @@ using LinearAlgebra # Diagonal
 using Combinatorics: combinations
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
-import DynamicPPLTestExt.TestExtUtils as TU
 
 const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
 const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
 const GROUP = get(ENV, "GROUP", "All")
 
 Random.seed!(100)
-
-include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
     if GROUP == "All" || GROUP == "DynamicPPL"
