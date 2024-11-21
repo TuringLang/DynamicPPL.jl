@@ -1222,7 +1222,12 @@ function predict(model::Model, chain; include_all=false)
     return predict(Random.default_rng(), model, chain; include_all)
 end
 
-function predict(rng::Random.AbstractRNG, model::Model, varinfos::AbstractArray{<:AbstractVarInfo}; include_all=false)
+function predict(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfos::AbstractArray{<:AbstractVarInfo};
+    include_all=false,
+)
     predictive_samples = Array{PredictiveSample}(undef, size(varinfos))
     for i in eachindex(varinfos)
         model(rng, varinfos[i], SampleFromPrior())
