@@ -42,78 +42,22 @@ function DynamicPPL.varnames(c::MCMCChains.Chains)
     return keys(c.info.varname_to_symbol)
 end
 
-# this is copied from Turing.jl, `stats` field is omitted as it is never used
-struct Transition{T,F}
-    θ::T
-    lp::F
-end
-
-function Transition(model::DynamicPPL.Model, vi::DynamicPPL.VarInfo)
-    return Transition(getparams(model, vi), DynamicPPL.getlogp(vi))
-end
-
-# a copy of Turing.Inference.getparams
-getparams(model, t) = t.θ
-function getparams(model::DynamicPPL.Model, vi::DynamicPPL.VarInfo)
-    # NOTE: In the past, `invlink(vi, model)` + `values_as(vi, OrderedDict)` was used.
-    # Unfortunately, using `invlink` can cause issues in scenarios where the constraints
-    # of the parameters change depending on the realizations. Hence we have to use
-    # `values_as_in_model`, which re-runs the model and extracts the parameters
-    # as they are seen in the model, i.e. in the constrained space. Moreover,
-    # this means that the code below will work both of linked and invlinked `vi`.
-    # Ref: https://github.com/TuringLang/Turing.jl/issues/2195
-    # NOTE: We need to `deepcopy` here to avoid modifying the original `vi`.
-    vals = DynamicPPL.values_as_in_model(model, deepcopy(vi))
-
-    # Obtain an iterator over the flattened parameter names and values.
-    iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
-
-    # Materialize the iterators and concatenate.
-    return mapreduce(collect, vcat, iters)
-end
-
-function _params_to_array(model::DynamicPPL.Model, ts::Vector)
-    names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
-    # Extract the parameter names and values from each transition.
-    dicts = map(ts) do t
-        nms_and_vs = getparams(model, t)
-        nms = map(first, nms_and_vs)
-        vs = map(last, nms_and_vs)
-        for nm in nms
-            push!(names_set, nm)
-        end
-        # Convert the names and values to a single dictionary.
-        return DynamicPPL.OrderedCollections.OrderedDict(zip(nms, vs))
-    end
-    names = collect(names_set)
-    vals = [
-        get(dicts[i], key, missing) for i in eachindex(dicts), (j, key) in enumerate(names)
-    ]
-
-    return names, vals
-end
-
 """
-
     predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
 
-Execute `model` conditioned on each sample in `chain`, and return the resulting `Chains`.
+Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
+in `chain`, and return the resulting `Chains`.
 
-If `include_all` is `false`, the returned `Chains` will contain only those variables
-sampled/not present in `chain`.
+If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
+the samples in `chain`. This is useful when you want to sample only new variables from the posterior 
+predictive distribution.
 
-# Details
-Internally calls `Turing.Inference.transitions_from_chain` to obtained the samples
-and then converts these into a `Chains` object using `AbstractMCMC.bundle_samples`.
-
-# Example
+# Examples
 ```jldoctest
-julia> using AbstractMCMC, AdvancedHMC, DynamicPPL, ForwardDiff;
-[ Info: [Turing]: progress logging is disabled globally
+julia> using DynamicPPL, AbstractMCMC, AdvancedHMC, ForwardDiff;
 
 julia> @model function linear_reg(x, y, σ = 0.1)
            β ~ Normal(0, 1)
-
            for i ∈ eachindex(y)
                y[i] ~ Normal(β * x[i], σ)
            end
@@ -129,7 +73,7 @@ julia> m_train = linear_reg(xs_train, ys_train, σ);
 
 julia> n_train_logdensity_function = DynamicPPL.LogDensityFunction(m_train, DynamicPPL.VarInfo(m_train));
 
-julia> chain_lin_reg = AbstractMCMC.sample(n_train_logdensity_function, NUTS(0.65), 200; chain_type=MCMCChains.Chains, param_names=[:β]);
+julia> chain_lin_reg = AbstractMCMC.sample(n_train_logdensity_function, NUTS(0.65), 200; chain_type=MCMCChains.Chains, param_names=[:β], discard_initial=100)
 ┌ Info: Found initial step size
 └   ϵ = 0.003125
 
@@ -158,7 +102,6 @@ Quantiles
         y[1]  20.0342  20.1188  20.2135  20.2588  20.4188
         y[2]  20.1870  20.3178  20.3839  20.4466  20.5895
 
-
 julia> ys_pred = vec(mean(Array(group(predictions, :y)); dims = 1));
 
 julia> sum(abs2, ys_test - ys_pred) ≤ 0.1
@@ -171,170 +114,65 @@ function DynamicPPL.predict(
     chain::MCMCChains.Chains;
     include_all=false,
 )
-    # Don't need all the diagnostics
-    chain_parameters = MCMCChains.get_sections(chain, :parameters)
+    parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
+    vi = DynamicPPL.VarInfo(model)
+    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    varinfos = map(iters) do (sample_idx, chain_idx)
+        DynamicPPL.setval_and_resample!(
+            deepcopy(vi), parameter_only_chain, sample_idx, chain_idx
+        )
+    end
 
-    spl = DynamicPPL.SampleFromPrior()
+    predictive_samples = DynamicPPL.predict(rng, model, varinfos; include_all)
 
-    # Sample transitions using `spl` conditioned on values in `chain`
-    transitions = transitions_from_chain(rng, model, chain_parameters; sampler=spl)
-
-    # Let the Turing internals handle everything else for you
     chain_result = reduce(
         MCMCChains.chainscat,
         [
-            _bundle_samples(transitions[:, chain_idx], model, spl) for
-            chain_idx in 1:size(transitions, 2)
+            _bundle_samples(predictive_samples[:, chain_idx]) for
+            chain_idx in 1:size(predictive_samples, 2)
         ],
     )
-
     parameter_names = if include_all
         MCMCChains.names(chain_result, :parameters)
     else
         filter(
-            k -> !(k in MCMCChains.names(chain_parameters, :parameters)),
+            k -> !(k in MCMCChains.names(parameter_only_chain, :parameters)),
             names(chain_result, :parameters),
         )
     end
-
     return chain_result[parameter_names]
 end
 
-getlogp(t::Transition) = t.lp
+function _params_to_array(ts::Vector)
+    names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
 
-function get_transition_extras(ts::AbstractVector{<:Transition})
-    valmat = reshape([getlogp(t) for t in ts], :, 1)
-    return [:lp], valmat
-end
-
-function names_values(extra_data::AbstractVector{<:NamedTuple{names}}) where {names}
-    values = [getfield(data, name) for data in extra_data, name in names]
-    return collect(names), values
-end
-
-function names_values(xs::AbstractVector{<:NamedTuple})
-    # Obtain all parameter names.
-    names_set = Set{Symbol}()
-    for x in xs
-        for k in keys(x)
-            push!(names_set, k)
+    dicts = map(ts) do t
+        nms_and_vs = t.values
+        nms = map(first, nms_and_vs)
+        vs = map(last, nms_and_vs)
+        for nm in nms
+            push!(names_set, nm)
         end
+        return DynamicPPL.OrderedCollections.OrderedDict(zip(nms, vs))
     end
-    names_unique = collect(names_set)
 
-    # Extract all values as matrix.
-    values = [haskey(x, name) ? x[name] : missing for x in xs, name in names_unique]
+    names = collect(names_set)
+    vals = [
+        get(dicts[i], key, missing) for i in eachindex(dicts), (j, key) in enumerate(names)
+    ]
 
-    return names_unique, values
+    return names, vals
 end
 
-getlogevidence(transitions, sampler, state) = missing
-
-# this is copied from Turing.jl/src/mcmc/Inference.jl, types are more restrictive (removed types that are defined in Turing)
-# the function is simplified, so that unused arguments are removed
-function _bundle_samples(
-    ts::Vector{<:Transition}, model::DynamicPPL.Model, spl::DynamicPPL.SampleFromPrior
-)
-    # Convert transitions to array format.
-    # Also retrieve the variable names.
-    varnames, vals = _params_to_array(model, ts)
+function _bundle_samples(ts::Vector{<:DynamicPPL.PredictiveSample})
+    varnames, vals = _params_to_array(ts)
     varnames_symbol = map(Symbol, varnames)
-
-    # Get the values of the extra parameters in each transition.
-    extra_params, extra_values = get_transition_extras(ts)
-
-    # Extract names & construct param array.
+    extra_params = [:lp]
+    extra_values = reshape([t.logp for t in ts], :, 1)
     nms = [varnames_symbol; extra_params]
     parray = hcat(vals, extra_values)
-
-    # Set up the info tuple.
-    info = NamedTuple()
-
-    info = merge(
-        info,
-        (
-            varname_to_symbol=DynamicPPL.OrderedCollections.OrderedDict(
-                zip(varnames, varnames_symbol)
-            ),
-        ),
-    )
-
-    # Conretize the array before giving it to MCMCChains.
     parray = MCMCChains.concretize(parray)
-
-    # Chain construction.
-    chain = MCMCChains.Chains(parray, nms, (internals=extra_params,))
-
-    return chain
-end
-
-"""
-    transitions_from_chain(
-        [rng::AbstractRNG,]
-        model::Model,
-        chain::MCMCChains.Chains;
-        sampler = DynamicPPL.SampleFromPrior()
-    )
-
-Execute `model` conditioned on each sample in `chain`, and return resulting transitions.
-
-The returned transitions are represented in a `Vector{<:Turing.Inference.Transition}`.
-
-# Details
-
-In a bit more detail, the process is as follows:
-1. For every `sample` in `chain`
-   1. For every `variable` in `sample`
-      1. Set `variable` in `model` to its value in `sample`
-   2. Execute `model` with variables fixed as above, sampling variables NOT present
-      in `chain` using `SampleFromPrior`
-   3. Return sampled variables and log-joint
-
-# Example
-```julia-repl
-julia> using Turing
-
-julia> @model function demo()
-           m ~ Normal(0, 1)
-           x ~ Normal(m, 1)
-       end;
-
-julia> m = demo();
-
-julia> chain = Chains(randn(2, 1, 1), ["m"]); # 2 samples of `m`
-
-julia> transitions = Turing.Inference.transitions_from_chain(m, chain);
-
-julia> [Turing.Inference.getlogp(t) for t in transitions] # extract the logjoints
-2-element Array{Float64,1}:
- -3.6294991938628374
- -2.5697948166987845
-
-julia> [first(t.θ.x) for t in transitions] # extract samples for `x`
-2-element Array{Array{Float64,1},1}:
- [-2.0844148956440796]
- [-1.704630494695469]
-```
-"""
-function transitions_from_chain(
-    rng::DynamicPPL.Random.AbstractRNG,
-    model::DynamicPPL.Model,
-    chain::MCMCChains.Chains;
-    sampler=DynamicPPL.SampleFromPrior(),
-)
-    vi = DynamicPPL.VarInfo(model)
-
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    transitions = map(iters) do (sample_idx, chain_idx)
-        # Set variables present in `chain` and mark those NOT present in chain to be resampled.
-        DynamicPPL.setval_and_resample!(vi, chain, sample_idx, chain_idx)
-        model(rng, vi, sampler)
-
-        # Convert `VarInfo` into `NamedTuple` and save.
-        Transition(model, vi)
-    end
-
-    return transitions
+    return MCMCChains.Chains(parray, nms, (internals=extra_params,))
 end
 
 """

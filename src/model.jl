@@ -1203,11 +1203,16 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
     end
 end
 
+struct PredictiveSample{T,F}
+    values::T
+    logp::F
+end
+
 """
     predict([rng::AbstractRNG,] model::Model, chain; include_all=false)
 
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
-in `chain`, and return the resulting `Chains`. At the moment, `chain` must be a `MCMCChains.Chains` object.
+in `chain`.
 
 If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
 the samples in `chain`. This is useful when you want to sample only new variables from the posterior 
@@ -1215,6 +1220,18 @@ predictive distribution.
 """
 function predict(model::Model, chain; include_all=false)
     return predict(Random.default_rng(), model, chain; include_all)
+end
+
+function predict(rng::Random.AbstractRNG, model::Model, varinfos::AbstractArray{<:AbstractVarInfo}; include_all=false)
+    predictive_samples = Array{PredictiveSample}(undef, size(varinfos))
+    for i in eachindex(varinfos)
+        model(rng, varinfos[i], SampleFromPrior())
+        vals = values_as_in_model(model, varinfos[i])
+        iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+        params = mapreduce(collect, vcat, iters)
+        predictive_samples[i] = PredictiveSample(params, getlogp(varinfos[i]))
+    end
+    return predictive_samples
 end
 
 """
