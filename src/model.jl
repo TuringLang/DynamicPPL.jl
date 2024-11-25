@@ -1258,7 +1258,6 @@ Return `true` if `x` is a model or model wrapper, and `false` otherwise.
 """
 is_rhs_model(x) = false
 
-
 """
     to_sampleable(model)
 
