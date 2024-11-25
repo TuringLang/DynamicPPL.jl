@@ -1250,3 +1250,197 @@ end
 function returned(model::Model, values, keys)
     return returned(model, NamedTuple{keys}(values))
 end
+
+"""
+    is_rhs_model(x)
+
+Return `true` if `x` is a model or model wrapper, and `false` otherwise.
+"""
+is_rhs_model(x) = false
+
+
+"""
+    to_sampleable(model)
+
+Return a wrapper around `model` indicating it is sampleable.
+"""
+function to_sampleable end
+
+
+"""
+    ReturnedModelWrapper
+
+A wrapper around a model indicating it is a model over its return values.
+
+This should rarely be constructed explicitly; see [`returned(model)`](@ref) instead.
+"""
+struct ReturnedModelWrapper{M<:Model}
+    model::M
+end
+
+is_rhs_model(::ReturnedModelWrapper) = true
+
+function rand_like!!(model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo)
+    # Return's the value and the (possibly mutated) varinfo.
+    return _evaluate!!(model_wrap.model, varinfo, context)
+end
+
+"""
+    returned(model::Model)
+
+Return a wrapper around `model` which indicates that this model can only be sampled from.
+
+This is mainly meant to be used on the right-hand side of a `~` operator to indicate that
+the model can be sampled from but not necessarily evaluated for its log density.
+
+!!! warning
+    Note that other operations that one typically associate with expressions of the form `left ~ right`
+    such as [`condition`](@ref) or [`fix`](@ref), will also not work with `returned`.
+
+!!! warning
+    It's generally recommended to use [`prefix(::Model, input)`](@ref) when working with submodels
+    to ensure that the variables in `model` are unique and do not clash with other variables in the
+    parent model or in other submodels.
+
+# Examples
+
+## Simple example
+```jldoctest submodel-returned; setup=:(using Distributions)
+julia> @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia> @model function demo2(x, y)
+            a ~ returned(demo1(x))
+            return y ~ Uniform(0, a)
+       end;
+```
+
+When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
+```jldoctest submodel-returned
+julia> vi = VarInfo(demo2(missing, 0.4));
+
+julia> @varname(x) in keys(vi)
+true
+```
+
+Variable `a` is not tracked since it can be computed from the random variable `x` that was
+tracked when running `demo1`:
+```jldoctest submodel-returned
+julia> @varname(a) in keys(vi)
+false
+```
+
+We can check that the log joint probability of the model accumulated in `vi` is correct:
+
+```jldoctest submodel-returned
+julia> x = vi[@varname(x)];
+
+julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+true
+```
+
+## With prefixing
+```jldoctest submodel-returned-prefix; setup=:(using Distributions)
+julia> @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia> @model function demo2(x, y, z)
+            a ~ returned(prefix(demo1(x), :sub1))
+            b ~ returned(prefix(demo1(y), :sub2))
+            return z ~ Uniform(-a, b)
+       end;
+```
+
+When we sample from the model `demo2(missing, missing, 0.4)` random variables `sub1.x` and
+`sub2.x` will be sampled:
+```jldoctest submodel-returned-prefix
+julia> vi = VarInfo(demo2(missing, missing, 0.4));
+
+julia> @varname(var"sub1.x") in keys(vi)
+true
+
+julia> @varname(var"sub2.x") in keys(vi)
+true
+```
+
+Variables `a` and `b` are not tracked since they can be computed from the random variables `sub1.x` and
+`sub2.x` that were tracked when running `demo1`:
+```jldoctest submodel-returned-prefix
+julia> @varname(a) in keys(vi)
+false
+
+julia> @varname(b) in keys(vi)
+false
+```
+
+We can check that the log joint probability of the model accumulated in `vi` is correct:
+
+```jldoctest submodel-returned-prefix
+julia> sub1_x = vi[@varname(var"sub1.x")];
+
+julia> sub2_x = vi[@varname(var"sub2.x")];
+
+julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
+
+julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
+
+julia> getlogp(vi) ≈ logprior + loglikelihood
+true
+```
+
+## Different ways of setting the prefix
+```jldoctest submodel-returned-prefix-alts; setup=:(using DynamicPPL, Distributions)
+julia> @model inner() = x ~ Normal()
+inner (generic function with 2 methods)
+
+julia> # When `prefix` is unspecified, no prefix is used.
+       @model submodel_noprefix() = a ~ returned(inner())
+submodel_noprefix (generic function with 2 methods)
+
+julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
+true
+
+julia> # Using a static string.
+       @model submodel_prefix_string() = a ~ returned(prefix(inner(), "my prefix"))
+submodel_prefix_string (generic function with 2 methods)
+
+julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
+true
+
+julia> # Using string interpolation.
+       @model submodel_prefix_interpolation() = a ~ returned(prefix(inner(), "\$(nameof(inner()))"))
+submodel_prefix_interpolation (generic function with 2 methods)
+
+julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
+true
+
+julia> # Or using some arbitrary expression.
+       @model submodel_prefix_expr() = a ~ returned(prefix(inner(), 1 + 2))
+submodel_prefix_expr (generic function with 2 methods)
+
+julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
+true
+```
+
+## Usage as likelihood is illegal
+
+Note that it is illegal to use a `returned` model as a likelihood in another model:
+
+```jldoctest submodel-returned-illegal; setup=:(using Distributions)
+julia> @model inner() = x ~ Normal()
+inner (generic function with 2 methods)
+
+julia> @model illegal_likelihood() = a ~ returned(inner())
+illegal_likelihood (generic function with 2 methods)
+
+julia> model = illegal_likelihood() | (a = 1.0,);
+
+julia> model()
+ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+[...]
+"""
+returned(model::Model) = ReturnedModelWrapper(model)
