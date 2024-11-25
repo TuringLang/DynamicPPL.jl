@@ -14,13 +14,13 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with `left ~ to_sampleable(model)`.
+One can nest models and call another model inside the model function with `left ~ returned(model)`.
 
 ```@docs
-to_sampleable
+returned(model)
 ```
 
-In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_sampleable(model)`](@ref)
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`returned(model)`](@ref)
 
 ```@docs
 @submodel
