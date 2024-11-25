@@ -122,7 +122,7 @@ export AbstractVarInfo,
     fix,
     unfix,
     prefix,
-    returned_quantities,
+    returned,
     # Convenience macros
     @addlogprob!,
     @submodel,
@@ -132,7 +132,8 @@ export AbstractVarInfo,
     to_sampleable,
     # Deprecated.
     @logprob_str,
-    @prob_str
+    @prob_str,
+    generated_quantities
 
 # Reexport
 using Distributions: loglikelihood

@@ -43,7 +43,7 @@ function DynamicPPL.varnames(c::MCMCChains.Chains)
 end
 
 """
-    returned_quantities(model::Model, chain::MCMCChains.Chains)
+    returned(model::Model, chain::MCMCChains.Chains)
 
 Execute `model` for each of the samples in `chain` and return an array of the values
 returned by the `model` for each sample.
@@ -63,7 +63,7 @@ m = demo(data)
 chain = sample(m, alg, n)
 # To inspect the `interesting_quantity(θ, x)` where `θ` is replaced by samples
 # from the posterior/`chain`:
-returned_quantities(m, chain) # <= results in a `Vector` of returned values
+returned(m, chain) # <= results in a `Vector` of returned values
                                #    from `interesting_quantity(θ, x)`
 ```
 ## Concrete (and simple)
@@ -87,7 +87,7 @@ julia> model = demo(randn(10));
 
 julia> chain = sample(model, MH(), 10);
 
-julia> DynamicPPL.returned_quantities(model, chain)
+julia> returned(model, chain)
 10×1 Array{Tuple{Float64},2}:
  (2.1964758025119338,)
  (2.1964758025119338,)
@@ -101,7 +101,7 @@ julia> DynamicPPL.returned_quantities(model, chain)
  (-0.16489786710222099,)
 ```
 """
-function DynamicPPL.returned_quantities(
+function DynamicPPL.returned(
     model::DynamicPPL.Model, chain_full::MCMCChains.Chains
 )
     chain = MCMCChains.get_sections(chain_full, :parameters)

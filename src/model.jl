@@ -1206,9 +1206,9 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
-    returned_quantities(model::Model, parameters::NamedTuple)
-    returned_quantities(model::Model, values, keys)
-    returned_quantities(model::Model, values, keys)
+    returned(model::Model, parameters::NamedTuple)
+    returned(model::Model, values, keys)
+    returned(model::Model, values, keys)
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
 
@@ -1218,7 +1218,7 @@ If a `NamedTuple` is given, `keys=keys(parameters)` and `values=values(parameter
 ```jldoctest
 julia> using DynamicPPL, Distributions
 
-julia> using DynamicPPL: returned_quantities
+julia> using DynamicPPL: returned
 
 julia> @model function demo(xs)
            s ~ InverseGamma(2, 3)
@@ -1235,18 +1235,18 @@ julia> model = demo(randn(10));
 
 julia> parameters = (; s = 1.0, m_shifted=10.0);
 
-julia> returned_quantities(model, parameters)
+julia> returned(model, parameters)
 (0.0,)
 
-julia> returned_quantities(model, values(parameters), keys(parameters))
+julia> returned(model, values(parameters), keys(parameters))
 (0.0,)
 ```
 """
-function returned_quantities(model::Model, parameters::NamedTuple)
+function returned(model::Model, parameters::NamedTuple)
     fixed_model = fix(model, parameters)
     return fixed_model()
 end
 
-function returned_quantities(model::Model, values, keys)
-    return returned_quantities(model, NamedTuple{keys}(values))
+function returned(model::Model, values, keys)
+    return returned(model, NamedTuple{keys}(values))
 end

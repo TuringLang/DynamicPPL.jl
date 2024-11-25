@@ -1,1 +1,1 @@
-@deprecate generated_quantities returned_quantities
+@deprecate generated_quantities(model, params) returned(model, params)
