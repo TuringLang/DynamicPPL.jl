@@ -123,6 +123,7 @@ export AbstractVarInfo,
     unfix,
     prefix,
     returned,
+    to_sampleable,
     # Convenience macros
     @addlogprob!,
     @submodel,

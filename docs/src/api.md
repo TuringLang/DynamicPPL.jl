@@ -20,6 +20,13 @@ One can nest models and call another model inside the model function with `left 
 returned(::DynamicPPL.Model)
 ```
 
+Note that a `[returned(::DynamicPPL.Model)](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
+This can be indicated using [`to_sampleable`](@ref) if the user wants to be explicit.
+
+```@docs
+to_sampleable
+```
+
 In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`returned(model)`](@ref)
 
 ```@docs
