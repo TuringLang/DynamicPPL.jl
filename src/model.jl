@@ -1266,7 +1266,6 @@ Return a wrapper around `model` indicating it is sampleable.
 """
 function to_sampleable end
 
-
 """
     ReturnedModelWrapper
 
@@ -1280,7 +1279,9 @@ end
 
 is_rhs_model(::ReturnedModelWrapper) = true
 
-function rand_like!!(model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo)
+function rand_like!!(
+    model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
+)
     # Return's the value and the (possibly mutated) varinfo.
     return _evaluate!!(model_wrap.model, varinfo, context)
 end

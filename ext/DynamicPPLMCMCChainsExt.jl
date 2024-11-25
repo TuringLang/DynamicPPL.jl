@@ -101,9 +101,7 @@ julia> returned(model, chain)
  (-0.16489786710222099,)
 ```
 """
-function DynamicPPL.returned(
-    model::DynamicPPL.Model, chain_full::MCMCChains.Chains
-)
+function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Chains)
     chain = MCMCChains.get_sections(chain_full, :parameters)
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))

@@ -201,7 +201,11 @@ Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the informati
 and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe!!(context, right, left, vname, vi)
-    is_rhs_model(right) && throw(ArgumentError("`~` with a model on the right-hand side of an observe statement is not supported"))
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return tilde_observe!!(context, right, left, vi)
 end
 
@@ -215,7 +219,11 @@ By default, calls `tilde_observe(context, right, left, vi)` and accumulates the 
 probability of `vi` with the returned value.
 """
 function tilde_observe!!(context, right, left, vi)
-    is_rhs_model(right) && throw(ArgumentError("`~` with a model on the right-hand side of an observe statement is not supported"))
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = tilde_observe(context, right, left, vi)
     return left, acclogp_observe!!(context, vi, logp)
 end
@@ -682,7 +690,11 @@ Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the infor
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe!!(context, right, left, vn, vi)
-    is_rhs_model(right) && throw(ArgumentError("`~` with a model on the right-hand side of an observe statement is not supported"))
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return dot_tilde_observe!!(context, right, left, vi)
 end
 
@@ -695,7 +707,11 @@ probability, and return the observed value and updated `vi`.
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!!(context, right, left, vi)
-    is_rhs_model(right) && throw(ArgumentError("`~` with a model on the right-hand side of an observe statement is not supported"))
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = dot_tilde_observe(context, right, left, vi)
     return left, acclogp_observe!!(context, vi, logp)
 end
