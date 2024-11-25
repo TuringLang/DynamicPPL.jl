@@ -1296,7 +1296,7 @@ end
 """
     returned(model::Model)
 
-Return a wrapper around `model` which indicates that this model can only be sampled from.
+Return a `model` wrapper indicating that this a model over the return-values.
 
 This is mainly meant to be used on the right-hand side of a `~` operator to indicate that
 the model can be sampled from but not necessarily evaluated for its log density.
