@@ -1333,8 +1333,8 @@ julia> @varname(x) in keys(vi)
 true
 ```
 
-Variable `a` is not tracked since it can be computed from the random variable `x` that was
-tracked when running `demo1`:
+The variable `a` is not tracked. However, it will be assigned the return value of `demo1`,
+and can be used in subsequent lines of the model, as shown above.
 ```jldoctest submodel-returned
 julia> @varname(a) in keys(vi)
 false
@@ -1375,8 +1375,8 @@ julia> @varname(var"sub2.x") in keys(vi)
 true
 ```
 
-Variables `a` and `b` are not tracked since they can be computed from the random variables `sub1.x` and
-`sub2.x` that were tracked when running `demo1`:
+Variables `a` and `b` are not tracked, but are assigned the return values of the respective
+calls to `demo1`:
 ```jldoctest submodel-returned-prefix
 julia> @varname(a) in keys(vi)
 false
