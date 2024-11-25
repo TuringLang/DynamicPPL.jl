@@ -1276,6 +1276,16 @@ end
 
 is_rhs_model(::ReturnedModelWrapper) = true
 
+"""
+    rand_like!!(model_wrap, context, varinfo)
+    
+Returns a tuple with the first element being the realization and the second the updated varinfo.
+
+# Arguments
+- `model_wrap::ReturnedModelWrapper`: the wrapper of the model to use.
+- `context::AbstractContext`: the context to use for evaluation.
+- `varinfo::AbstractVarInfo`: the varinfo to use for evaluation.
+"""
 function rand_like!!(
     model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
 )
