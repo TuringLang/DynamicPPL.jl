@@ -17,7 +17,7 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 One can nest models and call another model inside the model function with `left ~ returned(model)`.
 
 ```@docs
-returned(model)
+returned(::DynamicPPL.Model)
 ```
 
 In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`returned(model)`](@ref)
@@ -133,7 +133,7 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
 
 ```@docs
-returned(model, chain)
+returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
