@@ -1322,7 +1322,6 @@ Return a `model` wrapper indicating that this a model over the return-values.
 """
 returned(model::Model) = ReturnedModelWrapper(model)
 
-
 """
     to_submodel(model::Model)
 
