@@ -1257,11 +1257,27 @@ Return `true` if `x` is a model or model wrapper, and `false` otherwise.
 is_rhs_model(x) = false
 
 """
+    Distributional
+
+Abstract type for type indicating that something is "distributional".
+"""
+abstract type Distributional end
+
+"""
+    Sampleable{M} <: Distributional
+
+A wrapper around a model indicating it is sampleable.
+"""
+struct Sampleable{M} <: Distributional
+    model::M
+end
+
+"""
     to_sampleable(model)
 
 Return a wrapper around `model` indicating it is sampleable.
 """
-function to_sampleable end
+to_sampleable(model) = Sampleable(model)
 
 """
     ReturnedModelWrapper
@@ -1452,3 +1468,13 @@ ERROR: ArgumentError: `~` with a model on the right-hand side of an observe stat
 [...]
 """
 returned(model::Model) = ReturnedModelWrapper(model)
+
+
+"""
+    to_submodel(model::Model)
+
+Return a model wrapper indicating that it is a sampleable model over the return-values.
+
+This can be used on the right-hand side of a `~` operator to include models within other models.
+"""
+to_submodel(model::Model) = to_sampleable(returned(model))
