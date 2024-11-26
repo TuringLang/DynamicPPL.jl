@@ -14,31 +14,6 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with `left ~ returned(model)`.
-
-```@docs
-returned(::DynamicPPL.Model)
-```
-
-Note that a `[returned(::DynamicPPL.Model)](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
-This can be indicated using [`to_sampleable`](@ref) if the user wants to be explicit.
-
-```@docs
-to_sampleable
-```
-
-In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`returned(model)`](@ref)
-
-```@docs
-@submodel
-```
-
-In the context of nesting models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
-
-```@docs
-prefix
-```
-
 ### Type
 
 A [`Model`](@ref) can be created by calling the model function, as defined by [`@model`](@ref).
@@ -128,6 +103,29 @@ Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original 
 ```@docs
 unfix
 ```
+
+## Models within models
+
+One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
+
+```@docs
+to_submodel
+```
+
+Note that a `[returned(::DynamicPPL.Model)](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
+
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
+
+```@docs
+@submodel
+```
+
+In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
+
+```@docs
+prefix
+```
+
 
 ## Utilities
 

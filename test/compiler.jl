@@ -388,7 +388,7 @@ module Issue537 end
         @test_logs(
             (
                 :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ returned(model)` and `left ~ returned(prefix(model, ...))`, respectively, instead.",
+                "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ to_submodel(model)` and `left ~ to_submodel(prefix(model, ...))`, respectively, instead.",
             ),
             outer()()
         )
@@ -397,7 +397,7 @@ module Issue537 end
         @test_logs(
             (
                 :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ returned(model)` and `left ~ returned(prefix(model, ...))`, respectively, instead.",
+                "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ to_submodel(model)` and `left ~ to_submodel(prefix(model, ...))`, respectively, instead.",
             ),
             outer_with_prefix()()
         )
@@ -490,7 +490,7 @@ module Issue537 end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x ~ returned(prefix(AR1(num_steps, α, μ, σ), "ar1_$i"))
+                x ~ to_submodel(prefix(AR1(num_steps, α, μ, σ), "ar1_$i"))
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end

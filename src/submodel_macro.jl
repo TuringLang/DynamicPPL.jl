@@ -6,7 +6,7 @@ Run a Turing `model` nested inside of a Turing model.
 
 !!! warning
     This is deprecated and will be removed in a future release.
-    Use `left ~ returned(model)` instead (see [`returned(model)`](@ref)).
+    Use `left ~ to_submodel(model)` instead (see [`to_submodel(model)`](@ref)).
 
 # Examples
 
@@ -25,7 +25,7 @@ julia> @model function demo2(x, y)
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
-┌ Warning: `@submodel model` is deprecated, use `left ~ returned(model)` instead.
+┌ Warning: `@submodel model` is deprecated, use `left ~ to_submodel(model)` instead.
 │   caller = ip:0x0
 └ @ Core :-1
 
@@ -71,7 +71,7 @@ keeping track of all random variables correctly.
 
 !!! warning
     This is deprecated and will be removed in a future release.
-    Use `left ~ returned(model)` instead (see [`returned(model)`](@ref)).
+    Use `left ~ to_submodel(model)` instead (see [`to_submodel(model)`](@ref)).
 
 # Examples
 ## Example models
@@ -92,7 +92,7 @@ When we sample from the model `demo2(missing, missing, 0.4)` random variables `s
 `sub2.x` will be sampled:
 ```jldoctest submodelprefix
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
-┌ Warning: `@submodel model` is deprecated, use `@returned_quantities model` instead.
+┌ Warning: `@submodel model` is deprecated, use `to_submodel(model)` instead.
 │   caller = ip:0x0
 └ @ Core :-1
 
@@ -138,7 +138,7 @@ julia> # When `prefix` is unspecified, no prefix is used.
 submodel_noprefix (generic function with 2 methods)
 
 julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
-┌ Warning: `@submodel model` is deprecated, use `left ~ returned(model)` instead.
+┌ Warning: `@submodel model` is deprecated, use `left ~ to_submodel(model)` instead.
 │   caller = ip:0x0
 └ @ Core :-1
 true
@@ -224,7 +224,7 @@ function prefix_submodel_context(prefix::Bool, ctx)
     return ctx
 end
 
-const SUBMODEL_DEPWARN_MSG = "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ returned(model)` and `left ~ returned(prefix(model, ...))`, respectively, instead."
+const SUBMODEL_DEPWARN_MSG = "`@submodel model` and `@submodel prefix=... model` are deprecated, use `left ~ to_submodel(model)` and `left ~ to_submodel(prefix(model, ...))`, respectively, instead."
 
 function submodel(prefix_expr, expr, ctx=esc(:__context__))
     prefix_left, prefix = getargs_assignment(prefix_expr)
@@ -244,7 +244,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
-            # Raise deprecation warning to let user know that we recommend using `left ~ returned(model)`.
+            # Raise deprecation warning to let user know that we recommend using `left ~ to_submodel(model)`.
             $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
 
             $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
@@ -263,7 +263,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
-            # Raise deprecation warning to let user know that we recommend using `left ~ returned(model)`.
+            # Raise deprecation warning to let user know that we recommend using `left ~ to_submodel(model)`.
             $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
 
             $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
