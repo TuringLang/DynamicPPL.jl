@@ -223,14 +223,14 @@ true
 ## Nested models
 
 `condition` of course also supports the use of nested models through
-the use of [`@submodel`](@ref).
+the use of [`to_submodel`](@ref).
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           @submodel m = demo_inner()
+           m ~ to_submodel(demo_inner())
            return m
        end
 demo_outer (generic function with 2 methods)
@@ -250,7 +250,7 @@ But one needs to be careful when prefixing variables in the nested models:
 
 ```jldoctest condition
 julia> @model function demo_outer_prefix()
-           @submodel prefix="inner" m = demo_inner()
+           m ~ to_submodel(prefix(demo_inner(), "inner"))
            return m
        end
 demo_outer_prefix (generic function with 2 methods)
@@ -578,14 +578,14 @@ true
 ## Nested models
 
 `fix` of course also supports the use of nested models through
-the use of [`@submodel`](@ref).
+the use of [`to_submodel`](@ref).
 
 ```jldoctest fix
 julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           @submodel m = demo_inner()
+           m ~ to_submodel(demo_inner())
            return m
        end
 demo_outer (generic function with 2 methods)
@@ -605,7 +605,7 @@ But one needs to be careful when prefixing variables in the nested models:
 
 ```jldoctest fix
 julia> @model function demo_outer_prefix()
-           @submodel prefix="inner" m = demo_inner()
+           m ~ to_submodel(prefix(demo_inner(), "inner"))
            return m
        end
 demo_outer_prefix (generic function with 2 methods)
