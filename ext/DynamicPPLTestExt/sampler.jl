@@ -8,7 +8,8 @@
 
 Return the mean of variable represented by `varname` in `chain`.
 """
-marginal_mean_of_samples(chain, varname) = mean(Array(chain[Symbol(varname)]))
+DynamicPPL.TestUtils.marginal_mean_of_samples(chain, varname) =
+    mean(Array(chain[Symbol(varname)]))
 
 """
     test_sampler(models, sampler, args...; kwargs...)
@@ -35,7 +36,7 @@ To change how comparison is done for a particular `chain` type, one can overload
 - `rtol=1e-3`: Relative tolerance used in `@test`.
 - `kwargs...`: Keyword arguments forwarded to `sample`.
 """
-function test_sampler(
+function DynamicPPL.TestUtils.test_sampler(
     models,
     sampler::AbstractMCMC.AbstractSampler,
     args...;
@@ -51,7 +52,7 @@ function test_sampler(
         for vn in filter(varnames_filter, varnames(model))
             # We want to compare elementwise which can be achieved by
             # extracting the leaves of the `VarName` and the corresponding value.
-            for vn_leaf in varname_leaves(vn, get(target_values, vn))
+            for vn_leaf in DynamicPPL.varname_leaves(vn, get(target_values, vn))
                 target_value = get(target_values, vn_leaf)
                 chain_mean_value = marginal_mean_of_samples(chain, vn_leaf)
                 @test chain_mean_value ≈ target_value atol = atol rtol = rtol
@@ -67,10 +68,10 @@ Test `sampler` on every model in [`DEMO_MODELS`](@ref).
 
 This is just a proxy for `test_sampler(meanfunction, DEMO_MODELS, sampler, args...; kwargs...)`.
 """
-function test_sampler_on_demo_models(
+function DynamicPPL.TestUtils.test_sampler_on_demo_models(
     sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
 )
-    return test_sampler(DEMO_MODELS, sampler, args...; kwargs...)
+    return test_sampler(DynamicPPL.TestUtils.DEMO_MODELS, sampler, args...; kwargs...)
 end
 
 """
@@ -80,6 +81,8 @@ Test that `sampler` produces the correct marginal posterior means on all models 
 
 As of right now, this is just an alias for [`test_sampler_on_demo_models`](@ref).
 """
-function test_sampler_continuous(sampler::AbstractMCMC.AbstractSampler, args...; kwargs...)
+function DynamicPPL.TestUtils.test_sampler_continuous(
+    sampler::AbstractMCMC.AbstractSampler, args...; kwargs...
+)
     return test_sampler_on_demo_models(sampler, args...; kwargs...)
 end

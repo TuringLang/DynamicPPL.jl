@@ -8,7 +8,7 @@
 
 Test that `context` implements the `AbstractContext` interface.
 """
-function test_context_interface(context)
+function DynamicPPL.TestUtils.test_context_interface(context)
     # Is a subtype of `AbstractContext`.
     @test context isa DynamicPPL.AbstractContext
     # Should implement `NodeTrait.`
@@ -21,41 +21,45 @@ function test_context_interface(context)
     end
 end
 
-"""
-Context that multiplies each log-prior by mod
-used to test whether varwise_logpriors respects child-context.
-"""
-struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
-    mod::T
-    context::Ctx
-end
-function TestLogModifyingChildContext(
+function DynamicPPL.TestUtils.TestLogModifyingChildContext(
     mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
 )
-    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
+    return DynamicPPL.TestUtils.TestLogModifyingChildContext{typeof(mod),typeof(context)}(
+        mod, context
+    )
 end
 
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
-function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
-    return TestLogModifyingChildContext(context.mod, child)
+function DynamicPPL.NodeTrait(::DynamicPPL.TestUtils.TestLogModifyingChildContext)
+    return DynamicPPL.IsParent()
 end
-function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
+function DynamicPPL.childcontext(context::DynamicPPL.TestUtils.TestLogModifyingChildContext)
+    return context.context
+end
+function DynamicPPL.setchildcontext(
+    context::DynamicPPL.TestUtils.TestLogModifyingChildContext, child
+)
+    return DynamicPPL.TestUtils.TestLogModifyingChildContext(context.mod, child)
+end
+function DynamicPPL.tilde_assume(
+    context::DynamicPPL.TestUtils.TestLogModifyingChildContext, right, vn, vi
+)
     value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
     return value, logp * context.mod, vi
 end
 function DynamicPPL.dot_tilde_assume(
-    context::TestLogModifyingChildContext, right, left, vn, vi
+    context::DynamicPPL.TestUtils.TestLogModifyingChildContext, right, left, vn, vi
 )
     value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
     return value, logp * context.mod, vi
 end
-function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
+function DynamicPPL.tilde_observe(
+    context::DynamicPPL.TestUtils.TestLogModifyingChildContext, right, left, vi
+)
     logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
     return logp * context.mod, vi
 end
 function DynamicPPL.dot_tilde_observe(
-    context::TestLogModifyingChildContext, right, left, vi
+    context::DynamicPPL.TestUtils.TestLogModifyingChildContext, right, left, vi
 )
     logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
     return logp * context.mod, vi

@@ -8,7 +8,9 @@
 
 Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in `vns`.
 """
-function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...)
+function DynamicPPL.TestUtils.test_values(
+    vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...
+)
     for vn in vns
         @test compare(vi[vn], get(vals, vn); kwargs...)
     end
@@ -23,7 +25,7 @@ each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` i
 If `include_threadsafe` is `true`, then the returned tuple will also include thread-safe versions
 of the varinfo instances.
 """
-function setup_varinfos(
+function DynamicPPL.TestUtils.setup_varinfos(
     model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
 )
     # VarInfo
@@ -58,7 +60,7 @@ function setup_varinfos(
         svi_vnv_ref,
     )) do vi
         # Set them all to the same values.
-        DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
+        DynamicPPL.setlogp!!(DynamicPPL.update_values!!(vi, example_values, varnames), lp)
     end
 
     if include_threadsafe
