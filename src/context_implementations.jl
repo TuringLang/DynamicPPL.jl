@@ -257,7 +257,7 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            f = to_linked_internal_transform(vi, dist)
+            f = to_linked_internal_transform(vi, vn, dist)
             push!!(vi, vn, f(r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
@@ -500,7 +500,7 @@ end
 # HACK: These methods are only used in the `get_and_set_val!` methods below.
 # FIXME: Remove these.
 function _link_broadcast_new(vi, vn, dist, r)
-    b = to_linked_internal_transform(vi, dist)
+    b = to_linked_internal_transform(vi, vn, dist)
     return b(r)
 end
 
