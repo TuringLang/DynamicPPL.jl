@@ -126,7 +126,6 @@ In the context of including models within models, it's also useful to prefix the
 prefix
 ```
 
-
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
