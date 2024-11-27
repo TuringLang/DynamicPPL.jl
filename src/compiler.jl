@@ -179,6 +179,7 @@ end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 check_tilde_rhs(x::ReturnedModelWrapper) = x
+check_tilde_rhs(x::Sampleable) = Sampleable(check_tilde_rhs(x.model))
 
 """
     unwrap_right_vn(right, vn)
