@@ -1274,6 +1274,7 @@ end
 
 is_rhs_model(x::Sampleable) = true
 
+# TODO: Export this if it end up having a purpose beyond `to_submodel`.
 """
     to_sampleable(model)
 
@@ -1315,10 +1316,11 @@ function rand_like!!(
     return _evaluate!!(model_wrap.model, varinfo, context)
 end
 
-"""
-    returned(model::Model)
 
-Return a `model` wrapper indicating that this a model over the return-values.
+"""
+    returned(model)
+
+Return a `model` wrapper indicating that it is a model over its return-values.
 """
 returned(model::Model) = ReturnedModelWrapper(model)
 
