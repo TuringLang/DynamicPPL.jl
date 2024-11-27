@@ -1316,7 +1316,6 @@ function rand_like!!(
     return _evaluate!!(model_wrap.model, varinfo, context)
 end
 
-
 """
     returned(model)
 
