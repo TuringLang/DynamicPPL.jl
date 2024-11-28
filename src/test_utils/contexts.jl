@@ -71,16 +71,6 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     node_trait isa Union{DynamicPPL.IsLeaf,DynamicPPL.IsParent} ||
         throw(ValueError("Invalid NodeTrait: $node_trait"))
 
-    # The interface methods.
-    if node_trait isa DynamicPPL.IsParent
-        # `childcontext` and `setchildcontext`
-        # With new child context
-        childcontext_new = TestParentContext()
-        @test DynamicPPL.childcontext(
-            DynamicPPL.setchildcontext(context, childcontext_new)
-        ) == childcontext_new
-    end
-
     # To see change, let's make sure we're using a different leaf context than the current.
     leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
         PriorContext()
@@ -90,11 +80,21 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
         leafcontext_new
 
-    # Setting the child context to a leaf should now change the leafcontext accordingly.
-    context_with_new_leaf = DynamicPPL.setchildcontext(context, leafcontext_new)
-    @test DynamicPPL.setchildcontext(context_with_new_leaf) ===
-        DynamicPPL.setleafcontext(context_with_new_leaf) ===
-        leafcontext_new
+    # The interface methods.
+    if node_trait isa DynamicPPL.IsParent
+        # `childcontext` and `setchildcontext`
+        # With new child context
+        childcontext_new = TestParentContext()
+        @test DynamicPPL.childcontext(
+            DynamicPPL.setchildcontext(context, childcontext_new)
+        ) == childcontext_new
+        # Setting the child context to a leaf should now change the leafcontext
+        # accordingly.
+        context_with_new_leaf = DynamicPPL.setchildcontext(context, leafcontext_new)
+        @test DynamicPPL.childcontext(context_with_new_leaf) ===
+            DynamicPPL.leafcontext(context_with_new_leaf) ===
+            leafcontext_new
+    end
 
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
     # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
