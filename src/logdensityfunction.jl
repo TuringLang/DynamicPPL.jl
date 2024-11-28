@@ -152,7 +152,10 @@ else
     using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
 end
 
-# This is important for performance.
+# This is important for performance -- one needs to provide `ADGradient` with a vector of
+# parameters, or DifferentiationInterface will not have sufficient information to e.g.
+# compile a rule for Mooncake (because it won't know the type of the input), or pre-allocate
+# a tape when using ReverseDiff.jl.
 function LogDensityProblemsAD.ADgradient(
     ad::ADTypes.AbstractADType, ℓ::DynamicPPL.LogDensityFunction
 )
