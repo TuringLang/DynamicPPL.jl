@@ -207,3 +207,23 @@ function value_iterator_from_chain(vi::AbstractVarInfo, chain)
         values_from_chain!(vi, chain, chain_idx, iteration_idx, OrderedDict{VarName,Any}())
     end
 end
+
+"""
+    determine_varinfo(model[, context]; verbose::Bool=false)
+
+Return a suitable varinfo for the given `model`.
+
+This method uses JET.jl in an attempt to determine if the model is compatible with typed varinfo.
+If it is, a typed varinfo is returned, otherwise an untyped varinfo is returned.
+
+!!! warning
+    This requires loading JET.jl before calling this function.
+
+# Arguments
+- `model`: The model for which to determine the varinfo.
+- `context`: The context to use for the evaluation and sampling. Default: `DefaultContext()`.
+
+# Keyword Arguments
+- `verbose`: If `true`, the user will be warned about the issues that caused the fallback to untyped varinfo.
+"""
+function determine_varinfo end
