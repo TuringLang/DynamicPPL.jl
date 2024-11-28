@@ -35,7 +35,7 @@
             if x
                 y ~ Normal()
             else
-                y ~ Cauchy() # different distibution, but same transformation => should work
+                y ~ Cauchy() # different distibution, but same transformation
             end
         end
         @test DynamicPPL.determine_varinfo(demo4(); verbose=true) isa
