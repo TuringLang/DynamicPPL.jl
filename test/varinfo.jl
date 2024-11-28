@@ -785,7 +785,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo(2)
-        varinfo2 = last(DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext()))
+        varinfo2 = last(
+            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
+        )
         for vn in [@varname(x[1]), @varname(x[2])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -804,7 +806,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo_dot(2)
-        varinfo2 = last(DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext()))
+        varinfo2 = last(
+            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
+        )
         for vn in [@varname(x), @varname(y[1])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
