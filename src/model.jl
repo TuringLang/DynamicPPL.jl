@@ -1264,23 +1264,42 @@ Abstract type for type indicating that something is "distributional".
 abstract type Distributional end
 
 """
+    should_auto_prefix(distributional)
+
+Return `true` if the `distributional` should use automatic prefixing, and `false` otherwise.
+"""
+function should_auto_prefix end
+
+"""
+    is_rhs_model(x)
+
+Return `true` if the `distributional` is a model, and `false` otherwise.
+"""
+function is_rhs_model end
+
+"""
     Sampleable{M} <: Distributional
 
 A wrapper around a model indicating it is sampleable.
 """
-struct Sampleable{M} <: Distributional
+struct Sampleable{M,AutoPrefix} <: Distributional
     model::M
 end
 
+should_auto_prefix(::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix} = AutoPrefix
 is_rhs_model(x::Sampleable) = is_rhs_model(x.model)
 
 # TODO: Export this if it end up having a purpose beyond `to_submodel`.
 """
-    to_sampleable(model)
+    to_sampleable(model[, auto_prefix])
 
 Return a wrapper around `model` indicating it is sampleable.
+
+# Arguments
+- `model::Model`: the model to wrap.
+- `auto_prefix::Bool`: whether to prefix the variables in the model. Default: `true`.
 """
-to_sampleable(model) = Sampleable(model)
+to_sampleable(model, auto_prefix::Bool=true) = Sampleable{typeof(model),auto_prefix}(model)
 
 """
     rand_like!!(model_wrap, context, varinfo)
@@ -1326,7 +1345,7 @@ Return a `model` wrapper indicating that it is a model over its return-values.
 returned(model::Model) = ReturnedModelWrapper(model)
 
 """
-    to_submodel(model::Model)
+    to_submodel(model::Model[, auto_prefix::Bool])
 
 Return a model wrapper indicating that it is a sampleable model over the return-values.
 
@@ -1338,9 +1357,13 @@ the model can be sampled from but not necessarily evaluated for its log density.
     such as [`condition`](@ref) or [`fix`](@ref), will also not work with `to_submodel`.
 
 !!! warning
-    It's generally recommended to use [`prefix(::Model, input)`](@ref) when working with submodels
-    to ensure that the variables in `model` are unique and do not clash with other variables in the
-    parent model or in other submodels.
+    To avoid variable names clashing between models, it is recommend leave argument `auto_prefix` equal to `true`.
+    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly.
+
+# Arguments
+- `model::Model`: the model to wrap.
+- `auto_prefix::Bool`: whether to automatically prefix the variables in the model using the left-hand
+    side of the `~` statement. Default: `true`.
 
 # Examples
 
@@ -1361,7 +1384,7 @@ When we sample from the model `demo2(missing, 0.4)` random variable `x` will be 
 ```jldoctest submodel-to_submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
 
-julia> @varname(x) in keys(vi)
+julia> @varname(var\"a.x\") in keys(vi)
 true
 ```
 
@@ -1375,29 +1398,42 @@ false
 We can check that the log joint probability of the model accumulated in `vi` is correct:
 
 ```jldoctest submodel-to_submodel
-julia> x = vi[@varname(x)];
+julia> x = vi[@varname(var\"a.x\")];
 
 julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
 true
 ```
 
-## With prefixing
+## Without automatic prefixing
+As mentioned earlier, by default, the `auto_prefix` argument specifies whether to automatically
+prefix the variables in the submodel. If `auto_prefix=false`, then the variables in the submodel
+will not be prefixed.
 ```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
 julia> @model function demo1(x)
            x ~ Normal()
            return 1 + abs(x)
        end;
 
+julia> @model function demo2_no_prefix(x, z)
+            a ~ to_submodel(demo1(x), false)
+            return z ~ Uniform(-a, 1)
+       end;
+
+julia> vi = VarInfo(demo2_no_prefix(missing, 0.4));
+
+julia> @varname(x) in keys(vi)  # here we just use `x` instead of `a.x`
+true
+```
+However, not using prefixing is generally not recommended as it can lead to variable name clashes
+unless one is careful. For example, if we're re-using the same model twice in a model, not using prefixing
+will lead to variable name clashes: However, one can manually prefix using the [`prefix(::Model, input)`](@ref):
+```jldoctest submodel-to_submodel-prefix
 julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), :sub1))
-            b ~ to_submodel(prefix(demo1(y), :sub2))
+            a ~ to_submodel(prefix(demo1(x), :sub1), false)
+            b ~ to_submodel(prefix(demo1(y), :sub2), false)
             return z ~ Uniform(-a, b)
        end;
-```
 
-When we sample from the model `demo2(missing, missing, 0.4)` random variables `sub1.x` and
-`sub2.x` will be sampled:
-```jldoctest submodel-to_submodel-prefix
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
 
 julia> @varname(var"sub1.x") in keys(vi)
@@ -1432,40 +1468,6 @@ julia> getlogp(vi) ≈ logprior + loglikelihood
 true
 ```
 
-## Different ways of setting the prefix
-```jldoctest submodel-to_submodel-prefix-alts; setup=:(using DynamicPPL, Distributions)
-julia> @model inner() = x ~ Normal()
-inner (generic function with 2 methods)
-
-julia> # When `prefix` is unspecified, no prefix is used.
-       @model submodel_noprefix() = a ~ to_submodel(inner())
-submodel_noprefix (generic function with 2 methods)
-
-julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
-true
-
-julia> # Using a static string.
-       @model submodel_prefix_string() = a ~ to_submodel(prefix(inner(), "my prefix"))
-submodel_prefix_string (generic function with 2 methods)
-
-julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
-true
-
-julia> # Using string interpolation.
-       @model submodel_prefix_interpolation() = a ~ to_submodel(prefix(inner(), "\$(nameof(inner()))"))
-submodel_prefix_interpolation (generic function with 2 methods)
-
-julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
-true
-
-julia> # Or using some arbitrary expression.
-       @model submodel_prefix_expr() = a ~ to_submodel(prefix(inner(), 1 + 2))
-submodel_prefix_expr (generic function with 2 methods)
-
-julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
-true
-```
-
 ## Usage as likelihood is illegal
 
 Note that it is illegal to use a `to_submodel` model as a likelihood in another model:
@@ -1483,4 +1485,4 @@ julia> model()
 ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
 [...]
 """
-to_submodel(model::Model) = to_sampleable(returned(model))
+to_submodel(model::Model, auto_prefix::Bool=true) = to_sampleable(returned(model), auto_prefix)

@@ -105,7 +105,7 @@ probability of `vi` with the returned value.
 function tilde_assume!!(context, right, vn, vi)
     return if is_rhs_model(right)
         # Prefix the variables using the `vn`.
-        rand_like!!(right, prefix(context Symbol(vn)), vi)
+        rand_like!!(right, should_auto_prefix(right) ? PrefixContext{Symbol(vn)}(context) : context, vi)
     else
         value, logp, vi = tilde_assume(context, right, vn, vi)
         value, acclogp_assume!!(context, vi, logp)
