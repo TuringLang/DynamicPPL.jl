@@ -1485,4 +1485,5 @@ julia> model()
 ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
 [...]
 """
-to_submodel(model::Model, auto_prefix::Bool=true) = to_sampleable(returned(model), auto_prefix)
+to_submodel(model::Model, auto_prefix::Bool=true) =
+    to_sampleable(returned(model), auto_prefix)
