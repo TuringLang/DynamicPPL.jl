@@ -145,17 +145,10 @@ end
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
-
-if isdefined(Base, :get_extension)
-    using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
-else
-    using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
-end
-
 # This is important for performance -- one needs to provide `ADGradient` with a vector of
 # parameters, or DifferentiationInterface will not have sufficient information to e.g.
 # compile a rule for Mooncake (because it won't know the type of the input), or pre-allocate
 # a tape when using ReverseDiff.jl.
 function LogDensityProblemsAD.ADgradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
-    return LogDensityProblemsAD.ADgradient(ad, ℓ; x=map(identity, DynamicPPL.getparams(ℓ)))
+    return LogDensityProblemsAD.ADgradient(ad, ℓ; x=map(identity, getparams(ℓ)))
 end
