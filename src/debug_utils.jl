@@ -332,7 +332,9 @@ function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, logp, vi)
     return value, logp, vi
 end
-function DynamicPPL.tilde_assume(rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi)
+function DynamicPPL.tilde_assume(
+    rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
+)
     record_pre_tilde_assume!(context, vn, right, vi)
     value, logp, vi = DynamicPPL.tilde_assume(
         rng, childcontext(context), sampler, right, vn, vi
