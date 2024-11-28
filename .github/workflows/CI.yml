@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - master
+      - backport-*
   pull_request:
     branches:
       - master
+      - backport-*
   merge_group:
     types: [checks_requested]
 
@@ -17,39 +19,53 @@ permissions:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner.os }}
     strategy:
       matrix:
-        version:
-          - 'min' # minimum supported version
-          - '1' # current stable version
-        os:
-          - ubuntu-latest
-        arch:
-          - x64
-        num_threads:
-          - 1
-          - 2
-        include:
+        runner:
+          # Current stable version
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 2
+          # Minimum supported version
+          - version: 'min'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 2
+          # Single-threaded
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 1
+          # Minimum supported version, single-threaded
+          - version: 'min'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 1
+          # x86
           - version: '1'
             os: ubuntu-latest
             arch: x86
             num_threads: 2
+          # Windows
           - version: '1'
             os: windows-latest
             arch: x64
             num_threads: 2
+          # macOS
           - version: '1'
-            os: macOS-latest
-            arch: x64
+            os: macos-latest
+            arch: aarch64
             num_threads: 2
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: julia-actions/setup-julia@v2
         with:
-          version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
+          version: ${{ matrix.runner.version }}
+          arch: ${{ matrix.runner.arch }}
 
       - uses: julia-actions/cache@v2
 
@@ -58,7 +74,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         env:
           GROUP: All
-          JULIA_NUM_THREADS: ${{ matrix.num_threads }}
+          JULIA_NUM_THREADS: ${{ matrix.runner.num_threads }}
 
       - uses: julia-actions/julia-processcoverage@v1
 

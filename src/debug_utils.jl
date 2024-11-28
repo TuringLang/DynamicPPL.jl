@@ -5,6 +5,7 @@ using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
 using Random: Random
 using Accessors: Accessors
+using InteractiveUtils: InteractiveUtils
 
 using DocStringExtensions
 using Distributions
@@ -331,7 +332,9 @@ function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, logp, vi)
     return value, logp, vi
 end
-function DynamicPPL.tilde_assume(rng, context::DebugContext, sampler, right, vn, vi)
+function DynamicPPL.tilde_assume(
+    rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
+)
     record_pre_tilde_assume!(context, vn, right, vi)
     value, logp, vi = DynamicPPL.tilde_assume(
         rng, childcontext(context), sampler, right, vn, vi
@@ -424,7 +427,7 @@ function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
 end
 
 function DynamicPPL.dot_tilde_assume(
-    rng, context::DebugContext, sampler, right, left, vn, vi
+    rng::Random.AbstractRNG, context::DebugContext, sampler, right, left, vn, vi
 )
     record_pre_dot_tilde_assume!(context, vn, left, right, vi)
     value, logp, vi = DynamicPPL.dot_tilde_assume(
@@ -676,6 +679,85 @@ function has_static_constraints(
 
     # Check if the distributions are the same across all runs.
     return all_the_same(transforms)
+end
+
+"""
+    gen_evaluator_call_with_types(model[, varinfo, context])
+
+Generate the evaluator call and the types of the arguments.
+
+# Arguments
+- `model::Model`: The model whose evaluator is of interest.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Returns
+A 2-tuple with the following elements:
+- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
+    the model has keyword arguments.
+- `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
+"""
+function gen_evaluator_call_with_types(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext(),
+)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
+    return if isempty(kwargs)
+        (model.f, Base.typesof(args...))
+    else
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
+    end
+end
+
+"""
+    model_warntype(model[, varinfo, context]; optimize=true)
+
+Check the type stability of the model's evaluator, warning about any potential issues.
+
+This simply calls `@code_warntype` on the model's evaluator, filling in internal arguments where needed.
+
+# Arguments
+- `model::Model`: The model to check.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Keyword Arguments
+- `optimize::Bool`: Whether to generate optimized code. Default: `false`.
+"""
+function model_warntype(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext();
+    optimize::Bool=false,
+)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
+    return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
+end
+
+"""
+    model_typed(model[, varinfo, context]; optimize=true)
+
+Return the type inference for the model's evaluator.
+
+This simply calls `@code_typed` on the model's evaluator, filling in internal arguments where needed.
+
+# Arguments
+- `model::Model`: The model to check.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+
+# Keyword Arguments
+- `optimize::Bool`: Whether to generate optimized code. Default: `true`.
+"""
+function model_typed(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=DefaultContext();
+    optimize::Bool=true,
+)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
+    return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 
 end

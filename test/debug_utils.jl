@@ -1,9 +1,9 @@
 @testset "check_model" begin
     @testset "context interface" begin
-        # HACK: Require a model to instantiate it, so let's just grab one.
-        model = first(DynamicPPL.TestUtils.DEMO_MODELS)
-        context = DynamicPPL.DebugUtils.DebugContext(model)
-        DynamicPPL.TestUtils.test_context_interface(context)
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            context = DynamicPPL.DebugUtils.DebugContext(model)
+            DynamicPPL.TestUtils.test_context(context, model)
+        end
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -14,7 +14,7 @@
         # Check that the trace contains all the variables in the model.
         varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
         for vn in DynamicPPL.TestUtils.varnames(model)
-            @test vn in varnames_in_trace
+            @test vn in varnames_in_traces
         end
 
         # Quick checks for `show` of trace.
@@ -184,6 +184,20 @@
         for ns in [(2,), (2, 2), (2, 2, 2)]
             model = demo_undef(ns...)
             @test check_model(model; error_on_failure=true)
+        end
+    end
+
+    @testset "model_warntype & model_codetyped" begin
+        @model demo_without_kwargs(x) = y ~ Normal(x, 1)
+        @model demo_with_kwargs(x; z=1) = y ~ Normal(x, z)
+
+        for model in [demo_without_kwargs(1.0), demo_with_kwargs(1.0)]
+            codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model)
+            @test codeinfo isa Core.CodeInfo
+            @test retype <: Tuple
+
+            # Just make sure the following is runnable.
+            @test (DynamicPPL.DebugUtils.model_warntype(model); true)
         end
     end
 end
