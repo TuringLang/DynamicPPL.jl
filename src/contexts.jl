@@ -53,7 +53,7 @@ DefaultContext()
 julia> ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
 
 julia> DynamicPPL.childcontext(ctx_prior)
-PriorContext{Nothing}(nothing)
+PriorContext()
 ```
 """
 setchildcontext
@@ -97,7 +97,7 @@ ParentContext(ParentContext(DefaultContext()))
 
 julia> # Replace the leaf context with another leaf.
        leafcontext(setleafcontext(ctx, PriorContext()))
-PriorContext{Nothing}(nothing)
+PriorContext()
 
 julia> # Append another parent context.
        setleafcontext(ctx, ParentContext(DefaultContext()))
@@ -195,32 +195,19 @@ struct DefaultContext <: AbstractContext end
 NodeTrait(context::DefaultContext) = IsLeaf()
 
 """
-    struct PriorContext{Tvars} <: AbstractContext
-        vars::Tvars
-    end
+    PriorContext <: AbstractContext
 
-The `PriorContext` enables the computation of the log prior of the parameters `vars` when
-running the model.
+A leaf context resulting in the exclusion of likelihood terms when running the model.
 """
-struct PriorContext{Tvars} <: AbstractContext
-    vars::Tvars
-end
-PriorContext() = PriorContext(nothing)
+struct PriorContext <: AbstractContext end
 NodeTrait(context::PriorContext) = IsLeaf()
 
 """
-    struct LikelihoodContext{Tvars} <: AbstractContext
-        vars::Tvars
-    end
+    LikelihoodContext <: AbstractContext
 
-The `LikelihoodContext` enables the computation of the log likelihood of the parameters when
-running the model. `vars` can be used to evaluate the log likelihood for specific values
-of the model's parameters. If `vars` is `nothing`, the parameter values inside the `VarInfo` will be used by default.
+A leaf context resulting in the exclusion of prior terms when running the model.
 """
-struct LikelihoodContext{Tvars} <: AbstractContext
-    vars::Tvars
-end
-LikelihoodContext() = LikelihoodContext(nothing)
+struct LikelihoodContext <: AbstractContext end
 NodeTrait(context::LikelihoodContext) = IsLeaf()
 
 """
