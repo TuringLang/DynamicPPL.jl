@@ -31,6 +31,18 @@ end
             θ = varinfo[:]
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
+
+            # Test a single backend on the generic
+            # ADgradient(::AbstractADType, ::LogDensityFunction) method. This really just
+            # checks that it runs at all.
+            if varinfo isa DynamicPPL.TypedVarInfo
+                ad = ADTypes.AutoMooncake(; config=nothing)
+                ∇ℓ = LogDensityProblemsAD.ADgradient(ad, logdensity)
+                @test isa(
+                    LogDensityProblems.logdensity_and_gradient(∇ℓ, θ),
+                    Tuple{Float64, Vector{Float64}},
+                )
+            end
         end
     end
 end

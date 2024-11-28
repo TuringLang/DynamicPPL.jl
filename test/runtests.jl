@@ -4,6 +4,7 @@ using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
 using Bijectors
+using DifferentiationInterface
 using Distributions
 using DistributionsAD
 using Documenter
