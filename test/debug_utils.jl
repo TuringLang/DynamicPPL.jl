@@ -1,9 +1,9 @@
 @testset "check_model" begin
     @testset "context interface" begin
-        # HACK: Require a model to instantiate it, so let's just grab one.
-        model = first(DynamicPPL.TestUtils.DEMO_MODELS)
-        context = DynamicPPL.DebugUtils.DebugContext(model)
-        DynamicPPL.TestUtils.test_context_interface(context)
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            context = DynamicPPL.DebugUtils.DebugContext(model)
+            DynamicPPL.TestUtils.test_context(context, model)
+        end
     end
 
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS

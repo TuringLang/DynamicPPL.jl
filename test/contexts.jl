@@ -18,16 +18,6 @@ using DynamicPPL:
 
 using EnzymeCore
 
-# Dummy context to test nested behaviors.
-struct ParentContext{C<:AbstractContext} <: AbstractContext
-    context::C
-end
-ParentContext() = ParentContext(DefaultContext())
-DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::ParentContext) = context.context
-DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
-Base.show(io::IO, c::ParentContext) = print(io, "ParentContext(", childcontext(c), ")")
-
 # TODO: Should we maybe put this in DPPL itself?
 function Base.iterate(context::AbstractContext)
     if NodeTrait(context) isa IsLeaf
@@ -63,88 +53,24 @@ end
     child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 
     parent_contexts = [
-        ParentContext(DefaultContext()),
+        DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         SamplingContext(),
         MiniBatchContext(DefaultContext(), 0.0),
         PrefixContext{:x}(DefaultContext()),
         PointwiseLogdensityContext(),
         ConditionContext((x=1.0,)),
-        ConditionContext((x=1.0,), ParentContext(ConditionContext((y=2.0,)))),
+        ConditionContext(
+            (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
+        ),
         ConditionContext((x=1.0,), PrefixContext{:a}(ConditionContext((var"a.y"=2.0,)))),
         ConditionContext((x=[1.0, missing],)),
     ]
 
     contexts = vcat(child_contexts, parent_contexts)
 
-    @testset "NodeTrait" begin
-        @testset "$context" for context in contexts
-            # Every `context` should have a `NodeTrait`.
-            @test NodeTrait(context) isa NodeTrait
-        end
-    end
-
-    @testset "leafcontext" begin
-        @testset "$context" for context in child_contexts
-            @test leafcontext(context) === context
-        end
-
-        @testset "$context" for context in parent_contexts
-            @test NodeTrait(leafcontext(context)) isa IsLeaf
-        end
-    end
-
-    @testset "setleafcontext" begin
-        @testset "$context" for context in child_contexts
-            # Setting to itself should return itself.
-            @test setleafcontext(context, context) === context
-
-            # Setting to a different context should return that context.
-            new_leaf = context isa DefaultContext ? PriorContext() : DefaultContext()
-            @test setleafcontext(context, new_leaf) === new_leaf
-
-            # Also works for parent contexts.
-            new_leaf = ParentContext(context)
-            @test setleafcontext(context, new_leaf) === new_leaf
-        end
-
-        @testset "$context" for context in parent_contexts
-            # Leaf contexts.
-            new_leaf =
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            @test leafcontext(setleafcontext(context, new_leaf)) === new_leaf
-
-            # Setting parent contexts as "leaf" means that the new leaf should be
-            # the leaf of the parent context we just set as the leaf.
-            new_leaf = ParentContext((
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            ))
-            @test leafcontext(setleafcontext(context, new_leaf)) === leafcontext(new_leaf)
-        end
-    end
-
-    # `IsParent` interface.
-    @testset "childcontext" begin
-        @testset "$context" for context in parent_contexts
-            @test childcontext(context) isa AbstractContext
-        end
-    end
-
-    @testset "setchildcontext" begin
-        @testset "nested contexts" begin
-            # Both of the following should result in the same context.
-            context1 = ParentContext(ParentContext(ParentContext()))
-            context2 = setchildcontext(
-                ParentContext(), setchildcontext(ParentContext(), ParentContext())
-            )
-            @test context1 === context2
-        end
-
-        @testset "$context" for context in parent_contexts
-            # Setting the child context to a leaf should now change the `leafcontext` accordingly.
-            new_leaf =
-                leafcontext(context) isa DefaultContext ? PriorContext() : DefaultContext()
-            new_context = setchildcontext(context, new_leaf)
-            @test childcontext(new_context) === leafcontext(new_context) === new_leaf
+    @testset "$(context)" for context in contexts
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            DynamicPPL.TestUtils.test_context(context, model)
         end
     end
 
@@ -213,32 +139,45 @@ end
         end
     end
 
-    @testset "Evaluation" begin
-        @testset "$context" for context in contexts
-            # Just making sure that we can actually sample with each of the contexts.
-            @test (gdemo_default(SamplingContext(context)); true)
-        end
-    end
-
     @testset "PrefixContext" begin
-        ctx = @inferred PrefixContext{:f}(
-            PrefixContext{:e}(
-                PrefixContext{:d}(
-                    PrefixContext{:c}(
-                        PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+        @testset "prefixing" begin
+            ctx = @inferred PrefixContext{:f}(
+                PrefixContext{:e}(
+                    PrefixContext{:d}(
+                        PrefixContext{:c}(
+                            PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+                        ),
                     ),
                 ),
-            ),
-        )
-        vn = VarName{:x}()
-        vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-        @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getoptic(vn_prefixed) === getoptic(vn)
+            )
+            vn = VarName{:x}()
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
+            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
+            @test getoptic(vn_prefixed) === getoptic(vn)
 
-        vn = VarName{:x}(((1,),))
-        vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-        @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-        @test getoptic(vn_prefixed) === getoptic(vn)
+            vn = VarName{:x}(((1,),))
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
+            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
+            @test getoptic(vn_prefixed) === getoptic(vn)
+        end
+
+        context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
+        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            # Sample with the context.
+            varinfo = DynamicPPL.VarInfo()
+            DynamicPPL.evaluate!!(model, varinfo, context)
+            # Extract the resulting symbols.
+            vns_varinfo_syms = Set(map(DynamicPPL.getsym, keys(varinfo)))
+
+            # Extract the ground truth symbols.
+            vns_syms = Set([
+                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for
+                vn in DynamicPPL.TestUtils.varnames(model)
+            ])
+
+            # Check that all variables are prefixed correctly.
+            @test vns_syms == vns_varinfo_syms
+        end
     end
 
     @testset "SamplingContext" begin
