@@ -11,6 +11,7 @@ using ForwardDiff
 using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
+using Mooncake: Mooncake
 using Tracker
 using ReverseDiff
 using Zygote
