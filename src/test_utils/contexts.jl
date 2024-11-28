@@ -96,7 +96,6 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
             leafcontext_new
     end
 
-
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
     # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
     # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
