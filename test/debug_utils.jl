@@ -14,7 +14,7 @@
         # Check that the trace contains all the variables in the model.
         varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
         for vn in DynamicPPL.TestUtils.varnames(model)
-            @test vn in varnames_in_traces
+            @test vn in varnames_in_trace
         end
 
         # Quick checks for `show` of trace.
