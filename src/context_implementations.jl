@@ -104,7 +104,8 @@ probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
     return if is_rhs_model(right)
-        rand_like!!(right, context, vi)
+        # Prefix the variables using the `vn`.
+        rand_like!!(right, prefix(context Symbol(vn)), vi)
     else
         value, logp, vi = tilde_assume(context, right, vn, vi)
         value, acclogp_assume!!(context, vi, logp)
@@ -335,12 +336,13 @@ model inputs), accumulate the log probability, and return the sampled value and 
 Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
-    return if is_rhs_model(right)
-        rand_like!!(right, context, vi)
-    else
-        value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
-        value, acclogp_assume!!(context, vi, logp)
-    end
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`.~` with a model on the right-hand side is not supported; please use `~`",
+        ),
+    )
+    value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
+    value, acclogp_assume!!(context, vi, logp)
 end
 
 # `dot_assume`
