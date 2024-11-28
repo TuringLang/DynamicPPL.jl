@@ -33,7 +33,7 @@ function DynamicPPL.determine_varinfo(
     model::DynamicPPL.Model,
     context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext();
     verbose::Bool=false,
-    only_tilde::Bool=true
+    only_tilde::Bool=true,
 )
     # First we try with the typed varinfo.
     varinfo = DynamicPPL.typed_varinfo(model)
@@ -88,4 +88,3 @@ function DynamicPPL.determine_varinfo(
 end
 
 end
- 
