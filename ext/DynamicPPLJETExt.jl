@@ -3,10 +3,37 @@ module DynamicPPLJETExt
 using DynamicPPL: DynamicPPL
 using JET: JET
 
+"""
+    is_tilde_instance(x)
+
+Return `true` if `x` is a method instance of a tilde function, otherwise `false`.
+"""
+is_tilde_instance(x) = false
+is_tilde_instance(frame::JET.VirtualFrame) = is_tilde_instance(frame.linfo)
+is_tilde_instance(mi::Core.MethodInstance) = is_tilde_instance(mi.specTypes.parameters[1])
+is_tilde_instance(::Type{typeof(DynamicPPL.tilde_assume!!)}) = true
+is_tilde_instance(::Type{typeof(DynamicPPL.tilde_observe!!)}) = true
+is_tilde_instance(::Type{typeof(DynamicPPL.dot_tilde_assume!!)}) = true
+is_tilde_instance(::Type{typeof(DynamicPPL.dot_tilde_observe!!)}) = true
+
+"""
+    report_has_error_in_tilde(report)
+
+Return `true` if the given error `report` contains a tilde function in its frames, otherwise `false`.
+
+This is used to filter out reports that occur outside of the tilde pipeline, in an attempt to avoid
+warning the user about DynamicPPL doing something wrong when it is in fact an issue with the user's code.
+"""
+function report_has_error_in_tilde(report)
+    frames = report.vst
+    return any(is_tilde_instance, frames)
+end
+
 function DynamicPPL.determine_varinfo(
     model::DynamicPPL.Model,
     context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext();
     verbose::Bool=false,
+    only_tilde::Bool=true
 )
     # First we try with the typed varinfo.
     varinfo = DynamicPPL.typed_varinfo(model)
@@ -18,6 +45,9 @@ function DynamicPPL.determine_varinfo(
     )
     result_eval = JET.report_call(f_eval, argtypes_eval)
     reports_eval = JET.get_reports(result_eval)
+    if only_tilde
+        reports_eval = filter(report_has_error_in_tilde, reports_eval)
+    end
     # If we get reports => we had issues so we use the untyped varinfo.
     issuccess &= length(reports_eval) == 0
     if issuccess
@@ -27,6 +57,9 @@ function DynamicPPL.determine_varinfo(
         )
         result_sample = JET.report_call(f_sample, argtypes_sample)
         reports_sample = JET.get_reports(result_sample)
+        if only_tilde
+            reports_sample = filter(report_has_error_in_tilde, reports_sample)
+        end
         # If we get reports => we had issues so we use the untyped varinfo.
         issuccess &= length(reports_sample) == 0
         if !issuccess && verbose
@@ -55,3 +88,4 @@ function DynamicPPL.determine_varinfo(
 end
 
 end
+ 

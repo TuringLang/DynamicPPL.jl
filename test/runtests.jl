@@ -25,6 +25,8 @@ using Test
 using Distributions
 using LinearAlgebra # Diagonal
 
+using JET: JET
+
 using Combinatorics: combinations
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
@@ -71,6 +73,7 @@ include("test_util.jl")
 
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
+            include("ext/DynamicPPLJETExt.jl")
         end
 
         @testset "ad" begin
