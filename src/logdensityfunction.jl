@@ -156,8 +156,6 @@ end
 # parameters, or DifferentiationInterface will not have sufficient information to e.g.
 # compile a rule for Mooncake (because it won't know the type of the input), or pre-allocate
 # a tape when using ReverseDiff.jl.
-function LogDensityProblemsAD.ADgradient(
-    ad::ADTypes.AbstractADType, ℓ::DynamicPPL.LogDensityFunction
-)
+function LogDensityProblemsAD.ADgradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
     return LogDensityProblemsAD.ADgradient(ad, ℓ; x=map(identity, DynamicPPL.getparams(ℓ)))
 end
