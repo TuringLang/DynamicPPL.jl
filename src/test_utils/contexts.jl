@@ -92,8 +92,8 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
 
     # Setting the child context to a leaf should now change the leafcontext accordingly.
     context_with_new_leaf = DynamicPPL.setchildcontext(context, leafcontext_new)
-    @test DynamicPPL.setchildcontext(context_with_new_leaf) ===
-        DynamicPPL.setleafcontext(context_with_new_leaf) ===
+    @test DynamicPPL.childcontext(context_with_new_leaf) ===
+        DynamicPPL.leafcontext(context_with_new_leaf) ===
         leafcontext_new
 
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
