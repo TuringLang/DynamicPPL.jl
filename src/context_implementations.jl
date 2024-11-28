@@ -591,7 +591,7 @@ function get_and_set_val!(
             push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             # FIXME: This is not great.
-            acclogp_assume!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
+            acclogp!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
