@@ -1272,7 +1272,7 @@ struct Sampleable{M} <: Distributional
     model::M
 end
 
-is_rhs_model(x::Sampleable) = true
+is_rhs_model(x::Sampleable) = is_rhs_model(x.model)
 
 # TODO: Export this if it end up having a purpose beyond `to_submodel`.
 """
@@ -1308,6 +1308,8 @@ This should rarely be constructed explicitly; see [`returned(model)`](@ref) inst
 struct ReturnedModelWrapper{M<:Model}
     model::M
 end
+
+is_rhs_model(::ReturnedModelWrapper) = true
 
 function rand_like!!(
     model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
