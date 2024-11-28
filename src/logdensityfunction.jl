@@ -144,3 +144,17 @@ function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
 end
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
+
+
+if isdefined(Base, :get_extension)
+    using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+else
+    using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
+end
+
+# This is important for performance.
+function LogDensityProblemsAD.ADgradient(
+    ad::ADTypes.AbstractADType, ℓ::DynamicPPL.LogDensityFunction
+)
+    return LogDensityProblemsAD.ADgradient(ad, ℓ; x=map(identity, DynamicPPL.getparams(ℓ)))
+end
