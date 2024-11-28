@@ -45,14 +45,16 @@
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()
-                z ~ to_submodel(ModelInner())
+                # Without automatic prefixing => `x` s used twice.
+                z ~ to_submodel(ModelInner(), false)
                 return x ~ Normal()
             end
             model = ModelOuterBroken()
             @test_throws ErrorException check_model(model; error_on_failure=true)
 
             @model function ModelOuterWorking()
-                z = to_submodel(prefix(ModelInner(), "z"))
+                # With automatic prefixing => `x` is not duplicated.
+                z ~ to_submodel(ModelInner())
                 x ~ Normal()
                 return z
             end
