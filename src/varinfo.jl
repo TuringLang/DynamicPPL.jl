@@ -175,13 +175,11 @@ function untyped_varinfo(
     context::AbstractContext=DefaultContext(),
     metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    varinfo = VarInfo(metadata)
-    return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
+    return untyped_varinfo(model, SamplingContext(rng, sampler, context), metadata)
 end
-function untyped_varinfo(
-    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
-)
-    return untyped_varinfo(Random.default_rng(), model, args...)
+function untyped_varinfo(model::Model, context::AbstractContext, metadata::Union{Metadata,VarNamedVector}=Metadata())
+    varinfo = VarInfo(metadata)
+    return last(evaluate!!(model, varinfo, hassampler(context) ? context : SamplingContext(context)))
 end
 
 """
