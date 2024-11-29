@@ -9,8 +9,7 @@
             end
         end
         model = demo1()
-        @test DynamicPPL.determine_suitable_varinfo(model; verbose=true) isa
-            DynamicPPL.UntypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(model) isa DynamicPPL.UntypedVarInfo
 
         @model demo2() = x ~ Normal()
         @test DynamicPPL.determine_suitable_varinfo(demo2()) isa DynamicPPL.TypedVarInfo
@@ -25,8 +24,7 @@
                 z ~ Normal()
             end
         end
-        @test DynamicPPL.determine_suitable_varinfo(demo3(); verbose=true) isa
-            DynamicPPL.UntypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(demo3()) isa DynamicPPL.UntypedVarInfo
 
         # Evaluation works (and it would even do so in practice), but sampling
         # fill fail due to storing `Cauchy{Float64}` in `Vector{Normal{Float64}}`.
@@ -38,8 +36,7 @@
                 y ~ Cauchy() # different distibution, but same transformation
             end
         end
-        @test DynamicPPL.determine_suitable_varinfo(demo4(); verbose=true) isa
-            DynamicPPL.UntypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(demo4()) isa DynamicPPL.UntypedVarInfo
 
         # In this model, the type error occurs in the user code rather than in DynamicPPL.
         @model function demo5()
@@ -51,12 +48,10 @@
             return sum(xs)
         end
         # Should pass if we're only checking the tilde statements.
-        @test DynamicPPL.determine_suitable_varinfo(demo5(); verbose=true) isa
-            DynamicPPL.TypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(demo5()) isa DynamicPPL.TypedVarInfo
         # Should fail if we're including errors in the model body.
-        @test DynamicPPL.determine_suitable_varinfo(
-            demo5(); verbose=true, only_tilde=false
-        ) isa DynamicPPL.UntypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(demo5(); only_tilde=false) isa
+            DynamicPPL.UntypedVarInfo
     end
 
     @testset "demo models" begin

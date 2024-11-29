@@ -49,9 +49,7 @@ function DynamicPPL.is_suitable_varinfo(
 end
 
 function DynamicPPL._determine_varinfo_jet(
-    model::DynamicPPL.Model,
-    context::DynamicPPL.AbstractContext;
-    only_tilde::Bool=true,
+    model::DynamicPPL.Model, context::DynamicPPL.AbstractContext; only_tilde::Bool=true
 )
     # First we try with the typed varinfo.
     varinfo = if DynamicPPL.hassampler(context)
@@ -64,9 +62,7 @@ function DynamicPPL._determine_varinfo_jet(
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
-    issuccess, reports = DynamicPPL.is_suitable_varinfo(
-        model, context, varinfo; only_tilde
-    )
+    issuccess, reports = DynamicPPL.is_suitable_varinfo(model, context, varinfo; only_tilde)
 
     if !issuccess
         # Useful information for debugging.
