@@ -50,37 +50,29 @@ end
 
 function DynamicPPL._determine_varinfo_jet(
     model::DynamicPPL.Model,
-    context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext();
-    verbose::Bool=false,
+    context::DynamicPPL.AbstractContext;
     only_tilde::Bool=true,
 )
     # First we try with the typed varinfo.
-    varinfo = DynamicPPL.typed_varinfo(model)
+    varinfo = if DynamicPPL.hassampler(context)
+        # Don't need to add sampling context for this to work.
+        DynamicPPL.typed_varinfo(model, context)
+    else
+        # Need a sampling context to initialize the varinfo.
+        DynamicPPL.typed_varinfo(model, DynamicPPL.SamplingContext(context))
+    end
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
-    issuccess, reports_eval = DynamicPPL.is_suitable_varinfo(
+    issuccess, reports = DynamicPPL.is_suitable_varinfo(
         model, context, varinfo; only_tilde
     )
 
-    if issuccess
-        # Evaluation succeeded, let's try sampling.
-        issuccess_sample, reports_sample = DynamicPPL.is_suitable_varinfo(
-            model, DynamicPPL.SamplingContext(context), varinfo; only_tilde
-        )
-        issuccess &= issuccess_sample
-        if !issuccess && verbose
-            # Show the user the issues.
-            @warn "Sampling with typed varinfo failed with the following issues:"
-            for report in reports_sample
-                @warn report
-            end
-        end
-    elseif verbose
-        # Show the user the issues.
-        @warn "Evaluaton with typed varinfo failed with the following issues:"
-        for report in reports_eval
-            @warn report
+    if !issuccess
+        # Useful information for debugging.
+        @debug "Evaluaton with typed varinfo failed with the following issues:"
+        for report in reports
+            @debug report
         end
     end
 

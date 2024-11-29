@@ -246,24 +246,19 @@ See also: [`DynamicPPL.is_suitable_varinfo`](@ref).
 
 # Arguments
 - `model`: The model for which to determine the varinfo.
-- `context`: The context to use for the evaluation and sampling. Default: `DefaultContext()`.
+- `context`: The context to use for the model evaluation. Default: `SamplingContext()`.
 
 # Keyword Arguments
-- `verbose`: If `true`, the user will be warned about the issues that caused the fallback to untyped varinfo.
 - `only_tilde`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
-
-# Keyword Arguments
-- `verbose`: If `true`, the user will be warned about the issues that caused the fallback to untyped varinfo.
 """
 function determine_suitable_varinfo(
     model::Model,
-    context::AbstractContext=DefaultContext();
-    verbose::Bool=false,
+    context::AbstractContext=SamplingContext();
     only_tilde::Bool=true,
 )
     # If JET.jl has been loaded, and thus `determine_varinfo` has been defined, we use that.
     if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
-        return _determine_varinfo_jet(model, context; only_tilde, verbose)
+        return _determine_varinfo_jet(model, context; only_tilde)
     else
         @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."
     end

@@ -77,33 +77,7 @@ function default_varinfo(
     context::AbstractContext,
 )
     init_sampler = initialsampler(sampler)
-    varinfo = VarInfo(rng, model, init_sampler, context)
-
-    # If JET.jl has been loaded => use static checking to see if we can actually use the typed varinfo.
-    if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
-        # Check evaluation.
-        issuccess = first(is_suitable_varinfo(model, context, varinfo))
-        if issuccess
-            # Check the initial sampler.
-            issuccess &= first(
-                is_suitable_varinfo(model, SamplingContext(init_sampler, context), varinfo)
-            )
-        end
-
-        if issuccess
-            # Check the actual sampler.
-            issuccess &= first(
-                is_suitable_varinfo(model, SamplingContext(sampler, context), varinfo)
-            )
-        end
-
-        if !issuccess
-            @warn "Model seems incompatible with typed varinfo. Falling back to untyped varinfo."
-            # TODO: Use a constructor which takes the rng and the sampler too.
-            varinfo = untyped_varinfo(model)
-        end
-    end
-
+    varinfo = determine_suitable_varinfo(model, SamplingContext(rng, init_sampler, context))
     return varinfo
 end
 
