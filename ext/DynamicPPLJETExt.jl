@@ -10,7 +10,15 @@ Return `true` if `x` is a method instance of a tilde function, otherwise `false`
 """
 is_tilde_instance(x) = false
 is_tilde_instance(frame::JET.VirtualFrame) = is_tilde_instance(frame.linfo)
-is_tilde_instance(mi::Core.MethodInstance) = is_tilde_instance(mi.specTypes.parameters[1])
+function is_tilde_instance(mi::Core.MethodInstance)
+    types = mi.specTypes
+    # This can occur, for example, if `specTypes` is `UnionAll` due to an error.
+    return if hasproperty(types, :parameters)
+        is_tilde_instance(types.parameters[1])
+    else
+        false
+    end
+end
 is_tilde_instance(::Type{typeof(DynamicPPL.tilde_assume!!)}) = true
 is_tilde_instance(::Type{typeof(DynamicPPL.tilde_observe!!)}) = true
 is_tilde_instance(::Type{typeof(DynamicPPL.dot_tilde_assume!!)}) = true
