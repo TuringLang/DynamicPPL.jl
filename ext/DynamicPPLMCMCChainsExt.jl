@@ -147,9 +147,9 @@ function _params_to_array(predictive_samples)
     names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
 
     dicts = map(predictive_samples) do t
-        nms_and_vs = t[:values]
-        nms = map(first, nms_and_vs)
-        vs = map(last, nms_and_vs)
+        varname_and_values = t.varname_and_values
+        nms = map(first, varname_and_values)
+        vs = map(last, varname_and_values)
         for nm in nms
             push!(names_set, nm)
         end
@@ -164,15 +164,11 @@ function _params_to_array(predictive_samples)
     return names, vals
 end
 
-function _bundle_predictive_samples(
-    predictive_samples::AbstractArray{
-        <:DynamicPPL.OrderedCollections.OrderedDict{Symbol,Any}
-    },
-)
+function _bundle_predictive_samples(predictive_samples)
     varnames, vals = _params_to_array(predictive_samples)
     varnames_symbol = map(Symbol, varnames)
     extra_params = [:lp]
-    extra_values = reshape([t[:logp] for t in predictive_samples], :, 1)
+    extra_values = reshape([t.logp for t in predictive_samples], :, 1)
     nms = [varnames_symbol; extra_params]
     parray = hcat(vals, extra_values)
     parray = MCMCChains.concretize(parray)

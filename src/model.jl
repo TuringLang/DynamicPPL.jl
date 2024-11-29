@@ -1223,15 +1223,13 @@ function predict(
     varinfos::AbstractArray{<:AbstractVarInfo};
     include_all=false,
 )
-    predictive_samples = similar(varinfos, OrderedDict{Symbol,Any})
+    predictive_samples = similar(varinfos, NamedTuple{(:varname_and_values, :logp)})
     for i in eachindex(varinfos)
         model(rng, varinfos[i], SampleFromPrior())
         vals = values_as_in_model(model, varinfos[i])
         iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
-        params = mapreduce(collect, vcat, iters)
-        predictive_samples[i] = OrderedDict(
-            :values => params, :logp => getlogp(varinfos[i])
-        )
+        params = mapreduce(collect, vcat, iters) # returns a vector of tuples (varname, value)
+        predictive_samples[i] = (varname_and_values=params, logp=getlogp(varinfos[i]))
     end
     return predictive_samples
 end
