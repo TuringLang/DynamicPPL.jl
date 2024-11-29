@@ -51,14 +51,14 @@ end
 function DynamicPPL._determine_varinfo_jet(
     model::DynamicPPL.Model, context::DynamicPPL.AbstractContext; only_tilde::Bool=true
 )
-    # First we try with the typed varinfo.
-    varinfo = if DynamicPPL.hassampler(context)
-        # Don't need to add sampling context for this to work.
-        DynamicPPL.typed_varinfo(model, context)
+    # We need a sampling context in the stack to initialize the varinfo.
+    sampling_context = if DynamicPPL.hassampler(context)
+        context
     else
-        # Need a sampling context to initialize the varinfo.
         DynamicPPL.typed_varinfo(model, DynamicPPL.SamplingContext(context))
     end
+    # First we try with the typed varinfo.
+    varinfo = DynamicPPL.typed_varinfo(model, sampling_context)
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
@@ -78,7 +78,7 @@ function DynamicPPL._determine_varinfo_jet(
     else
         # Warn the user that we can't use the type stable one.
         @warn "Model seems incompatible with typed varinfo. Falling back to untyped varinfo."
-        DynamicPPL.untyped_varinfo(model)
+        DynamicPPL.untyped_varinfo(model, sampling_context)
     end
 end
 
