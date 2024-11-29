@@ -29,6 +29,7 @@ using Distributions
 using LinearAlgebra # Diagonal
 
 using Combinatorics: combinations
+using OrderedCollections: OrderedSet
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 

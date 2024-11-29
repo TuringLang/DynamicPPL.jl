@@ -1,3 +1,8 @@
+# Dummy algorithm for testing
+# Invoke with: DynamicPPL.Sampler(MyAlg{(:x, :y)}(), ...)
+struct MyAlg{space} end
+DynamicPPL.getspace(::DynamicPPL.Sampler{MyAlg{space}}) where {space} = space
+
 function check_varinfo_keys(varinfo, vns)
     if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
@@ -14,9 +19,29 @@ function check_varinfo_keys(varinfo, vns)
     end
 end
 
-# A simple "algorithm" which only has `s` variables in its space.
-struct MySAlg end
-DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
+function randr(
+    vi::DynamicPPL.VarInfo,
+    vn::VarName,
+    dist::Distribution,
+    spl::DynamicPPL.Sampler,
+    count::Bool=false,
+)
+    if !haskey(vi, vn)
+        r = rand(dist)
+        push!!(vi, vn, r, dist, spl)
+        r
+    elseif DynamicPPL.is_flagged(vi, vn, "del")
+        DynamicPPL.unset_flag!(vi, vn, "del")
+        r = rand(dist)
+        vi[vn] = DynamicPPL.tovec(r)
+        DynamicPPL.setorder!(vi, vn, DynamicPPL.get_num_produce(vi))
+        r
+    else
+        count && checkindex(vn, vi, spl)
+        DynamicPPL.updategid!(vi, vn, spl)
+        vi[vn]
+    end
+end
 
 @testset "varinfo.jl" begin
     @testset "TypedVarInfo with Metadata" begin
@@ -130,6 +155,26 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         test_base!!(SimpleVarInfo(Dict()))
         test_base!!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
+
+    @testset "get/set/acc/resetlogp" begin
+        function test_varinfo_logp!(vi)
+            @test DynamicPPL.getlogp(vi) === 0.0
+            vi = DynamicPPL.setlogp!!(vi, 1.0)
+            @test DynamicPPL.getlogp(vi) === 1.0
+            vi = DynamicPPL.acclogp!!(vi, 1.0)
+            @test DynamicPPL.getlogp(vi) === 2.0
+            vi = DynamicPPL.resetlogp!!(vi)
+            @test DynamicPPL.getlogp(vi) === 0.0
+        end
+
+        vi = VarInfo()
+        test_varinfo_logp!(vi)
+        test_varinfo_logp!(TypedVarInfo(vi))
+        test_varinfo_logp!(SimpleVarInfo())
+        test_varinfo_logp!(SimpleVarInfo(Dict()))
+        test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
+    end
+
     @testset "flags" begin
         # Test flag setting:
         #    is_flagged, set_flag!, unset_flag!
@@ -187,6 +232,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         setgid!(vi, gid2, vn)
         @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1, gid2])
     end
+
     @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
@@ -337,6 +383,103 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
         DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
         @test vals_prev == vi.metadata.x.vals
+    end
+
+    @testset "setval! on chain" begin
+        # Define a helper function
+        """
+            test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
+
+        Test `setval!` on `model` and `chain`.
+
+        Worth noting that this only supports models containing symbols of the forms
+        `m`, `m[1]`, `m[1, 2]`, not `m[1][1]`, etc.
+        """
+        function test_setval!(model, chain; sample_idx=1, chain_idx=1)
+            var_info = VarInfo(model)
+            spl = SampleFromPrior()
+            θ_old = var_info[spl]
+            DynamicPPL.setval!(var_info, chain, sample_idx, chain_idx)
+            θ_new = var_info[spl]
+            @test θ_old != θ_new
+            vals = DynamicPPL.values_as(var_info, OrderedDict)
+            iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+            for (n, v) in mapreduce(collect, vcat, iters)
+                n = string(n)
+                if Symbol(n) ∉ keys(chain)
+                    # Assume it's a group
+                    chain_val = vec(
+                        MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx]
+                    )
+                    v_true = vec(v)
+                else
+                    chain_val = chain[sample_idx, n, chain_idx]
+                    v_true = v
+                end
+
+                @test v_true == chain_val
+            end
+        end
+
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            chain = make_chain_from_prior(model, 10)
+            # A simple way of checking that the computation is determinstic: run twice and compare.
+            res1 = returned(model, MCMCChains.get_sections(chain, :parameters))
+            res2 = returned(model, MCMCChains.get_sections(chain, :parameters))
+            @test all(res1 .== res2)
+            test_setval!(model, MCMCChains.get_sections(chain, :parameters))
+        end
+    end
+
+    @testset "link!! and invlink!!" begin
+        @model gdemo(x, y) = begin
+            s ~ InverseGamma(2, 3)
+            m ~ Uniform(0, 2)
+            x ~ Normal(m, sqrt(s))
+            y ~ Normal(m, sqrt(s))
+        end
+        model = gdemo(1.0, 2.0)
+
+        # Check that instantiating the model does not perform linking
+        vi = VarInfo()
+        meta = vi.metadata
+        model(vi, SampleFromUniform())
+        @test all(x -> !istrans(vi, x), meta.vns)
+
+        # Check that linking and invlinking set the `trans` flag accordingly
+        v = copy(meta.vals)
+        link!!(vi, model)
+        @test all(x -> istrans(vi, x), meta.vns)
+        invlink!!(vi, model)
+        @test all(x -> !istrans(vi, x), meta.vns)
+        @test meta.vals ≈ v atol = 1e-10
+
+        # Check that linking and invlinking preserves the values
+        vi = TypedVarInfo(vi)
+        meta = vi.metadata
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        v_s = copy(meta.s.vals)
+        v_m = copy(meta.m.vals)
+        link!!(vi, model)
+        @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> istrans(vi, x), meta.m.vns)
+        invlink!!(vi, model)
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test meta.s.vals ≈ v_s atol = 1e-10
+        @test meta.m.vals ≈ v_m atol = 1e-10
+
+        # Transform only one variable (`s`) but not the others (`m`)
+        spl = DynamicPPL.Sampler(MyAlg{(:s,)}(), model)
+        link!!(vi, spl, model)
+        @test all(x -> istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        invlink!!(vi, spl, model)
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test meta.s.vals ≈ v_s atol = 1e-10
+        @test meta.m.vals ≈ v_m atol = 1e-10
     end
 
     @testset "istrans" begin
@@ -737,7 +880,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 DynamicPPL.Metadata(),
             )
             selector = DynamicPPL.Selector()
-            spl = Sampler(MySAlg(), model, selector)
+            spl = Sampler(MyAlg{(:s,)}(), model, selector)
 
             vns = DynamicPPL.TestUtils.varnames(model)
             vns_s = filter(vn -> DynamicPPL.getsym(vn) === :s, vns)
@@ -854,5 +997,148 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 @test x[reduce(vcat, ranges_duplicated)] == repeat(x, 2)
             end
         end
+    end
+
+    @testset "orders" begin
+        @model empty_model() = x = 1
+
+        csym = gensym() # unique per model
+        vn_z1 = @varname z[1]
+        vn_z2 = @varname z[2]
+        vn_z3 = @varname z[3]
+        vn_z4 = @varname z[4]
+        vn_a1 = @varname a[1]
+        vn_a2 = @varname a[2]
+        vn_b = @varname b
+
+        vi = DynamicPPL.VarInfo()
+        dists = [Categorical([0.7, 0.3]), Normal()]
+
+        spl1 = DynamicPPL.Sampler(MyAlg{()}(), empty_model())
+        spl2 = DynamicPPL.Sampler(MyAlg{()}(), empty_model())
+
+        # First iteration, variables are added to vi
+        # variables samples in order: z1,a1,z2,a2,z3
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z1, dists[1], spl1)
+        randr(vi, vn_a1, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_b, dists[2], spl2)
+        randr(vi, vn_z2, dists[1], spl1)
+        randr(vi, vn_a2, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z3, dists[1], spl1)
+        @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
+        @test DynamicPPL.get_num_produce(vi) == 3
+
+        DynamicPPL.reset_num_produce!(vi)
+        DynamicPPL.set_retained_vns_del_by_spl!(vi, spl1)
+        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z1, dists[1], spl1)
+        randr(vi, vn_a1, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z2, dists[1], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z3, dists[1], spl1)
+        randr(vi, vn_a2, dists[2], spl1)
+        @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
+        @test DynamicPPL.get_num_produce(vi) == 3
+
+        vi = empty!!(DynamicPPL.TypedVarInfo(vi))
+        # First iteration, variables are added to vi
+        # variables samples in order: z1,a1,z2,a2,z3
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z1, dists[1], spl1)
+        randr(vi, vn_a1, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_b, dists[2], spl2)
+        randr(vi, vn_z2, dists[1], spl1)
+        randr(vi, vn_a2, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z3, dists[1], spl1)
+        @test vi.metadata.z.orders == [1, 2, 3]
+        @test vi.metadata.a.orders == [1, 2]
+        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.get_num_produce(vi) == 3
+
+        DynamicPPL.reset_num_produce!(vi)
+        DynamicPPL.set_retained_vns_del_by_spl!(vi, spl1)
+        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z1, dists[1], spl1)
+        randr(vi, vn_a1, dists[2], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z2, dists[1], spl1)
+        DynamicPPL.increment_num_produce!(vi)
+        randr(vi, vn_z3, dists[1], spl1)
+        randr(vi, vn_a2, dists[2], spl1)
+        @test vi.metadata.z.orders == [1, 2, 3]
+        @test vi.metadata.a.orders == [1, 3]
+        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.get_num_produce(vi) == 3
+    end
+
+    @testset "varinfo ranges" begin
+        @model empty_model() = x = 1
+        dists = [Normal(0, 1), MvNormal(zeros(2), I), Wishart(7, [1 0.5; 0.5 1])]
+
+        function test_varinfo!(vi)
+            spl2 = DynamicPPL.Sampler(MyAlg{(:w, :u)}(), empty_model())
+            vn_w = @varname w
+            randr(vi, vn_w, dists[1], spl2, true)
+
+            vn_x = @varname x
+            vn_y = @varname y
+            vn_z = @varname z
+            vns = [vn_x, vn_y, vn_z]
+
+            spl1 = DynamicPPL.Sampler(MyAlg{(:x, :y, :z)}(), empty_model())
+            for i in 1:3
+                r = randr(vi, vns[i], dists[i], spl1, false)
+                val = vi[vns[i]]
+                @test sum(val - r) <= 1e-9
+            end
+
+            idcs = DynamicPPL._getidcs(vi, spl1)
+            if idcs isa NamedTuple
+                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 3
+            else
+                @test length(idcs) == 3
+            end
+            @test length(vi[spl1]) == 7
+
+            idcs = DynamicPPL._getidcs(vi, spl2)
+            if idcs isa NamedTuple
+                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 1
+            else
+                @test length(idcs) == 1
+            end
+            @test length(vi[spl2]) == 1
+
+            vn_u = @varname u
+            randr(vi, vn_u, dists[1], spl2, true)
+
+            idcs = DynamicPPL._getidcs(vi, spl2)
+            if idcs isa NamedTuple
+                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 2
+            else
+                @test length(idcs) == 2
+            end
+            @test length(vi[spl2]) == 2
+        end
+        vi = DynamicPPL.VarInfo()
+        test_varinfo!(vi)
+        test_varinfo!(empty!!(DynamicPPL.TypedVarInfo(vi)))
     end
 end
