@@ -206,7 +206,7 @@ if isdefined(Base.Experimental, :register_error_hint)
                 argtypes[1] <: Model &&
                 argtypes[2] <: AbstractContext
             requires_jet |=
-                exc.f === supports_varinfo &&
+                exc.f === is_suitable_varinfo &&
                 length(argtypes) >= 3 &&
                 argtypes[1] <: Model &&
                 argtypes[2] <: AbstractContext &&
