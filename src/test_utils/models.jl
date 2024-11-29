@@ -379,7 +379,7 @@ function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 
-@model function demo_assume_literal_observe()
+@model function demo_assume_observe_literal()
     # univariate `assume` and literal `observe`
     s ~ InverseGamma(2, 3)
     m ~ Normal(0, sqrt(s))
@@ -388,22 +388,22 @@ end
 
     return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
-function logprior_true(model::Model{typeof(demo_assume_literal_observe)}, s, m)
+function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 end
-function loglikelihood_true(model::Model{typeof(demo_assume_literal_observe)}, s, m)
+function loglikelihood_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
 end
 function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_assume_literal_observe)}, s, m
+    model::Model{typeof(demo_assume_observe_literal)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function varnames(model::Model{typeof(demo_assume_literal_observe)})
+function varnames(model::Model{typeof(demo_assume_observe_literal)})
     return [@varname(s), @varname(m)]
 end
 
-@model function demo_assume_literal_dot_observe()
+@model function demo_assume_dot_observe_literal()
     # `assume` and literal `dot_observe`
     s ~ InverseGamma(2, 3)
     m ~ Normal(0, sqrt(s))
@@ -411,18 +411,18 @@ end
 
     return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
 end
-function logprior_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
+function logprior_true(model::Model{typeof(demo_assume_dot_observe_literal)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 end
-function loglikelihood_true(model::Model{typeof(demo_assume_literal_dot_observe)}, s, m)
+function loglikelihood_true(model::Model{typeof(demo_assume_dot_observe_literal)}, s, m)
     return loglikelihood(Normal(m, sqrt(s)), [1.5, 2.0])
 end
 function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_assume_literal_dot_observe)}, s, m
+    model::Model{typeof(demo_assume_dot_observe_literal)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function varnames(model::Model{typeof(demo_assume_literal_dot_observe)})
+function varnames(model::Model{typeof(demo_assume_dot_observe_literal)})
     return [@varname(s), @varname(m)]
 end
 
@@ -600,8 +600,8 @@ const DemoModels = Union{
     Model{typeof(demo_assume_multivariate_observe)},
     Model{typeof(demo_dot_assume_observe_index)},
     Model{typeof(demo_assume_dot_observe)},
-    Model{typeof(demo_assume_literal_dot_observe)},
-    Model{typeof(demo_assume_literal_observe)},
+    Model{typeof(demo_assume_dot_observe_literal)},
+    Model{typeof(demo_assume_observe_literal)},
     Model{typeof(demo_assume_multivariate_observe_literal)},
     Model{typeof(demo_dot_assume_observe_index_literal)},
     Model{typeof(demo_assume_submodel_observe_index_literal)},
@@ -613,8 +613,8 @@ const DemoModels = Union{
 
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},
-    Model{typeof(demo_assume_literal_dot_observe)}
-    Model{typeof(demo_assume_literal_observe)}
+    Model{typeof(demo_assume_dot_observe_literal)},
+    Model{typeof(demo_assume_observe_literal)},
 }
 function posterior_mean(model::UnivariateAssumeDemoModels)
     return (s=49 / 24, m=7 / 6)
@@ -790,8 +790,8 @@ const DEMO_MODELS = (
     demo_assume_dot_observe(),
     demo_assume_multivariate_observe_literal(),
     demo_dot_assume_observe_index_literal(),
-    demo_assume_literal_dot_observe(),
-    demo_assume_literal_observe(),
+    demo_assume_dot_observe_literal(),
+    demo_assume_observe_literal(),
     demo_assume_submodel_observe_index_literal(),
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_dot_observe_matrix(),
