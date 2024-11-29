@@ -262,11 +262,5 @@ function determine_suitable_varinfo(
     end
 
     # Otherwise, we use the, possibly incorrect, default typed varinfo (to stay backwards compat).
-    return if hassampler(context)
-        # Don't need to add the default sampler to the context.
-        VarInfo(model, context)
-    else
-        # Add the default sampler to the context.
-        VarInfo(model, SamplingContext(context))
-    end
+    return typed_varinfo(model, context)
 end
