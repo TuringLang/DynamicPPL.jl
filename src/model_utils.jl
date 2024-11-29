@@ -255,12 +255,12 @@ function determine_suitable_varinfo(
     model::Model, context::AbstractContext=SamplingContext(); only_tilde::Bool=true
 )
     # If JET.jl has been loaded, and thus `determine_varinfo` has been defined, we use that.
-    if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
-        return _determine_varinfo_jet(model, context; only_tilde)
+    return if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
+        _determine_varinfo_jet(model, context; only_tilde)
     else
+        # Warn the user.
         @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."
+        # Otherwise, we use the, possibly incorrect, default typed varinfo (to stay backwards compat).
+        typed_varinfo(model, context)
     end
-
-    # Otherwise, we use the, possibly incorrect, default typed varinfo (to stay backwards compat).
-    return typed_varinfo(model, context)
 end
