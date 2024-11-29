@@ -1203,11 +1203,6 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
     end
 end
 
-struct PredictiveSample{T,F}
-    values::T
-    logp::F
-end
-
 """
     predict([rng::AbstractRNG,] model::Model, chain; include_all=false)
 
@@ -1228,13 +1223,15 @@ function predict(
     varinfos::AbstractArray{<:AbstractVarInfo};
     include_all=false,
 )
-    predictive_samples = Array{PredictiveSample}(undef, size(varinfos))
+    predictive_samples = similar(varinfos, OrderedDict{Symbol,Any})
     for i in eachindex(varinfos)
         model(rng, varinfos[i], SampleFromPrior())
         vals = values_as_in_model(model, varinfos[i])
         iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
         params = mapreduce(collect, vcat, iters)
-        predictive_samples[i] = PredictiveSample(params, getlogp(varinfos[i]))
+        predictive_samples[i] = OrderedDict(
+            :values => params, :logp => getlogp(varinfos[i])
+        )
     end
     return predictive_samples
 end

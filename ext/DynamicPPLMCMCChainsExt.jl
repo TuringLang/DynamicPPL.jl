@@ -128,7 +128,7 @@ function DynamicPPL.predict(
     chain_result = reduce(
         MCMCChains.chainscat,
         [
-            _bundle_samples(predictive_samples[:, chain_idx]) for
+            _bundle_predictive_samples(predictive_samples[:, chain_idx]) for
             chain_idx in 1:size(predictive_samples, 2)
         ],
     )
@@ -143,11 +143,11 @@ function DynamicPPL.predict(
     return chain_result[parameter_names]
 end
 
-function _params_to_array(ts::Vector)
+function _params_to_array(predictive_samples)
     names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
 
-    dicts = map(ts) do t
-        nms_and_vs = t.values
+    dicts = map(predictive_samples) do t
+        nms_and_vs = t[:values]
         nms = map(first, nms_and_vs)
         vs = map(last, nms_and_vs)
         for nm in nms
@@ -164,11 +164,15 @@ function _params_to_array(ts::Vector)
     return names, vals
 end
 
-function _bundle_samples(ts::Vector{<:DynamicPPL.PredictiveSample})
-    varnames, vals = _params_to_array(ts)
+function _bundle_predictive_samples(
+    predictive_samples::AbstractArray{
+        <:DynamicPPL.OrderedCollections.OrderedDict{Symbol,Any}
+    },
+)
+    varnames, vals = _params_to_array(predictive_samples)
     varnames_symbol = map(Symbol, varnames)
     extra_params = [:lp]
-    extra_values = reshape([t.logp for t in ts], :, 1)
+    extra_values = reshape([t[:logp] for t in predictive_samples], :, 1)
     nms = [varnames_symbol; extra_params]
     parray = hcat(vals, extra_values)
     parray = MCMCChains.concretize(parray)
