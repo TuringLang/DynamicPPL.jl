@@ -209,15 +209,40 @@ function value_iterator_from_chain(vi::AbstractVarInfo, chain)
 end
 
 """
-    determine_varinfo(model[, context]; verbose::Bool=false)
+    is_suitable_varinfo(model::Model, context::AbstractContext, varinfo::AbstractVarInfo; kwargs...)
+
+Return `true` if `model` supports `varinfo` under `context`.
+
+!!! warning
+    Loading JET.jl is required before calling this function.
+
+# Arguments
+- `model`: The model to to verify the support for.
+- `context`: The context to use for the model evaluation.
+- `varinfo`: The varinfo to verify the support for.
+
+# Keyword Arguments
+- `only_tilde`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
+
+# Returns
+- `issuccess`: `true` if the model supports the varinfo, otherwise `false`.
+- `reports`: The reports from JET.jl. This is empty if `issuccess` is `true`.
+"""
+function is_suitable_varinfo end
+
+# Internal hook for JET.jl to overload.
+function _determine_varinfo_jet end
+
+"""
+    determine_suitable_varinfo(model[, context]; verbose::Bool=false, only_tilde::Bool=true)
 
 Return a suitable varinfo for the given `model`.
 
-This method uses JET.jl in an attempt to determine if the model is compatible with typed varinfo.
-If it is, a typed varinfo is returned, otherwise an untyped varinfo is returned.
+See also: [`DynamicPPL.is_suitable_varinfo`](@ref).
 
 !!! warning
-    This requires loading JET.jl before calling this function.
+    For full functionality, this requires JET.jl to be loaded.
+    If JET.jl is not loaded, this function will assume the model is compatible with typed varinfo.
 
 # Arguments
 - `model`: The model for which to determine the varinfo.
@@ -225,5 +250,30 @@ If it is, a typed varinfo is returned, otherwise an untyped varinfo is returned.
 
 # Keyword Arguments
 - `verbose`: If `true`, the user will be warned about the issues that caused the fallback to untyped varinfo.
+- `only_tilde`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
+
+# Keyword Arguments
+- `verbose`: If `true`, the user will be warned about the issues that caused the fallback to untyped varinfo.
 """
-function determine_varinfo end
+function determine_suitable_varinfo(
+    model::Model,
+    context::AbstractContext=DefaultContext();
+    verbose::Bool=false,
+    only_tilde::Bool=true,
+)
+    # If JET.jl has been loaded, and thus `determine_varinfo` has been defined, we use that.
+    if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
+        return _determine_varinfo_jet(model, context; only_tilde, verbose)
+    else
+        @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."
+    end
+
+    # Otherwise, we use the, possibly incorrect, default typed varinfo (to stay backwards compat).
+    return if hassampler(context)
+        # Don't need to add the default sampler to the context.
+        VarInfo(model, context)
+    else
+        # Add the default sampler to the context.
+        VarInfo(model, SamplingContext(context))
+    end
+end

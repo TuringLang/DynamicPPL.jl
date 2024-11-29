@@ -1,5 +1,5 @@
 @testset "DynamicPPLJETExt.jl" begin
-    @testset "determine_varinfo" begin
+    @testset "determine_suitable_varinfo" begin
         @model function demo1()
             x ~ Bernoulli()
             if x
@@ -9,11 +9,11 @@
             end
         end
         model = demo1()
-        @test DynamicPPL.determine_varinfo(model; verbose=true) isa
+        @test DynamicPPL.determine_suitable_varinfo(model; verbose=true) isa
             DynamicPPL.UntypedVarInfo
 
         @model demo2() = x ~ Normal()
-        @test DynamicPPL.determine_varinfo(demo2()) isa DynamicPPL.TypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(demo2()) isa DynamicPPL.TypedVarInfo
 
         @model function demo3()
             # Just making sure that nothing strange happens when type inference fails.
@@ -25,7 +25,7 @@
                 z ~ Normal()
             end
         end
-        @test DynamicPPL.determine_varinfo(demo3(); verbose=true) isa
+        @test DynamicPPL.determine_suitable_varinfo(demo3(); verbose=true) isa
             DynamicPPL.UntypedVarInfo
 
         # Evaluation works (and it would even do so in practice), but sampling
@@ -38,7 +38,7 @@
                 y ~ Cauchy() # different distibution, but same transformation
             end
         end
-        @test DynamicPPL.determine_varinfo(demo4(); verbose=true) isa
+        @test DynamicPPL.determine_suitable_varinfo(demo4(); verbose=true) isa
             DynamicPPL.UntypedVarInfo
 
         # In this model, the type error occurs in the user code rather than in DynamicPPL.
@@ -51,16 +51,17 @@
             return sum(xs)
         end
         # Should pass if we're only checking the tilde statements.
-        @test DynamicPPL.determine_varinfo(demo5(); verbose=true) isa
+        @test DynamicPPL.determine_suitable_varinfo(demo5(); verbose=true) isa
             DynamicPPL.TypedVarInfo
         # Should fail if we're including errors in the model body.
-        @test DynamicPPL.determine_varinfo(demo5(); verbose=true, only_tilde=false) isa
-            DynamicPPL.UntypedVarInfo
+        @test DynamicPPL.determine_suitable_varinfo(
+            demo5(); verbose=true, only_tilde=false
+        ) isa DynamicPPL.UntypedVarInfo
     end
 
     @testset "demo models" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = DynamicPPL.DynamicPPL.determine_varinfo(model)
+            varinfo = DynamicPPL.DynamicPPL.determine_suitable_varinfo(model)
             # They should all result in typed.
             @test varinfo isa DynamicPPL.TypedVarInfo
             # But let's also make sure that they're not lying.

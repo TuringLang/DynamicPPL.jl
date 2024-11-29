@@ -29,7 +29,26 @@ function report_has_error_in_tilde(report)
     return any(is_tilde_instance, frames)
 end
 
-function DynamicPPL.determine_varinfo(
+function DynamicPPL.is_suitable_varinfo(
+    model::DynamicPPL.Model,
+    context::DynamicPPL.AbstractContext,
+    varinfo::DynamicPPL.AbstractVarInfo;
+    only_tilde::Bool=true,
+)
+    # Let's make sure that both evaluation and sampling doesn't result in type errors.
+    f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+        model, varinfo, context
+    )
+    result = JET.report_call(f, argtypes)
+    reports = JET.get_reports(result)
+    # TODO: Should we use a more aggressive filter here?
+    if only_tilde
+        reports = filter(report_has_error_in_tilde, reports)
+    end
+    return length(reports) == 0, reports
+end
+
+function DynamicPPL._determine_varinfo_jet(
     model::DynamicPPL.Model,
     context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext();
     verbose::Bool=false,
@@ -40,28 +59,16 @@ function DynamicPPL.determine_varinfo(
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
-    f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-        model, varinfo, context
+    issuccess, reports_eval = DynamicPPL.is_suitable_varinfo(
+        model, context, varinfo; only_tilde
     )
-    result_eval = JET.report_call(f_eval, argtypes_eval)
-    reports_eval = JET.get_reports(result_eval)
-    if only_tilde
-        reports_eval = filter(report_has_error_in_tilde, reports_eval)
-    end
-    # If we get reports => we had issues so we use the untyped varinfo.
-    issuccess &= length(reports_eval) == 0
+
     if issuccess
         # Evaluation succeeded, let's try sampling.
-        f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-            model, varinfo, DynamicPPL.SamplingContext(context)
+        issuccess_sample, reports_sample = DynamicPPL.is_suitable_varinfo(
+            model, DynamicPPL.SamplingContext(context), varinfo; only_tilde
         )
-        result_sample = JET.report_call(f_sample, argtypes_sample)
-        reports_sample = JET.get_reports(result_sample)
-        if only_tilde
-            reports_sample = filter(report_has_error_in_tilde, reports_sample)
-        end
-        # If we get reports => we had issues so we use the untyped varinfo.
-        issuccess &= length(reports_sample) == 0
+        issuccess &= issuccess_sample
         if !issuccess && verbose
             # Show the user the issues.
             @warn "Sampling with typed varinfo failed with the following issues:"
