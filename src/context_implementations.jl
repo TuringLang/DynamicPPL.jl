@@ -77,49 +77,11 @@ function tilde_assume(
     return tilde_assume(rng, childcontext(context), args...)
 end
 
-function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(PriorContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
-end
-
-function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(LikelihoodContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    vi,
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, tovec(get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
-end
 function tilde_assume(::LikelihoodContext, right, vn, vi)
-    return assume(NoDist(right), vn, vi)
+    return assume(nodist(right), vn, vi)
 end
 function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, vi)
-    return assume(rng, sampler, NoDist(right), vn, vi)
+    return assume(rng, sampler, nodist(right), vn, vi)
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
@@ -257,7 +219,7 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            f = to_linked_internal_transform(vi, dist)
+            f = to_linked_internal_transform(vi, vn, dist)
             push!!(vi, vn, f(r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
@@ -328,37 +290,6 @@ function dot_tilde_assume(
 end
 
 # `LikelihoodContext`
-function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
-    end
-end
-
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
     return dot_assume(nodist(right), left, vn, vi)
 end
@@ -368,46 +299,16 @@ function dot_tilde_assume(
     return dot_assume(rng, sampler, nodist(right), vn, left, vi)
 end
 
-# `PriorContext`
-function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(PriorContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
-    end
-end
-
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
-    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), vi)
+    return dot_tilde_assume(context.context, right, left, prefix.(Ref(context), vn), vi)
 end
 
-function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, left, vn, vi
+)
     return dot_tilde_assume(
-        rng, context.context, sampler, right, prefix.(Ref(context), vn), vi
+        rng, context.context, sampler, right, left, prefix.(Ref(context), vn), vi
     )
 end
 
@@ -500,7 +401,7 @@ end
 # HACK: These methods are only used in the `get_and_set_val!` methods below.
 # FIXME: Remove these.
 function _link_broadcast_new(vi, vn, dist, r)
-    b = to_linked_internal_transform(vi, dist)
+    b = to_linked_internal_transform(vi, vn, dist)
     return b(r)
 end
 
@@ -591,7 +492,7 @@ function get_and_set_val!(
             push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
             # FIXME: This is not great.
-            acclogp_assume!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
+            acclogp!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
