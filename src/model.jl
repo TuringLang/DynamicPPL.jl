@@ -250,7 +250,7 @@ But one needs to be careful when prefixing variables in the nested models:
 
 ```jldoctest condition
 julia> @model function demo_outer_prefix()
-           m ~ to_submodel(prefix(demo_inner(), "inner"))
+           m ~ to_submodel(prefix(demo_inner(), "inner"), false)
            return m
        end
 demo_outer_prefix (generic function with 2 methods)
@@ -605,7 +605,7 @@ But one needs to be careful when prefixing variables in the nested models:
 
 ```jldoctest fix
 julia> @model function demo_outer_prefix()
-           m ~ to_submodel(prefix(demo_inner(), "inner"))
+           m ~ to_submodel(prefix(demo_inner(), "inner"), false)
            return m
        end
 demo_outer_prefix (generic function with 2 methods)
