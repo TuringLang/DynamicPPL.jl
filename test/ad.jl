@@ -24,8 +24,7 @@
             ]
                 # Mooncake can't currently handle something that is going on in
                 # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
-                if adtype isa ADTypes.AutoMooncake &&
-                    varinfo isa DynamicPPL.SimpleVarInfo
+                if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
                     @test_broken 1 == 0
                 else
                     ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
