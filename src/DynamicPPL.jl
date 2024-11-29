@@ -196,30 +196,28 @@ include("values_as_in_model.jl")
 include("debug_utils.jl")
 using .DebugUtils
 
-if !isdefined(Base, :get_extension)
-    using Requires
-end
-
-@static if !isdefined(Base, :get_extension)
+# Better error message if users forget to load the AD package
+if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
-        @require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" include(
-            "../ext/DynamicPPLChainRulesCoreExt.jl"
-        )
-        @require EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869" include(
-            "../ext/DynamicPPLEnzymeCoreExt.jl"
-        )
-        @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" include(
-            "../ext/DynamicPPLForwardDiffExt.jl"
-        )
-        @require MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d" include(
-            "../ext/DynamicPPLMCMCChainsExt.jl"
-        )
-        @require ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267" include(
-            "../ext/DynamicPPLReverseDiffExt.jl"
-        )
-        @require ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444" include(
-            "../ext/DynamicPPLZygoteRulesExt.jl"
-        )
+        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
+            requires_jet =
+                exc.f === _determine_varinfo_jet &&
+                length(argtypes) >= 2 &&
+                argtypes[1] <: Model &&
+                argtypes[2] <: AbstractContext
+            requires_jet |=
+                exc.f === supports_varinfo &&
+                length(argtypes) >= 3 &&
+                argtypes[1] <: Model &&
+                argtypes[2] <: AbstractContext &&
+                argtypes[3] <: AbstractVarInfo
+            if requires_jet
+                print(
+                    io,
+                    "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
+                )
+            end
+        end
     end
 end
 
