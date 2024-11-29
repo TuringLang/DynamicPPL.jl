@@ -149,7 +149,7 @@ LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 # parameters, or DifferentiationInterface will not have sufficient information to e.g.
 # compile a rule for Mooncake (because it won't know the type of the input), or pre-allocate
 # a tape when using ReverseDiff.jl.
-function LogDensityProblemsAD.ADgradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
+function _make_ad_gradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
     x = map(identity, getparams(ℓ)) # ensure we concretise the elements of the params
     return LogDensityProblemsAD.ADgradient(ad, ℓ; x)
 end
