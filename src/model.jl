@@ -230,8 +230,9 @@ julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           m ~ to_submodel(demo_inner())
-           return m
+           # By default, `to_submodel` prefixes the variables using the left-hand side of `~`.
+           inner ~ to_submodel(demo_inner())
+           return inner
        end
 demo_outer (generic function with 2 methods)
 
@@ -240,63 +241,28 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> conditioned_model = model | (m = 1.0, );
-
-julia> conditioned_model()
-1.0
-```
-
-But one needs to be careful when prefixing variables in the nested models:
-
-```jldoctest condition
-julia> @model function demo_outer_prefix()
-           m ~ to_submodel(prefix(demo_inner(), "inner"), false)
-           return m
-       end
-demo_outer_prefix (generic function with 2 methods)
-
-julia> # (×) This doesn't work now!
-       conditioned_model = demo_outer_prefix() | (m = 1.0, );
-
-julia> conditioned_model() == 1.0
-false
-
-julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
-       conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
+julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
+       conditioned_model = model | (var"inner.m" = 1.0, );
 
 julia> conditioned_model()
 1.0
 
-julia> # Note that the above `var"..."` is just standard Julia syntax:
-       keys((var"inner.m" = 1.0, ))
-(Symbol("inner.m"),)
+julia> # However, it's not possible to condition `inner` directly.
+       conditioned_model_fail = model | (inner = 1.0, );
+
+julia> conditioned_model_fail()
+ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+[...]
 ```
 
 And similarly when using `Dict`:
 
 ```jldoctest condition
-julia> conditioned_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
+julia> conditioned_model_dict = model | (@varname(var"inner.m") => 1.0);
 
 julia> conditioned_model_dict()
 1.0
 ```
-
-The difference is maybe more obvious once we look at how these different
-in their trace/`VarInfo`:
-
-```jldoctest condition
-julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, typeof(identity)}}:
- m
-
-julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
- inner.m
-```
-
-From this we can tell what the correct way to condition `m` within `demo_inner`
-is in the two different models.
-
 """
 AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
 function AbstractPPL.condition(model::Model, value, values...)
@@ -578,15 +544,15 @@ true
 ## Nested models
 
 `fix` of course also supports the use of nested models through
-the use of [`to_submodel`](@ref).
+the use of [`to_submodel`](@ref), similar to [`condition`](@ref).
 
 ```jldoctest fix
 julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           m ~ to_submodel(demo_inner())
-           return m
+           inner ~ to_submodel(demo_inner())
+           return inner
        end
 demo_outer (generic function with 2 methods)
 
@@ -595,62 +561,35 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> fixed_model = model | (m = 1.0, );
+julia> fixed_model = fix(model, var"inner.m" = 1.0, );
 
 julia> fixed_model()
 1.0
 ```
 
-But one needs to be careful when prefixing variables in the nested models:
+However, unlike [`condition`](@ref), `fix` can also be used to fix the
+return-value of the submodel:
 
-```jldoctest fix
-julia> @model function demo_outer_prefix()
-           m ~ to_submodel(prefix(demo_inner(), "inner"), false)
-           return m
-       end
-demo_outer_prefix (generic function with 2 methods)
-
-julia> # (×) This doesn't work now!
-       fixed_model = demo_outer_prefix() | (m = 1.0, );
-
-julia> fixed_model() == 1.0
-false
-
-julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
-       fixed_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
+```julia
+julia> fixed_model = fix(model, inner = 2.0,);
 
 julia> fixed_model()
-1.0
-
-julia> # Note that the above `var"..."` is just standard Julia syntax:
-       keys((var"inner.m" = 1.0, ))
-(Symbol("inner.m"),)
+2.0
 ```
 
 And similarly when using `Dict`:
 
 ```jldoctest fix
-julia> fixed_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
+julia> fixed_model_dict = fix(model, @varname(var"inner.m") => 1.0);
 
 julia> fixed_model_dict()
 1.0
+
+julia> fixed_model_dict = fix(model, @varname(inner) => 2.0);
+
+julia> fixed_model_dict()
+2.0
 ```
-
-The difference is maybe more obvious once we look at how these different
-in their trace/`VarInfo`:
-
-```jldoctest fix
-julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, typeof(identity)}}:
- m
-
-julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), typeof(identity)}}:
- inner.m
-```
-
-From this we can tell what the correct way to fix `m` within `demo_inner`
-is in the two different models.
 
 ## Difference from `condition`
 
