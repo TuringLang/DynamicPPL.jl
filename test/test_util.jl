@@ -110,3 +110,36 @@ function modify_value_representation(nt::NamedTuple)
     end
     return modified_nt
 end
+
+"""
+    make_chain_from_prior([rng,] model, n_iters)
+
+Construct an MCMCChains.Chains object by sampling from the prior of `model` for
+`n_iters` iterations.
+"""
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    # Sample from the prior
+    varinfos = [VarInfo(rng, model) for _ in 1:n_iters]
+    # Extract all varnames found in any dictionary. Doing it this way guards
+    # against the possibility of having different varnames in different
+    # dictionaries, e.g. for models that have dynamic variables / array sizes
+    varnames = OrderedSet{VarName}()
+    # Convert each varinfo into an OrderedDict of vns => params.
+    # We have to use varname_and_value_leaves so that each parameter is a scalar
+    dicts = map(varinfos) do t
+        vals = DynamicPPL.values_as(t, OrderedDict)
+        iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+        tuples = mapreduce(collect, vcat, iters)
+        push!(varnames, map(first, tuples)...)
+        OrderedDict(tuples)
+    end
+    # Convert back to list
+    varnames = collect(varnames)
+    # Construct matrix of values
+    vals = [get(dict, vn, missing) for dict in dicts, vn in varnames]
+    # Construct and return the Chains object
+    return Chains(vals, varnames)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
