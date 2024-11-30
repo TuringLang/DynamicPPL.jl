@@ -41,7 +41,7 @@ include("test_util.jl")
 
 @testset "DynamicPPL.jl" begin
     if GROUP == "All" || GROUP == "DynamicPPL"
-        @testset "interface" begin
+        # @testset "interface" begin
         #     include("utils.jl")
         #     include("compiler.jl")
         #     include("varnamedvector.jl")
