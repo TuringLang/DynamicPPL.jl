@@ -1,6 +1,8 @@
 using Pkg
 # Add Bijectors.jl#torfjelde/logabsdetjac-dist-fix
-Pkg.add(url="https://github.com/TuringLang/Bijectors.jl", rev="torfjelde/logabsdetjac-dist-fix")
+Pkg.add(;
+    url="https://github.com/TuringLang/Bijectors.jl", rev="torfjelde/logabsdetjac-dist-fix"
+)
 
 using Accessors
 using ADTypes
