@@ -222,7 +222,7 @@ Check if the `model` supports evaluation using the provided `context` and `varin
 - `varinfo`: The varinfo to verify the support for.
 
 # Keyword Arguments
-- `only_tilde`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
+- `only_ddpl`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
 
 # Returns
 - `issuccess`: `true` if the model supports the varinfo, otherwise `false`.
@@ -234,7 +234,7 @@ function is_suitable_varinfo end
 function _determine_varinfo_jet end
 
 """
-    determine_suitable_varinfo(model[, context]; verbose::Bool=false, only_tilde::Bool=true)
+    determine_suitable_varinfo(model[, context]; verbose::Bool=false, only_ddpl::Bool=true)
 
 Return a suitable varinfo for the given `model`.
 
@@ -249,14 +249,14 @@ See also: [`DynamicPPL.is_suitable_varinfo`](@ref).
 - `context`: The context to use for the model evaluation. Default: `SamplingContext()`.
 
 # Keyword Arguments
-- `only_tilde`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
+- `only_ddpl`: If `true`, only consider error reports within DynamicPPL.jl.
 """
 function determine_suitable_varinfo(
-    model::Model, context::AbstractContext=SamplingContext(); only_tilde::Bool=true
+    model::Model, context::AbstractContext=SamplingContext(); only_ddpl::Bool=true
 )
     # If JET.jl has been loaded, and thus `determine_varinfo` has been defined, we use that.
     return if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
-        _determine_varinfo_jet(model, context; only_tilde)
+        _determine_varinfo_jet(model, context; only_ddpl)
     else
         # Warn the user.
         @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."

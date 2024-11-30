@@ -50,7 +50,7 @@
         # Should pass if we're only checking the tilde statements.
         @test DynamicPPL.determine_suitable_varinfo(demo5()) isa DynamicPPL.TypedVarInfo
         # Should fail if we're including errors in the model body.
-        @test DynamicPPL.determine_suitable_varinfo(demo5(); only_tilde=false) isa
+        @test DynamicPPL.determine_suitable_varinfo(demo5(); only_ddpl=false) isa
             DynamicPPL.UntypedVarInfo
     end
 
