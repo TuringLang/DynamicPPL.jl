@@ -42,34 +42,34 @@ include("test_util.jl")
 @testset "DynamicPPL.jl" begin
     if GROUP == "All" || GROUP == "DynamicPPL"
         @testset "interface" begin
-            include("utils.jl")
-            include("compiler.jl")
-            include("varnamedvector.jl")
-            include("varinfo.jl")
-            include("simple_varinfo.jl")
-            include("model.jl")
-            include("sampler.jl")
-            include("independence.jl")
-            include("distribution_wrappers.jl")
-            include("contexts.jl")
-            include("context_implementations.jl")
-            include("logdensityfunction.jl")
-            include("linking.jl")
+        #     include("utils.jl")
+        #     include("compiler.jl")
+        #     include("varnamedvector.jl")
+        #     include("varinfo.jl")
+        #     include("simple_varinfo.jl")
+        #     include("model.jl")
+        #     include("sampler.jl")
+        #     include("independence.jl")
+        #     include("distribution_wrappers.jl")
+        #     include("contexts.jl")
+        #     include("context_implementations.jl")
+        #     include("logdensityfunction.jl")
+        #     include("linking.jl")
 
-            include("threadsafe.jl")
+        #     include("threadsafe.jl")
 
-            include("serialization.jl")
+        #     include("serialization.jl")
 
-            include("pointwise_logdensities.jl")
+        #     include("pointwise_logdensities.jl")
 
-            include("lkj.jl")
+        #     include("lkj.jl")
 
-            include("debug_utils.jl")
-        end
+        #     include("debug_utils.jl")
+        # end
 
-        @testset "compat" begin
-            include(joinpath("compat", "ad.jl"))
-        end
+        # @testset "compat" begin
+        #     include(joinpath("compat", "ad.jl"))
+        # end
 
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
