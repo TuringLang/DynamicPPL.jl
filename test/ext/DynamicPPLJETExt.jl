@@ -56,20 +56,8 @@
 
     @testset "demo models" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            using Logging: Logging
             # Use debug logging below.
             varinfo = DynamicPPL.DynamicPPL.determine_suitable_varinfo(model)
-            if varinfo isa DynamicPPL.UntypedVarInfo
-                # HACK: Let's debug this.
-                varinfo_typed = DynamicPPL.typed_varinfo(model)
-                f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                    model, varinfo_typed, SamplingContext()
-                )
-                @show JET.report_call(
-                    f_eval, argtypes_eval; target_modules=(JET.AnyFrameModule(DynamicPPL),)
-                )
-                @show JET.report_call(f_eval, argtypes_eval)
-            end
             # They should all result in typed.
             @test varinfo isa DynamicPPL.TypedVarInfo
             # But let's also make sure that they're not lying.
