@@ -47,13 +47,14 @@ function DynamicPPL.is_suitable_varinfo(
     f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
         model, varinfo, context
     )
-    result = JET.report_call(f, argtypes)
-    reports = JET.get_reports(result)
-    # TODO: Should we use a more aggressive filter here?
-    if only_tilde
-        reports = filter(report_has_error_in_tilde, reports)
+    # If specified, we only check errors originating somewhere in the DynamicPPL.jl.
+    # This way we don't just fall back to untyped if the user's code is the issue.
+    result = if only_tilde
+        JET.report_call(f, argtypes; target_modules=(JET.AnyFrameModule(DynamicPPL),))
+    else
+        JET.report_call(f, argtypes)
     end
-    return length(reports) == 0, reports
+    return length(JET.get_reports(result)) == 0, result
 end
 
 function DynamicPPL._determine_varinfo_jet(
@@ -64,14 +65,12 @@ function DynamicPPL._determine_varinfo_jet(
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
-    issuccess, reports = DynamicPPL.is_suitable_varinfo(model, context, varinfo; only_tilde)
+    issuccess, result = DynamicPPL.is_suitable_varinfo(model, context, varinfo; only_tilde)
 
     if !issuccess
         # Useful information for debugging.
         @debug "Evaluaton with typed varinfo failed with the following issues:"
-        for report in reports
-            @debug report
-        end
+        @debug result
     end
 
     # If we didn't fail anywhere, we return the type stable one.

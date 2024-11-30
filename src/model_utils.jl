@@ -211,7 +211,7 @@ end
 """
     is_suitable_varinfo(model::Model, context::AbstractContext, varinfo::AbstractVarInfo; kwargs...)
 
-Return `true` if `model` supports `varinfo` under `context`.
+Check if the `model` supports evaluation using the provided `context` and `varinfo`.
 
 !!! warning
     Loading JET.jl is required before calling this function.
@@ -226,7 +226,7 @@ Return `true` if `model` supports `varinfo` under `context`.
 
 # Returns
 - `issuccess`: `true` if the model supports the varinfo, otherwise `false`.
-- `reports`: The reports from JET.jl. This is empty if `issuccess` is `true`.
+- `report`: The result of `report_call` from JET.jl.
 """
 function is_suitable_varinfo end
 
