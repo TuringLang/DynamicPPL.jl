@@ -65,7 +65,9 @@
                 f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
                     model, varinfo_typed, SamplingContext()
                 )
-                @show JET.report_call(f_eval, argtypes_eval; target_modules=(JET.AnyFrameModule(DynamicPPL),))
+                @show JET.report_call(
+                    f_eval, argtypes_eval; target_modules=(JET.AnyFrameModule(DynamicPPL),)
+                )
                 @show JET.report_call(f_eval, argtypes_eval)
             end
             # They should all result in typed.
