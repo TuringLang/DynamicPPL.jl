@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.30.6"
+version = "0.31.0"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -47,7 +47,7 @@ AbstractMCMC = "5"
 AbstractPPL = "0.8.4, 0.9"
 Accessors = "0.1"
 BangBang = "0.4.1"
-Bijectors = "0.13.18, 0.14"
+Bijectors = "0.13.18, 0.14, 0.15"
 ChainRulesCore = "1"
 Compat = "4"
 ConstructionBase = "1.5.4"
