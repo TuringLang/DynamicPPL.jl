@@ -1214,24 +1214,9 @@ the samples in `chain`. This is useful when you want to sample only new variable
 predictive distribution.
 """
 function predict(model::Model, chain; include_all=false)
+    # this is only defined in `ext/DynamicPPLMCMCChainsExt.jl`
+    # TODO: add other methods for different type of `chain` arguments: e.g., `VarInfo`, `NamedTuple`, and `OrderedDict`
     return predict(Random.default_rng(), model, chain; include_all)
-end
-
-function predict(
-    rng::Random.AbstractRNG,
-    model::Model,
-    varinfos::AbstractArray{<:AbstractVarInfo};
-    include_all=false,
-)
-    predictive_samples = similar(varinfos, NamedTuple{(:varname_and_values, :logp)})
-    for i in eachindex(varinfos)
-        model(rng, varinfos[i], SampleFromPrior())
-        vals = values_as_in_model(model, varinfos[i])
-        iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
-        params = mapreduce(collect, vcat, iters) # returns a vector of tuples (varname, value)
-        predictive_samples[i] = (varname_and_values=params, logp=getlogp(varinfos[i]))
-    end
-    return predictive_samples
 end
 
 """

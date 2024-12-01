@@ -115,20 +115,30 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    vi = DynamicPPL.VarInfo(model)
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    varinfos = map(iters) do (sample_idx, chain_idx)
-        DynamicPPL.setval_and_resample!(
-            deepcopy(vi), parameter_only_chain, sample_idx, chain_idx
-        )
-    end
+    prototypical_varinfo = DynamicPPL.VarInfo(model)
 
-    predictive_samples = DynamicPPL.predict(rng, model, varinfos; include_all)
+    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    predictive_samples = map(iters) do (sample_idx, chain_idx)
+        varinfo = deepcopy(prototypical_varinfo)
+        DynamicPPL.setval_and_resample!(
+            varinfo, parameter_only_chain, sample_idx, chain_idx
+        )
+        model(rng, varinfo, DynamicPPL.SampleFromPrior())
+
+        vals = DynamicPPL.values_as_in_model(model, varinfo)
+        varname_vals = mapreduce(
+            collect,
+            vcat,
+            map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals)),
+        )
+
+        return (varname_and_values=varname_vals, logp=DynamicPPL.getlogp(varinfo))
+    end
 
     chain_result = reduce(
         MCMCChains.chainscat,
         [
-            _bundle_predictive_samples(predictive_samples[:, chain_idx]) for
+            _predictive_samples_to_chains(predictive_samples[:, chain_idx]) for
             chain_idx in 1:size(predictive_samples, 2)
         ],
     )
@@ -143,36 +153,43 @@ function DynamicPPL.predict(
     return chain_result[parameter_names]
 end
 
-function _params_to_array(predictive_samples)
-    names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
+function _predictive_samples_to_arrays(predictive_samples)
+    variable_names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
 
-    dicts = map(predictive_samples) do t
-        varname_and_values = t.varname_and_values
-        nms = map(first, varname_and_values)
-        vs = map(last, varname_and_values)
-        for nm in nms
-            push!(names_set, nm)
+    sample_dicts = map(predictive_samples) do sample
+        varname_value_pairs = sample.varname_and_values
+        varnames = map(first, varname_value_pairs)
+        values = map(last, varname_value_pairs)
+        for varname in varnames
+            push!(variable_names_set, varname)
         end
-        return DynamicPPL.OrderedCollections.OrderedDict(zip(nms, vs))
+
+        return DynamicPPL.OrderedCollections.OrderedDict(zip(varnames, values))
     end
 
-    names = collect(names_set)
-    vals = [
-        get(dicts[i], key, missing) for i in eachindex(dicts), (j, key) in enumerate(names)
+    variable_names = collect(variable_names_set)
+    variable_values = [
+        get(sample_dicts[i], key, missing) for i in eachindex(sample_dicts),
+        key in variable_names
     ]
 
-    return names, vals
+    return variable_names, variable_values
 end
 
-function _bundle_predictive_samples(predictive_samples)
-    varnames, vals = _params_to_array(predictive_samples)
-    varnames_symbol = map(Symbol, varnames)
-    extra_params = [:lp]
-    extra_values = reshape([t.logp for t in predictive_samples], :, 1)
-    nms = [varnames_symbol; extra_params]
-    parray = hcat(vals, extra_values)
-    parray = MCMCChains.concretize(parray)
-    return MCMCChains.Chains(parray, nms, (internals=extra_params,))
+function _predictive_samples_to_chains(predictive_samples)
+    variable_names, variable_values = _predictive_samples_to_arrays(predictive_samples)
+    variable_names_symbols = map(Symbol, variable_names)
+
+    internal_parameters = [:lp]
+    log_probabilities = reshape([sample.logp for sample in predictive_samples], :, 1)
+
+    parameter_names = [variable_names_symbols; internal_parameters]
+    parameter_values = hcat(variable_values, log_probabilities)
+    parameter_values = MCMCChains.concretize(parameter_values)
+
+    return MCMCChains.Chains(
+        parameter_values, parameter_names, (internals=internal_parameters,)
+    )
 end
 
 """
