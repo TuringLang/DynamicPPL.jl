@@ -148,6 +148,9 @@ julia> # Explicitely don't use any prefix.
 submodel_prefix_false (generic function with 2 methods)
 
 julia> @varname(x) in keys(VarInfo(submodel_prefix_false()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Automatically determined from `a`.
@@ -155,6 +158,9 @@ julia> # Automatically determined from `a`.
 submodel_prefix_true (generic function with 2 methods)
 
 julia> @varname(var"a.x") in keys(VarInfo(submodel_prefix_true()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Using a static string.
@@ -162,6 +168,9 @@ julia> # Using a static string.
 submodel_prefix_string (generic function with 2 methods)
 
 julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Using string interpolation.
@@ -169,6 +178,9 @@ julia> # Using string interpolation.
 submodel_prefix_interpolation (generic function with 2 methods)
 
 julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Or using some arbitrary expression.
