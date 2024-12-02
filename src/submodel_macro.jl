@@ -188,6 +188,9 @@ julia> # Or using some arbitrary expression.
 submodel_prefix_expr (generic function with 2 methods)
 
 julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # (×) Automatic prefixing without a left-hand side expression does not work!
