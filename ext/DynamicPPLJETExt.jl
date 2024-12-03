@@ -3,7 +3,7 @@ module DynamicPPLJETExt
 using DynamicPPL: DynamicPPL
 using JET: JET
 
-function DynamicPPL.is_suitable_varinfo(
+function DynamicPPL.Experimental.is_suitable_varinfo(
     model::DynamicPPL.Model,
     context::DynamicPPL.AbstractContext,
     varinfo::DynamicPPL.AbstractVarInfo;
@@ -23,7 +23,7 @@ function DynamicPPL.is_suitable_varinfo(
     return length(JET.get_reports(result)) == 0, result
 end
 
-function DynamicPPL._determine_varinfo_jet(
+function DynamicPPL.Experimental._determine_varinfo_jet(
     model::DynamicPPL.Model, context::DynamicPPL.AbstractContext; only_ddpl::Bool=true
 )
     # First we try with the typed varinfo.
@@ -31,7 +31,9 @@ function DynamicPPL._determine_varinfo_jet(
     issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
-    issuccess, result = DynamicPPL.is_suitable_varinfo(model, context, varinfo; only_ddpl)
+    issuccess, result = DynamicPPL.Experimental.is_suitable_varinfo(
+        model, context, varinfo; only_ddpl
+    )
 
     if !issuccess
         # Useful information for debugging.

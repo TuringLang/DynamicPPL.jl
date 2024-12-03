@@ -196,17 +196,19 @@ include("values_as_in_model.jl")
 include("debug_utils.jl")
 using .DebugUtils
 
+include("experimental.jl")
+
 # Better error message if users forget to load the AD package
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_jet =
-                exc.f === _determine_varinfo_jet &&
+                exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
                 length(argtypes) >= 2 &&
                 argtypes[1] <: Model &&
                 argtypes[2] <: AbstractContext
             requires_jet |=
-                exc.f === is_suitable_varinfo &&
+                exc.f === DynamicPPL.Experimental.is_suitable_varinfo &&
                 length(argtypes) >= 3 &&
                 argtypes[1] <: Model &&
                 argtypes[2] <: AbstractContext &&
