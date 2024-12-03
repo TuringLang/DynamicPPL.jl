@@ -77,8 +77,7 @@ function default_varinfo(
     context::AbstractContext,
 )
     init_sampler = initialsampler(sampler)
-    varinfo = determine_suitable_varinfo(model, SamplingContext(rng, init_sampler, context))
-    return varinfo
+    return VarInfo(rng, model, init_sampler, context)
 end
 
 function AbstractMCMC.sample(
@@ -141,7 +140,7 @@ Return the sampler that is used for generating the initial parameters when sampl
 
 By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
-initialsampler(spl) = SampleFromPrior()
+initialsampler(spl::Sampler) = SampleFromPrior()
 
 function set_values!!(
     varinfo::AbstractVarInfo,

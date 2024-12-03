@@ -63,16 +63,10 @@ function LogDensityFunction(
     return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
 end
 
-function LogDensityFunction(model::Model, context::Union{Nothing,AbstractContext}=nothing)
-    # Determine the suitable varinfo for the given model and context.
-    varinfo = determine_suitable_varinfo(
-        model, context === nothing ? leafcontext(model.context) : context
-    )
-    return LogDensityFunction(varinfo, model, context)
-end
-
 function LogDensityFunction(
-    model::Model, varinfo::AbstractVarInfo, context::Union{Nothing,AbstractContext}=nothing
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::Union{Nothing,AbstractContext}=nothing,
 )
     return LogDensityFunction(varinfo, model, context)
 end
