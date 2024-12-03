@@ -1292,8 +1292,8 @@ This is mainly meant to be used on the right-hand side of a `~` operator to indi
 the model can be sampled from but not necessarily evaluated for its log density.
 
 !!! warning
-    Note that other operations that one typically associate with expressions of the form `left ~ right`
-    such as [`condition`](@ref) or [`fix`](@ref), will also not work with `to_submodel`.
+    Note that some other operations that one typically associate with expressions of the form
+    `left ~ right` such as [`condition`](@ref), will also not work with `to_submodel`.
 
 !!! warning
     To avoid variable names clashing between models, it is recommend leave argument `auto_prefix` equal to `true`.
