@@ -163,11 +163,7 @@ function has_varnamedvector(vi::VarInfo)
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
-"""
-    untyped_varinfo([rng, ]model[, sampler, context])
-
-Return an untyped `VarInfo` instance for the model `model`.
-"""
+# TODO: We should just remove this function in favour of passing `SamplingContext` directly.
 function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -182,6 +178,19 @@ function untyped_varinfo(
 )
     return untyped_varinfo(Random.default_rng(), model, args...)
 end
+
+"""
+    untyped_varinfo([rng, ]model[, context, metadata])
+
+Return an untyped varinfo object for the given `model` and `context`.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use. Default: `Random.default_rng()`.
+- `model::Model`: The model for which to create the varinfo object.
+- `context::AbstractContext`: The context in which to evaluate the model. Default: `DefaultContext()`.
+- `metadata::Union{Metadata,VarNamedVector}`: The metadata to use for the varinfo object.
+    Default: `Metadata()`.
+"""
 function untyped_varinfo(
     model::Model,
     context::AbstractContext,
@@ -194,9 +203,14 @@ function untyped_varinfo(
 end
 
 """
-    typed_varinfo([rng, ]model[, sampler, context])
+    typed_varinfo([rng, ]model[, context, metadata])
 
-Return a typed `VarInfo` instance for the model `model`.
+Return a typed varinfo object for the given `model`, `sampler` and `context`.
+
+This simply calls [`DynamicPPL.untyped_varinfo`](@ref) and converts the resulting
+varinfo object to a typed varinfo object.
+
+See also: [`DynamicPPL.untyped_varinfo`](@ref)
 """
 typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
 
