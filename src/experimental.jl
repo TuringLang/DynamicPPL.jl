@@ -44,6 +44,42 @@ See also: [`DynamicPPL.is_suitable_varinfo`](@ref).
 
 # Keyword Arguments
 - `only_ddpl`: If `true`, only consider error reports within DynamicPPL.jl.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL.Experimental: determine_suitable_varinfo
+
+julia> using JET: JET  # needs to be loaded for full functionality
+
+julia> @model function model_with_random_support()
+           x ~ Bernoulli()
+           if x
+               y ~ Normal()
+           else
+               z ~ Normal()
+           end
+       end
+model_with_random_support (generic function with 2 methods)
+
+julia> model = model_with_random_support();
+
+julia> # Typed varinfo cannot handle this random support model properly
+       # as using a single execution of the model will not see all random variables.
+       # Hence, this this model requires untyped varinfo.
+       varinfo = determine_suitable_varinfo(model);
+
+julia> varinfo isa typeof(DynamicPPL.untyped_varinfo(model))
+true
+
+julia> # In contrast, a simple model with no random support can be handled by typed varinfo.
+       @model model_with_static_support() = x ~ Normal()
+
+julia> varinfo = determine_suitable_varinfo(model_with_static_support());
+
+julia> varinfo isa typeof(DynamicPPL.typed_varinfo(model_with_static_support()))
+true
+```
 """
 function determine_suitable_varinfo(
     model::DynamicPPL.Model,
