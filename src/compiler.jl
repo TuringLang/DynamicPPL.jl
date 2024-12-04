@@ -178,6 +178,11 @@ function check_tilde_rhs(@nospecialize(x))
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
+check_tilde_rhs(x::ReturnedModelWrapper) = x
+function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
+    model = check_tilde_rhs(x.model)
+    return Sampleable{typeof(model),AutoPrefix}(model)
+end
 
 """
     unwrap_right_vn(right, vn)

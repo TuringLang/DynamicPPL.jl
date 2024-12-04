@@ -14,12 +14,6 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with [`@submodel`](@ref).
-
-```@docs
-@submodel
-```
-
 ### Type
 
 A [`Model`](@ref) can be created by calling the model function, as defined by [`@model`](@ref).
@@ -110,6 +104,34 @@ Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original 
 unfix
 ```
 
+## Models within models
+
+One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
+
+```@docs
+to_submodel
+```
+
+Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
+
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
+
+```@docs
+@submodel
+```
+
+In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
+
+```@docs
+prefix
+```
+
+Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
+
+```@docs
+returned(::Model)
+```
+
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
@@ -118,10 +140,10 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`generated_quantities`](@ref).
+Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
 
 ```@docs
-generated_quantities
+returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
