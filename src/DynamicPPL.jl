@@ -86,7 +86,6 @@ export AbstractVarInfo,
     Model,
     getmissings,
     getargnames,
-    generated_quantities,
     extract_priors,
     values_as_in_model,
     # Samplers
@@ -122,6 +121,9 @@ export AbstractVarInfo,
     decondition,
     fix,
     unfix,
+    prefix,
+    returned,
+    to_submodel,
     # Convenience macros
     @addlogprob!,
     @submodel,
@@ -130,7 +132,8 @@ export AbstractVarInfo,
     check_model_and_trace,
     # Deprecated.
     @logprob_str,
-    @prob_str
+    @prob_str,
+    generated_quantities
 
 # Reexport
 using Distributions: loglikelihood
@@ -195,6 +198,8 @@ include("values_as_in_model.jl")
 
 include("debug_utils.jl")
 using .DebugUtils
+
+include("deprecated.jl")
 
 if !isdefined(Base, :get_extension)
     using Requires
