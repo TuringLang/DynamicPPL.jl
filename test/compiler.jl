@@ -382,6 +382,27 @@ module Issue537 end
         @test demo2()() == 42
     end
 
+    @testset "@submodel is deprecated" begin
+        @model inner() = x ~ Normal()
+        @model outer() = @submodel x = inner()
+        @test_logs(
+            (
+                :warn,
+                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
+            ),
+            outer()()
+        )
+
+        @model outer_with_prefix() = @submodel prefix = "sub" x = inner()
+        @test_logs(
+            (
+                :warn,
+                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
+            ),
+            outer_with_prefix()()
+        )
+    end
+
     @testset "submodel" begin
         # No prefix, 1 level.
         @model function demo1(x)
@@ -469,7 +490,7 @@ module Issue537 end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
+                x ~ to_submodel(prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
