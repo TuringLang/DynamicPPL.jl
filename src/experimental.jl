@@ -32,7 +32,7 @@ function _determine_varinfo_jet end
 
 Return a suitable varinfo for the given `model`.
 
-See also: [`DynamicPPL.is_suitable_varinfo`](@ref).
+See also: [`DynamicPPL.Experimental.is_suitable_varinfo`](@ref).
 
 !!! warning
     For full functionality, this requires JET.jl to be loaded.

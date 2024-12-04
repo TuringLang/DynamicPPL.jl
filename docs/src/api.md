@@ -243,7 +243,7 @@ AbstractVarInfo
 
 But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
-For constructing the "default" typed and untyped varinfo types used in DynamicPPL (see [the section on varinfo design](./internals/varinfo) for more on this), we have the following two methods:
+For constructing the "default" typed and untyped varinfo types used in DynamicPPL (see [the section on varinfo design](@ref "Design of `VarInfo`") for more on this), we have the following two methods:
 
 ```@docs
 DynamicPPL.untyped_varinfo
