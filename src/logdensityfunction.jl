@@ -153,3 +153,10 @@ function _make_ad_gradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
     x = map(identity, getparams(ℓ)) # ensure we concretise the elements of the params
     return LogDensityProblemsAD.ADgradient(ad, ℓ; x)
 end
+
+function LogDensityProblemsAD.ADgradient(ad::ADTypes.AutoMooncake, f::LogDensityFunction)
+    return _make_ad_gradient(ad, f)
+end
+function LogDensityProblemsAD.ADgradient(ad::ADTypes.AutoReverseDiff, f::LogDensityFunction)
+    return _make_ad_gradient(ad, f)
+end
