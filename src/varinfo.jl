@@ -203,9 +203,9 @@ end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
 
-Base.length(varinfo::VarInfo) = length(varinfo.metadata)
-Base.length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
-Base.length(md::Metadata) = sum(length, md.ranges)
+vector_length(varinfo::VarInfo) = length(varinfo.metadata)
+vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
+vector_length(md::Metadata) = sum(length, md.ranges)
 
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
@@ -653,7 +653,7 @@ function getranges(varinfo::DynamicPPL.TypedVarInfo, vns::Vector{<:DynamicPPL.Va
     # TODO: Does it help if we _don't_ convert to a vector here?
     metadatas = collect(values(varinfo.metadata))
     # Extract the offsets.
-    offsets = cumsum(map(length, metadatas))
+    offsets = cumsum(map(vector_length, metadatas))
     # Extract the ranges from each metadata.
     ranges = Vector{UnitRange{Int}}(undef, length(vns))
     for (i, metadata) in enumerate(metadatas)

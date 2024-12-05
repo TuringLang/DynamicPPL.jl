@@ -1036,6 +1036,8 @@ function replace_raw_storage(vnv::VarNamedVector, ::Val{space}, vals) where {spa
     return replace_raw_storage(vnv, vals)
 end
 
+vector_length(vnv::VarNamedVector) = length(vnv.vals) - num_inactive(vnv)
+
 """
     unflatten(vnv::VarNamedVector, vals::AbstractVector)
 
