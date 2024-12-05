@@ -683,8 +683,11 @@ function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
         for vn in vns_metadata
             r_vn = getrange(metadata, vn)
             # Get the index, so we return in the same order as `vns`.
-            idx = findfirst(==(vn), vns)
-            ranges[idx] = r_vn .+ offset
+            # NOTE: There might be duplicates in `vns`, so we need to handle that.
+            indices = findall(==(vn), vns)
+            for idx in indices
+                ranges[idx] = r_vn .+ offset
+            end
         end
     end
     # Raise key error if any of the variables were not found.

@@ -849,6 +849,9 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 @test_throws KeyError DynamicPPL.vector_getranges(
                     varinfo, [VarName{gensym("vn")}(), VarName{gensym("vn")}()]
                 )
+                # Duplicate variables.
+                ranges_duplicated = DynamicPPL.vector_getranges(varinfo, repeat(vns, 2))
+                @test x[reduce(vcat, ranges_duplicated)] == repeat(x, 2)
             end
         end
     end
