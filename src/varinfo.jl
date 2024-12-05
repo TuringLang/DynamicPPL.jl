@@ -610,6 +610,21 @@ getidx(md::Metadata, vn::VarName) = md.idcs[vn]
 Return the index range of `vn` in the metadata of `vi`.
 """
 getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
+# For `TypedVarInfo` it's more difficult since we need to keep track of the offset.
+# TOOD: Should we unroll this using `@generated`?
+function getrange(vi::TypedVarInfo, vn::VarName)
+    offset = 0
+    for md in values(vi.metadata)
+        # First, we need to check if `vn` is in `md`.
+        # In this case, we can just return the corresponding range + offset.
+        haskey(md, vn) && return getrange(md, vn) .+ offset
+        # Otherwise, we need to get the cumulative length of the ranges in `md`
+        # and add it to the offset.
+        offset += sum(length, md.ranges)
+    end
+    # If we reach this point, `vn` is not in `vi.metadata`.
+    throw(KeyError(vn))
+end
 getrange(md::Metadata, vn::VarName) = md.ranges[getidx(md, vn)]
 
 """
