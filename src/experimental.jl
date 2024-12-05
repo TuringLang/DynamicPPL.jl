@@ -74,6 +74,7 @@ true
 
 julia> # In contrast, a simple model with no random support can be handled by typed varinfo.
        @model model_with_static_support() = x ~ Normal()
+model_with_static_support (generic function with 2 method)
 
 julia> varinfo = determine_suitable_varinfo(model_with_static_support());
 
