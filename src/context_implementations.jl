@@ -103,8 +103,17 @@ By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
-    value, logp, vi = tilde_assume(context, right, vn, vi)
-    return value, acclogp_assume!!(context, vi, logp)
+    return if is_rhs_model(right)
+        # Prefix the variables using the `vn`.
+        rand_like!!(
+            right,
+            should_auto_prefix(right) ? PrefixContext{Symbol(vn)}(context) : context,
+            vi,
+        )
+    else
+        value, logp, vi = tilde_assume(context, right, vn, vi)
+        value, acclogp_assume!!(context, vi, logp)
+    end
 end
 
 # observe
@@ -159,6 +168,11 @@ Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the informati
 and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe!!(context, right, left, vname, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return tilde_observe!!(context, right, left, vi)
 end
 
@@ -172,6 +186,11 @@ By default, calls `tilde_observe(context, right, left, vi)` and accumulates the 
 probability of `vi` with the returned value.
 """
 function tilde_observe!!(context, right, left, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = tilde_observe(context, right, left, vi)
     return left, acclogp_observe!!(context, vi, logp)
 end
@@ -321,8 +340,13 @@ model inputs), accumulate the log probability, and return the sampled value and 
 Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`.~` with a model on the right-hand side is not supported; please use `~`"
+        ),
+    )
     value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
-    return value, acclogp_assume!!(context, vi, logp), vi
+    return value, acclogp_assume!!(context, vi, logp)
 end
 
 # `dot_assume`
@@ -573,6 +597,11 @@ Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the infor
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe!!(context, right, left, vn, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return dot_tilde_observe!!(context, right, left, vi)
 end
 
@@ -585,6 +614,11 @@ probability, and return the observed value and updated `vi`.
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!!(context, right, left, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = dot_tilde_observe(context, right, left, vi)
     return left, acclogp_observe!!(context, vi, logp)
 end

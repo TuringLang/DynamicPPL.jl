@@ -68,6 +68,8 @@ julia> # Typed varinfo cannot handle this random support model properly
        # as using a single execution of the model will not see all random variables.
        # Hence, this this model requires untyped varinfo.
        varinfo = determine_suitable_varinfo(model);
+┌ Warning: Model seems incompatible with typed varinfo. Falling back to untyped varinfo.
+└ @ DynamicPPLJETExt ~/Projects/public/DynamicPPL.jl/ext/DynamicPPLJETExt.jl:49
 
 julia> varinfo isa typeof(DynamicPPL.untyped_varinfo(model))
 true
