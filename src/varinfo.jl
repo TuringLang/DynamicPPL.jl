@@ -203,6 +203,11 @@ end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
 
+"""
+    vector_length(varinfo::VarInfo)
+
+Return the length of the vector representation of `varinfo`.
+"""
 vector_length(varinfo::VarInfo) = length(varinfo.metadata)
 vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
 vector_length(md::Metadata) = sum(length, md.ranges)
@@ -615,21 +620,6 @@ getidx(md::Metadata, vn::VarName) = md.idcs[vn]
 Return the index range of `vn` in the metadata of `vi`.
 """
 getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
-# For `TypedVarInfo` it's more difficult since we need to keep track of the offset.
-# TOOD: Should we unroll this using `@generated`?
-function getrange(vi::TypedVarInfo, vn::VarName)
-    offset = 0
-    for md in values(vi.metadata)
-        # First, we need to check if `vn` is in `md`.
-        # In this case, we can just return the corresponding range + offset.
-        haskey(md, vn) && return getrange(md, vn) .+ offset
-        # Otherwise, we need to get the cumulative length of the ranges in `md`
-        # and add it to the offset.
-        offset += sum(length, md.ranges)
-    end
-    # If we reach this point, `vn` is not in `vi.metadata`.
-    throw(KeyError(vn))
-end
 getrange(md::Metadata, vn::VarName) = md.ranges[getidx(md, vn)]
 
 """
@@ -648,8 +638,38 @@ Return the indices of `vns` in the metadata of `vi` corresponding to `vn`.
 function getranges(vi::VarInfo, vns::Vector{<:VarName})
     return map(Base.Fix1(getrange, vi), vns)
 end
-# A more efficient version for `TypedVarInfo`.
-function getranges(varinfo::DynamicPPL.TypedVarInfo, vns::Vector{<:DynamicPPL.VarName})
+
+"""
+    vector_getrange(varinfo::VarInfo, varname::VarName)
+
+Return the range corresponding to `varname` in the vector representation of `varinfo`.
+"""
+vector_getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
+function vector_getrange(vi::TypedVarInfo, vn::VarName)
+    offset = 0
+    for md in values(vi.metadata)
+        # First, we need to check if `vn` is in `md`.
+        # In this case, we can just return the corresponding range + offset.
+        haskey(md, vn) && return vector_getrange(md, vn) .+ offset
+        # Otherwise, we need to get the cumulative length of the ranges in `md`
+        # and add it to the offset.
+        offset += sum(length, md.ranges)
+    end
+    # If we reach this point, `vn` is not in `vi.metadata`.
+    throw(KeyError(vn))
+end
+vector_getrange(md::Metadata, vn::VarName) = getrange(md, vn)
+
+"""
+    vector_getranges(varinfo::VarInfo, varnames::Vector{<:VarName})
+
+Return the range corresponding to `varname` in the vector representation of `varinfo`.
+"""
+function vector_getranges(varinfo::VarInfo, varname::Vector{<:VarName})
+    return map(Base.Fix1(vector_getrange, varinfo), varname)
+end
+# Specialized version for `TypedVarInfo`.
+function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
     # TODO: Does it help if we _don't_ convert to a vector here?
     metadatas = collect(values(varinfo.metadata))
     # Extract the offsets.
@@ -671,6 +691,7 @@ function getranges(varinfo::DynamicPPL.TypedVarInfo, vns::Vector{<:DynamicPPL.Va
     end
     return ranges
 end
+
 
 """
     getdist(vi::VarInfo, vn::VarName)

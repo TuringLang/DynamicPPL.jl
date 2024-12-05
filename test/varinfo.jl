@@ -816,7 +816,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
 
     # NOTE: It is not yet clear if this is something we want from all varinfo types.
     # Hence, we only test the `VarInfo` types here.
-    @testset "getranges for `VarInfo`" begin
+    @testset "vector_getranges for `VarInfo`" begin
 	    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             nt = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -829,7 +829,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                 # Let's just check all the subsets of `vns`.
                 @testset "$(convert(Vector{Any},vns_subset))" for vns_subset in
                                                                   combinations(vns)
-                    ranges = DynamicPPL.getranges(varinfo, vns_subset)
+                    ranges = DynamicPPL.vector_getranges(varinfo, vns_subset)
                     @test length(ranges) == length(vns_subset)
                     for (r, vn) in zip(ranges, vns_subset)
                         @test x[r] == DynamicPPL.tovec(varinfo[vn])
