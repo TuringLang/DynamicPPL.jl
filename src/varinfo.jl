@@ -643,13 +643,13 @@ end
 
 Return the range corresponding to `varname` in the vector representation of `varinfo`.
 """
-vector_getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
+vector_getrange(vi::VarInfo, vn::VarName) = getrange(vi.metadata, vn)
 function vector_getrange(vi::TypedVarInfo, vn::VarName)
     offset = 0
     for md in values(vi.metadata)
         # First, we need to check if `vn` is in `md`.
         # In this case, we can just return the corresponding range + offset.
-        haskey(md, vn) && return vector_getrange(md, vn) .+ offset
+        haskey(md, vn) && return getrange(md, vn) .+ offset
         # Otherwise, we need to get the cumulative length of the ranges in `md`
         # and add it to the offset.
         offset += sum(length, md.ranges)
@@ -657,7 +657,6 @@ function vector_getrange(vi::TypedVarInfo, vn::VarName)
     # If we reach this point, `vn` is not in `vi.metadata`.
     throw(KeyError(vn))
 end
-vector_getrange(md::Metadata, vn::VarName) = getrange(md, vn)
 
 """
     vector_getranges(varinfo::VarInfo, varnames::Vector{<:VarName})
