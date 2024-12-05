@@ -1391,7 +1391,6 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
     setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
-    # TODO: should replace this with a `setval!` for `Metadata`.
     setval!(md, yvec, vn)
     acclogp!!(vi, -logjac)
     return vi
