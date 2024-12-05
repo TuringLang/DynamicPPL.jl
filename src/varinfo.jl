@@ -1329,12 +1329,13 @@ end
 
 function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     # TODO: Use inplace versions to avoid allocations
-    yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn))
+    yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, md))
     # Determine the new range.
-    start = first(getrange(vi, vn))
+    start = first(getrange(md, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
-    setrange!(vi, vn, start:(start + length(yvec) - 1))
+    setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
+    # TODO: should replace this with a `setval!` for `Metadata`.
     setval!(vi, yvec, vn)
     acclogp!!(vi, -logjac)
     return vi
