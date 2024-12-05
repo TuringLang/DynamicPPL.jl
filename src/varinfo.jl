@@ -202,6 +202,11 @@ function VarInfo(
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
+
+Base.length(varinfo::VarInfo) = length(varinfo.metadata)
+Base.length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
+Base.length(md::Metadata) = sum(length, md.ranges)
+
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
 # TODO: deprecate.
@@ -642,6 +647,29 @@ Return the indices of `vns` in the metadata of `vi` corresponding to `vn`.
 """
 function getranges(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getrange, vi), vcat, vns; init=Int[])
+end
+# A more efficient version for `TypedVarInfo`.
+function getranges(varinfo::DynamicPPL.TypedVarInfo, vns::Vector{<:DynamicPPL.VarName})
+    # TODO: Does it help if we _don't_ convert to a vector here?
+    metadatas = collect(values(varinfo.metadata))
+    # Extract the offsets.
+    offsets = cumsum(map(length, metadatas))
+    # Extract the ranges from each metadata.
+    ranges = Vector{UnitRange{Int}}(undef, length(vns))
+    for (i, metadata) in enumerate(metadatas)
+        vns_metadata = filter(Base.Fix1(haskey, metadata), vns)
+        # If none of the variables exist in the metadata, we return an empty array.
+        isempty(vns_metadata) && continue
+        # Otherwise, we extract the ranges.
+        offset = i == 1 ? 0 : offsets[i - 1]
+        for vn in vns_metadata
+            r_vn = getrange(metadata, vn)
+            # Get the index, so we return in the same order as `vns`.
+            idx = findfirst(==(vn), vns)
+            ranges[idx] = r_vn .+ offset
+        end
+    end
+    return ranges
 end
 
 """
