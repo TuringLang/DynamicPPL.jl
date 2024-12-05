@@ -626,7 +626,7 @@ setrange!(md::Metadata, vn::VarName, range) = md.ranges[getidx(md, vn)] = range
 Return the indices of `vns` in the metadata of `vi` corresponding to `vn`.
 """
 function getranges(vi::VarInfo, vns::Vector{<:VarName})
-    return mapreduce(vn -> getrange(vi, vn), vcat, vns; init=Int[])
+    return mapreduce(Base.Fix1(getrange, vi), vcat, vns; init=Int[])
 end
 
 """
