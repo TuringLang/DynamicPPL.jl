@@ -817,7 +817,7 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
     # NOTE: It is not yet clear if this is something we want from all varinfo types.
     # Hence, we only test the `VarInfo` types here.
     @testset "vector_getranges for `VarInfo`" begin
-	    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             nt = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, nt, vns)

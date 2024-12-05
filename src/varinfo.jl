@@ -202,7 +202,6 @@ function VarInfo(
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
-
 """
     vector_length(varinfo::VarInfo)
 
@@ -691,7 +690,6 @@ function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
     end
     return ranges
 end
-
 
 """
     getdist(vi::VarInfo, vn::VarName)
