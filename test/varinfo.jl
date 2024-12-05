@@ -820,9 +820,13 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             nt = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, nt, vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                model, nt, vns; include_threadsafe=true
+            )
             # Only keep `VarInfo` types.
-            varinfos = filter(Base.Fix2(isa, VarInfo), varinfos)
+            varinfos = filter(
+                Base.Fix2(isa, DynamicPPL.VarInfoOrThreadSafeVarInfo), varinfos
+            )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 x = values_as(varinfo, Vector)
 
@@ -835,6 +839,16 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
                         @test x[r] == DynamicPPL.tovec(varinfo[vn])
                     end
                 end
+
+                # Let's try some failure cases.
+                @test DynamicPPL.vector_getranges(varinfo, VarName[]) == UnitRange{Int}[]
+                # Non-existent variables.
+                @test_throws KeyError DynamicPPL.vector_getranges(
+                    varinfo, [VarName{gensym("vn")}()]
+                )
+                @test_throws KeyError DynamicPPL.vector_getranges(
+                    varinfo, [VarName{gensym("vn")}(), VarName{gensym("vn")}()]
+                )
             end
         end
     end

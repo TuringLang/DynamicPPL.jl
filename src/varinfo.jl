@@ -687,6 +687,13 @@ function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
             ranges[idx] = r_vn .+ offset
         end
     end
+    # Raise key error if any of the variables were not found.
+    if any(!isassigned, ranges)
+        inds = findall(!isassigned, ranges)
+        # Just use a `convert` to get the same type as the input; don't want to confuse by overly
+        # specilizing the types in the error message.
+        throw(KeyError(convert(typeof(vns), vns[inds])))
+    end
     return ranges
 end
 
