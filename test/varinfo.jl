@@ -813,4 +813,21 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @test DynamicPPL.istrans(varinfo2, vn)
         end
     end
+
+    @testset "getranges" begin
+	    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            varinfo = DynamicPPL.typed_varinfo(model)
+            x = values_as(varinfo, Vector)
+
+            # Let's just check all the subsets of `vns`.
+            @testset "$(convert(Vector{Any},vns_subset))" for vns_subset in combinations(vns)
+                ranges = DynamicPPL.getranges(varinfo, vns_subset)
+                @test length(ranges) == length(vns_subset)
+                for (r, vn) in zip(ranges, vns_subset)
+                    @test x[r] == DynamicPPL.tovec(varinfo[vn])
+                end
+            end
+        end
+    end
 end
