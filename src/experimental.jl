@@ -2,6 +2,7 @@ module Experimental
 
 using DynamicPPL: DynamicPPL
 
+# This file only defines the names of the functions, and their docstrings. The actual implementations are in `ext/DynamicPPLJETExt.jl`, since we don't want to depend on JET.jl other than as a weak dependency.
 """
     is_suitable_varinfo(model::Model, context::AbstractContext, varinfo::AbstractVarInfo; kwargs...)
 
@@ -11,7 +12,7 @@ Check if the `model` supports evaluation using the provided `context` and `varin
     Loading JET.jl is required before calling this function.
 
 # Arguments
-- `model`: The model to to verify the support for.
+- `model`: The model to verify the support for.
 - `context`: The context to use for the model evaluation.
 - `varinfo`: The varinfo to verify the support for.
 
@@ -28,7 +29,7 @@ function is_suitable_varinfo end
 function _determine_varinfo_jet end
 
 """
-    determine_suitable_varinfo(model[, context]; verbose::Bool=false, only_ddpl::Bool=true)
+    determine_suitable_varinfo(model[, context]; only_ddpl::Bool=true)
 
 Return a suitable varinfo for the given `model`.
 

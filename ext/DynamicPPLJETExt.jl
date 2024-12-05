@@ -28,7 +28,6 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
 )
     # First we try with the typed varinfo.
     varinfo = DynamicPPL.typed_varinfo(model, context)
-    issuccess = true
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
     issuccess, result = DynamicPPL.Experimental.is_suitable_varinfo(

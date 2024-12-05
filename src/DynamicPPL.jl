@@ -206,7 +206,7 @@ if !isdefined(Base, :get_extension)
     using Requires
 end
 
-# Better error message if users forget to load the AD package
+# Better error message if users forget to load JET
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
