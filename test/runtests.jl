@@ -106,6 +106,9 @@ include("test_util.jl")
                 # Older versions do not have `;;]` but instead just `]` at end of the line
                 # => need to treat `;;]` and `]` as the same, i.e. ignore them if at the end of a line
                 r"(;;){0,1}\]$"m,
+                # Ignore the source of a warning in the doctest output, since this is dependent on host.
+                # This is a line that starts with "└ @ " and ends with the line number.
+                r"└ @ .+:[0-9]+",
             ]
             doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
         end
