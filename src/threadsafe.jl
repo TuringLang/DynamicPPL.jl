@@ -179,8 +179,10 @@ function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:
 end
 
 vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)
-vector_getrange(vi::ThreadSafeVarInfo) = vector_getrange(vi.varinfo)
-vector_getranges(vi::ThreadSafeVarInfo) = vector_getranges(vi.varinfo)
+vector_getrange(vi::ThreadSafeVarInfo, vn::VarName) = vector_getrange(vi.varinfo, vn)
+function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
+    return vector_getranges(vi.varinfo, vns)
+end
 
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
     return set_retained_vns_del_by_spl!(vi.varinfo, spl)
