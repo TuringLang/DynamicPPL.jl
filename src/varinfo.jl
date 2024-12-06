@@ -674,6 +674,8 @@ function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
     offsets = cumsum(map(vector_length, metadatas))
     # Extract the ranges from each metadata.
     ranges = Vector{UnitRange{Int}}(undef, length(vns))
+    # Need to keep track of which ones we've seen.
+    not_seen = fill(true, length(vns))
     for (i, metadata) in enumerate(metadatas)
         vns_metadata = filter(Base.Fix1(haskey, metadata), vns)
         # If none of the variables exist in the metadata, we return an empty array.
@@ -686,13 +688,14 @@ function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
             # NOTE: There might be duplicates in `vns`, so we need to handle that.
             indices = findall(==(vn), vns)
             for idx in indices
+                not_seen[idx] = false
                 ranges[idx] = r_vn .+ offset
             end
         end
     end
     # Raise key error if any of the variables were not found.
-    if any(!isassigned, ranges)
-        inds = findall(!isassigned, ranges)
+    if any(not_seen)
+        inds = findall(not_seen)
         # Just use a `convert` to get the same type as the input; don't want to confuse by overly
         # specilizing the types in the error message.
         throw(KeyError(convert(typeof(vns), vns[inds])))
