@@ -275,11 +275,6 @@ TypedVarInfo
 One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
 
 ```@docs
-link!
-invlink!
-```
-
-```@docs
 set_flag!
 unset_flag!
 is_flagged
