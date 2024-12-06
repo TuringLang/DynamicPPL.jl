@@ -68,20 +68,20 @@ julia> model = model_with_random_support();
 julia> # Typed varinfo cannot handle this random support model properly
        # as using a single execution of the model will not see all random variables.
        # Hence, this this model requires untyped varinfo.
-       varinfo = determine_suitable_varinfo(model);
+       vi = determine_suitable_varinfo(model);
 ┌ Warning: Model seems incompatible with typed varinfo. Falling back to untyped varinfo.
-└ @ DynamicPPLJETExt ~/Projects/public/DynamicPPL.jl/ext/DynamicPPLJETExt.jl:49
+└ @ DynamicPPLJETExt /drive-2/Projects/public/DynamicPPL.jl/ext/DynamicPPLJETExt.jl:48
 
-julia> varinfo isa typeof(DynamicPPL.untyped_varinfo(model))
+julia> vi isa typeof(DynamicPPL.untyped_varinfo(model))
 true
 
 julia> # In contrast, a simple model with no random support can be handled by typed varinfo.
        @model model_with_static_support() = x ~ Normal()
 model_with_static_support (generic function with 2 methods)
 
-julia> varinfo = determine_suitable_varinfo(model_with_static_support());
+julia> vi = determine_suitable_varinfo(model_with_static_support());
 
-julia> varinfo isa typeof(DynamicPPL.typed_varinfo(model_with_static_support()))
+julia> vi isa typeof(DynamicPPL.typed_varinfo(model_with_static_support()))
 true
 ```
 """
