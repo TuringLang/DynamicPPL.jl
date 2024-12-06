@@ -163,37 +163,20 @@ function has_varnamedvector(vi::VarInfo)
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
-# TODO: We should just remove this function in favour of passing `SamplingContext` directly.
-function untyped_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-    metadata::Union{Metadata,VarNamedVector}=Metadata(),
-)
-    return untyped_varinfo(model, SamplingContext(rng, sampler, context), metadata)
-end
-function untyped_varinfo(
-    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
-)
-    return untyped_varinfo(Random.default_rng(), model, args...)
-end
-
 """
-    untyped_varinfo([rng, ]model[, context, metadata])
+    untyped_varinfo(model[, context, metadata])
 
 Return an untyped varinfo object for the given `model` and `context`.
 
 # Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use. Default: `Random.default_rng()`.
 - `model::Model`: The model for which to create the varinfo object.
-- `context::AbstractContext`: The context in which to evaluate the model. Default: `DefaultContext()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Default: `SamplingContext()`.
 - `metadata::Union{Metadata,VarNamedVector}`: The metadata to use for the varinfo object.
     Default: `Metadata()`.
 """
 function untyped_varinfo(
     model::Model,
-    context::AbstractContext,
+    context::AbstractContext=SamplingContext(),
     metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
     varinfo = VarInfo(metadata)
@@ -203,7 +186,7 @@ function untyped_varinfo(
 end
 
 """
-    typed_varinfo([rng, ]model[, context, metadata])
+    typed_varinfo(model[, context, metadata])
 
 Return a typed varinfo object for the given `model`, `sampler` and `context`.
 
@@ -221,7 +204,7 @@ function VarInfo(
     context::AbstractContext=DefaultContext(),
     metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    return typed_varinfo(rng, model, sampler, context, metadata)
+    return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
