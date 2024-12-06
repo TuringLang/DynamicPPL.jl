@@ -202,6 +202,15 @@ function VarInfo(
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 
+"""
+    vector_length(varinfo::VarInfo)
+
+Return the length of the vector representation of `varinfo`.
+"""
+vector_length(varinfo::VarInfo) = length(varinfo.metadata)
+vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
+vector_length(md::Metadata) = sum(length, md.ranges)
+
 unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
 
 # TODO: deprecate.
@@ -626,7 +635,72 @@ setrange!(md::Metadata, vn::VarName, range) = md.ranges[getidx(md, vn)] = range
 Return the indices of `vns` in the metadata of `vi` corresponding to `vn`.
 """
 function getranges(vi::VarInfo, vns::Vector{<:VarName})
-    return mapreduce(vn -> getrange(vi, vn), vcat, vns; init=Int[])
+    return map(Base.Fix1(getrange, vi), vns)
+end
+
+"""
+    vector_getrange(varinfo::VarInfo, varname::VarName)
+
+Return the range corresponding to `varname` in the vector representation of `varinfo`.
+"""
+vector_getrange(vi::VarInfo, vn::VarName) = getrange(vi.metadata, vn)
+function vector_getrange(vi::TypedVarInfo, vn::VarName)
+    offset = 0
+    for md in values(vi.metadata)
+        # First, we need to check if `vn` is in `md`.
+        # In this case, we can just return the corresponding range + offset.
+        haskey(md, vn) && return getrange(md, vn) .+ offset
+        # Otherwise, we need to get the cumulative length of the ranges in `md`
+        # and add it to the offset.
+        offset += sum(length, md.ranges)
+    end
+    # If we reach this point, `vn` is not in `vi.metadata`.
+    throw(KeyError(vn))
+end
+
+"""
+    vector_getranges(varinfo::VarInfo, varnames::Vector{<:VarName})
+
+Return the range corresponding to `varname` in the vector representation of `varinfo`.
+"""
+function vector_getranges(varinfo::VarInfo, varname::Vector{<:VarName})
+    return map(Base.Fix1(vector_getrange, varinfo), varname)
+end
+# Specialized version for `TypedVarInfo`.
+function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
+    # TODO: Does it help if we _don't_ convert to a vector here?
+    metadatas = collect(values(varinfo.metadata))
+    # Extract the offsets.
+    offsets = cumsum(map(vector_length, metadatas))
+    # Extract the ranges from each metadata.
+    ranges = Vector{UnitRange{Int}}(undef, length(vns))
+    # Need to keep track of which ones we've seen.
+    not_seen = fill(true, length(vns))
+    for (i, metadata) in enumerate(metadatas)
+        vns_metadata = filter(Base.Fix1(haskey, metadata), vns)
+        # If none of the variables exist in the metadata, we return an empty array.
+        isempty(vns_metadata) && continue
+        # Otherwise, we extract the ranges.
+        offset = i == 1 ? 0 : offsets[i - 1]
+        for vn in vns_metadata
+            r_vn = getrange(metadata, vn)
+            # Get the index, so we return in the same order as `vns`.
+            # NOTE: There might be duplicates in `vns`, so we need to handle that.
+            indices = findall(==(vn), vns)
+            for idx in indices
+                not_seen[idx] = false
+                ranges[idx] = r_vn .+ offset
+            end
+        end
+    end
+    # Raise key error if any of the variables were not found.
+    if any(not_seen)
+        inds = findall(not_seen)
+        # Just use a `convert` to get the same type as the input; don't want to confuse by overly
+        # specilizing the types in the error message.
+        throw(KeyError(convert(typeof(vns), vns[inds])))
+    end
+    return ranges
 end
 
 """
@@ -1314,13 +1388,13 @@ end
 
 function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     # TODO: Use inplace versions to avoid allocations
-    yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn))
+    yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(md, vn))
     # Determine the new range.
-    start = first(getrange(vi, vn))
+    start = first(getrange(md, vn))
     # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
-    setrange!(vi, vn, start:(start + length(yvec) - 1))
+    setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
-    setval!(vi, yvec, vn)
+    setval!(md, yvec, vn)
     acclogp!!(vi, -logjac)
     return vi
 end

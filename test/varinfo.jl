@@ -813,4 +813,46 @@ DynamicPPL.getspace(::DynamicPPL.Sampler{MySAlg}) = (:s,)
             @test DynamicPPL.istrans(varinfo2, vn)
         end
     end
+
+    # NOTE: It is not yet clear if this is something we want from all varinfo types.
+    # Hence, we only test the `VarInfo` types here.
+    @testset "vector_getranges for `VarInfo`" begin
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            vns = DynamicPPL.TestUtils.varnames(model)
+            nt = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(
+                model, nt, vns; include_threadsafe=true
+            )
+            # Only keep `VarInfo` types.
+            varinfos = filter(
+                Base.Fix2(isa, DynamicPPL.VarInfoOrThreadSafeVarInfo), varinfos
+            )
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                x = values_as(varinfo, Vector)
+
+                # Let's just check all the subsets of `vns`.
+                @testset "$(convert(Vector{Any},vns_subset))" for vns_subset in
+                                                                  combinations(vns)
+                    ranges = DynamicPPL.vector_getranges(varinfo, vns_subset)
+                    @test length(ranges) == length(vns_subset)
+                    for (r, vn) in zip(ranges, vns_subset)
+                        @test x[r] == DynamicPPL.tovec(varinfo[vn])
+                    end
+                end
+
+                # Let's try some failure cases.
+                @test DynamicPPL.vector_getranges(varinfo, VarName[]) == UnitRange{Int}[]
+                # Non-existent variables.
+                @test_throws KeyError DynamicPPL.vector_getranges(
+                    varinfo, [VarName{gensym("vn")}()]
+                )
+                @test_throws KeyError DynamicPPL.vector_getranges(
+                    varinfo, [VarName{gensym("vn")}(), VarName{gensym("vn")}()]
+                )
+                # Duplicate variables.
+                ranges_duplicated = DynamicPPL.vector_getranges(varinfo, repeat(vns, 2))
+                @test x[reduce(vcat, ranges_duplicated)] == repeat(x, 2)
+            end
+        end
+    end
 end
