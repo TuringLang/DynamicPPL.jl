@@ -4,6 +4,7 @@ using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
 using Bijectors
+using DifferentiationInterface
 using Distributions
 using DistributionsAD
 using Documenter
@@ -11,6 +12,7 @@ using ForwardDiff
 using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
+using Mooncake: Mooncake
 using Tracker
 using ReverseDiff
 using Zygote

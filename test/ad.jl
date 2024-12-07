@@ -1,4 +1,4 @@
-@testset "AD: ForwardDiff and ReverseDiff" begin
+@testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         f = DynamicPPL.LogDensityFunction(m)
         rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
@@ -17,11 +17,20 @@
             θ = convert(Vector{Float64}, varinfo[:])
             logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ad_forwarddiff_f, θ)
 
-            @testset "ReverseDiff with compile=$compile" for compile in (false, true)
-                adtype = ADTypes.AutoReverseDiff(; compile=compile)
-                ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
-                _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
-                @test grad ≈ ref_grad
+            @testset "$adtype" for adtype in [
+                ADTypes.AutoReverseDiff(; compile=false),
+                ADTypes.AutoReverseDiff(; compile=true),
+                ADTypes.AutoMooncake(; config=nothing),
+            ]
+                # Mooncake can't currently handle something that is going on in
+                # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
+                if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
+                    @test_broken 1 == 0
+                else
+                    ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
+                    _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
+                    @test grad ≈ ref_grad
+                end
             end
         end
     end
