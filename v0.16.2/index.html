@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Home · DynamicPPL</title><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.039/juliamono-regular.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body>
+<!-- NAVBAR START -->
+<style>
+    html {
+        scroll-padding-top: calc(55px + 1rem);
+    }
+
+    /* Documenter css tweaks */
+    .docs-sidebar {
+        margin-top: 3.75rem;
+    }
+
+    #documenter {
+        margin-top: 3.75rem;
+    }
+
+    .docs-version-selector {
+        margin-bottom: 60px !important;
+    }
+
+    @media screen and (max-width: 1056px) {
+        .docs-version-selector {
+            margin-bottom: 60px !important;
+        }
+
+        .docs-sidebar {
+            margin-top: 0 !important;
+        }
+    }
+    /* Documenter css tweaks ends here */
+
+    :root {
+        --heading-color: white;
+        --item-color: rgb(165, 165, 165);
+        --primary-bg: #073c44;
+        --hover-color: #8faad2;
+    }
+
+    .ext-navigation {
+        position: fixed;
+        height: 3.75rem;
+        top: 0;
+        width: 100%;
+        background-color: var(--primary-bg);
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        padding: 0 1.0625rem;
+        transition: transform 0.3s;
+    }
+
+    .ext-navbar-logo {
+        margin-left: 0.625rem;
+    }
+
+    .ext-nav-links {
+        display: flex;
+        align-items: center;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        flex-grow: 1;
+    }
+
+    .ext-nav-links li {
+        margin-left: 1rem !important;
+    }
+
+    .ext-nav-link {
+        color: white !important;
+        text-decoration: none;
+        font-size: 1.0625rem !important;
+        transition: color 0.2s ease;
+        cursor: pointer;
+    }
+
+    .ext-nav-link:hover,
+    .ext-navbar-item-single a:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-navbar-item-single a {
+        color: #fff !important;
+    }
+
+    .ext-menu-toggle {
+        display: none;
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+    }
+
+    .ext-dropdown {
+        display: none;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        grid-template-rows: auto auto auto;
+        padding: 1.875rem;
+        position: absolute;
+        width: 100%;
+        left: 0;
+        background-color: #083c44;
+        line-height: 1.875rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        transform: translateY(-0.625rem);
+    }
+
+    #library-handler::after {
+        content: "▼";
+        font-size: 0.6875rem;
+        margin-left: 0.3125rem;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #library-handler.open::after {
+        content: "▲";
+    }
+
+    .ext-dropdown.show {
+        display: grid;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .ext-dropdown ul {
+        height: auto;
+        width: 12.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .ext-dropdown ul li {
+        text-align: left;
+    }
+
+    .navbar-sub-item {
+        list-style: none;
+    }
+
+    .ext-dropdown ul a li {
+        color: var(--item-color);
+        width: 15.625rem;
+        border-radius: 3px;
+        padding: 0.125rem 0.625rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .ext-dropdown ul a li:hover {
+        background-color: rgba(107, 107, 107, 0.5);
+    }
+
+    .ext-dropdown-item-heading {
+        color: var(--heading-color);
+        text-align: center;
+    }
+
+    /* Responsive styling */
+    @media (max-width: 966px) {
+        .ext-dropdown {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .ext-nav-links {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            background-color: var(--primary-bg);
+            position: absolute;
+            top: 3.75rem;
+            left: 0;
+            padding: 0.625rem 0;
+            height: auto;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgb(141, 141, 141) grey;
+        }
+
+        .ext-nav-links.show {
+            display: flex;
+        }
+
+        .ext-nav-links li {
+            margin: 0.625rem 0;
+            text-align: center;
+        }
+
+        .ext-menu-toggle {
+            display: block;
+            margin-left: auto;
+        }
+
+        .ext-navigation.hide {
+            transform: translateY(-3.75rem);
+        }
+
+        .ext-dropdown {
+            place-content: center;
+            text-align: center;
+            grid-template-columns: 1fr;
+            line-height: 1.25rem;
+            padding: 0.625rem;
+        }
+
+        .ext-dropdown ul {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 0.3125rem;
+        }
+
+        .ext-dropdown ul li {
+            text-align: center;
+        }
+
+        .ext-dropdown ul a li {
+            width: 100%;
+        }
+
+        .ext-dropdown ul a li:hover {
+            background-color: var(--primary-bg);
+            color: #fff;
+        }
+
+        /* Modified scroll bar */
+        .ext-nav-links::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-track {
+            box-shadow: inset 0 0 5px grey;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb {
+            background: rgb(141, 141, 141);
+            border-radius: 3px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb:hover {
+            background: #9b9b9b;
+        }
+    }
+</style>
+<nav class="ext-navigation">
+    <a href="https://turinglang.org/">
+        <img src="https://turinglang.org/assets/images/turing-logo.svg" alt="Turing Logo" class="ext-navbar-logo" height="24px" width="40px">
+    </a>
+    <a style="color: white !important; font-size: 21.25px !important; margin-left: 10px;" href="https://turinglang.org/">Turing.jl</a>
+    <ul class="ext-nav-links">
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/docs-00-getting-started/">Get Started</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/00-introduction/">Tutorials</a>
+        </li>
+        <li>
+            <p class="ext-nav-link" id="library-handler">Libraries</p>
+            <div class="ext-dropdown" id="ext-dropdown-items">
+                <ul>
+                    <li class="ext-dropdown-item-heading">Modelling Languages</li>
+                    <a href="https://turinglang.org/DynamicPPL.jl/">
+                        <li>DynamicPPL</li>
+                    </a>
+                    <a href="https://turinglang.org/JuliaBUGS.jl/">
+                        <li>JuliaBUGS</li>
+                    </a>
+                    <a href="https://turinglang.org/TuringGLM.jl/">
+                        <li>TuringGLM</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">MCMC</li>
+                    <a href="https://turinglang.org/AdvancedHMC.jl/">
+                        <li>AdvancedHMC</li>
+                    </a>
+                    <a href="https://turinglang.org/AbstractMCMC.jl/">
+                        <li>AbstractMCMC</li>
+                    </a>
+                    <a href="https://github.com/theogf/ThermodynamicIntegration.jl">
+                        <li>ThermodynamicIntegration</li>
+                    </a>
+                    <a href="https://turinglang.org/AdvancedPS.jl/">
+                        <li>AdvancedPS</li>
+                    </a>
+                    <a href="https://turinglang.org/SliceSampling.jl/">
+                        <li>SliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/EllipticalSliceSampling.jl/">
+                        <li>EllipticalSliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/NestedSamplers.jl/">
+                        <li>NestedSamplers</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Diagnostics</li>
+                    <a href="https://turinglang.org/MCMCChains.jl/">
+                        <li>MCMCChains</li>
+                    </a>
+                    <a href="https://turinglang.org/MCMCDiagnosticTools.jl/">
+                        <li>MCMCDiagnosticTools</li>
+                    </a>
+                    <a href="https://turinglang.org/ParetoSmooth.jl/">
+                        <li>ParetoSmooth</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Gaussion Processes</li>
+                    <a href="https://juliagaussianprocesses.github.io/AbstractGPs.jl/">
+                        <li>AbstractGPs</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/KernelFunctions.jl/">
+                        <li>KernelFunctions</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/ApproximateGPs.jl/">
+                        <li>ApproximateGPs</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/Bijectors.jl/">Bijectors</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringCallbacks.jl/">TuringCallbacks</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringBenchmarking.jl/">TuringBenchmarking</a>
+                    </li>
+                </ul>
+            </div>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/news/">News</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/team/">Team</a>
+        </li>
+    </ul>
+    <a href="https://x.com/TuringLang" style="margin-left: 15px; padding-top: 2px">
+        <svg fill="#ffffff" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="32px" height="32px" viewBox="-209.92 -209.92 931.84 931.84" xml:space="preserve" stroke="#ffffff">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <g id="7935ec95c421cee6d86eb22ecd12f847">
+                    <path style="display: inline"
+                        d="M459.186,151.787c0.203,4.501,0.305,9.023,0.305,13.565 c0,138.542-105.461,298.285-298.274,298.285c-59.209,0-114.322-17.357-160.716-47.104c8.212,0.973,16.546,1.47,25.012,1.47 c49.121,0,94.318-16.759,130.209-44.884c-45.887-0.841-84.596-31.154-97.938-72.804c6.408,1.227,12.968,1.886,19.73,1.886 c9.55,0,18.816-1.287,27.617-3.68c-47.955-9.633-84.1-52.001-84.1-102.795c0-0.446,0-0.882,0.011-1.318 c14.133,7.847,30.294,12.562,47.488,13.109c-28.134-18.796-46.637-50.885-46.637-87.262c0-19.212,5.16-37.218,14.193-52.7 c51.707,63.426,128.941,105.156,216.072,109.536c-1.784-7.675-2.718-15.674-2.718-23.896c0-57.891,46.941-104.832,104.832-104.832 c30.173,0,57.404,12.734,76.525,33.102c23.887-4.694,46.313-13.423,66.569-25.438c-7.827,24.485-24.434,45.025-46.089,58.002 c21.209-2.535,41.426-8.171,60.222-16.505C497.448,118.542,479.666,137.004,459.186,151.787z">
+                    </path>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <a href="https://github.com/TuringLang/Turing.jl">
+        <svg width="32px" height="32px" viewBox="-8.2 -8.2 36.40 36.40" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <title>github [#142]</title>
+                <desc>Created with Sketch.</desc>
+                <defs></defs>
+                <g id="Page-1" stroke-width="0.0002" fill="none" fill-rule="evenodd">
+                    <g id="Dribbble-Light-Preview" transform="translate(-140.000000, -7559.000000)" fill="#ffffff">
+                        <g id="icons" transform="translate(56.000000, 160.000000)">
+                            <path
+                                d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"
+                                id="github-[#142]">
+                            </path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <span class="ext-menu-toggle">&#9776;</span>
+</nav>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const menuToggle = document.querySelector(".ext-menu-toggle");
+        const navLinks = document.querySelector(".ext-nav-links");
+        const nav = document.querySelector(".ext-navigation");
+        const navigationHandler = document.getElementById("library-handler");
+        const navigationItemsContainer =
+            document.getElementById("ext-dropdown-items");
+        let lastScrollY = window.scrollY;
+
+        function setAppropriateHeight() {
+            if (window.innerWidth <= 768) {
+                const viewportHeight = window.innerHeight;
+                const navHeight = nav.offsetHeight;
+                navLinks.style.maxHeight = `${viewportHeight - navHeight}px`;
+                navLinks.style.overflowY = "auto";
+            } else {
+                navLinks.style.maxHeight = "";
+                navLinks.style.overflowY = "";
+            }
+        }
+
+        // Toggle main menu for mobile
+        menuToggle.addEventListener("click", () => {
+            navLinks.classList.toggle("show");
+            if (navLinks.classList.contains("show")) {
+                setAppropriateHeight();
+                // Ensure the dropdown is hidden when menu is first opened
+                navigationItemsContainer.style.display = "none";
+                navigationItemsContainer.classList.remove("show");
+            }
+        });
+
+        // Close menus if clicked outside
+        document.addEventListener("click", (event) => {
+            if (
+                !navLinks.contains(event.target) &&
+                !menuToggle.contains(event.target)
+            ) {
+                navLinks.classList.remove("show");
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+            }
+        });
+
+        // Hide navigation bar on scroll down in mobile view
+        window.addEventListener("scroll", () => {
+            if (window.innerWidth <= 768) {
+                nav.classList.toggle("hide", window.scrollY > lastScrollY);
+                lastScrollY = window.scrollY;
+            }
+        });
+
+        // Library API script
+        navigationHandler.addEventListener("click", (event) => {
+            event.preventDefault(); // Prevent default action of the link
+            if (navigationItemsContainer.classList.contains("show")) {
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+                setTimeout(() => {
+                    navigationItemsContainer.style.display = "none";
+                }, 500); // Match the timeout to the CSS transition duration
+            } else {
+                navigationItemsContainer.style.display = "grid";
+                navigationHandler.classList.add("open");
+                setTimeout(() => {
+                    navigationItemsContainer.classList.add("show");
+                }, 10); // Delay to ensure the display change takes effect before adding class
+            }
+            setAppropriateHeight(); // Recalculate height when dropdown changes
+        });
+
+        // Handle window resize
+        window.addEventListener("resize", setAppropriateHeight);
+
+        // Initial setup
+        setAppropriateHeight();
+    });
+</script>
+<!-- NAVBAR END -->
+
+<div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>DynamicPPL</a></span></div><form class="docs-search" action="search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Home</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Home</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Home</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/TuringLang/DynamicPPL.jl/blob/master/docs/src/index.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="DynamicPPL"><a class="docs-heading-anchor" href="#DynamicPPL">DynamicPPL</a><a id="DynamicPPL-1"></a><a class="docs-heading-anchor-permalink" href="#DynamicPPL" title="Permalink"></a></h1><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.AbstractVarInfo" href="#DynamicPPL.AbstractVarInfo"><code>DynamicPPL.AbstractVarInfo</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">AbstractVarInfo</code></pre><p>Abstract supertype for data structures that capture random variables when executing a probabilistic model and accumulate log densities such as the log likelihood or the log joint probability of the model.</p><p>See also: <a href="#DynamicPPL.VarInfo"><code>VarInfo</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/DynamicPPL.jl#L121-L129">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.DefaultContext" href="#DynamicPPL.DefaultContext"><code>DynamicPPL.DefaultContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct DefaultContext &lt;: AbstractContext end</code></pre><p>The <code>DefaultContext</code> is used by default to compute log the joint probability of the data  and parameters when running the model.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L146-L151">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.IsLeaf" href="#DynamicPPL.IsLeaf"><code>DynamicPPL.IsLeaf</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">IsLeaf</code></pre><p>Specifies that the context is a leaf in the context-tree.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L20-L24">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.IsParent" href="#DynamicPPL.IsParent"><code>DynamicPPL.IsParent</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">IsParent</code></pre><p>Specifies that the context is a parent in the context-tree.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L26-L30">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.LikelihoodContext" href="#DynamicPPL.LikelihoodContext"><code>DynamicPPL.LikelihoodContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct LikelihoodContext{Tvars} &lt;: AbstractContext
+    vars::Tvars
+end</code></pre><p>The <code>LikelihoodContext</code> enables the computation of the log likelihood of the parameters when  running the model. <code>vars</code> can be used to evaluate the log likelihood for specific values  of the model&#39;s parameters. If <code>vars</code> is <code>nothing</code>, the parameter values inside the <code>VarInfo</code> will be used by default.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L169-L177">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Metadata" href="#DynamicPPL.Metadata"><code>DynamicPPL.Metadata</code></a> — <span class="docstring-category">Type</span></header><section><div><p>The <code>Metadata</code> struct stores some metadata about the parameters of the model. This helps query certain information about a variable, such as its distribution, which samplers sample this variable, its value and whether this value is transformed to real space or not.</p><p>Let <code>md</code> be an instance of <code>Metadata</code>:</p><ul><li><code>md.vns</code> is the vector of all <code>VarName</code> instances.</li><li><code>md.idcs</code> is the dictionary that maps each <code>VarName</code> instance to its index in</li></ul><p><code>md.vns</code>, <code>md.ranges</code> <code>md.dists</code>, <code>md.orders</code> and <code>md.flags</code>.</p><ul><li><code>md.vns[md.idcs[vn]] == vn</code>.</li><li><code>md.dists[md.idcs[vn]]</code> is the distribution of <code>vn</code>.</li><li><code>md.gids[md.idcs[vn]]</code> is the set of algorithms used to sample <code>vn</code>. This is used in</li></ul><p>the Gibbs sampling process.</p><ul><li><code>md.orders[md.idcs[vn]]</code> is the number of <code>observe</code> statements before <code>vn</code> is sampled.</li><li><code>md.ranges[md.idcs[vn]]</code> is the index range of <code>vn</code> in <code>md.vals</code>.</li><li><code>md.vals[md.ranges[md.idcs[vn]]]</code> is the vector of values of corresponding to <code>vn</code>.</li><li><code>md.flags</code> is a dictionary of true/false flags. <code>md.flags[flag][md.idcs[vn]]</code> is the</li></ul><p>value of <code>flag</code> corresponding to <code>vn</code>.</p><p>To make <code>md::Metadata</code> type stable, all the <code>md.vns</code> must have the same symbol and distribution type. However, one can have a Julia variable, say <code>x</code>, that is a matrix or a hierarchical array sampled in partitions, e.g. <code>x[1][:] ~ MvNormal(zeros(2), I); x[2][:] ~ MvNormal(ones(2), I)</code>, and is managed by a single <code>md::Metadata</code> so long as all the distributions on the RHS of <code>~</code> are of the same type. Type unstable <code>Metadata</code> will still work but will have inferior performance. When sampling, the first iteration uses a type unstable <code>Metadata</code> for all the variables then a specialized <code>Metadata</code> is used for each symbol along with a function barrier to make the rest of the sampling type stable.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L9-L38">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Metadata-Tuple{}" href="#DynamicPPL.Metadata-Tuple{}"><code>DynamicPPL.Metadata</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Metadata()</code></pre><p>Construct an empty type unstable instance of <code>Metadata</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L174-L178">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.MiniBatchContext" href="#DynamicPPL.MiniBatchContext"><code>DynamicPPL.MiniBatchContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct MiniBatchContext{Tctx, T} &lt;: AbstractContext
+    context::Tctx
+    loglike_scalar::T
+end</code></pre><p>The <code>MiniBatchContext</code> enables the computation of  <code>log(prior) + s * log(likelihood of a batch)</code> when running the model, where <code>s</code> is the  <code>loglike_scalar</code> field, typically equal to <code>the number of data points / batch size</code>.  This is useful in batch-based stochastic gradient descent algorithms to be optimizing  <code>log(prior) + log(likelihood of all the data points)</code> in the expectation.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L184-L195">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Model" href="#DynamicPPL.Model"><code>DynamicPPL.Model</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+    name::Symbol
+    f::F
+    args::NamedTuple{argnames,Targs}
+    defaults::NamedTuple{defaultnames,Tdefaults}
+end</code></pre><p>A <code>Model</code> struct with model evaluation function of type <code>F</code>, arguments of names <code>argnames</code> types <code>Targs</code>, default arguments of names <code>defaultnames</code> with types <code>Tdefaults</code>, and missing arguments <code>missings</code>.</p><p>Here <code>argnames</code>, <code>defaultargnames</code>, and <code>missings</code> are tuples of symbols, e.g. <code>(:a, :b)</code>.</p><p>An argument with a type of <code>Missing</code> will be in <code>missings</code> by default. However, in non-traditional use-cases <code>missings</code> can be defined differently. All variables in <code>missings</code> are treated as random variables rather than observations.</p><p>The default arguments are used internally when constructing instances of the same model with different arguments.</p><p><strong>Examples</strong></p><pre><code class="language-julia hljs">julia&gt; Model(f, (x = 1.0, y = 2.0))
+Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
+
+julia&gt; Model(f, (x = 1.0, y = 2.0), (x = 42,))
+Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+
+julia&gt; Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
+Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L1-L34">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Model" href="#DynamicPPL.Model"><code>DynamicPPL.Model</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">(model::Model)([rng, varinfo, sampler, context])</code></pre><p>Sample from the <code>model</code> using the <code>sampler</code> with random number generator <code>rng</code> and the <code>context</code>, and store the sample and log joint probability in <code>varinfo</code>.</p><p>The method resets the log joint probability of <code>varinfo</code> and increases the evaluation number of <code>sampler</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L368-L376">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Model-Union{Tuple{Ctx}, Tuple{Tdefaults}, Tuple{defaultnames}, Tuple{Targs}, Tuple{argnames}, Tuple{F}, Tuple{missings}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple{defaultnames, Tdefaults}}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple{defaultnames, Tdefaults}, Ctx}} where {missings, F, argnames, Targs, defaultnames, Tdefaults, Ctx}" href="#DynamicPPL.Model-Union{Tuple{Ctx}, Tuple{Tdefaults}, Tuple{defaultnames}, Tuple{Targs}, Tuple{argnames}, Tuple{F}, Tuple{missings}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple{defaultnames, Tdefaults}}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple{defaultnames, Tdefaults}, Ctx}} where {missings, F, argnames, Targs, defaultnames, Tdefaults, Ctx}"><code>DynamicPPL.Model</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Model{missings}(name::Symbol, f, args::NamedTuple, defaults::NamedTuple)</code></pre><p>Create a model of name <code>name</code> with evaluation function <code>f</code> and missing arguments overwritten by <code>missings</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L43-L48">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Model-Union{Tuple{Targs}, Tuple{argnames}, Tuple{F}, Tuple{Symbol, F, NamedTuple{argnames, Targs}}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple, DynamicPPL.AbstractContext}} where {F, argnames, Targs}" href="#DynamicPPL.Model-Union{Tuple{Targs}, Tuple{argnames}, Tuple{F}, Tuple{Symbol, F, NamedTuple{argnames, Targs}}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple}, Tuple{Symbol, F, NamedTuple{argnames, Targs}, NamedTuple, DynamicPPL.AbstractContext}} where {F, argnames, Targs}"><code>DynamicPPL.Model</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Model(name::Symbol, f, args::NamedTuple[, defaults::NamedTuple = ()])</code></pre><p>Create a model of name <code>name</code> with evaluation function <code>f</code> and missing arguments deduced from <code>args</code>.</p><p>Default arguments <code>defaults</code> are used internally when constructing instances of the same model with different arguments.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L62-L70">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.NamedDist" href="#DynamicPPL.NamedDist"><code>DynamicPPL.NamedDist</code></a> — <span class="docstring-category">Type</span></header><section><div><p>A named distribution that carries the name of the random variable with it.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/distribution_wrappers.jl#L5-L7">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.NodeTrait" href="#DynamicPPL.NodeTrait"><code>DynamicPPL.NodeTrait</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">NodeTrait(context)
+NodeTrait(f, context)</code></pre><p>Specifies the role of <code>context</code> in the context-tree.</p><p>The officially supported traits are:</p><ul><li><code>IsLeaf</code>: <code>context</code> does not have any decendants.</li><li><code>IsParent</code>: <code>context</code> has a child context to which we often defer. Expects the following methods to be implemented:<ul><li><a href="#DynamicPPL.childcontext"><code>childcontext</code></a></li><li><a href="#DynamicPPL.setchildcontext"><code>setchildcontext</code></a></li></ul></li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L4-L16">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.PrefixContext" href="#DynamicPPL.PrefixContext"><code>DynamicPPL.PrefixContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">PrefixContext{Prefix}(context)</code></pre><p>Create a context that allows you to use the wrapped <code>context</code> when running the model and adds the <code>Prefix</code> to all parameters.</p><p>This context is useful in nested models to ensure that the names of the parameters are unique.</p><p>See also: <a href="#DynamicPPL.@submodel-Tuple{Any, Any}"><code>@submodel</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L209-L219">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.PriorContext" href="#DynamicPPL.PriorContext"><code>DynamicPPL.PriorContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct PriorContext{Tvars} &lt;: AbstractContext
+    vars::Tvars
+end</code></pre><p>The <code>PriorContext</code> enables the computation of the log prior of the parameters <code>vars</code> when  running the model.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L155-L162">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.SampleFromPrior" href="#DynamicPPL.SampleFromPrior"><code>DynamicPPL.SampleFromPrior</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">SampleFromPrior</code></pre><p>Sampling algorithm that samples unobserved random variables from their prior distribution.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L14-L18">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.SampleFromUniform" href="#DynamicPPL.SampleFromUniform"><code>DynamicPPL.SampleFromUniform</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">SampleFromUniform</code></pre><p>Sampling algorithm that samples unobserved random variables from a uniform distribution.</p><p><strong>References</strong></p><p><a href="https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values">Stan reference manual</a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L3-L11">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.Sampler" href="#DynamicPPL.Sampler"><code>DynamicPPL.Sampler</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">Sampler{T}</code></pre><p>Generic sampler type for inference algorithms of type <code>T</code> in DynamicPPL.</p><p><code>Sampler</code> should implement the AbstractMCMC interface, and in particular <code>AbstractMCMC.step</code>. A default implementation of the initial sampling step is provided that supports resuming sampling from a previous state and setting initial parameter values. It requires to overload <a href="#DynamicPPL.loadstate"><code>loadstate</code></a> and <a href="#DynamicPPL.initialstep"><code>initialstep</code></a> for loading previous states and actually performing the initial sampling step, respectively. Additionally, sometimes one might want to implement <a href="#DynamicPPL.initialsampler-Tuple{Sampler}"><code>initialsampler</code></a> that specifies how the initial parameter values are sampled if they are not provided. By default, values are sampled from the prior.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L34-L47">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.SamplingContext" href="#DynamicPPL.SamplingContext"><code>DynamicPPL.SamplingContext</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">SamplingContext(rng, sampler, context)</code></pre><p>Create a context that allows you to sample parameters with the <code>sampler</code> when running the model. The <code>context</code> determines how the returned log density is computed when running the model.</p><p>See also: <a href="#DynamicPPL.DefaultContext"><code>DefaultContext</code></a>, <a href="#DynamicPPL.LikelihoodContext"><code>LikelihoodContext</code></a>, <a href="#DynamicPPL.PriorContext"><code>PriorContext</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L122-L129">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.ThreadSafeVarInfo" href="#DynamicPPL.ThreadSafeVarInfo"><code>DynamicPPL.ThreadSafeVarInfo</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">ThreadSafeVarInfo</code></pre><p>A <code>ThreadSafeVarInfo</code> object wraps an <a href="#DynamicPPL.AbstractVarInfo"><code>AbstractVarInfo</code></a> object and an array of log probabilities for thread-safe execution of a probabilistic model.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/threadsafe.jl#L1-L6">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.TypedVarInfo-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}" href="#DynamicPPL.TypedVarInfo-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}"><code>DynamicPPL.TypedVarInfo</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">TypedVarInfo(vi::UntypedVarInfo)</code></pre><p>This function finds all the unique <code>sym</code>s from the instances of <code>VarName{sym}</code> found in <code>vi.metadata.vns</code>. It then extracts the metadata associated with each symbol from the global <code>vi.metadata</code> field. Finally, a new <code>VarInfo</code> is created with a new <code>metadata</code> as a <code>NamedTuple</code> mapping from symbols to type-stable <code>Metadata</code> instances, one for each symbol.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L525-L533">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.VarInfo" href="#DynamicPPL.VarInfo"><code>DynamicPPL.VarInfo</code></a> — <span class="docstring-category">Type</span></header><section><div><pre><code class="language-julia hljs">struct VarInfo{Tmeta, Tlogp} &lt;: AbstractVarInfo
+    metadata::Tmeta
+    logp::Base.RefValue{Tlogp}
+    num_produce::Base.RefValue{Int}
+end</code></pre><p>A light wrapper over one or more instances of <code>Metadata</code>. Let <code>vi</code> be an instance of <code>VarInfo</code>. If <code>vi isa VarInfo{&lt;:Metadata}</code>, then only one <code>Metadata</code> instance is used for all the sybmols. <code>VarInfo{&lt;:Metadata}</code> is aliased <code>UntypedVarInfo</code>. If <code>vi isa VarInfo{&lt;:NamedTuple}</code>, then <code>vi.metadata</code> is a <code>NamedTuple</code> that maps each symbol used on the LHS of <code>~</code> in the model to its <code>Metadata</code> instance. The latter allows for the type specialization of <code>vi</code> after the first sampling iteration when all the symbols have been observed. <code>VarInfo{&lt;:NamedTuple}</code> is aliased <code>TypedVarInfo</code>.</p><p>Note: It is the user&#39;s responsibility to ensure that each &quot;symbol&quot; is visited at least once whenever the model is called, regardless of any stochastic branching. Each symbol refers to a Julia variable and can be a hierarchical array of many random variables, e.g. <code>x[1] ~ ...</code> and <code>x[2] ~ ...</code> both have the same symbol <code>x</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L78-L98">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="AbstractPPL.condition-Tuple{Model}" href="#AbstractPPL.condition-Tuple{Model}"><code>AbstractPPL.condition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">condition(model::Model; values...)
+condition(model::Model, values::NamedTuple)</code></pre><p>Return a <code>Model</code> which now treats the variables in <code>values</code> as observations.</p><p>See also: <a href="#AbstractPPL.decondition-Tuple{DynamicPPL.IsLeaf, Any, Vararg{Any, N} where N}"><code>decondition</code></a>, <a href="#DynamicPPL.conditioned-Tuple{DynamicPPL.AbstractContext}"><code>conditioned</code></a></p><p><strong>Limitations</strong></p><p>This does currently <em>not</em> work with variables that are provided to the model as arguments, e.g. <code>@model function demo(x) ... end</code> means that <code>condition</code> will not affect the variable <code>x</code>.</p><p>Therefore if one wants to make use of <code>condition</code> and <a href="#AbstractPPL.decondition-Tuple{DynamicPPL.IsLeaf, Any, Vararg{Any, N} where N}"><code>decondition</code></a> one should not be specifying any random variables as arguments.</p><p>This is done for the sake of backwards compatibility.</p><p><strong>Examples</strong></p><p><strong>Simple univariate model</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
+
+julia&gt; @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia&gt; model = demo();
+
+julia&gt; model(rng)
+(m = -0.6702516921145671, x = -0.22312984965118443)
+
+julia&gt; # Create a new instance which treats `x` as observed
+       # with value `100.0`, and similarly for `m=1.0`.
+       conditioned_model = condition(model, x=100.0, m=1.0);
+
+julia&gt; conditioned_model(rng)
+(m = 1.0, x = 100.0)
+
+julia&gt; # Let&#39;s only condition on `x = 100.0`.
+       conditioned_model = condition(model, x = 100.0);
+
+julia&gt; conditioned_model(rng)
+(m = 1.3736306979834252, x = 100.0)
+
+julia&gt; # We can also use the nicer `|` syntax.
+       conditioned_model = model | (x = 100.0, );
+
+julia&gt; conditioned_model(rng)
+(m = 1.3095394956381083, x = 100.0)</code></pre><p><strong>Condition only a part of a multivariate variable</strong></p><p>Not only can be condition on multivariate random variables, but we can also use the standard mechanism of setting something to <code>missing</code> in the call to <code>condition</code> to only condition on a part of the variable.</p><pre><code class="language-julia-repl hljs">julia&gt; @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 3 methods)
+
+julia&gt; model = demo_mv();
+
+julia&gt; conditioned_model = condition(model, m = [missing, 1.0]);
+
+julia&gt; conditioned_model(rng) # (✓) `m[1]` sampled, `m[2]` is fixed
+2-element Vector{Float64}:
+ 0.12607002180931043
+ 1.0</code></pre><p>Intuitively one might also expect to be able to write <code>model | (x[1] = 1.0, )</code>. Unfortunately this is not supported due to performance.</p><pre><code class="language-julia-repl hljs">julia&gt; condition(model, var&quot;x[2]&quot; = 1.0)(rng) # (×) `x[2]` is not set to 1.0.
+2-element Vector{Float64}:
+  0.683947930996541
+ -1.019202452456547</code></pre><p>We will likely provide some syntactic sugar for this in the future.</p><p><strong>Nested models</strong></p><p><code>condition</code> of course also supports the use of nested models through the use of <a href="#DynamicPPL.@submodel-Tuple{Any, Any}"><code>@submodel</code></a>.</p><pre><code class="language-julia-repl hljs">julia&gt; @model demo_inner() = m ~ Normal()
+demo_inner (generic function with 2 methods)
+
+julia&gt; @model function demo_outer()
+           m = @submodel demo_inner()
+           return m
+       end
+demo_outer (generic function with 2 methods)
+
+julia&gt; model = demo_outer();
+
+julia&gt; model(rng)
+-0.7935128416361353
+
+julia&gt; conditioned_model = model | (m = 1.0, );
+
+julia&gt; conditioned_model(rng)
+1.0</code></pre><p>But one needs to be careful when prefixing variables in the nested models:</p><pre><code class="language-julia-repl hljs">julia&gt; @model function demo_outer_prefix()
+           m = @submodel inner demo_inner()
+           return m
+       end
+demo_outer_prefix (generic function with 2 methods)
+
+julia&gt; # This doesn&#39;t work now!
+       conditioned_model = demo_outer_prefix() | (m = 1.0, );
+
+julia&gt; conditioned_model(rng)
+1.7747246334368165
+
+julia&gt; # `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
+       conditioned_model = demo_outer_prefix() | (var&quot;inner.m&quot; = 1.0, );
+
+julia&gt; conditioned_model(rng)
+1.0
+
+julia&gt; # Note that the above `var&quot;...&quot;` is just standard Julia syntax:
+       keys((var&quot;inner.m&quot; = 1.0, ))
+(Symbol(&quot;inner.m&quot;),)</code></pre><p>The difference is maybe more obvious once we look at how these different in their trace/<code>VarInfo</code>:</p><pre><code class="language-julia-repl hljs">julia&gt; keys(VarInfo(demo_outer()))
+1-element Vector{VarName{:m, Tuple{}}}:
+ m
+
+julia&gt; keys(VarInfo(demo_outer_prefix()))
+1-element Vector{VarName{Symbol(&quot;inner.m&quot;), Tuple{}}}:
+ inner.m</code></pre><p>From this we can tell what the correct way to condition <code>m</code> within <code>demo_inner</code> is in the two different models.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L95-L256">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="AbstractPPL.condition-Tuple{}" href="#AbstractPPL.condition-Tuple{}"><code>AbstractPPL.condition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">condition([context::AbstractContext,] values::NamedTuple)
+condition([context::AbstractContext]; values...)</code></pre><p>Return <code>ConditionContext</code> with <code>values</code> and <code>context</code> if <code>values</code> is non-empty, otherwise return <code>context</code> which is <a href="#DynamicPPL.DefaultContext"><code>DefaultContext</code></a> by default.</p><p>See also: <a href="#AbstractPPL.decondition-Tuple{DynamicPPL.IsLeaf, Any, Vararg{Any, N} where N}"><code>decondition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L360-L368">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="AbstractPPL.decondition-Tuple{DynamicPPL.IsLeaf, Any, Vararg{Any, N} where N}" href="#AbstractPPL.decondition-Tuple{DynamicPPL.IsLeaf, Any, Vararg{Any, N} where N}"><code>AbstractPPL.decondition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">decondition(context::AbstractContext, syms...)</code></pre><p>Return <code>context</code> but with <code>syms</code> no longer conditioned on.</p><p>Note that this recursively traverses contexts, deconditioning all along the way.</p><p>See also: <a href="#AbstractPPL.condition-Tuple{Model}"><code>condition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L379-L387">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="AbstractPPL.decondition-Tuple{Model, Vararg{Any, N} where N}" href="#AbstractPPL.decondition-Tuple{Model, Vararg{Any, N} where N}"><code>AbstractPPL.decondition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">decondition(model::Model)
+decondition(model::Model, syms...)</code></pre><p>Return a <code>Model</code> for which <code>syms...</code> are <em>not</em> considered observations. If no <code>syms</code> are provided, then all variables currently considered observations will no longer be.</p><p>This is essentially the inverse of <a href="#AbstractPPL.condition-Tuple{Model}"><code>condition</code></a>. This also means that it suffers from the same limitiations.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using Distributions; using StableRNGs; rng = StableRNG(42); # For reproducibility.
+
+julia&gt; @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia&gt; conditioned_model = condition(demo(), m = 1.0, x = 10.0);
+
+julia&gt; conditioned_model(rng)
+(m = 1.0, x = 10.0)
+
+julia&gt; model = decondition(conditioned_model, :m);
+
+julia&gt; model(rng)
+(m = -0.6702516921145671, x = 10.0)
+
+julia&gt; # `decondition` multiple at once:
+       decondition(model, :m, :x)(rng)
+(m = 0.4471218424633827, x = 1.820752540446808)
+
+julia&gt; # `decondition` without any symbols will `decondition` all variables.
+       decondition(model)(rng)
+(m = 1.3095394956381083, x = 1.4356095174474188)
+
+julia&gt; # Usage of `Val` to perform `decondition` at compile-time if possible
+       # is also supported.
+       model = decondition(conditioned_model, Val{:m}());
+
+julia&gt; model(rng)
+(m = 0.683947930996541, x = 10.0)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L262-L309">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.:|-Tuple{Model, Any}" href="#Base.:|-Tuple{Model, Any}"><code>Base.:|</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">model | (x = 1.0, ...)</code></pre><p>Return a <code>Model</code> which now treats variables on the right-hand side as observations.</p><p>See <a href="#AbstractPPL.condition-Tuple{Model}"><code>condition</code></a> for more information and examples.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L86-L92">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.empty!-Tuple{DynamicPPL.Metadata}" href="#Base.empty!-Tuple{DynamicPPL.Metadata}"><code>Base.empty!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">empty!(meta::Metadata)</code></pre><p>Empty the fields of <code>meta</code>.</p><p>This is useful when using a sampling algorithm that assumes an empty <code>meta</code>, e.g. <code>SMC</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L197-L203">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.empty!-Tuple{VarInfo}" href="#Base.empty!-Tuple{VarInfo}"><code>Base.empty!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">empty!(vi::VarInfo)</code></pre><p>Empty the fields of <code>vi.metadata</code> and reset <code>vi.logp[]</code> and <code>vi.num_produce[]</code> to zeros.</p><p>This is useful when using a sampling algorithm that assumes an empty <code>vi</code>, e.g. <code>SMC</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L590-L597">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.getindex-Tuple{AbstractVarInfo, SampleFromPrior}" href="#Base.getindex-Tuple{AbstractVarInfo, SampleFromPrior}"><code>Base.getindex</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getindex(vi::VarInfo, spl::Union{SampleFromPrior, Sampler})</code></pre><p>Return the current value(s) of the random variables sampled by <code>spl</code> in <code>vi</code>.</p><p>The value(s) may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L926-L932">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.getindex-Tuple{AbstractVarInfo, VarName}" href="#Base.getindex-Tuple{AbstractVarInfo, VarName}"><code>Base.getindex</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getindex(vi::VarInfo, vn::VarName)
+getindex(vi::VarInfo, vns::Vector{&lt;:VarName})</code></pre><p>Return the current value(s) of <code>vn</code> (<code>vns</code>) in <code>vi</code> in the support of its (their) distribution(s).</p><p>If the value(s) is (are) transformed to the Euclidean space, it is (they are) transformed back.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L897-L906">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.haskey-Tuple{VarInfo, VarName}" href="#Base.haskey-Tuple{VarInfo, VarName}"><code>Base.haskey</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">haskey(vi::VarInfo, vn::VarName)</code></pre><p>Check whether <code>vn</code> has been sampled in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1030-L1034">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.isempty-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}" href="#Base.isempty-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}"><code>Base.isempty</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">isempty(vi::VarInfo)</code></pre><p>Return true if <code>vi</code> is empty and false otherwise.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L716-L720">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.keys-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}" href="#Base.keys-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}"><code>Base.keys</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">keys(vi::AbstractVarInfo)</code></pre><p>Return an iterator over all <code>vns</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L614-L618">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.nameof-Tuple{Model}" href="#Base.nameof-Tuple{Model}"><code>Base.nameof</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">nameof(model::Model)</code></pre><p>Get the name of the <code>model</code> as <code>Symbol</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L483-L487">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution, DynamicPPL.Selector}" href="#Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution, DynamicPPL.Selector}"><code>Base.push!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">push!(vi::VarInfo, vn::VarName, r, dist::Distribution, gid::Selector)</code></pre><p>Push a new random variable <code>vn</code> with a sampled value <code>r</code> sampled with a sampler of selector <code>gid</code> from a distribution <code>dist</code> to <code>VarInfo</code> <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1117-L1122">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution, Sampler}" href="#Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution, Sampler}"><code>Base.push!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">push!(vi::VarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)</code></pre><p>Push a new random variable <code>vn</code> with a sampled value <code>r</code> sampled with a sampler <code>spl</code> from a distribution <code>dist</code> to <code>VarInfo</code> <code>vi</code>.</p><p>The sampler is passed here to invalidate its cache where defined.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1100-L1107">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution}" href="#Base.push!-Tuple{AbstractVarInfo, VarName, Any, Distributions.Distribution}"><code>Base.push!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">push!(vi::VarInfo, vn::VarName, r, dist::Distribution)</code></pre><p>Push a new random variable <code>vn</code> with a sampled value <code>r</code> from a distribution <code>dist</code> to the <code>VarInfo</code> <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1090-L1095">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.setindex!-Tuple{AbstractVarInfo, Any, SampleFromPrior}" href="#Base.setindex!-Tuple{AbstractVarInfo, Any, SampleFromPrior}"><code>Base.setindex!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})</code></pre><p>Set the current value(s) of the random variables sampled by <code>spl</code> in <code>vi</code> to <code>val</code>.</p><p>The value(s) may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L960-L966">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="Base.setindex!-Tuple{AbstractVarInfo, Any, VarName}" href="#Base.setindex!-Tuple{AbstractVarInfo, Any, VarName}"><code>Base.setindex!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setindex!(vi::VarInfo, val, vn::VarName)</code></pre><p>Set the current value(s) of the random variable <code>vn</code> in <code>vi</code> to <code>val</code>.</p><p>The value(s) may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L951-L957">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL._apply!-Tuple{Any, AbstractVarInfo, Any, Any}" href="#DynamicPPL._apply!-Tuple{Any, AbstractVarInfo, Any, Any}"><code>DynamicPPL._apply!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">_apply!(kernel!, vi::AbstractVarInfo, values, keys)</code></pre><p>Calls <code>kernel!(vi, vn, values, keys)</code> for every <code>vn</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1255-L1259">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL._evaluate-Union{Tuple{argnames}, Tuple{_F}, Tuple{Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}, Any, Any}} where {_F, argnames}" href="#DynamicPPL._evaluate-Union{Tuple{argnames}, Tuple{_F}, Tuple{Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}, Any, Any}} where {_F, argnames}"><code>DynamicPPL._evaluate</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">_evaluate(model::Model, varinfo, context)</code></pre><p>Evaluate the <code>model</code> with the arguments matching the given <code>context</code> and <code>varinfo</code> object.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L443-L447">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.acclogp!-Tuple{VarInfo, Any}" href="#DynamicPPL.acclogp!-Tuple{VarInfo, Any}"><code>DynamicPPL.acclogp!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">acclogp!(vi::VarInfo, logp)</code></pre><p>Add <code>logp</code> to the value of the log of the joint probability of the observed data and parameters sampled in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L668-L673">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.build_model_info-Tuple{Any}" href="#DynamicPPL.build_model_info-Tuple{Any}"><code>DynamicPPL.build_model_info</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">build_model_info(input_expr)</code></pre><p>Builds the <code>model_info</code> dictionary from the model&#39;s expression.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L215-L219">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.build_output-Tuple{Any, Any}" href="#DynamicPPL.build_output-Tuple{Any, Any}"><code>DynamicPPL.build_output</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">build_output(modelinfo, linenumbernode)</code></pre><p>Builds the output expression.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L474-L478">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.check_tilde_rhs-Tuple{Any}" href="#DynamicPPL.check_tilde_rhs-Tuple{Any}"><code>DynamicPPL.check_tilde_rhs</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">check_tilde_rhs(x)</code></pre><p>Check if the right-hand side <code>x</code> of a <code>~</code> is a <code>Distribution</code> or an array of <code>Distributions</code>, then return <code>x</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L98-L103">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.childcontext" href="#DynamicPPL.childcontext"><code>DynamicPPL.childcontext</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">childcontext(context)</code></pre><p>Return the descendant context of <code>context</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L33-L37">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.conditioned-Tuple{DynamicPPL.AbstractContext}" href="#DynamicPPL.conditioned-Tuple{DynamicPPL.AbstractContext}"><code>DynamicPPL.conditioned</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">conditioned(context::AbstractContext)</code></pre><p>Return <code>NamedTuple</code> of values that are conditioned on under context`.</p><p>Note that this will recursively traverse the context stack and return a merged version of the condition values.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L413-L420">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.conditioned-Tuple{Model}" href="#DynamicPPL.conditioned-Tuple{Model}"><code>DynamicPPL.conditioned</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">conditioned(model::Model)</code></pre><p>Return <code>NamedTuple</code> of values that are conditioned on under <code>model</code>.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using Distributions
+
+julia&gt; using DynamicPPL: conditioned, contextualize
+
+julia&gt; @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+       end
+demo (generic function with 2 methods)
+
+julia&gt; m = demo();
+
+julia&gt; # Returns all the variables we have conditioned on + their values.
+       conditioned(condition(m, x=100.0, m=1.0))
+(x = 100.0, m = 1.0)
+
+julia&gt; # Nested ones also work (note that `PrefixContext` does nothing to the result).
+       cm = condition(contextualize(m, PrefixContext{:a}(condition(m=1.0))), x=100.0);
+
+julia&gt; conditioned(cm)
+(x = 100.0, m = 1.0)
+
+julia&gt; # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
+       # `a.m` is treated as a random variable.
+       keys(VarInfo(cm))
+1-element Vector{VarName{Symbol(&quot;a.m&quot;), Tuple{}}}:
+ a.m
+
+julia&gt; # If we instead condition on `a.m`, `m` in the model will be considered an observation.
+       cm = condition(contextualize(m, PrefixContext{:a}(condition(var&quot;a.m&quot;=1.0))), x=100.0);
+
+julia&gt; conditioned(cm)
+(x = 100.0, a.m = 1.0)
+
+julia&gt; keys(VarInfo(cm)) # &lt;= no variables are sampled
+Any[]</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L321-L365">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.contextual_isassumption-Tuple{DynamicPPL.IsLeaf, Any, Any}" href="#DynamicPPL.contextual_isassumption-Tuple{DynamicPPL.IsLeaf, Any, Any}"><code>DynamicPPL.contextual_isassumption</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">contextual_isassumption(context, vn)</code></pre><p>Return <code>true</code> if <code>vn</code> is considered an assumption by <code>context</code>.</p><p>The default implementation for <code>AbstractContext</code> always returns <code>true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L49-L55">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.dot_tilde_assume!-NTuple{5, Any}" href="#DynamicPPL.dot_tilde_assume!-NTuple{5, Any}"><code>DynamicPPL.dot_tilde_assume!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">dot_tilde_assume!(context, right, left, vn, vi)</code></pre><p>Handle broadcasted assumed variables, e.g., <code>x .~ MvNormal()</code> (where <code>x</code> does not occur in the model inputs), accumulate the log probability, and return the sampled value.</p><p>Falls back to <code>dot_tilde_assume(context, right, left, vn, vi)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L366-L373">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.dot_tilde_assume-Tuple{SamplingContext, Any, Any, Any, Any}" href="#DynamicPPL.dot_tilde_assume-Tuple{SamplingContext, Any, Any, Any, Any}"><code>DynamicPPL.dot_tilde_assume</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">dot_tilde_assume(context::SamplingContext, right, left, vn, vi)</code></pre><p>Handle broadcasted assumed variables, e.g., <code>x .~ MvNormal()</code> (where <code>x</code> does not occur in the model inputs), accumulate the log probability, and return the sampled value for a context associated with a sampler.</p><p>Falls back to</p><pre><code class="language-julia hljs">dot_tilde_assume(context.rng, context.context, context.sampler, right, left, vn, vi)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L239-L250">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.dot_tilde_observe!-NTuple{4, Any}" href="#DynamicPPL.dot_tilde_observe!-NTuple{4, Any}"><code>DynamicPPL.dot_tilde_observe!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">dot_tilde_observe!(context, right, left, vi)</code></pre><p>Handle broadcasted observed constants, e.g., <code>[1.0] .~ MvNormal()</code>, accumulate the log probability, and return the observed value.</p><p>Falls back to <code>dot_tilde_observe(context, right, left, vi)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L584-L591">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.dot_tilde_observe!-NTuple{5, Any}" href="#DynamicPPL.dot_tilde_observe!-NTuple{5, Any}"><code>DynamicPPL.dot_tilde_observe!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">dot_tilde_observe!(context, right, left, vname, vi)</code></pre><p>Handle broadcasted observed values, e.g., <code>x .~ MvNormal()</code> (where <code>x</code> does occur in the model inputs), accumulate the log probability, and return the observed value.</p><p>Falls back to <code>dot_tilde_observe!(context, right, left, vi)</code> ignoring the information about variable name and indices; if needed, these can be accessed through this function, though.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L571-L579">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.dot_tilde_observe-Tuple{SamplingContext, Any, Any, Any}" href="#DynamicPPL.dot_tilde_observe-Tuple{SamplingContext, Any, Any, Any}"><code>DynamicPPL.dot_tilde_observe</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">dot_tilde_observe(context::SamplingContext, right, left, vi)</code></pre><p>Handle broadcasted observed constants, e.g., <code>[1.0] .~ MvNormal()</code>, accumulate the log probability, and return the observed value for a context associated with a sampler.</p><p>Falls back to <code>dot_tilde_observe(context.context, context.sampler, right, left, vi)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L537-L544">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.evaluate_threadsafe-Tuple{Any, Any, Any}" href="#DynamicPPL.evaluate_threadsafe-Tuple{Any, Any, Any}"><code>DynamicPPL.evaluate_threadsafe</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">evaluate_threadsafe(model, varinfo, context)</code></pre><p>Evaluate the <code>model</code> with <code>varinfo</code> wrapped inside a <code>ThreadSafeVarInfo</code>.</p><p>With the wrapper, Julia&#39;s multithreading can be used for observe statements in the <code>model</code> but parallel sampling will lead to undefined behaviour. This method is not exposed and supposed to be used only internally in DynamicPPL.</p><p>See also: <a href="#DynamicPPL.evaluate_threadunsafe-Tuple{Any, Any, Any}"><code>evaluate_threadunsafe</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L424-L434">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.evaluate_threadunsafe-Tuple{Any, Any, Any}" href="#DynamicPPL.evaluate_threadunsafe-Tuple{Any, Any, Any}"><code>DynamicPPL.evaluate_threadunsafe</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">evaluate_threadunsafe(model, varinfo, context)</code></pre><p>Evaluate the <code>model</code> without wrapping <code>varinfo</code> inside a <code>ThreadSafeVarInfo</code>.</p><p>If the <code>model</code> makes use of Julia&#39;s multithreading this will lead to undefined behaviour. This method is not exposed and supposed to be used only internally in DynamicPPL.</p><p>See also: <a href="#DynamicPPL.evaluate_threadsafe-Tuple{Any, Any, Any}"><code>evaluate_threadsafe</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L409-L418">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.generate_dot_tilde-Tuple{Any, Any}" href="#DynamicPPL.generate_dot_tilde-Tuple{Any, Any}"><code>DynamicPPL.generate_dot_tilde</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">generate_dot_tilde(left, right)</code></pre><p>Generate the expression that replaces <code>left .~ right</code> in the model body.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L421-L425">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.generate_mainbody-Tuple{Any, Any, Any}" href="#DynamicPPL.generate_mainbody-Tuple{Any, Any, Any}"><code>DynamicPPL.generate_mainbody</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">generate_mainbody(mod, expr, warn)</code></pre><p>Generate the body of the main evaluation function from expression <code>expr</code> and arguments <code>args</code>.</p><p>If <code>warn</code> is true, a warning is displayed if internal variables are used in the model definition.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L296-L304">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.generate_tilde-Tuple{Any, Any}" href="#DynamicPPL.generate_tilde-Tuple{Any, Any}"><code>DynamicPPL.generate_tilde</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">generate_tilde(left, right)</code></pre><p>Generate an <code>observe</code> expression for data variables and <code>assume</code> expression for parameter variables.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L365-L370">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.generated_quantities-Tuple{Model, AbstractMCMC.AbstractChains}" href="#DynamicPPL.generated_quantities-Tuple{Model, AbstractMCMC.AbstractChains}"><code>DynamicPPL.generated_quantities</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">generated_quantities(model::Model, chain::AbstractChains)</code></pre><p>Execute <code>model</code> for each of the samples in <code>chain</code> and return an array of the values returned by the <code>model</code> for each sample.</p><p><strong>Examples</strong></p><p><strong>General</strong></p><p>Often you might have additional quantities computed inside the model that you want to inspect, e.g.</p><pre><code class="language-julia hljs">@model function demo(x)
+    # sample and observe
+    θ ~ Prior()
+    x ~ Likelihood()
+    return interesting_quantity(θ, x)
+end
+m = demo(data)
+chain = sample(m, alg, n)
+# To inspect the `interesting_quantity(θ, x)` where `θ` is replaced by samples
+# from the posterior/`chain`:
+generated_quantities(m, chain) # &lt;= results in a `Vector` of returned values
+                               #    from `interesting_quantity(θ, x)`</code></pre><p><strong>Concrete (and simple)</strong></p><pre><code class="language-julia hljs">julia&gt; using DynamicPPL, Turing
+
+julia&gt; @model function demo(xs)
+           s ~ InverseGamma(2, 3)
+           m_shifted ~ Normal(10, √s)
+           m = m_shifted - 10
+
+           for i in eachindex(xs)
+               xs[i] ~ Normal(m, √s)
+           end
+
+           return (m, )
+       end
+demo (generic function with 1 method)
+
+julia&gt; model = demo(randn(10));
+
+julia&gt; chain = sample(model, MH(), 10);
+
+julia&gt; generated_quantities(model, chain)
+10×1 Array{Tuple{Float64},2}:
+ (2.1964758025119338,)
+ (2.1964758025119338,)
+ (0.09270081916291417,)
+ (0.09270081916291417,)
+ (0.09270081916291417,)
+ (0.09270081916291417,)
+ (0.09270081916291417,)
+ (0.043088571494005024,)
+ (-0.16489786710222099,)
+ (-0.16489786710222099,)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L526-L584">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.generated_quantities-Tuple{Model, NamedTuple}" href="#DynamicPPL.generated_quantities-Tuple{Model, NamedTuple}"><code>DynamicPPL.generated_quantities</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">generated_quantities(model::Model, parameters::NamedTuple)
+generated_quantities(model::Model, values, keys)
+generated_quantities(model::Model, values, keys)</code></pre><p>Execute <code>model</code> with variables <code>keys</code> set to <code>values</code> and return the values returned by the <code>model</code>.</p><p>If a <code>NamedTuple</code> is given, <code>keys=keys(parameters)</code> and <code>values=values(parameters)</code>.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL, Distributions
+
+julia&gt; @model function demo(xs)
+           s ~ InverseGamma(2, 3)
+           m_shifted ~ Normal(10, √s)
+           m = m_shifted - 10
+           for i in eachindex(xs)
+               xs[i] ~ Normal(m, √s)
+           end
+           return (m, )
+       end
+demo (generic function with 2 methods)
+
+julia&gt; model = demo(randn(10));
+
+julia&gt; parameters = (; s = 1.0, m_shifted=10);
+
+julia&gt; generated_quantities(model, parameters)
+(0.0,)
+
+julia&gt; generated_quantities(model, values(parameters), keys(parameters))
+(0.0,)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L594-L628">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.get_matching_type-Union{Tuple{T}, Tuple{AbstractMCMC.AbstractSampler, Any, Type{T}}} where T" href="#DynamicPPL.get_matching_type-Union{Tuple{T}, Tuple{AbstractMCMC.AbstractSampler, Any, Type{T}}} where T"><code>DynamicPPL.get_matching_type</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T}</code></pre><p>Get the specialized version of type <code>T</code> for sampler <code>spl</code>.</p><p>For example, if <code>T === Float64</code> and <code>spl::Hamiltonian</code>, the matching type is <code>eltype(vi[spl])</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L578-L585">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.get_num_produce-Tuple{VarInfo}" href="#DynamicPPL.get_num_produce-Tuple{VarInfo}"><code>DynamicPPL.get_num_produce</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_num_produce(vi::VarInfo)</code></pre><p>Return the <code>num_produce</code> of <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L687-L691">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getall-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}" href="#DynamicPPL.getall-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}"><code>DynamicPPL.getall</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getall(vi::VarInfo)</code></pre><p>Return the values of all the variables in <code>vi</code>.</p><p>The values may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L315-L321">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getargnames-Union{Tuple{Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}, Tuple{_F}, Tuple{argnames}} where {argnames, _F}" href="#DynamicPPL.getargnames-Union{Tuple{Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}, Tuple{_F}, Tuple{argnames}} where {argnames, _F}"><code>DynamicPPL.getargnames</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getargnames(model::Model)</code></pre><p>Get a tuple of the argument names of the <code>model</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L469-L473">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getargs_dottilde-Tuple{Any}" href="#DynamicPPL.getargs_dottilde-Tuple{Any}"><code>DynamicPPL.getargs_dottilde</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getargs_dottilde(x)</code></pre><p>Return the arguments <code>L</code> and <code>R</code>, if <code>x</code> is an expression of the form <code>L .~ R</code> or <code>(~).(L, R)</code>, or <code>nothing</code> otherwise.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/utils.jl#L16-L21">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getargs_tilde-Tuple{Any}" href="#DynamicPPL.getargs_tilde-Tuple{Any}"><code>DynamicPPL.getargs_tilde</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getargs_tilde(x)</code></pre><p>Return the arguments <code>L</code> and <code>R</code>, if <code>x</code> is an expression of the form <code>L ~ R</code>, or <code>nothing</code> otherwise.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/utils.jl#L33-L38">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getdist-Tuple{VarInfo, VarName}" href="#DynamicPPL.getdist-Tuple{VarInfo, VarName}"><code>DynamicPPL.getdist</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getdist(vi::VarInfo, vn::VarName)</code></pre><p>Return the distribution from which <code>vn</code> was sampled in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L279-L283">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getgid-Tuple{VarInfo, VarName}" href="#DynamicPPL.getgid-Tuple{VarInfo, VarName}"><code>DynamicPPL.getgid</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getgid(vi::VarInfo, vn::VarName)</code></pre><p>Return the set of sampler selectors associated with <code>vn</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L353-L357">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getidx-Tuple{VarInfo, VarName}" href="#DynamicPPL.getidx-Tuple{VarInfo, VarName}"><code>DynamicPPL.getidx</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getidx(vi::VarInfo, vn::VarName)</code></pre><p>Return the index of <code>vn</code> in the metadata of <code>vi</code> corresponding to <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L256-L260">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getlogp-Tuple{AbstractVarInfo}" href="#DynamicPPL.getlogp-Tuple{AbstractVarInfo}"><code>DynamicPPL.getlogp</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getlogp(vi::VarInfo)</code></pre><p>Return the log of the joint probability of the observed data and parameters sampled in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L649-L654">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getmetadata-Tuple{VarInfo, VarName}" href="#DynamicPPL.getmetadata-Tuple{VarInfo, VarName}"><code>DynamicPPL.getmetadata</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getmetadata(vi::VarInfo, vn::VarName)</code></pre><p>Return the metadata in <code>vi</code> that belongs to <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L248-L252">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getmissings-Union{Tuple{Model{_F, _a, _d, missings, Targs, Tdefaults, Ctx} where {Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}, Tuple{_d}, Tuple{_a}, Tuple{_F}, Tuple{missings}} where {missings, _F, _a, _d}" href="#DynamicPPL.getmissings-Union{Tuple{Model{_F, _a, _d, missings, Targs, Tdefaults, Ctx} where {Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}, Tuple{_d}, Tuple{_a}, Tuple{_F}, Tuple{missings}} where {missings, _F, _a, _d}"><code>DynamicPPL.getmissings</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getmissings(model::Model)</code></pre><p>Get a tuple of the names of the missing arguments of the <code>model</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L476-L480">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getrange-Tuple{VarInfo, VarName}" href="#DynamicPPL.getrange-Tuple{VarInfo, VarName}"><code>DynamicPPL.getrange</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getrange(vi::VarInfo, vn::VarName)</code></pre><p>Return the index range of <code>vn</code> in the metadata of <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L263-L267">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getranges-Tuple{AbstractVarInfo, Vector{var&quot;#s78&quot;} where var&quot;#s78&quot;&lt;:VarName}" href="#DynamicPPL.getranges-Tuple{AbstractVarInfo, Vector{var&quot;#s78&quot;} where var&quot;#s78&quot;&lt;:VarName}"><code>DynamicPPL.getranges</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getranges(vi::AbstractVarInfo, vns::Vector{&lt;:VarName})</code></pre><p>Return the indices of <code>vns</code> in the metadata of <code>vi</code> corresponding to <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L270-L274">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getval-Tuple{AbstractVarInfo, Vector{var&quot;#s78&quot;} where var&quot;#s78&quot;&lt;:VarName}" href="#DynamicPPL.getval-Tuple{AbstractVarInfo, Vector{var&quot;#s78&quot;} where var&quot;#s78&quot;&lt;:VarName}"><code>DynamicPPL.getval</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getval(vi::VarInfo, vns::Vector{&lt;:VarName})</code></pre><p>Return the value(s) of <code>vns</code>.</p><p>The values may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L304-L310">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getval-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Union{Int64, UnitRange, Vector{Int64}}}" href="#DynamicPPL.getval-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Union{Int64, UnitRange, Vector{Int64}}}"><code>DynamicPPL.getval</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getval(vi::UntypedVarInfo, vview::Union{Int, UnitRange, Vector{Int}})</code></pre><p>Return a view <code>vi.vals[vview]</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L228-L232">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getval-Tuple{VarInfo, VarName}" href="#DynamicPPL.getval-Tuple{VarInfo, VarName}"><code>DynamicPPL.getval</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getval(vi::VarInfo, vn::VarName)</code></pre><p>Return the value(s) of <code>vn</code>.</p><p>The values may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L286-L292">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getvalue-Tuple{DynamicPPL.AbstractContext, Any}" href="#DynamicPPL.getvalue-Tuple{DynamicPPL.AbstractContext, Any}"><code>DynamicPPL.getvalue</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getvalue(context, vn)</code></pre><p>Return value of <code>vn</code> in <code>context</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L306-L310">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.getvalue_nested-Tuple{DynamicPPL.AbstractContext, Any}" href="#DynamicPPL.getvalue_nested-Tuple{DynamicPPL.AbstractContext, Any}"><code>DynamicPPL.getvalue_nested</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">getvalue_nested(context, vn)</code></pre><p>Return the value of the parameter corresponding to <code>vn</code> from <code>context</code> or its descendants.</p><p>This is contrast to <a href="#DynamicPPL.getvalue-Tuple{DynamicPPL.AbstractContext, Any}"><code>getvalue</code></a> which only returns the value <code>vn</code> in <code>context</code>, not recursively looking into its descendants.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L335-L342">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.hasvalue-Tuple{Any, Any}" href="#DynamicPPL.hasvalue-Tuple{Any, Any}"><code>DynamicPPL.hasvalue</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">hasvalue(context, vn)</code></pre><p>Return <code>true</code> if <code>vn</code> is found in <code>context</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L290-L294">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.hasvalue_nested-Tuple{DynamicPPL.AbstractContext, Any}" href="#DynamicPPL.hasvalue_nested-Tuple{DynamicPPL.AbstractContext, Any}"><code>DynamicPPL.hasvalue_nested</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">hasvalue_nested(context, vn)</code></pre><p>Return <code>true</code> if <code>vn</code> is found in <code>context</code> or any of its descendants.</p><p>This is contrast to <a href="#DynamicPPL.hasvalue-Tuple{Any, Any}"><code>hasvalue</code></a> which only checks for <code>vn</code> in <code>context</code>, not recursively checking if <code>vn</code> is in any of its descendants.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L316-L323">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.inargnames-Union{Tuple{_F}, Tuple{argnames}, Tuple{s}, Tuple{VarName{s, T} where T&lt;:Setfield.Lens, Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}} where {s, argnames, _F}" href="#DynamicPPL.inargnames-Union{Tuple{_F}, Tuple{argnames}, Tuple{s}, Tuple{VarName{s, T} where T&lt;:Setfield.Lens, Model{_F, argnames, defaultnames, missings, Targs, Tdefaults, Ctx} where {defaultnames, missings, Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}} where {s, argnames, _F}"><code>DynamicPPL.inargnames</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">inargnames(varname::VarName, model::Model)</code></pre><p>Statically check whether the variable of name <code>varname</code> is an argument of the <code>model</code>.</p><p>Possibly existing indices of <code>varname</code> are neglected.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varname.jl#L18-L24">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.increment_num_produce!-Tuple{VarInfo}" href="#DynamicPPL.increment_num_produce!-Tuple{VarInfo}"><code>DynamicPPL.increment_num_produce!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">increment_num_produce!(vi::VarInfo)</code></pre><p>Add 1 to <code>num_produce</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L701-L705">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.initialsampler-Tuple{Sampler}" href="#DynamicPPL.initialsampler-Tuple{Sampler}"><code>DynamicPPL.initialsampler</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">initialsampler(sampler::Sampler)</code></pre><p>Return the sampler that is used for generating the initial parameters when sampling with <code>sampler</code>.</p><p>By default, it returns an instance of <a href="#DynamicPPL.SampleFromPrior"><code>SampleFromPrior</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L109-L116">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.initialstep" href="#DynamicPPL.initialstep"><code>DynamicPPL.initialstep</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">initialstep(rng, model, sampler, varinfo; kwargs...)</code></pre><p>Perform the initial sampling step of the <code>sampler</code> for the <code>model</code>.</p><p>The <code>varinfo</code> contains the initial samples, which can be provided by the user or sampled randomly.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L149-L156">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.inmissings-Union{Tuple{_T}, Tuple{_a}, Tuple{_F}, Tuple{missings}, Tuple{s}, Tuple{VarName{s, T} where T&lt;:Setfield.Lens, Model{_F, _a, _T, missings, Targs, Tdefaults, Ctx} where {Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}} where {s, missings, _F, _a, _T}" href="#DynamicPPL.inmissings-Union{Tuple{_T}, Tuple{_a}, Tuple{_F}, Tuple{missings}, Tuple{s}, Tuple{VarName{s, T} where T&lt;:Setfield.Lens, Model{_F, _a, _T, missings, Targs, Tdefaults, Ctx} where {Targs, Tdefaults, Ctx&lt;:DynamicPPL.AbstractContext}}} where {s, missings, _F, _a, _T}"><code>DynamicPPL.inmissings</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">inmissings(varname::VarName, model::Model)</code></pre><p>Statically check whether the variable of name <code>varname</code> is a statically declared unobserved variable of the <code>model</code>.</p><p>Possibly existing indices of <code>varname</code> are neglected.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varname.jl#L29-L36">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.invlink!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, AbstractMCMC.AbstractSampler}" href="#DynamicPPL.invlink!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, AbstractMCMC.AbstractSampler}"><code>DynamicPPL.invlink!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">invlink!(vi::VarInfo, spl::AbstractSampler)</code></pre><p>Transform the values of the random variables sampled by <code>spl</code> in <code>vi</code> from the Euclidean space back to the support of their distributions and sets their corresponding <code>&quot;trans&quot;</code> flag values to <code>false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L801-L807">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.is_flagged-Tuple{VarInfo, VarName, String}" href="#DynamicPPL.is_flagged-Tuple{VarInfo, VarName, String}"><code>DynamicPPL.is_flagged</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">is_flagged(vi::VarInfo, vn::VarName, flag::String)</code></pre><p>Check whether <code>vn</code> has a true value for <code>flag</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1169-L1173">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.isassumption-Tuple{Union{Expr, Symbol}}" href="#DynamicPPL.isassumption-Tuple{Union{Expr, Symbol}}"><code>DynamicPPL.isassumption</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">isassumption(expr)</code></pre><p>Return an expression that can be evaluated to check if <code>expr</code> is an assumption in the model.</p><p>Let <code>expr</code> be <code>:(x[1])</code>. It is an assumption in the following cases:     1. <code>x</code> is not among the input data to the model,     2. <code>x</code> is among the input data to the model but with a value <code>missing</code>, or     3. <code>x</code> is among the input data to the model with a value other than missing,        but <code>x[1] === missing</code>.</p><p>When <code>expr</code> is not an expression or symbol (i.e., a literal), this expands to <code>false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L3-L16">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.islinked-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Union{SampleFromPrior, Sampler}}" href="#DynamicPPL.islinked-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Union{SampleFromPrior, Sampler}}"><code>DynamicPPL.islinked</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})</code></pre><p>Check whether <code>vi</code> is in the transformed space for a particular sampler <code>spl</code>.</p><p>Turing&#39;s Hamiltonian samplers use the <code>link</code> and <code>invlink</code> functions from  <a href="https://github.com/TuringLang/Bijectors.jl">Bijectors.jl</a> to map a constrained variable (for example, one bounded to the space <code>[0, 1]</code>) from its constrained space to the set of  real numbers. <code>islinked</code> checks if the number is in the constrained space or the real space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L869-L878">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.isliteral-Tuple{Any}" href="#DynamicPPL.isliteral-Tuple{Any}"><code>DynamicPPL.isliteral</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">isliteral(expr)</code></pre><p>Return <code>true</code> if <code>expr</code> is a literal, e.g. <code>1.0</code> or <code>[1.0, ]</code>, and <code>false</code> otherwise.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L89-L93">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.istrans-Tuple{AbstractVarInfo, VarName}" href="#DynamicPPL.istrans-Tuple{AbstractVarInfo, VarName}"><code>DynamicPPL.istrans</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">istrans(vi::VarInfo, vn::VarName)</code></pre><p>Return true if <code>vn</code>&#39;s values in <code>vi</code> are transformed to Euclidean space, and false if they are in the support of <code>vn</code>&#39;s distribution.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L641-L646">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.leafcontext-Tuple{Any}" href="#DynamicPPL.leafcontext-Tuple{Any}"><code>DynamicPPL.leafcontext</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">leafcontext(context)</code></pre><p>Return the leaf of <code>context</code>, i.e. the first descendant context that <code>IsLeaf</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L61-L65">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.link!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Sampler}" href="#DynamicPPL.link!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Sampler}"><code>DynamicPPL.link!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">link!(vi::VarInfo, spl::Sampler)</code></pre><p>Transform the values of the random variables sampled by <code>spl</code> in <code>vi</code> from the support of their distributions to the Euclidean space and set their corresponding <code>&quot;trans&quot;</code> flag values to <code>true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L732-L738">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.loadstate" href="#DynamicPPL.loadstate"><code>DynamicPPL.loadstate</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">loadstate(data)</code></pre><p>Load sampler state from <code>data</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/sampler.jl#L102-L106">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.logjoint-Tuple{Model, AbstractVarInfo}" href="#DynamicPPL.logjoint-Tuple{Model, AbstractVarInfo}"><code>DynamicPPL.logjoint</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">logjoint(model::Model, varinfo::AbstractVarInfo)</code></pre><p>Return the log joint probability of variables <code>varinfo</code> for the probabilistic <code>model</code>.</p><p>See <a href="#DynamicPPL.logjoint-Tuple{Model, AbstractVarInfo}"><code>logjoint</code></a> and <a href="#StatsBase.loglikelihood-Tuple{Model, AbstractVarInfo}"><code>loglikelihood</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L490-L496">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.logprior-Tuple{Model, AbstractVarInfo}" href="#DynamicPPL.logprior-Tuple{Model, AbstractVarInfo}"><code>DynamicPPL.logprior</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">logprior(model::Model, varinfo::AbstractVarInfo)</code></pre><p>Return the log prior probability of variables <code>varinfo</code> for the probabilistic <code>model</code>.</p><p>See also <a href="#DynamicPPL.logjoint-Tuple{Model, AbstractVarInfo}"><code>logjoint</code></a> and <a href="#StatsBase.loglikelihood-Tuple{Model, AbstractVarInfo}"><code>loglikelihood</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L502-L508">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.matchingvalue-Tuple{Any, Any, Any}" href="#DynamicPPL.matchingvalue-Tuple{Any, Any, Any}"><code>DynamicPPL.matchingvalue</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">matchingvalue(sampler, vi, value)
+matchingvalue(context::AbstractContext, vi, value)</code></pre><p>Convert the <code>value</code> to the correct type for the <code>sampler</code> or <code>context</code> and the <code>vi</code> object.</p><p>For a <code>context</code> that is <em>not</em> a <code>SamplingContext</code>, we fall back to <code>matchingvalue(SampleFromPrior(), vi, value)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L539-L547">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.observations-Tuple{Model}" href="#DynamicPPL.observations-Tuple{Model}"><code>DynamicPPL.observations</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">observations(model::Model)</code></pre><p>Alias for <a href="#DynamicPPL.conditioned-Tuple{DynamicPPL.AbstractContext}"><code>conditioned</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L314-L318">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.pointwise_loglikelihoods-Union{Tuple{T}, Tuple{Model, Any}, Tuple{Model, Any, Type{T}}} where T" href="#DynamicPPL.pointwise_loglikelihoods-Union{Tuple{T}, Tuple{Model, Any}, Tuple{Model, Any, Type{T}}} where T"><code>DynamicPPL.pointwise_loglikelihoods</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">pointwise_loglikelihoods(model::Model, chain::Chains, keytype = String)</code></pre><p>Runs <code>model</code> on each sample in <code>chain</code> returning a <code>Dict{String, Matrix{Float64}}</code> with keys corresponding to symbols of the observations, and values being matrices of shape <code>(num_chains, num_samples)</code>.</p><p><code>keytype</code> specifies what the type of the keys used in the returned <code>Dict</code> are. Currently, only <code>String</code> and <code>VarName</code> are supported.</p><p><strong>Notes</strong></p><p>Say <code>y</code> is a <code>Vector</code> of <code>n</code> i.i.d. <code>Normal(μ, σ)</code> variables, with <code>μ</code> and <code>σ</code> both being <code>&lt;:Real</code>. Then the <em>observe</em> (i.e. when the left-hand side is an <em>observation</em>) statements can be implemented in three ways:</p><ol><li>using a <code>for</code> loop:</li></ol><pre><code class="language-julia hljs">for i in eachindex(y)
+    y[i] ~ Normal(μ, σ)
+end</code></pre><ol><li>using <code>.~</code>:</li></ol><pre><code class="language-julia hljs">y .~ Normal(μ, σ)</code></pre><ol><li>using <code>MvNormal</code>:</li></ol><pre><code class="language-julia hljs">y ~ MvNormal(fill(μ, n), σ^2 * I)</code></pre><p>In (1) and (2), <code>y</code> will be treated as a collection of <code>n</code> i.i.d. 1-dimensional variables, while in (3) <code>y</code> will be treated as a <em>single</em> n-dimensional observation.</p><p>This is important to keep in mind, in particular if the computation is used for downstream computations.</p><p><strong>Examples</strong></p><p><strong>From chain</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL, Turing
+
+julia&gt; @model function demo(xs, y)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, √s)
+           for i in eachindex(xs)
+               xs[i] ~ Normal(m, √s)
+           end
+
+           y ~ Normal(m, √s)
+       end
+demo (generic function with 1 method)
+
+julia&gt; model = demo(randn(3), randn());
+
+julia&gt; chain = sample(model, MH(), 10);
+
+julia&gt; pointwise_loglikelihoods(model, chain)
+Dict{String,Array{Float64,2}} with 4 entries:
+  &quot;xs[3]&quot; =&gt; [-1.42862; -2.67573; … ; -1.66251; -1.66251]
+  &quot;xs[1]&quot; =&gt; [-1.42932; -2.68123; … ; -1.66333; -1.66333]
+  &quot;xs[2]&quot; =&gt; [-1.6724; -0.861339; … ; -1.62359; -1.62359]
+  &quot;y&quot;     =&gt; [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+
+julia&gt; pointwise_loglikelihoods(model, chain, String)
+Dict{String,Array{Float64,2}} with 4 entries:
+  &quot;xs[3]&quot; =&gt; [-1.42862; -2.67573; … ; -1.66251; -1.66251]
+  &quot;xs[1]&quot; =&gt; [-1.42932; -2.68123; … ; -1.66333; -1.66333]
+  &quot;xs[2]&quot; =&gt; [-1.6724; -0.861339; … ; -1.62359; -1.62359]
+  &quot;y&quot;     =&gt; [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+
+julia&gt; pointwise_loglikelihoods(model, chain, VarName)
+Dict{VarName,Array{Float64,2}} with 4 entries:
+  xs[2] =&gt; [-1.6724; -0.861339; … ; -1.62359; -1.62359]
+  y     =&gt; [-1.51265; -0.914129; … ; -1.5499; -1.5499]
+  xs[1] =&gt; [-1.42932; -2.68123; … ; -1.66333; -1.66333]
+  xs[3] =&gt; [-1.42862; -2.67573; … ; -1.66251; -1.66251]</code></pre><p><strong>Broadcasting</strong></p><p>Note that <code>x .~ Dist()</code> will treat <code>x</code> as a collection of <em>independent</em> observations rather than as a single observation.</p><pre><code class="language-julia-repl hljs">julia&gt; @model function demo(x)
+           x .~ Normal()
+       end;
+
+julia&gt; m = demo([1.0, ]);
+
+julia&gt; ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first(ℓ[@varname(x[1])])
+-1.4189385332046727
+
+julia&gt; m = demo([1.0; 1.0]);
+
+julia&gt; ℓ = pointwise_loglikelihoods(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
+(-1.4189385332046727, -1.4189385332046727)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/loglikelihoods.jl#L122-L219">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.reset_num_produce!-Tuple{AbstractVarInfo}" href="#DynamicPPL.reset_num_produce!-Tuple{AbstractVarInfo}"><code>DynamicPPL.reset_num_produce!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">reset_num_produce!(vi::AbstractVarInfo)</code></pre><p>Reset the value of <code>num_produce</code> the log of the joint probability of the observed data and parameters sampled in <code>vi</code> to 0.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L708-L713">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.resetlogp!-Tuple{AbstractVarInfo}" href="#DynamicPPL.resetlogp!-Tuple{AbstractVarInfo}"><code>DynamicPPL.resetlogp!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">resetlogp!(vi::AbstractVarInfo)</code></pre><p>Reset the value of the log of the joint probability of the observed data and parameters sampled in <code>vi</code> to 0.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L679-L684">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.set_flag!-Tuple{VarInfo, VarName, String}" href="#DynamicPPL.set_flag!-Tuple{VarInfo, VarName, String}"><code>DynamicPPL.set_flag!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">set_flag!(vi::VarInfo, vn::VarName, flag::String)</code></pre><p>Set <code>vn</code>&#39;s value for <code>flag</code> to <code>true</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L508-L512">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.set_num_produce!-Tuple{VarInfo, Int64}" href="#DynamicPPL.set_num_produce!-Tuple{VarInfo, Int64}"><code>DynamicPPL.set_num_produce!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">set_num_produce!(vi::VarInfo, n::Int)</code></pre><p>Set the <code>num_produce</code> field of <code>vi</code> to <code>n</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L694-L698">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.set_retained_vns_del_by_spl!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Sampler}" href="#DynamicPPL.set_retained_vns_del_by_spl!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Sampler}"><code>DynamicPPL.set_retained_vns_del_by_spl!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)</code></pre><p>Set the <code>&quot;del&quot;</code> flag of variables in <code>vi</code> with <code>order &gt; vi.num_produce[]</code> to <code>true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1187-L1191">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setall!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Any}" href="#DynamicPPL.setall!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Any}"><code>DynamicPPL.setall!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setall!(vi::VarInfo, val)</code></pre><p>Set the values of all the variables in <code>vi</code> to <code>val</code>.</p><p>The values may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L332-L338">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setchildcontext" href="#DynamicPPL.setchildcontext"><code>DynamicPPL.setchildcontext</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">setchildcontext(parent::AbstractContext, child::AbstractContext)</code></pre><p>Reconstruct <code>parent</code> but now using <code>child</code> is its <a href="#DynamicPPL.childcontext"><code>childcontext</code></a>, effectively updating the child context.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; ctx = SamplingContext();
+
+julia&gt; DynamicPPL.childcontext(ctx)
+DefaultContext()
+
+julia&gt; ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
+
+julia&gt; DynamicPPL.childcontext(ctx_prior)
+PriorContext{Nothing}(nothing)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L40-L58">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setgid!-Tuple{VarInfo, DynamicPPL.Selector, VarName}" href="#DynamicPPL.setgid!-Tuple{VarInfo, DynamicPPL.Selector, VarName}"><code>DynamicPPL.setgid!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setgid!(vi::VarInfo, gid::Selector, vn::VarName)</code></pre><p>Add <code>gid</code> to the set of sampler selectors associated with <code>vn</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L632-L636">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setleafcontext-Tuple{Any, Any}" href="#DynamicPPL.setleafcontext-Tuple{Any, Any}"><code>DynamicPPL.setleafcontext</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setleafcontext(left, right)</code></pre><p>Return <code>left</code> but now with its leaf context replaced by <code>right</code>.</p><p>Note that this also works even if <code>right</code> is not a leaf context, in which case effectively append <code>right</code> to <code>left</code>, dropping the original leaf context of <code>left</code>.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext
+
+julia&gt; struct ParentContext{C} &lt;: AbstractContext
+           context::C
+       end
+
+julia&gt; DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
+
+julia&gt; DynamicPPL.childcontext(context::ParentContext) = context.context
+
+julia&gt; DynamicPPL.setchildcontext(::ParentContext, child) = ParentContext(child)
+
+julia&gt; Base.show(io::IO, c::ParentContext) = print(io, &quot;ParentContext(&quot;, childcontext(c), &quot;)&quot;)
+
+julia&gt; ctx = ParentContext(ParentContext(DefaultContext()))
+ParentContext(ParentContext(DefaultContext()))
+
+julia&gt; # Replace the leaf context with another leaf.
+       leafcontext(setleafcontext(ctx, PriorContext()))
+PriorContext{Nothing}(nothing)
+
+julia&gt; # Append another parent context.
+       setleafcontext(ctx, ParentContext(DefaultContext()))
+ParentContext(ParentContext(ParentContext(DefaultContext())))</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/contexts.jl#L70-L106">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setlogp!-Tuple{VarInfo, Any}" href="#DynamicPPL.setlogp!-Tuple{VarInfo, Any}"><code>DynamicPPL.setlogp!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setlogp!(vi::VarInfo, logp)</code></pre><p>Set the log of the joint probability of the observed data and parameters sampled in <code>vi</code> to <code>logp</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L657-L662">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setorder!-Tuple{VarInfo, VarName, Int64}" href="#DynamicPPL.setorder!-Tuple{VarInfo, VarName, Int64}"><code>DynamicPPL.setorder!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setorder!(vi::VarInfo, vn::VarName, index::Int)</code></pre><p>Set the <code>order</code> of <code>vn</code> in <code>vi</code> to <code>index</code>, where <code>order</code> is the number of <code>observe statements run before sampling</code>vn`.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1151-L1156">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.settrans!-Tuple{AbstractVarInfo, Bool, VarName}" href="#DynamicPPL.settrans!-Tuple{AbstractVarInfo, Bool, VarName}"><code>DynamicPPL.settrans!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">settrans!(vi::VarInfo, trans::Bool, vn::VarName)</code></pre><p>Set the <code>trans</code> flag value of <code>vn</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L360-L364">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setval!-Tuple{AbstractVarInfo, Any}" href="#DynamicPPL.setval!-Tuple{AbstractVarInfo, Any}"><code>DynamicPPL.setval!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setval!(vi::AbstractVarInfo, x)
+setval!(vi::AbstractVarInfo, values, keys)
+setval!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int)</code></pre><p>Set the values in <code>vi</code> to the provided values and leave those which are not present in <code>x</code> or <code>chains</code> unchanged.</p><p><strong>Notes</strong></p><p>This is rather limited for two reasons:</p><ol><li>It uses <code>subsumes_string(string(vn), map(string, keys))</code> under the hood, and therefore suffers from the same limitations as <a href="#DynamicPPL.subsumes_string"><code>subsumes_string</code></a>.</li><li>It will set every <code>vn</code> present in <code>keys</code>. It will NOT however set every <code>k</code> present in <code>keys</code>. This means that if <code>vn == [m[1], m[2]]</code>, representing some variable <code>m</code>, calling <code>setval!(vi, (m = [1.0, 2.0]))</code> will be a no-op since it will try to find <code>m[1]</code> and <code>m[2]</code> in <code>keys((m = [1.0, 2.0]))</code>.</li></ol><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL, Distributions, StableRNGs
+
+julia&gt; @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia&gt; rng = StableRNG(42);
+
+julia&gt; m = demo([missing]);
+
+julia&gt; var_info = DynamicPPL.VarInfo(rng, m);
+
+julia&gt; var_info[@varname(m)]
+-0.6702516921145671
+
+julia&gt; var_info[@varname(x[1])]
+-0.22312984965118443
+
+julia&gt; DynamicPPL.setval!(var_info, (m = 100.0, )); # set `m` and and keep `x[1]`
+
+julia&gt; var_info[@varname(m)] # [✓] changed
+100.0
+
+julia&gt; var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443
+
+julia&gt; m(rng, var_info); # rerun model
+
+julia&gt; var_info[@varname(m)] # [✓] unchanged
+100.0
+
+julia&gt; var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1328-L1384">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setval!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Any, Union{Int64, UnitRange, Vector{Int64}}}" href="#DynamicPPL.setval!-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}, Any, Union{Int64, UnitRange, Vector{Int64}}}"><code>DynamicPPL.setval!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setval!(vi::UntypedVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})</code></pre><p>Set the value of <code>vi.vals[vview]</code> to <code>val</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L235-L239">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setval!-Tuple{VarInfo, Any, VarName}" href="#DynamicPPL.setval!-Tuple{VarInfo, Any, VarName}"><code>DynamicPPL.setval!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setval!(vi::VarInfo, val, vn::VarName)</code></pre><p>Set the value(s) of <code>vn</code> in the metadata of <code>vi</code> to <code>val</code>.</p><p>The values may or may not be transformed to Euclidean space.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L295-L301">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.setval_and_resample!-Tuple{AbstractVarInfo, Any}" href="#DynamicPPL.setval_and_resample!-Tuple{AbstractVarInfo, Any}"><code>DynamicPPL.setval_and_resample!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">setval_and_resample!(vi::AbstractVarInfo, x)
+setval_and_resample!(vi::AbstractVarInfo, values, keys)
+setval_and_resample!(vi::AbstractVarInfo, chains::AbstractChains, sample_idx, chain_idx)</code></pre><p>Set the values in <code>vi</code> to the provided values and those which are not present in <code>x</code> or <code>chains</code> to <em>be</em> resampled.</p><p>Note that this does <em>not</em> resample the values not provided! It will call <code>setflag!(vi, vn, &quot;del&quot;)</code> for variables <code>vn</code> for which no values are provided, which means that the next time we call <code>model(vi)</code> these variables will be resampled.</p><p><strong>Note</strong></p><ul><li>This suffers from the same limitations as <a href="#DynamicPPL.setval!-Tuple{AbstractVarInfo, Any}"><code>setval!</code></a>. See <code>setval!</code> for more info.</li></ul><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL, Distributions, StableRNGs
+
+julia&gt; @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1)
+           end
+       end;
+
+julia&gt; rng = StableRNG(42);
+
+julia&gt; m = demo([missing]);
+
+julia&gt; var_info = DynamicPPL.VarInfo(rng, m);
+
+julia&gt; var_info[@varname(m)]
+-0.6702516921145671
+
+julia&gt; var_info[@varname(x[1])]
+-0.22312984965118443
+
+julia&gt; DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
+
+julia&gt; var_info[@varname(m)] # [✓] changed
+100.0
+
+julia&gt; var_info[@varname(x[1])] # [✓] unchanged
+-0.22312984965118443
+
+julia&gt; m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
+
+julia&gt; var_info[@varname(m)] # [✓] unchanged
+100.0
+
+julia&gt; var_info[@varname(x[1])] # [✓] changed
+101.37363069798343</code></pre><p><strong>See also</strong></p><ul><li><a href="#DynamicPPL.setval!-Tuple{AbstractVarInfo, Any}"><code>setval!</code></a></li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1404-L1461">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.subsumes_string" href="#DynamicPPL.subsumes_string"><code>DynamicPPL.subsumes_string</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">subsumes_string(u::String, v::String[, u_indexing])</code></pre><p>Check whether stringified variable name <code>v</code> describes a sub-range of stringified variable <code>u</code>.</p><p>This is a very restricted version <code>subumes(u::VarName, v::VarName)</code> only really supporting:</p><ul><li>Scalar: <code>x</code> subsumes <code>x[1, 2]</code>, <code>x[1, 2]</code> subsumes <code>x[1, 2][3]</code>, etc.</li></ul><p><strong>Note</strong></p><ul><li>To get same matching capabilities as <code>AbstractPPL.subumes(u::VarName, v::VarName)</code>  for strings, one can always do <code>eval(varname(Meta.parse(u))</code> to get <code>VarName</code> of <code>u</code>, and similarly to <code>v</code>. But this is slow.</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varname.jl#L1-L13">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.syms-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}" href="#DynamicPPL.syms-Tuple{UntypedVarInfo{var&quot;#s79&quot;, Tlogp} where {var&quot;#s79&quot;&lt;:DynamicPPL.Metadata, Tlogp}}"><code>DynamicPPL.syms</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">syms(vi::VarInfo)</code></pre><p>Returns a tuple of the unique symbols of random variables sampled in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L369-L373">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tilde_assume!-NTuple{4, Any}" href="#DynamicPPL.tilde_assume!-NTuple{4, Any}"><code>DynamicPPL.tilde_assume!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tilde_assume!(context, right, vn, vi)</code></pre><p>Handle assumed variables, e.g., <code>x ~ Normal()</code> (where <code>x</code> does occur in the model inputs), accumulate the log probability, and return the sampled value.</p><p>By default, calls <code>tilde_assume(context, right, vn, vi)</code> and accumulates the log probability of <code>vi</code> with the returned value.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L107-L115">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tilde_assume-Tuple{SamplingContext, Any, Any, Any}" href="#DynamicPPL.tilde_assume-Tuple{SamplingContext, Any, Any, Any}"><code>DynamicPPL.tilde_assume</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tilde_assume(context::SamplingContext, right, vn, vi)</code></pre><p>Handle assumed variables, e.g., <code>x ~ Normal()</code> (where <code>x</code> does occur in the model inputs), accumulate the log probability, and return the sampled value with a context associated with a sampler.</p><p>Falls back to</p><pre><code class="language-julia hljs">tilde_assume(context.rng, context.context, context.sampler, right, vn, vi)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L18-L29">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tilde_observe!-NTuple{4, Any}" href="#DynamicPPL.tilde_observe!-NTuple{4, Any}"><code>DynamicPPL.tilde_observe!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tilde_observe(context, right, left, vi)</code></pre><p>Handle observed constants, e.g., <code>1.0 ~ Normal()</code>, accumulate the log probability, and return the observed value.</p><p>By default, calls <code>tilde_observe(context, right, left, vi)</code> and accumulates the log probability of <code>vi</code> with the returned value.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L172-L180">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tilde_observe!-NTuple{5, Any}" href="#DynamicPPL.tilde_observe!-NTuple{5, Any}"><code>DynamicPPL.tilde_observe!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tilde_observe!(context, right, left, vname, vi)</code></pre><p>Handle observed variables, e.g., <code>x ~ Normal()</code> (where <code>x</code> does occur in the model inputs), accumulate the log probability, and return the observed value.</p><p>Falls back to <code>tilde_observe!(context, right, left, vi)</code> ignoring the information about variable name and indices; if needed, these can be accessed through this function, though.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L159-L167">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tilde_observe-Tuple{SamplingContext, Any, Any, Any}" href="#DynamicPPL.tilde_observe-Tuple{SamplingContext, Any, Any, Any}"><code>DynamicPPL.tilde_observe</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tilde_observe(context::SamplingContext, right, left, vi)</code></pre><p>Handle observed constants with a <code>context</code> associated with a sampler.</p><p>Falls back to <code>tilde_observe(context.context, context.sampler, right, left, vi)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/context_implementations.jl#L123-L129">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.tonamedtuple-Tuple{VarInfo}" href="#DynamicPPL.tonamedtuple-Tuple{VarInfo}"><code>DynamicPPL.tonamedtuple</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">tonamedtuple(vi::VarInfo)</code></pre><p>Convert a <code>vi</code> into a <code>NamedTuple</code> where each variable symbol maps to the values and  indexing string of the variable.</p><p>For example, a model that had a vector of vector-valued variables <code>x</code> would return</p><pre><code class="language-julia hljs">(x = ([1.5, 2.0], [3.0, 1.0], [&quot;x[1]&quot;, &quot;x[2]&quot;]), )</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L991-L1003">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.unset_flag!-Tuple{VarInfo, VarName, String}" href="#DynamicPPL.unset_flag!-Tuple{VarInfo, VarName, String}"><code>DynamicPPL.unset_flag!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">unset_flag!(vi::VarInfo, vn::VarName, flag::String)</code></pre><p>Set <code>vn</code>&#39;s value for <code>flag</code> to <code>false</code> in <code>vi</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1178-L1182">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.unwrap_right_left_vns-Tuple{Any, Any, Any}" href="#DynamicPPL.unwrap_right_left_vns-Tuple{Any, Any, Any}"><code>DynamicPPL.unwrap_right_left_vns</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">unwrap_right_left_vns(right, left, vns)</code></pre><p>Return the unwrapped distributions on the right-hand side and values and variable names on the left-hand side of a <code>.~</code> expression such as <code>x .~ Normal()</code>.</p><p>This is used mainly to unwrap <code>NamedDist</code> distributions and adjust the indices of the variables.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
+x[:,2]
+
+julia&gt; _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
+x[1,2]
+
+julia&gt; _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
+x[:][1,2]
+
+julia&gt; _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
+x[1][3]</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L125-L148">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.unwrap_right_vn-Tuple{Any, Any}" href="#DynamicPPL.unwrap_right_vn-Tuple{Any, Any}"><code>DynamicPPL.unwrap_right_vn</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">unwrap_right_vn(right, vn)</code></pre><p>Return the unwrapped distribution on the right-hand side and variable name on the left-hand side of a <code>~</code> expression such as <code>x ~ Normal()</code>.</p><p>This is used mainly to unwrap <code>NamedDist</code> distributions.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L114-L121">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.updategid!-Tuple{AbstractVarInfo, VarName, Sampler}" href="#DynamicPPL.updategid!-Tuple{AbstractVarInfo, VarName, Sampler}"><code>DynamicPPL.updategid!</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">updategid!(vi::VarInfo, vn::VarName, spl::Sampler)</code></pre><p>Set <code>vn</code>&#39;s <code>gid</code> to <code>Set([spl.selector])</code>, if <code>vn</code> does not have a sampler selector linked and <code>vn</code>&#39;s symbol is in the space of <code>spl</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/varinfo.jl#L1242-L1247">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="StatsBase.loglikelihood-Tuple{Model, AbstractVarInfo}" href="#StatsBase.loglikelihood-Tuple{Model, AbstractVarInfo}"><code>StatsBase.loglikelihood</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">loglikelihood(model::Model, varinfo::AbstractVarInfo)</code></pre><p>Return the log likelihood of variables <code>varinfo</code> for the probabilistic <code>model</code>.</p><p>See also <a href="#DynamicPPL.logjoint-Tuple{Model, AbstractVarInfo}"><code>logjoint</code></a> and <a href="#DynamicPPL.logprior-Tuple{Model, AbstractVarInfo}"><code>logprior</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/model.jl#L514-L520">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.@addlogprob!-Tuple{Any}" href="#DynamicPPL.@addlogprob!-Tuple{Any}"><code>DynamicPPL.@addlogprob!</code></a> — <span class="docstring-category">Macro</span></header><section><div><pre><code class="language-julia hljs">@addlogprob!(ex)</code></pre><p>Add the result of the evaluation of <code>ex</code> to the joint log probability.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/utils.jl#L5-L9">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.@model" href="#DynamicPPL.@model"><code>DynamicPPL.@model</code></a> — <span class="docstring-category">Macro</span></header><section><div><pre><code class="language-julia hljs">@model(expr[, warn = false])</code></pre><p>Macro to specify a probabilistic model.</p><p>If <code>warn</code> is <code>true</code>, a warning is displayed if internal variable names are used in the model definition.</p><p><strong>Examples</strong></p><p>Model definition:</p><pre><code class="language-julia hljs">@model function model(x, y = 42)
+    ...
+end</code></pre><p>To generate a <code>Model</code>, call <code>model(xvalue)</code> or <code>model(xvalue, yvalue)</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/compiler.jl#L180-L199">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.@submodel-Tuple{Any, Any}" href="#DynamicPPL.@submodel-Tuple{Any, Any}"><code>DynamicPPL.@submodel</code></a> — <span class="docstring-category">Macro</span></header><section><div><pre><code class="language-julia hljs">@submodel prefix model</code></pre><p>Run a Turing <code>model</code> nested inside of a Turing model and add &quot;<code>prefix</code>.&quot; as a prefix to all random variables inside of the <code>model</code>.</p><p>The prefix makes it possible to run the same Turing model multiple times while keeping track of all random variables correctly.</p><p>The return value can be assigned to a variable.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia&gt; @model function demo2(x, y, z)
+            a = @submodel sub1 demo1(x)
+            b = @submodel sub2 demo1(y)
+            return z ~ Uniform(-a, b)
+       end;</code></pre><p>When we sample from the model <code>demo2(missing, missing, 0.4)</code> random variables <code>sub1.x</code> and <code>sub2.x</code> will be sampled:</p><pre><code class="language-julia-repl hljs">julia&gt; vi = VarInfo(demo2(missing, missing, 0.4));
+
+julia&gt; @varname(var&quot;sub1.x&quot;) in keys(vi)
+true
+
+julia&gt; @varname(var&quot;sub2.x&quot;) in keys(vi)
+true</code></pre><p>Variables <code>a</code> and <code>b</code> are not tracked since they can be computed from the random variables <code>sub1.x</code> and <code>sub2.x</code> that were tracked when running <code>demo1</code>:</p><pre><code class="language-julia-repl hljs">julia&gt; @varname(a) in keys(vi)
+false
+
+julia&gt; @varname(b) in keys(vi)
+false</code></pre><p>We can check that the log joint probability of the model accumulated in <code>vi</code> is correct:</p><pre><code class="language-julia-repl hljs">julia&gt; sub1_x = vi[@varname(var&quot;sub1.x&quot;)];
+
+julia&gt; sub2_x = vi[@varname(var&quot;sub2.x&quot;)];
+
+julia&gt; logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
+
+julia&gt; loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
+
+julia&gt; getlogp(vi) ≈ logprior + loglikelihood
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/submodel_macro.jl#L52-L114">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="DynamicPPL.@submodel-Tuple{Any}" href="#DynamicPPL.@submodel-Tuple{Any}"><code>DynamicPPL.@submodel</code></a> — <span class="docstring-category">Macro</span></header><section><div><pre><code class="language-julia hljs">@submodel model</code></pre><p>Run a Turing <code>model</code> nested inside of a Turing model.</p><p>The return value can be assigned to a variable.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia&gt; @model function demo2(x, y)
+            a = @submodel demo1(x)
+            return y ~ Uniform(0, a)
+       end;</code></pre><p>When we sample from the model <code>demo2(missing, 0.4)</code> random variable <code>x</code> will be sampled:</p><pre><code class="language-julia-repl hljs">julia&gt; vi = VarInfo(demo2(missing, 0.4));
+
+julia&gt; @varname(x) in keys(vi)
+true</code></pre><p>Variable <code>a</code> is not tracked since it can be computed from the random variable <code>x</code> that was tracked when running <code>demo1</code>:</p><pre><code class="language-julia-repl hljs">julia&gt; @varname(a) in keys(vi)
+false</code></pre><p>We can check that the log joint probability of the model accumulated in <code>vi</code> is correct:</p><pre><code class="language-julia-repl hljs">julia&gt; x = vi[@varname(x)];
+
+julia&gt; getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7563811730faa9b5f4949bb3b5af05a85f2f8dc4/src/submodel_macro.jl#L1-L45">source</a></section></article></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.10 on <span class="colophon-date" title="Saturday 6 November 2021 21:41">Saturday 6 November 2021</span>. Using Julia version 1.6.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+
