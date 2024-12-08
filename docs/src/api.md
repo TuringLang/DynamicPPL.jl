@@ -176,7 +176,9 @@ values_as_in_model
 ```
 
 ```@docs
+WrappedDistribution
 NamedDist
+NoDist
 ```
 
 ## Testing Utilities
