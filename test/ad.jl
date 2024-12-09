@@ -1,4 +1,6 @@
-@testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
+using Enzyme
+
+@testset "AD: ForwardDiff, ReverseDiff, Mooncake, and Enzyme" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         f = DynamicPPL.LogDensityFunction(m)
         rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
@@ -21,6 +23,8 @@
                 ADTypes.AutoReverseDiff(; compile=false),
                 ADTypes.AutoReverseDiff(; compile=true),
                 ADTypes.AutoMooncake(; config=nothing),
+                ADTypes.AutoEnzyme(; mode=Enzyme.Forward),
+                ADTypes.AutoEnzyme(; mode=Enzyme.Reverse),
             ]
                 # Mooncake can't currently handle something that is going on in
                 # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
