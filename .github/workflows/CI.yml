@@ -75,6 +75,7 @@ jobs:
         env:
           GROUP: All
           JULIA_NUM_THREADS: ${{ matrix.runner.num_threads }}
+          JULIA_NUM_GC_THREADS: '1'
 
       - uses: julia-actions/julia-processcoverage@v1
 
