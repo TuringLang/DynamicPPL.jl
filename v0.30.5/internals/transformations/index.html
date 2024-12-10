@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Transforming variables · DynamicPPL</title><meta name="title" content="Transforming variables · DynamicPPL"/><meta property="og:title" content="Transforming variables · DynamicPPL"/><meta property="twitter:title" content="Transforming variables · DynamicPPL"/><meta name="description" content="Documentation for DynamicPPL."/><meta property="og:description" content="Documentation for DynamicPPL."/><meta property="twitter:description" content="Documentation for DynamicPPL."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body>
+<!-- NAVBAR START -->
+<style>
+    html {
+        scroll-padding-top: calc(55px + 1rem);
+    }
+
+    /* Documenter css tweaks */
+    .docs-sidebar {
+        margin-top: 3.75rem;
+    }
+
+    #documenter {
+        margin-top: 3.75rem;
+    }
+
+    .docs-version-selector {
+        margin-bottom: 60px !important;
+    }
+
+    @media screen and (max-width: 1056px) {
+        .docs-version-selector {
+            margin-bottom: 60px !important;
+        }
+
+        .docs-sidebar {
+            margin-top: 0 !important;
+        }
+    }
+    /* Documenter css tweaks ends here */
+
+    :root {
+        --heading-color: white;
+        --item-color: rgb(165, 165, 165);
+        --primary-bg: #073c44;
+        --hover-color: #8faad2;
+    }
+
+    .ext-navigation {
+        position: fixed;
+        height: 3.75rem;
+        top: 0;
+        width: 100%;
+        background-color: var(--primary-bg);
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        padding: 0 1.0625rem;
+        transition: transform 0.3s;
+    }
+
+    .ext-navbar-logo {
+        margin-left: 0.625rem;
+    }
+
+    .ext-nav-links {
+        display: flex;
+        align-items: center;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        flex-grow: 1;
+    }
+
+    .ext-nav-links li {
+        margin-left: 1rem !important;
+    }
+
+    .ext-nav-link {
+        color: white !important;
+        text-decoration: none;
+        font-size: 1.0625rem !important;
+        transition: color 0.2s ease;
+        cursor: pointer;
+    }
+
+    .ext-nav-link:hover,
+    .ext-navbar-item-single a:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-navbar-item-single a {
+        color: #fff !important;
+    }
+
+    .ext-menu-toggle {
+        display: none;
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+    }
+
+    .ext-dropdown {
+        display: none;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        grid-template-rows: auto auto auto;
+        padding: 1.875rem;
+        position: absolute;
+        width: 100%;
+        left: 0;
+        background-color: #083c44;
+        line-height: 1.875rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        transform: translateY(-0.625rem);
+    }
+
+    #library-handler::after {
+        content: "▼";
+        font-size: 0.6875rem;
+        margin-left: 0.3125rem;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #library-handler.open::after {
+        content: "▲";
+    }
+
+    .ext-dropdown.show {
+        display: grid;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .ext-dropdown ul {
+        height: auto;
+        width: 12.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .ext-dropdown ul li {
+        text-align: left;
+    }
+
+    .navbar-sub-item {
+        list-style: none;
+    }
+
+    .ext-dropdown ul a li {
+        color: var(--item-color);
+        width: 15.625rem;
+        border-radius: 3px;
+        padding: 0.125rem 0.625rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .ext-dropdown ul a li:hover {
+        background-color: rgba(107, 107, 107, 0.5);
+    }
+
+    .ext-dropdown-item-heading {
+        color: var(--heading-color);
+        text-align: center;
+    }
+
+    /* Responsive styling */
+    @media (max-width: 966px) {
+        .ext-dropdown {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .ext-nav-links {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            background-color: var(--primary-bg);
+            position: absolute;
+            top: 3.75rem;
+            left: 0;
+            padding: 0.625rem 0;
+            height: auto;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgb(141, 141, 141) grey;
+        }
+
+        .ext-nav-links.show {
+            display: flex;
+        }
+
+        .ext-nav-links li {
+            margin: 0.625rem 0;
+            text-align: center;
+        }
+
+        .ext-menu-toggle {
+            display: block;
+            margin-left: auto;
+        }
+
+        .ext-navigation.hide {
+            transform: translateY(-3.75rem);
+        }
+
+        .ext-dropdown {
+            place-content: center;
+            text-align: center;
+            grid-template-columns: 1fr;
+            line-height: 1.25rem;
+            padding: 0.625rem;
+        }
+
+        .ext-dropdown ul {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 0.3125rem;
+        }
+
+        .ext-dropdown ul li {
+            text-align: center;
+        }
+
+        .ext-dropdown ul a li {
+            width: 100%;
+        }
+
+        .ext-dropdown ul a li:hover {
+            background-color: var(--primary-bg);
+            color: #fff;
+        }
+
+        /* Modified scroll bar */
+        .ext-nav-links::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-track {
+            box-shadow: inset 0 0 5px grey;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb {
+            background: rgb(141, 141, 141);
+            border-radius: 3px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb:hover {
+            background: #9b9b9b;
+        }
+    }
+</style>
+<nav class="ext-navigation">
+    <a href="https://turinglang.org/">
+        <img src="https://turinglang.org/assets/images/turing-logo.svg" alt="Turing Logo" class="ext-navbar-logo" height="24px" width="40px">
+    </a>
+    <a style="color: white !important; font-size: 21.25px !important; margin-left: 10px;" href="https://turinglang.org/">Turing.jl</a>
+    <ul class="ext-nav-links">
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/docs-00-getting-started/">Get Started</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/00-introduction/">Tutorials</a>
+        </li>
+        <li>
+            <p class="ext-nav-link" id="library-handler">Libraries</p>
+            <div class="ext-dropdown" id="ext-dropdown-items">
+                <ul>
+                    <li class="ext-dropdown-item-heading">Modelling Languages</li>
+                    <a href="https://turinglang.org/DynamicPPL.jl/">
+                        <li>DynamicPPL</li>
+                    </a>
+                    <a href="https://turinglang.org/JuliaBUGS.jl/">
+                        <li>JuliaBUGS</li>
+                    </a>
+                    <a href="https://turinglang.org/TuringGLM.jl/">
+                        <li>TuringGLM</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">MCMC</li>
+                    <a href="https://turinglang.org/AdvancedHMC.jl/">
+                        <li>AdvancedHMC</li>
+                    </a>
+                    <a href="https://turinglang.org/AbstractMCMC.jl/">
+                        <li>AbstractMCMC</li>
+                    </a>
+                    <a href="https://github.com/theogf/ThermodynamicIntegration.jl">
+                        <li>ThermodynamicIntegration</li>
+                    </a>
+                    <a href="https://turinglang.org/AdvancedPS.jl/">
+                        <li>AdvancedPS</li>
+                    </a>
+                    <a href="https://turinglang.org/SliceSampling.jl/">
+                        <li>SliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/EllipticalSliceSampling.jl/">
+                        <li>EllipticalSliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/NestedSamplers.jl/">
+                        <li>NestedSamplers</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Diagnostics</li>
+                    <a href="https://turinglang.org/MCMCChains.jl/">
+                        <li>MCMCChains</li>
+                    </a>
+                    <a href="https://turinglang.org/MCMCDiagnosticTools.jl/">
+                        <li>MCMCDiagnosticTools</li>
+                    </a>
+                    <a href="https://turinglang.org/ParetoSmooth.jl/">
+                        <li>ParetoSmooth</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Gaussion Processes</li>
+                    <a href="https://juliagaussianprocesses.github.io/AbstractGPs.jl/">
+                        <li>AbstractGPs</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/KernelFunctions.jl/">
+                        <li>KernelFunctions</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/ApproximateGPs.jl/">
+                        <li>ApproximateGPs</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/Bijectors.jl/">Bijectors</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringCallbacks.jl/">TuringCallbacks</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringBenchmarking.jl/">TuringBenchmarking</a>
+                    </li>
+                </ul>
+            </div>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/news/">News</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/team/">Team</a>
+        </li>
+    </ul>
+    <a href="https://x.com/TuringLang" style="margin-left: 15px; padding-top: 2px">
+        <svg fill="#ffffff" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="32px" height="32px" viewBox="-209.92 -209.92 931.84 931.84" xml:space="preserve" stroke="#ffffff">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <g id="7935ec95c421cee6d86eb22ecd12f847">
+                    <path style="display: inline"
+                        d="M459.186,151.787c0.203,4.501,0.305,9.023,0.305,13.565 c0,138.542-105.461,298.285-298.274,298.285c-59.209,0-114.322-17.357-160.716-47.104c8.212,0.973,16.546,1.47,25.012,1.47 c49.121,0,94.318-16.759,130.209-44.884c-45.887-0.841-84.596-31.154-97.938-72.804c6.408,1.227,12.968,1.886,19.73,1.886 c9.55,0,18.816-1.287,27.617-3.68c-47.955-9.633-84.1-52.001-84.1-102.795c0-0.446,0-0.882,0.011-1.318 c14.133,7.847,30.294,12.562,47.488,13.109c-28.134-18.796-46.637-50.885-46.637-87.262c0-19.212,5.16-37.218,14.193-52.7 c51.707,63.426,128.941,105.156,216.072,109.536c-1.784-7.675-2.718-15.674-2.718-23.896c0-57.891,46.941-104.832,104.832-104.832 c30.173,0,57.404,12.734,76.525,33.102c23.887-4.694,46.313-13.423,66.569-25.438c-7.827,24.485-24.434,45.025-46.089,58.002 c21.209-2.535,41.426-8.171,60.222-16.505C497.448,118.542,479.666,137.004,459.186,151.787z">
+                    </path>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <a href="https://github.com/TuringLang/Turing.jl">
+        <svg width="32px" height="32px" viewBox="-8.2 -8.2 36.40 36.40" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <title>github [#142]</title>
+                <desc>Created with Sketch.</desc>
+                <defs></defs>
+                <g id="Page-1" stroke-width="0.0002" fill="none" fill-rule="evenodd">
+                    <g id="Dribbble-Light-Preview" transform="translate(-140.000000, -7559.000000)" fill="#ffffff">
+                        <g id="icons" transform="translate(56.000000, 160.000000)">
+                            <path
+                                d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"
+                                id="github-[#142]">
+                            </path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <span class="ext-menu-toggle">&#9776;</span>
+</nav>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const menuToggle = document.querySelector(".ext-menu-toggle");
+        const navLinks = document.querySelector(".ext-nav-links");
+        const nav = document.querySelector(".ext-navigation");
+        const navigationHandler = document.getElementById("library-handler");
+        const navigationItemsContainer =
+            document.getElementById("ext-dropdown-items");
+        let lastScrollY = window.scrollY;
+
+        function setAppropriateHeight() {
+            if (window.innerWidth <= 768) {
+                const viewportHeight = window.innerHeight;
+                const navHeight = nav.offsetHeight;
+                navLinks.style.maxHeight = `${viewportHeight - navHeight}px`;
+                navLinks.style.overflowY = "auto";
+            } else {
+                navLinks.style.maxHeight = "";
+                navLinks.style.overflowY = "";
+            }
+        }
+
+        // Toggle main menu for mobile
+        menuToggle.addEventListener("click", () => {
+            navLinks.classList.toggle("show");
+            if (navLinks.classList.contains("show")) {
+                setAppropriateHeight();
+                // Ensure the dropdown is hidden when menu is first opened
+                navigationItemsContainer.style.display = "none";
+                navigationItemsContainer.classList.remove("show");
+            }
+        });
+
+        // Close menus if clicked outside
+        document.addEventListener("click", (event) => {
+            if (
+                !navLinks.contains(event.target) &&
+                !menuToggle.contains(event.target)
+            ) {
+                navLinks.classList.remove("show");
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+            }
+        });
+
+        // Hide navigation bar on scroll down in mobile view
+        window.addEventListener("scroll", () => {
+            if (window.innerWidth <= 768) {
+                nav.classList.toggle("hide", window.scrollY > lastScrollY);
+                lastScrollY = window.scrollY;
+            }
+        });
+
+        // Library API script
+        navigationHandler.addEventListener("click", (event) => {
+            event.preventDefault(); // Prevent default action of the link
+            if (navigationItemsContainer.classList.contains("show")) {
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+                setTimeout(() => {
+                    navigationItemsContainer.style.display = "none";
+                }, 500); // Match the timeout to the CSS transition duration
+            } else {
+                navigationItemsContainer.style.display = "grid";
+                navigationHandler.classList.add("open");
+                setTimeout(() => {
+                    navigationItemsContainer.classList.add("show");
+                }, 10); // Delay to ensure the display change takes effect before adding class
+            }
+            setAppropriateHeight(); // Recalculate height when dropdown changes
+        });
+
+        // Handle window resize
+        window.addEventListener("resize", setAppropriateHeight);
+
+        // Initial setup
+        setAppropriateHeight();
+    });
+</script>
+<!-- NAVBAR END -->
+
+<div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.svg" alt="DynamicPPL logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">DynamicPPL</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../api/">API</a></li><li><span class="tocitem">Internals</span><ul><li><a class="tocitem" href="../varinfo/">Design of <code>VarInfo</code></a></li><li class="is-active"><a class="tocitem" href>Transforming variables</a><ul class="internal"><li><a class="tocitem" href="#Motivation"><span>Motivation</span></a></li><li><a class="tocitem" href="#What-do-we-need?"><span>What do we need?</span></a></li><li><a class="tocitem" href="#Working-example"><span>Working example</span></a></li><li><a class="tocitem" href="#From-internal-representation-to-model-representation"><span>From internal representation to model representation</span></a></li><li><a class="tocitem" href="#From-*unconstrained*-internal-representation-to-model-representation"><span>From <em>unconstrained</em> internal representation to model representation</span></a></li><li><a class="tocitem" href="#Why-do-we-need-both-to_internal_transform-and-to_linked_internal_transform?"><span>Why do we need both <code>to_internal_transform</code> and <code>to_linked_internal_transform</code>?</span></a></li><li><a class="tocitem" href="#Other-functionalities"><span>Other functionalities</span></a></li><li class="toplevel"><a class="tocitem" href="#Supporting-a-new-distribution"><span>Supporting a new distribution</span></a></li><li class="toplevel"><a class="tocitem" href="#TL;DR"><span>TL;DR</span></a></li></ul></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Internals</a></li><li class="is-active"><a href>Transforming variables</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Transforming variables</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl/blob/master/docs/src/internals/transformations.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Transforming-variables"><a class="docs-heading-anchor" href="#Transforming-variables">Transforming variables</a><a id="Transforming-variables-1"></a><a class="docs-heading-anchor-permalink" href="#Transforming-variables" title="Permalink"></a></h1><h2 id="Motivation"><a class="docs-heading-anchor" href="#Motivation">Motivation</a><a id="Motivation-1"></a><a class="docs-heading-anchor-permalink" href="#Motivation" title="Permalink"></a></h2><p>In a probabilistic programming language (PPL) such as DynamicPPL.jl, one crucial functionality for enabling a large number of inference algorithms to be implemented, in particular gradient-based ones, is the ability to work with &quot;unconstrained&quot; variables.</p><p>For example, consider the following model:</p><pre><code class="language-julia hljs">@model function demo()
+    s ~ InverseGamma(2, 3)
+    return m ~ Normal(0, √s)
+end</code></pre><p>Here we have two variables <code>s</code> and <code>m</code>, where <code>s</code> is constrained to be positive, while <code>m</code> can be any real number.</p><p>For certain inference methods, it&#39;s necessary / much more convenient to work with an equivalent model to <code>demo</code> but where all the variables can take any real values (they&#39;re &quot;unconstrained&quot;).</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>We write &quot;unconstrained&quot; with quotes because there are many ways to transform a constrained variable to an unconstrained one, <em>and</em> DynamicPPL can work with a much broader class of bijective transformations of variables, not just ones that go to the entire real line. But for MCMC, unconstraining is the most common transformation so we&#39;ll stick with that terminology.</p></div></div><p>For a large family of constraints encountered in practice, it is indeed possible to transform a (partially) constrained model to a completely unconstrained one in such a way that sampling in the unconstrained space is equivalent to sampling in the constrained space.</p><p>In DynamicPPL.jl, this is often referred to as <em>linking</em> (a term originating in the statistics literature) and is done using transformations from <a href="https://github.com/TuringLang/Bijectors.jl">Bijectors.jl</a>.</p><p>For example, the above model could be transformed into (the following pseudo-code; it&#39;s not working code):</p><pre><code class="language-julia hljs">@model function demo()
+    log_s ~ log(InverseGamma(2, 3))
+    s = exp(log_s)
+    return m ~ Normal(0, √s)
+end</code></pre><p>Here <code>log_s</code> is an unconstrained variable, and <code>s</code> is a constrained variable that is a deterministic function of <code>log_s</code>.</p><p>But to ensure that we stay consistent with what the user expects, DynamicPPL.jl does not actually transform the model as above, but instead makes use of transformed variables internally to achieve the same effect, when desired.</p><p>In the end, we&#39;ll end up with something that looks like this:</p><div class="mermaid">%%{ init: { &#39;themeVariables&#39;: { &#39;lineColor&#39;: &#39;#000000&#39; } } }%%
+%%{ init: { &#39;flowchart&#39;: { &#39;curve&#39;: &#39;linear&#39; } } }%%
+graph TD
+    subgraph assume [&quot;assume&quot;]
+        style assume fill:#ffffff,font-family:Courier
+
+        A[&quot;x ~ Normal()&quot;]:::boxStyle
+        B[&quot;vn = &lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;@varname&lt;/span&gt;(x)&lt;br&gt;dist = Normal()&lt;br&gt;x, vi = ...&quot;]:::boxStyle
+        C[&quot;assume(vn, dist, vi)&quot;]:::boxStyle
+        D([&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;if&lt;/span&gt; istrans(vi, vn)&quot;]):::boxStyle
+        E[&quot;f = from_internal_transform(vi, vn, dist)&quot;]:::boxStyle
+        F[&quot;f = from_linked_internal_transform(vi, vn, dist)&quot;]:::boxStyle
+        G[&quot;x, logjac = with_logabsdet_jacobian(f, getindex_internal(vi, vn, dist))&quot;]:::boxStyle
+        H[&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;return&lt;/span&gt; x, logpdf(dist, x) - logjac, vi&quot;]:::boxStyle
+        
+        A -.-&gt;|&lt;span style=&#39;color:#3B6EA8 ; background-color:#ffffff;&#39;&gt;@model&lt;/span&gt;| B
+        B -.-&gt;|&lt;span style=&#39;color:#000000 ; background-color:#ffffff;&#39;&gt;tilde-pipeline&lt;/span&gt;| C
+        C --&gt; D
+        D --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;false&lt;/span&gt;| E
+        D --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;true&lt;/span&gt;| F
+        E --&gt; G
+        F --&gt; G
+        G --&gt; H
+    end
+
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+    
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000</div><p>Below we&#39;ll see how this is done.</p><h2 id="What-do-we-need?"><a class="docs-heading-anchor" href="#What-do-we-need?">What do we need?</a><a id="What-do-we-need?-1"></a><a class="docs-heading-anchor-permalink" href="#What-do-we-need?" title="Permalink"></a></h2><p>There are two aspects to transforming from the internal representation of a variable in a <code>varinfo</code> to the representation wanted in the model:</p><ol><li><p>Different implementations of <a href="../../api/#DynamicPPL.AbstractVarInfo"><code>AbstractVarInfo</code></a> represent realizations of a model in different ways internally, so we need to transform from this internal representation to the desired representation in the model. For example,</p><ul><li><a href="../../api/#VarInfo"><code>VarInfo</code></a> represents a realization of a model as a &quot;flattened&quot; / vector representation, regardless of the form of the variable in the model.</li><li><a href="../../api/#SimpleVarInfo"><code>SimpleVarInfo</code></a> represents a realization of a model exactly as in the model (unless it has been transformed; we&#39;ll get to that later).</li></ul></li><li><p>We need the ability to transform from &quot;constrained space&quot; to &quot;unconstrained space&quot;, as we saw in the previous section.</p></li></ol><h2 id="Working-example"><a class="docs-heading-anchor" href="#Working-example">Working example</a><a id="Working-example-1"></a><a class="docs-heading-anchor-permalink" href="#Working-example" title="Permalink"></a></h2><p>A good and non-trivial example to keep in mind throughout is the following model:</p><pre><code class="language-julia hljs">using DynamicPPL, Distributions
+@model demo_lkj() = x ~ LKJCholesky(2, 1.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">demo_lkj (generic function with 2 methods)</code></pre><p><code>LKJCholesky</code> is a <code>LKJ(2, 1.0)</code> distribution, a distribution over correlation matrices (covariance matrices but with unit diagonal), but working directly with the Cholesky factorization of the correlation matrix rather than the correlation matrix itself (this is more numerically stable and computationally efficient).</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>This is a particularly &quot;annoying&quot; case because the return-value is not a simple <code>Real</code> or <code>AbstractArray{&lt;:Real}</code>, but rather a <code>LineraAlgebra.Cholesky</code> object which wraps a triangular matrix (whether it&#39;s upper- or lower-triangular depends on the instance).</p></div></div><p>As mentioned, some implementations of <code>AbstractVarInfo</code>, e.g. <a href="../../api/#VarInfo"><code>VarInfo</code></a>, works with a &quot;flattened&quot; / vector representation of a variable, and so in this case we need two transformations:</p><ol><li>From the <code>Cholesky</code> object to a vector representation.</li><li>From the <code>Cholesky</code> object to an &quot;unconstrained&quot; / linked vector representation.</li></ol><p>And similarly, we&#39;ll need the inverses of these transformations.</p><h2 id="From-internal-representation-to-model-representation"><a class="docs-heading-anchor" href="#From-internal-representation-to-model-representation">From internal representation to model representation</a><a id="From-internal-representation-to-model-representation-1"></a><a class="docs-heading-anchor-permalink" href="#From-internal-representation-to-model-representation" title="Permalink"></a></h2><p>To go from the internal variable representation of an <code>AbstractVarInfo</code> to the variable representation wanted in the model, e.g. from a <code>Vector{Float64}</code> to <code>Cholesky</code> in the case of <a href="../../api/#VarInfo"><code>VarInfo</code></a> in <code>demo_lkj</code>, we have the following methods:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_internal_transform" href="#DynamicPPL.to_internal_transform"><code>DynamicPPL.to_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from a representation compatible with <code>dist</code> to the internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L842-L849">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_internal_transform" href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from the internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code> to a representation compatible with <code>dist</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L799-L806">source</a></section></article><p>These methods allow us to extract the internal-to-model transformation function depending on the <code>varinfo</code>, the variable, and the distribution of the variable:</p><ul><li><code>varinfo</code> + <code>vn</code> defines the internal representation of the variable.</li><li><code>dist</code> defines the representation expected within the model scope.</li></ul><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>If <code>vn</code> is not present in <code>varinfo</code>, then the internal representation is fully determined by <code>varinfo</code> alone. This is used when we&#39;re about to add a new variable to the <code>varinfo</code> and need to know how to represent it internally.</p></div></div><p>Continuing from the example above, we can inspect the internal representation of <code>x</code> in <code>demo_lkj</code> with <a href="../../api/#VarInfo"><code>VarInfo</code></a> using <a href="../../api/#DynamicPPL.getindex_internal"><code>DynamicPPL.getindex_internal</code></a>:</p><pre><code class="language-julia hljs">model = demo_lkj()
+varinfo = VarInfo(model)
+x_internal = DynamicPPL.getindex_internal(varinfo, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Float64}:
+ 1.0
+ 0.8276171444428266
+ 0.0
+ 0.5612930270583284</code></pre><pre><code class="language-julia hljs">f_from_internal = DynamicPPL.from_internal_transform(
+    varinfo, @varname(x), LKJCholesky(2, 1.0)
+)
+f_from_internal(x_internal)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">LinearAlgebra.Cholesky{Float64, Matrix{Float64}}
+L factor:
+2×2 LinearAlgebra.LowerTriangular{Float64, Matrix{Float64}}:
+ 1.0        ⋅ 
+ 0.827617  0.561293</code></pre><p>Let&#39;s confirm that this is the same as <code>varinfo[@varname(x)]</code>:</p><pre><code class="language-julia hljs">x_model = varinfo[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">LinearAlgebra.Cholesky{Float64, Matrix{Float64}}
+L factor:
+2×2 LinearAlgebra.LowerTriangular{Float64, Matrix{Float64}}:
+ 1.0        ⋅ 
+ 0.827617  0.561293</code></pre><p>Similarly, we can go from the model representation to the internal representation:</p><pre><code class="language-julia hljs">f_to_internal = DynamicPPL.to_internal_transform(varinfo, @varname(x), LKJCholesky(2, 1.0))
+
+f_to_internal(x_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element reshape(::LinearAlgebra.LowerTriangular{Float64, Matrix{Float64}}, 4) with eltype Float64:
+ 1.0
+ 0.8276171444428266
+ 0.0
+ 0.5612930270583284</code></pre><p>It&#39;s also useful to see how this is done in <a href="../../api/#SimpleVarInfo"><code>SimpleVarInfo</code></a>:</p><pre><code class="language-julia hljs">simple_varinfo = SimpleVarInfo(varinfo)
+DynamicPPL.getindex_internal(simple_varinfo, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">LinearAlgebra.Cholesky{Float64, Matrix{Float64}}
+L factor:
+2×2 LinearAlgebra.LowerTriangular{Float64, Matrix{Float64}}:
+ 1.0        ⋅ 
+ 0.827617  0.561293</code></pre><p>Here see that the internal representation is exactly the same as the model representation, and so we&#39;d expect <code>from_internal_transform</code> to be the <code>identity</code> function:</p><pre><code class="language-julia hljs">DynamicPPL.from_internal_transform(simple_varinfo, @varname(x), LKJCholesky(2, 1.0))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">identity (generic function with 1 method)</code></pre><p>Great!</p><h2 id="From-*unconstrained*-internal-representation-to-model-representation"><a class="docs-heading-anchor" href="#From-*unconstrained*-internal-representation-to-model-representation">From <em>unconstrained</em> internal representation to model representation</a><a id="From-*unconstrained*-internal-representation-to-model-representation-1"></a><a class="docs-heading-anchor-permalink" href="#From-*unconstrained*-internal-representation-to-model-representation" title="Permalink"></a></h2><p>In addition to going from internal representation to model representation of a variable, we also need to be able to go from the <em>unconstrained</em> internal representation to the model representation.</p><p>For this, we have the following methods:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_linked_internal_transform" href="#DynamicPPL.to_linked_internal_transform"><code>DynamicPPL.to_linked_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from a representation compatible with <code>dist</code> to the linked internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L857-L864">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_linked_internal_transform" href="#DynamicPPL.from_linked_internal_transform"><code>DynamicPPL.from_linked_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from the linked internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code> to a representation compatible with <code>dist</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L809-L816">source</a></section></article><p>These are very similar to <a href="#DynamicPPL.to_internal_transform"><code>DynamicPPL.to_internal_transform</code></a> and <a href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a>, but here the internal representation is also linked / &quot;unconstrained&quot;.</p><p>Continuing from the example above:</p><pre><code class="language-julia hljs">f_to_linked_internal = DynamicPPL.to_linked_internal_transform(
+    varinfo, @varname(x), LKJCholesky(2, 1.0)
+)
+
+x_linked_internal = f_to_linked_internal(x_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">1-element Vector{Float64}:
+ 1.1805251914676889</code></pre><pre><code class="language-julia hljs">f_from_linked_internal = DynamicPPL.from_linked_internal_transform(
+    varinfo, @varname(x), LKJCholesky(2, 1.0)
+)
+
+f_from_linked_internal(x_linked_internal)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">LinearAlgebra.Cholesky{Float64, Matrix{Float64}}
+L factor:
+2×2 LinearAlgebra.LowerTriangular{Float64, Matrix{Float64}}:
+ 1.0        ⋅ 
+ 0.827617  0.561293</code></pre><p>Here we see a significant difference between the linked representation and the non-linked representation: the linked representation is only of length 1, whereas the non-linked representation is of length 4. This is because we actually only need a single element to represent a 2x2 correlation matrix, as the diagonal elements are always 1 <em>and</em> it&#39;s symmetric.</p><p>We can also inspect the transforms themselves:</p><pre><code class="language-julia hljs">f_from_internal</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">DynamicPPL.ToChol(&#39;L&#39;) ∘ DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{Int64, Int64}}((4,), (2, 2))</code></pre><p>vs.</p><pre><code class="language-julia hljs">f_from_linked_internal</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Bijectors.Inverse{Bijectors.VecCholeskyBijector}(Bijectors.VecCholeskyBijector(:L))</code></pre><p>Here we see that <code>f_from_linked_internal</code> is a single function taking us directly from the linked representation to the model representation, whereas <code>f_from_internal</code> is a composition of a few functions: one reshaping the underlying length 4 array into 2x2 matrix, and the other converting this matrix into a <code>Cholesky</code>, as required to be compatible with <code>LKJCholesky(2, 1.0)</code>.</p><h2 id="Why-do-we-need-both-to_internal_transform-and-to_linked_internal_transform?"><a class="docs-heading-anchor" href="#Why-do-we-need-both-to_internal_transform-and-to_linked_internal_transform?">Why do we need both <code>to_internal_transform</code> and <code>to_linked_internal_transform</code>?</a><a id="Why-do-we-need-both-to_internal_transform-and-to_linked_internal_transform?-1"></a><a class="docs-heading-anchor-permalink" href="#Why-do-we-need-both-to_internal_transform-and-to_linked_internal_transform?" title="Permalink"></a></h2><p>One might wonder why we need both <code>to_internal_transform</code> and <code>to_linked_internal_transform</code> instead of just a single <code>to_internal_transform</code> which returns the &quot;standard&quot; internal representation if the variable is not linked / &quot;unconstrained&quot; and the linked / &quot;unconstrained&quot; internal representation if it is.</p><p>That is, why can&#39;t we just do</p><div class="mermaid">%%{ init: { &#39;flowchart&#39;: { &#39;curve&#39;: &#39;linear&#39; } } }%%
+%%{ init: { &#39;themeVariables&#39;: { &#39;lineColor&#39;: &#39;#000000&#39; } } }%%
+graph TD
+    subgraph assume [&quot;assume&quot;]
+        style assume fill:#ffffff,font-family:Courier
+
+        A[&quot;assume(varinfo, &lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;@varname&lt;/span&gt;(x), Normal())&quot;]:::boxStyle
+        B[&quot;f = from_internal_transform(varinfo, varname, dist)&quot;]:::boxStyle
+        C[&quot;x, logjac = with_logabsdet_jacobian(f, assume_internal(varinfo, varname, dist))&quot;]:::boxStyle
+        D[&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;return&lt;/span&gt; x, logpdf(dist, x) - logjac, varinfo&quot;]:::dashedBox
+        
+        A --&gt; B
+        B --&gt; C
+        C --&gt; D
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000</div><p>Unfortunately, this is not possible in general. Consider for example the following model:</p><pre><code class="language-julia hljs">@model function demo_dynamic_constraint()
+    m ~ Normal()
+    x ~ truncated(Normal(); lower=m)
+
+    return (m=m, x=x)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">demo_dynamic_constraint (generic function with 2 methods)</code></pre><p>Here the variable <code>x</code> is constrained to be in the domain <code>(m, Inf)</code>, where <code>m</code> is sampled according to a <code>Normal</code>.</p><pre><code class="language-julia hljs">model = demo_dynamic_constraint()
+varinfo = VarInfo(model)
+varinfo[@varname(m)], varinfo[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.2667632645918812, 1.4952479034952928)</code></pre><p>We see that the realization of <code>x</code> is indeed greater than <code>m</code>, as expected.</p><p>But what if we <a href="../../api/#Bijectors.link"><code>link</code></a> this <code>varinfo</code> so that we end up working on an &quot;unconstrained&quot; space, i.e. both <code>m</code> and <code>x</code> can take on any values in <code>(-Inf, Inf)</code>:</p><pre><code class="language-julia hljs">varinfo_linked = link(varinfo, model)
+varinfo_linked[@varname(m)], varinfo_linked[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.2667632645918812, 1.4952479034952928)</code></pre><p>Still get the same values, as expected, since internally <code>varinfo</code> transforms from the linked internal representation to the model representation.</p><p>But what if we change the value of <code>m</code>, to, say, a bit larger than <code>x</code>?</p><pre><code class="language-julia hljs"># Update realization for `m` in `varinfo_linked`.
+varinfo_linked[@varname(m)] = varinfo_linked[@varname(x)] + 1
+varinfo_linked[@varname(m)], varinfo_linked[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(2.495247903495293, 1.4952479034952928)</code></pre><p>Now we see that the constraint <code>m &lt; x</code> is no longer satisfied!</p><p>Hence one might expect that if we try to compute, say, the <a href="../../api/#DynamicPPL.logjoint"><code>logjoint</code></a> using <code>varinfo_linked</code> with this &quot;invalid&quot; realization, we&#39;ll get an error:</p><pre><code class="language-julia hljs">logjoint(model, varinfo_linked)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">-5.068409286919092</code></pre><p>But we don&#39;t! In fact, if we look at the actual value used within the model</p><pre><code class="language-julia hljs">first(DynamicPPL.evaluate!!(model, varinfo_linked, DefaultContext()))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(m = 2.495247903495293, x = 2.7237325423987047)</code></pre><p>we see that we indeed satisfy the constraint <code>m &lt; x</code>, as desired.</p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>One shouldn&#39;t be setting variables in a linked <code>varinfo</code> willy-nilly directly like this unless one knows that the value will be compatible with the constraints of the model.</p></div></div><p>The reason for this is that internally in a model evaluation, we construct the transformation from the internal to the model representation based on the <em>current</em> realizations in the model! That is, we take the <code>dist</code> in a <code>x ~ dist</code> expression <em>at model evaluation time</em> and use that to construct the transformation, thus allowing it to change between model evaluations without invalidating the transformation.</p><p>But to be able to do this, we need to know whether the variable is linked / &quot;unconstrained&quot; or not, since the transformation is different in the two cases. Hence we need to be able to determine this at model evaluation time. Hence the internals end up looking something like this:</p><pre><code class="language-julia hljs">if istrans(varinfo, varname)
+    from_linked_internal_transform(varinfo, varname, dist)
+else
+    from_internal_transform(varinfo, varname, dist)
+end</code></pre><p>That is, if the variable is linked / &quot;unconstrained&quot;, we use the <a href="#DynamicPPL.from_linked_internal_transform"><code>DynamicPPL.from_linked_internal_transform</code></a>, otherwise we use <a href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a>.</p><p>And so the earlier diagram becomes:</p><div class="mermaid">%%{ init: { &#39;flowchart&#39;: { &#39;curve&#39;: &#39;linear&#39; } } }%%
+%%{ init: { &#39;themeVariables&#39;: { &#39;lineColor&#39;: &#39;#000000&#39; } } }%%
+graph TD
+    subgraph assume [&quot;assume&quot;]
+        style assume fill:#ffffff,font-family:Courier
+
+        A[&quot;assume(varinfo, &lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;@varname&lt;/span&gt;(x), Normal())&quot;]:::boxStyle
+        B([&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;if&lt;/span&gt; istrans(varinfo, varname)&quot;]):::boxStyle
+        C[&quot;f = from_internal_transform(varinfo, varname, dist)&quot;]:::boxStyle
+        D[&quot;f = from_linked_internal_transform(varinfo, varname, dist)&quot;]:::boxStyle
+        E[&quot;x, logjac = with_logabsdet_jacobian(f, assume_internal(varinfo, varname, dist))&quot;]:::boxStyle
+        F[&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;return&lt;/span&gt; x, logpdf(dist, x) - logjac, varinfo&quot;]:::dashedBox
+        
+        A --&gt; B
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;false&lt;/span&gt;| C
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;true&lt;/span&gt;| D
+        C --&gt; E
+        D --&gt; E
+        E --&gt; F
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000</div><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>If the support of <code>dist</code> was constant, this would not be necessary since we could just determine the transformation at the time of <code>varinfo_linked = link(varinfo, model)</code> and define this as the <code>from_internal_transform</code> for all subsequent evaluations. However, since the support of <code>dist</code> is <em>not</em> constant in general, we need to be able to determine the transformation at the time of the evaluation <em>and</em> thus whether we should construct the transformation from the linked internal representation or the non-linked internal representation. This is annoying, but necessary.</p></div></div><p>This is also the reason why we have two definitions of <code>getindex</code>:</p><ul><li><a href="../../api/#Base.getindex"><code>getindex(::AbstractVarInfo, ::VarName, ::Distribution)</code></a>: used internally in model evaluations with the <code>dist</code> in a <code>x ~ dist</code> expression.</li><li><a href="../../api/#Base.getindex"><code>getindex(::AbstractVarInfo, ::VarName)</code></a>: used externally by the user to get the realization of a variable.</li></ul><p>For <code>getindex</code> we have the following diagram:</p><div class="mermaid">%%{ init: { &#39;flowchart&#39;: { &#39;curve&#39;: &#39;linear&#39; } } }%%
+%%{ init: { &#39;themeVariables&#39;: { &#39;lineColor&#39;: &#39;#000000&#39; } } }%%
+graph TD
+    subgraph getindex [&quot;getindex&quot;]
+        style getindex fill:#ffffff,font-family:Courier
+
+        A[&quot;x = getindex(varinfo, &lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;@varname&lt;/span&gt;(x), Normal())&quot;]:::boxStyle
+        B([&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;if&lt;/span&gt; istrans(varinfo, varname)&quot;]):::boxStyle
+        C[&quot;f = from_internal_transform(varinfo, varname, dist)&quot;]:::boxStyle
+        D[&quot;f = from_linked_internal_transform(varinfo, varname, dist)&quot;]:::boxStyle
+        E[&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;return&lt;/span&gt; f(getindex_internal(varinfo, varname))&quot;]:::dashedBox
+        
+        A --&gt; B
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;false&lt;/span&gt;| C
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;true&lt;/span&gt;| D
+        C --&gt; E
+        D --&gt; E
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000</div><p>While if <code>dist</code> is not provided, we have:</p><div class="mermaid">%%{ init: { &#39;flowchart&#39;: { &#39;curve&#39;: &#39;linear&#39; } } }%%
+%%{ init: { &#39;themeVariables&#39;: { &#39;lineColor&#39;: &#39;#000000&#39; } } }%%
+graph TD
+    subgraph getindex [&quot;getindex&quot;]
+        style getindex fill:#ffffff,font-family:Courier
+
+        A[&quot;x = getindex(varinfo, &lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;@varname&lt;/span&gt;(x))&quot;]:::boxStyle
+        B([&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;if&lt;/span&gt; istrans(varinfo, varname)&quot;]):::boxStyle
+        C[&quot;f = from_internal_transform(varinfo, varname)&quot;]:::boxStyle
+        D[&quot;f = from_linked_internal_transform(varinfo, varname)&quot;]:::boxStyle
+        E[&quot;&lt;span style=&#39;color:#3B6EA8 !important;&#39;&gt;return&lt;/span&gt; f(getindex_internal(varinfo, varname))&quot;]:::dashedBox
+        
+        A --&gt; B
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;false&lt;/span&gt;| C
+        B --&gt;|&lt;span style=&#39;color:#97365B ; background-color:#ffffff;&#39;&gt;true&lt;/span&gt;| D
+        C --&gt; E
+        D --&gt; E
+    end
+
+    classDef dashedBox fill:#ffffff,stroke:#000000,stroke-dasharray: 5 5,font-family:Courier,color:#000000
+    classDef boxStyle fill:#ffffff,stroke:#000000,font-family:Courier,color:#000000
+
+    linkStyle default stroke:#000000,stroke-width:1px,color:#000000</div><p>Notice that <code>dist</code> is not present here, but otherwise the diagrams are the same.</p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>This does mean that the <code>getindex(varinfo, varname)</code> might not be the same as the <code>getindex(varinfo, varname, dist)</code> that occurs within a model evaluation! This can be confusing, but as outlined above, we do want to allow the <code>dist</code> in a <code>x ~ dist</code> expression to &quot;override&quot; whatever transformation <code>varinfo</code> might have.</p></div></div><h2 id="Other-functionalities"><a class="docs-heading-anchor" href="#Other-functionalities">Other functionalities</a><a id="Other-functionalities-1"></a><a class="docs-heading-anchor-permalink" href="#Other-functionalities" title="Permalink"></a></h2><p>There are also some additional methods for transforming between representations that are all automatically implemented from <a href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a>, <a href="#DynamicPPL.from_linked_internal_transform"><code>DynamicPPL.from_linked_internal_transform</code></a> and their siblings, and thus don&#39;t need to be implemented manually.</p><p>Convenience methods for constructing transformations:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_maybe_linked_internal_transform" href="#DynamicPPL.from_maybe_linked_internal_transform"><code>DynamicPPL.from_maybe_linked_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from the possibly linked internal representation of <code>vn</code> with <code>dist</code>n in <code>varinfo</code> to a representation compatible with <code>dist</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L819-L826">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_maybe_linked_internal_transform" href="#DynamicPPL.to_maybe_linked_internal_transform"><code>DynamicPPL.to_maybe_linked_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from a representation compatible with <code>dist</code> to a possibly linked internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L872-L879">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.internal_to_linked_internal_transform" href="#DynamicPPL.internal_to_linked_internal_transform"><code>DynamicPPL.internal_to_linked_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)</code></pre><p>Return a transformation that transforms from the internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code> to a <em>linked</em> internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L887-L894">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.linked_internal_to_internal_transform" href="#DynamicPPL.linked_internal_to_internal_transform"><code>DynamicPPL.linked_internal_to_internal_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])</code></pre><p>Return a transformation that transforms from a <em>linked</em> internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code> to the internal representation of <code>vn</code> with <code>dist</code> in <code>varinfo</code>.</p><p>If <code>dist</code> is not present, then it is assumed that <code>varinfo</code> knows the correct output for <code>vn</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L906-L913">source</a></section></article><p>Convenience methods for transforming between representations without having to explicitly construct the transformation:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_maybe_linked_internal" href="#DynamicPPL.to_maybe_linked_internal"><code>DynamicPPL.to_maybe_linked_internal</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)</code></pre><p>Return reconstructed <code>val</code>, possibly linked if <code>istrans(vi, vn)</code> is <code>true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L753-L757">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_maybe_linked_internal" href="#DynamicPPL.from_maybe_linked_internal"><code>DynamicPPL.from_maybe_linked_internal</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)</code></pre><p>Return reconstructed <code>val</code>, possibly invlinked if <code>istrans(vi, vn)</code> is <code>true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/abstract_varinfo.jl#L763-L767">source</a></section></article><h1 id="Supporting-a-new-distribution"><a class="docs-heading-anchor" href="#Supporting-a-new-distribution">Supporting a new distribution</a><a id="Supporting-a-new-distribution-1"></a><a class="docs-heading-anchor-permalink" href="#Supporting-a-new-distribution" title="Permalink"></a></h1><p>To support a new distribution, one needs to implement for the desired <code>AbstractVarInfo</code> the following methods:</p><ul><li><a href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a></li><li><a href="#DynamicPPL.from_linked_internal_transform"><code>DynamicPPL.from_linked_internal_transform</code></a></li></ul><p>At the time of writing, <a href="../../api/#VarInfo"><code>VarInfo</code></a> is the one that is most commonly used, whose internal representation is always a <code>Vector</code>. In this scenario, one can just implement the following methods instead:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_vec_transform-Tuple{Distribution}" href="#DynamicPPL.from_vec_transform-Tuple{Distribution}"><code>DynamicPPL.from_vec_transform</code></a> — <span class="docstring-category">Method</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_vec_transform(dist::Distribution)</code></pre><p>Return the transformation from the vector representation of a realization from distribution <code>dist</code> to the original representation compatible with <code>dist</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/utils.jl#L344-L349">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.from_linked_vec_transform-Tuple{Distribution}" href="#DynamicPPL.from_linked_vec_transform-Tuple{Distribution}"><code>DynamicPPL.from_linked_vec_transform</code></a> — <span class="docstring-category">Method</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">from_linked_vec_transform(dist::Distribution)</code></pre><p>Return the transformation from the unconstrained vector to the constrained realization of distribution <code>dist</code>.</p><p>By default, this is just <code>invlink_transform(dist) ∘ from_vec_transform(dist)</code>.</p><p>See also: <a href="../../api/#DynamicPPL.invlink_transform"><code>DynamicPPL.invlink_transform</code></a>, <a href="#DynamicPPL.from_vec_transform-Tuple{Distribution}"><code>DynamicPPL.from_vec_transform</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/utils.jl#L364-L373">source</a></section></article><p>These are used internally by <a href="../../api/#VarInfo"><code>VarInfo</code></a>.</p><p>Optionally, if <code>inverse</code> of the above is expensive to compute, one can also implement:</p><ul><li><a href="#DynamicPPL.to_internal_transform"><code>DynamicPPL.to_internal_transform</code></a></li><li><a href="#DynamicPPL.to_linked_internal_transform"><code>DynamicPPL.to_linked_internal_transform</code></a></li></ul><p>And similarly, there are corresponding to-methods for the <code>from_*_vec_transform</code> variants too</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_vec_transform" href="#DynamicPPL.to_vec_transform"><code>DynamicPPL.to_vec_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_vec_transform(x)</code></pre><p>Return the transformation from the original representation of <code>x</code> to the vector representation.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/utils.jl#L399-L404">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.to_linked_vec_transform" href="#DynamicPPL.to_linked_vec_transform"><code>DynamicPPL.to_linked_vec_transform</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">to_linked_vec_transform(dist)</code></pre><p>Return the transformation from the constrained realization of distribution <code>dist</code> to the unconstrained vector.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/f5890a11ef4002026e8edeb355b6e8a50c68d115/src/utils.jl#L407-L412">source</a></section></article><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>Whatever the resulting transformation is, it should be invertible, i.e. implement <code>InverseFunctions.inverse</code>, and have a well-defined log-abs-det Jacobian, i.e. implement <code>ChangesOfVariables.with_logabsdet_jacobian</code>.</p></div></div><h1 id="TL;DR"><a class="docs-heading-anchor" href="#TL;DR">TL;DR</a><a id="TL;DR-1"></a><a class="docs-heading-anchor-permalink" href="#TL;DR" title="Permalink"></a></h1><ul><li><p>DynamicPPL.jl has three representations of a variable: the <strong>model representation</strong>, the <strong>internal representation</strong>, and the <strong>linked internal representation</strong>.</p><ul><li>The <strong>model representation</strong> is the representation of the variable as it appears in the model code / is expected by the <code>dist</code> on the right-hand-side of the <code>~</code> in the model code.</li><li>The <strong>internal representation</strong> is the representation of the variable as it appears in the <code>varinfo</code>, which varies between implementations of <a href="../../api/#DynamicPPL.AbstractVarInfo"><code>AbstractVarInfo</code></a>, e.g. a <code>Vector</code> in <a href="../../api/#VarInfo"><code>VarInfo</code></a>. This can be converted to the model representation by <a href="#DynamicPPL.from_internal_transform"><code>DynamicPPL.from_internal_transform</code></a>.</li><li>The <strong>linked internal representation</strong> is the representation of the variable as it appears in the <code>varinfo</code> after <a href="../../api/#Bijectors.link"><code>link</code></a>ing. This can be converted to the model representation by <a href="#DynamicPPL.from_linked_internal_transform"><code>DynamicPPL.from_linked_internal_transform</code></a>.</li></ul></li><li><p>Having separation between <em>internal</em> and <em>linked internal</em> is necessary because transformations might be constructed at the time of model evaluation, and thus we need to know whether to construct the transformation from the internal representation or the linked internal representation.</p></li></ul><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "neutral"
+});
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../varinfo/">« Design of <code>VarInfo</code></a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Tuesday 12 November 2024 09:47">Tuesday 12 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+
