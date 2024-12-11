@@ -47,7 +47,7 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x86
-            num_threads: 2
+            num_threads: 1
           # Windows
           - version: '1'
             os: windows-latest
