@@ -199,7 +199,14 @@
             @test retype <: Tuple
 
             # Just make sure the following is runnable.
-            @test (DynamicPPL.DebugUtils.model_warntype(model); true)
+            # Suppress output to avoid GHA slowdown(?)
+            @test begin
+                oldstd = stdout
+                redirect_stdout(devnull)
+                DynamicPPL.DebugUtils.model_warntype(model)
+                redirect_stdout(oldstd)
+                true
+            end
         end
     end
 end
