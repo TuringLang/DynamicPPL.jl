@@ -164,30 +164,36 @@ function has_varnamedvector(vi::VarInfo)
 end
 
 """
-    untyped_varinfo([rng, ]model[, sampler, context])
+    untyped_varinfo(model[, context, metadata])
 
-Return an untyped `VarInfo` instance for the model `model`.
+Return an untyped varinfo object for the given `model` and `context`.
+
+# Arguments
+- `model::Model`: The model for which to create the varinfo object.
+- `context::AbstractContext`: The context in which to evaluate the model. Default: `SamplingContext()`.
+- `metadata::Union{Metadata,VarNamedVector}`: The metadata to use for the varinfo object.
+    Default: `Metadata()`.
 """
 function untyped_varinfo(
-    rng::Random.AbstractRNG,
     model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    context::AbstractContext=SamplingContext(),
     metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
     varinfo = VarInfo(metadata)
-    return last(evaluate!!(model, varinfo, SamplingContext(rng, sampler, context)))
-end
-function untyped_varinfo(
-    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
-)
-    return untyped_varinfo(Random.default_rng(), model, args...)
+    return last(
+        evaluate!!(model, varinfo, hassampler(context) ? context : SamplingContext(context))
+    )
 end
 
 """
-    typed_varinfo([rng, ]model[, sampler, context])
+    typed_varinfo(model[, context, metadata])
 
-Return a typed `VarInfo` instance for the model `model`.
+Return a typed varinfo object for the given `model`, `sampler` and `context`.
+
+This simply calls [`DynamicPPL.untyped_varinfo`](@ref) and converts the resulting
+varinfo object to a typed varinfo object.
+
+See also: [`DynamicPPL.untyped_varinfo`](@ref)
 """
 typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
 
@@ -198,7 +204,7 @@ function VarInfo(
     context::AbstractContext=DefaultContext(),
     metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    return typed_varinfo(rng, model, sampler, context, metadata)
+    return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
 end
 VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
 

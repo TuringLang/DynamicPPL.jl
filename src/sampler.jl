@@ -67,6 +67,20 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
+"""
+    default_varinfo(rng, model, sampler[, context])
+
+Return a default varinfo object for the given `model` and `sampler`.
+
+# Arguments
+- `rng::Random.AbstractRNG`: Random number generator.
+- `model::Model`: Model for which we want to create a varinfo object.
+- `sampler::AbstractSampler`: Sampler which will make use of the varinfo object.
+- `context::AbstractContext`: Context in which the model is evaluated.
+
+# Returns
+- `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
+"""
 function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
     return default_varinfo(rng, model, sampler, DefaultContext())
 end
@@ -126,7 +140,7 @@ By default, `data` is returned.
 loadstate(data) = data
 
 """
-    default_chaintype(sampler)
+    default_chain_type(sampler)
 
 Default type of the chain of posterior samples from `sampler`.
 """
