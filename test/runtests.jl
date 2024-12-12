@@ -114,6 +114,7 @@ include("test_util.jl")
                 # This is a line that starts with "└ @ " and ends with the line number.
                 r"└ @ .+:[0-9]+",
             ]
+            GC.gc()
             doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
         end
     end
