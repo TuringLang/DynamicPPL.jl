@@ -280,7 +280,8 @@ TypedVarInfo
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [transformation page](internals/transformations.md).
-The following methods help with keeping track of whether samples are transformed or not.
+The [Transformations section below](#Transformations) describes the methods used for this.
+In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
 set_flag!
