@@ -42,7 +42,7 @@ Random.seed!(100)
 
 include("test_util.jl")
 
-@testset "DynamicPPL.jl" begin
+@testset verbose=true "DynamicPPL.jl" begin
     if GROUP == "All" || GROUP == "DynamicPPL"
         @testset "interface" begin
             include("utils.jl")
