@@ -21,6 +21,8 @@ jobs:
   test:
     runs-on: ${{ matrix.runner.os }}
     strategy:
+      fail-fast: false
+
       matrix:
         runner:
           # Current stable version
