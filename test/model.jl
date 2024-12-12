@@ -33,7 +33,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = GDEMO_DEFAULT # defined in test/test_util.jl
+        model = GDEMO_DEFAULT
 
         # sample from model and extract variables
         vi = VarInfo(model)
