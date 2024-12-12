@@ -17,6 +17,11 @@ permissions:
   actions: write
   contents: read
 
+# Cancel existing tests on the same PR if a new commit is added to a pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
 jobs:
   test:
     runs-on: ${{ matrix.runner.os }}
