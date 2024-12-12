@@ -60,6 +60,9 @@ jobs:
             os: macos-latest
             arch: aarch64
             num_threads: 2
+        test_group:
+          - Group1
+          - Group2
 
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +78,7 @@ jobs:
 
       - uses: julia-actions/julia-runtest@v1
         env:
+          GROUP: ${{ matrix.test_group }}
           JULIA_NUM_THREADS: ${{ matrix.runner.num_threads }}
 
       - uses: julia-actions/julia-processcoverage@v1
