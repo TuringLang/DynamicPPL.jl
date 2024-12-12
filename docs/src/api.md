@@ -279,7 +279,8 @@ VarInfo
 TypedVarInfo
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
+One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [transformation page](internals/transformations.md).
+The following methods help with keeping track of whether samples are transformed or not.
 
 ```@docs
 set_flag!
