@@ -1221,27 +1221,6 @@ function link!!(
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
 end
 
-"""
-    link!(vi::VarInfo, spl::Sampler)
-
-Transform the values of the random variables sampled by `spl` in `vi` from the support
-of their distributions to the Euclidean space and set their corresponding `"trans"`
-flag values to `true`.
-"""
-function link!(vi::VarInfo, spl::AbstractSampler)
-    Base.depwarn(
-        "`link!(varinfo, sampler)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
-        :link!,
-    )
-    return _link!(vi, spl)
-end
-function link!(vi::VarInfo, spl::AbstractSampler, spaceval::Val)
-    Base.depwarn(
-        "`link!(varinfo, sampler, spaceval)` is deprecated, use `link!!(varinfo, sampler, model)` instead.",
-        :link!,
-    )
-    return _link!(vi, spl, spaceval)
-end
 function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
     # TODO: Change to a lazy iterator over `vns`
     vns = _getvns(vi, spl)
@@ -1317,29 +1296,6 @@ function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, mode
     # is just assume that `default_transformation` is the correct one if `istrans(vi)`.
     t = istrans(vi) ? default_transformation(model, vi) : NoTransformation()
     return maybe_invlink_before_eval!!(t, vi, context, model)
-end
-
-"""
-    invlink!(vi::VarInfo, spl::AbstractSampler)
-
-Transform the values of the random variables sampled by `spl` in `vi` from the
-Euclidean space back to the support of their distributions and sets their corresponding
-`"trans"` flag values to `false`.
-"""
-function invlink!(vi::VarInfo, spl::AbstractSampler)
-    Base.depwarn(
-        "`invlink!(varinfo, sampler)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
-        :invlink!,
-    )
-    return _invlink!(vi, spl)
-end
-
-function invlink!(vi::VarInfo, spl::AbstractSampler, spaceval::Val)
-    Base.depwarn(
-        "`invlink!(varinfo, sampler, spaceval)` is deprecated, use `invlink!!(varinfo, sampler, model)` instead.",
-        :invlink!,
-    )
-    return _invlink!(vi, spl, spaceval)
 end
 
 function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
