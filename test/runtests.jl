@@ -41,6 +41,9 @@ Random.seed!(100)
 include("test_util.jl")
 
 @testset verbose = true "DynamicPPL.jl" begin
+    # The tests are split into two groups so that CI can run in parallel. The
+    # groups are chosen to make both groups take roughly the same amount of
+    # time, but beyond that there is no particular reason for the split.
     if GROUP == "All" || GROUP == "Group1"
         include("utils.jl")
         include("compiler.jl")
