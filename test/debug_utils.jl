@@ -199,14 +199,7 @@
             @test retype <: Tuple
 
             # Just make sure the following is runnable.
-            # Also suppress the output since it's very long
-            @test begin
-                oldstd = stdout
-                redirect_stdout(devnull)
-                DynamicPPL.DebugUtils.model_warntype(model)
-                redirect_stdout(oldstd)
-                true
-            end
+            @test DynamicPPL.DebugUtils.model_warntype(model) isa Any
         end
     end
 end
