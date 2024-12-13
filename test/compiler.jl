@@ -382,28 +382,7 @@ module Issue537 end
         @test demo2()() == 42
     end
 
-    @testset "@submodel is deprecated" begin
-        @model inner() = x ~ Normal()
-        @model outer() = @submodel x = inner()
-        @test_logs(
-            (
-                :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
-            ),
-            outer()()
-        )
-
-        @model outer_with_prefix() = @submodel prefix = "sub" x = inner()
-        @test_logs(
-            (
-                :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
-            ),
-            outer_with_prefix()()
-        )
-    end
-
-    @testset "submodel" begin
+    @testset "to_submodel" begin
         # No prefix, 1 level.
         @model function demo1(x)
             return x ~ Normal()

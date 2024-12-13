@@ -59,6 +59,7 @@ include("test_util.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
         include("lkj.jl")
+        include("deprecated.jl")
     end
 
     if GROUP == "All" || GROUP == "Group2"
