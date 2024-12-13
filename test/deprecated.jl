@@ -50,7 +50,8 @@
             DynamicPPL.setindex!!(vi, x_val, @varname(x))
             @test logprior(model, vi) ≈ logpdf(Normal(), x_val)
             @test loglikelihood(model, vi) ≈ logpdf(Normal(x_val), y_val)
-            @test logjoint(model, vi) ≈ logpdf(Normal(), x_val) + logpdf(Normal(x_val), y_val)
+            @test logjoint(model, vi) ≈
+                logpdf(Normal(), x_val) + logpdf(Normal(x_val), y_val)
         end
     end
 end
