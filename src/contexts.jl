@@ -244,7 +244,7 @@ adds the `Prefix` to all parameters.
 This context is useful in nested models to ensure that the names of the parameters are
 unique.
 
-See also: [`@submodel`](@ref)
+See also: [`to_submodel`](@ref)
 """
 struct PrefixContext{Prefix,C} <: AbstractContext
     context::C
