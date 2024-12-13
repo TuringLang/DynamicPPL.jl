@@ -199,7 +199,7 @@
             @test retype <: Tuple
 
             # Just make sure the following is runnable.
-            @test (DynamicPPL.DebugUtils.model_warntype(model); true)
+            @test DynamicPPL.DebugUtils.model_warntype(model) isa Any
         end
     end
 end
