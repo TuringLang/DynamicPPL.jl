@@ -44,40 +44,6 @@ function test_model_ad(model, logp_manual)
 end
 
 """
-    test_setval!(model, chain; sample_idx = 1, chain_idx = 1)
-
-Test `setval!` on `model` and `chain`.
-
-Worth noting that this only supports models containing symbols of the forms
-`m`, `m[1]`, `m[1, 2]`, not `m[1][1]`, etc.
-"""
-function test_setval!(model, chain; sample_idx=1, chain_idx=1)
-    var_info = VarInfo(model)
-    spl = SampleFromPrior()
-    θ_old = var_info[spl]
-    DynamicPPL.setval!(var_info, chain, sample_idx, chain_idx)
-    θ_new = var_info[spl]
-    @test θ_old != θ_new
-    vals = DynamicPPL.values_as(var_info, OrderedDict)
-    iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
-    for (n, v) in mapreduce(collect, vcat, iters)
-        n = string(n)
-        if Symbol(n) ∉ keys(chain)
-            # Assume it's a group
-            chain_val = vec(
-                MCMCChains.group(chain, Symbol(n)).value[sample_idx, :, chain_idx]
-            )
-            v_true = vec(v)
-        else
-            chain_val = chain[sample_idx, n, chain_idx]
-            v_true = v
-        end
-
-        @test v_true == chain_val
-    end
-end
-
-"""
     short_varinfo_name(vi::AbstractVarInfo)
 
 Return string representing a short description of `vi`.
@@ -109,4 +75,37 @@ function modify_value_representation(nt::NamedTuple)
         modified_nt = merge(modified_nt, (key => modified_value,))
     end
     return modified_nt
+end
+
+"""
+    make_chain_from_prior([rng,] model, n_iters)
+
+Construct an MCMCChains.Chains object by sampling from the prior of `model` for
+`n_iters` iterations.
+"""
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    # Sample from the prior
+    varinfos = [VarInfo(rng, model) for _ in 1:n_iters]
+    # Extract all varnames found in any dictionary. Doing it this way guards
+    # against the possibility of having different varnames in different
+    # dictionaries, e.g. for models that have dynamic variables / array sizes
+    varnames = OrderedSet{VarName}()
+    # Convert each varinfo into an OrderedDict of vns => params.
+    # We have to use varname_and_value_leaves so that each parameter is a scalar
+    dicts = map(varinfos) do t
+        vals = DynamicPPL.values_as(t, OrderedDict)
+        iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+        tuples = mapreduce(collect, vcat, iters)
+        push!(varnames, map(first, tuples)...)
+        OrderedDict(tuples)
+    end
+    # Convert back to list
+    varnames = collect(varnames)
+    # Construct matrix of values
+    vals = [get(dict, vn, missing) for dict in dicts, vn in varnames]
+    # Construct and return the Chains object
+    return Chains(vals, varnames)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
 end

@@ -14,12 +14,6 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with [`@submodel`](@ref).
-
-```@docs
-@submodel
-```
-
 ### Type
 
 A [`Model`](@ref) can be created by calling the model function, as defined by [`@model`](@ref).
@@ -110,6 +104,34 @@ Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original 
 unfix
 ```
 
+## Models within models
+
+One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
+
+```@docs
+to_submodel
+```
+
+Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
+
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
+
+```@docs
+@submodel
+```
+
+In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
+
+```@docs
+prefix
+```
+
+Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
+
+```@docs
+returned(::Model)
+```
+
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
@@ -118,10 +140,10 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`generated_quantities`](@ref).
+Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
 
 ```@docs
-generated_quantities
+returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
@@ -243,6 +265,13 @@ AbstractVarInfo
 
 But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
+For constructing the "default" typed and untyped varinfo types used in DynamicPPL (see [the section on varinfo design](@ref "Design of `VarInfo`") for more on this), we have the following two methods:
+
+```@docs
+DynamicPPL.untyped_varinfo
+DynamicPPL.typed_varinfo
+```
+
 #### `VarInfo`
 
 ```@docs
@@ -250,12 +279,9 @@ VarInfo
 TypedVarInfo
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
-
-```@docs
-link!
-invlink!
-```
+One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [transformation page](internals/transformations.md).
+The [Transformations section below](#Transformations) describes the methods used for this.
+In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
 set_flag!
@@ -401,6 +427,19 @@ The default implementation of [`Sampler`](@ref) uses the following unexported fu
 DynamicPPL.initialstep
 DynamicPPL.loadstate
 DynamicPPL.initialsampler
+```
+
+Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
+
+```@docs
+DynamicPPL.default_varinfo
+```
+
+There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
+
+```@docs
+DynamicPPL.Experimental.determine_suitable_varinfo
+DynamicPPL.Experimental.is_suitable_varinfo
 ```
 
 ### [Model-Internal Functions](@id model_internal)

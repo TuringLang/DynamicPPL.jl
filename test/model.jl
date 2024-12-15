@@ -29,9 +29,11 @@ is_typed_varinfo(::DynamicPPL.AbstractVarInfo) = false
 is_typed_varinfo(varinfo::DynamicPPL.TypedVarInfo) = true
 is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
+const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
+
 @testset "model.jl" begin
     @testset "convenience functions" begin
-        model = gdemo_default # defined in test/test_util.jl
+        model = GDEMO_DEFAULT
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -55,53 +57,26 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        for model in DynamicPPL.TestUtils.DEMO_MODELS # length(DynamicPPL.TestUtils.DEMO_MODELS)=12
-            var_info = VarInfo(model)
-            vns = DynamicPPL.TestUtils.varnames(model)
-            syms = unique(DynamicPPL.getsym.(vns))
-
-            # generate a chain of sample parameter values.
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             N = 200
-            vals_OrderedDict = mapreduce(hcat, 1:N) do _
-                rand(OrderedDict, model)
-            end
-            vals_mat = mapreduce(hcat, 1:N) do i
-                [vals_OrderedDict[i][vn] for vn in vns]
-            end
-            i = 1
-            for col in eachcol(vals_mat)
-                col_flattened = []
-                [push!(col_flattened, x...) for x in col]
-                if i == 1
-                    chain_mat = Matrix(reshape(col_flattened, 1, length(col_flattened)))
-                else
-                    chain_mat = vcat(
-                        chain_mat, reshape(col_flattened, 1, length(col_flattened))
-                    )
-                end
-                i += 1
-            end
-            chain_mat = convert(Matrix{Float64}, chain_mat)
-
-            # devise parameter names for chain
-            sample_values_vec = collect(values(vals_OrderedDict[1]))
-            symbol_names = []
-            chain_sym_map = Dict()
-            for k in 1:length(keys(var_info))
-                vn_parent = keys(var_info)[k]
-                sym = DynamicPPL.getsym(vn_parent)
-                vn_children = DynamicPPL.varname_leaves(vn_parent, sample_values_vec[k]) # `varname_leaves` defined in src/utils.jl
-                for vn_child in vn_children
-                    chain_sym_map[Symbol(vn_child)] = sym
-                    symbol_names = [symbol_names; Symbol(vn_child)]
-                end
-            end
-            chain = Chains(chain_mat, symbol_names)
-
-            # calculate the pointwise loglikelihoods for the whole chain using the newly written functions
+            chain = make_chain_from_prior(model, N)
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
             logjoints = logjoint(model, chain)
+
+            # Construct mapping of varname symbols to varname-parent symbols.
+            # Here, varname_leaves is used to ensure compatibility with the
+            # variables stored in the chain
+            var_info = VarInfo(model)
+            chain_sym_map = Dict{Symbol,Symbol}()
+            for vn_parent in keys(var_info)
+                sym = DynamicPPL.getsym(vn_parent)
+                vn_children = DynamicPPL.varname_leaves(vn_parent, var_info[vn_parent])
+                for vn_child in vn_children
+                    chain_sym_map[Symbol(vn_child)] = sym
+                end
+            end
+
             # compare them with true values
             for i in 1:N
                 samples_dict = Dict()
@@ -125,8 +100,21 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         end
     end
 
+    @testset "DynamicPPL#684: threadsafe evaluation with multiple types" begin
+        @model function multiple_types(x)
+            ns ~ filldist(Normal(0, 2.0), 3)
+            m ~ Uniform(0, 1)
+            return x ~ Normal(m, 1)
+        end
+        model = multiple_types(1)
+        chain = make_chain_from_prior(model, 10)
+        loglikelihood(model, chain)
+        logprior(model, chain)
+        logjoint(model, chain)
+    end
+
     @testset "rng" begin
-        model = gdemo_default
+        model = GDEMO_DEFAULT
 
         for sampler in (SampleFromPrior(), SampleFromUniform())
             for i in 1:10
@@ -144,13 +132,15 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "defaults without VarInfo, Sampler, and Context" begin
-        model = gdemo_default
+        model = GDEMO_DEFAULT
 
         Random.seed!(100)
-        s, m = model()
+        retval = model()
 
         Random.seed!(100)
-        @test model(Random.default_rng()) == (s, m)
+        retval2 = model(Random.default_rng())
+        @test retval2.s == retval.s
+        @test retval2.m == retval.m
     end
 
     @testset "nameof" begin
@@ -184,7 +174,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "Internal methods" begin
-        model = gdemo_default
+        model = GDEMO_DEFAULT
 
         # sample from model and extract variables
         vi = VarInfo(model)
@@ -224,7 +214,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
     end
 
     @testset "rand" begin
-        model = gdemo_default
+        model = GDEMO_DEFAULT
 
         Random.seed!(1776)
         s, m = model()
@@ -309,7 +299,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         end
     end
 
-    @testset "generated_quantities on `LKJCholesky`" begin
+    @testset "returned() on `LKJCholesky`" begin
         n = 10
         d = 2
         model = DynamicPPL.TestUtils.demo_lkjchol(d)
@@ -333,7 +323,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
         )
 
         # Test!
-        results = generated_quantities(model, chain)
+        results = returned(model, chain)
         for (x_true, result) in zip(xs, results)
             @test x_true.UL == result.x.UL
         end
@@ -352,7 +342,7 @@ is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
             info=(varname_to_symbol=vns_to_syms_with_extra,),
         )
         # Test!
-        results = generated_quantities(model, chain_with_extra)
+        results = returned(model, chain_with_extra)
         for (x_true, result) in zip(xs, results)
             @test x_true.UL == result.x.UL
         end
