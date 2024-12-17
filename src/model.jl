@@ -1423,6 +1423,7 @@ julia> model = illegal_likelihood() | (a = 1.0,);
 julia> model()
 ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
 [...]
+```
 """
 to_submodel(model::Model, auto_prefix::Bool=true) =
     to_sampleable(returned(model), auto_prefix)
