@@ -146,6 +146,26 @@ function _pointwise_tilde_observe(
     end
 end
 
+# Note on submodels (penelopeysm)
+#
+# We don't need to overload tilde_observe!! for Sampleables (yet), because it
+# is currently not possible to evaluate a model with a Sampleable on the RHS
+# of an observe statement.
+#
+# Note that calling tilde_assume!! on a Sampleable does not necessarily imply
+# that there are no observe statements inside the Sampleable. There could well
+# be likelihood terms in there, which must be included in the returned logp.
+# See e.g. the `demo_dot_assume_observe_submodel` demo model.
+#
+# This is handled by passing the same context to rand_like!!, which figures out
+# which terms to include using the context, and also mutates the context and vi
+# appropriately. Thus, we don't need to check against _include_prior(context)
+# here.
+function tilde_assume!!(context::PointwiseLogdensityContext, right::Sampleable, vn, vi)
+    value, vi = DynamicPPL.rand_like!!(right, context, vi)
+    return value, vi
+end
+
 function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
     !_include_prior(context) && return (tilde_assume!!(context.context, right, vn, vi))
     value, logp, vi = tilde_assume(context.context, right, vn, vi)

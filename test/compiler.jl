@@ -382,34 +382,13 @@ module Issue537 end
         @test demo2()() == 42
     end
 
-    @testset "@submodel is deprecated" begin
-        @model inner() = x ~ Normal()
-        @model outer() = @submodel x = inner()
-        @test_logs(
-            (
-                :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
-            ),
-            outer()()
-        )
-
-        @model outer_with_prefix() = @submodel prefix = "sub" x = inner()
-        @test_logs(
-            (
-                :warn,
-                "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.",
-            ),
-            outer_with_prefix()()
-        )
-    end
-
-    @testset "submodel" begin
+    @testset "to_submodel" begin
         # No prefix, 1 level.
         @model function demo1(x)
             return x ~ Normal()
         end
         @model function demo2(x, y)
-            @submodel demo1(x)
+            _ignore ~ to_submodel(demo1(x), false)
             return y ~ Uniform()
         end
         # No observation.
@@ -441,7 +420,7 @@ module Issue537 end
 
         # Check values makes sense.
         @model function demo3(x, y)
-            @submodel demo1(x)
+            _ignore ~ to_submodel(demo1(x), false)
             return y ~ Normal(x)
         end
         m = demo3(1000.0, missing)
@@ -453,12 +432,10 @@ module Issue537 end
             x ~ Normal()
             return x
         end
-
         @model function demo_useval(x, y)
-            @submodel prefix = "sub1" x1 = demo_return(x)
-            @submodel prefix = "sub2" x2 = demo_return(y)
-
-            return z ~ Normal(x1 + x2 + 100, 1.0)
+            sub1 ~ to_submodel(demo_return(x))
+            sub2 ~ to_submodel(demo_return(y))
+            return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
         m = demo_useval(missing, missing)
         vi = VarInfo(m)
@@ -472,13 +449,11 @@ module Issue537 end
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
             η ~ MvNormal(zeros(num_steps), I)
             δ = sqrt(1 - α^2)
-
             x = TV(undef, num_steps)
             x[1] = η[1]
             @inbounds for t in 2:num_steps
                 x[t] = @. α * x[t - 1] + δ * η[t]
             end
-
             return @. μ + σ * x
         end
 
@@ -486,7 +461,6 @@ module Issue537 end
             α ~ Uniform()
             μ ~ Normal()
             σ ~ truncated(Normal(), 0, Inf)
-
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
@@ -613,14 +587,11 @@ module Issue537 end
         @model demo() = x ~ Normal()
         retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
 
-        # Return-value when using `@submodel`
+        # Return-value when using `to_submodel`
         @model inner() = x ~ Normal()
-        # Without assignment.
-        @model outer() = @submodel inner()
-        @test outer()() isa Real
-
-        # With assignment.
-        @model outer() = @submodel x = inner()
+        @model function outer()
+            return _ignore ~ to_submodel(inner())
+        end
         @test outer()() isa Real
 
         # Edge-cases.
@@ -720,8 +691,7 @@ module Issue537 end
             return (; x, y)
         end
         @model function demo_tracked_submodel()
-            @submodel (x, y) = demo_tracked()
-            return (; x, y)
+            return vals ~ to_submodel(demo_tracked(), false)
         end
         for model in [demo_tracked(), demo_tracked_submodel()]
             # Make sure it's runnable and `y` is present in the return-value.

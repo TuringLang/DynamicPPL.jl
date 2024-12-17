@@ -437,7 +437,8 @@ end
 
 @model function demo_assume_submodel_observe_index_literal()
     # Submodel prior
-    @submodel s, m = _prior_dot_assume()
+    priors ~ to_submodel(_prior_dot_assume(), false)
+    s, m = priors
     1.5 ~ Normal(m[1], sqrt(s[1]))
     2.0 ~ Normal(m[2], sqrt(s[2]))
 
@@ -462,7 +463,7 @@ function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal
     return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
 end
 
-@model function _likelihood_mltivariate_observe(s, m, x)
+@model function _likelihood_multivariate_observe(s, m, x)
     return x ~ MvNormal(m, Diagonal(s))
 end
 
@@ -475,7 +476,9 @@ end
     m .~ Normal.(0, sqrt.(s))
 
     # Submodel likelihood
-    @submodel _likelihood_mltivariate_observe(s, m, x)
+    # With to_submodel, we have to have a left-hand side variable to
+    # capture the result, so we just use a dummy variable
+    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x))
 
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
 end
