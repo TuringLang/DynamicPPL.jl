@@ -22,14 +22,14 @@ _lkj_atol = 0.05
     model = lkj_prior_demo()
     # `SampleFromPrior` will sample in constrained space.
     @testset "SampleFromPrior" begin
-        samples = sample(model, SampleFromPrior(), 1_000)
+        samples = sample(model, SampleFromPrior(), 1_000; progress=false)
         @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
             _lkj_atol
     end
 
     # `SampleFromUniform` will sample in unconstrained space.
     @testset "SampleFromUniform" begin
-        samples = sample(model, SampleFromUniform(), 1_000)
+        samples = sample(model, SampleFromUniform(), 1_000; progress=false)
         @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
             _lkj_atol
     end
@@ -39,7 +39,7 @@ end
     model = lkj_chol_prior_demo(uplo)
     # `SampleFromPrior` will sample in unconstrained space.
     @testset "SampleFromPrior" begin
-        samples = sample(model, SampleFromPrior(), 1_000)
+        samples = sample(model, SampleFromPrior(), 1_000; progress=false)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))
@@ -50,7 +50,7 @@ end
 
     # `SampleFromUniform` will sample in unconstrained space.
     @testset "SampleFromUniform" begin
-        samples = sample(model, SampleFromUniform(), 1_000)
+        samples = sample(model, SampleFromUniform(), 1_000; progress=false)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))

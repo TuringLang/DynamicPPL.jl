@@ -265,6 +265,13 @@ AbstractVarInfo
 
 But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
+For constructing the "default" typed and untyped varinfo types used in DynamicPPL (see [the section on varinfo design](@ref "Design of `VarInfo`") for more on this), we have the following two methods:
+
+```@docs
+DynamicPPL.untyped_varinfo
+DynamicPPL.typed_varinfo
+```
+
 #### `VarInfo`
 
 ```@docs
@@ -272,12 +279,9 @@ VarInfo
 TypedVarInfo
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
-
-```@docs
-link!
-invlink!
-```
+One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [transformation page](internals/transformations.md).
+The [Transformations section below](#Transformations) describes the methods used for this.
+In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
 set_flag!
@@ -423,6 +427,19 @@ The default implementation of [`Sampler`](@ref) uses the following unexported fu
 DynamicPPL.initialstep
 DynamicPPL.loadstate
 DynamicPPL.initialsampler
+```
+
+Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
+
+```@docs
+DynamicPPL.default_varinfo
+```
+
+There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
+
+```@docs
+DynamicPPL.Experimental.determine_suitable_varinfo
+DynamicPPL.Experimental.is_suitable_varinfo
 ```
 
 ### [Model-Internal Functions](@id model_internal)

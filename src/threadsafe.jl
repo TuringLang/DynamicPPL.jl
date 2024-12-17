@@ -79,8 +79,6 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
-invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
 function link!!(
