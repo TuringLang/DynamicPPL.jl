@@ -1,7 +1,13 @@
-using Bijectors: pd_from_upper, pd_from_lower
-
 function pd_from_triangular(X::AbstractMatrix, uplo::Char)
-    return uplo == 'U' ? pd_from_upper(X) : pd_from_lower(X)
+    # Pre-allocation fixes a problem with abstract element types in Julia 1.10
+    # Ref https://github.com/TuringLang/DynamicPPL.jl/pull/570#issue-2092729916
+    out = similar(X, Base.promote_op(*, eltype(X), eltype(X)))
+    if uplo === 'U'
+        mul!(out, UpperTriangular(X)', UpperTriangular(X))
+    else
+        mul!(out, LowerTriangular(X), LowerTriangular(X)')
+    end
+    return out
 end
 
 @model lkj_prior_demo() = x ~ LKJ(2, 1)
@@ -16,14 +22,14 @@ _lkj_atol = 0.05
     model = lkj_prior_demo()
     # `SampleFromPrior` will sample in constrained space.
     @testset "SampleFromPrior" begin
-        samples = sample(model, SampleFromPrior(), 1_000)
+        samples = sample(model, SampleFromPrior(), 1_000; progress=false)
         @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
             _lkj_atol
     end
 
     # `SampleFromUniform` will sample in unconstrained space.
     @testset "SampleFromUniform" begin
-        samples = sample(model, SampleFromUniform(), 1_000)
+        samples = sample(model, SampleFromUniform(), 1_000; progress=false)
         @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
             _lkj_atol
     end
@@ -33,7 +39,7 @@ end
     model = lkj_chol_prior_demo(uplo)
     # `SampleFromPrior` will sample in unconstrained space.
     @testset "SampleFromPrior" begin
-        samples = sample(model, SampleFromPrior(), 1_000)
+        samples = sample(model, SampleFromPrior(), 1_000; progress=false)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))
@@ -44,7 +50,7 @@ end
 
     # `SampleFromUniform` will sample in unconstrained space.
     @testset "SampleFromUniform" begin
-        samples = sample(model, SampleFromUniform(), 1_000)
+        samples = sample(model, SampleFromUniform(), 1_000; progress=false)
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))

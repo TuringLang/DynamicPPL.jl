@@ -33,6 +33,8 @@ struct MyCoolStruct{T}
     a::T
 end
 
+module Issue537 end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
@@ -307,11 +309,11 @@ end
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
-        @test vi1.metadata.y.vns[1] == @varname(y)
+        @test first(Base.keys(vi1.metadata.y)) == @varname(y)
         @test haskey(vi2.metadata, :y)
-        @test vi2.metadata.y.vns[1] == @varname(y[2][:, 1])
+        @test first(Base.keys(vi2.metadata.y)) == @varname(y[2][:, 1])
         @test haskey(vi3.metadata, :y)
-        @test vi3.metadata.y.vns[1] == @varname(y[1])
+        @test first(Base.keys(vi3.metadata.y)) == @varname(y[1])
 
         # Conditioning
         f1_c = f1() | (y=1,)
@@ -380,13 +382,13 @@ end
         @test demo2()() == 42
     end
 
-    @testset "submodel" begin
+    @testset "to_submodel" begin
         # No prefix, 1 level.
         @model function demo1(x)
             return x ~ Normal()
         end
         @model function demo2(x, y)
-            @submodel demo1(x)
+            _ignore ~ to_submodel(demo1(x), false)
             return y ~ Uniform()
         end
         # No observation.
@@ -418,7 +420,7 @@ end
 
         # Check values makes sense.
         @model function demo3(x, y)
-            @submodel demo1(x)
+            _ignore ~ to_submodel(demo1(x), false)
             return y ~ Normal(x)
         end
         m = demo3(1000.0, missing)
@@ -430,12 +432,10 @@ end
             x ~ Normal()
             return x
         end
-
         @model function demo_useval(x, y)
-            @submodel prefix = "sub1" x1 = demo_return(x)
-            @submodel prefix = "sub2" x2 = demo_return(y)
-
-            return z ~ Normal(x1 + x2 + 100, 1.0)
+            sub1 ~ to_submodel(demo_return(x))
+            sub2 ~ to_submodel(demo_return(y))
+            return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
         m = demo_useval(missing, missing)
         vi = VarInfo(m)
@@ -449,13 +449,11 @@ end
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
             η ~ MvNormal(zeros(num_steps), I)
             δ = sqrt(1 - α^2)
-
             x = TV(undef, num_steps)
             x[1] = η[1]
             @inbounds for t in 2:num_steps
                 x[t] = @. α * x[t - 1] + δ * η[t]
             end
-
             return @. μ + σ * x
         end
 
@@ -463,11 +461,10 @@ end
             α ~ Uniform()
             μ ~ Normal()
             σ ~ truncated(Normal(), 0, Inf)
-
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                @submodel prefix = "ar1_$i" x = AR1(num_steps, α, μ, σ)
+                x ~ to_submodel(prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
@@ -590,15 +587,39 @@ end
         @model demo() = x ~ Normal()
         retval, svi = DynamicPPL.evaluate!!(demo(), SimpleVarInfo(), SamplingContext())
 
-        # Return-value when using `@submodel`
+        # Return-value when using `to_submodel`
         @model inner() = x ~ Normal()
-        # Without assignment.
-        @model outer() = @submodel inner()
+        @model function outer()
+            return _ignore ~ to_submodel(inner())
+        end
         @test outer()() isa Real
 
-        # With assignment.
-        @model outer() = @submodel x = inner()
-        @test outer()() isa Real
+        # Edge-cases.
+        # `return` in the last statement.
+        # Ref: issue #511.
+        @model function demo_ret_in_last_stmt(x::Bool)
+            # Two different values not supporting `iterate`.
+            if x
+                return Val(1)
+            else
+                return Val(2)
+            end
+        end
+
+        model_true = demo_ret_in_last_stmt(true)
+        @test model_true() === Val(1)
+
+        model_false = demo_ret_in_last_stmt(false)
+        @test model_false() === Val(2)
+
+        # `return` with `return`
+        @model function demo_ret_with_ret()
+            return begin
+                return Val(1)
+                Val(2)
+            end
+        end
+        @test demo_ret_with_ret()() === Val(1)
     end
 
     @testset "issue #368: hasmissing dispatch" begin
@@ -647,5 +668,56 @@ end
         # Empty `args...` and empty `kwargs...`.
         res = f_splat_test_2(1)()
         @test res == (1, (), 1, Int, NamedTuple())
+    end
+
+    @testset "issue #537: model with logging" begin
+        # Make sure `Module` is valid to put in a model.
+        @model demo_with_module() = Issue537
+        model = demo_with_module()
+        @test model() === Issue537
+
+        # And one explicit test for logging so know that is working.
+        @model demo_with_logging() = @info "hi"
+        model = demo_with_logging()
+        @test model() === nothing
+        # Make sure that the log message is present.
+        @test_logs (:info, "hi") model()
+    end
+
+    @testset ":= (tracked values)" begin
+        @model function demo_tracked()
+            x ~ Normal()
+            y := 100 + x
+            return (; x, y)
+        end
+        @model function demo_tracked_submodel()
+            return vals ~ to_submodel(demo_tracked(), false)
+        end
+        for model in [demo_tracked(), demo_tracked_submodel()]
+            # Make sure it's runnable and `y` is present in the return-value.
+            @test model() isa NamedTuple{(:x, :y)}
+
+            # `VarInfo` should only contain `x`.
+            varinfo = VarInfo(model)
+            @test haskey(varinfo, @varname(x))
+            @test !haskey(varinfo, @varname(y))
+
+            # While `values_as_in_model` should contain both `x` and `y`.
+            values = values_as_in_model(model, deepcopy(varinfo))
+            @test haskey(values, @varname(x))
+            @test haskey(values, @varname(y))
+        end
+    end
+
+    @testset "signature parsing + TypeWrap" begin
+        @model function demo_typewrap(
+            a, b=1, ::Type{T1}=Float64; c, d=2, t::Type{T2}=Int
+        ) where {T1,T2}
+            return (; a, b, c, d, t)
+        end
+
+        model = demo_typewrap(1; c=2)
+        res = model()
+        @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
     end
 end

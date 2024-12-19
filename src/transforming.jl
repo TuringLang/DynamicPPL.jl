@@ -1,3 +1,14 @@
+"""
+    struct DynamicTransformationContext{isinverse} <: AbstractContext
+
+When a model is evaluated with this context, transform the accompanying `AbstractVarInfo` to
+constrained space if `isinverse` or unconstrained if `!isinverse`.
+
+Note that some `AbstractVarInfo` types, must notably `VarInfo`, override the
+`DynamicTransformationContext` methods with more efficient implementations.
+`DynamicTransformationContext` is a fallback for when we need to evaluate the model to know
+how to do the transformation, used by e.g. `SimpleVarInfo`.
+"""
 struct DynamicTransformationContext{isinverse} <: AbstractContext end
 NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
@@ -74,7 +85,7 @@ function dot_tilde_assume(
     for (vn, ri) in zip(vns, eachcol(r))
         # Only transform if `!isinverse` since `vi[vn, right]`
         # already performs the inverse transformation if it's transformed.
-        vi = DynamicPPL.setindex!!(vi, isinverse ? ri : b(ri), vn)
+        vi = setindex!!(vi, isinverse ? ri : b(ri), vn)
     end
 
     return r, lp, vi
@@ -93,4 +104,16 @@ function invlink!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
         NoTransformation(),
     )
+end
+
+function link(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return link!!(t, deepcopy(vi), spl, model)
+end
+
+function invlink(
+    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+)
+    return invlink!!(t, deepcopy(vi), spl, model)
 end

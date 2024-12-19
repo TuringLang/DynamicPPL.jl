@@ -11,6 +11,7 @@ using Markdown: Markdown
 
 using LibGit2: LibGit2
 using Pkg: Pkg
+using Random: Random
 
 export weave_benchmarks
 
@@ -74,9 +75,9 @@ function benchmark_simple_varinfo_dict!(suite, m)
 end
 
 function typed_code(m, vi=VarInfo(m))
-    rng = DynamicPPL.Random.MersenneTwister(42)
-    spl = DynamicPPL.SampleFromPrior()
-    ctx = DynamicPPL.SamplingContext(rng, spl, DynamicPPL.DefaultContext())
+    rng = Random.MersenneTwister(42)
+    spl = SampleFromPrior()
+    ctx = SamplingContext(rng, spl, DefaultContext())
 
     results = code_typed(m.f, Base.typesof(m, vi, ctx, m.args...))
     return first(results)

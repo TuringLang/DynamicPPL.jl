@@ -1,15 +1,17 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstactContext}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
+        context::Ctx=DefaultContext()
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, and missing
-arguments `missings`.
+types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
+arguments `missings`, and evaluation context of type `Ctx`.
 
 Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
+`context` is by default `DefaultContext()`.
 
 An argument with a type of `Missing` will be in `missings` by default. However, in
 non-traditional use-cases `missings` can be defined differently. All variables in `missings`
@@ -67,11 +69,16 @@ model with different arguments.
 @generated function Model(
     f::F,
     args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple,
+    defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-) where {F,argnames,Targs}
-    missings = Tuple(name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing)
-    return :(Model{$missings}(f, args, defaults, context))
+) where {F,argnames,Targs,kwargnames,Tkwargs}
+    missing_args = Tuple(
+        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
+    )
+    missing_kwargs = Tuple(
+        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
+    )
+    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
 end
 
 function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
@@ -216,15 +223,16 @@ true
 ## Nested models
 
 `condition` of course also supports the use of nested models through
-the use of [`@submodel`](@ref).
+the use of [`to_submodel`](@ref).
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           @submodel m = demo_inner()
-           return m
+           # By default, `to_submodel` prefixes the variables using the left-hand side of `~`.
+           inner ~ to_submodel(demo_inner())
+           return inner
        end
 demo_outer (generic function with 2 methods)
 
@@ -233,63 +241,28 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> conditioned_model = model | (m = 1.0, );
-
-julia> conditioned_model()
-1.0
-```
-
-But one needs to be careful when prefixing variables in the nested models:
-
-```jldoctest condition
-julia> @model function demo_outer_prefix()
-           @submodel prefix="inner" m = demo_inner()
-           return m
-       end
-demo_outer_prefix (generic function with 2 methods)
-
-julia> # (×) This doesn't work now!
-       conditioned_model = demo_outer_prefix() | (m = 1.0, );
-
-julia> conditioned_model() == 1.0
-false
-
-julia> # (✓) `m` in `demo_inner` is referred to as `inner.m` internally, so we do:
-       conditioned_model = demo_outer_prefix() | (var"inner.m" = 1.0, );
+julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
+       conditioned_model = model | (var"inner.m" = 1.0, );
 
 julia> conditioned_model()
 1.0
 
-julia> # Note that the above `var"..."` is just standard Julia syntax:
-       keys((var"inner.m" = 1.0, ))
-(Symbol("inner.m"),)
+julia> # However, it's not possible to condition `inner` directly.
+       conditioned_model_fail = model | (inner = 1.0, );
+
+julia> conditioned_model_fail()
+ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+[...]
 ```
 
 And similarly when using `Dict`:
 
 ```jldoctest condition
-julia> conditioned_model_dict = demo_outer_prefix() | (@varname(var"inner.m") => 1.0);
+julia> conditioned_model_dict = model | (@varname(var"inner.m") => 1.0);
 
 julia> conditioned_model_dict()
 1.0
 ```
-
-The difference is maybe more obvious once we look at how these different
-in their trace/`VarInfo`:
-
-```jldoctest condition
-julia> keys(VarInfo(demo_outer()))
-1-element Vector{VarName{:m, Setfield.IdentityLens}}:
- m
-
-julia> keys(VarInfo(demo_outer_prefix()))
-1-element Vector{VarName{Symbol("inner.m"), Setfield.IdentityLens}}:
- inner.m
-```
-
-From this we can tell what the correct way to condition `m` within `demo_inner`
-is in the two different models.
-
 """
 AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
 function AbstractPPL.condition(model::Model, value, values...)
@@ -308,7 +281,7 @@ This is essentially the inverse of [`condition`](@ref). This also means that
 it suffers from the same limitiations.
 
 Note that currently we only support `variables` to take on explicit values
-provided to `condition.
+provided to `condition`.
 
 # Examples
 ```jldoctest decondition
@@ -404,7 +377,6 @@ julia> # (✓) this works though
 julia> m = deconditioned_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
 true
 ```
-
 """
 function AbstractPPL.decondition(model::Model, syms...)
     return contextualize(model, decondition(model.context, syms...))
@@ -420,7 +392,7 @@ observations(model::Model) = conditioned(model)
 """
     conditioned(model::Model)
 
-Return `NamedTuple` of values that are conditioned on under `model`.
+Return the conditioned values in `model`.
 
 # Examples
 ```jldoctest
@@ -449,7 +421,7 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), Setfield.IdentityLens}}:
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
@@ -466,6 +438,361 @@ VarName[]
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
+
+"""
+    fix(model::Model; values...)
+    fix(model::Model, values::NamedTuple)
+
+Return a `Model` which now treats the variables in `values` as fixed.
+
+See also: [`unfix`](@ref), [`fixed`](@ref)
+
+# Examples
+## Simple univariate model
+```jldoctest fix
+julia> using Distributions
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
+true
+
+julia> # Create a new instance which treats `x` as observed
+       # with value `100.0`, and similarly for `m=1.0`.
+       fixed_model = fix(model, x=100.0, m=1.0);
+
+julia> m, x = fixed_model(); (m == 1.0 && x == 100.0)
+true
+
+julia> # Let's only fix on `x = 100.0`.
+       fixed_model = fix(model, x = 100.0);
+
+julia> m, x = fixed_model(); (m ≠ 1.0 && x == 100.0)
+true
+```
+
+The above uses a `NamedTuple` to hold the fixed variables, which allows us to perform some
+additional optimizations; in many cases, the above has zero runtime-overhead.
+
+But we can also use a `Dict`, which offers more flexibility in the fixing
+(see examples further below) but generally has worse performance than the `NamedTuple`
+approach:
+
+```jldoctest fix
+julia> fixed_model_dict = fix(model, Dict(@varname(x) => 100.0));
+
+julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
+
+julia> # Alternative: pass `Pair{<:VarName}` as positional argument.
+       fixed_model_dict = fix(model, @varname(x) => 100.0, );
+
+julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
+true
+```
+
+## Fix only a part of a multivariate variable
+
+We can not only fix multivariate random variables, but
+we can also use the standard mechanism of setting something to `missing`
+in the call to `fix` to only fix a part of the variable.
+
+```jldoctest fix
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 4 methods)
+
+julia> model = demo_mv();
+
+julia> fixed_model = fix(model, m = [missing, 1.0]);
+
+julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+       m = fixed_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
+```
+
+Intuitively one might also expect to be able to write something like `fix(model, var\"m[1]\" = 1.0, )`.
+Unfortunately this is not supported as it has the potential of increasing compilation
+times but without offering any benefit with respect to runtime:
+
+```jldoctest fix
+julia> # (×) `m[2]` is not set to 1.0.
+       m = fix(model, var"m[2]" = 1.0)(); m[2] == 1.0
+false
+```
+
+But you _can_ do this if you use a `Dict` as the underlying storage instead:
+
+```jldoctest fix
+julia> # Alternative: `fix(model, Dict(@varname(m[2] => 1.0)))`
+       # (✓) `m[2]` is set to 1.0.
+       m = fix(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
+true
+```
+
+## Nested models
+
+`fix` of course also supports the use of nested models through
+the use of [`to_submodel`](@ref), similar to [`condition`](@ref).
+
+```jldoctest fix
+julia> @model demo_inner() = m ~ Normal()
+demo_inner (generic function with 2 methods)
+
+julia> @model function demo_outer()
+           inner ~ to_submodel(demo_inner())
+           return inner
+       end
+demo_outer (generic function with 2 methods)
+
+julia> model = demo_outer();
+
+julia> model() ≠ 1.0
+true
+
+julia> fixed_model = fix(model, var"inner.m" = 1.0, );
+
+julia> fixed_model()
+1.0
+```
+
+However, unlike [`condition`](@ref), `fix` can also be used to fix the
+return-value of the submodel:
+
+```julia
+julia> fixed_model = fix(model, inner = 2.0,);
+
+julia> fixed_model()
+2.0
+```
+
+And similarly when using `Dict`:
+
+```jldoctest fix
+julia> fixed_model_dict = fix(model, @varname(var"inner.m") => 1.0);
+
+julia> fixed_model_dict()
+1.0
+
+julia> fixed_model_dict = fix(model, @varname(inner) => 2.0);
+
+julia> fixed_model_dict()
+2.0
+```
+
+## Difference from `condition`
+
+A very similar functionality is also provided by [`condition`](@ref) which,
+not surprisingly, _conditions_ variables instead of fixing them. The only
+difference between fixing and conditioning is as follows:
+- `condition`ed variables are considered to be observations, and are thus
+  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+  but not in [`logprior`](@ref).
+- `fix`ed variables are considered to be constant, and are thus not included
+  in any log-probability computations.
+
+```juliadoctest fix
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> model = demo();
+
+julia> model_fixed = fix(model, m = 1.0);
+
+julia> model_conditioned = condition(model, m = 1.0);
+
+julia> logjoint(model_fixed, (x=1.0,))
+-0.9189385332046728
+
+julia> # Different!
+       logjoint(model_conditioned, (x=1.0,))
+-2.3378770664093453
+
+julia> # And the difference is the missing log-probability of `m`:
+       logjoint(model_fixed, (x=1.0,)) + logpdf(Normal(), 1.0) == logjoint(model_conditioned, (x=1.0,))
+true
+```
+"""
+fix(model::Model; values...) = contextualize(model, fix(model.context; values...))
+function fix(model::Model, value, values...)
+    return contextualize(model, fix(model.context, value, values...))
+end
+
+"""
+    unfix(model::Model)
+    unfix(model::Model, variables...)
+
+Return a `Model` for which `variables...` are _not_ considered fixed.
+If no `variables` are provided, then all variables currently considered fixed
+will no longer be.
+
+This is essentially the inverse of [`fix`](@ref). This also means that
+it suffers from the same limitiations.
+
+Note that currently we only support `variables` to take on explicit values
+provided to `fix`.
+
+# Examples
+```jldoctest unfix
+julia> using Distributions
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+           return (; m=m, x=x)
+       end
+demo (generic function with 2 methods)
+
+julia> fixed_model = fix(demo(), m = 1.0, x = 10.0);
+
+julia> fixed_model()
+(m = 1.0, x = 10.0)
+
+julia> # By specifying the `VarName` to `unfix`.
+       model = unfix(fixed_model, @varname(m));
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+
+julia> # When `NamedTuple` is used as the underlying, you can also provide
+       # the symbol directly (though the `@varname` approach is preferable if
+       # if the variable is known at compile-time).
+       model = unfix(fixed_model, :m);
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+
+julia> # `unfix` multiple at once:
+       (m, x) = unfix(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
+true
+
+julia> # `unfix` without any symbols will `unfix` all variables.
+       (m, x) = unfix(model)(); (m ≠ 1.0 && x ≠ 10.0)
+true
+
+julia> # Usage of `Val` to perform `unfix` at compile-time if possible
+       # is also supported.
+       model = unfix(fixed_model, Val{:m}());
+
+julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+true
+```
+
+Similarly when using a `Dict`:
+
+```jldoctest unfix
+julia> fixed_model_dict = fix(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
+
+julia> fixed_model_dict()
+(m = 1.0, x = 10.0)
+
+julia> unfixed_model_dict = unfix(fixed_model_dict, @varname(m));
+
+julia> (m, x) = unfixed_model_dict(); m ≠ 1.0 && x == 10.0
+true
+```
+
+But, as mentioned, `unfix` is only supported for variables explicitly
+provided to `fix` earlier:
+
+```jldoctest unfix
+julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
+           m = Vector{TV}(undef, 2)
+           m[1] ~ Normal()
+           m[2] ~ Normal()
+           return m
+       end
+demo_mv (generic function with 4 methods)
+
+julia> model = demo_mv();
+
+julia> fixed_model = fix(model, @varname(m) => [1.0, 2.0]);
+
+julia> fixed_model()
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> unfixed_model = unfix(fixed_model, @varname(m[1]));
+
+julia> unfixed_model()  # (×) `m[1]` is still fixed
+2-element Vector{Float64}:
+ 1.0
+ 2.0
+
+julia> # (✓) this works though
+       unfixed_model_2 = fix(unfixed_model, @varname(m[1]) => missing);
+
+julia> m = unfixed_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
+true
+```
+"""
+unfix(model::Model, syms...) = contextualize(model, unfix(model.context, syms...))
+
+"""
+    fixed(model::Model)
+
+Return the fixed values in `model`.
+
+# Examples
+```jldoctest
+julia> using Distributions
+
+julia> using DynamicPPL: fixed, contextualize
+
+julia> @model function demo()
+           m ~ Normal()
+           x ~ Normal(m, 1)
+       end
+demo (generic function with 2 methods)
+
+julia> m = demo();
+
+julia> # Returns all the variables we have fixed on + their values.
+       fixed(fix(m, x=100.0, m=1.0))
+(x = 100.0, m = 1.0)
+
+julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(m=1.0))), x=100.0);
+
+julia> fixed(cm)
+(x = 100.0, m = 1.0)
+
+julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
+       # `a.m` is treated as a random variable.
+       keys(VarInfo(cm))
+1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
+ a.m
+
+julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(var"a.m"=1.0))), x=100.0);
+
+julia> fixed(cm).x
+100.0
+
+julia> fixed(cm).var"a.m"
+1.0
+
+julia> keys(VarInfo(cm)) # <= no variables are sampled
+VarName[]
+```
+"""
+fixed(model::Model) = fixed(model.context)
 
 """
     (model::Model)([rng, varinfo, sampler, context])
@@ -523,13 +850,18 @@ function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
     return evaluate!!(model, VarInfo(), context)
 end
 
-function AbstractPPL.evaluate!!(model::Model, args...)
+function AbstractPPL.evaluate!!(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+)
     return evaluate!!(model, Random.default_rng(), args...)
 end
 
 # without VarInfo
 function AbstractPPL.evaluate!!(
-    model::Model, rng::Random.AbstractRNG, sampler::AbstractSampler, args...
+    model::Model,
+    rng::Random.AbstractRNG,
+    sampler::AbstractSampler,
+    args::AbstractContext...,
 )
     return evaluate!!(model, rng, VarInfo(), sampler, args...)
 end
@@ -581,6 +913,8 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractCo
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
     return model.f(args...; kwargs...)
 end
+
+is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 
 """
     make_evaluate_args_and_kwargs(model, varinfo, context)
@@ -656,7 +990,9 @@ function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
         evaluate!!(
             model,
             SimpleVarInfo{Float64}(OrderedDict()),
-            SamplingContext(rng, SampleFromPrior(), DefaultContext()),
+            # NOTE: Use `leafcontext` here so we a) avoid overriding the leaf context of `model`,
+            # and b) avoid double-stacking the parent contexts.
+            SamplingContext(rng, SampleFromPrior(), leafcontext(model.context)),
         ),
     )
     return values_as(x, T)
@@ -672,10 +1008,46 @@ Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     return getlogp(last(evaluate!!(model, varinfo, DefaultContext())))
+end
+
+"""
+	logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
+
+Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
+
+# Examples
+
+```jldoctest
+julia> using MCMCChains, Distributions
+
+julia> @model function demo_model(x)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           for i in eachindex(x)
+               x[i] ~ Normal(m, sqrt(s))
+           end
+       end;
+
+julia> # construct a chain of samples using MCMCChains
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
+
+julia> logjoint(demo_model([1., 2.]), chain);
+```
+"""
+function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
+    var_info = VarInfo(model) # extract variables info from the model
+    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+        argvals_dict = OrderedDict(
+            vn_parent =>
+                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
+            vn_parent in keys(var_info)
+        )
+        logjoint(model, argvals_dict)
+    end
 end
 
 """
@@ -690,6 +1062,42 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
+	logprior(model::Model, chain::AbstractMCMC.AbstractChains)
+
+Return an array of log prior probabilities evaluated at each sample in an MCMC `chain`.
+
+# Examples
+
+```jldoctest
+julia> using MCMCChains, Distributions
+
+julia> @model function demo_model(x)
+           s ~ InverseGamma(2, 3)
+           m ~ Normal(0, sqrt(s))
+           for i in eachindex(x)
+               x[i] ~ Normal(m, sqrt(s))
+           end
+       end;
+
+julia> # construct a chain of samples using MCMCChains
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
+
+julia> logprior(demo_model([1., 2.]), chain);
+```
+"""
+function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
+    var_info = VarInfo(model) # extract variables info from the model
+    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+        argvals_dict = OrderedDict(
+            vn_parent =>
+                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
+            vn_parent in keys(var_info)
+        )
+        logprior(model, argvals_dict)
+    end
+end
+
+"""
     loglikelihood(model::Model, varinfo::AbstractVarInfo)
 
 Return the log likelihood of variables `varinfo` for the probabilistic `model`.
@@ -701,77 +1109,45 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-    generated_quantities(model::Model, chain::AbstractChains)
+	loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
 
-Execute `model` for each of the samples in `chain` and return an array of the values
-returned by the `model` for each sample.
+Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
 
 # Examples
-## General
-Often you might have additional quantities computed inside the model that you want to
-inspect, e.g.
-```julia
-@model function demo(x)
-    # sample and observe
-    θ ~ Prior()
-    x ~ Likelihood()
-    return interesting_quantity(θ, x)
-end
-m = demo(data)
-chain = sample(m, alg, n)
-# To inspect the `interesting_quantity(θ, x)` where `θ` is replaced by samples
-# from the posterior/`chain`:
-generated_quantities(m, chain) # <= results in a `Vector` of returned values
-                               #    from `interesting_quantity(θ, x)`
-```
-## Concrete (and simple)
-```julia
-julia> using DynamicPPL, Turing
 
-julia> @model function demo(xs)
+```jldoctest
+julia> using MCMCChains, Distributions
+
+julia> @model function demo_model(x)
            s ~ InverseGamma(2, 3)
-           m_shifted ~ Normal(10, √s)
-           m = m_shifted - 10
-
-           for i in eachindex(xs)
-               xs[i] ~ Normal(m, √s)
+           m ~ Normal(0, sqrt(s))
+           for i in eachindex(x)
+               x[i] ~ Normal(m, sqrt(s))
            end
+       end;
 
-           return (m, )
-       end
-demo (generic function with 1 method)
+julia> # construct a chain of samples using MCMCChains
+       chain = Chains(rand(10, 2, 3), [:s, :m]);
 
-julia> model = demo(randn(10));
-
-julia> chain = sample(model, MH(), 10);
-
-julia> generated_quantities(model, chain)
-10×1 Array{Tuple{Float64},2}:
- (2.1964758025119338,)
- (2.1964758025119338,)
- (0.09270081916291417,)
- (0.09270081916291417,)
- (0.09270081916291417,)
- (0.09270081916291417,)
- (0.09270081916291417,)
- (0.043088571494005024,)
- (-0.16489786710222099,)
- (-0.16489786710222099,)
+julia> loglikelihood(demo_model([1., 2.]), chain);
 ```
 """
-function generated_quantities(model::Model, chain::AbstractChains)
-    varinfo = VarInfo(model)
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    return map(iters) do (sample_idx, chain_idx)
-        setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
-        model(varinfo)
+function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
+    var_info = VarInfo(model) # extract variables info from the model
+    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
+        argvals_dict = OrderedDict(
+            vn_parent =>
+                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
+            vn_parent in keys(var_info)
+        )
+        loglikelihood(model, argvals_dict)
     end
 end
 
 """
-    generated_quantities(model::Model, parameters::NamedTuple)
-    generated_quantities(model::Model, values, keys)
-    generated_quantities(model::Model, values, keys)
+    returned(model::Model, parameters::NamedTuple)
+    returned(model::Model, values, keys)
+    returned(model::Model, values, keys)
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
 
@@ -794,23 +1170,260 @@ demo (generic function with 2 methods)
 
 julia> model = demo(randn(10));
 
-julia> parameters = (; s = 1.0, m_shifted=10);
+julia> parameters = (; s = 1.0, m_shifted=10.0);
 
-julia> generated_quantities(model, parameters)
+julia> returned(model, parameters)
 (0.0,)
 
-julia> generated_quantities(model, values(parameters), keys(parameters))
+julia> returned(model, values(parameters), keys(parameters))
 (0.0,)
 ```
 """
-function generated_quantities(model::Model, parameters::NamedTuple)
-    varinfo = VarInfo(model)
-    setval_and_resample!(varinfo, values(parameters), keys(parameters))
-    return model(varinfo)
+function returned(model::Model, parameters::NamedTuple)
+    fixed_model = fix(model, parameters)
+    return fixed_model()
 end
 
-function generated_quantities(model::Model, values, keys)
-    varinfo = VarInfo(model)
-    setval_and_resample!(varinfo, values, keys)
-    return model(varinfo)
+function returned(model::Model, values, keys)
+    return returned(model, NamedTuple{keys}(values))
 end
+
+"""
+    is_rhs_model(x)
+
+Return `true` if `x` is a model or model wrapper, and `false` otherwise.
+"""
+is_rhs_model(x) = false
+
+"""
+    Distributional
+
+Abstract type for type indicating that something is "distributional".
+"""
+abstract type Distributional end
+
+"""
+    should_auto_prefix(distributional)
+
+Return `true` if the `distributional` should use automatic prefixing, and `false` otherwise.
+"""
+function should_auto_prefix end
+
+"""
+    is_rhs_model(x)
+
+Return `true` if the `distributional` is a model, and `false` otherwise.
+"""
+function is_rhs_model end
+
+"""
+    Sampleable{M} <: Distributional
+
+A wrapper around a model indicating it is sampleable.
+"""
+struct Sampleable{M,AutoPrefix} <: Distributional
+    model::M
+end
+
+should_auto_prefix(::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix} = AutoPrefix
+is_rhs_model(x::Sampleable) = is_rhs_model(x.model)
+
+# TODO: Export this if it end up having a purpose beyond `to_submodel`.
+"""
+    to_sampleable(model[, auto_prefix])
+
+Return a wrapper around `model` indicating it is sampleable.
+
+# Arguments
+- `model::Model`: the model to wrap.
+- `auto_prefix::Bool`: whether to prefix the variables in the model. Default: `true`.
+"""
+to_sampleable(model, auto_prefix::Bool=true) = Sampleable{typeof(model),auto_prefix}(model)
+
+"""
+    rand_like!!(model_wrap, context, varinfo)
+
+Returns a tuple with the first element being the realization and the second the updated varinfo.
+
+# Arguments
+- `model_wrap::ReturnedModelWrapper`: the wrapper of the model to use.
+- `context::AbstractContext`: the context to use for evaluation.
+- `varinfo::AbstractVarInfo`: the varinfo to use for evaluation.
+    """
+function rand_like!!(
+    model_wrap::Sampleable, context::AbstractContext, varinfo::AbstractVarInfo
+)
+    return rand_like!!(model_wrap.model, context, varinfo)
+end
+
+"""
+    ReturnedModelWrapper
+
+A wrapper around a model indicating it is a model over its return values.
+
+This should rarely be constructed explicitly; see [`returned(model)`](@ref) instead.
+"""
+struct ReturnedModelWrapper{M<:Model}
+    model::M
+end
+
+is_rhs_model(::ReturnedModelWrapper) = true
+
+function rand_like!!(
+    model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
+)
+    # Return's the value and the (possibly mutated) varinfo.
+    return _evaluate!!(model_wrap.model, varinfo, context)
+end
+
+"""
+    returned(model)
+
+Return a `model` wrapper indicating that it is a model over its return-values.
+"""
+returned(model::Model) = ReturnedModelWrapper(model)
+
+"""
+    to_submodel(model::Model[, auto_prefix::Bool])
+
+Return a model wrapper indicating that it is a sampleable model over the return-values.
+
+This is mainly meant to be used on the right-hand side of a `~` operator to indicate that
+the model can be sampled from but not necessarily evaluated for its log density.
+
+!!! warning
+    Note that some other operations that one typically associate with expressions of the form
+    `left ~ right` such as [`condition`](@ref), will also not work with `to_submodel`.
+
+!!! warning
+    To avoid variable names clashing between models, it is recommend leave argument `auto_prefix` equal to `true`.
+    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly.
+
+# Arguments
+- `model::Model`: the model to wrap.
+- `auto_prefix::Bool`: whether to automatically prefix the variables in the model using the left-hand
+    side of the `~` statement. Default: `true`.
+
+# Examples
+
+## Simple example
+```jldoctest submodel-to_submodel; setup=:(using Distributions)
+julia> @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia> @model function demo2(x, y)
+            a ~ to_submodel(demo1(x))
+            return y ~ Uniform(0, a)
+       end;
+```
+
+When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
+```jldoctest submodel-to_submodel
+julia> vi = VarInfo(demo2(missing, 0.4));
+
+julia> @varname(var\"a.x\") in keys(vi)
+true
+```
+
+The variable `a` is not tracked. However, it will be assigned the return value of `demo1`,
+and can be used in subsequent lines of the model, as shown above.
+```jldoctest submodel-to_submodel
+julia> @varname(a) in keys(vi)
+false
+```
+
+We can check that the log joint probability of the model accumulated in `vi` is correct:
+
+```jldoctest submodel-to_submodel
+julia> x = vi[@varname(var\"a.x\")];
+
+julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+true
+```
+
+## Without automatic prefixing
+As mentioned earlier, by default, the `auto_prefix` argument specifies whether to automatically
+prefix the variables in the submodel. If `auto_prefix=false`, then the variables in the submodel
+will not be prefixed.
+```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
+julia> @model function demo1(x)
+           x ~ Normal()
+           return 1 + abs(x)
+       end;
+
+julia> @model function demo2_no_prefix(x, z)
+            a ~ to_submodel(demo1(x), false)
+            return z ~ Uniform(-a, 1)
+       end;
+
+julia> vi = VarInfo(demo2_no_prefix(missing, 0.4));
+
+julia> @varname(x) in keys(vi)  # here we just use `x` instead of `a.x`
+true
+```
+However, not using prefixing is generally not recommended as it can lead to variable name clashes
+unless one is careful. For example, if we're re-using the same model twice in a model, not using prefixing
+will lead to variable name clashes: However, one can manually prefix using the [`prefix(::Model, input)`](@ref):
+```jldoctest submodel-to_submodel-prefix
+julia> @model function demo2(x, y, z)
+            a ~ to_submodel(prefix(demo1(x), :sub1), false)
+            b ~ to_submodel(prefix(demo1(y), :sub2), false)
+            return z ~ Uniform(-a, b)
+       end;
+
+julia> vi = VarInfo(demo2(missing, missing, 0.4));
+
+julia> @varname(var"sub1.x") in keys(vi)
+true
+
+julia> @varname(var"sub2.x") in keys(vi)
+true
+```
+
+Variables `a` and `b` are not tracked, but are assigned the return values of the respective
+calls to `demo1`:
+```jldoctest submodel-to_submodel-prefix
+julia> @varname(a) in keys(vi)
+false
+
+julia> @varname(b) in keys(vi)
+false
+```
+
+We can check that the log joint probability of the model accumulated in `vi` is correct:
+
+```jldoctest submodel-to_submodel-prefix
+julia> sub1_x = vi[@varname(var"sub1.x")];
+
+julia> sub2_x = vi[@varname(var"sub2.x")];
+
+julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
+
+julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
+
+julia> getlogp(vi) ≈ logprior + loglikelihood
+true
+```
+
+## Usage as likelihood is illegal
+
+Note that it is illegal to use a `to_submodel` model as a likelihood in another model:
+
+```jldoctest submodel-to_submodel-illegal; setup=:(using Distributions)
+julia> @model inner() = x ~ Normal()
+inner (generic function with 2 methods)
+
+julia> @model illegal_likelihood() = a ~ to_submodel(inner())
+illegal_likelihood (generic function with 2 methods)
+
+julia> model = illegal_likelihood() | (a = 1.0,);
+
+julia> model()
+ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+[...]
+```
+"""
+to_submodel(model::Model, auto_prefix::Bool=true) =
+    to_sampleable(returned(model), auto_prefix)

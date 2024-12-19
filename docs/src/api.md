@@ -14,12 +14,6 @@ These statements are rewritten by `@model` as calls of [internal functions](@ref
 @model
 ```
 
-One can nest models and call another model inside the model function with [`@submodel`](@ref).
-
-```@docs
-@submodel
-```
-
 ### Type
 
 A [`Model`](@ref) can be created by calling the model function, as defined by [`@model`](@ref).
@@ -82,6 +76,62 @@ Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, 
 decondition
 ```
 
+## Fixing and unfixing
+
+We can also _fix_ a collection of variables in a [`Model`](@ref) to certain using [`fix`](@ref).
+
+This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
+but they are indeed different operations:
+
+  - `condition`ed variables are considered to be _observations_, and are thus
+    included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
+    but not in [`logprior`](@ref).
+  - `fix`ed variables are considered to be _constant_, and are thus not included
+    in any log-probability computations.
+
+The differences are more clearly spelled out in the docstring of [`fix`](@ref) below.
+
+```@docs
+fix
+DynamicPPL.fixed
+```
+
+The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
+
+Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original meaning:
+
+```@docs
+unfix
+```
+
+## Models within models
+
+One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
+
+```@docs
+to_submodel
+```
+
+Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
+
+In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
+
+```@docs
+@submodel
+```
+
+In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
+
+```@docs
+prefix
+```
+
+Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
+
+```@docs
+returned(::Model)
+```
+
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
@@ -90,16 +140,39 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`generated_quantities`](@ref).
+Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
 
 ```@docs
-generated_quantities
+returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
-For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref).
+For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
+[`pointwise_prior_logdensities`](@ref) or both, i.e. all variables, using
+[`pointwise_logdensities`](@ref).
 
 ```@docs
+pointwise_logdensities
 pointwise_loglikelihoods
+pointwise_prior_logdensities
+```
+
+For converting a chain into a format that can more easily be fed into a `Model` again, for example using `condition`, you can use [`value_iterator_from_chain`](@ref).
+
+```@docs
+value_iterator_from_chain
+
+```
+
+Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
+
+```@docs
+extract_priors
+```
+
+Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are seen in the model can be done using [`values_as_in_model`](@ref).
+
+```@docs
+values_as_in_model
 ```
 
 ```@docs
@@ -146,6 +219,34 @@ DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
+## Debugging Utilities
+
+DynamicPPL provides a few methods for checking validity of a model-definition.
+
+```@docs
+check_model
+check_model_and_trace
+```
+
+And some which might be useful to determine certain properties of the model based on the debug trace.
+
+```@docs
+DynamicPPL.has_static_constraints
+```
+
+For determining whether one might have type instabilities in the model, the following can be useful
+
+```@docs
+DynamicPPL.DebugUtils.model_warntype
+DynamicPPL.DebugUtils.model_typed
+```
+
+Interally, the type-checking methods make use of the following method for construction of the call with the argument types:
+
+```@docs
+DynamicPPL.DebugUtils.gen_evaluator_call_with_types
+```
+
 ## Advanced
 
 ### Variable names
@@ -156,87 +257,31 @@ Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/A
 
 ### Data Structures of Variables
 
-DynamicPPL provides different data structures for samples from the model and their log density.
-All of them are subtypes of [`AbstractVarInfo`](@ref).
+DynamicPPL provides different data structures used in for storing samples and accumulation of the log-probabilities, all of which are subtypes of [`AbstractVarInfo`](@ref).
 
 ```@docs
 AbstractVarInfo
 ```
 
-### Common API
+But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
-#### Accumulation of log-probabilities
-
-```@docs
-getlogp
-setlogp!!
-acclogp!!
-resetlogp!!
-```
-
-#### Variables and their realizations
+For constructing the "default" typed and untyped varinfo types used in DynamicPPL (see [the section on varinfo design](@ref "Design of `VarInfo`") for more on this), we have the following two methods:
 
 ```@docs
-keys
-getindex
-DynamicPPL.getindex_raw
-push!!
-empty!!
-isempty
-```
-
-```@docs
-values_as
-```
-
-#### Transformations
-
-```@docs
-DynamicPPL.AbstractTransformation
-DynamicPPL.NoTransformation
-DynamicPPL.DynamicTransformation
-DynamicPPL.StaticTransformation
-```
-
-```@docs
-DynamicPPL.istrans
-DynamicPPL.settrans!!
-DynamicPPL.transformation
-DynamicPPL.link!!
-DynamicPPL.invlink!!
-DynamicPPL.default_transformation
-DynamicPPL.maybe_invlink_before_eval!!
-DynamicPPL.reconstruct
-```
-
-#### Utils
-
-```@docs
-DynamicPPL.unflatten
-DynamicPPL.tonamedtuple
-```
-
-#### `SimpleVarInfo`
-
-```@docs
-SimpleVarInfo
+DynamicPPL.untyped_varinfo
+DynamicPPL.typed_varinfo
 ```
 
 #### `VarInfo`
-
-Another data structure is [`VarInfo`](@ref).
 
 ```@docs
 VarInfo
 TypedVarInfo
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are stored in a linearized form.
-
-```@docs
-link!
-invlink!
-```
+One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [transformation page](internals/transformations.md).
+The [Transformations section below](#Transformations) describes the methods used for this.
+In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
 set_flag!
@@ -264,6 +309,80 @@ set_retained_vns_del_by_spl!
 
 ```@docs
 Base.empty!
+```
+
+#### `SimpleVarInfo`
+
+```@docs
+SimpleVarInfo
+```
+
+### Common API
+
+#### Accumulation of log-probabilities
+
+```@docs
+getlogp
+setlogp!!
+acclogp!!
+resetlogp!!
+```
+
+#### Variables and their realizations
+
+```@docs
+keys
+getindex
+push!!
+empty!!
+isempty
+DynamicPPL.getindex_internal
+DynamicPPL.setindex_internal!
+DynamicPPL.update_internal!
+DynamicPPL.insert_internal!
+DynamicPPL.length_internal
+DynamicPPL.reset!
+DynamicPPL.update!
+DynamicPPL.insert!
+DynamicPPL.loosen_types!!
+DynamicPPL.tighten_types
+```
+
+```@docs
+values_as
+```
+
+#### Transformations
+
+```@docs
+DynamicPPL.AbstractTransformation
+DynamicPPL.NoTransformation
+DynamicPPL.DynamicTransformation
+DynamicPPL.StaticTransformation
+```
+
+```@docs
+DynamicPPL.istrans
+DynamicPPL.settrans!!
+DynamicPPL.transformation
+DynamicPPL.link
+DynamicPPL.invlink
+DynamicPPL.link!!
+DynamicPPL.invlink!!
+DynamicPPL.default_transformation
+DynamicPPL.link_transform
+DynamicPPL.invlink_transform
+DynamicPPL.maybe_invlink_before_eval!!
+```
+
+#### Utils
+
+```@docs
+Base.merge(::AbstractVarInfo)
+DynamicPPL.subset
+DynamicPPL.unflatten
+DynamicPPL.varname_leaves
+DynamicPPL.varname_and_value_leaves
 ```
 
 ### Evaluation Contexts
@@ -310,6 +429,19 @@ DynamicPPL.loadstate
 DynamicPPL.initialsampler
 ```
 
+Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
+
+```@docs
+DynamicPPL.default_varinfo
+```
+
+There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
+
+```@docs
+DynamicPPL.Experimental.determine_suitable_varinfo
+DynamicPPL.Experimental.is_suitable_varinfo
+```
+
 ### [Model-Internal Functions](@id model_internal)
 
 ```@docs
@@ -321,4 +453,3 @@ dot_tilde_assume
 tilde_observe
 dot_tilde_observe
 ```
-

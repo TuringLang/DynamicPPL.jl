@@ -56,13 +56,43 @@
             @test !haskey(svi, @varname(m.a[2]))
             @test !haskey(svi, @varname(m.a.b))
         end
+
+        @testset "VarNamedVector" begin
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => 1.0))
+            @test getlogp(svi) == 0.0
+            @test haskey(svi, @varname(m))
+            @test !haskey(svi, @varname(m[1]))
+
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => [1.0]))
+            @test getlogp(svi) == 0.0
+            @test haskey(svi, @varname(m))
+            @test haskey(svi, @varname(m[1]))
+            @test !haskey(svi, @varname(m[2]))
+            @test svi[@varname(m)][1] == svi[@varname(m[1])]
+
+            svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m.a) => [1.0]))
+            @test haskey(svi, @varname(m))
+            @test haskey(svi, @varname(m.a))
+            @test haskey(svi, @varname(m.a[1]))
+            @test !haskey(svi, @varname(m.a[2]))
+            @test !haskey(svi, @varname(m.a.b))
+            # The implementation of haskey and getvalue fo VarNamedVector is incomplete, the
+            # next test is here to remind of us that.
+            svi = SimpleVarInfo(
+                push!!(DynamicPPL.VarNamedVector(), @varname(m.a.b) => [1.0])
+            )
+            @test_broken !haskey(svi, @varname(m.a.b.c.d))
+        end
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
                                                           DynamicPPL.TestUtils.DEMO_MODELS
-        values_constrained = rand(NamedTuple, model)
+        values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$(typeof(vi))" for vi in (
-            SimpleVarInfo(Dict()), SimpleVarInfo(values_constrained), VarInfo(model)
+            SimpleVarInfo(Dict()),
+            SimpleVarInfo(values_constrained),
+            SimpleVarInfo(DynamicPPL.VarNamedVector()),
+            VarInfo(model),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
@@ -100,7 +130,8 @@
 
             # Should result in same values.
             @test all(
-                DynamicPPL.getindex_raw(vi_invlinked, vn) ≈ get(values_constrained, vn) for
+                DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_invlinked, vn)) ≈
+                DynamicPPL.tovec(get(values_constrained, vn)) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             )
         end
@@ -112,16 +143,23 @@
 
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
-        svi_nt = SimpleVarInfo(rand(NamedTuple, model))
+        svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
         svi_dict = SimpleVarInfo(VarInfo(model), Dict)
+        vnv = DynamicPPL.VarNamedVector()
+        for (k, v) in pairs(DynamicPPL.TestUtils.rand_prior_true(model))
+            vnv = push!!(vnv, VarName{k}() => v)
+        end
+        svi_vnv = SimpleVarInfo(vnv)
 
         @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
             svi_nt,
             svi_dict,
-            DynamicPPL.settrans!!(svi_nt, true),
-            DynamicPPL.settrans!!(svi_dict, true),
+            svi_vnv,
+            DynamicPPL.settrans!!(deepcopy(svi_nt), true),
+            DynamicPPL.settrans!!(deepcopy(svi_dict), true),
+            DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
         )
-            # Random seed is set in each `@testset`, so we need to sample
+            # RandOM seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
             retval = model()
 
@@ -138,7 +176,7 @@
             @test getlogp(svi_new) != 0
 
             ### Evaluation ###
-            values_eval_constrained = rand(NamedTuple, model)
+            values_eval_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
             if DynamicPPL.istrans(svi)
                 _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
@@ -194,30 +232,34 @@
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
 
         # Initialize.
-        svi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        svi = last(DynamicPPL.evaluate!!(model, svi, SamplingContext()))
+        svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        svi_nt = last(DynamicPPL.evaluate!!(model, svi_nt, SamplingContext()))
+        svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
+        svi_vnv = last(DynamicPPL.evaluate!!(model, svi_vnv, SamplingContext()))
 
-        # Sample with large variations in unconstrained space.
-        for i in 1:10
-            for vn in keys(svi)
-                svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+        for svi in (svi_nt, svi_vnv)
+            # Sample with large variations in unconstrained space.
+            for i in 1:10
+                for vn in keys(svi)
+                    svi = DynamicPPL.setindex!!(svi, 10 * randn(), vn)
+                end
+                retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
+                @test retval.m == svi[@varname(m)]  # `m` is unconstrained
+                @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
+
+                retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+                    model, retval.m, retval.x
+                )
+
+                # Realizations from model should all be equal to the unconstrained realization.
+                for vn in DynamicPPL.TestUtils.varnames(model)
+                    @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
+                end
+
+                # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
+                lp = getlogp(svi)
+                @test lp ≈ lp_true
             end
-            retval, svi = DynamicPPL.evaluate!!(model, svi, DefaultContext())
-            @test retval.m == svi[@varname(m)]  # `m` is unconstrained
-            @test retval.x ≠ svi[@varname(x)]   # `x` is constrained depending on `m`
-
-            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
-                model, retval.m, retval.x
-            )
-
-            # Realizations from model should all be equal to the unconstrained realization.
-            for vn in DynamicPPL.TestUtils.varnames(model)
-                @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
-            end
-
-            # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
-            lp = getlogp(svi)
-            @test lp ≈ lp_true
         end
     end
 
@@ -225,7 +267,7 @@
         model = DynamicPPL.TestUtils.demo_static_transformation()
 
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, rand(NamedTuple, model), [@varname(s), @varname(m)]
+            model, DynamicPPL.TestUtils.rand_prior_true(model), [@varname(s), @varname(m)]
         )
         @testset "$(short_varinfo_name(vi))" for vi in varinfos
             # Initialize varinfo and link.
@@ -251,8 +293,11 @@
                 model, deepcopy(vi_linked), DefaultContext()
             )
 
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≠ retval.s  # `s` is unconstrained in original
-            @test DynamicPPL.getindex_raw(vi_linked_result, @varname(s)) == retval.s  # `s` is constrained in result
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≠
+                DynamicPPL.tovec(retval.s)  # `s` is unconstrained in original
+            @test DynamicPPL.tovec(
+                DynamicPPL.getindex_internal(vi_linked_result, @varname(s))
+            ) == DynamicPPL.tovec(retval.s)  # `s` is constrained in result
 
             # `m` should not be transformed.
             @test vi_linked[@varname(m)] == retval.m
@@ -263,9 +308,10 @@
                 model, retval.s, retval.m
             )
 
-            # Realizations in `vi_linked` should all be equal to the unconstrained realization.
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(s)) ≈ retval_unconstrained.s
-            @test DynamicPPL.getindex_raw(vi_linked, @varname(m)) ≈ retval_unconstrained.m
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≈
+                DynamicPPL.tovec(retval_unconstrained.s)
+            @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(m))) ≈
+                DynamicPPL.tovec(retval_unconstrained.m)
 
             # The resulting varinfo should hold the correct logp.
             lp = getlogp(vi_linked_result)

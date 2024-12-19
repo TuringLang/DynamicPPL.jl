@@ -67,6 +67,20 @@ function AbstractMCMC.step(
     return vi, nothing
 end
 
+"""
+    default_varinfo(rng, model, sampler[, context])
+
+Return a default varinfo object for the given `model` and `sampler`.
+
+# Arguments
+- `rng::Random.AbstractRNG`: Random number generator.
+- `model::Model`: Model for which we want to create a varinfo object.
+- `sampler::AbstractSampler`: Sampler which will make use of the varinfo object.
+- `context::AbstractContext`: Context in which the model is evaluated.
+
+# Returns
+- `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
+"""
 function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
     return default_varinfo(rng, model, sampler, DefaultContext())
 end
@@ -80,26 +94,31 @@ function default_varinfo(
     return VarInfo(rng, model, init_sampler, context)
 end
 
-# initial step: general interface for resuming and
-function AbstractMCMC.step(
+function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
     model::Model,
-    spl::Sampler;
+    sampler::Sampler,
+    N::Integer;
+    chain_type=default_chain_type(sampler),
     resume_from=nothing,
-    init_params=nothing,
+    initial_state=loadstate(resume_from),
     kwargs...,
 )
-    if resume_from !== nothing
-        state = loadstate(resume_from)
-        return AbstractMCMC.step(rng, model, spl, state; kwargs...)
-    end
+    return AbstractMCMC.mcmcsample(
+        rng, model, sampler, N; chain_type, initial_state, kwargs...
+    )
+end
 
+# initial step: general interface for resuming and
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
+)
     # Sample initial values.
     vi = default_varinfo(rng, model, spl)
 
     # Update the parameters if provided.
-    if init_params !== nothing
-        vi = initialize_parameters!!(vi, init_params, spl, model)
+    if initial_params !== nothing
+        vi = initialize_parameters!!(vi, initial_params, spl, model)
 
         # Update joint log probability.
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
@@ -108,15 +127,24 @@ function AbstractMCMC.step(
         vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
-    return initialstep(rng, model, spl, vi; init_params=init_params, kwargs...)
+    return initialstep(rng, model, spl, vi; initial_params, kwargs...)
 end
 
 """
     loadstate(data)
 
 Load sampler state from `data`.
+
+By default, `data` is returned.
 """
-function loadstate end
+loadstate(data) = data
+
+"""
+    default_chain_type(sampler)
+
+Default type of the chain of posterior samples from `sampler`.
+"""
+default_chain_type(sampler::Sampler) = Any
 
 """
     initialsampler(sampler::Sampler)
@@ -128,35 +156,54 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function initialize_parameters!!(
-    vi::AbstractVarInfo, init_params, spl::Sampler, model::Model
+function set_values!!(
+    varinfo::AbstractVarInfo,
+    initial_params::AbstractVector{<:Union{Real,Missing}},
+    spl::AbstractSampler,
 )
-    @debug "Using passed-in initial variable values" init_params
+    flattened_param_vals = varinfo[spl]
+    length(flattened_param_vals) == length(initial_params) || throw(
+        DimensionMismatch(
+            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(flattened_param_vals)))",
+        ),
+    )
 
-    # Flatten parameters.
-    init_theta = mapreduce(vcat, init_params) do x
-        vec([x;])
+    # Update values that are provided.
+    for i in eachindex(initial_params)
+        x = initial_params[i]
+        if x !== missing
+            flattened_param_vals[i] = x
+        end
     end
 
-    # Get all values.
+    # Update in `varinfo`.
+    return setindex!!(varinfo, flattened_param_vals, spl)
+end
+
+function set_values!!(
+    varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
+)
+    initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
+    return update_values!!(
+        varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
+    )
+end
+
+function initialize_parameters!!(
+    vi::AbstractVarInfo, initial_params, spl::AbstractSampler, model::Model
+)
+    @debug "Using passed-in initial variable values" initial_params
+
+    # `link` the varinfo if needed.
     linked = islinked(vi, spl)
     if linked
         vi = invlink!!(vi, spl, model)
     end
-    theta = vi[spl]
-    length(theta) == length(init_theta) ||
-        error("Provided initial value doesn't match the dimension of the model")
 
-    # Update values that are provided.
-    for i in 1:length(init_theta)
-        x = init_theta[i]
-        if x !== missing
-            theta[i] = x
-        end
-    end
+    # Set the values in `vi`.
+    vi = set_values!!(vi, initial_params, spl)
 
-    # Update in `vi`.
-    vi = setindex!!(vi, theta, spl)
+    # `invlink` if needed.
     if linked
         vi = link!!(vi, spl, model)
     end

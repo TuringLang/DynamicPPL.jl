@@ -53,7 +53,7 @@ DefaultContext()
 julia> ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
 
 julia> DynamicPPL.childcontext(ctx_prior)
-PriorContext{Nothing}(nothing)
+PriorContext()
 ```
 """
 setchildcontext
@@ -97,7 +97,7 @@ ParentContext(ParentContext(DefaultContext()))
 
 julia> # Replace the leaf context with another leaf.
        leafcontext(setleafcontext(ctx, PriorContext()))
-PriorContext{Nothing}(nothing)
+PriorContext()
 
 julia> # Append another parent context.
        setleafcontext(ctx, ParentContext(DefaultContext()))
@@ -188,39 +188,26 @@ getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(conte
 """
     struct DefaultContext <: AbstractContext end
 
-The `DefaultContext` is used by default to compute log the joint probability of the data 
+The `DefaultContext` is used by default to compute the log joint probability of the data
 and parameters when running the model.
 """
 struct DefaultContext <: AbstractContext end
 NodeTrait(context::DefaultContext) = IsLeaf()
 
 """
-    struct PriorContext{Tvars} <: AbstractContext
-        vars::Tvars
-    end
+    PriorContext <: AbstractContext
 
-The `PriorContext` enables the computation of the log prior of the parameters `vars` when 
-running the model.
+A leaf context resulting in the exclusion of likelihood terms when running the model.
 """
-struct PriorContext{Tvars} <: AbstractContext
-    vars::Tvars
-end
-PriorContext() = PriorContext(nothing)
+struct PriorContext <: AbstractContext end
 NodeTrait(context::PriorContext) = IsLeaf()
 
 """
-    struct LikelihoodContext{Tvars} <: AbstractContext
-        vars::Tvars
-    end
+    LikelihoodContext <: AbstractContext
 
-The `LikelihoodContext` enables the computation of the log likelihood of the parameters when 
-running the model. `vars` can be used to evaluate the log likelihood for specific values 
-of the model's parameters. If `vars` is `nothing`, the parameter values inside the `VarInfo` will be used by default.
+A leaf context resulting in the exclusion of prior terms when running the model.
 """
-struct LikelihoodContext{Tvars} <: AbstractContext
-    vars::Tvars
-end
-LikelihoodContext() = LikelihoodContext(nothing)
+struct LikelihoodContext <: AbstractContext end
 NodeTrait(context::LikelihoodContext) = IsLeaf()
 
 """
@@ -229,10 +216,10 @@ NodeTrait(context::LikelihoodContext) = IsLeaf()
         loglike_scalar::T
     end
 
-The `MiniBatchContext` enables the computation of 
-`log(prior) + s * log(likelihood of a batch)` when running the model, where `s` is the 
-`loglike_scalar` field, typically equal to `the number of data points / batch size`. 
-This is useful in batch-based stochastic gradient descent algorithms to be optimizing 
+The `MiniBatchContext` enables the computation of
+`log(prior) + s * log(likelihood of a batch)` when running the model, where `s` is the
+`loglike_scalar` field, typically equal to `the number of data points / batch size`.
+This is useful in batch-based stochastic gradient descent algorithms to be optimizing
 `log(prior) + log(likelihood of all the data points)` in the expectation.
 """
 struct MiniBatchContext{Tctx,T} <: AbstractContext
@@ -257,7 +244,7 @@ adds the `Prefix` to all parameters.
 This context is useful in nested models to ensure that the names of the parameters are
 unique.
 
-See also: [`@submodel`](@ref)
+See also: [`to_submodel`](@ref)
 """
 struct PrefixContext{Prefix,C} <: AbstractContext
     context::C
@@ -288,10 +275,38 @@ end
 
 function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(getlens(vn)))
+        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(getoptic(vn)))
     else
-        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getlens(vn))
+        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getoptic(vn))
     end
+end
+
+"""
+    prefix(model::Model, x)
+
+Return `model` but with all random variables prefixed by `x`.
+
+If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), :my_prefix))
+(var"my_prefix.x" = 1,)
+
+julia> # One can also use `Val` to avoid runtime overheads.
+       rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
+"""
+prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
+function prefix(model::Model, ::Val{x}) where {x}
+    return contextualize(model, PrefixContext{Symbol(x)}(model.context))
 end
 
 struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
@@ -320,67 +335,67 @@ childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
-    hasvalue(context::AbstractContext, vn::VarName)
+    hasconditioned(context::AbstractContext, vn::VarName)
 
 Return `true` if `vn` is found in `context`.
 """
-hasvalue(context::AbstractContext, vn::VarName) = false
-hasvalue(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
-function hasvalue(context::ConditionContext, vns::AbstractArray{<:VarName})
+hasconditioned(context::AbstractContext, vn::VarName) = false
+hasconditioned(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
+function hasconditioned(context::ConditionContext, vns::AbstractArray{<:VarName})
     return all(Base.Fix1(hasvalue, context.values), vns)
 end
 
 """
-    getvalue(context::AbstractContext, vn::VarName)
+    getconditioned(context::AbstractContext, vn::VarName)
 
 Return value of `vn` in `context`.
 """
-function getvalue(context::AbstractContext, vn::VarName)
+function getconditioned(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-getvalue(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
+getconditioned(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
 
 """
-    hasvalue_nested(context, vn)
+    hasconditioned_nested(context, vn)
 
 Return `true` if `vn` is found in `context` or any of its descendants.
 
-This is contrast to [`hasvalue(::AbstractContext, ::VarName)`](@ref) which only checks 
+This is contrast to [`hasconditioned(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-function hasvalue_nested(context::AbstractContext, vn)
-    return hasvalue_nested(NodeTrait(hasvalue_nested, context), context, vn)
+function hasconditioned_nested(context::AbstractContext, vn)
+    return hasconditioned_nested(NodeTrait(hasconditioned_nested, context), context, vn)
 end
-hasvalue_nested(::IsLeaf, context, vn) = hasvalue(context, vn)
-function hasvalue_nested(::IsParent, context, vn)
-    return hasvalue(context, vn) || hasvalue_nested(childcontext(context), vn)
+hasconditioned_nested(::IsLeaf, context, vn) = hasconditioned(context, vn)
+function hasconditioned_nested(::IsParent, context, vn)
+    return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
-function hasvalue_nested(context::PrefixContext, vn)
-    return hasvalue_nested(childcontext(context), prefix(context, vn))
+function hasconditioned_nested(context::PrefixContext, vn)
+    return hasconditioned_nested(childcontext(context), prefix(context, vn))
 end
 
 """
-    getvalue_nested(context, vn)
+    getconditioned_nested(context, vn)
 
 Return the value of the parameter corresponding to `vn` from `context` or its descendants.
 
-This is contrast to [`getvalue`](@ref) which only returns the value `vn` in `context`,
+This is contrast to [`getconditioned`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
 """
-function getvalue_nested(context::AbstractContext, vn)
-    return getvalue_nested(NodeTrait(getvalue_nested, context), context, vn)
+function getconditioned_nested(context::AbstractContext, vn)
+    return getconditioned_nested(NodeTrait(getconditioned_nested, context), context, vn)
 end
-function getvalue_nested(::IsLeaf, context, vn)
+function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
-function getvalue_nested(context::PrefixContext, vn)
-    return getvalue_nested(childcontext(context), prefix(context, vn))
+function getconditioned_nested(context::PrefixContext, vn)
+    return getconditioned_nested(childcontext(context), prefix(context, vn))
 end
-function getvalue_nested(::IsParent, context, vn)
-    return if hasvalue(context, vn)
-        getvalue(context, vn)
+function getconditioned_nested(::IsParent, context, vn)
+    return if hasconditioned(context, vn)
+        getconditioned(context, vn)
     else
-        getvalue_nested(childcontext(context), vn)
+        getconditioned_nested(childcontext(context), vn)
     end
 end
 
@@ -479,12 +494,188 @@ a merged version of the condition values.
 function conditioned(context::AbstractContext)
     return conditioned(NodeTrait(conditioned, context), context)
 end
-conditioned(::IsLeaf, context) = ()
+conditioned(::IsLeaf, context) = NamedTuple()
 conditioned(::IsParent, context) = conditioned(childcontext(context))
 function conditioned(context::ConditionContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
     # the `conditioned` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
-    return merge(context.values, conditioned(childcontext(context)))
+    return _merge(context.values, conditioned(childcontext(context)))
+end
+
+struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
+    values::Values
+    context::Ctx
+end
+
+const NamedFixedContext{Names} = FixedContext{<:NamedTuple{Names}}
+const DictFixedContext = FixedContext{<:AbstractDict}
+
+FixedContext(values) = FixedContext(values, DefaultContext())
+
+# Try to avoid nested `FixedContext`.
+function FixedContext(values::NamedTuple, context::NamedFixedContext)
+    # Note that this potentially overrides values from `context`, thus giving
+    # precedence to the outmost `FixedContext`.
+    return FixedContext(merge(context.values, values), childcontext(context))
+end
+
+function Base.show(io::IO, context::FixedContext)
+    return print(io, "FixedContext($(context.values), $(childcontext(context)))")
+end
+
+NodeTrait(::FixedContext) = IsParent()
+childcontext(context::FixedContext) = context.context
+setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
+
+"""
+    hasfixed(context::AbstractContext, vn::VarName)
+
+Return `true` if a fixed value for `vn` is found in `context`.
+"""
+hasfixed(context::AbstractContext, vn::VarName) = false
+hasfixed(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
+function hasfixed(context::FixedContext, vns::AbstractArray{<:VarName})
+    return all(Base.Fix1(hasvalue, context.values), vns)
+end
+
+"""
+    getfixed(context::AbstractContext, vn::VarName)
+
+Return the fixed value of `vn` in `context`.
+"""
+function getfixed(context::AbstractContext, vn::VarName)
+    return error("context $(context) does not contain value for $vn")
+end
+getfixed(context::FixedContext, vn::VarName) = getvalue(context.values, vn)
+
+"""
+    hasfixed_nested(context, vn)
+
+Return `true` if a fixed value for `vn` is found in `context` or any of its descendants.
+
+This is contrast to [`hasfixed(::AbstractContext, ::VarName)`](@ref) which only checks
+for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
+"""
+function hasfixed_nested(context::AbstractContext, vn)
+    return hasfixed_nested(NodeTrait(hasfixed_nested, context), context, vn)
+end
+hasfixed_nested(::IsLeaf, context, vn) = hasfixed(context, vn)
+function hasfixed_nested(::IsParent, context, vn)
+    return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
+end
+function hasfixed_nested(context::PrefixContext, vn)
+    return hasfixed_nested(childcontext(context), prefix(context, vn))
+end
+
+"""
+    getfixed_nested(context, vn)
+
+Return the fixed value of the parameter corresponding to `vn` from `context` or its descendants.
+
+This is contrast to [`getfixed`](@ref) which only returns the value `vn` in `context`,
+not recursively looking into its descendants.
+"""
+function getfixed_nested(context::AbstractContext, vn)
+    return getfixed_nested(NodeTrait(getfixed_nested, context), context, vn)
+end
+function getfixed_nested(::IsLeaf, context, vn)
+    return error("context $(context) does not contain value for $vn")
+end
+function getfixed_nested(context::PrefixContext, vn)
+    return getfixed_nested(childcontext(context), prefix(context, vn))
+end
+function getfixed_nested(::IsParent, context, vn)
+    return if hasfixed(context, vn)
+        getfixed(context, vn)
+    else
+        getfixed_nested(childcontext(context), vn)
+    end
+end
+
+"""
+    fix([context::AbstractContext,] values::NamedTuple)
+    fix([context::AbstractContext]; values...)
+
+Return `FixedContext` with `values` and `context` if `values` is non-empty,
+otherwise return `context` which is [`DefaultContext`](@ref) by default.
+
+See also: [`unfix`](@ref)
+"""
+fix(; values...) = fix(NamedTuple(values))
+fix(values::NamedTuple) = fix(DefaultContext(), values)
+function fix(value::Pair{<:VarName}, values::Pair{<:VarName}...)
+    return fix((value, values...))
+end
+function fix(values::NTuple{<:Any,<:Pair{<:VarName}})
+    return fix(DefaultContext(), values)
+end
+fix(context::AbstractContext, values::NamedTuple{()}) = context
+function fix(context::AbstractContext, values::Union{AbstractDict,NamedTuple})
+    return FixedContext(values, context)
+end
+function fix(context::AbstractContext; values...)
+    return fix(context, NamedTuple(values))
+end
+function fix(context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...)
+    return fix(context, (value, values...))
+end
+function fix(context::AbstractContext, values::NTuple{<:Any,Pair{<:VarName}})
+    return fix(context, Dict(values))
+end
+
+"""
+    unfix(context::AbstractContext, syms...)
+
+Return `context` but with `syms` no longer fixed.
+
+Note that this recursively traverses contexts, unfixing all along the way.
+
+See also: [`fix`](@ref)
+"""
+unfix(::IsLeaf, context, args...) = context
+function unfix(::IsParent, context, args...)
+    return setchildcontext(context, unfix(childcontext(context), args...))
+end
+function unfix(context, args...)
+    return unfix(NodeTrait(context), context, args...)
+end
+function unfix(context::FixedContext)
+    return unfix(childcontext(context))
+end
+function unfix(context::FixedContext, sym)
+    return fix(unfix(childcontext(context), sym), BangBang.delete!!(context.values, sym))
+end
+function unfix(context::FixedContext, sym, syms...)
+    return unfix(
+        fix(unfix(childcontext(context), syms...), BangBang.delete!!(context.values, sym)),
+        syms...,
+    )
+end
+
+function unfix(context::NamedFixedContext, vn::VarName{sym}) where {sym}
+    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, sym))
+end
+function unfix(context::FixedContext, vn::VarName)
+    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, vn))
+end
+
+"""
+    fixed(context::AbstractContext)
+
+Return the values that are fixed under `context`.
+
+Note that this will recursively traverse the context stack and return
+a merged version of the fix values.
+"""
+fixed(context::AbstractContext) = fixed(NodeTrait(fixed, context), context)
+fixed(::IsLeaf, context) = NamedTuple()
+fixed(::IsParent, context) = fixed(childcontext(context))
+function fixed(context::FixedContext)
+    # Note the order of arguments to `merge`. The behavior of the rest of DPPL
+    # is that the outermost `context` takes precendence, hence when resolving
+    # the `fixed` variables we need to ensure that `context.values` takes
+    # precedence over decendants of `context`.
+    return _merge(context.values, fixed(childcontext(context)))
 end

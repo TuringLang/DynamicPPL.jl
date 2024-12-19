@@ -248,27 +248,36 @@ function SimpleVarInfo{T}(
     return SimpleVarInfo(values, convert(T, getlogp(vi)))
 end
 
+function untyped_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo(OrderedDict())
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
+function typed_simple_varinfo(model::Model)
+    varinfo = SimpleVarInfo{Float64}()
+    return last(evaluate!!(model, varinfo, SamplingContext()))
+end
+
 unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
-    return Setfield.@set svi.values = unflatten(svi.values, x)
+    logp = getlogp(svi)
+    vals = unflatten(svi.values, x)
+    T = eltype(x)
+    return SimpleVarInfo{typeof(vals),T,typeof(svi.transformation)}(
+        vals, T(logp), svi.transformation
+    )
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
-    return resetlogp!!(Setfield.@set vi.values = empty!!(vi.values))
+    return resetlogp!!(Accessors.@set vi.values = empty!!(vi.values))
 end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getlogp(vi::SimpleVarInfo) = vi.logp
-setlogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = logp
-acclogp!!(vi::SimpleVarInfo, logp) = Setfield.@set vi.logp = getlogp(vi) + logp
+getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
 
-"""
-    keys(vi::SimpleVarInfo)
-
-Return an iterator of keys present in `vi`.
-"""
-Base.keys(vi::SimpleVarInfo) = keys(vi.values)
-Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
+setlogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = logp
+acclogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = getlogp(vi) + logp
 
 function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     vi.logp[] = logp
@@ -280,6 +289,14 @@ function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
     return vi
 end
 
+"""
+    keys(vi::SimpleVarInfo)
+
+Return an iterator of keys present in `vi`.
+"""
+Base.keys(vi::SimpleVarInfo) = keys(vi.values)
+Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
+
 function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     if !(svi.transformation isa NoTransformation)
         print(io, "Transformed ")
@@ -288,55 +305,41 @@ function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
     return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
 end
 
-# `NamedTuple`
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return maybe_invlink_and_reconstruct(vi, vn, dist, getindex(vi, vn))
+    return from_maybe_linked_internal(vi, vn, dist, getindex(vi, vn))
 end
 function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
         getindex(vi, vn, dist)
     end
-    return reconstruct(dist, vals_linked, length(vns))
+    return recombine(dist, vals_linked, length(vns))
 end
 
-Base.getindex(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
-
-# `AbstractDict`
-function Base.getindex(vi::SimpleVarInfo{<:AbstractDict}, vn::VarName)
-    return nested_getindex(vi.values, vn)
-end
+Base.getindex(vi::SimpleVarInfo, vn::VarName) = getindex_internal(vi, vn)
 
 # `SimpleVarInfo` doesn't necessarily vectorize, so we can have arrays other than
 # just `Vector`.
 function Base.getindex(vi::SimpleVarInfo, vns::AbstractArray{<:VarName})
     return map(Base.Fix1(getindex, vi), vns)
 end
-# HACK: Needed to disambiguiate.
+# HACK: Needed to disambiguate.
 Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getindex, vi), vns)
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
-# Since we don't perform any transformations in `getindex` for `SimpleVarInfo`
-# we simply call `getindex` in `getindex_raw`.
-getindex_raw(vi::SimpleVarInfo, vn::VarName) = vi[vn]
-function getindex_raw(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
-    return reconstruct(dist, getindex_raw(vi, vn))
+getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
+# `AbstractDict`
+function getindex_internal(
+    vi::SimpleVarInfo{<:Union{AbstractDict,VarNamedVector}}, vn::VarName
+)
+    return getvalue(vi.values, vn)
 end
-getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}) = vi[vns]
-function getindex_raw(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    # `reconstruct` expects a flattened `Vector` regardless of the type of `dist`, so we `vcat` everything.
-    vals = mapreduce(Base.Fix1(getindex_raw, vi), vcat, vns)
-    return reconstruct(dist, vals, length(vns))
-end
-
-# HACK: because `VarInfo` isn't ready to implement a proper `getindex_raw`.
-getval(vi::SimpleVarInfo, vn::VarName) = getindex_raw(vi, vn)
 
 Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
-    return Setfield.@set vi.values = set!!(vi.values, vn, val)
+    return Accessors.@set vi.values = set!!(vi.values, vn, val)
 end
 
 function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
@@ -355,34 +358,34 @@ end
 function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     dict = values_as(vi)
-    # Attempt to split into `parent` and `child` lenses.
-    parent, child, issuccess = splitlens(getlens(vn)) do lens
-        l = lens === nothing ? Setfield.IdentityLens() : lens
-        haskey(dict, VarName(vn, l))
+    # Attempt to split into `parent` and `child` optic.
+    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
+        o = optic === nothing ? identity : optic
+        haskey(dict, VarName(vn, o))
     end
-    # When combined with `VarInfo`, `nothing` is equivalent to `IdentityLens`.
-    keylens = parent === nothing ? Setfield.IdentityLens() : parent
+    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
+    keyoptic = parent === nothing ? identity : parent
 
     dict_new = if !issuccess
         # Split doesn't exist ⟹ we're working with a new key.
         BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName(vn, keylens)
+        vn_key = VarName(vn, keyoptic)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
-    return Setfield.@set vi.values = dict_new
+    return Accessors.@set vi.values = dict_new
 end
 
 # `NamedTuple`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,Setfield.IdentityLens},
+    vn::VarName{sym,typeof(identity)},
     value,
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
+    return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function BangBang.push!!(
     vi::SimpleVarInfo{<:NamedTuple},
@@ -391,19 +394,33 @@ function BangBang.push!!(
     dist::Distribution,
     gidset::Set{Selector},
 ) where {sym}
-    return Setfield.@set vi.values = set!!(vi.values, vn, value)
+    return Accessors.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `AbstractDict`
 function BangBang.push!!(
     vi::SimpleVarInfo{<:AbstractDict},
     vn::VarName,
-    r,
+    value,
     dist::Distribution,
     gidset::Set{Selector},
 )
-    vi.values[vn] = r
+    vi.values[vn] = value
     return vi
+end
+
+function BangBang.push!!(
+    vi::SimpleVarInfo{<:VarNamedVector},
+    vn::VarName,
+    value,
+    dist::Distribution,
+    gidset::Set{Selector},
+)
+    # The semantics of push!! for SimpleVarInfo and VarNamedVector are different. For
+    # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
+    # Hence we need to call update!! here, which has the same semantics as push!! does for
+    # SimpleVarInfo.
+    return Accessors.@set vi.values = setindex!!(vi.values, value, vn)
 end
 
 const SimpleOrThreadSafeSimple{T,V,C} = Union{
@@ -415,6 +432,51 @@ function Base.eltype(
     vi::SimpleOrThreadSafeSimple{<:Any,V}, spl::Union{AbstractSampler,SampleFromPrior}
 ) where {V}
     return V
+end
+
+# `subset`
+function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
+    return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
+end
+
+function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
+    vns_present = collect(keys(x))
+    vns_found = mapreduce(vcat, vns; init=VN[]) do vn
+        return filter(Base.Fix1(subsumes, vn), vns_present)
+    end
+    C = ConstructionBase.constructorof(typeof(x))
+    if isempty(vns_found)
+        return C()
+    else
+        return C(vn => x[vn] for vn in vns_found)
+    end
+end
+
+function _subset(x::NamedTuple, vns)
+    # NOTE: Here we can only handle `vns` that contain `identity` as optic.
+    if any(Base.Fix1(!==, identity) ∘ getoptic, vns)
+        throw(
+            ArgumentError(
+                "Cannot subset `NamedTuple` with non-`identity` `VarName`. " *
+                "For example, `@varname(x)` is allowed, but `@varname(x[1])` is not.",
+            ),
+        )
+    end
+
+    syms = map(getsym, vns)
+    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
+end
+
+_subset(x::VarNamedVector, vns) = subset(x, vns)
+
+# `merge`
+function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
+    values = merge(varinfo_left.values, varinfo_right.values)
+    logp = getlogp(varinfo_right)
+    transformation = merge_transformations(
+        varinfo_left.transformation, varinfo_right.transformation
+    )
+    return SimpleVarInfo(values, logp, transformation)
 end
 
 # Context implementations
@@ -429,7 +491,7 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    value_raw = maybe_reconstruct_and_link(vi, vn, dist, value)
+    value_raw = to_maybe_linked_internal(vi, vn, dist, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
@@ -447,9 +509,9 @@ function dot_assume(
 
     # Transform if we're working in transformed space.
     value_raw = if dists isa Distribution
-        maybe_reconstruct_and_link.((vi,), vns, (dists,), value)
+        to_maybe_linked_internal.((vi,), vns, (dists,), value)
     else
-        maybe_reconstruct_and_link.((vi,), vns, dists, value)
+        to_maybe_linked_internal.((vi,), vns, dists, value)
     end
 
     # Update `vi`
@@ -476,7 +538,7 @@ function dot_assume(
 
     # Update `vi`.
     for (vn, val) in zip(vns, eachcol(value))
-        val_linked = maybe_reconstruct_and_link(vi, vn, dist, val)
+        val_linked = to_maybe_linked_internal(vi, vn, dist, val)
         vi = BangBang.setindex!!(vi, val_linked, vn)
     end
 
@@ -485,53 +547,15 @@ function dot_assume(
     return value, lp, vi
 end
 
-# We need these to be compatible with how chains are constructed from `AbstractVarInfo` in Turing.jl.
-# TODO: Move away from using these `tonamedtuple` methods.
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:NamedTuple{names}}) where {names}
-    nt_vals = map(keys(vi)) do vn
-        val = vi[vn]
-        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-        (vals, map(string, vns))
-    end
-
-    return NamedTuple{names}(nt_vals)
-end
-
-function tonamedtuple(vi::SimpleOrThreadSafeSimple{<:Dict})
-    syms_to_result = Dict{Symbol,Tuple{Vector{Real},Vector{String}}}()
-    for vn in keys(vi)
-        # Extract the leaf varnames and values.
-        val = vi[vn]
-        vns = collect(DynamicPPL.TestUtils.varname_leaves(vn, val))
-        vals = map(copy ∘ Base.Fix1(getindex, vi), vns)
-
-        # Determine the corresponding symbol.
-        sym = only(unique(map(getsym, vns)))
-
-        # Initialize entry if not yet initialized.
-        if !haskey(syms_to_result, sym)
-            syms_to_result[sym] = (Real[], String[])
-        end
-
-        # Combine with old result.
-        old_vals, old_string_vns = syms_to_result[sym]
-        syms_to_result[sym] = (vcat(old_vals, vals), vcat(old_string_vns, map(string, vns)))
-    end
-
-    # Construct `NamedTuple`.
-    return NamedTuple(pairs(syms_to_result))
-end
-
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
-    return Setfield.@set vi.transformation = transformation
+    return Accessors.@set vi.transformation = transformation
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Setfield.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
@@ -544,7 +568,7 @@ values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
     isempty(vi) && return T[]
-    return mapreduce(v -> vec([v;]), vcat, values(vi.values))
+    return mapreduce(tovec, vcat, values(vi.values))
 end
 function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(zip(keys(vi), values(vi.values)))
@@ -552,13 +576,16 @@ end
 function values_as(vi::SimpleVarInfo{<:AbstractDict}, ::Type{NamedTuple})
     return NamedTuple((Symbol(k), v) for (k, v) in vi.values)
 end
+function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
+    return values_as(vi.values, T)
+end
 
 """
     logjoint(model::Model, θ)
 
 Return the log joint probability of variables `θ` for the probabilistic `model`.
 
-See [`logjoint`](@ref) and [`loglikelihood`](@ref).
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
 
 # Examples
 ```jldoctest; setup=:(using Distributions)
@@ -661,7 +688,7 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = y), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = y), lp_new)
     return settrans!!(vi_new, t)
 end
 
@@ -676,8 +703,17 @@ function invlink!!(
     y = vi.values
     x, logjac = with_logabsdet_jacobian(b, y)
     lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(Setfield.@set(vi.values = x), lp_new)
+    vi_new = setlogp!!(Accessors.@set(vi.values = x), lp_new)
     return settrans!!(vi_new, NoTransformation())
+end
+
+# With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.
+from_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
+from_internal_transform(vi::SimpleVarInfo, ::VarName, dist) = identity
+# TODO: Should the following methods specialize on the case where we have a `StaticTransformation{<:Bijectors.NamedTransform}`?
+from_linked_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
+function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
+    return invlink_transform(dist)
 end
 
 # Threadsafe stuff.
@@ -688,3 +724,5 @@ end
 function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
     return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
 end
+
+has_varnamedvector(vi::SimpleVarInfo) = vi.values isa VarNamedVector

@@ -4,71 +4,97 @@ on:
   push:
     branches:
       - master
+      - backport-*
   pull_request:
     branches:
       - master
+      - backport-*
   merge_group:
     types: [checks_requested]
 
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
+# Cancel existing tests on the same PR if a new commit is added to a pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner.os }}
     strategy:
+      fail-fast: false
+
       matrix:
-        version:
-          - '1.6' # minimum supported version
-          - '1' # current stable version
-        os:
-          - ubuntu-latest
-        arch:
-          - x64
-        num_threads:
-          - 1
-          - 2
-        include:
+        runner:
+          # Current stable version
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 2
+          # Minimum supported version
+          - version: 'min'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 2
+          # Single-threaded
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 1
+          # Minimum supported version, single-threaded
+          - version: 'min'
+            os: ubuntu-latest
+            arch: x64
+            num_threads: 1
+          # x86
           - version: '1'
             os: ubuntu-latest
             arch: x86
             num_threads: 2
+          # Windows
           - version: '1'
             os: windows-latest
             arch: x64
             num_threads: 2
+          # macOS
           - version: '1'
-            os: macOS-latest
-            arch: x64
+            os: macos-latest
+            arch: aarch64
             num_threads: 2
+        test_group:
+          - Group1
+          - Group2
+
     steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
         with:
-          version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
-      - uses: actions/cache@v1
+          version: ${{ matrix.runner.version }}
+          arch: ${{ matrix.runner.arch }}
+
+      - uses: julia-actions/cache@v2
+
+      - uses: julia-actions/julia-buildpkg@v1
+
+      - uses: julia-actions/julia-runtest@v1
         env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
-      - uses: julia-actions/julia-buildpkg@latest
-      - uses: julia-actions/julia-runtest@latest
-        with:
-          coverage: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1 }}
-        env:
-          GROUP: All
-          JULIA_NUM_THREADS: ${{ matrix.num_threads }}
+          GROUP: ${{ matrix.test_group }}
+          JULIA_NUM_THREADS: ${{ matrix.runner.num_threads }}
+
       - uses: julia-actions/julia-processcoverage@v1
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
-      - uses: codecov/codecov-action@v1
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
+
+      - uses: codecov/codecov-action@v5
         with:
-          file: lcov.info
-      - uses: coverallsapp/github-action@master
-        if: matrix.version == '1' && matrix.os == 'ubuntu-latest' && matrix.num_threads == 1
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+      - uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: lcov.info

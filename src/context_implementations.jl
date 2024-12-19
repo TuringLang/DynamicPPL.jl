@@ -14,6 +14,27 @@ alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
 require_gradient(spl::Sampler) = false
 require_particles(spl::Sampler) = false
 
+# Allows samplers, etc. to hook into the final logp accumulation in the tilde-pipeline.
+function acclogp_assume!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(NodeTrait(acclogp_assume!!, context), context, vi, logp)
+end
+function acclogp_assume!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_assume!!(childcontext(context), vi, logp)
+end
+function acclogp_assume!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(context, vi, logp)
+end
+
+function acclogp_observe!!(context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(NodeTrait(acclogp_observe!!, context), context, vi, logp)
+end
+function acclogp_observe!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp_observe!!(childcontext(context), vi, logp)
+end
+function acclogp_observe!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
+    return acclogp!!(context, vi, logp)
+end
+
 # assume
 """
     tilde_assume(context::SamplingContext, right, vn, vi)
@@ -42,65 +63,33 @@ function tilde_assume(::IsParent, context::AbstractContext, args...)
     return tilde_assume(childcontext(context), args...)
 end
 
-function tilde_assume(rng, context::AbstractContext, args...)
+function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), rng, context, args...)
 end
-function tilde_assume(::IsLeaf, rng, context::AbstractContext, sampler, right, vn, vi)
+function tilde_assume(
+    ::IsLeaf, rng::Random.AbstractRNG, context::AbstractContext, sampler, right, vn, vi
+)
     return assume(rng, sampler, right, vn, vi)
 end
-function tilde_assume(::IsParent, rng, context::AbstractContext, args...)
+function tilde_assume(
+    ::IsParent, rng::Random.AbstractRNG, context::AbstractContext, args...
+)
     return tilde_assume(rng, childcontext(context), args...)
 end
 
-function tilde_assume(context::PriorContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(PriorContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::PriorContext{<:NamedTuple}, sampler, right, vn, vi
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, PriorContext(), sampler, right, vn, vi)
-end
-
-function tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, vn, vi)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(LikelihoodContext(), right, vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    vn,
-    vi,
-)
-    if haskey(context.vars, getsym(vn))
-        vi = setindex!!(vi, vectorize(right, get(context.vars, vn)), vn)
-        settrans!!(vi, false, vn)
-    end
-    return tilde_assume(rng, LikelihoodContext(), sampler, right, vn, vi)
-end
 function tilde_assume(::LikelihoodContext, right, vn, vi)
-    return assume(NoDist(right), vn, vi)
+    return assume(nodist(right), vn, vi)
 end
 function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, right, vn, vi)
-    return assume(rng, sampler, NoDist(right), vn, vi)
+    return assume(rng, sampler, nodist(right), vn, vi)
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
     return tilde_assume(context.context, right, prefix(context, vn), vi)
 end
-function tilde_assume(rng, context::PrefixContext, sampler, right, vn, vi)
+function tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
+)
     return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
 end
 
@@ -114,8 +103,17 @@ By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
-    value, logp, vi = tilde_assume(context, right, vn, vi)
-    return value, acclogp!!(vi, logp)
+    return if is_rhs_model(right)
+        # Prefix the variables using the `vn`.
+        rand_like!!(
+            right,
+            should_auto_prefix(right) ? PrefixContext{Symbol(vn)}(context) : context,
+            vi,
+        )
+    else
+        value, logp, vi = tilde_assume(context, right, vn, vi)
+        value, acclogp_assume!!(context, vi, logp)
+    end
 end
 
 # observe
@@ -156,6 +154,9 @@ end
 function tilde_observe(context::PrefixContext, right, left, vi)
     return tilde_observe(context.context, right, left, vi)
 end
+function tilde_observe(context::PrefixContext, sampler, right, left, vi)
+    return tilde_observe(context.context, sampler, right, left, vi)
+end
 
 """
     tilde_observe!!(context, right, left, vname, vi)
@@ -167,6 +168,11 @@ Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the informati
 and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe!!(context, right, left, vname, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return tilde_observe!!(context, right, left, vi)
 end
 
@@ -180,8 +186,13 @@ By default, calls `tilde_observe(context, right, left, vi)` and accumulates the 
 probability of `vi` with the returned value.
 """
 function tilde_observe!!(context, right, left, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = tilde_observe(context, right, left, vi)
-    return left, acclogp!!(vi, logp)
+    return left, acclogp_observe!!(context, vi, logp)
 end
 
 function assume(rng, spl::Sampler, dist)
@@ -198,6 +209,7 @@ function assume(dist::Distribution, vn::VarName, vi)
     return r, logp, vi
 end
 
+# TODO: Remove this thing.
 # SampleFromPrior and SampleFromUniform
 function assume(
     rng::Random.AbstractRNG,
@@ -209,11 +221,15 @@ function assume(
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
-            unset_flag!(vi, vn, "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure
+            # if that's okay.
+            unset_flag!(vi, vn, "del", true)
             r = init(rng, dist, sampler)
-            BangBang.setindex!!(
-                vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r)), vn
-            )
+            f = to_maybe_linked_internal_transform(vi, vn, dist)
+            # TODO(mhauru) This should probably be call a function called setindex_internal!
+            # Also, if we use !! we shouldn't ignore the return value.
+            BangBang.setindex!!(vi, f(r), vn)
             setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
@@ -222,7 +238,8 @@ function assume(
     else
         r = init(rng, dist, sampler)
         if istrans(vi)
-            push!!(vi, vn, reconstruct_and_link(dist, r), dist, sampler)
+            f = to_linked_internal_transform(vi, vn, dist)
+            push!!(vi, vn, f(r), dist, sampler)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
@@ -267,8 +284,8 @@ end
 function dot_tilde_assume(context::AbstractContext, args...)
     return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), context, args...)
 end
-function dot_tilde_assume(rng, context::AbstractContext, args...)
-    return dot_tilde_assume(rng, NodeTrait(dot_tilde_assume, context), context, args...)
+function dot_tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
+    return dot_tilde_assume(NodeTrait(dot_tilde_assume, context), rng, context, args...)
 end
 
 function dot_tilde_assume(::IsLeaf, ::AbstractContext, right, left, vns, vi)
@@ -281,46 +298,17 @@ end
 function dot_tilde_assume(::IsParent, context::AbstractContext, args...)
     return dot_tilde_assume(childcontext(context), args...)
 end
-function dot_tilde_assume(rng, ::IsParent, context::AbstractContext, args...)
+function dot_tilde_assume(::IsParent, rng, context::AbstractContext, args...)
     return dot_tilde_assume(rng, childcontext(context), args...)
 end
 
-function dot_tilde_assume(rng, ::DefaultContext, sampler, right, left, vns, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, ::DefaultContext, sampler, right, left, vns, vi
+)
     return dot_assume(rng, sampler, right, vns, left, vi)
 end
 
 # `LikelihoodContext`
-function dot_tilde_assume(context::LikelihoodContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(LikelihoodContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(LikelihoodContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::LikelihoodContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, LikelihoodContext(), sampler, right, left, vn, vi)
-    end
-end
-
 function dot_tilde_assume(context::LikelihoodContext, right, left, vn, vi)
     return dot_assume(nodist(right), left, vn, vi)
 end
@@ -330,46 +318,16 @@ function dot_tilde_assume(
     return dot_assume(rng, sampler, nodist(right), vn, left, vi)
 end
 
-# `PriorContext`
-function dot_tilde_assume(context::PriorContext{<:NamedTuple}, right, left, vn, vi)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(PriorContext(), _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(PriorContext(), right, left, vn, vi)
-    end
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG,
-    context::PriorContext{<:NamedTuple},
-    sampler,
-    right,
-    left,
-    vn,
-    vi,
-)
-    return if haskey(context.vars, getsym(vn))
-        var = get(context.vars, vn)
-        _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-        set_val!(vi, _vns, _right, _left)
-        settrans!!.((vi,), false, _vns)
-        dot_tilde_assume(rng, PriorContext(), sampler, _right, _left, _vns, vi)
-    else
-        dot_tilde_assume(rng, PriorContext(), sampler, right, left, vn, vi)
-    end
-end
-
 # `PrefixContext`
 function dot_tilde_assume(context::PrefixContext, right, left, vn, vi)
-    return dot_tilde_assume(context.context, right, prefix.(Ref(context), vn), vi)
+    return dot_tilde_assume(context.context, right, left, prefix.(Ref(context), vn), vi)
 end
 
-function dot_tilde_assume(rng, context::PrefixContext, sampler, right, left, vn, vi)
+function dot_tilde_assume(
+    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, left, vn, vi
+)
     return dot_tilde_assume(
-        rng, context.context, sampler, right, prefix.(Ref(context), vn), vi
+        rng, context.context, sampler, right, left, prefix.(Ref(context), vn), vi
     )
 end
 
@@ -382,8 +340,13 @@ model inputs), accumulate the log probability, and return the sampled value and 
 Falls back to `dot_tilde_assume(context, right, left, vn, vi)`.
 """
 function dot_tilde_assume!!(context, right, left, vn, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`.~` with a model on the right-hand side is not supported; please use `~`"
+        ),
+    )
     value, logp, vi = dot_tilde_assume(context, right, left, vn, vi)
-    return value, acclogp!!(vi, logp), vi
+    return value, acclogp_assume!!(context, vi, logp)
 end
 
 # `dot_assume`
@@ -459,6 +422,19 @@ function dot_assume(rng, spl::Sampler, ::Any, ::AbstractArray{<:VarName}, ::Any,
     )
 end
 
+# HACK: These methods are only used in the `get_and_set_val!` methods below.
+# FIXME: Remove these.
+function _link_broadcast_new(vi, vn, dist, r)
+    b = to_linked_internal_transform(vi, vn, dist)
+    return b(r)
+end
+
+function _maybe_invlink_broadcast(vi, vn, dist)
+    xvec = getindex_internal(vi, vn)
+    b = from_maybe_linked_internal_transform(vi, vn, dist)
+    return b(xvec)
+end
+
 function get_and_set_val!(
     rng,
     vi::VarInfoOrThreadSafeVarInfo,
@@ -470,15 +446,15 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
+            # that's okay.
+            unset_flag!(vi, vns[1], "del", true)
             r = init(rng, dist, spl, n)
             for i in 1:n
                 vn = vns[i]
-                setindex!!(
-                    vi,
-                    vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[:, i])),
-                    vn,
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[:, i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
@@ -489,7 +465,8 @@ function get_and_set_val!(
         for i in 1:n
             vn = vns[i]
             if istrans(vi)
-                push!!(vi, vn, Bijectors.link(dist, r[:, i]), dist, spl)
+                ri_linked = _link_broadcast_new(vi, vn, dist, r[:, i])
+                push!!(vi, vn, ri_linked, dist, spl)
                 # `push!!` sets the trans-flag to `false` by default.
                 settrans!!(vi, true, vn)
             else
@@ -510,23 +487,22 @@ function get_and_set_val!(
     if haskey(vi, vns[1])
         # Always overwrite the parameters with new ones for `SampleFromUniform`.
         if spl isa SampleFromUniform || is_flagged(vi, vns[1], "del")
-            unset_flag!(vi, vns[1], "del")
+            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
+            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure if
+            # that's okay.
+            unset_flag!(vi, vns[1], "del", true)
             f = (vn, dist) -> init(rng, dist, spl)
             r = f.(vns, dists)
             for i in eachindex(vns)
                 vn = vns[i]
                 dist = dists isa AbstractArray ? dists[i] : dists
-                setindex!!(
-                    vi, vectorize(dist, maybe_reconstruct_and_link(vi, vn, dist, r[i])), vn
-                )
+                f_link_maybe = to_maybe_linked_internal_transform(vi, vn, dist)
+                setindex!!(vi, f_link_maybe(r[i]), vn)
                 setorder!(vi, vn, get_num_produce(vi))
             end
         else
-            # r = reshape(vi[vec(vns)], size(vns))
-            # FIXME: Remove `reconstruct` in `getindex_raw(::VarInfo, ...)`
-            # and fix the lines below.
-            r_raw = getindex_raw(vi, vec(vns))
-            r = maybe_invlink_and_reconstruct.((vi,), vns, dists, reshape(r_raw, size(vns)))
+            rs = _maybe_invlink_broadcast.((vi,), vns, dists)
+            r = reshape(rs, size(vns))
         end
     else
         f = (vn, dist) -> init(rng, dist, spl)
@@ -537,9 +513,10 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, reconstruct_and_link.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
             # NOTE: Need to add the correction.
-            acclogp!!(vi, sum(logabsdetjac.(bijector.(dists), r)))
+            # FIXME: This is not great.
+            acclogp!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
@@ -569,8 +546,7 @@ function set_val!(
 )
     @assert size(val) == size(vns)
     foreach(CartesianIndices(val)) do ind
-        dist = dists isa AbstractArray ? dists[ind] : dists
-        setindex!!(vi, vectorize(dist, val[ind]), vns[ind])
+        setindex!!(vi, tovec(val[ind]), vns[ind])
     end
     return val
 end
@@ -621,6 +597,11 @@ Falls back to `dot_tilde_observe!!(context, right, left, vi)` ignoring the infor
 name and indices; if needed, these can be accessed through this function, though.
 """
 function dot_tilde_observe!!(context, right, left, vn, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     return dot_tilde_observe!!(context, right, left, vi)
 end
 
@@ -633,8 +614,13 @@ probability, and return the observed value and updated `vi`.
 Falls back to `dot_tilde_observe(context, right, left, vi)`.
 """
 function dot_tilde_observe!!(context, right, left, vi)
+    is_rhs_model(right) && throw(
+        ArgumentError(
+            "`~` with a model on the right-hand side of an observe statement is not supported",
+        ),
+    )
     logp, vi = dot_tilde_observe(context, right, left, vi)
-    return left, acclogp!!(vi, logp)
+    return left, acclogp_observe!!(context, vi, logp)
 end
 
 # Falls back to non-sampler definition.

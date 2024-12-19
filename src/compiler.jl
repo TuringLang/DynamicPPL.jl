@@ -1,6 +1,35 @@
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 """
+    need_concretize(expr)
+
+Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
+requires a dynamic optic.
+
+# Examples
+
+```jldoctest; setup=:(using Accessors)
+julia> DynamicPPL.need_concretize(:(x[1, :]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, end]))
+true
+
+julia> DynamicPPL.need_concretize(:(x[1, 1]))
+false
+"""
+function need_concretize(expr)
+    return Accessors.need_dynamic_optic(expr) || begin
+        flag = false
+        MacroTools.postwalk(expr) do ex
+            # Concretise colon by default
+            ex == :(:) && (flag = true) && return ex
+        end
+        flag
+    end
+end
+
+"""
     isassumption(expr[, vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
@@ -16,10 +45,13 @@ When `expr` is not an expression or symbol (i.e., a literal), this expands to `f
 
 If `vn` is specified, it will be assumed to refer to a expression which
 evaluates to a `VarName`, and this will be used in the subsequent checks.
-If `vn` is not specified, `AbstractPPL.drop_escape(varname(expr))` will be
+If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(expr::Union{Expr,Symbol}, vn=AbstractPPL.drop_escape(varname(expr)))
+function isassumption(
+    expr::Union{Expr,Symbol},
+    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
+)
     return quote
         if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
             # Considered an assumption by `__context__` which means either:
@@ -66,8 +98,8 @@ function contextual_isassumption(context::AbstractContext, vn)
     return contextual_isassumption(NodeTrait(context), context, vn)
 end
 function contextual_isassumption(context::ConditionContext, vn)
-    if hasvalue(context, vn)
-        val = getvalue(context, vn)
+    if hasconditioned(context, vn)
+        val = getconditioned(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
@@ -76,12 +108,46 @@ function contextual_isassumption(context::ConditionContext, vn)
         end
     end
 
-    # We might have nested contexts, e.g. `ContextionContext{.., <:PrefixContext{..., <:ConditionContext}}`
+    # We might have nested contexts, e.g. `ConditionContext{.., <:PrefixContext{..., <:ConditionContext}}`
     # so we defer to `childcontext` if we haven't concluded that anything yet.
     return contextual_isassumption(childcontext(context), vn)
 end
 function contextual_isassumption(context::PrefixContext, vn)
     return contextual_isassumption(childcontext(context), prefix(context, vn))
+end
+
+isfixed(expr, vn) = false
+isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context__, $vn))
+
+"""
+    contextual_isfixed(context, vn)
+
+Return `true` if `vn` is considered fixed by `context`.
+"""
+contextual_isfixed(::IsLeaf, context, vn) = false
+function contextual_isfixed(::IsParent, context, vn)
+    return contextual_isfixed(childcontext(context), vn)
+end
+function contextual_isfixed(context::AbstractContext, vn)
+    return contextual_isfixed(NodeTrait(context), context, vn)
+end
+function contextual_isfixed(context::PrefixContext, vn)
+    return contextual_isfixed(childcontext(context), prefix(context, vn))
+end
+function contextual_isfixed(context::FixedContext, vn)
+    if hasfixed(context, vn)
+        val = getfixed(context, vn)
+        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
+        if eltype(val) >: Missing && val === missing
+            return false
+        else
+            return true
+        end
+    end
+
+    # We might have nested contexts, e.g. `FixedContext{.., <:PrefixContext{..., <:FixedContext}}`
+    # so we defer to `childcontext` if we haven't concluded that anything yet.
+    return contextual_isfixed(childcontext(context), vn)
 end
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
@@ -112,6 +178,11 @@ function check_tilde_rhs(@nospecialize(x))
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
+check_tilde_rhs(x::ReturnedModelWrapper) = x
+function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
+    model = check_tilde_rhs(x.model)
+    return Sampleable{typeof(model),AutoPrefix}(model)
+end
 
 """
     unwrap_right_vn(right, vn)
@@ -136,13 +207,13 @@ variables.
 # Example
 ```jldoctest; setup=:(using Distributions, LinearAlgebra)
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
-x[:,2]
+x[:, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
-x[1,2]
+x[1, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
-x[:][1,2]
+x[:][1, 2]
 
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
 x[1][3]
@@ -160,7 +231,7 @@ function unwrap_right_left_vns(
     # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
     # and we therefore add the `Colon()` below.
     vns = map(axes(left, 2)) do i
-        return vn ∘ Setfield.IndexLens((Colon(), i))
+        return AbstractPPL.concretize(Accessors.IndexLens((Colon(), i)) ∘ vn, left)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -170,7 +241,7 @@ function unwrap_right_left_vns(
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return vn ∘ Setfield.IndexLens(Tuple(i))
+        return Accessors.IndexLens(Tuple(i)) ∘ vn
     end
     return unwrap_right_left_vns(right, left, vns)
 end
@@ -305,7 +376,31 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
         )
     end
 
+    # Modify the assignment operators.
+    args_assign = getargs_coloneq(expr)
+    if args_assign !== nothing
+        L, R = args_assign
+        return Base.remove_linenums!(
+            generate_assign(
+                generate_mainbody!(mod, found, L, warn),
+                generate_mainbody!(mod, found, R, warn),
+            ),
+        )
+    end
+
     return Expr(expr.head, map(x -> generate_mainbody!(mod, found, x, warn), expr.args)...)
+end
+
+function generate_assign(left, right)
+    right_expr = :($(TrackedValue)($right))
+    tilde_expr = generate_tilde(left, right_expr)
+    return quote
+        if $(is_extracting_values)(__context__)
+            $tilde_expr
+        else
+            $left = $right
+        end
+    end
 end
 
 function generate_tilde_literal(left, right)
@@ -338,15 +433,17 @@ function generate_tilde(left, right)
     return quote
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left))), $dist
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getvalue_nested)(__context__, $vn)
+                $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
@@ -369,7 +466,7 @@ function generate_tilde_assume(left, right, vn)
     expr = :($left = $value)
     if left isa Expr
         expr = AbstractPPL.drop_escape(
-            Setfield.setmacro(BangBang.prefermutation, expr; overwrite=true)
+            Accessors.setmacro(BangBang.prefermutation, expr; overwrite=true)
         )
     end
 
@@ -397,15 +494,17 @@ function generate_dot_tilde(left, right)
     @gensym vn isassumption value
     return quote
         $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left))), $right
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $isassumption
+        if $(DynamicPPL.isfixed(left, vn))
+            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
+        elseif $isassumption
             $(generate_dot_tilde_assume(left, right, vn))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getvalue_nested)(__context__, $vn)
+                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
@@ -471,9 +570,7 @@ definitions. This is checked using [`isfuncdef`](@ref).
 """
 replace_returns(e) = e
 function replace_returns(e::Expr)
-    if isfuncdef(e)
-        return e
-    end
+    isfuncdef(e) && return e
 
     if Meta.isexpr(e, :return)
         # We capture the original return-value in `retval` and return
@@ -484,7 +581,7 @@ function replace_returns(e::Expr)
         # and is not our intent).
         @gensym retval
         return quote
-            $retval = $(e.args...)
+            $retval = $(map(replace_returns, e.args)...)
             return $retval, __varinfo__
         end
     end
@@ -493,14 +590,15 @@ function replace_returns(e::Expr)
 end
 
 # If it's just a symbol, e.g. `f(x) = 1`, then we make it `f(x) = return 1`.
-make_returns_explicit!(body) = Expr(:return, body)
-function make_returns_explicit!(body::Expr)
+add_return_to_last_statment(body) = Expr(:return, body)
+function add_return_to_last_statment(body::Expr)
     # If the last statement is a return-statement, we don't do anything.
     # Otherwise we replace the last statement with a `return` statement.
-    if !Meta.isexpr(body.args[end], :return)
-        body.args[end] = Expr(:return, body.args[end])
-    end
-    return body
+    Meta.isexpr(body.args[end], :return) && return body
+    # We need to copy the arguments since we are modifying them.
+    new_args = copy(body.args)
+    new_args[end] = Expr(:return, body.args[end])
+    return Expr(body.head, new_args...)
 end
 
 const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
@@ -509,8 +607,40 @@ hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
 hasmissing(::Type{Union{}}) = false # issue #368
 
+"""
+    TypeWrap{T}
+
+A wrapper type used internally to make expressions such as `::Type{TV}` in the model arguments
+not ending up as a `DataType`.
+"""
+struct TypeWrap{T} end
+
+function arg_type_is_type(e)
+    return Meta.isexpr(e, :curly) && length(e.args) > 1 && e.args[1] === :Type
+end
+
 function splitarg_to_expr((arg_name, arg_type, is_splat, default))
     return is_splat ? :($arg_name...) : arg_name
+end
+
+"""
+    transform_args(args)
+
+Return transformed `args` used in both the model constructor and evaluator.
+
+Specifically, this replaces expressions of the form `::Type{TV}=Vector{Float64}`
+with `::TypeWrap{TV}=TypeWrap{Vector{Float64}}()` to avoid introducing `DataType`.
+"""
+function transform_args(args)
+    splitargs = map(args) do arg
+        arg_name, arg_type, is_splat, default = MacroTools.splitarg(arg)
+        return if arg_type_is_type(arg_type)
+            arg_name, :($TypeWrap{$(arg_type.args[2])}), is_splat, :($TypeWrap{$default}())
+        else
+            arg_name, arg_type, is_splat, default
+        end
+    end
+    return map(Base.splat(MacroTools.combinearg), splitargs)
 end
 
 function namedtuple_from_splitargs(splitargs)
@@ -522,19 +652,21 @@ function namedtuple_from_splitargs(splitargs)
     return :(NamedTuple{$names_expr}($vals))
 end
 
-is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
-
 """
     build_output(modeldef, linenumbernode)
 
 Builds the output expression.
 """
 function build_output(modeldef, linenumbernode)
-    args = modeldef[:args]
-    kwargs = modeldef[:kwargs]
+    args = transform_args(modeldef[:args])
+    kwargs = transform_args(modeldef[:kwargs])
+
+    # Need to update `args` and `kwargs` since we might have added `TypeWrap` to the types.
+    modeldef[:args] = args
+    modeldef[:kwargs] = kwargs
 
     ## Build the anonymous evaluator from the user-provided model definition.
-    evaluatordef = deepcopy(modeldef)
+    evaluatordef = copy(modeldef)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
@@ -556,7 +688,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        $(replace_returns(make_returns_explicit!(modeldef[:body])))
+        $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
     ## Build the model function.
@@ -620,8 +752,12 @@ function matchingvalue(sampler, vi, value)
         return value
     end
 end
+# If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
 function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
     return get_matching_type(sampler, vi, value)
+end
+function matchingvalue(sampler::AbstractSampler, vi, value::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(sampler, vi, T)}()
 end
 
 function matchingvalue(context::AbstractContext, vi, value)
@@ -638,7 +774,7 @@ function matchingvalue(context::SamplingContext, vi, value)
 end
 
 """
-    get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T}
+    get_matching_type(spl::AbstractSampler, vi, ::TypeWrap{T}) where {T}
 
 Get the specialized version of type `T` for sampler `spl`.
 

@@ -4,6 +4,10 @@
 
 Run a Turing `model` nested inside of a Turing model.
 
+!!! warning
+    This is deprecated and will be removed in a future release.
+    Use `left ~ to_submodel(model)` instead (see [`to_submodel`](@ref)).
+
 # Examples
 
 ```jldoctest submodel; setup=:(using Distributions)
@@ -21,6 +25,9 @@ julia> @model function demo2(x, y)
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 
 julia> @varname(x) in keys(vi)
 true
@@ -62,6 +69,10 @@ Valid expressions for `prefix=...` are:
 The prefix makes it possible to run the same Turing model multiple times while
 keeping track of all random variables correctly.
 
+!!! warning
+    This is deprecated and will be removed in a future release.
+    Use `left ~ to_submodel(model)` instead (see [`to_submodel(model)`](@ref)).
+
 # Examples
 ## Example models
 ```jldoctest submodelprefix; setup=:(using Distributions)
@@ -81,6 +92,9 @@ When we sample from the model `demo2(missing, missing, 0.4)` random variables `s
 `sub2.x` will be sampled:
 ```jldoctest submodelprefix
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 
 julia> @varname(var"sub1.x") in keys(vi)
 true
@@ -120,49 +134,67 @@ julia> @model inner() = x ~ Normal()
 inner (generic function with 2 methods)
 
 julia> # When `prefix` is unspecified, no prefix is used.
-       @model outer() = @submodel a = inner()
-outer (generic function with 2 methods)
+       @model submodel_noprefix() = @submodel a = inner()
+submodel_noprefix (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(outer()))
+julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Explicitely don't use any prefix.
-       @model outer() = @submodel prefix=false a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_false() = @submodel prefix=false a = inner()
+submodel_prefix_false (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(outer()))
+julia> @varname(x) in keys(VarInfo(submodel_prefix_false()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Automatically determined from `a`.
-       @model outer() = @submodel prefix=true a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_true() = @submodel prefix=true a = inner()
+submodel_prefix_true (generic function with 2 methods)
 
-julia> @varname(var"a.x") in keys(VarInfo(outer()))
+julia> @varname(var"a.x") in keys(VarInfo(submodel_prefix_true()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Using a static string.
-       @model outer() = @submodel prefix="my prefix" a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_string() = @submodel prefix="my prefix" a = inner()
+submodel_prefix_string (generic function with 2 methods)
 
-julia> @varname(var"my prefix.x") in keys(VarInfo(outer()))
+julia> @varname(var"my prefix.x") in keys(VarInfo(submodel_prefix_string()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Using string interpolation.
-       @model outer() = @submodel prefix="\$(nameof(inner()))" a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_interpolation() = @submodel prefix="\$(nameof(inner()))" a = inner()
+submodel_prefix_interpolation (generic function with 2 methods)
 
-julia> @varname(var"inner.x") in keys(VarInfo(outer()))
+julia> @varname(var"inner.x") in keys(VarInfo(submodel_prefix_interpolation()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # Or using some arbitrary expression.
-       @model outer() = @submodel prefix=1 + 2 a = inner()
-outer (generic function with 2 methods)
+       @model submodel_prefix_expr() = @submodel prefix=1 + 2 a = inner()
+submodel_prefix_expr (generic function with 2 methods)
 
-julia> @varname(var"3.x") in keys(VarInfo(outer()))
+julia> @varname(var"3.x") in keys(VarInfo(submodel_prefix_expr()))
+┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
+│   caller = ip:0x0
+└ @ Core :-1
 true
 
 julia> # (×) Automatic prefixing without a left-hand side expression does not work!
-       @model outer() = @submodel prefix=true inner()
+       @model submodel_prefix_error() = @submodel prefix=true inner()
 ERROR: LoadError: cannot automatically prefix with no left-hand side
 [...]
 ```
@@ -191,12 +223,12 @@ end
 prefix_submodel_context(prefix, left, ctx) = prefix_submodel_context(prefix, ctx)
 function prefix_submodel_context(prefix, ctx)
     # E.g. `prefix="asd[$i]"` or `prefix=asd` with `asd` to be evaluated.
-    return :($(DynamicPPL.PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
+    return :($(PrefixContext){$(Symbol)($(esc(prefix)))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, ctx)
     # E.g. `prefix="asd"`.
-    return :($(DynamicPPL.PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
+    return :($(PrefixContext){$(esc(Meta.quot(Symbol(prefix))))}($ctx))
 end
 
 function prefix_submodel_context(prefix::Bool, ctx)
@@ -206,6 +238,8 @@ function prefix_submodel_context(prefix::Bool, ctx)
 
     return ctx
 end
+
+const SUBMODEL_DEPWARN_MSG = "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax."
 
 function submodel(prefix_expr, expr, ctx=esc(:__context__))
     prefix_left, prefix = getargs_assignment(prefix_expr)
@@ -225,7 +259,10 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     return if args_assign === nothing
         ctx = prefix_submodel_context(prefix, ctx)
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            # Raise deprecation warning to let user know that we recommend using `left ~ to_submodel(model)`.
+            $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
+
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(expr)), $(esc(:__varinfo__)), $(ctx)
             )
             $retval
@@ -241,7 +278,10 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
             )
         end
         quote
-            $retval, $(esc(:__varinfo__)) = $(DynamicPPL._evaluate!!)(
+            # Raise deprecation warning to let user know that we recommend using `left ~ to_submodel(model)`.
+            $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
+
+            $retval, $(esc(:__varinfo__)) = $(_evaluate!!)(
                 $(esc(R)), $(esc(:__varinfo__)), $(ctx)
             )
             $(esc(L)) = $retval
