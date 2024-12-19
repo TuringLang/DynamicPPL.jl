@@ -79,8 +79,6 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-link!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = link!(vi.varinfo, spl)
-invlink!(vi::ThreadSafeVarInfo, spl::AbstractSampler) = invlink!(vi.varinfo, spl)
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
 function link!!(
@@ -176,6 +174,12 @@ function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
 end
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:VarName})
     return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vns)
+end
+
+vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)
+vector_getrange(vi::ThreadSafeVarInfo, vn::VarName) = vector_getrange(vi.varinfo, vn)
+function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
+    return vector_getranges(vi.varinfo, vns)
 end
 
 function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)

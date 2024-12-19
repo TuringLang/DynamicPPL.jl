@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.30.6"
+version = "0.32.2"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -29,16 +29,18 @@ ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
-ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 
 [extensions]
 DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
+DynamicPPLJETExt = ["JET"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
-DynamicPPLReverseDiffExt = ["ReverseDiff"]
+DynamicPPLMooncakeExt = ["Mooncake"]
 DynamicPPLZygoteRulesExt = ["ZygoteRules"]
 
 [compat]
@@ -47,7 +49,7 @@ AbstractMCMC = "5"
 AbstractPPL = "0.8.4, 0.9"
 Accessors = "0.1"
 BangBang = "0.4.1"
-Bijectors = "0.13.18, 0.14"
+Bijectors = "0.13.18, 0.14, 0.15"
 ChainRulesCore = "1"
 Compat = "4"
 ConstructionBase = "1.5.4"
@@ -55,23 +57,16 @@ Distributions = "0.25"
 DocStringExtensions = "0.9"
 EnzymeCore = "0.6 - 0.8"
 ForwardDiff = "0.10"
+JET = "0.9"
 LinearAlgebra = "1.6"
 LogDensityProblems = "2"
 LogDensityProblemsAD = "1.7.0"
 MCMCChains = "6"
 MacroTools = "0.5.6"
+Mooncake = "0.4.59"
 OrderedCollections = "1"
 Random = "1.6"
 Requires = "1"
-ReverseDiff = "1"
 Test = "1.6"
 ZygoteRules = "0.2"
 julia = "1.10"
-
-[extras]
-ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
-ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
-MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
-ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
-ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"

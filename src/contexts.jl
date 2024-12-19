@@ -244,7 +244,7 @@ adds the `Prefix` to all parameters.
 This context is useful in nested models to ensure that the names of the parameters are
 unique.
 
-See also: [`@submodel`](@ref)
+See also: [`to_submodel`](@ref)
 """
 struct PrefixContext{Prefix,C} <: AbstractContext
     context::C
@@ -279,6 +279,34 @@ function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
     else
         VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getoptic(vn))
     end
+end
+
+"""
+    prefix(model::Model, x)
+
+Return `model` but with all random variables prefixed by `x`.
+
+If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), :my_prefix))
+(var"my_prefix.x" = 1,)
+
+julia> # One can also use `Val` to avoid runtime overheads.
+       rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
+"""
+prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
+function prefix(model::Model, ::Val{x}) where {x}
+    return contextualize(model, PrefixContext{Symbol(x)}(model.context))
 end
 
 struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext

@@ -4,6 +4,7 @@ using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
 using Bijectors
+using DifferentiationInterface
 using Distributions
 using DistributionsAD
 using Documenter
@@ -11,6 +12,8 @@ using ForwardDiff
 using LogDensityProblems, LogDensityProblemsAD
 using MacroTools
 using MCMCChains
+using Mooncake: Mooncake
+using StableRNGs
 using Tracker
 using ReverseDiff
 using Zygote
@@ -25,64 +28,61 @@ using Test
 using Distributions
 using LinearAlgebra # Diagonal
 
+using JET: JET
+
 using Combinatorics: combinations
+using OrderedCollections: OrderedSet
 
 using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
 
-const DIRECTORY_DynamicPPL = dirname(dirname(pathof(DynamicPPL)))
-const DIRECTORY_Turing_tests = joinpath(DIRECTORY_DynamicPPL, "test", "turing")
 const GROUP = get(ENV, "GROUP", "All")
-
 Random.seed!(100)
 
 include("test_util.jl")
 
-@testset "DynamicPPL.jl" begin
-    if GROUP == "All" || GROUP == "DynamicPPL"
-        @testset "interface" begin
-            include("utils.jl")
-            include("compiler.jl")
-            include("varnamedvector.jl")
-            include("varinfo.jl")
-            include("simple_varinfo.jl")
-            include("model.jl")
-            include("sampler.jl")
-            include("independence.jl")
-            include("distribution_wrappers.jl")
-            include("contexts.jl")
-            include("context_implementations.jl")
-            include("logdensityfunction.jl")
-            include("linking.jl")
+@testset verbose = true "DynamicPPL.jl" begin
+    # The tests are split into two groups so that CI can run in parallel. The
+    # groups are chosen to make both groups take roughly the same amount of
+    # time, but beyond that there is no particular reason for the split.
+    if GROUP == "All" || GROUP == "Group1"
+        include("utils.jl")
+        include("compiler.jl")
+        include("varnamedvector.jl")
+        include("varinfo.jl")
+        include("simple_varinfo.jl")
+        include("model.jl")
+        include("sampler.jl")
+        include("independence.jl")
+        include("distribution_wrappers.jl")
+        include("logdensityfunction.jl")
+        include("linking.jl")
+        include("serialization.jl")
+        include("pointwise_logdensities.jl")
+        include("lkj.jl")
+        include("deprecated.jl")
+    end
 
-            include("threadsafe.jl")
-
-            include("serialization.jl")
-
-            include("pointwise_logdensities.jl")
-
-            include("lkj.jl")
-
-            include("debug_utils.jl")
-        end
-
+    if GROUP == "All" || GROUP == "Group2"
+        include("contexts.jl")
+        include("context_implementations.jl")
+        include("threadsafe.jl")
+        include("debug_utils.jl")
         @testset "compat" begin
             include(joinpath("compat", "ad.jl"))
         end
-
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
+            include("ext/DynamicPPLJETExt.jl")
         end
-
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
+            include("ext/DynamicPPLMooncakeExt.jl")
             include("ad.jl")
         end
-
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."
             @test_throws ErrorException logprob"..."
         end
-
         @testset "doctests" begin
             DocMeta.setdocmeta!(
                 DynamicPPL,
@@ -103,33 +103,11 @@ include("test_util.jl")
                 # Older versions do not have `;;]` but instead just `]` at end of the line
                 # => need to treat `;;]` and `]` as the same, i.e. ignore them if at the end of a line
                 r"(;;){0,1}\]$"m,
+                # Ignore the source of a warning in the doctest output, since this is dependent on host.
+                # This is a line that starts with "└ @ " and ends with the line number.
+                r"└ @ .+:[0-9]+",
             ]
             doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
-        end
-    end
-
-    if GROUP == "All" || GROUP == "Downstream"
-        @testset "turing" begin
-            try
-                # activate separate test environment
-                Pkg.activate(DIRECTORY_Turing_tests)
-                Pkg.develop(PackageSpec(; path=DIRECTORY_DynamicPPL))
-                Pkg.instantiate()
-
-                # make sure that the new environment is considered `using` and `import` statements
-                # (not added automatically on Julia 1.3, see e.g. PR #209)
-                if !(joinpath(DIRECTORY_Turing_tests, "Project.toml") in Base.load_path())
-                    pushfirst!(LOAD_PATH, DIRECTORY_Turing_tests)
-                end
-
-                include(joinpath("turing", "runtests.jl"))
-            catch err
-                err isa Pkg.Resolve.ResolverError || rethrow()
-                # If we can't resolve that means this is incompatible by SemVer and this is fine
-                # It means we marked this as a breaking change, so we don't need to worry about
-                # Mistakenly introducing a breaking change, as we have intentionally made one
-                @info "Not compatible with this release. No problem." exception = err
-            end
         end
     end
 end
