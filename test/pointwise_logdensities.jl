@@ -13,7 +13,7 @@
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
             model, example_values...
         )
-        logp_true = logprior(model, vi)
+        logprior_true = logprior(model, vi)
 
         # Compute the pointwise loglikelihoods.
         lls = pointwise_loglikelihoods(model, vi)
@@ -30,18 +30,18 @@
         lps_prior = pointwise_prior_logdensities(model, vi)
         @test :x ∉ DynamicPPL.getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
-        @test logp ≈ logp_true
+        @test logp ≈ logprior_true
 
         # Compute both likelihood and logdensity of prior
-        # using the default DefaultContex        
+        # using the default DefaultContext
         lps = pointwise_logdensities(model, vi)
         logp = sum(sum, values(lps))
-        @test logp ≈ (logp_true + loglikelihood_true)
+        @test logp ≈ (logprior_true + loglikelihood_true)
 
         # Test that modifications of Setup are picked up
         lps = pointwise_logdensities(model, vi, mod_ctx2)
         logp = sum(sum, values(lps))
-        @test logp ≈ (logp_true + loglikelihood_true) * 1.2 * 1.4
+        @test logp ≈ (logprior_true + loglikelihood_true) * 1.2 * 1.4
     end
 end
 
