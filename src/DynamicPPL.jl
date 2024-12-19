@@ -5,7 +5,7 @@ using AbstractPPL
 using Bijectors
 using Compat
 using Distributions
-using OrderedCollections: OrderedDict
+using OrderedCollections: OrderedCollections, OrderedDict
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
