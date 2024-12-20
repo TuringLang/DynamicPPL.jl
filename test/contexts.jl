@@ -202,7 +202,7 @@ end
             s, m = retval.s, retval.m
 
             # Keword approach.
-            model_fixed = fix(model; s=s)
+            model_fixed = DynamicPPL.fix(model; s=s)
             @test model_fixed().s == s
             @test model_fixed().m != m
             # A fixed variable should not contribute at all to the logjoint.
@@ -210,19 +210,19 @@ end
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Positional approach.
-            model_fixed = fix(model, (; s))
+            model_fixed = DynamicPPL.fix(model, (; s))
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Pairs approach.
-            model_fixed = fix(model, @varname(s) => s)
+            model_fixed = DynamicPPL.fix(model, @varname(s) => s)
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Dictionary approach.
-            model_fixed = fix(model, Dict(@varname(s) => s))
+            model_fixed = DynamicPPL.fix(model, Dict(@varname(s) => s))
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
