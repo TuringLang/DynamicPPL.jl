@@ -1145,19 +1145,23 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain; include_all=false)
+    predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
 
-Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
-in `chain`.
-
-If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
-the samples in `chain`. This is useful when you want to sample only new variables from the posterior 
-predictive distribution.
+Generate samples from the posterior predictive distribution by evaluating `model` at each set 
+of parameter values provided in `chain`. The number of posterior predictive samples matches 
+the length of `chain`. The returned `AbstractVarInfo`s will contain both the posterior parameter values
+and the predicted values. 
 """
-function predict(model::Model, chain; include_all=false)
-    # this is only defined in `ext/DynamicPPLMCMCChainsExt.jl`
-    # TODO: add other methods for different type of `chain` arguments: e.g., `VarInfo`, `NamedTuple`, and `OrderedDict`
-    return predict(Random.default_rng(), model, chain; include_all)
+function predict(
+    rng::Random.AbstractRNG, model::Model, chain::AbstractArray{<:AbstractVarInfo}
+)
+    varinfo = DynamicPPL.VarInfo(model)
+    return map(chain) do params_varinfo
+        vi = deepcopy(varinfo)
+        DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
+        model(rng, vi, SampleFromPrior())
+        return vi
+    end
 end
 
 """

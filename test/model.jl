@@ -429,4 +429,109 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test getlogp(varinfo_linked) ≈ getlogp(varinfo_linked_result)
         end
     end
+
+    @testset "predict" begin
+        @testset "with MCMCChains.Chains" begin
+            DynamicPPL.Random.seed!(100)
+
+            @model function linear_reg(x, y, σ=0.1)
+                β ~ Normal(0, 1)
+                for i in eachindex(y)
+                    y[i] ~ Normal(β * x[i], σ)
+                end
+            end
+
+            @model function linear_reg_vec(x, y, σ=0.1)
+                β ~ Normal(0, 1)
+                return y ~ MvNormal(β .* x, σ^2 * I)
+            end
+
+            ground_truth_β = 2
+            β_chain = MCMCChains.Chains(rand(Normal(ground_truth_β, 0.002), 1000), [:β])
+
+            xs_test = [10 + 0.1, 10 + 2 * 0.1]
+            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            predictions = DynamicPPL.predict(m_lin_reg_test, β_chain)
+
+            ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
+            @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+            @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+
+            # Ensure that `rng` is respected
+            rng = MersenneTwister(42)
+            predictions1 = DynamicPPL.predict(rng, m_lin_reg_test, β_chain[1:2])
+            predictions2 = DynamicPPL.predict(
+                MersenneTwister(42), m_lin_reg_test, β_chain[1:2]
+            )
+            @test all(Array(predictions1) .== Array(predictions2))
+
+            # Predict on two last indices for vectorized
+            m_lin_reg_test = linear_reg_vec(xs_test, missing)
+            predictions_vec = DynamicPPL.predict(m_lin_reg_test, β_chain)
+            ys_pred_vec = vec(mean(Array(group(predictions_vec, :y)); dims=1))
+
+            @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+            @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+
+            # Multiple chains
+            multiple_β_chain = MCMCChains.Chains(
+                reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2), [:β]
+            )
+            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
+            @test size(multiple_β_chain, 3) == size(predictions, 3)
+
+            for chain_idx in MCMCChains.chains(multiple_β_chain)
+                ys_pred = vec(mean(Array(group(predictions[:, :, chain_idx], :y)); dims=1))
+                @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+            end
+
+            # Predict on two last indices for vectorized
+            m_lin_reg_test = linear_reg_vec(xs_test, missing)
+            predictions_vec = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
+
+            for chain_idx in MCMCChains.chains(multiple_β_chain)
+                ys_pred_vec = vec(
+                    mean(Array(group(predictions_vec[:, :, chain_idx], :y)); dims=1)
+                )
+                @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+            end
+        end
+
+        @testset "with AbstractVector{<:AbstractVarInfo}" begin
+            @model function linear_reg(x, y, σ=0.1)
+                β ~ Normal(1, 1)
+                for i in eachindex(y)
+                    y[i] ~ Normal(β * x[i], σ)
+                end
+            end
+
+            ground_truth_β = 2.0
+            # the data will be ignored, as we are generating samples from the prior
+            xs_train = 1:0.1:10
+            ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
+            m_lin_reg = linear_reg(xs_train, ys_train)
+            chain = [evaluate!!(m_lin_reg)[2] for _ in 1:10000]
+
+            # chain is generated from the prior
+            @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1
+
+            xs_test = [10 + 0.1, 10 + 2 * 0.1]
+            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            predicted_vis = DynamicPPL.predict(m_lin_reg_test, chain)
+
+            @test size(predicted_vis) == size(chain)
+            @test Set(keys(predicted_vis[1])) ==
+                Set([@varname(β), @varname(y[1]), @varname(y[2])])
+            # because β samples are from the prior, the std will be larger
+            @test mean([
+                predicted_vis[i][@varname(y[1])] for i in eachindex(predicted_vis)
+            ]) ≈ 1.0 * xs_test[1] rtol = 0.1
+            @test mean([
+                predicted_vis[i][@varname(y[2])] for i in eachindex(predicted_vis)
+            ]) ≈ 1.0 * xs_test[2] rtol = 0.1
+        end
+    end
 end

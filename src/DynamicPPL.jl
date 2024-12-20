@@ -40,6 +40,8 @@ import Base:
     keys,
     haskey
 
+import AbstractPPL: predict
+
 # VarInfo
 export AbstractVarInfo,
     VarInfo,

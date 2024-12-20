@@ -1,6 +1,5 @@
 using Accessors
 using ADTypes
-using AdvancedHMC: AdvancedHMC
 using DynamicPPL
 using AbstractMCMC
 using AbstractPPL

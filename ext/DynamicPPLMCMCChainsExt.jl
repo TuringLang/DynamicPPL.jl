@@ -48,64 +48,59 @@ end
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
 in `chain`, and return the resulting `Chains`.
 
+The `model` passed to `predict` is often different from the one used to generate `chain`. 
+Typically, the model from which `chain` originated treats certain variables as observed (i.e., 
+data points), while the model you pass to `predict` may mark these same variables as missing 
+or unobserved. Calling `predict` then leverages the previously inferred parameter values to 
+simulate what new, unobserved data might look like, given your posterior beliefs.
+
+For each parameter configuration in `chain`:
+1. All random variables present in `chain` are fixed to their sampled values.
+2. Any variables not included in `chain` are sampled from their prior distributions.
+
 If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
 the samples in `chain`. This is useful when you want to sample only new variables from the posterior 
 predictive distribution.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL, AbstractMCMC, AdvancedHMC, ForwardDiff;
+using AbstractMCMC, Distributions, DynamicPPL, Random
 
-julia> @model function linear_reg(x, y, σ = 0.1)
-           β ~ Normal(0, 1)
-           for i ∈ eachindex(y)
-               y[i] ~ Normal(β * x[i], σ)
-           end
-       end;
+@model function linear_reg(x, y, σ = 0.1)
+    β ~ Normal(0, 1)
+    for i in eachindex(y)
+        y[i] ~ Normal(β * x[i], σ)
+    end
+end
 
-julia> σ = 0.1; f(x) = 2 * x + 0.1 * randn();
+# Generate synthetic chain using known ground truth parameter
+ground_truth_β = 2.0
 
-julia> Δ = 0.1; xs_train = 0:Δ:10; ys_train = f.(xs_train);
+# Create chain of samples from a normal distribution centered on ground truth
+β_chain = MCMCChains.Chains(
+    rand(Normal(ground_truth_β, 0.002), 1000), [:β,]
+)
 
-julia> xs_test = [10 + Δ, 10 + 2 * Δ]; ys_test = f.(xs_test);
+# Generate predictions for two test points
+xs_test = [10.1, 10.2]
 
-julia> m_train = linear_reg(xs_train, ys_train, σ);
+m_train = linear_reg(xs_test, fill(missing, length(xs_test)))
 
-julia> n_train_logdensity_function = DynamicPPL.LogDensityFunction(m_train, DynamicPPL.VarInfo(m_train));
+predictions = DynamicPPL.AbstractPPL.predict(
+    Random.default_rng(), m_train, β_chain
+)
 
-julia> chain_lin_reg = AbstractMCMC.sample(n_train_logdensity_function, NUTS(0.65), 200; chain_type=MCMCChains.Chains, param_names=[:β], discard_initial=100)
-┌ Info: Found initial step size
-└   ϵ = 0.003125
+ys_pred = vec(mean(Array(predictions); dims=1))
 
-julia> m_test = linear_reg(xs_test, Vector{Union{Missing, Float64}}(undef, length(ys_test)), σ);
+# Check if predictions match expected values within tolerance
+(
+    isapprox(ys_pred[1], ground_truth_β * xs_test[1], atol = 0.01),
+    isapprox(ys_pred[2], ground_truth_β * xs_test[2], atol = 0.01)
+)
 
-julia> predictions = predict(m_test, chain_lin_reg)
-Object of type Chains, with data of type 100×2×1 Array{Float64,3}
+# output
 
-Iterations        = 1:100
-Thinning interval = 1
-Chains            = 1
-Samples per chain = 100
-parameters        = y[1], y[2]
-
-2-element Array{ChainDataFrame,1}
-
-Summary Statistics
-  parameters     mean     std  naive_se     mcse       ess   r_hat
-  ──────────  ───────  ──────  ────────  ───────  ────────  ──────
-        y[1]  20.1974  0.1007    0.0101  missing  101.0711  0.9922
-        y[2]  20.3867  0.1062    0.0106  missing  101.4889  0.9903
-
-Quantiles
-  parameters     2.5%    25.0%    50.0%    75.0%    97.5%
-  ──────────  ───────  ───────  ───────  ───────  ───────
-        y[1]  20.0342  20.1188  20.2135  20.2588  20.4188
-        y[2]  20.1870  20.3178  20.3839  20.4466  20.5895
-
-julia> ys_pred = vec(mean(Array(group(predictions, :y)); dims = 1));
-
-julia> sum(abs2, ys_test - ys_pred) ≤ 0.1
-true
+(true, true)
 ```
 """
 function DynamicPPL.predict(
@@ -115,14 +110,11 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    prototypical_varinfo = DynamicPPL.VarInfo(model)
+    varinfo = DynamicPPL.VarInfo(model)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
-        varinfo = deepcopy(prototypical_varinfo)
-        DynamicPPL.setval_and_resample!(
-            varinfo, parameter_only_chain, sample_idx, chain_idx
-        )
+        DynamicPPL.setval_and_resample!(varinfo, parameter_only_chain, sample_idx, chain_idx)
         model(rng, varinfo, DynamicPPL.SampleFromPrior())
 
         vals = DynamicPPL.values_as_in_model(model, varinfo)
