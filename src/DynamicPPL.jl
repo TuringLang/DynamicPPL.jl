@@ -5,7 +5,7 @@ using AbstractPPL
 using Bijectors
 using Compat
 using Distributions
-using OrderedCollections: OrderedDict
+using OrderedCollections: OrderedCollections, OrderedDict
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
@@ -39,6 +39,8 @@ import Base:
     setproperty!,
     keys,
     haskey
+
+import AbstractPPL: predict
 
 # VarInfo
 export AbstractVarInfo,

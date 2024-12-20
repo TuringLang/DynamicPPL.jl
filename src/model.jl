@@ -1145,6 +1145,26 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
+    predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
+
+Generate samples from the posterior predictive distribution by evaluating `model` at each set 
+of parameter values provided in `chain`. The number of posterior predictive samples matches 
+the length of `chain`. The returned `AbstractVarInfo`s will contain both the posterior parameter values
+and the predicted values. 
+"""
+function predict(
+    rng::Random.AbstractRNG, model::Model, chain::AbstractArray{<:AbstractVarInfo}
+)
+    varinfo = DynamicPPL.VarInfo(model)
+    return map(chain) do params_varinfo
+        vi = deepcopy(varinfo)
+        DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
+        model(rng, vi, SampleFromPrior())
+        return vi
+    end
+end
+
+"""
     returned(model::Model, parameters::NamedTuple)
     returned(model::Model, values, keys)
     returned(model::Model, values, keys)
