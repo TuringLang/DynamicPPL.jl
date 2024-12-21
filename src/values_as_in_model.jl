@@ -22,22 +22,22 @@ $(TYPEDFIELDS)
 struct ValuesAsInModelContext{T,C<:AbstractContext} <: AbstractContext
     "values that are extracted from the model"
     values::T
+    "whether to extract variables on the LHS of :="
+    include_colon_eq::Bool
     "child context"
     context::C
 end
-
-ValuesAsInModelContext(values) = ValuesAsInModelContext(values, DefaultContext())
-function ValuesAsInModelContext(context::AbstractContext)
-    return ValuesAsInModelContext(OrderedDict(), context)
+function ValuesAsInModelContext(include_colon_eq, context::AbstractContext)
+    return ValuesAsInModelContext(OrderedDict(), include_colon_eq, context)
 end
 
 NodeTrait(::ValuesAsInModelContext) = IsParent()
 childcontext(context::ValuesAsInModelContext) = context.context
 function setchildcontext(context::ValuesAsInModelContext, child)
-    return ValuesAsInModelContext(context.values, child)
+    return ValuesAsInModelContext(context.values, context.include_colon_eq, child)
 end
 
-is_extracting_values(context::ValuesAsInModelContext) = true
+is_extracting_values(context::ValuesAsInModelContext) = context.include_colon_eq
 function is_extracting_values(context::AbstractContext)
     return is_extracting_values(NodeTrait(context), context)
 end
@@ -114,8 +114,8 @@ function dot_tilde_assume(
 end
 
 """
-    values_as_in_model(model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
-    values_as_in_model(rng::Random.AbstractRNG, model::Model[, varinfo::AbstractVarInfo, context::AbstractContext])
+    values_as_in_model(model::Model, include_colon_eq::Bool[, varinfo::AbstractVarInfo, context::AbstractContext])
+    values_as_in_model(rng::Random.AbstractRNG, model::Model, include_colon_eq::Bool[, varinfo::AbstractVarInfo, context::AbstractContext])
 
 Get the values of `varinfo` as they would be seen in the model.
 
@@ -132,6 +132,7 @@ of additional model evaluations.
 
 # Arguments
 - `model::Model`: model to extract realizations from.
+- `include_colon_eq::Bool`: whether to also include variables on the LHS of `:=`.
 - `varinfo::AbstractVarInfo`: variable information to use for the extraction.
 - `context::AbstractContext`: context to use for the extraction. If `rng` is specified, then `context`
     will be wrapped in a [`SamplingContext`](@ref) with the provided `rng`.
@@ -183,24 +184,26 @@ false
 julia> # Approach 2: Extract realizations using `values_as_in_model`.
        # (✓) `values_as_in_model` will re-run the model and extract
        # the correct realization of `y` given the new values of `x`.
-       lb ≤ values_as_in_model(model, varinfo_linked)[@varname(y)] ≤ ub
+       lb ≤ values_as_in_model(model, true, varinfo_linked)[@varname(y)] ≤ ub
 true
 ```
 """
 function values_as_in_model(
     model::Model,
+    include_colon_eq::Bool,
     varinfo::AbstractVarInfo=VarInfo(),
     context::AbstractContext=DefaultContext(),
 )
-    context = ValuesAsInModelContext(context)
+    context = ValuesAsInModelContext(include_colon_eq, context)
     evaluate!!(model, varinfo, context)
     return context.values
 end
 function values_as_in_model(
     rng::Random.AbstractRNG,
     model::Model,
+    include_colon_eq::Bool,
     varinfo::AbstractVarInfo=VarInfo(),
     context::AbstractContext=DefaultContext(),
 )
-    return values_as_in_model(model, varinfo, SamplingContext(rng, context))
+    return values_as_in_model(model, true, varinfo, SamplingContext(rng, context))
 end
