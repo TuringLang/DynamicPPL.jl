@@ -396,6 +396,22 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 end
             end
         end
+
+        @testset "check that sampling obeys rng if passed" begin
+            @model function f()
+                x ~ Normal(0)
+                return y ~ Normal(x)
+            end
+            model = f()
+            # Call values_as_in_model with the rng
+            values = values_as_in_model(Random.Xoshiro(43), model, false)
+            # Check that they match the values that would be used if vi was seeded
+            # with that seed instead
+            expected_vi = VarInfo(Random.Xoshiro(43), model)
+            for vn in keys(values)
+                @test values[vn] == expected_vi[vn]
+            end
+        end
     end
 
     @testset "Erroneous model call" begin
