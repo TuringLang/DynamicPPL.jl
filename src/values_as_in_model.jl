@@ -27,12 +27,6 @@ struct ValuesAsInModelContext{T,C<:AbstractContext} <: AbstractContext
     "child context"
     context::C
 end
-
-# If child context is not passed
-function ValuesAsInModelContext(values, include_colon_eq)
-    return ValuesAsInModelContext(values, include_colon_eq, DefaultContext())
-end
-# If values are not passed
 function ValuesAsInModelContext(include_colon_eq, context::AbstractContext)
     return ValuesAsInModelContext(OrderedDict(), include_colon_eq, context)
 end
