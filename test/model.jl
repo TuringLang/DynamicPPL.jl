@@ -383,7 +383,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                realizations = values_as_in_model(model, varinfo)
+                # We can set the include_colon_eq arg to false because none of
+                # the demo models contain :=. The behaviour when
+                # include_colon_eq is true is tested in test/compiler.jl
+                realizations = values_as_in_model(model, false, varinfo)
                 # Ensure that all variables are found.
                 vns_found = collect(keys(realizations))
                 @test vns ∩ vns_found == vns ∪ vns_found
@@ -391,6 +394,22 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 for vn in vns
                     @test realizations[vn] == varinfo[vn]
                 end
+            end
+        end
+
+        @testset "check that sampling obeys rng if passed" begin
+            @model function f()
+                x ~ Normal(0)
+                return y ~ Normal(x)
+            end
+            model = f()
+            # Call values_as_in_model with the rng
+            values = values_as_in_model(Random.Xoshiro(43), model, false)
+            # Check that they match the values that would be used if vi was seeded
+            # with that seed instead
+            expected_vi = VarInfo(Random.Xoshiro(43), model)
+            for vn in keys(values)
+                @test values[vn] == expected_vi[vn]
             end
         end
     end
@@ -432,71 +451,86 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "predict" begin
         @testset "with MCMCChains.Chains" begin
-            DynamicPPL.Random.seed!(100)
-
             @model function linear_reg(x, y, σ=0.1)
                 β ~ Normal(0, 1)
                 for i in eachindex(y)
                     y[i] ~ Normal(β * x[i], σ)
                 end
+                # Insert a := block to test that it is not included in predictions
+                return σ2 := σ^2
             end
 
-            @model function linear_reg_vec(x, y, σ=0.1)
-                β ~ Normal(0, 1)
-                return y ~ MvNormal(β .* x, σ^2 * I)
-            end
-
+            # Construct a chain with 'sampled values' of β
             ground_truth_β = 2
             β_chain = MCMCChains.Chains(rand(Normal(ground_truth_β, 0.002), 1000), [:β])
 
+            # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
             m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
             predictions = DynamicPPL.predict(m_lin_reg_test, β_chain)
 
-            ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
-            @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
-            @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+            # Also test a vectorized model
+            @model function linear_reg_vec(x, y, σ=0.1)
+                β ~ Normal(0, 1)
+                return y ~ MvNormal(β .* x, σ^2 * I)
+            end
+            m_lin_reg_test_vec = linear_reg_vec(xs_test, missing)
 
-            # Ensure that `rng` is respected
-            rng = MersenneTwister(42)
-            predictions1 = DynamicPPL.predict(rng, m_lin_reg_test, β_chain[1:2])
-            predictions2 = DynamicPPL.predict(
-                MersenneTwister(42), m_lin_reg_test, β_chain[1:2]
-            )
-            @test all(Array(predictions1) .== Array(predictions2))
+            @testset "variables in chain" begin
+                # Note that this also checks that variables on the lhs of :=,
+                # such as σ2, are not included in the resulting chain
+                @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]")])
+            end
 
-            # Predict on two last indices for vectorized
-            m_lin_reg_test = linear_reg_vec(xs_test, missing)
-            predictions_vec = DynamicPPL.predict(m_lin_reg_test, β_chain)
-            ys_pred_vec = vec(mean(Array(group(predictions_vec, :y)); dims=1))
-
-            @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
-            @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
-
-            # Multiple chains
-            multiple_β_chain = MCMCChains.Chains(
-                reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2), [:β]
-            )
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
-            predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
-            @test size(multiple_β_chain, 3) == size(predictions, 3)
-
-            for chain_idx in MCMCChains.chains(multiple_β_chain)
-                ys_pred = vec(mean(Array(group(predictions[:, :, chain_idx], :y)); dims=1))
+            @testset "accuracy" begin
+                ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
                 @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
             end
 
-            # Predict on two last indices for vectorized
-            m_lin_reg_test = linear_reg_vec(xs_test, missing)
-            predictions_vec = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
-
-            for chain_idx in MCMCChains.chains(multiple_β_chain)
-                ys_pred_vec = vec(
-                    mean(Array(group(predictions_vec[:, :, chain_idx], :y)); dims=1)
+            @testset "ensure that rng is respected" begin
+                rng = MersenneTwister(42)
+                predictions1 = DynamicPPL.predict(rng, m_lin_reg_test, β_chain[1:2])
+                predictions2 = DynamicPPL.predict(
+                    MersenneTwister(42), m_lin_reg_test, β_chain[1:2]
                 )
+                @test all(Array(predictions1) .== Array(predictions2))
+            end
+
+            @testset "accuracy on vectorized model" begin
+                predictions_vec = DynamicPPL.predict(m_lin_reg_test_vec, β_chain)
+                ys_pred_vec = vec(mean(Array(group(predictions_vec, :y)); dims=1))
+
                 @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+            end
+
+            @testset "prediction from multiple chains" begin
+                # Normal linreg model
+                multiple_β_chain = MCMCChains.Chains(
+                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2), [:β]
+                )
+                predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
+                @test size(multiple_β_chain, 3) == size(predictions, 3)
+
+                for chain_idx in MCMCChains.chains(multiple_β_chain)
+                    ys_pred = vec(
+                        mean(Array(group(predictions[:, :, chain_idx], :y)); dims=1)
+                    )
+                    @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                    @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+                end
+
+                # Vectorized linreg model
+                predictions_vec = DynamicPPL.predict(m_lin_reg_test_vec, multiple_β_chain)
+
+                for chain_idx in MCMCChains.chains(multiple_β_chain)
+                    ys_pred_vec = vec(
+                        mean(Array(group(predictions_vec[:, :, chain_idx], :y)); dims=1)
+                    )
+                    @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                    @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+                end
             end
         end
 
