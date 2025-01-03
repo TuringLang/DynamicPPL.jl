@@ -100,10 +100,17 @@ function AbstractMCMC.sample(
     sampler::Sampler,
     N::Integer;
     chain_type=default_chain_type(sampler),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
+    if haskey(kwargs, :resume_from)
+        throw(
+            ArgumentError(
+                "The `resume_from` keyword argument is no longer supported. Please use `initial_state=loadstate(chain)` instead of `resume_from=chain`.",
+            ),
+        )
+    end
+
     return AbstractMCMC.mcmcsample(
         rng, model, sampler, N; chain_type, initial_state, kwargs...
     )

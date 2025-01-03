@@ -117,7 +117,7 @@ function DynamicPPL.predict(
         DynamicPPL.setval_and_resample!(varinfo, parameter_only_chain, sample_idx, chain_idx)
         model(rng, varinfo, DynamicPPL.SampleFromPrior())
 
-        vals = DynamicPPL.values_as_in_model(model, varinfo)
+        vals = DynamicPPL.values_as_in_model(model, false, varinfo)
         varname_vals = mapreduce(
             collect,
             vcat,
