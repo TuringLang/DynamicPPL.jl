@@ -91,18 +91,6 @@ include("test_util.jl")
                 recursive=true,
             )
             doctestfilters = [
-                # Older versions will show "0 element Array" instead of "Type[]".
-                r"(Any\[\]|0-element Array{.+,[0-9]+})",
-                # Older versions will show "Array{...,1}" instead of "Vector{...}".
-                r"(Array{.+,\s?1}|Vector{.+})",
-                # Older versions will show "Array{...,2}" instead of "Matrix{...}".
-                r"(Array{.+,\s?2}|Matrix{.+})",
-                # Errors from macros sometimes result in `LoadError: LoadError:`
-                # rather than `LoadError:`, depending on Julia version.
-                r"ERROR: (LoadError:\s)+",
-                # Older versions do not have `;;]` but instead just `]` at end of the line
-                # => need to treat `;;]` and `]` as the same, i.e. ignore them if at the end of a line
-                r"(;;){0,1}\]$"m,
                 # Ignore the source of a warning in the doctest output, since this is dependent on host.
                 # This is a line that starts with "└ @ " and ends with the line number.
                 r"└ @ .+:[0-9]+",

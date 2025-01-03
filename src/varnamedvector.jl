@@ -109,7 +109,7 @@ like `setindex!` and `getindex!` rather than directly accessing `vnv.vals`.
 
 ```jldoctest varnamedvector-struct
 julia> vnv[@varname(x)]
-2-element Vector{Float64}:
+2-element Vector{Real}:
  46.0
  48.0
 
