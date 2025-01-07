@@ -157,17 +157,21 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 initialsampler(spl::Sampler) = SampleFromPrior()
 
 function set_values!!(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector{T}, spl::AbstractSampler
-) where {T}
-    if T === Any
-        throw(
-            ArgumentError(
-                "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
-                "If `initial_params` is a vector of vectors, please flatten it first using `vcat`.",
-            ),
-        )
-    end
+    varinfo::AbstractVarInfo, initial_params::AbstractVector, spl::AbstractSampler
+)
+    throw(
+        ArgumentError(
+            "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
+            "If `initial_params` is a vector of vectors, please flatten it (e.g. using `vcat`) first.",
+        ),
+    )
+end
 
+function set_values!!(
+    varinfo::AbstractVarInfo,
+    initial_params::AbstractVector{<:Union{Real,Missing}},
+    spl::AbstractSampler,
+)
     flattened_param_vals = varinfo[spl]
     length(flattened_param_vals) == length(initial_params) || throw(
         DimensionMismatch(
@@ -199,7 +203,8 @@ function set_values!!(
                 if subsumes(vn, vv)
                     throw(
                         ArgumentError(
-                            "Variable $v not found in model, but it subsumes a variable ($vv) in the model. " *
+                            "The current model does not contain variable $v, but there's ($vv) in the model. " *
+                            "Using NamedTuple for initial_params is not supported for this model. " *
                             "Please use AbstractVector for initial_params instead of NamedTuple.",
                         ),
                     )
