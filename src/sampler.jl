@@ -157,14 +157,22 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 initialsampler(spl::Sampler) = SampleFromPrior()
 
 function set_values!!(
-    varinfo::AbstractVarInfo,
-    initial_params::AbstractVector{<:Union{Real,Missing}},
-    spl::AbstractSampler,
-)
+    varinfo::AbstractVarInfo, initial_params::AbstractVector{T}, spl::AbstractSampler
+) where {T}
+    if T === Any
+        throw(
+            ArgumentError(
+                "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
+                "If `initial_params` is a vector of vectors, please flatten it first using `vcat`.",
+            ),
+        )
+    end
+
     flattened_param_vals = varinfo[spl]
     length(flattened_param_vals) == length(initial_params) || throw(
         DimensionMismatch(
-            "Provided initial value size ($(length(initial_params))) doesn't match the model size ($(length(flattened_param_vals)))",
+            "Provided initial value size ($(length(initial_params))) doesn't match " *
+            "the model size ($(length(flattened_param_vals))).",
         ),
     )
 
@@ -183,6 +191,23 @@ end
 function set_values!!(
     varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
 )
+    vars_in_varinfo = keys(varinfo)
+    for v in keys(initial_params)
+        if !(v in vars_in_varinfo)
+            for vv in vars_in_varinfo
+                if subsumes(VarName{v}(), vv)
+                    throw(
+                        ArgumentError(
+                            "Variable $v not found in model, but it subsumes a variable ($vv) in the model. " *
+                            "Please use AbstractVector for initial_params instead of NamedTuple.",
+                        ),
+                    )
+                end
+            end
+            
+            throw(ArgumentError("Variable $v not found in the model."))
+        end
+    end
     initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
     return update_values!!(
         varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))

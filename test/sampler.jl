@@ -178,5 +178,30 @@
                 @test c1[1].metadata.s.vals == c2[1].metadata.s.vals
             end
         end
+
+        @testset "error handling" begin
+            # https://github.com/TuringLang/Turing.jl/issues/2452
+            @model function constrained_uniform(n)
+                Z ~ Uniform(10, 20)
+                X = Vector{Float64}(undef, n)
+                for i in 1:n
+                    X[i] ~ Uniform(0, Z)
+                end
+            end
+
+            n = 2
+            initial_z = 15
+            initial_x = [0.2, 0.5]
+            model = constrained_uniform(n)
+            vi = VarInfo(model)
+
+            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
+                vi, [initial_z, initial_x], DynamicPPL.SampleFromPrior(), model
+            )
+
+            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
+                vi, (X=initial_x, Z=initial_z), DynamicPPL.SampleFromPrior(), model
+            )
+        end
     end
 end
