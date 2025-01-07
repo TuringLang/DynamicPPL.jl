@@ -193,9 +193,10 @@ function set_values!!(
 )
     vars_in_varinfo = keys(varinfo)
     for v in keys(initial_params)
-        if !(v in vars_in_varinfo)
+        vn = VarName{v}()
+        if !(vn in vars_in_varinfo)
             for vv in vars_in_varinfo
-                if subsumes(VarName{v}(), vv)
+                if subsumes(vn, vv)
                     throw(
                         ArgumentError(
                             "Variable $v not found in model, but it subsumes a variable ($vv) in the model. " *
