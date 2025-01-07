@@ -203,8 +203,8 @@ function set_values!!(
                 if subsumes(vn, vv)
                     throw(
                         ArgumentError(
-                            "The current model does not contain variable $v, but there's ($vv) in the model. " *
-                            "Using NamedTuple for initial_params is not supported for this model. " *
+                            "The current model contains sub-variables of $v, such as ($vv). " *
+                            "Using NamedTuple for initial_params is not supported in such a case. " *
                             "Please use AbstractVector for initial_params instead of NamedTuple.",
                         ),
                     )
