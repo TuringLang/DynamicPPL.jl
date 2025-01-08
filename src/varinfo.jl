@@ -200,7 +200,11 @@ function VarInfo(
 )
     return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
 end
-VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
+function VarInfo(
+    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
+)
+    return VarInfo(Random.default_rng(), model, args...)
+end
 
 """
     vector_length(varinfo::VarInfo)
