@@ -232,8 +232,14 @@ function SimpleVarInfo(; kwargs...)
 end
 
 # Constructor from `Model`.
-SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
-function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
+function SimpleVarInfo(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+)
+    return SimpleVarInfo{Float64}(model, args...)
+end
+function SimpleVarInfo{T}(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+) where {T<:Real}
     return last(evaluate!!(model, SimpleVarInfo{T}(), args...))
 end
 
