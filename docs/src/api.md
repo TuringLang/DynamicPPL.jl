@@ -134,6 +134,12 @@ returned(::Model)
 
 ## Utilities
 
+To retrieve the final sampler state from a chain of samples (useful for resuming sampling from a previous point):
+
+```@docs
+loadstate
+```
+
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
 
 ```@docs
@@ -425,7 +431,6 @@ The default implementation of [`Sampler`](@ref) uses the following unexported fu
 
 ```@docs
 DynamicPPL.initialstep
-DynamicPPL.loadstate
 DynamicPPL.initialsampler
 ```
 
