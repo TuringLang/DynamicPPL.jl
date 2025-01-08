@@ -503,7 +503,7 @@ function assume(
 end
 
 function dot_assume(
-    rng,
+    rng::Random.AbstractRNG,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
@@ -529,7 +529,7 @@ function dot_assume(
 end
 
 function dot_assume(
-    rng,
+    rng::Random.AbstractRNG,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
