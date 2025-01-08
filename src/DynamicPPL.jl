@@ -92,6 +92,7 @@ export AbstractVarInfo,
     Sampler,
     SampleFromPrior,
     SampleFromUniform,
+    loadstate,
     # Contexts
     SamplingContext,
     DefaultContext,

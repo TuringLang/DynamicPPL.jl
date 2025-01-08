@@ -100,10 +100,16 @@ function AbstractMCMC.sample(
     sampler::Sampler,
     N::Integer;
     chain_type=default_chain_type(sampler),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
+    if haskey(kwargs, :resume_from)
+        throw(
+            ArgumentError(
+                "The `resume_from` keyword argument is no longer supported. Please use `initial_state=loadstate(chain)` instead of `resume_from=chain`.",
+            ),
+        )
+    end
     return AbstractMCMC.mcmcsample(
         rng, model, sampler, N; chain_type, initial_state, kwargs...
     )
@@ -135,7 +141,14 @@ end
 
 Load sampler state from `data`.
 
-By default, `data` is returned.
+If `data` isa MCMCChains.Chains object, this attempts to fetch the last state
+of the sampler from the metadata stored inside the Chains object. This requires
+you to have passed the `save_state=true` keyword argument to the `sample()`
+when generating the chain.
+
+This function can be overloaded for specific types of `data` if desired. If
+there is no specific implementation for a given type, it falls back to just
+returning `data`, i.e. acts as an identity function.
 """
 loadstate(data) = data
 
