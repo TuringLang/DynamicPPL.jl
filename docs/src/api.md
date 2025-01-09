@@ -65,7 +65,7 @@ DynamicPPL.LogDensityFunction
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
 
 ```@docs
-|(::Model, ::Any)
+|(::Model, ::Union{Tuple,NamedTuple,AbstractDict{<:VarName}})
 condition
 DynamicPPL.conditioned
 ```
