@@ -96,7 +96,8 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values) = condition(model, values)
+Base.:|(model::Model, values::Union{Tuple,NamedTuple,AbstractDict{<:VarName}}) =
+    condition(model, values)
 
 """
     condition(model::Model; values...)
@@ -264,10 +265,31 @@ julia> conditioned_model_dict()
 1.0
 ```
 """
-AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
-function AbstractPPL.condition(model::Model, value, values...)
-    return contextualize(model, condition(model.context, value, values...))
+function AbstractPPL.condition(model::Model, values...)
+    # Positional arguments - need to handle cases carefully
+    return contextualize(
+        model, ConditionContext(_make_conditioning_values(values...), model.context)
+    )
 end
+function AbstractPPL.condition(model::Model; values...)
+    # Keyword arguments -- just convert to a NamedTuple
+    return contextualize(model, ConditionContext(NamedTuple(values), model.context))
+end
+
+"""
+    _make_conditioning_values(vals...)
+
+Convert different types of input to either a `NamedTuple` or `AbstractDict` of
+conditioning values, suitable for storage in a `ConditionContext`.
+"""
+# Case 1: Already in the right format, e.g. condition(model, (x=1, y=2))
+_make_conditioning_values(values::Union{NamedTuple,AbstractDict}) = values
+# Case 2: condition(model, (@varname(x) => 1, @varname(y) => 2))
+_make_conditioning_values(values::Tuple{Pair{<:VarName}}) = Dict(values)
+# Case 3: Case 1 but splatted, e.g. condition(model, x=1, y=2)
+_make_conditioning_values(v::Pair{<:Symbol}, vs::Pair{<:Symbol}...) = NamedTuple(v, vs...)
+# Case 4: Case 2 but splatted, e.g. condition(model, @varname(x) => 1, @varname(y) => 2)
+_make_conditioning_values(v::Pair{<:VarName}, vs::Pair{<:VarName}...) = Dict(v, vs...)
 
 """
     decondition(model::Model)

@@ -309,7 +309,20 @@ function prefix(model::Model, ::Val{x}) where {x}
     return contextualize(model, PrefixContext{Symbol(x)}(model.context))
 end
 
-struct ConditionContext{Values,Ctx<:AbstractContext} <: AbstractContext
+"""
+
+    ConditionContext{Values<:Union{NamedTuple,AbstractDict},Ctx<:AbstractContext}
+
+Model context that contains values that are to be conditioned on. The values
+can either be a NamedTuple mapping symbols to values, such as `(a=1, b=2)`, or
+an AbstractDict mapping varnames to values (e.g. `Dict(@varname(a) => 1,
+@varname(b) => 2)`). The former is more performant, but the latter must be used
+when there are varnames that cannot be represented as symbols, e.g.
+`@varname(x[1])`.
+"""
+struct ConditionContext{
+    Values<:Union{NamedTuple,AbstractDict{<:VarName}},Ctx<:AbstractContext
+} <: AbstractContext
     values::Values
     context::Ctx
 end
@@ -317,8 +330,10 @@ end
 const NamedConditionContext{Names} = ConditionContext{<:NamedTuple{Names}}
 const DictConditionContext = ConditionContext{<:AbstractDict}
 
-ConditionContext(values) = ConditionContext(values, DefaultContext())
-
+# Use DefaultContext as the default base context
+ConditionContext(values::Union{NamedTuple,AbstractDict}) = ConditionContext(values, DefaultContext())
+# Optimisation when there are no values to condition on
+ConditionContext(::NamedTuple{()}, context::AbstractContext) = context
 # Try to avoid nested `ConditionContext`.
 function ConditionContext(values::NamedTuple, context::NamedConditionContext)
     # Note that this potentially overrides values from `context`, thus giving
@@ -400,43 +415,6 @@ function getconditioned_nested(::IsParent, context, vn)
 end
 
 """
-    condition([context::AbstractContext,] values::NamedTuple)
-    condition([context::AbstractContext]; values...)
-
-Return `ConditionContext` with `values` and `context` if `values` is non-empty,
-otherwise return `context` which is [`DefaultContext`](@ref) by default.
-
-See also: [`decondition`](@ref)
-"""
-AbstractPPL.condition(; values...) = condition(NamedTuple(values))
-AbstractPPL.condition(values::NamedTuple) = condition(DefaultContext(), values)
-function AbstractPPL.condition(value::Pair{<:VarName}, values::Pair{<:VarName}...)
-    return condition((value, values...))
-end
-function AbstractPPL.condition(values::NTuple{<:Any,<:Pair{<:VarName}})
-    return condition(DefaultContext(), values)
-end
-AbstractPPL.condition(context::AbstractContext, values::NamedTuple{()}) = context
-function AbstractPPL.condition(
-    context::AbstractContext, values::Union{AbstractDict,NamedTuple}
-)
-    return ConditionContext(values, context)
-end
-function AbstractPPL.condition(context::AbstractContext; values...)
-    return condition(context, NamedTuple(values))
-end
-function AbstractPPL.condition(
-    context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...
-)
-    return condition(context, (value, values...))
-end
-function AbstractPPL.condition(
-    context::AbstractContext, values::NTuple{<:Any,Pair{<:VarName}}
-)
-    return condition(context, Dict(values))
-end
-
-"""
     decondition(context::AbstractContext, syms...)
 
 Return `context` but with `syms` no longer conditioned on.
@@ -445,41 +423,41 @@ Note that this recursively traverses contexts, deconditioning all along the way.
 
 See also: [`condition`](@ref)
 """
-AbstractPPL.decondition(::IsLeaf, context, args...) = context
-function AbstractPPL.decondition(::IsParent, context, args...)
-    return setchildcontext(context, decondition(childcontext(context), args...))
+decondition_context(::IsLeaf, context, args...) = context
+function decondition_context(::IsParent, context, args...)
+    return setchildcontext(context, decondition_context(childcontext(context), args...))
 end
-function AbstractPPL.decondition(context, args...)
-    return decondition(NodeTrait(context), context, args...)
+function decondition_context(context, args...)
+    return decondition_context(NodeTrait(context), context, args...)
 end
-function AbstractPPL.decondition(context::ConditionContext)
-    return decondition(childcontext(context))
+function decondition_context(context::ConditionContext)
+    return decondition_context(childcontext(context))
 end
-function AbstractPPL.decondition(context::ConditionContext, sym)
-    return condition(
-        decondition(childcontext(context), sym), BangBang.delete!!(context.values, sym)
+function decondition_context(context::ConditionContext, sym)
+    return ConditionContext(
+        decondition_context(childcontext(context), sym), BangBang.delete!!(context.values, sym)
     )
 end
-function AbstractPPL.decondition(context::ConditionContext, sym, syms...)
-    return decondition(
-        condition(
-            decondition(childcontext(context), syms...),
+function decondition_context(context::ConditionContext, sym, syms...)
+    return decondition_context(
+        ConditionContext(
+            decondition_context(childcontext(context), syms...),
             BangBang.delete!!(context.values, sym),
         ),
         syms...,
     )
 end
 
-function AbstractPPL.decondition(
+function decondition_context(
     context::NamedConditionContext, vn::VarName{sym}
 ) where {sym}
-    return condition(
-        decondition(childcontext(context), vn), BangBang.delete!!(context.values, sym)
+    return ConditionContext(
+        decondition_context(childcontext(context), vn), BangBang.delete!!(context.values, sym)
     )
 end
-function AbstractPPL.decondition(context::ConditionContext, vn::VarName)
-    return condition(
-        decondition(childcontext(context), vn), BangBang.delete!!(context.values, vn)
+function decondition_context(context::ConditionContext, vn::VarName)
+    return ConditionContext(
+        decondition_context(childcontext(context), vn), BangBang.delete!!(context.values, vn)
     )
 end
 
