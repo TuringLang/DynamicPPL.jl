@@ -331,13 +331,18 @@ const NamedConditionContext{Names} = ConditionContext{<:NamedTuple{Names}}
 const DictConditionContext = ConditionContext{<:AbstractDict}
 
 # Use DefaultContext as the default base context
-ConditionContext(values::Union{NamedTuple,AbstractDict}) = ConditionContext(values, DefaultContext())
+function ConditionContext(values::Union{NamedTuple,AbstractDict})
+    return ConditionContext(values, DefaultContext())
+end
 # Optimisation when there are no values to condition on
 ConditionContext(::NamedTuple{()}, context::AbstractContext) = context
-# Try to avoid nested `ConditionContext`.
+# Collapse consecutive levels of `ConditionContext`. Note that this overrides
+# values inside the child context, thus giving precedence to the outermost
+# `ConditionContext`.
 function ConditionContext(values::NamedTuple, context::NamedConditionContext)
-    # Note that this potentially overrides values from `context`, thus giving
-    # precedence to the outmost `ConditionContext`.
+    return ConditionContext(merge(context.values, values), childcontext(context))
+end
+function ConditionContext(values::AbstractDict{<:VarName}, context::DictConditionContext)
     return ConditionContext(merge(context.values, values), childcontext(context))
 end
 
@@ -433,32 +438,17 @@ end
 function decondition_context(context::ConditionContext)
     return decondition_context(childcontext(context))
 end
-function decondition_context(context::ConditionContext, sym)
-    return ConditionContext(
-        decondition_context(childcontext(context), sym), BangBang.delete!!(context.values, sym)
-    )
-end
 function decondition_context(context::ConditionContext, sym, syms...)
-    return decondition_context(
-        ConditionContext(
-            decondition_context(childcontext(context), syms...),
-            BangBang.delete!!(context.values, sym),
-        ),
-        syms...,
-    )
-end
-
-function decondition_context(
-    context::NamedConditionContext, vn::VarName{sym}
-) where {sym}
-    return ConditionContext(
-        decondition_context(childcontext(context), vn), BangBang.delete!!(context.values, sym)
-    )
-end
-function decondition_context(context::ConditionContext, vn::VarName)
-    return ConditionContext(
-        decondition_context(childcontext(context), vn), BangBang.delete!!(context.values, vn)
-    )
+    new_values = deepcopy(context.values)
+    for s in (sym, syms...)
+        new_values = BangBang.delete!!(new_values, s)
+    end
+    return if length(new_values) == 0
+        # No more values left, can unwrap
+        decondition_context(childcontext(context), syms...)
+    else
+        ConditionContext(new_values, decondition_context(childcontext(context), syms...))
+    end
 end
 
 """
