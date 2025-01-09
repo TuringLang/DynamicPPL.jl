@@ -100,25 +100,36 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "model conditioning with various arguments" begin
+    @testset "model de/conditioning" begin
         @model function demo_condition()
             x ~ Normal()
             return y ~ Normal(x)
         end
         model = demo_condition()
+
         # Test that different syntaxes work and give the same underlying ConditionContext
-        @testset "NamedTuple ConditionContext" begin
+        @testset "conditioning NamedTuple" begin
             expected_values = (y=2,)
             @test condition(model, (y=2,)).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
             @test (model | (y=2,)).context.values == expected_values
+            conditioned_model = condition(model, (y=2,))
+            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
         end
-        @testset "AbstractDict ConditionContext" begin
+        @testset "conditioning AbstractDict" begin
             expected_values = Dict(@varname(y) => 2)
             @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
             @test condition(model, @varname(y) => 2).context.values == expected_values
             @test (model | (@varname(y) => 2,)).context.values == expected_values
+            conditioned_model = condition(model, Dict(@varname(y) => 2))
+            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
+        end
+
+        @testset "deconditioning" begin
+            conditioned_model = condition(model, (y=2,))
+            deconditioned_model = decondition(conditioned_model)
+            @test keys(VarInfo(deconditioned_model)) == [@varname(x), @varname(y)]
         end
     end
 

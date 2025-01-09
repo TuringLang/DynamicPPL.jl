@@ -96,7 +96,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values::Union{Tuple,NamedTuple,AbstractDict{<:VarName}}) =
+Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}}) =
     condition(model, values)
 
 """
@@ -281,14 +281,14 @@ end
 
 Convert different types of input to either a `NamedTuple` or `AbstractDict` of
 conditioning values, suitable for storage in a `ConditionContext`.
+
+This handles all the cases where `vals` is either already a NamedTuple or
+AbstractDict (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g.
+`condition(model, x=1, y=2)`).
 """
-# Case 1: Already in the right format, e.g. condition(model, (x=1, y=2))
 _make_conditioning_values(values::Union{NamedTuple,AbstractDict}) = values
-# Case 2: condition(model, (@varname(x) => 1, @varname(y) => 2))
 _make_conditioning_values(values::Tuple{Pair{<:VarName}}) = Dict(values)
-# Case 3: Case 1 but splatted, e.g. condition(model, x=1, y=2)
 _make_conditioning_values(v::Pair{<:Symbol}, vs::Pair{<:Symbol}...) = NamedTuple(v, vs...)
-# Case 4: Case 2 but splatted, e.g. condition(model, @varname(x) => 1, @varname(y) => 2)
 _make_conditioning_values(v::Pair{<:VarName}, vs::Pair{<:VarName}...) = Dict(v, vs...)
 
 """
@@ -401,7 +401,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms...)
-    return contextualize(model, decondition(model.context, syms...))
+    return contextualize(model, decondition_context(model.context, syms...))
 end
 
 """
@@ -435,7 +435,7 @@ julia> # Returns all the variables we have conditioned on + their values.
 (x = 100.0, m = 1.0)
 
 julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(m=1.0))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((m=1.0,)))), x=100.0);
 
 julia> conditioned(cm)
 (x = 100.0, m = 1.0)
@@ -447,7 +447,7 @@ julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(var"a.m"=1.0))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((var"a.m"=1.0,)))), x=100.0);
 
 julia> conditioned(cm).x
 100.0
@@ -455,7 +455,7 @@ julia> conditioned(cm).x
 julia> conditioned(cm).var"a.m"
 1.0
 
-julia> keys(VarInfo(cm)) # <= no variables are sampled
+julia> keys(VarInfo(cm)) # No variables are sampled
 VarName[]
 ```
 """

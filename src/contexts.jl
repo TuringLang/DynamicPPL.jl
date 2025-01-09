@@ -447,8 +447,16 @@ function decondition_context(context::ConditionContext, sym, syms...)
         # No more values left, can unwrap
         decondition_context(childcontext(context), syms...)
     else
-        ConditionContext(new_values, decondition_context(childcontext(context), syms...))
+        ConditionContext(
+            new_values, decondition_context(childcontext(context), sym, syms...)
+        )
     end
+end
+function decondition_context(context::NamedConditionContext, vn::VarName{sym}) where {sym}
+    return ConditionContext(
+        BangBang.delete!!(context.values, sym),
+        decondition_context(childcontext(context), vn),
+    )
 end
 
 """

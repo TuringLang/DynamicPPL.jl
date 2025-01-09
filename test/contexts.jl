@@ -259,6 +259,23 @@ end
                 @test decondition_context(ctx, @varname(x), @varname(y), @varname(z)) isa
                     DefaultContext
             end
+
+            @testset "Nesting" begin
+                ctx = ConditionContext(
+                    (x=1, y=2), ConditionContext(Dict(@varname(a) => 3, @varname(b) => 4))
+                )
+                # Decondition an outer variable
+                dctx = decondition_context(ctx, :x)
+                @test dctx.values == (y=2,)
+                @test childcontext(dctx).values == Dict(@varname(a) => 3, @varname(b) => 4)
+                # Decondition an inner variable
+                dctx = decondition_context(ctx, @varname(a))
+                @test dctx.values == (x=1, y=2)
+                @test childcontext(dctx).values == Dict(@varname(b) => 4)
+                # Try deconditioning everything
+                dctx = decondition_context(ctx)
+                @test dctx isa DefaultContext
+            end
         end
     end
 
