@@ -243,7 +243,9 @@ end
             end
 
             @testset "Dict" begin
-                ctx = ConditionContext(Dict(@varname(x) => 1, @varname(y) => 2, @varname(z) => 3))
+                ctx = ConditionContext(
+                    Dict(@varname(x) => 1, @varname(y) => 2, @varname(z) => 3)
+                )
                 # Decondition all variables
                 @test decondition_context(ctx) isa DefaultContext
                 # Decondition only some variables
@@ -254,7 +256,8 @@ end
                 @test dctx isa ConditionContext
                 @test dctx.values == Dict(@varname(x) => 1)
                 # Decondition all variables manually
-                @test decondition_context(ctx, @varname(x), @varname(y), @varname(z)) isa DefaultContext
+                @test decondition_context(ctx, @varname(x), @varname(y), @varname(z)) isa
+                    DefaultContext
             end
         end
     end

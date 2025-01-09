@@ -103,22 +103,22 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     @testset "model conditioning with various arguments" begin
         @model function demo_condition()
             x ~ Normal()
-            y ~ Normal(x)
+            return y ~ Normal(x)
         end
         model = demo_condition()
         # Test that different syntaxes work and give the same underlying ConditionContext
         @testset "NamedTuple ConditionContext" begin
-            expected_values = (y = 2,)
+            expected_values = (y=2,)
             @test condition(model, (y=2,)).context.values == expected_values
-            @test condition(model, y=2).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
-            @test (model | (y = 2, )).context.values == expected_values
+            @test condition(model; y=2).context.values == expected_values
+            @test (model | (y=2,)).context.values == expected_values
         end
         @testset "AbstractDict ConditionContext" begin
             expected_values = Dict(@varname(y) => 2)
             @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
             @test condition(model, @varname(y) => 2).context.values == expected_values
-            @test (model | (@varname(y) => 2, )).context.values == expected_values
+            @test (model | (@varname(y) => 2,)).context.values == expected_values
         end
     end
 
