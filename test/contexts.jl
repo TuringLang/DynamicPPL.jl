@@ -11,6 +11,7 @@ using DynamicPPL:
     PointwiseLogdensityContext,
     contextual_isassumption,
     ConditionContext,
+    decondition_context,
     hasconditioned,
     getconditioned,
     hasconditioned_nested,
@@ -194,6 +195,88 @@ end
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
         @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
         @test EnzymeCore.EnzymeRules.inactive_type(typeof(context))
+    end
+
+    @testset "ConditionContext" begin
+        @testset "Nesting" begin
+            @testset "NamedTuple" begin
+                n1 = (x=1, y=2)
+                n2 = (x=3,)
+                # Values from outer context should override inner one
+                ctx1 = ConditionContext(n1, ConditionContext(n2))
+                @test ctx1.values == (x=1, y=2)
+                # Check that the two ConditionContexts are collapsed 
+                @test childcontext(ctx1) isa DefaultContext
+                # Then test the nesting the other way round
+                ctx2 = ConditionContext(n2, ConditionContext(n1))
+                @test ctx2.values == (x=3, y=2)
+                @test childcontext(ctx2) isa DefaultContext
+            end
+
+            @testset "Dict" begin
+                # Same tests as NamedTuple above
+                d1 = Dict(@varname(x) => 1, @varname(y) => 2)
+                d2 = Dict(@varname(x) => 3)
+                ctx1 = ConditionContext(d1, ConditionContext(d2))
+                @test ctx1.values == Dict(@varname(x) => 1, @varname(y) => 2)
+                @test childcontext(ctx1) isa DefaultContext
+                ctx2 = ConditionContext(d2, ConditionContext(d1))
+                @test ctx2.values == Dict(@varname(x) => 3, @varname(y) => 2)
+                @test childcontext(ctx2) isa DefaultContext
+            end
+        end
+
+        @testset "decondition_context" begin
+            @testset "NamedTuple" begin
+                ctx = ConditionContext((x=1, y=2, z=3))
+                # Decondition all variables
+                @test decondition_context(ctx) isa DefaultContext
+                # Decondition only some variables
+                dctx = decondition_context(ctx, :x)
+                @test dctx isa ConditionContext
+                @test dctx.values == (y=2, z=3)
+                dctx = decondition_context(ctx, :y, :z)
+                @test dctx isa ConditionContext
+                @test dctx.values == (x=1,)
+                # Decondition all variables manually
+                @test decondition_context(ctx, :x, :y, :z) isa DefaultContext
+            end
+
+            @testset "Dict" begin
+                ctx = ConditionContext(
+                    Dict(@varname(x) => 1, @varname(y) => 2, @varname(z) => 3)
+                )
+                # Decondition all variables
+                @test decondition_context(ctx) isa DefaultContext
+                # Decondition only some variables
+                dctx = decondition_context(ctx, @varname(x))
+                @test dctx isa ConditionContext
+                @test dctx.values == Dict(@varname(y) => 2, @varname(z) => 3)
+                dctx = decondition_context(ctx, @varname(y), @varname(z))
+                @test dctx isa ConditionContext
+                @test dctx.values == Dict(@varname(x) => 1)
+                # Decondition all variables manually
+                @test decondition_context(ctx, @varname(x), @varname(y), @varname(z)) isa
+                    DefaultContext
+            end
+
+            @testset "Nesting" begin
+                ctx = ConditionContext(
+                    (x=1, y=2), ConditionContext(Dict(@varname(a) => 3, @varname(b) => 4))
+                )
+                # Decondition an outer variable
+                dctx = decondition_context(ctx, :x)
+                @test dctx.values == (y=2,)
+                @test childcontext(dctx).values == Dict(@varname(a) => 3, @varname(b) => 4)
+                # Decondition an inner variable
+                dctx = decondition_context(ctx, @varname(a))
+                @test dctx.values == (x=1, y=2)
+                @test childcontext(dctx).values == Dict(@varname(b) => 4)
+                # Try deconditioning everything
+                dctx = decondition_context(ctx)
+                @test dctx isa DefaultContext
+            end
+        end
     end
 
     @testset "FixedContext" begin
