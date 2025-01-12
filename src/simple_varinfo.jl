@@ -232,8 +232,14 @@ function SimpleVarInfo(; kwargs...)
 end
 
 # Constructor from `Model`.
-SimpleVarInfo(model::Model, args...) = SimpleVarInfo{Float64}(model, args...)
-function SimpleVarInfo{T}(model::Model, args...) where {T<:Real}
+function SimpleVarInfo(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+)
+    return SimpleVarInfo{Float64}(model, args...)
+end
+function SimpleVarInfo{T}(
+    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+) where {T<:Real}
     return last(evaluate!!(model, SimpleVarInfo{T}(), args...))
 end
 
@@ -497,7 +503,7 @@ function assume(
 end
 
 function dot_assume(
-    rng,
+    rng::Random.AbstractRNG,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dists::Union{Distribution,AbstractArray{<:Distribution}},
     vns::AbstractArray{<:VarName},
@@ -523,7 +529,7 @@ function dot_assume(
 end
 
 function dot_assume(
-    rng,
+    rng::Random.AbstractRNG,
     spl::Union{SampleFromPrior,SampleFromUniform},
     dist::MultivariateDistribution,
     vns::AbstractVector{<:VarName},
