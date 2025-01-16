@@ -842,6 +842,9 @@ Returns a tuple of the unique symbols of random variables sampled in `vi`.
 syms(vi::UntypedVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
 syms(vi::TypedVarInfo) = keys(vi.metadata)
 
+_getidcs(vi::UntypedVarInfo) = 1:length(vi.metadata.idcs)
+_getidcs(vi::TypedVarInfo) = _getidcs(vi.metadata)
+
 # Get all indices of variables belonging to SampleFromPrior:
 #   if the gid/selector of a var is an empty Set, then that var is assumed to be assigned to
 #   the SampleFromPrior sampler
@@ -2109,37 +2112,36 @@ function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String, ignorable::Bo
 end
 
 """
-    set_retained_vns_del_by_spl!(vi::VarInfo, spl::Sampler)
+    set_retained_vns_del!(vi::VarInfo)
 
 Set the `"del"` flag of variables in `vi` with `order > vi.num_produce[]` to `true`.
 """
-function set_retained_vns_del_by_spl!(vi::UntypedVarInfo, spl::Sampler)
-    # Get the indices of `vns` that belong to `spl` as a vector
-    gidcs = _getidcs(vi, spl)
+function set_retained_vns_del!(vi::UntypedVarInfo)
+    idcs = _getidcs(vi)
     if get_num_produce(vi) == 0
-        for i in length(gidcs):-1:1
-            vi.metadata.flags["del"][gidcs[i]] = true
+        for i in length(idcs):-1:1
+            vi.metadata.flags["del"][idcs[i]] = true
         end
     else
         for i in 1:length(vi.orders)
-            if i in gidcs && vi.orders[i] > get_num_produce(vi)
+            if i in idcs && vi.orders[i] > get_num_produce(vi)
                 vi.metadata.flags["del"][i] = true
             end
         end
     end
     return nothing
 end
-function set_retained_vns_del_by_spl!(vi::TypedVarInfo, spl::Sampler)
+function set_retained_vns_del!(vi::TypedVarInfo)
     # Get the indices of `vns` that belong to `spl` as a NamedTuple, one entry for each symbol
-    gidcs = _getidcs(vi, spl)
-    return _set_retained_vns_del_by_spl!(vi.metadata, gidcs, get_num_produce(vi))
+    idcs = _getidcs(vi)
+    return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
 end
-@generated function _set_retained_vns_del_by_spl!(
-    metadata, gidcs::NamedTuple{names}, num_produce
+@generated function _set_retained_vns_del!(
+    metadata, idcs::NamedTuple{names}, num_produce
 ) where {names}
     expr = Expr(:block)
     for f in names
-        f_gidcs = :(gidcs.$f)
+        f_idcs = :(idcs.$f)
         f_orders = :(metadata.$f.orders)
         f_flags = :(metadata.$f.flags)
         push!(
@@ -2147,12 +2149,12 @@ end
             quote
                 # Set the flag for variables with symbol `f`
                 if num_produce == 0
-                    for i in length($f_gidcs):-1:1
-                        $f_flags["del"][$f_gidcs[i]] = true
+                    for i in length($f_idcs):-1:1
+                        $f_flags["del"][$f_idcs[i]] = true
                     end
                 else
                     for i in 1:length($f_orders)
-                        if i in $f_gidcs && $f_orders[i] > num_produce
+                        if i in $f_idcs && $f_orders[i] > num_produce
                             $f_flags["del"][i] = true
                         end
                     end
