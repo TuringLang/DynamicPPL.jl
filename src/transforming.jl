@@ -91,14 +91,18 @@ function dot_tilde_assume(
     return r, lp, vi
 end
 
+SamplerOrVarNameIterator = Union{
+    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
+}
+
 function link!!(
-    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation, vi::AbstractVarInfo, ::SamplerOrVarNameIterator, model::Model
 )
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
 
 function invlink!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    ::DynamicTransformation, vi::AbstractVarInfo, ::SamplerOrVarNameIterator, model::Model
 )
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
@@ -107,13 +111,19 @@ function invlink!!(
 end
 
 function link(
-    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation,
+    vi::AbstractVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return link!!(t, deepcopy(vi), spl, model)
+    return link!!(t, deepcopy(vi), spl_or_vn, model)
 end
 
 function invlink(
-    t::DynamicTransformation, vi::AbstractVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation,
+    vi::AbstractVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return invlink!!(t, deepcopy(vi), spl, model)
+    return invlink!!(t, deepcopy(vi), spl_or_vn, model)
 end

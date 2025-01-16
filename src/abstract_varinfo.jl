@@ -537,8 +537,17 @@ If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variabl
 """
 function settrans!! end
 
+# TODO(mhauru) The fact that we need to to define this type is a sign that the link/invlink
+# API is hard to understand. To be fixed by removing samplers from it.
+SamplerOrVarName = Union{
+    AbstractSampler,VarName,NTuple{N,VarName} where N,AbstractVector{<:VarName}
+}
+
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their linked space, using the transformation `t`,
@@ -552,13 +561,19 @@ link!!(vi::AbstractVarInfo, model::Model) = link!!(vi, SampleFromPrior(), model)
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return link!!(t, vi, SampleFromPrior(), model)
 end
-function link!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+function link!!(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
     # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link!!(default_transformation(model, vi), vi, spl, model)
+    return link!!(default_transformation(model, vi), vi, spl_or_vn, model)
+end
+function link!!(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
+    return link!!(t, deepcopy(vi), (vn,), model)
 end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
@@ -571,13 +586,19 @@ link(vi::AbstractVarInfo, model::Model) = link(vi, SampleFromPrior(), model)
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return link(t, deepcopy(vi), SampleFromPrior(), model)
 end
-function link(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+function link(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
     # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link(default_transformation(model, vi), deepcopy(vi), spl, model)
+    return link(default_transformation(model, vi), deepcopy(vi), spl_or_vn, model)
+end
+function link(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
+    return link(t, deepcopy(vi), (vn,), model)
 end
 
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space, using the (inverse of)
@@ -591,9 +612,14 @@ invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), 
 function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, vi, SampleFromPrior(), model)
 end
-function invlink!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+function invlink!!(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
     # Here we extract the `transformation` from `vi` rather than using the default one.
-    return invlink!!(transformation(vi), vi, spl, model)
+    return invlink!!(transformation(vi), vi, spl_or_vn, model)
+end
+function invlink!!(
+    t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model
+)
+    return invlink!!(t, vi, (vn,), model)
 end
 
 # Vector-based ones.
@@ -629,6 +655,9 @@ end
 
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
@@ -642,8 +671,11 @@ invlink(vi::AbstractVarInfo, model::Model) = invlink(vi, SampleFromPrior(), mode
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink(t, vi, SampleFromPrior(), model)
 end
-function invlink(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
-    return invlink(transformation(vi), vi, spl, model)
+function invlink(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
+    return invlink(transformation(vi), vi, spl_or_vn, model)
+end
+function invlink(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
+    return invlink(t, vi, (vn,), model)
 end
 
 """

@@ -1201,29 +1201,40 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
     return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
+SamplerOrVarNameIterator = Union{
+    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
+}
+
 # X -> R for all variables associated with given sampler
-function link!!(t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model)
+function link!!(
+    t::DynamicTransformation, vi::VarInfo, spl_or_vn::SamplerOrVarNameIterator, model::Model
+)
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return link(t, vi, spl, model)
+    has_varnamedvector(vi) && return link(t, vi, spl_or_vn, model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
-    _link!(vi, spl)
+    _link!(vi, spl_or_vn)
     return vi
 end
 
 function link!!(
     t::DynamicTransformation,
     vi::ThreadSafeVarInfo{<:VarInfo},
-    spl::AbstractSampler,
+    spl_or_vn::SamplerOrVarNameIterator,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, spl_or_vn, model)
 end
 
 function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
+    return _link!(vi, _getvns(vi, spl))
+end
+
+function _link!(
+    vi::UntypedVarInfo, vns::Union{AbstractVector{<:VarName},NTuple{N,VarName} where {N}}
+)
     # TODO: Change to a lazy iterator over `vns`
-    vns = _getvns(vi, spl)
     if ~istrans(vi, vns[1])
         for vn in vns
             f = internal_to_linked_internal_transform(vi, vn)
@@ -1234,6 +1245,7 @@ function _link!(vi::UntypedVarInfo, spl::AbstractSampler)
         @warn("[DynamicPPL] attempt to link a linked vi")
     end
 end
+
 function _link!(vi::TypedVarInfo, spl::AbstractSampler)
     return _link!(vi, spl, Val(getspace(spl)))
 end
@@ -1268,26 +1280,70 @@ end
     return expr
 end
 
+"""
+    filter_subsumed(vns1, vns2)
+
+Return the subset of `vns2` that are subsumed by any variable in `vns1`.
+"""
+function filter_subsumed(vns1, vns2)
+    return filter(x -> any(subsumes(y, x) for y in vns1), vns2)
+end
+
+function _link!(
+    vi::TypedVarInfo, vns::Union{AbstractVector{<:VarName},NTuple{N,VarName} where {N}}
+)
+    return _link!(vi.metadata, vi, vns)
+end
+@generated function _link!(
+    metadata::NamedTuple{names},
+    vi,
+    vns::Union{AbstractVector{<:VarName},NTuple{N,VarName} where {N}},
+) where {names,space}
+    expr = Expr(:block)
+    for f in names
+        push!(
+            expr.args,
+            quote
+                f_vns = vi.metadata.$f.vns
+                f_vns = filter_subsumed(vns, f_vns)
+                if !isempty(f_vns)
+                    if !istrans(vi, f_vns[1])
+                        # Iterate over all `f_vns` and transform
+                        for vn in f_vns
+                            f = internal_to_linked_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
+                            settrans!!(vi, true, vn)
+                        end
+                    else
+                        @warn("[DynamicPPL] attempt to link a linked vi")
+                    end
+                end
+            end,
+        )
+    end
+    return expr
+end
+
 # R -> X for all variables associated with given sampler
 function invlink!!(
-    t::DynamicTransformation, vi::VarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation, vi::VarInfo, spl_or_vn::SamplerOrVarNameIterator, model::Model
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return invlink(t, vi, spl, model)
+    has_varnamedvector(vi) && return invlink(t, vi, spl_or_vn, model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
-    _invlink!(vi, spl)
+    _invlink!(vi, spl_or_vn)
     return vi
 end
 
 function invlink!!(
     ::DynamicTransformation,
     vi::ThreadSafeVarInfo{<:VarInfo},
-    spl::AbstractSampler,
+    spl_or_vn::SamplerOrVarNameIterator,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl_or_vn, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1299,7 +1355,11 @@ function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, mode
 end
 
 function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
-    vns = _getvns(vi, spl)
+    return _invlink!(vi, _getvns(vi, spl))
+end
+function _invlink!(
+    vi::UntypedVarInfo, vns::Union{AbstractVector{<:VarName},NTuple{N,VarName} where {N}}
+)
     if istrans(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
@@ -1310,6 +1370,7 @@ function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
     end
 end
+
 function _invlink!(vi::TypedVarInfo, spl::AbstractSampler)
     return _invlink!(vi, spl, Val(getspace(spl)))
 end
@@ -1340,6 +1401,37 @@ end
                 end,
             )
         end
+    end
+    return expr
+end
+
+function _invlink!(
+    vi::TypedVarInfo, vns::Union{AbstractVector{<:VarName},NTuple{N,VarName} where {N}}
+)
+    return _invlink!(vi.metadata, vi, vns)
+end
+@generated function _invlink!(metadata::NamedTuple{names}, vi, vns) where {names}
+    expr = Expr(:block)
+    for f in names
+        push!(
+            expr.args,
+            quote
+                f_vns = vi.metadata.$f.vns
+                f_vns = filter_subsumed(vns, f_vns)
+                if !isempty(f_vns)
+                    if istrans(vi, f_vns[1])
+                        # Iterate over all `f_vns` and transform
+                        for vn in f_vns
+                            f = linked_internal_to_internal_transform(vi, vn)
+                            _inner_transform!(vi, vn, f)
+                            settrans!!(vi, false, vn)
+                        end
+                    else
+                        @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+                    end
+                end
+            end,
+        )
     end
     return expr
 end

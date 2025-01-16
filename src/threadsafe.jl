@@ -81,28 +81,44 @@ haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
+SamplerOrVarNameIterator = Union{
+    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
+}
+
 function link!!(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::AbstractTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, spl_or_vn, model)
 end
 
 function invlink!!(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::AbstractTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, spl_or_vn, model)
 end
 
 function link(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::AbstractTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, spl_or_vn, model)
 end
 
 function invlink(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::AbstractTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, spl, model)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, spl_or_vn, model)
 end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
@@ -110,13 +126,19 @@ end
 # consistency between `vi.logps` field and `getlogp(vi.varinfo)`, which accumulates
 # to define `getlogp(vi)`.
 function link!!(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
 
 function invlink!!(
-    ::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    ::DynamicTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
@@ -125,15 +147,21 @@ function invlink!!(
 end
 
 function link(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return link!!(t, deepcopy(vi), spl, model)
+    return link!!(t, deepcopy(vi), spl_or_vn, model)
 end
 
 function invlink(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
+    t::DynamicTransformation,
+    vi::ThreadSafeVarInfo,
+    spl_or_vn::SamplerOrVarNameIterator,
+    model::Model,
 )
-    return invlink!!(t, deepcopy(vi), spl, model)
+    return invlink!!(t, deepcopy(vi), spl_or_vn, model)
 end
 
 function maybe_invlink_before_eval!!(
