@@ -374,13 +374,21 @@ end
     end
 
     @testset "link!! and invlink!!" begin
-        @model gdemo(x, y) = begin
+        @model gdemo(a, b, ::Type{T}=Float64) where {T} = begin
             s ~ InverseGamma(2, 3)
             m ~ Uniform(0, 2)
-            x ~ Normal(m, sqrt(s))
-            y ~ Normal(m, sqrt(s))
+            x = Vector{T}(undef, length(a))
+            x .~ Normal(m, sqrt(s))
+            y = Vector{T}(undef, length(a))
+            for i in eachindex(y)
+                y[i] ~ Normal(m, sqrt(s))
+            end
+            a .~ Normal(m, sqrt(s))
+            for i in eachindex(b)
+                b[i] ~ Normal(x[i] * y[i], sqrt(s))
+            end
         end
-        model = gdemo(1.0, 2.0)
+        model = gdemo([1.0, 1.5], [2.0, 2.5])
 
         # Check that instantiating the model does not perform linking
         vi = VarInfo()
@@ -399,10 +407,13 @@ end
         # Check that linking and invlinking preserves the values
         vi = TypedVarInfo(vi)
         meta = vi.metadata
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
+        v_x = copy(meta.x.vals)
+        v_y = copy(meta.y.vals)
+
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
         vi = link!!(vi, model)
         @test all(x -> istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
@@ -412,15 +423,30 @@ end
         @test meta.s.vals ≈ v_s atol = 1e-10
         @test meta.m.vals ≈ v_m atol = 1e-10
 
-        # Transform only one variable (`s`) but not the others (`m`)
-        vi = link!!(vi, @varname(s), model)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
-        vi = invlink!!(vi, @varname(s), model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
-        @test meta.s.vals ≈ v_s atol = 1e-10
-        @test meta.m.vals ≈ v_m atol = 1e-10
+        # Transform only one variable
+        all_vns = vcat(meta.s.vns, meta.m.vns, meta.x.vns, meta.y.vns)
+        for vn in [
+            @varname(s),
+            @varname(m),
+            @varname(x),
+            @varname(y),
+            @varname(x[2]),
+            @varname(y[2])
+        ]
+            target_vns = filter(x -> subsumes(vn, x), all_vns)
+            other_vns = filter(x -> !subsumes(vn, x), all_vns)
+            @test !isempty(target_vns)
+            @test !isempty(other_vns)
+            vi = link!!(vi, vn, model)
+            @test all(x -> istrans(vi, x), target_vns)
+            @test all(x -> !istrans(vi, x), other_vns)
+            vi = invlink!!(vi, vn, model)
+            @test all(x -> !istrans(vi, x), all_vns)
+            @test meta.s.vals ≈ v_s atol = 1e-10
+            @test meta.m.vals ≈ v_m atol = 1e-10
+            @test meta.x.vals ≈ v_x atol = 1e-10
+            @test meta.y.vals ≈ v_y atol = 1e-10
+        end
     end
 
     @testset "istrans" begin
