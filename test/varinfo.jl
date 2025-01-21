@@ -877,8 +877,8 @@ end
             vi_single = push!!(vi_single, vn, 1.0, Normal())
             vi_double = VarInfo()
             vi_double = push!!(vi_double, vn, [2.0, 3.0], Normal())
-            @test merge(vi_single, vi_double)[vn] == 1.0
-            @test merge(vi_double, vi_single)[vn] == [2.0, 3.0]
+            @test merge(vi_single, vi_double)[vn] == [2.0, 3.0]
+            @test merge(vi_double, vi_single)[vn] == 1.0
         end
     end
 
