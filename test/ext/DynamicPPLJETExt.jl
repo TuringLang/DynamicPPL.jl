@@ -66,14 +66,15 @@
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
             # They should all result in typed.
             @test varinfo isa DynamicPPL.TypedVarInfo
-            # But let's also make sure that they're not lying.
+            # But let's also make sure that they're not lying by checking the
+            # type inference with a typed varinfo.
             f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                model, varinfo
+                model, VarInfo(model)
             )
             JET.test_call(f_eval, argtypes_eval)
 
             f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                model, varinfo, DynamicPPL.SamplingContext()
+                model, VarInfo(model), DynamicPPL.SamplingContext()
             )
             JET.test_call(f_sample, argtypes_sample)
         end
