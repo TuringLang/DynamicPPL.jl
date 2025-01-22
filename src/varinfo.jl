@@ -521,73 +521,22 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     offset = 0
 
     for (idx, vn) in enumerate(vns_both)
-        # `idcs`
         idcs[vn] = idx
-        # `vns`
         push!(vns, vn)
-        if vn in vns_left && vn in vns_right
-            # `vals`: only valid if they're the length.
-            vals_left = getindex_internal(metadata_left, vn)
-            vals_right = getindex_internal(metadata_right, vn)
-            @assert length(vals_left) == length(vals_right)
-            append!(vals, vals_right)
-            # `ranges`
-            r = (offset + 1):(offset + length(vals_left))
-            push!(ranges, r)
-            offset = r[end]
-            # `dists`: only valid if they're the same.
-            dist_right = getdist(metadata_right, vn)
-            # Give precedence to `metadata_right`.
-            push!(dists, dist_right)
-            gid = metadata_right.gids[getidx(metadata_right, vn)]
-            push!(gids, gid)
-            # `orders`: giving precedence to `metadata_right`
-            push!(orders, getorder(metadata_right, vn))
-            # `flags`
-            for k in keys(flags)
-                # Using `metadata_right`; should we?
-                push!(flags[k], is_flagged(metadata_right, vn, k))
-            end
-        elseif vn in vns_left
-            # Just extract the metadata from `metadata_left`.
-            # `vals`
-            vals_left = getindex_internal(metadata_left, vn)
-            append!(vals, vals_left)
-            # `ranges`
-            r = (offset + 1):(offset + length(vals_left))
-            push!(ranges, r)
-            offset = r[end]
-            # `dists`
-            dist_left = getdist(metadata_left, vn)
-            push!(dists, dist_left)
-            gid = metadata_left.gids[getidx(metadata_left, vn)]
-            push!(gids, gid)
-            # `orders`
-            push!(orders, getorder(metadata_left, vn))
-            # `flags`
-            for k in keys(flags)
-                push!(flags[k], is_flagged(metadata_left, vn, k))
-            end
-        else
-            # Just extract the metadata from `metadata_right`.
-            # `vals`
-            vals_right = getindex_internal(metadata_right, vn)
-            append!(vals, vals_right)
-            # `ranges`
-            r = (offset + 1):(offset + length(vals_right))
-            push!(ranges, r)
-            offset = r[end]
-            # `dists`
-            dist_right = getdist(metadata_right, vn)
-            push!(dists, dist_right)
-            gid = metadata_right.gids[getidx(metadata_right, vn)]
-            push!(gids, gid)
-            # `orders`
-            push!(orders, getorder(metadata_right, vn))
-            # `flags`
-            for k in keys(flags)
-                push!(flags[k], is_flagged(metadata_right, vn, k))
-            end
+        metadata_for_vn = vn in vns_right ? metadata_right : metadata_left
+
+        val = getindex_internal(metadata_for_vn, vn)
+        append!(vals, val)
+        r = (offset + 1):(offset + length(val))
+        push!(ranges, r)
+        offset = r[end]
+        dist = getdist(metadata_for_vn, vn)
+        push!(dists, dist)
+        gid = metadata_for_vn.gids[getidx(metadata_for_vn, vn)]
+        push!(gids, gid)
+        push!(orders, getorder(metadata_for_vn, vn))
+        for k in keys(flags)
+            push!(flags[k], is_flagged(metadata_for_vn, vn, k))
         end
     end
 
