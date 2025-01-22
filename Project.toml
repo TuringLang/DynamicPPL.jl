@@ -60,7 +60,7 @@ Distributions = "0.25"
 DocStringExtensions = "0.9"
 # TODO(penelopeysm,mhauru) See https://github.com/TuringLang/DynamicPPL.jl/pull/781#event-16017866767
 # for why KernelAbstractions is pinned like this.
-KernelAbstractions = "=0.9.31"
+KernelAbstractions = "<= 0.9.31"
 EnzymeCore = "0.6 - 0.8"
 ForwardDiff = "0.10"
 JET = "0.9"
