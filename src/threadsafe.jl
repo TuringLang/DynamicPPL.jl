@@ -84,14 +84,12 @@ islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl
 SamplerOrVarNameIterator = Union{
     AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
 }
+VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
 
 function link!!(
-    t::AbstractTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, spl_or_vn, model)
+    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, vns, model)
 end
 
 function invlink!!(
@@ -104,12 +102,9 @@ function invlink!!(
 end
 
 function link(
-    t::AbstractTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, spl_or_vn, model)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, vns, model)
 end
 
 function invlink(
@@ -126,10 +121,7 @@ end
 # consistency between `vi.logps` field and `getlogp(vi.varinfo)`, which accumulates
 # to define `getlogp(vi)`.
 function link!!(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, ::VarNameCollection, model::Model
 )
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
@@ -147,12 +139,9 @@ function invlink!!(
 end
 
 function link(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return link!!(t, deepcopy(vi), spl_or_vn, model)
+    return link!!(t, deepcopy(vi), vns, model)
 end
 
 function invlink(

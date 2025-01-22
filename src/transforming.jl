@@ -94,9 +94,10 @@ end
 SamplerOrVarNameIterator = Union{
     AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
 }
+VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
 
 function link!!(
-    t::DynamicTransformation, vi::AbstractVarInfo, ::SamplerOrVarNameIterator, model::Model
+    t::DynamicTransformation, vi::AbstractVarInfo, ::VarNameCollection, model::Model
 )
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
@@ -111,12 +112,9 @@ function invlink!!(
 end
 
 function link(
-    t::DynamicTransformation,
-    vi::AbstractVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::DynamicTransformation, vi::AbstractVarInfo, vns::VarNameCollection, model::Model
 )
-    return link!!(t, deepcopy(vi), spl_or_vn, model)
+    return link!!(t, deepcopy(vi), vns, model)
 end
 
 function invlink(

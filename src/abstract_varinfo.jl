@@ -548,7 +548,6 @@ SamplerOrVarName = Union{
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their linked space, using the transformation `t`,
 mutating `vi` if possible.
@@ -557,16 +556,25 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 """
-link!!(vi::AbstractVarInfo, model::Model) = link!!(vi, SampleFromPrior(), model)
+# Use `default_transformation` to decide which transformation to use if none is specified.
+function link!!(vi::AbstractVarInfo, model::Model)
+    return link!!(default_transformation(model, vi), vi, model)
+end
+function link!!(vi::AbstractVarInfo, vns, model::Model)
+    return link!!(default_transformation(model, vi), vi, vns, model)
+end
+# If no variable names are provided, link all variables.
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link!!(t, vi, SampleFromPrior(), model)
+    vns = collect(keys(vi))
+    # In case e.g. vns = Any[].
+    if !(eltype(vns) <: VarName)
+        vns = collect(VarName, vns)
+    end
+    return link!!(t, vi, vns, model)
 end
-function link!!(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
-    # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link!!(default_transformation(model, vi), vi, spl_or_vn, model)
-end
+# Wrap a single VarName in a singleton tuple.
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
-    return link!!(t, deepcopy(vi), (vn,), model)
+    return link!!(t, vi, (vn,), model)
 end
 
 """
@@ -574,7 +582,6 @@ end
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
 
@@ -582,16 +589,25 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
-link(vi::AbstractVarInfo, model::Model) = link(vi, SampleFromPrior(), model)
+# Use `default_transformation` to decide which transformation to use if none is specified.
+function link(vi::AbstractVarInfo, model::Model)
+    return link(default_transformation(model, vi), vi, model)
+end
+function link(vi::AbstractVarInfo, vns, model::Model)
+    return link(default_transformation(model, vi), vi, vns, model)
+end
+# If no variable names are provided, link all variables.
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link(t, deepcopy(vi), SampleFromPrior(), model)
+    vns = collect(keys(vi))
+    # In case e.g. vns = Any[].
+    if !(eltype(vns) <: VarName)
+        vns = collect(VarName, vns)
+    end
+    return link(t, vi, vns, model)
 end
-function link(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
-    # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link(default_transformation(model, vi), deepcopy(vi), spl_or_vn, model)
-end
+# Wrap a single VarName in a singleton tuple.
 function link(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
-    return link(t, deepcopy(vi), (vn,), model)
+    return link(t, vi, (vn,), model)
 end
 
 """
