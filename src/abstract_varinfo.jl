@@ -644,30 +644,46 @@ end
 function link!!(
     t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    vns::Union{NTuple{N,VarName} where {N},AbstractVector{<:VarName}},
+    ::Model,
 )
+    # TODO(mhauru) The behavior of this before the removal of indexing with samplers was a
+    # bit mixed. For TypedVarInfo you could transform only a subset of the variables, but
+    # for UntypedVarInfo and SimpleVarInfo it was silently assumed that all variables were
+    # being set. Unsure if we should support this or not, but at least it now errors
+    # loudly.
+    all_vns = Set(keys(vi))
+    if Set(vns) != all_vns
+        msg = "StaticTransforming only a subset of variables is not supported."
+        throw(ArgumentError(msg))
+    end
     b = inverse(t.bijector)
-    x = vi[spl]
+    x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
     lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(unflatten(vi, spl, y), lp_new)
+    vi_new = setlogp!!(unflatten(vi, y), lp_new)
     return settrans!!(vi_new, t)
 end
 
 function invlink!!(
     t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    vns::Union{NTuple{N,VarName} where {N},AbstractVector{<:VarName}},
+    ::Model,
 )
+    # TODO(mhauru) See comment in link!! above.
+    all_vns = Set(keys(vi))
+    if Set(vns) != all_vns
+        msg = "StaticTransforming only a subset of variables is not supported."
+        throw(ArgumentError(msg))
+    end
     b = t.bijector
-    y = vi[spl]
+    y = vi[:]
     x, logjac = with_logabsdet_jacobian(b, y)
 
     lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
+    vi_new = setlogp!!(unflatten(vi, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 
@@ -774,9 +790,14 @@ function maybe_invlink_before_eval!!(
     return vi
 end
 function maybe_invlink_before_eval!!(
-    t::StaticTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+    t::StaticTransformation, vi::AbstractVarInfo, ::AbstractContext, model::Model
 )
-    return invlink!!(t, vi, _default_sampler(context), model)
+    # TODO(mhauru) Why does this function need the context argument?
+    vns = collect(keys(vi))
+    if !(eltype(vns) <: VarName)
+        vns = collect(VarName, vns)
+    end
+    return invlink!!(t, vi, vns, model)
 end
 
 function _default_sampler(context::AbstractContext)
