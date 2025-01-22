@@ -91,9 +91,6 @@ function dot_tilde_assume(
     return r, lp, vi
 end
 
-SamplerOrVarNameIterator = Union{
-    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
-}
 VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
 
 function link!!(
@@ -103,7 +100,7 @@ function link!!(
 end
 
 function invlink!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, ::SamplerOrVarNameIterator, model::Model
+    ::DynamicTransformation, vi::AbstractVarInfo, ::VarNameCollection, model::Model
 )
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
@@ -118,10 +115,7 @@ function link(
 end
 
 function invlink(
-    t::DynamicTransformation,
-    vi::AbstractVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::DynamicTransformation, vi::AbstractVarInfo, vns::VarNameCollection, model::Model
 )
-    return invlink!!(t, deepcopy(vi), spl_or_vn, model)
+    return invlink!!(t, deepcopy(vi), vns, model)
 end

@@ -1322,26 +1322,33 @@ end
     return expr
 end
 
+# Specialise invlink!! without varnames provided for TypedVarInfo. The usual version gets
+# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, that helps
+# keep the downstread calls to link!! type stable.
+function invlink!!(t::AbstractTransformation, vi::TypedVarInfo, model::Model)
+    return invlink!!(t, vi, all_varnames_namedtuple(vi), model)
+end
+
 # R -> X for all variables associated with given sampler
 function invlink!!(
-    t::DynamicTransformation, vi::VarInfo, spl_or_vn::SamplerOrVarNameIterator, model::Model
+    t::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return invlink(t, vi, spl_or_vn, model)
+    has_varnamedvector(vi) && return invlink(t, vi, vns, model)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
-    _invlink!(vi, spl_or_vn)
+    _invlink!(vi, vns)
     return vi
 end
 
 function invlink!!(
     ::DynamicTransformation,
     vi::ThreadSafeVarInfo{<:VarInfo},
-    spl_or_vn::SamplerOrVarNameIterator,
+    vns::VarNameCollection,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, spl_or_vn, model)
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, vns, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
@@ -1352,9 +1359,6 @@ function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, mode
     return maybe_invlink_before_eval!!(t, vi, context, model)
 end
 
-function _invlink!(vi::UntypedVarInfo, spl::AbstractSampler)
-    return _invlink!(vi, _getvns(vi, spl))
-end
 function _invlink!(
     vi::UntypedVarInfo, vns::Union{NTuple{N,VarName} where N,AbstractVector{<:VarName}}
 )
@@ -1369,62 +1373,33 @@ function _invlink!(
     end
 end
 
-function _invlink!(vi::TypedVarInfo, spl::AbstractSampler)
-    return _invlink!(vi, spl, Val(getspace(spl)))
-end
-function _invlink!(vi::TypedVarInfo, spl::AbstractSampler, spaceval::Val)
-    vns = _getvns(vi, spl)
-    return _invlink!(vi.metadata, vi, vns, spaceval)
+function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
+    vns_namedtuple = varname_namedtuple(vns)
+    return _invlink!(vi.metadata, vi, vns_namedtuple)
 end
 @generated function _invlink!(
-    ::NamedTuple{names}, vi, vns, ::Val{space}
-) where {names,space}
+    ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
+) where {metadata_names,vns_names}
     expr = Expr(:block)
-    for f in names
-        if inspace(f, space) || length(space) == 0
-            push!(
-                expr.args,
-                quote
-                    f_vns = vi.metadata.$f.vns
-                    if istrans(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = linked_internal_to_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, false, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to invlink an invlinked vi")
-                    end
-                end,
-            )
+    for f in metadata_names
+        if !(f in vns_names)
+            continue
         end
-    end
-    return expr
-end
 
-function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
-    return _invlink!(vi.metadata, vi, vns)
-end
-@generated function _invlink!(::NamedTuple{names}, vi, vns) where {names}
-    expr = Expr(:block)
-    for f in names
         push!(
             expr.args,
             quote
                 f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns, f_vns)
-                if !isempty(f_vns)
-                    if istrans(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = linked_internal_to_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, false, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+                f_vns = filter_subsumed(vns.$f, f_vns)
+                if istrans(vi, f_vns[1])
+                    # Iterate over all `f_vns` and transform
+                    for vn in f_vns
+                        f = linked_internal_to_internal_transform(vi, vn)
+                        _inner_transform!(vi, vn, f)
+                        settrans!!(vi, false, vn)
                     end
+                else
+                    @warn("[DynamicPPL] attempt to invlink an invlinked vi")
                 end
             end,
         )
@@ -1641,56 +1616,55 @@ function _link_metadata!!(
 end
 
 function invlink(
-    ::DynamicTransformation, varinfo::VarInfo, spl::AbstractSampler, model::Model
+    ::DynamicTransformation, varinfo::VarInfo, vns::VarNameCollection, model::Model
 )
-    return _invlink(model, varinfo, spl)
+    return _invlink(model, varinfo, vns)
 end
 function invlink(
     ::DynamicTransformation,
     varinfo::ThreadSafeVarInfo{<:VarInfo},
-    spl::AbstractSampler,
+    vns::VarNameCollection,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
     # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, spl, model)
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, vns, model)
 end
 
-function _invlink(model::Model, varinfo::VarInfo, spl::AbstractSampler)
+function _invlink(model::Model, varinfo::VarInfo, vns::VarNameCollection)
     varinfo = deepcopy(varinfo)
     return VarInfo(
-        _invlink_metadata!!(model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl)),
+        _invlink_metadata!!(model, varinfo, varinfo.metadata, vns),
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
 end
 
-function _invlink(model::Model, varinfo::TypedVarInfo, spl::AbstractSampler)
+function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
     varinfo = deepcopy(varinfo)
-    md = _invlink_metadata_namedtuple!(
-        model, varinfo, varinfo.metadata, _getvns_link(varinfo, spl), Val(getspace(spl))
-    )
+    vns_namedtuple = varname_namedtuple(vns)
+    md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns_namedtuple)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
-@generated function _invlink_metadata_namedtuple!(
+@generated function _invlink_metadata!(
     model::Model,
     varinfo::VarInfo,
-    metadata::NamedTuple{names},
-    vns::NamedTuple,
-    ::Val{space},
-) where {names,space}
+    metadata::NamedTuple{metadata_names},
+    vns::NamedTuple{vns_names},
+) where {metadata_names,vns_names}
     vals = Expr(:tuple)
-    for f in names
-        if inspace(f, space) || length(space) == 0
+    for f in metadata_names
+        if (f in vns_names)
             push!(vals.args, :(_invlink_metadata!!(model, varinfo, metadata.$f, vns.$f)))
         else
             push!(vals.args, :(metadata.$f))
         end
     end
 
-    return :(NamedTuple{$names}($vals))
+    return :(NamedTuple{$metadata_names}($vals))
 end
+
 function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 

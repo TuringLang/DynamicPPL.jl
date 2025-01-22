@@ -537,12 +537,6 @@ If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variabl
 """
 function settrans!! end
 
-# TODO(mhauru) The fact that we need to to define this type is a sign that the link/invlink
-# API is hard to understand. To be fixed by removing samplers from it.
-SamplerOrVarName = Union{
-    AbstractSampler,VarName,NTuple{N,VarName} where N,AbstractVector{<:VarName}
-}
-
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
@@ -615,7 +609,6 @@ end
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space, using the (inverse of)
 transformation `t`, mutating `vi` if possible.
@@ -624,14 +617,23 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`link!!`](@ref).
 """
-invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), model)
+# Use `default_transformation` to decide which transformation to use if none is specified.
+function invlink!!(vi::AbstractVarInfo, model::Model)
+    return invlink!!(default_transformation(model, vi), vi, model)
+end
+function invlink!!(vi::AbstractVarInfo, vns, model::Model)
+    return invlink!!(default_transformation(model, vi), vi, vns, model)
+end
+# If no variable names are provided, invlink!! all variables.
 function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink!!(t, vi, SampleFromPrior(), model)
+    vns = collect(keys(vi))
+    # In case e.g. vns = Any[].
+    if !(eltype(vns) <: VarName)
+        vns = collect(VarName, vns)
+    end
+    return invlink!!(t, vi, vns, model)
 end
-function invlink!!(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
-    # Here we extract the `transformation` from `vi` rather than using the default one.
-    return invlink!!(transformation(vi), vi, spl_or_vn, model)
-end
+# Wrap a single VarName in a singleton tuple.
 function invlink!!(
     t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model
 )
@@ -674,7 +676,6 @@ end
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
 
 Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
 transformation `t`.
@@ -683,13 +684,23 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`link`](@ref).
 """
-invlink(vi::AbstractVarInfo, model::Model) = invlink(vi, SampleFromPrior(), model)
+# Use `default_transformation` to decide which transformation to use if none is specified.
+function invlink(vi::AbstractVarInfo, model::Model)
+    return invlink(default_transformation(model, vi), vi, model)
+end
+function invlink(vi::AbstractVarInfo, vns, model::Model)
+    return invlink(default_transformation(model, vi), vi, vns, model)
+end
+# If no variable names are provided, invlink all variables.
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink(t, vi, SampleFromPrior(), model)
+    vns = collect(keys(vi))
+    # In case e.g. vns = Any[].
+    if !(eltype(vns) <: VarName)
+        vns = collect(VarName, vns)
+    end
+    return invlink(t, vi, vns, model)
 end
-function invlink(vi::AbstractVarInfo, spl_or_vn::SamplerOrVarName, model::Model)
-    return invlink(transformation(vi), vi, spl_or_vn, model)
-end
+# Wrap a single VarName in a singleton tuple.
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
     return invlink(t, vi, (vn,), model)
 end

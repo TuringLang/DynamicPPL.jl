@@ -93,12 +93,9 @@ function link!!(
 end
 
 function invlink!!(
-    t::AbstractTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, spl_or_vn, model)
+    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, vns, model)
 end
 
 function link(
@@ -108,12 +105,9 @@ function link(
 end
 
 function invlink(
-    t::AbstractTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, spl_or_vn, model)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, vns, model)
 end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
@@ -127,10 +121,7 @@ function link!!(
 end
 
 function invlink!!(
-    ::DynamicTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    ::DynamicTransformation, vi::ThreadSafeVarInfo, ::VarNameCollection, model::Model
 )
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
@@ -145,12 +136,9 @@ function link(
 end
 
 function invlink(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo,
-    spl_or_vn::SamplerOrVarNameIterator,
-    model::Model,
+    t::DynamicTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )
-    return invlink!!(t, deepcopy(vi), spl_or_vn, model)
+    return invlink!!(t, deepcopy(vi), vns, model)
 end
 
 function maybe_invlink_before_eval!!(
