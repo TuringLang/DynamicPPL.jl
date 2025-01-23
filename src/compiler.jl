@@ -3,7 +3,7 @@ const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 """
     need_concretize(expr)
 
-Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
+Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or
 requires a dynamic optic.
 
 # Examples
@@ -731,18 +731,14 @@ function warn_empty(body)
 end
 
 """
-    matchingvalue(sampler, vi, value)
-    matchingvalue(context::AbstractContext, vi, value)
+    matchingvalue(vi, value)
 
-Convert the `value` to the correct type for the `sampler` or `context` and the `vi` object.
-
-For a `context` that is _not_ a `SamplingContext`, we fall back to
-`matchingvalue(SampleFromPrior(), vi, value)`.
+Convert the `value` to the correct type for the `vi` object.
 """
-function matchingvalue(sampler, vi, value)
+function matchingvalue(vi, value)
     T = typeof(value)
     if hasmissing(T)
-        _value = convert(get_matching_type(sampler, vi, T), value)
+        _value = convert(get_matching_type(vi, T), value)
         if _value === value
             return deepcopy(_value)
         else
@@ -753,24 +749,11 @@ function matchingvalue(sampler, vi, value)
     end
 end
 # If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
-function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
-    return get_matching_type(sampler, vi, value)
+function matchingvalue(vi, value::FloatOrArrayType)
+    return get_matching_type(vi, value)
 end
-function matchingvalue(sampler::AbstractSampler, vi, value::TypeWrap{T}) where {T}
-    return TypeWrap{get_matching_type(sampler, vi, T)}()
-end
-
-function matchingvalue(context::AbstractContext, vi, value)
-    return matchingvalue(NodeTrait(matchingvalue, context), context, vi, value)
-end
-function matchingvalue(::IsLeaf, context::AbstractContext, vi, value)
-    return matchingvalue(SampleFromPrior(), vi, value)
-end
-function matchingvalue(::IsParent, context::AbstractContext, vi, value)
-    return matchingvalue(childcontext(context), vi, value)
-end
-function matchingvalue(context::SamplingContext, vi, value)
-    return matchingvalue(context.sampler, vi, value)
+function matchingvalue(vi, ::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(vi, T)}()
 end
 
 """
@@ -781,16 +764,16 @@ Get the specialized version of type `T` for sampler `spl`.
 For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
 `eltype(vi[spl])`.
 """
-get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T} = T
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,float_type_with_fallback(eltype(vi, spl))}
+get_matching_type(_, ::Type{T}) where {T} = T
+function get_matching_type(vi, ::Type{<:Union{Missing,AbstractFloat}})
+    return Union{Missing,float_type_with_fallback(eltype(vi))}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:AbstractFloat})
-    return float_type_with_fallback(eltype(vi, spl))
+function get_matching_type(vi, ::Type{<:AbstractFloat})
+    return float_type_with_fallback(eltype(vi))
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(spl, vi, T),N}
+function get_matching_type(vi, ::Type{<:Array{T,N}}) where {T,N}
+    return Array{get_matching_type(vi, T),N}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where {T}
-    return Array{get_matching_type(spl, vi, T)}
+function get_matching_type(vi, ::Type{<:Array{T}}) where {T}
+    return Array{get_matching_type(vi, T)}
 end

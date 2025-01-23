@@ -428,11 +428,7 @@ const SimpleOrThreadSafeSimple{T,V,C} = Union{
 }
 
 # Necessary for `matchingvalue` to work properly.
-function Base.eltype(
-    vi::SimpleOrThreadSafeSimple{<:Any,V}, spl::Union{AbstractSampler,SampleFromPrior}
-) where {V}
-    return V
-end
+Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})

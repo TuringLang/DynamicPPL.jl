@@ -1677,6 +1677,8 @@ function _invlink_metadata!!(
     return metadata
 end
 
+# TODO(mhauru) We have varying conventions below for what to do if some variables are linked
+# and others are not.
 """
     islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
 
@@ -1701,6 +1703,10 @@ end
         push!(out, :(isempty(vns.$f) ? false : istrans(vi, vns.$f[1])))
     end
     return Expr(:||, false, out...)
+end
+
+function islinked(vi::VarInfo)
+    return any(istrans(vi, vn) for vn in keys(vi))
 end
 
 function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
@@ -1788,22 +1794,6 @@ function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     return recombine(dist, vals_linked, length(vns))
 end
 
-"""
-    getindex(vi::VarInfo, spl::Union{SampleFromPrior, Sampler})
-
-Return the current value(s) of the random variables sampled by `spl` in `vi`.
-
-The value(s) may or may not be transformed to Euclidean space.
-"""
-getindex(vi::UntypedVarInfo, spl::Sampler) =
-    copy(getindex(vi.metadata.vals, _getranges(vi, spl)))
-getindex(vi::VarInfo, spl::Sampler) = copy(getindex_internal(vi, _getranges(vi, spl)))
-function getindex(vi::TypedVarInfo, spl::Sampler)
-    # Gets the ranges as a NamedTuple
-    ranges = _getranges(vi, spl)
-    # Calling getfield(ranges, f) gives all the indices in `vals` of the `vn`s with symbol `f` sampled by `spl` in `vi`
-    return reduce(vcat, _getindex(vi.metadata, ranges))
-end
 # Recursively builds a tuple of the `vals` of all the symbols
 @generated function _getindex(metadata, ranges::NamedTuple{names}) where {names}
     expr = Expr(:tuple)

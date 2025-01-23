@@ -118,7 +118,7 @@ function AbstractMCMC.step(
 
     # Update the parameters if provided.
     if initial_params !== nothing
-        vi = initialize_parameters!!(vi, initial_params, spl, model)
+        vi = initialize_parameters!!(vi, initial_params, model)
 
         # Update joint log probability.
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
@@ -156,9 +156,7 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function set_values!!(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector, spl::AbstractSampler
-)
+function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector)
     throw(
         ArgumentError(
             "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
@@ -168,11 +166,9 @@ function set_values!!(
 end
 
 function set_values!!(
-    varinfo::AbstractVarInfo,
-    initial_params::AbstractVector{<:Union{Real,Missing}},
-    spl::AbstractSampler,
+    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}
 )
-    flattened_param_vals = varinfo[spl]
+    flattened_param_vals = varinfo[:]
     length(flattened_param_vals) == length(initial_params) || throw(
         DimensionMismatch(
             "Provided initial value size ($(length(initial_params))) doesn't match " *
@@ -189,12 +185,11 @@ function set_values!!(
     end
 
     # Update in `varinfo`.
-    return setindex!!(varinfo, flattened_param_vals, spl)
+    setall!(varinfo, flattened_param_vals)
+    return varinfo
 end
 
-function set_values!!(
-    varinfo::AbstractVarInfo, initial_params::NamedTuple, spl::AbstractSampler
-)
+function set_values!!(varinfo::AbstractVarInfo, initial_params::NamedTuple)
     vars_in_varinfo = keys(varinfo)
     for v in keys(initial_params)
         vn = VarName{v}()
@@ -219,23 +214,21 @@ function set_values!!(
     )
 end
 
-function initialize_parameters!!(
-    vi::AbstractVarInfo, initial_params, spl::AbstractSampler, model::Model
-)
+function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Model)
     @debug "Using passed-in initial variable values" initial_params
 
     # `link` the varinfo if needed.
-    linked = islinked(vi, spl)
+    linked = islinked(vi)
     if linked
-        vi = invlink!!(vi, spl, model)
+        vi = invlink!!(vi, model)
     end
 
     # Set the values in `vi`.
-    vi = set_values!!(vi, initial_params, spl)
+    vi = set_values!!(vi, initial_params)
 
     # `invlink` if needed.
     if linked
-        vi = link!!(vi, spl, model)
+        vi = link!!(vi, model)
     end
 
     return vi

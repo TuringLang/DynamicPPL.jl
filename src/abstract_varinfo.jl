@@ -159,7 +159,6 @@ The default implementation is to call [`values_as`](@ref) with `Vector` as the t
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
-Base.getindex(vi::AbstractVarInfo, ::AbstractSampler) = vi[:]
 
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
@@ -352,13 +351,13 @@ Determine the default `eltype` of the values returned by `vi[spl]`.
 
     This method is considered legacy, and is likely to be deprecated in the future.
 """
-function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior})
-    T = Base.promote_op(getindex, typeof(vi), typeof(spl))
+function Base.eltype(vi::AbstractVarInfo)
+    T = Base.promote_op(getindex, typeof(vi), Colon)
     if T === Union{}
         # In this case `getindex(vi, spl)` errors
         # Let us throw a more descriptive error message
         # Ref https://github.com/TuringLang/Turing.jl/issues/2151
-        return eltype(vi[spl])
+        return eltype(vi[:])
     end
     return eltype(T)
 end
