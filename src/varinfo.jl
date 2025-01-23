@@ -1412,48 +1412,6 @@ function _link(
 end
 
 """
-    unique_syms(vns::T) where {T<:NTuple{N,VarName}}
-
-Return the unique symbols of the variables in `vns`.
-"""
-@generated function unique_syms(vns::T) where {T<:NTuple{N,VarName}} where {N}
-    retval = Expr(:tuple)
-    syms = [first(vn.parameters) for vn in T.parameters]
-    for sym in unique(syms)
-        push!(retval.args, QuoteNode(sym))
-    end
-    return retval
-end
-
-"""
-    varname_namedtuple(vns::NTuple{N,VarName}) where {N}
-    varname_namedtuple(vns::AbstractVector{<:VarName})
-
-Return a `NamedTuple` of the variables in `vns` grouped by symbol.
-"""
-function varname_namedtuple(vns::NTuple{N,VarName} where {N})
-    syms = unique_syms(vns)
-    elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
-    return NamedTuple{syms}(elements)
-end
-
-# This method is type unstable, but that can't be helped: The problem is inherently type
-# unstable if there are VarNames with multiple symbols in a Vector.
-function varname_namedtuple(vns::AbstractVector{<:VarName})
-    syms = tuple(unique(map(getsym, vns))...)
-    elements = tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...)
-    return NamedTuple{syms}(elements)
-end
-
-# A simpler, type stable implementation when all the VarNames in a Vector have the same
-# symbol.
-function varname_namedtuple(vns::AbstractVector{<:VarName{T}}) where {T}
-    return NamedTuple{(T,)}((vns,))
-end
-
-varname_namedtuple(vns::NamedTuple) = vns
-
-"""
     all_varnames_namedtuple(vi::AbstractVarInfo)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
