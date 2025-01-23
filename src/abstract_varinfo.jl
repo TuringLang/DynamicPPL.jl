@@ -540,7 +540,7 @@ function settrans!! end
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
 
 Transform the variables in `vi` to their linked space, using the transformation `t`,
@@ -561,6 +561,7 @@ end
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     vns = collect(keys(vi))
     # In case e.g. vns = Any[].
+    # TODO(mhauru) Could we rather fix akeys` so that it would always return VarName[]?
     if !(eltype(vns) <: VarName)
         vns = collect(VarName, vns)
     end
@@ -574,7 +575,7 @@ end
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
 
 Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
@@ -594,6 +595,7 @@ end
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     vns = collect(keys(vi))
     # In case e.g. vns = Any[].
+    # TODO(mhauru) Could we rather fix akeys` so that it would always return VarName[]?
     if !(eltype(vns) <: VarName)
         vns = collect(VarName, vns)
     end
@@ -607,7 +609,7 @@ end
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
 
 Transform the variables in `vi` to their constrained space, using the (inverse of)
@@ -644,7 +646,7 @@ end
 function link!!(
     t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
-    vns::Union{NTuple{N,VarName} where {N},AbstractVector{<:VarName}},
+    vns::VarNameCollection,
     ::Model,
 )
     # TODO(mhauru) The behavior of this before the removal of indexing with samplers was a
@@ -669,7 +671,7 @@ end
 function invlink!!(
     t::StaticTransformation{<:Bijectors.Transform},
     vi::AbstractVarInfo,
-    vns::Union{NTuple{N,VarName} where {N},AbstractVector{<:VarName}},
+    vns::VarNameCollection,
     ::Model,
 )
     # TODO(mhauru) See comment in link!! above.
@@ -690,7 +692,7 @@ end
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N, <:VarName}, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
 
 Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
@@ -793,11 +795,7 @@ function maybe_invlink_before_eval!!(
     t::StaticTransformation, vi::AbstractVarInfo, ::AbstractContext, model::Model
 )
     # TODO(mhauru) Why does this function need the context argument?
-    vns = collect(keys(vi))
-    if !(eltype(vns) <: VarName)
-        vns = collect(VarName, vns)
-    end
-    return invlink!!(t, vi, vns, model)
+    return invlink!!(t, vi, model)
 end
 
 function _default_sampler(context::AbstractContext)

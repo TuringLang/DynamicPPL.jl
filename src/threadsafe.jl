@@ -81,11 +81,6 @@ haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
 islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
 
-SamplerOrVarNameIterator = Union{
-    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
-}
-VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
-
 function link!!(
     t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameCollection, model::Model
 )

@@ -1153,16 +1153,12 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
     return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
-SamplerOrVarNameIterator = Union{
-    AbstractSampler,NTuple{N,VarName} where N,AbstractVector{<:VarName}
-}
-VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
-
-# Specialise link!! without varnames provided for TypedVarInfo. The usual version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, that helps
-# keep the downstream calls to link!! type stable.
-function link!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return link!!(t, vi, all_varnames_namedtuple(vi), model)
+# Specialise link!! without varnames provided for TypedVarInfo. The generic version gets
+# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
+# helps keep the downstream call to _link! type stable.
+function link!!(::DynamicTransformation, vi::TypedVarInfo, ::Model)
+    _link!(vi, all_varnames_namedtuple(vi))
+    return vi
 end
 
 # X -> R for all variables associated with given sampler
@@ -1185,9 +1181,7 @@ function link!!(
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
-function _link!(
-    vi::UntypedVarInfo, vns::Union{NTuple{N,VarName} where N,AbstractVector{<:VarName}}
-)
+function _link!(vi::UntypedVarInfo, vns::VarNameCollection)
     # TODO: Change to a lazy iterator over `vns`
     if ~istrans(vi, vns[1])
         for vn in vns
@@ -1209,35 +1203,8 @@ function filter_subsumed(vns1, vns2)
     return filter(x -> any(subsumes(y, x) for y in vns1), vns2)
 end
 
-function _link!(vi::TypedVarInfo, vns::VarNameCollection)
-    return _link!(vi.metadata, vi, vns)
-end
-@generated function _link!(
-    ::NamedTuple{names}, vi, vns::Union{NTuple{N,VarName} where N,AbstractVector{<:VarName}}
-) where {names}
-    expr = Expr(:block)
-    for f in names
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns, f_vns)
-                if !isempty(f_vns)
-                    if !istrans(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = internal_to_linked_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, true, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to link a linked vi")
-                    end
-                end
-            end,
-        )
-    end
-    return expr
+function _link!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
+    return _link!(vi.metadata, vi, varname_namedtuple(vns))
 end
 
 @generated function _link!(
@@ -1271,11 +1238,12 @@ end
     return expr
 end
 
-# Specialise invlink!! without varnames provided for TypedVarInfo. The usual version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, that helps
-# keep the downstream calls to link!! type stable.
-function invlink!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return invlink!!(t, vi, all_varnames_namedtuple(vi), model)
+# Specialise invlink!! without varnames provided for TypedVarInfo. The generic version gets
+# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
+# helps keep the downstream calls to link!! type stable.
+function invlink!!(::DynamicTransformation, vi::TypedVarInfo, ::Model)
+    _invlink!(vi, all_varnames_namedtuple(vi))
+    return vi
 end
 
 # R -> X for all variables associated with given sampler
@@ -1308,9 +1276,7 @@ function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, mode
     return maybe_invlink_before_eval!!(t, vi, context, model)
 end
 
-function _invlink!(
-    vi::UntypedVarInfo, vns::Union{NTuple{N,VarName} where N,AbstractVector{<:VarName}}
-)
+function _invlink!(vi::UntypedVarInfo, vns::VarNameCollection)
     if istrans(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
@@ -1322,7 +1288,7 @@ function _invlink!(
     end
 end
 
-function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
+function _invlink!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
     vns_namedtuple = varname_namedtuple(vns)
     return _invlink!(vi.metadata, vi, vns_namedtuple)
 end
@@ -1400,6 +1366,13 @@ function link(
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, vns, model)
 end
 
+# Specialise link without varnames provided for TypedVarInfo. The generic version gets
+# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
+# helps keep the downstream calls to link!! type stable.
+function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return _link(model, vi, all_varnames_namedtuple(vi))
+end
+
 function _link(
     model::Model, varinfo::Union{UntypedVarInfo,VectorVarInfo}, vns::VarNameCollection
 )
@@ -1426,7 +1399,9 @@ all_varnames_namedtuple(vi::TypedVarInfo) = all_varnames_namedtuple(vi.metadata)
     return expr
 end
 
-function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+function _link(
+    model::Model, varinfo::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple}
+)
     varinfo = deepcopy(varinfo)
     vns_namedtuple = varname_namedtuple(vns)
     md = _link_metadata!(model, varinfo, varinfo.metadata, vns_namedtuple)
@@ -1450,6 +1425,7 @@ end
 
     return :(NamedTuple{$metadata_names}($vals))
 end
+
 function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
 
@@ -1527,6 +1503,7 @@ function invlink(
 )
     return _invlink(model, varinfo, vns)
 end
+
 function invlink(
     ::DynamicTransformation,
     varinfo::ThreadSafeVarInfo{<:VarInfo},
@@ -1538,6 +1515,13 @@ function invlink(
     return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, vns, model)
 end
 
+# Specialise invlink without varnames provided for TypedVarInfo. The generic version gets
+# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
+# helps keep the downstream calls to link!! type stable.
+function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return _invlink(model, vi, all_varnames_namedtuple(vi))
+end
+
 function _invlink(model::Model, varinfo::VarInfo, vns::VarNameCollection)
     varinfo = deepcopy(varinfo)
     return VarInfo(
@@ -1547,7 +1531,9 @@ function _invlink(model::Model, varinfo::VarInfo, vns::VarNameCollection)
     )
 end
 
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+function _invlink(
+    model::Model, varinfo::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple}
+)
     varinfo = deepcopy(varinfo)
     vns_namedtuple = varname_namedtuple(vns)
     md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns_namedtuple)
