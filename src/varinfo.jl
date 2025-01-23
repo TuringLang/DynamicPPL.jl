@@ -1160,8 +1160,8 @@ VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},Na
 
 # Specialise link!! without varnames provided for TypedVarInfo. The usual version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, that helps
-# keep the downstread calls to link!! type stable.
-function link!!(t::AbstractTransformation, vi::TypedVarInfo, model::Model)
+# keep the downstream calls to link!! type stable.
+function link!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
     return link!!(t, vi, all_varnames_namedtuple(vi), model)
 end
 
@@ -1273,8 +1273,8 @@ end
 
 # Specialise invlink!! without varnames provided for TypedVarInfo. The usual version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, that helps
-# keep the downstread calls to link!! type stable.
-function invlink!!(t::AbstractTransformation, vi::TypedVarInfo, model::Model)
+# keep the downstream calls to link!! type stable.
+function invlink!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
     return invlink!!(t, vi, all_varnames_namedtuple(vi), model)
 end
 
