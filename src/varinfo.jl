@@ -1170,14 +1170,18 @@ end
 
 # Specialise link!! without varnames provided for TypedVarInfo. The generic version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to _link! type stable.
-function link!!(::DynamicTransformation, vi::TypedVarInfo, ::Model)
-    _link!(vi, all_varnames_namedtuple(vi))
-    return vi
+# helps keep the downstream call to link!! type stable.
+function link!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return link!!(t, vi, all_varnames_namedtuple(vi), model)
 end
 
 # X -> R for all variables associated with given sampler
-function link!!(t::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model)
+function link!!(
+    t::DynamicTransformation,
+    vi::VarInfo,
+    vns::Union{VarNameCollection,NamedTuple},
+    model::Model,
+)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return link(t, vi, vns, model)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
@@ -1255,15 +1259,17 @@ end
 
 # Specialise invlink!! without varnames provided for TypedVarInfo. The generic version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to _invlink! type stable.
-function invlink!!(::DynamicTransformation, vi::TypedVarInfo, ::Model)
-    _invlink!(vi, all_varnames_namedtuple(vi))
-    return vi
+# helps keep the downstream call to invlink!! type stable.
+function invlink!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return invlink!!(t, vi, all_varnames_namedtuple(vi), model)
 end
 
 # R -> X for all variables associated with given sampler
 function invlink!!(
-    t::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model
+    t::DynamicTransformation,
+    vi::VarInfo,
+    vns::Union{VarNameCollection,NamedTuple},
+    model::Model,
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return invlink(t, vi, vns, model)
