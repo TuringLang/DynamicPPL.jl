@@ -900,6 +900,21 @@ end
     return :($(exprs...),)
 end
 
+"""
+    all_varnames_namedtuple(vi::TypedVarInfo)
+
+Return a `NamedTuple` of the variables in `vi` grouped by symbol.
+"""
+all_varnames_namedtuple(vi::TypedVarInfo) = all_varnames_namedtuple(vi.metadata)
+
+@generated function all_varnames_namedtuple(md::NamedTuple{names}) where {names}
+    expr = Expr(:tuple)
+    for f in names
+        push!(expr.args, :($f = keys(md.$f)))
+    end
+    return expr
+end
+
 # Get the index (in vals) ranges of all the vns of variables belonging to spl
 @inline function _getranges(vi::VarInfo, spl::Sampler)
     ## Uncomment the spl.info stuff when it is concretely typed, not Dict{Symbol, Any}
@@ -1194,17 +1209,17 @@ function _link!(vi::UntypedVarInfo, vns::VarNameCollection)
     end
 end
 
-"""
-    filter_subsumed(vns1, vns2)
-
-Return the subset of `vns2` that are subsumed by any variable in `vns1`.
-"""
-function filter_subsumed(vns1, vns2)
-    return filter(x -> any(subsumes(y, x) for y in vns1), vns2)
-end
-
 function _link!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
     return _link!(vi.metadata, vi, varname_namedtuple(vns))
+end
+
+"""
+    filter_subsumed(filter_vns, filtered_vns)
+
+Return the subset of `filtered_vns` that are subsumed by any variable in `filter_vns`.
+"""
+function filter_subsumed(filter_vns, filtered_vns)
+    return filter(x -> any(subsumes(y, x) for y in filter_vns), filtered_vns)
 end
 
 @generated function _link!(
@@ -1240,7 +1255,7 @@ end
 
 # Specialise invlink!! without varnames provided for TypedVarInfo. The generic version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream calls to link!! type stable.
+# helps keep the downstream call to _invlink! type stable.
 function invlink!!(::DynamicTransformation, vi::TypedVarInfo, ::Model)
     _invlink!(vi, all_varnames_namedtuple(vi))
     return vi
@@ -1292,6 +1307,7 @@ function _invlink!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
     vns_namedtuple = varname_namedtuple(vns)
     return _invlink!(vi.metadata, vi, vns_namedtuple)
 end
+
 @generated function _invlink!(
     ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
 ) where {metadata_names,vns_names}
@@ -1368,7 +1384,7 @@ end
 
 # Specialise link without varnames provided for TypedVarInfo. The generic version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream calls to link!! type stable.
+# helps keep the downstream call to _link type stable.
 function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
     return _link(model, vi, all_varnames_namedtuple(vi))
 end
@@ -1382,21 +1398,6 @@ function _link(
         Base.Ref(getlogp(varinfo)),
         Ref(get_num_produce(varinfo)),
     )
-end
-
-"""
-    all_varnames_namedtuple(vi::TypedVarInfo)
-
-Return a `NamedTuple` of the variables in `vi` grouped by symbol.
-"""
-all_varnames_namedtuple(vi::TypedVarInfo) = all_varnames_namedtuple(vi.metadata)
-
-@generated function all_varnames_namedtuple(md::NamedTuple{names}) where {names}
-    expr = Expr(:tuple)
-    for f in names
-        push!(expr.args, :($f = keys(md.$f)))
-    end
-    return expr
 end
 
 function _link(
@@ -1517,7 +1518,7 @@ end
 
 # Specialise invlink without varnames provided for TypedVarInfo. The generic version gets
 # the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream calls to link!! type stable.
+# helps keep the downstream call to _invlink type stable.
 function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
     return _invlink(model, vi, all_varnames_namedtuple(vi))
 end
