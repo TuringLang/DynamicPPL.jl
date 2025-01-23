@@ -1412,7 +1412,7 @@ function _link(
 end
 
 """
-    all_varnames_namedtuple(vi::AbstractVarInfo)
+    all_varnames_namedtuple(vi::TypedVarInfo)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
