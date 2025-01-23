@@ -1277,9 +1277,10 @@ _merge(left::NamedTuple{()}, right::AbstractDict) = right
 
 Return the unique symbols of the variables in `vns`.
 
-Note that `unique_syms` is only defined for `Tuple`s of `VarName`s. For a `Vector` you can
-just use `Base.unique`. The point of `unique_syms` is that it supports constant propagating
-the result, which is possible with a `Tuple` but `Base.unique` won't allow it.
+Note that `unique_syms` is only defined for `Tuple`s of `VarName`s and, unlike
+`Base.unique`, returns a `Tuple`. For an `AbstractVector{<:VarName}` you can use
+`Base.unique`. The point of `unique_syms` is that it supports constant propagating
+the result, which is possible only when the argument and the return value are `Tuple`s.
 """
 @generated function unique_syms(::T) where {T<:NTuple{N,VarName}} where {N}
     retval = Expr(:tuple)
