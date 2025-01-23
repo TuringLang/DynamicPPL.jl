@@ -1183,7 +1183,7 @@ function link!!(
     model::Model,
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return link(t, vi, vns, model)
+    has_varnamedvector(vi) && return _link(model, vi, vns)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
     _link!(vi, vns)
     return vi
@@ -1213,8 +1213,14 @@ function _link!(vi::UntypedVarInfo, vns::VarNameCollection)
     end
 end
 
-function _link!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
-    return _link!(vi.metadata, vi, varname_namedtuple(vns))
+# If we try to _link! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# it to a NamedTuple that matches the structure of the TypedVarInfo.
+function _link!(vi::TypedVarInfo, vns::VarNameCollection)
+    return _link!(vi, varname_namedtuple(vns))
+end
+
+function _link!(vi::TypedVarInfo, vns::NamedTuple)
+    return _link!(vi.metadata, vi, vns)
 end
 
 """
@@ -1272,7 +1278,7 @@ function invlink!!(
     model::Model,
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return invlink(t, vi, vns, model)
+    has_varnamedvector(vi) && return _invlink(model, vi, vns)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
     _invlink!(vi, vns)
     return vi
@@ -1309,9 +1315,14 @@ function _invlink!(vi::UntypedVarInfo, vns::VarNameCollection)
     end
 end
 
-function _invlink!(vi::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple})
-    vns_namedtuple = varname_namedtuple(vns)
-    return _invlink!(vi.metadata, vi, vns_namedtuple)
+# If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# it to a NamedTuple that matches the structure of the TypedVarInfo.
+function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
+    return _invlink!(vi.metadata, vi, varname_namedtuple(vns))
+end
+
+function _invlink!(vi::TypedVarInfo, vns::NamedTuple)
+    return _invlink!(vi.metadata, vi, vns)
 end
 
 @generated function _invlink!(
@@ -1406,12 +1417,15 @@ function _link(
     )
 end
 
-function _link(
-    model::Model, varinfo::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple}
-)
+# If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# it to a NamedTuple that matches the structure of the TypedVarInfo.
+function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+    return _link(model, varinfo, varname_namedtuple(vns))
+end
+
+function _link(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
-    vns_namedtuple = varname_namedtuple(vns)
-    md = _link_metadata!(model, varinfo, varinfo.metadata, vns_namedtuple)
+    md = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
@@ -1538,12 +1552,15 @@ function _invlink(model::Model, varinfo::VarInfo, vns::VarNameCollection)
     )
 end
 
-function _invlink(
-    model::Model, varinfo::TypedVarInfo, vns::Union{VarNameCollection,NamedTuple}
-)
+# If we try to _invlink a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# it to a NamedTuple that matches the structure of the TypedVarInfo.
+function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+    return _invlink(model, varinfo, varname_namedtuple(vns))
+end
+
+function _invlink(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
-    vns_namedtuple = varname_namedtuple(vns)
-    md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns_namedtuple)
+    md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
