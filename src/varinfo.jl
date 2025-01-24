@@ -1674,31 +1674,18 @@ end
 # TODO(mhauru) We have varying conventions below for what to do if some variables are linked
 # and others are not.
 """
-    islinked(vi::VarInfo, spl::Union{Sampler, SampleFromPrior})
+    islinked(vi::VarInfo)
 
-Check whether `vi` is in the transformed space for a particular sampler `spl`.
+Check whether `vi` is in the transformed space.
 
 Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl) to map a constrained variable
 (for example, one bounded to the space `[0, 1]`) from its constrained space to the set of
 real numbers. `islinked` checks if the number is in the constrained space or the real space.
-"""
-function islinked(vi::UntypedVarInfo, spl::Union{Sampler,SampleFromPrior})
-    vns = _getvns(vi, spl)
-    return istrans(vi, vns[1])
-end
-function islinked(vi::TypedVarInfo, spl::Union{Sampler,SampleFromPrior})
-    vns = _getvns(vi, spl)
-    return _islinked(vi, vns)
-end
-@generated function _islinked(vi, vns::NamedTuple{names}) where {names}
-    out = []
-    for f in names
-        push!(out, :(isempty(vns.$f) ? false : istrans(vi, vns.$f[1])))
-    end
-    return Expr(:||, false, out...)
-end
 
+If some but only some of the variables in `vi` are linked, this function will return `true`.
+This behavior will likely change in the future.
+"""
 function islinked(vi::VarInfo)
     return any(istrans(vi, vn) for vn in keys(vi))
 end

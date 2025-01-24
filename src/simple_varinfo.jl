@@ -342,10 +342,6 @@ function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     return Accessors.@set vi.values = set!!(vi.values, vn, val)
 end
 
-function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
-    return unflatten(vi, spl, val)
-end
-
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
 # same symbol and same type of, say, `IndexLens`, for improved `.~` performance.
 function BangBang.setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
@@ -558,7 +554,7 @@ istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
-islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
+islinked(vi::SimpleVarInfo) = istrans(vi)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values

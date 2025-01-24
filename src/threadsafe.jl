@@ -79,7 +79,7 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
+islinked(vi::ThreadSafeVarInfo) = islinked(vi.varinfo)
 
 function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
@@ -137,17 +137,6 @@ function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
 end
 function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
     return getindex(vi.varinfo, vns, dist)
-end
-getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
-
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
