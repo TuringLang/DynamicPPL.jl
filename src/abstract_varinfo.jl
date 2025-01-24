@@ -550,7 +550,6 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 """
-# Use `default_transformation` to decide which transformation to use if none is specified.
 function link!!(vi::AbstractVarInfo, model::Model)
     return link!!(default_transformation(model, vi), vi, model)
 end
@@ -584,7 +583,6 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
-# Use `default_transformation` to decide which transformation to use if none is specified.
 function link(vi::AbstractVarInfo, model::Model)
     return link(default_transformation(model, vi), vi, model)
 end
@@ -619,7 +617,6 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`link!!`](@ref).
 """
-# Use `default_transformation` to decide which transformation to use if none is specified.
 function invlink!!(vi::AbstractVarInfo, model::Model)
     return invlink!!(default_transformation(model, vi), vi, model)
 end
@@ -702,7 +699,6 @@ If `t` is not provided, `default_transformation(model, vi)` will be used.
 
 See also: [`default_transformation`](@ref), [`link`](@ref).
 """
-# Use `default_transformation` to decide which transformation to use if none is specified.
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink(default_transformation(model, vi), vi, model)
 end
