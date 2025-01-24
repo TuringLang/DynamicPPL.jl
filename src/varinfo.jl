@@ -1096,12 +1096,6 @@ Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
     return expr
 end
 
-# FIXME(torfjelde): Don't use `_getvns`.
-Base.keys(vi::UntypedVarInfo, spl::AbstractSampler) = _getvns(vi, spl)
-function Base.keys(vi::TypedVarInfo, spl::AbstractSampler)
-    return mapreduce(values, vcat, _getvns(vi, spl))
-end
-
 """
     setgid!(vi::VarInfo, gid::Selector, vn::VarName)
 
@@ -1825,35 +1819,7 @@ Set the current value(s) of the random variables sampled by `spl` in `vi` to `va
 
 The value(s) may or may not be transformed to Euclidean space.
 """
-setindex!(vi::VarInfo, val, spl::SampleFromPrior) = setall!(vi, val)
 setindex!(vi::UntypedVarInfo, val, spl::Sampler) = setval!(vi, val, _getranges(vi, spl))
-function setindex!(vi::TypedVarInfo, val, spl::Sampler)
-    # Gets a `NamedTuple` mapping each symbol to the indices in the symbol's `vals` field sampled from the sampler `spl`
-    ranges = _getranges(vi, spl)
-    _setindex!(vi.metadata, val, ranges)
-    return nothing
-end
-
-function BangBang.setindex!!(vi::VarInfo, val, spl::AbstractSampler)
-    setindex!(vi, val, spl)
-    return vi
-end
-
-# Recursively writes the entries of `val` to the `vals` fields of all the symbols as if they were a contiguous vector.
-@generated function _setindex!(metadata, val, ranges::NamedTuple{names}) where {names}
-    expr = Expr(:block)
-    offset = :(0)
-    for f in names
-        f_vals = :(metadata.$f.vals)
-        f_range = :(ranges.$f)
-        start = :($offset + 1)
-        len = :(length($f_range))
-        finish = :($offset + $len)
-        push!(expr.args, :(@views $f_vals[$f_range] .= val[($start):($finish)]))
-        offset = :($offset + $len)
-    end
-    return expr
-end
 
 @inline function findvns(vi, f_vns)
     if length(f_vns) == 0
