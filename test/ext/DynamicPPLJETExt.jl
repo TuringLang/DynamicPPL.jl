@@ -64,19 +64,31 @@
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
-            # They should all result in typed.
-            @test varinfo isa DynamicPPL.TypedVarInfo
-            # But let's also make sure that they're not lying by checking the
-            # type inference with a typed varinfo.
+            # Check that the inferred varinfo is indeed suitable for evaluation and sampling
             f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                model, VarInfo(model)
+                model, varinfo
             )
             JET.test_call(f_eval, argtypes_eval)
 
             f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                model, VarInfo(model), DynamicPPL.SamplingContext()
+                model, varinfo, DynamicPPL.SamplingContext()
             )
             JET.test_call(f_sample, argtypes_sample)
+            # For our demo models, they should all result in typed.
+            is_typed = varinfo isa DynamicPPL.TypedVarInfo
+            @test is_typed
+            # If the test failed, check why it didn't infer a typed varinfo
+            if !is_typed
+                typed_vi = VarInfo(model)
+                f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+                    model, typed_vi
+                )
+                JET.test_call(f_eval, argtypes_eval)
+                f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+                    model, typed_vi, DynamicPPL.SamplingContext()
+                )
+                JET.test_call(f_sample, argtypes_sample)
+            end
         end
     end
 end
