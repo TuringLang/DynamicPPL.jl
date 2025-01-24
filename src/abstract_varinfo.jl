@@ -561,7 +561,7 @@ end
 function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     vns = collect(keys(vi))
     # In case e.g. vns = Any[].
-    # TODO(mhauru) Could we rather fix akeys` so that it would always return VarName[]?
+    # TODO(mhauru) Could we rather fix `keys` so that it would always return VarName[]?
     if !(eltype(vns) <: VarName)
         vns = collect(VarName, vns)
     end
@@ -656,7 +656,7 @@ function link!!(
     # loudly.
     all_vns = Set(keys(vi))
     if Set(vns) != all_vns
-        msg = "StaticTransforming only a subset of variables is not supported."
+        msg = "Statically transforming only a subset of variables is not supported."
         throw(ArgumentError(msg))
     end
     b = inverse(t.bijector)
