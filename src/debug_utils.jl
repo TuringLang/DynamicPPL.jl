@@ -239,42 +239,43 @@ function DynamicPPL.setchildcontext(context::DebugContext, child)
 end
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
-    if haskey(context.varnames_seen, varname)
+    prefixed_varname = prefix(context, varname)
+    if haskey(context.varnames_seen, prefixed_varname)
         if context.error_on_failure
-            error("varname $varname used multiple times in model")
+            error("varname $prefixed_varname used multiple times in model")
         else
-            @warn "varname $varname used multiple times in model"
+            @warn "varname $prefixed_varname used multiple times in model"
         end
-        context.varnames_seen[varname] += 1
+        context.varnames_seen[prefixed_varname] += 1
     else
         # We need to check:
         # 1. Does this `varname` subsume any of the other keys.
         # 2. Does any of the other keys subsume `varname`.
         vns = collect(keys(context.varnames_seen))
         # Is `varname` subsumed by any of the other keys?
-        idx_parent = findfirst(Base.Fix2(subsumes, varname), vns)
+        idx_parent = findfirst(Base.Fix2(subsumes, prefixed_varname), vns)
         if idx_parent !== nothing
             varname_parent = vns[idx_parent]
             if context.error_on_failure
                 error(
-                    "varname $(varname_parent) used multiple times in model (subsumes $varname)",
+                    "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)",
                 )
             else
-                @warn "varname $(varname_parent) used multiple times in model (subsumes $varname)"
+                @warn "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)"
             end
             # Update count of parent.
             context.varnames_seen[varname_parent] += 1
         else
             # Does `varname` subsume any of the other keys?
-            idx_child = findfirst(Base.Fix1(subsumes, varname), vns)
+            idx_child = findfirst(Base.Fix1(subsumes, prefixed_varname), vns)
             if idx_child !== nothing
                 varname_child = vns[idx_child]
                 if context.error_on_failure
                     error(
-                        "varname $(varname_child) used multiple times in model (subsumed by $varname)",
+                        "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)",
                     )
                 else
-                    @warn "varname $(varname_child) used multiple times in model (subsumed by $varname)"
+                    @warn "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)"
                 end
 
                 # Update count of child.
@@ -282,7 +283,7 @@ function record_varname!(context::DebugContext, varname::VarName, dist)
             end
         end
 
-        context.varnames_seen[varname] = 1
+        context.varnames_seen[prefixed_varname] = 1
     end
 end
 
