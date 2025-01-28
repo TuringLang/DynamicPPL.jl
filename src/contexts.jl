@@ -261,16 +261,12 @@ end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
-function PrefixContext{PrefixOuter}(
+@generated function PrefixContext{PrefixOuter}(
     context::PrefixContext{PrefixInner}
 ) where {PrefixOuter,PrefixInner}
-    if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-            context.context
-        ))
-    else
-        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(context.context)
-    end
+    return :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
+        context.context
+    ))
 end
 
 function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
