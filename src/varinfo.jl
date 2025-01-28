@@ -1191,7 +1191,7 @@ function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, mode
 end
 
 # X -> R for all variables associated with given sampler
-function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model)
+function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
@@ -1202,7 +1202,7 @@ end
 function link!!(
     t::DynamicTransformation,
     vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameCollection,
+    vns::VarNameTuple,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`,
@@ -1225,7 +1225,7 @@ end
 
 # If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
-function _link!(vi::TypedVarInfo, vns::VarNameCollection)
+function _link!(vi::TypedVarInfo, vns::VarNameTuple)
     return _link!(vi, varname_namedtuple(vns))
 end
 
@@ -1297,9 +1297,7 @@ function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, m
 end
 
 # R -> X for all variables associated with given sampler
-function invlink!!(
-    ::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model
-)
+function invlink!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
@@ -1310,7 +1308,7 @@ end
 function invlink!!(
     ::DynamicTransformation,
     vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameCollection,
+    vns::VarNameTuple,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
@@ -1340,7 +1338,7 @@ end
 
 # If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
+function _invlink!(vi::TypedVarInfo, vns::VarNameTuple)
     return _invlink!(vi.metadata, vi, varname_namedtuple(vns))
 end
 
@@ -1419,16 +1417,14 @@ function link(::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, mo
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, model)
 end
 
-function link(
-    ::DynamicTransformation, varinfo::VarInfo, vns::VarNameCollection, model::Model
-)
+function link(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
     return _link(model, varinfo, vns)
 end
 
 function link(
     ::DynamicTransformation,
     varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameCollection,
+    vns::VarNameTuple,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
@@ -1444,7 +1440,7 @@ end
 
 # If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
-function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
     return _link(model, varinfo, varname_namedtuple(vns))
 end
 
@@ -1560,16 +1556,14 @@ function invlink(
     return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, model)
 end
 
-function invlink(
-    ::DynamicTransformation, varinfo::VarInfo, vns::VarNameCollection, model::Model
-)
+function invlink(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
     return _invlink(model, varinfo, vns)
 end
 
 function invlink(
     ::DynamicTransformation,
     varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameCollection,
+    vns::VarNameTuple,
     model::Model,
 )
     # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
@@ -1588,7 +1582,7 @@ end
 
 # If we try to _invlink a TypedVarInfo with a Tuple or Vector of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameCollection)
+function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
     return _invlink(model, varinfo, varname_namedtuple(vns))
 end
 
