@@ -1066,7 +1066,12 @@ function unflatten(vnv::VarNamedVector, vals::AbstractVector)
     new_ranges = deepcopy(vnv.ranges)
     recontiguify_ranges!(new_ranges)
     return VarNamedVector(
-        vnv.varname_to_index, vnv.varnames, new_ranges, vals, vnv.transforms
+        vnv.varname_to_index,
+        vnv.varnames,
+        new_ranges,
+        vals,
+        vnv.transforms,
+        vnv.is_unconstrained,
     )
 end
 
