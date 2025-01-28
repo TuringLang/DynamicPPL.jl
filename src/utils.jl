@@ -1298,7 +1298,7 @@ end
 
 Return a `NamedTuple` of the variables in `vns` grouped by symbol.
 
-`varname_namedtuple` is type table for inputs that are `Tuple`s, and for vectors when all
+`varname_namedtuple` is type stable for inputs that are `Tuple`s, and for vectors when all
 `VarName`s in the vector have the same symbol. For a `NamedTuple` it's a no-op.
 
 Example:
