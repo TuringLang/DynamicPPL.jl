@@ -261,6 +261,7 @@ end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
+# TODO(penelopeysm): Prefixing arguably occurs the wrong way round here
 function PrefixContext{PrefixInner}(
     context::PrefixContext{PrefixOuter}
 ) where {PrefixInner,PrefixOuter}
@@ -273,13 +274,15 @@ function PrefixContext{PrefixInner}(
     end
 end
 
-function prefix(::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    if @generated
-        return :(VarName{$(QuoteNode(Symbol(Prefix, PREFIX_SEPARATOR, Sym)))}(getoptic(vn)))
-    else
-        VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getoptic(vn))
-    end
+# TODO(penelopeysm): Prefixing arguably occurs the wrong way round here
+function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
+    return prefix(
+        childcontext(ctx), VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getoptic(vn))
+    )
 end
+prefix(ctx::AbstractContext, vn::VarName) = prefix(NodeTrait(ctx), ctx, vn)
+prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn
+prefix(::IsParent, ctx::AbstractContext, vn::VarName) = prefix(childcontext(ctx), vn)
 
 """
     prefix(model::Model, x)

@@ -162,6 +162,26 @@ end
             @test getoptic(vn_prefixed) === getoptic(vn)
         end
 
+        @testset "nested within arbitrary context stacks" begin
+            vn = @varname(x[1])
+            ctx1 = PrefixContext{:a}(DefaultContext())
+            ctx2 = SamplingContext(ctx1)
+            ctx3 = PrefixContext{:b}(ctx2)
+            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
+            vn_prefixed1 = prefix(ctx1, vn)
+            vn_prefixed2 = prefix(ctx2, vn)
+            vn_prefixed3 = prefix(ctx3, vn)
+            vn_prefixed4 = prefix(ctx4, vn)
+            @test DynamicPPL.getsym(vn_prefixed1) == Symbol("a.x")
+            @test DynamicPPL.getsym(vn_prefixed2) == Symbol("a.x")
+            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("a.b.x")
+            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("a.b.x")
+            @test DynamicPPL.getoptic(vn_prefixed1) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed2) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed3) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed4) === DynamicPPL.getoptic(vn)
+        end
+
         context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             # Sample with the context.
