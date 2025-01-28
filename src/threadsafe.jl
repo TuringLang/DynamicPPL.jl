@@ -182,8 +182,8 @@ function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
     return vector_getranges(vi.varinfo, vns)
 end
 
-function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
-    return set_retained_vns_del_by_spl!(vi.varinfo, spl)
+function set_retained_vns_del!(vi::ThreadSafeVarInfo, spl::Sampler)
+    return set_retained_vns_del!(vi.varinfo, spl)
 end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)

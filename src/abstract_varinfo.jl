@@ -561,6 +561,7 @@ function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     vns = collect(keys(vi))
     # In case e.g. vns = Any[].
     # TODO(mhauru) Could we rather fix `keys` so that it would always return VarName[]?
+    # See https://github.com/TuringLang/DynamicPPL.jl/issues/791.
     if !(eltype(vns) <: VarName)
         vns = collect(VarName, vns)
     end
@@ -594,6 +595,7 @@ function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     vns = collect(keys(vi))
     # In case e.g. vns = Any[].
     # TODO(mhauru) Could we rather fix `keys` so that it would always return VarName[]?
+    # See https://github.com/TuringLang/DynamicPPL.jl/issues/791.
     if !(eltype(vns) <: VarName)
         vns = collect(VarName, vns)
     end

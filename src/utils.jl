@@ -1331,5 +1331,3 @@ end
 function varname_namedtuple(vns::AbstractVector{<:VarName{T}}) where {T}
     return NamedTuple{(T,)}((vns,))
 end
-
-varname_namedtuple(vns::NamedTuple) = vns

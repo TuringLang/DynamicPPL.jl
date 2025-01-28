@@ -91,8 +91,6 @@ function dot_tilde_assume(
     return r, lp, vi
 end
 
-VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName},NamedTuple}
-
 function link!!(
     t::DynamicTransformation, vi::AbstractVarInfo, ::VarNameCollection, model::Model
 )

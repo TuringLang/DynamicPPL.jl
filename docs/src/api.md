@@ -304,7 +304,7 @@ set_num_produce!
 increment_num_produce!
 reset_num_produce!
 setorder!
-set_retained_vns_del_by_spl!
+set_retained_vns_del!
 ```
 
 ```@docs

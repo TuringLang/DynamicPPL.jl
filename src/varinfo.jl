@@ -2073,7 +2073,6 @@ function set_retained_vns_del!(vi::UntypedVarInfo)
     return nothing
 end
 function set_retained_vns_del!(vi::TypedVarInfo)
-    # Get the indices of `vns` that belong to `spl` as a NamedTuple, one entry for each symbol
     idcs = _getidcs(vi)
     return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
 end

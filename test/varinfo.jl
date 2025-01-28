@@ -825,6 +825,17 @@ end
         end
     end
 
+    # The below used to error, testing to avoid regression.
+    @testset "merge different dimensions" begin
+        vn = @varname(x)
+        vi_single = VarInfo()
+        vi_single = push!!(vi_single, vn, 1.0, Normal())
+        vi_double = VarInfo()
+        vi_double = push!!(vi_double, vn, [0.5, 0.6], Dirichlet(2, 1.0))
+        @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
+        @test merge(vi_double, vi_single)[vn] == 1.0
+    end
+
     @testset "sampling from linked varinfo" begin
         # `~`
         @model function demo(n=1)
