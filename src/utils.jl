@@ -3,7 +3,7 @@ struct NoDefault end
 const NO_DEFAULT = NoDefault()
 
 # A short-hand for a type commonly used in type signatures for VarInfo methods.
-VarNameCollection = Union{NTuple{N,VarName} where N,AbstractVector{<:VarName}}
+VarNameCollection = NTuple{N,VarName} where {N}
 
 """
     @addlogprob!(ex)

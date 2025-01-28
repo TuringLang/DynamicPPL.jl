@@ -1168,20 +1168,30 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
     return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
-# Specialise link!! without varnames provided for TypedVarInfo. The generic version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to link!! type stable.
-function link!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return link!!(t, vi, all_varnames_namedtuple(vi), model)
+function link!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    vns = all_varnames_namedtuple(vi)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return _link(model, vi, vns)
+    _link!(vi, vns)
+    return vi
+end
+
+function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    vns = keys(vi)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return _link(model, vi, vns)
+    _link!(vi, vns)
+    return vi
+end
+
+function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`,
+    # and so we need to specialize to avoid this.
+    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, model)
 end
 
 # X -> R for all variables associated with given sampler
-function link!!(
-    t::DynamicTransformation,
-    vi::VarInfo,
-    vns::Union{VarNameCollection,NamedTuple},
-    model::Model,
-)
+function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
     # Call `_link!` instead of `link!` to avoid deprecation warning.
@@ -1195,12 +1205,12 @@ function link!!(
     vns::VarNameCollection,
     model::Model,
 )
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
+    # By default this will simply evaluate the model with `DynamicTransformationContext`,
+    # and so we need to specialize to avoid this.
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
-function _link!(vi::UntypedVarInfo, vns::VarNameCollection)
+function _link!(vi::UntypedVarInfo, vns)
     # TODO: Change to a lazy iterator over `vns`
     if ~istrans(vi, vns[1])
         for vn in vns
@@ -1213,7 +1223,7 @@ function _link!(vi::UntypedVarInfo, vns::VarNameCollection)
     end
 end
 
-# If we try to _link! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _link!(vi::TypedVarInfo, vns::VarNameCollection)
     return _link!(vi, varname_namedtuple(vns))
@@ -1263,19 +1273,32 @@ end
     return expr
 end
 
-# Specialise invlink!! without varnames provided for TypedVarInfo. The generic version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to invlink!! type stable.
-function invlink!!(t::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return invlink!!(t, vi, all_varnames_namedtuple(vi), model)
+function invlink!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    vns = all_varnames_namedtuple(vi)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return _invlink(model, vi, vns)
+    # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
+    _invlink!(vi, vns)
+    return vi
+end
+
+function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    vns = keys(vi)
+    # If we're working with a `VarNamedVector`, we always use immutable.
+    has_varnamedvector(vi) && return _invlink(model, vi, vns)
+    _invlink!(vi, vns)
+    return vi
+end
+
+function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`,
+    # and so we need to specialize to avoid this.
+    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(t, vi.varinfo, model)
 end
 
 # R -> X for all variables associated with given sampler
 function invlink!!(
-    t::DynamicTransformation,
-    vi::VarInfo,
-    vns::Union{VarNameCollection,NamedTuple},
-    model::Model,
+    ::DynamicTransformation, vi::VarInfo, vns::VarNameCollection, model::Model
 )
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
@@ -1303,7 +1326,7 @@ function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, mode
     return maybe_invlink_before_eval!!(t, vi, context, model)
 end
 
-function _invlink!(vi::UntypedVarInfo, vns::VarNameCollection)
+function _invlink!(vi::UntypedVarInfo, vns)
     if istrans(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
@@ -1315,7 +1338,7 @@ function _invlink!(vi::UntypedVarInfo, vns::VarNameCollection)
     end
 end
 
-# If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
+# If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _invlink!(vi::TypedVarInfo, vns::VarNameCollection)
     return _invlink!(vi.metadata, vi, varname_namedtuple(vns))
@@ -1382,6 +1405,20 @@ function _getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior)
     return map(Returns(nothing), varinfo.metadata)
 end
 
+function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return _link(model, vi, all_varnames_namedtuple(vi))
+end
+
+function link(::DynamicTransformation, varinfo::VarInfo, model::Model)
+    return _link(model, varinfo, keys(varinfo))
+end
+
+function link(::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, model)
+end
+
 function link(
     ::DynamicTransformation, varinfo::VarInfo, vns::VarNameCollection, model::Model
 )
@@ -1399,22 +1436,10 @@ function link(
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, vns, model)
 end
 
-# Specialise link without varnames provided for TypedVarInfo. The generic version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to _link type stable.
-function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return _link(model, vi, all_varnames_namedtuple(vi))
-end
-
-function _link(
-    model::Model, varinfo::Union{UntypedVarInfo,VectorVarInfo}, vns::VarNameCollection
-)
+function _link(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
-    return VarInfo(
-        _link_metadata!!(model, varinfo, varinfo.metadata, vns),
-        Base.Ref(getlogp(varinfo)),
-        Ref(get_num_produce(varinfo)),
-    )
+    md = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
+    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
 # If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
@@ -1519,6 +1544,22 @@ function _link_metadata!!(
     return metadata
 end
 
+function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+    return _invlink(model, vi, all_varnames_namedtuple(vi))
+end
+
+function invlink(::DynamicTransformation, vi::VarInfo, model::Model)
+    return _invlink(model, vi, keys(vi))
+end
+
+function invlink(
+    ::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model
+)
+    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
+    # we need to specialize to avoid this.
+    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, model)
+end
+
 function invlink(
     ::DynamicTransformation, varinfo::VarInfo, vns::VarNameCollection, model::Model
 )
@@ -1536,14 +1577,7 @@ function invlink(
     return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, vns, model)
 end
 
-# Specialise invlink without varnames provided for TypedVarInfo. The generic version gets
-# the keys of `vi` as a Vector. For TypedVarInfo we can get them as a NamedTuple, which
-# helps keep the downstream call to _invlink type stable.
-function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return _invlink(model, vi, all_varnames_namedtuple(vi))
-end
-
-function _invlink(model::Model, varinfo::VarInfo, vns::VarNameCollection)
+function _invlink(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     return VarInfo(
         _invlink_metadata!!(model, varinfo, varinfo.metadata, vns),

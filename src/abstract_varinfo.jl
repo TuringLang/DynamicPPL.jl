@@ -537,127 +537,77 @@ If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variabl
 """
 function settrans!! end
 
+# For link!!, invlink!!, link, and invlink, we deliberately do not provide a fallback
+# method for the case when no `vns` is provided, that would get all the keys from the
+# `VarInfo`. Hence each subtype of `AbstractVarInfo` needs to implement separately the case
+# where `vns` is provided and the one where it is not. This is because having separate
+# implementations is typically much more performant, and because not all AbstractVarInfo
+# types support partial linking.
+
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their linked space, using the transformation `t`,
-mutating `vi` if possible.
+Transform variables in `vi` to their linked space, mutating `vi` if possible.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
 
 See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 """
 function link!!(vi::AbstractVarInfo, model::Model)
     return link!!(default_transformation(model, vi), vi, model)
 end
-function link!!(vi::AbstractVarInfo, vns, model::Model)
+function link!!(vi::AbstractVarInfo, vns::VarNameCollection, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
-end
-# If no variable names are provided, link all variables.
-function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    vns = collect(keys(vi))
-    # In case e.g. vns = Any[].
-    # TODO(mhauru) Could we rather fix `keys` so that it would always return VarName[]?
-    # See https://github.com/TuringLang/DynamicPPL.jl/issues/791.
-    if !(eltype(vns) <: VarName)
-        vns = collect(VarName, vns)
-    end
-    return link!!(t, vi, vns, model)
-end
-# Wrap a single VarName in a singleton tuple.
-function link!!(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
-    return link!!(t, vi, (vn,), model)
 end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
+Transform variables in `vi` to their linked space without mutating `vi`.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
 function link(vi::AbstractVarInfo, model::Model)
     return link(default_transformation(model, vi), vi, model)
 end
-function link(vi::AbstractVarInfo, vns, model::Model)
+function link(vi::AbstractVarInfo, vns::VarNameCollection, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
-end
-# If no variable names are provided, link all variables.
-function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    vns = collect(keys(vi))
-    # In case e.g. vns = Any[].
-    # TODO(mhauru) Could we rather fix `keys` so that it would always return VarName[]?
-    # See https://github.com/TuringLang/DynamicPPL.jl/issues/791.
-    if !(eltype(vns) <: VarName)
-        vns = collect(VarName, vns)
-    end
-    return link(t, vi, vns, model)
-end
-# Wrap a single VarName in a singleton tuple.
-function link(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
-    return link(t, vi, (vn,), model)
 end
 
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their constrained space, using the (inverse of)
-transformation `t`, mutating `vi` if possible.
+Transform variables in `vi` to their constrained space, mutating `vi` if possible.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
+not provided.
 
 See also: [`default_transformation`](@ref), [`link!!`](@ref).
 """
 function invlink!!(vi::AbstractVarInfo, model::Model)
     return invlink!!(default_transformation(model, vi), vi, model)
 end
-function invlink!!(vi::AbstractVarInfo, vns, model::Model)
+function invlink!!(vi::AbstractVarInfo, vns::VarNameCollection, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
-end
-# If no variable names are provided, invlink!! all variables.
-function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    vns = collect(keys(vi))
-    # In case e.g. vns = Any[].
-    if !(eltype(vns) <: VarName)
-        vns = collect(VarName, vns)
-    end
-    return invlink!!(t, vi, vns, model)
-end
-# Wrap a single VarName in a singleton tuple.
-function invlink!!(
-    t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model
-)
-    return invlink!!(t, vi, (vn,), model)
 end
 
 # Vector-based ones.
 function link!!(
-    t::StaticTransformation{<:Bijectors.Transform},
-    vi::AbstractVarInfo,
-    vns::VarNameCollection,
-    ::Model,
+    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
-    # TODO(mhauru) The behavior of this before the removal of indexing with samplers was a
-    # bit mixed. For TypedVarInfo you could transform only a subset of the variables, but
-    # for UntypedVarInfo and SimpleVarInfo it was silently assumed that all variables were
-    # being set. Unsure if we should support this or not, but at least it now errors
-    # loudly.
-    all_vns = Set(keys(vi))
-    if Set(vns) != all_vns
-        msg = "Statically transforming only a subset of variables is not supported."
-        throw(ArgumentError(msg))
-    end
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
@@ -668,17 +618,8 @@ function link!!(
 end
 
 function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform},
-    vi::AbstractVarInfo,
-    vns::VarNameCollection,
-    ::Model,
+    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
-    # TODO(mhauru) See comment in link!! above.
-    all_vns = Set(keys(vi))
-    if Set(vns) != all_vns
-        msg = "Statically transforming only a subset of variables is not supported."
-        throw(ArgumentError(msg))
-    end
     b = t.bijector
     y = vi[:]
     x, logjac = with_logabsdet_jacobian(b, y)
@@ -690,35 +631,22 @@ end
 
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::VarName, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::Tuple{N,VarName}, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vn::AbstractVector{<:VarName}, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
-transformation `t`.
+Transform variables in `vi` to their constrained space without mutating `vi`.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
+not provided.
 
 See also: [`default_transformation`](@ref), [`link`](@ref).
 """
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink(default_transformation(model, vi), vi, model)
 end
-function invlink(vi::AbstractVarInfo, vns, model::Model)
+function invlink(vi::AbstractVarInfo, vns::VarNameCollection, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
-end
-# If no variable names are provided, invlink all variables.
-function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    vns = collect(keys(vi))
-    # In case e.g. vns = Any[].
-    if !(eltype(vns) <: VarName)
-        vns = collect(VarName, vns)
-    end
-    return invlink(t, vi, vns, model)
-end
-# Wrap a single VarName in a singleton tuple.
-function invlink(t::AbstractTransformation, vi::AbstractVarInfo, vn::VarName, model::Model)
-    return invlink(t, vi, (vn,), model)
 end
 
 """

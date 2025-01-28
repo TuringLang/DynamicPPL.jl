@@ -680,8 +680,7 @@ Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarIn
 function link!!(
     t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
-    ::VarNameCollection,
-    model::Model,
+    ::Model,
 )
     # TODO: Make sure that `spl` is respected.
     b = inverse(t.bijector)
@@ -695,8 +694,7 @@ end
 function invlink!!(
     t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
-    ::VarNameCollection,
-    model::Model,
+    ::Model,
 )
     # TODO: Make sure that `spl` is respected.
     b = t.bijector

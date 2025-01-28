@@ -437,10 +437,10 @@ end
             other_vns = filter(x -> !subsumes(vn, x), all_vns)
             @test !isempty(target_vns)
             @test !isempty(other_vns)
-            vi = link!!(vi, vn, model)
+            vi = link!!(vi, (vn,), model)
             @test all(x -> istrans(vi, x), target_vns)
             @test all(x -> !istrans(vi, x), other_vns)
-            vi = invlink!!(vi, vn, model)
+            vi = invlink!!(vi, (vn,), model)
             @test all(x -> !istrans(vi, x), all_vns)
             @test meta.s.vals ≈ v_s atol = 1e-10
             @test meta.m.vals ≈ v_m atol = 1e-10

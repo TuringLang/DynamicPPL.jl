@@ -91,29 +91,21 @@ function dot_tilde_assume(
     return r, lp, vi
 end
 
-function link!!(
-    t::DynamicTransformation, vi::AbstractVarInfo, ::VarNameCollection, model::Model
-)
+function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
 
-function invlink!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, ::VarNameCollection, model::Model
-)
+function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
         NoTransformation(),
     )
 end
 
-function link(
-    t::DynamicTransformation, vi::AbstractVarInfo, vns::VarNameCollection, model::Model
-)
-    return link!!(t, deepcopy(vi), vns, model)
+function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    return link!!(t, deepcopy(vi), model)
 end
 
-function invlink(
-    t::DynamicTransformation, vi::AbstractVarInfo, vns::VarNameCollection, model::Model
-)
-    return invlink!!(t, deepcopy(vi), vns, model)
+function invlink(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    return invlink!!(t, deepcopy(vi), model)
 end
