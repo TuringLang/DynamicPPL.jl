@@ -57,7 +57,7 @@
         @test DynamicPPL.unique_syms(()) == ()
     end
 
-    @testset "varname_namedtuple" begin
+    @testset "group_varnames_by_symbol" begin
         vns_tuple = (
             @varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2])
         )
@@ -68,11 +68,7 @@
             z=[@varname(z[15])],
         )
         vns_vec_single_symbol = [@varname(x.a), @varname(x.b), @varname(x[1])]
-        @inferred DynamicPPL.varname_namedtuple(vns_tuple)
-        @inferred DynamicPPL.varname_namedtuple(vns_vec_single_symbol)
-        @test DynamicPPL.varname_namedtuple(vns_tuple) == vns_nt
-        @test DynamicPPL.varname_namedtuple(vns_vec) == vns_nt
-        @test DynamicPPL.varname_namedtuple(vns_vec_single_symbol) ==
-            (; x=vns_vec_single_symbol)
+        @inferred DynamicPPL.group_varnames_by_symbol(vns_tuple)
+        @test DynamicPPL.group_varnames_by_symbol(vns_tuple) == vns_nt
     end
 end

@@ -1278,11 +1278,11 @@ _merge(left::NamedTuple{()}, right::AbstractDict) = right
 Return the unique symbols of the variables in `vns`.
 
 Note that `unique_syms` is only defined for `Tuple`s of `VarName`s and, unlike
-`Base.unique`, returns a `Tuple`. For an `AbstractVector{<:VarName}` you can use
-`Base.unique`. The point of `unique_syms` is that it supports constant propagating
-the result, which is possible only when the argument and the return value are `Tuple`s.
+`Base.unique`, returns a `Tuple`. The point of `unique_syms` is that it supports constant
+propagating the result, which is possible only when the argument and the return value are
+`Tuple`s.
 """
-@generated function unique_syms(::T) where {T<:NTuple{N,VarName}} where {N}
+@generated function unique_syms(::T) where {T<:VarNameTuple}
     retval = Expr(:tuple)
     syms = [first(vn.parameters) for vn in T.parameters]
     for sym in unique(syms)
@@ -1292,14 +1292,12 @@ the result, which is possible only when the argument and the return value are `T
 end
 
 """
-    varname_namedtuple(vns::NTuple{N,VarName}) where {N}
-    varname_namedtuple(vns::AbstractVector{<:VarName})
-    varname_namedtuple(vns::NamedTuple)
+    group_varnames_by_symbol(vns::NTuple{N,VarName}) where {N}
 
 Return a `NamedTuple` of the variables in `vns` grouped by symbol.
 
-`varname_namedtuple` is type stable for inputs that are `Tuple`s, and for vectors when all
-`VarName`s in the vector have the same symbol. For a `NamedTuple` it's a no-op.
+Note that `group_varnames_by_symbol` only accepts a `Tuple` of `VarName`s. This allows it to
+be type stable.
 
 Example:
 ```julia
@@ -1309,25 +1307,11 @@ julia> vns_tuple = (@varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]),
 julia> vns_nt = (; x=[@varname(x), @varname(x.a)], y=[@varname(y[1]), @varname(y[2])], z=[@varname(z[15])])
 (x = VarName{:x}[x, x.a], y = VarName{:y, IndexLens{Tuple{Int64}}}[y[1], y[2]], z = VarName{:z, IndexLens{Tuple{Int64}}}[z[15]])
 
-julia> varname_namedtuple(vns_tuple) == vns_nt
+julia> group_varnames_by_symbol(vns_tuple) == vns_nt
 ```
 """
-function varname_namedtuple(vns::NTuple{N,VarName} where {N})
+function group_varnames_by_symbol(vns::VarNameTuple)
     syms = unique_syms(vns)
     elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
     return NamedTuple{syms}(elements)
-end
-
-# This method is type unstable, but that can't be helped: The problem is inherently type
-# unstable if there are VarNames with multiple symbols in a Vector.
-function varname_namedtuple(vns::AbstractVector{<:VarName})
-    syms = tuple(unique(map(getsym, vns))...)
-    elements = tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...)
-    return NamedTuple{syms}(elements)
-end
-
-# A simpler, type stable implementation when all the VarNames in a Vector have the same
-# symbol.
-function varname_namedtuple(vns::AbstractVector{<:VarName{T}}) where {T}
-    return NamedTuple{(T,)}((vns,))
 end

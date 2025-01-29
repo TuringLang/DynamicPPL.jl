@@ -901,13 +901,14 @@ end
 end
 
 """
-    all_varnames_namedtuple(vi::TypedVarInfo)
+    all_varnames_grouped_by_symbol(vi::TypedVarInfo)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
-all_varnames_namedtuple(vi::TypedVarInfo) = all_varnames_namedtuple(vi.metadata)
+all_varnames_grouped_by_symbol(vi::TypedVarInfo) =
+    all_varnames_grouped_by_symbol(vi.metadata)
 
-@generated function all_varnames_namedtuple(md::NamedTuple{names}) where {names}
+@generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
     for f in names
         push!(expr.args, :($f = keys(md.$f)))
@@ -1169,7 +1170,7 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
 end
 
 function link!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    vns = all_varnames_namedtuple(vi)
+    vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
     _link!(vi, vns)
@@ -1226,7 +1227,7 @@ end
 # If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _link!(vi::TypedVarInfo, vns::VarNameTuple)
-    return _link!(vi, varname_namedtuple(vns))
+    return _link!(vi, group_varnames_by_symbol(vns))
 end
 
 function _link!(vi::TypedVarInfo, vns::NamedTuple)
@@ -1274,7 +1275,7 @@ end
 end
 
 function invlink!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    vns = all_varnames_namedtuple(vi)
+    vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
     # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
@@ -1339,7 +1340,7 @@ end
 # If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _invlink!(vi::TypedVarInfo, vns::VarNameTuple)
-    return _invlink!(vi.metadata, vi, varname_namedtuple(vns))
+    return _invlink!(vi.metadata, vi, group_varnames_by_symbol(vns))
 end
 
 function _invlink!(vi::TypedVarInfo, vns::NamedTuple)
@@ -1404,7 +1405,7 @@ function _getvns_link(varinfo::TypedVarInfo, spl::SampleFromPrior)
 end
 
 function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return _link(model, vi, all_varnames_namedtuple(vi))
+    return _link(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
 function link(::DynamicTransformation, varinfo::VarInfo, model::Model)
@@ -1441,7 +1442,7 @@ end
 # If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
-    return _link(model, varinfo, varname_namedtuple(vns))
+    return _link(model, varinfo, group_varnames_by_symbol(vns))
 end
 
 function _link(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
@@ -1541,7 +1542,7 @@ function _link_metadata!!(
 end
 
 function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
-    return _invlink(model, vi, all_varnames_namedtuple(vi))
+    return _invlink(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
 function invlink(::DynamicTransformation, vi::VarInfo, model::Model)
@@ -1583,7 +1584,7 @@ end
 # If we try to _invlink a TypedVarInfo with a Tuple or Vector of VarNames, first convert
 # it to a NamedTuple that matches the structure of the TypedVarInfo.
 function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
-    return _invlink(model, varinfo, varname_namedtuple(vns))
+    return _invlink(model, varinfo, group_varnames_by_symbol(vns))
 end
 
 function _invlink(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
