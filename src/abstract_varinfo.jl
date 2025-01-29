@@ -546,8 +546,7 @@ function settrans!! end
 
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform variables in `vi` to their linked space, mutating `vi` if possible.
 
@@ -566,8 +565,7 @@ end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform variables in `vi` to their linked space without mutating `vi`.
 
@@ -586,7 +584,7 @@ end
 
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform variables in `vi` to their constrained space, mutating `vi` if possible.
 
@@ -631,7 +629,7 @@ end
 
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::Tuple{N,VarName}, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform variables in `vi` to their constrained space without mutating `vi`.
 
