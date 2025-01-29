@@ -1317,12 +1317,12 @@ function invlink!!(
     return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, vns, model)
 end
 
-function maybe_invlink_before_eval!!(vi::VarInfo, context::AbstractContext, model::Model)
+function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
     # Because `VarInfo` does not contain any information about what the transformation
     # other than whether or not it has actually been transformed, the best we can do
     # is just assume that `default_transformation` is the correct one if `istrans(vi)`.
     t = istrans(vi) ? default_transformation(model, vi) : NoTransformation()
-    return maybe_invlink_before_eval!!(t, vi, context, model)
+    return maybe_invlink_before_eval!!(t, vi, model)
 end
 
 function _invlink!(vi::UntypedVarInfo, vns)

@@ -275,9 +275,7 @@
 
             # Make sure `maybe_invlink_before_eval!!` results in `invlink!!`.
             @test !DynamicPPL.istrans(
-                DynamicPPL.maybe_invlink_before_eval!!(
-                    deepcopy(vi), SamplingContext(), model
-                ),
+                DynamicPPL.maybe_invlink_before_eval!!(deepcopy(vi), model)
             )
 
             # Resulting varinfo should no longer be transformed.

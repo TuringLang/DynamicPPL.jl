@@ -120,15 +120,12 @@ function invlink(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
 end
 
-function maybe_invlink_before_eval!!(
-    vi::ThreadSafeVarInfo, context::AbstractContext, model::Model
-)
+function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
-    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the `getlogp(vi.varinfo)`
-    # hence the log-absdet-jacobian term will correctly be included in the `getlogp(vi)`.
-    return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(
-        vi.varinfo, context, model
-    )
+    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the
+    # `getlogp(vi.varinfo)` hence the log-absdet-jacobian term will correctly be included in
+    # the `getlogp(vi)`.
+    return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(vi.varinfo, model)
 end
 
 # `getindex`

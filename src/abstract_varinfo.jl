@@ -648,7 +648,7 @@ function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
 end
 
 """
-    maybe_invlink_before_eval!!([t::Transformation,] vi, context, model)
+    maybe_invlink_before_eval!!([t::Transformation,] vi, model)
 
 Return a possibly invlinked version of `vi`.
 
@@ -699,35 +699,23 @@ julia> # Now performs a single `invlink!!` before model evaluation.
 -1001.4189385332047
 ```
 """
-function maybe_invlink_before_eval!!(
-    vi::AbstractVarInfo, context::AbstractContext, model::Model
-)
-    return maybe_invlink_before_eval!!(transformation(vi), vi, context, model)
+function maybe_invlink_before_eval!!(vi::AbstractVarInfo, model::Model)
+    return maybe_invlink_before_eval!!(transformation(vi), vi, model)
 end
-function maybe_invlink_before_eval!!(
-    ::NoTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
-)
+function maybe_invlink_before_eval!!(::NoTransformation, vi::AbstractVarInfo, model::Model)
     return vi
 end
 function maybe_invlink_before_eval!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+    ::DynamicTransformation, vi::AbstractVarInfo, model::Model
 )
-    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we do nothing.
+    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we
+    # do nothing.
     return vi
 end
 function maybe_invlink_before_eval!!(
-    t::StaticTransformation, vi::AbstractVarInfo, ::AbstractContext, model::Model
+    t::StaticTransformation, vi::AbstractVarInfo, model::Model
 )
-    # TODO(mhauru) Why does this function need the context argument?
     return invlink!!(t, vi, model)
-end
-
-function _default_sampler(context::AbstractContext)
-    return _default_sampler(NodeTrait(_default_sampler, context), context)
-end
-_default_sampler(::IsLeaf, context::AbstractContext) = SampleFromPrior()
-function _default_sampler(::IsParent, context::AbstractContext)
-    return _default_sampler(childcontext(context))
 end
 
 # Utilities
