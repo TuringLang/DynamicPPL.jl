@@ -1224,8 +1224,8 @@ function _link!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert
-# it to a NamedTuple that matches the structure of the TypedVarInfo.
+# If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the TypedVarInfo.
 function _link!(vi::TypedVarInfo, vns::VarNameTuple)
     return _link!(vi, group_varnames_by_symbol(vns))
 end
@@ -1337,8 +1337,8 @@ function _invlink!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert
-# it to a NamedTuple that matches the structure of the TypedVarInfo.
+# If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the TypedVarInfo.
 function _invlink!(vi::TypedVarInfo, vns::VarNameTuple)
     return _invlink!(vi.metadata, vi, group_varnames_by_symbol(vns))
 end
@@ -1428,8 +1428,8 @@ function link(
     vns::VarNameTuple,
     model::Model,
 )
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
+    # By default this will simply evaluate the model with `DynamicTransformationContext`,
+    # and so we need to specialize to avoid this.
     return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, vns, model)
 end
 
@@ -1439,8 +1439,8 @@ function _link(model::Model, varinfo::VarInfo, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
-# If we try to _invlink! a TypedVarInfo with a Tuple or Vector of VarNames, first convert
-# it to a NamedTuple that matches the structure of the TypedVarInfo.
+# If we try to _link a TypedVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the TypedVarInfo.
 function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
     return _link(model, varinfo, group_varnames_by_symbol(vns))
 end
@@ -1581,8 +1581,8 @@ function _invlink(model::Model, varinfo::VarInfo, vns)
     )
 end
 
-# If we try to _invlink a TypedVarInfo with a Tuple or Vector of VarNames, first convert
-# it to a NamedTuple that matches the structure of the TypedVarInfo.
+# If we try to _invlink a TypedVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the TypedVarInfo.
 function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
     return _invlink(model, varinfo, group_varnames_by_symbol(vns))
 end
