@@ -4,7 +4,7 @@
 
 **Breaking**
 
-- The order in which nested prefixes are applied has been changed.
+- For submodels constructed using `to_submodel`, the order in which nested prefixes are applied has been changed.
   Previously, the order was that outer prefixes were applied first, then inner ones.
   This version reverses that.
   To illustrate:
@@ -31,6 +31,7 @@
 
   Previously, the final line would return the variable names `c.a.x` and `c.b.x`.
   With this version, it will return `a.c.x` and `b.c.x`, which is more intuitive.
+  (Note that this change brings `to_submodel`'s behaviour in line with the now-deprecated `@submodel` macro.)
 
   This change also affects sampling in Turing.jl.
 
