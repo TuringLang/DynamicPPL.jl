@@ -258,7 +258,6 @@ function typed_simple_varinfo(model::Model)
     return last(evaluate!!(model, varinfo, SamplingContext()))
 end
 
-unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)
     vals = unflatten(svi.values, x)

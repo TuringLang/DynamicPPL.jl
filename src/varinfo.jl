@@ -217,45 +217,33 @@ vector_length(varinfo::VarInfo) = length(varinfo.metadata)
 vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
 vector_length(md::Metadata) = sum(length, md.ranges)
 
-unflatten(vi::VarInfo, x::AbstractVector) = unflatten(vi, SampleFromPrior(), x)
-
-# TODO: deprecate.
-function unflatten(vi::VarInfo, spl::AbstractSampler, x::AbstractVector)
-    md = unflatten(vi.metadata, spl, x)
-    return VarInfo(md, Base.RefValue{eltype(x)}(getlogp(vi)), Ref(get_num_produce(vi)))
+function unflatten(vi::VarInfo, x::AbstractVector)
+    md = unflatten_metadata(vi.metadata, x)
+    return VarInfo(md, Ref(getlogp(vi)), Ref(get_num_produce(vi)))
 end
 
-# The Val(getspace(spl)) is used to dispatch into the below generated function.
-function unflatten(metadata::NamedTuple, spl::AbstractSampler, x::AbstractVector)
-    return unflatten(metadata, Val(getspace(spl)), x)
-end
-
-@generated function unflatten(
-    metadata::NamedTuple{names}, ::Val{space}, x
-) where {names,space}
+# This must not be called `unflatten` because of the `unflatten` methods in utils.jl.
+@generated function unflatten_metadata(
+    metadata::NamedTuple{names}, x::AbstractVector
+) where {names}
     exprs = []
     offset = :(0)
     for f in names
         mdf = :(metadata.$f)
-        if inspace(f, space) || length(space) == 0
-            len = :(sum(length, $mdf.ranges))
-            push!(exprs, :($f = unflatten($mdf, x[($offset + 1):($offset + $len)])))
-            offset = :($offset + $len)
-        else
-            push!(exprs, :($f = $mdf))
-        end
+        len = :(sum(length, $mdf.ranges))
+        push!(exprs, :($f = unflatten_metadata($mdf, x[($offset + 1):($offset + $len)])))
+        offset = :($offset + $len)
     end
     length(exprs) == 0 && return :(NamedTuple())
     return :($(exprs...),)
 end
 
 # For Metadata unflatten and replace_values are the same. For VarNamedVector they are not.
-function unflatten(md::Metadata, x::AbstractVector)
+function unflatten_metadata(md::Metadata, x::AbstractVector)
     return replace_values(md, x)
 end
-function unflatten(md::Metadata, spl::AbstractSampler, x::AbstractVector)
-    return replace_values(md, spl, x)
-end
+
+unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
 
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)

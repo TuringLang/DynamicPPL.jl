@@ -173,12 +173,8 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
 end
 
-# Transformations.
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
-end
-function settrans!!(vi::ThreadSafeVarInfo, spl::AbstractSampler, dist::Distribution)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, spl, dist)
 end
 
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
@@ -188,9 +184,6 @@ getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.var
 
 function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
-end
-function unflatten(vi::ThreadSafeVarInfo, spl::AbstractSampler, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten(vi.varinfo, spl, x)
 end
 
 function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})

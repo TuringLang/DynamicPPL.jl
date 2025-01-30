@@ -710,6 +710,9 @@ function unflatten(original, x::AbstractVector)
         return unflatten(v, @view(x[start_idx:end_idx]))
     end
 end
+function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
+    return NamedTuple{names}(unflatten(values(original), x))
+end
 
 unflatten(::Real, x::Real) = x
 unflatten(::Real, x::AbstractVector) = only(x)
@@ -727,9 +730,6 @@ function unflatten(original::Tuple, x::AbstractVector)
         start_idx = end_idx - l + 1
         return unflatten(v, @view(x[start_idx:end_idx]))
     end
-end
-function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
-    return NamedTuple{names}(unflatten(values(original), x))
 end
 function unflatten(original::AbstractDict, x::AbstractVector)
     D = ConstructionBase.constructorof(typeof(original))

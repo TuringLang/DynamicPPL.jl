@@ -719,25 +719,11 @@ end
 
 # Utilities
 """
-    unflatten(vi::AbstractVarInfo[, context::AbstractContext], x::AbstractVector)
+    unflatten(vi::AbstractVarInfo, x::AbstractVector)
 
 Return a new instance of `vi` with the values of `x` assigned to the variables.
-
-If `context` is provided, `x` is assumed to be realizations only for variables not
-filtered out by `context`.
 """
-function unflatten(varinfo::AbstractVarInfo, context::AbstractContext, θ)
-    if hassampler(context)
-        unflatten(getsampler(context), varinfo, context, θ)
-    else
-        DynamicPPL.unflatten(varinfo, θ)
-    end
-end
-
-# TODO: deprecate this once `sampler` is no longer the main way of filtering out variables.
-function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::AbstractContext, θ)
-    return unflatten(varinfo, sampler, θ)
-end
+function unflatten end
 
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)

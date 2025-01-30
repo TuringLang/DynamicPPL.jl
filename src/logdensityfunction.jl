@@ -136,7 +136,7 @@ getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(getcontext(f))]
 # LogDensityProblems interface
 function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
     context = getcontext(f)
-    vi_new = unflatten(f.varinfo, context, θ)
+    vi_new = unflatten(f.varinfo, θ)
     return getlogp(last(evaluate!!(f.model, vi_new, context)))
 end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
