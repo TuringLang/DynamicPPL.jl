@@ -33,7 +33,7 @@ using JET: JET
 using Combinatorics: combinations
 using OrderedCollections: OrderedSet
 
-using DynamicPPL: getargs_dottilde, getargs_tilde, Selector
+using DynamicPPL: getargs_dottilde, getargs_tilde
 
 const GROUP = get(ENV, "GROUP", "All")
 Random.seed!(100)

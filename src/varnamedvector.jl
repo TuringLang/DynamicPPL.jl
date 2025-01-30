@@ -766,9 +766,9 @@ function update_internal!(
     return nothing
 end
 
-# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# TODO(mhauru) The num_produce argument is used by Particle Gibbs.
 # Remove this method as soon as possible.
-function BangBang.push!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+function BangBang.push!(vnv::VarNamedVector, vn, val, dist, num_produce)
     f = from_vec_transform(dist)
     return setindex_internal!(vnv, tovec(val), vn, f)
 end
@@ -963,9 +963,9 @@ function BangBang.push!!(vnv::VarNamedVector, pair::Pair)
     return setindex!!(vnv, val, vn)
 end
 
-# TODO(mhauru) The gidset and num_produce arguments are used by the old Gibbs sampler.
+# TODO(mhauru) The num_produce argument is used by Particle Gibbs.
 # Remove this method as soon as possible.
-function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, gidset, num_produce)
+function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, num_produce)
     f = from_vec_transform(dist)
     return setindex_internal!!(vnv, tovec(val), vn, f)
 end
