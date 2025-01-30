@@ -121,17 +121,12 @@ end
 getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
 hassampler(f::LogDensityFunction) = hassampler(getcontext(f))
 
-_get_indexer(ctx::AbstractContext) = _get_indexer(NodeTrait(ctx), ctx)
-_get_indexer(ctx::SamplingContext) = ctx.sampler
-_get_indexer(::IsParent, ctx::AbstractContext) = _get_indexer(childcontext(ctx))
-_get_indexer(::IsLeaf, ctx::AbstractContext) = Colon()
-
 """
     getparams(f::LogDensityFunction)
 
 Return the parameters of the wrapped varinfo as a vector.
 """
-getparams(f::LogDensityFunction) = f.varinfo[_get_indexer(getcontext(f))]
+getparams(f::LogDensityFunction) = f.varinfo[:]
 
 # LogDensityProblems interface
 function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
