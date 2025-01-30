@@ -220,7 +220,9 @@ vector_length(md::Metadata) = sum(length, md.ranges)
 
 function unflatten(vi::VarInfo, x::AbstractVector)
     md = unflatten_metadata(vi.metadata, x)
-    return VarInfo(md, Ref(getlogp(vi)), Ref(get_num_produce(vi)))
+    # Note that use of RefValue{eltype(x)} rather than Ref is necessary to deal with cases
+    # where e.g. x is a type gradient of some AD backend.
+    return VarInfo(md, Base.RefValue{eltype(x)}(getlogp(vi)), Ref(get_num_produce(vi)))
 end
 
 # We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
