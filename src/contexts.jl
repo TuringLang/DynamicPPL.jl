@@ -253,31 +253,26 @@ function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
     return PrefixContext{Prefix,typeof(context)}(context)
 end
 
-NodeTrait(context::PrefixContext) = IsParent()
+NodeTrait(::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
-function setchildcontext(parent::PrefixContext{Prefix}, child) where {Prefix}
+function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
     return PrefixContext{Prefix}(child)
 end
 
 const PREFIX_SEPARATOR = Symbol(".")
 
-# TODO(penelopeysm): Prefixing arguably occurs the wrong way round here
-function PrefixContext{PrefixInner}(
-    context::PrefixContext{PrefixOuter}
-) where {PrefixInner,PrefixOuter}
-    if @generated
-        :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-            context.context
-        ))
-    else
-        PrefixContext{Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)}(context.context)
-    end
+@generated function PrefixContext{PrefixOuter}(
+    context::PrefixContext{PrefixInner}
+) where {PrefixOuter,PrefixInner}
+    return :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
+        context.context
+    ))
 end
 
-# TODO(penelopeysm): Prefixing arguably occurs the wrong way round here
 function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    return prefix(
-        childcontext(ctx), VarName{Symbol(Prefix, PREFIX_SEPARATOR, Sym)}(getoptic(vn))
+    vn_prefixed_inner = prefix(childcontext(ctx), vn)
+    return VarName{Symbol(Prefix, PREFIX_SEPARATOR, getsym(vn_prefixed_inner))}(
+        getoptic(vn_prefixed_inner)
     )
 end
 prefix(ctx::AbstractContext, vn::VarName) = prefix(NodeTrait(ctx), ctx, vn)
