@@ -223,7 +223,8 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     return VarInfo(md, Ref(getlogp(vi)), Ref(get_num_produce(vi)))
 end
 
-# This must not be called `unflatten` because of the `unflatten` methods in utils.jl.
+# We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
+# utils.jl.
 @generated function unflatten_metadata(
     metadata::NamedTuple{names}, x::AbstractVector
 ) where {names}
@@ -1511,8 +1512,11 @@ function _invlink_metadata!!(
     return metadata
 end
 
-# TODO(mhauru) We have varying conventions below for what to do if some variables are linked
-# and others are not.
+# TODO(mhauru) The treatment of the case when some variables are linked and others are not
+# should be revised. It used to be the case that for UntypedVarInfo `islinked` returned
+# whether the first variable was linked. For TypedVarInfo we did an OR over the first
+# variables under each symbol. We now more consistently use OR, but I'm not convinced this
+# is really the right thing to do.
 """
     islinked(vi::VarInfo)
 

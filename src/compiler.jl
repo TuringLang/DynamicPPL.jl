@@ -730,6 +730,8 @@ function warn_empty(body)
     return nothing
 end
 
+# TODO(mhauru) matchinvalue has methods that can accept both types and values. Why?
+# TODO(mhauru) This function needs a more comprehensive docstring.
 """
     matchingvalue(vi, value)
 
@@ -739,6 +741,8 @@ function matchingvalue(vi, value)
     T = typeof(value)
     if hasmissing(T)
         _value = convert(get_matching_type(vi, T), value)
+        # TODO(mhauru) Why do we make a deepcopy, even though in the !hasmissing branch we
+        # are happy to return `value` as-is?
         if _value === value
             return deepcopy(_value)
         else
@@ -748,7 +752,7 @@ function matchingvalue(vi, value)
         return value
     end
 end
-# If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
+
 function matchingvalue(vi, value::FloatOrArrayType)
     return get_matching_type(vi, value)
 end
@@ -756,13 +760,11 @@ function matchingvalue(vi, ::TypeWrap{T}) where {T}
     return TypeWrap{get_matching_type(vi, T)}()
 end
 
+# TODO(mhauru) This function needs a more comprehensive docstring. What is it for?
 """
-    get_matching_type(spl::AbstractSampler, vi, ::TypeWrap{T}) where {T}
+    get_matching_type(vi, ::TypeWrap{T}) where {T}
 
-Get the specialized version of type `T` for sampler `spl`.
-
-For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
-`eltype(vi[spl])`.
+Get the specialized version of type `T` for `vi`.
 """
 get_matching_type(_, ::Type{T}) where {T} = T
 function get_matching_type(vi, ::Type{<:Union{Missing,AbstractFloat}})

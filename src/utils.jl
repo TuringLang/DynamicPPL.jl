@@ -710,9 +710,6 @@ function unflatten(original, x::AbstractVector)
         return unflatten(v, @view(x[start_idx:end_idx]))
     end
 end
-function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
-    return NamedTuple{names}(unflatten(values(original), x))
-end
 
 unflatten(::Real, x::Real) = x
 unflatten(::Real, x::AbstractVector) = only(x)
@@ -730,6 +727,9 @@ function unflatten(original::Tuple, x::AbstractVector)
         start_idx = end_idx - l + 1
         return unflatten(v, @view(x[start_idx:end_idx]))
     end
+end
+function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
+    return NamedTuple{names}(unflatten(values(original), x))
 end
 function unflatten(original::AbstractDict, x::AbstractVector)
     D = ConstructionBase.constructorof(typeof(original))
@@ -942,9 +942,9 @@ function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
 end
 
 """
-    float_type_with_fallback(x)
+    float_type_with_fallback(T::DataType)
 
-Return type corresponding to `float(typeof(x))` if possible; otherwise return `float(Real)`.
+Return `float(T)` if possible; otherwise return `float(Real)`.
 """
 float_type_with_fallback(::Type) = float(Real)
 float_type_with_fallback(::Type{Union{}}) = float(Real)

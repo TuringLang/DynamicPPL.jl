@@ -353,7 +353,7 @@ Return the `eltype` of the values returned by `vi[:]`.
 function Base.eltype(vi::AbstractVarInfo)
     T = Base.promote_op(getindex, typeof(vi), Colon)
     if T === Union{}
-        # In this case `getindex(vi, spl)` errors
+        # In this case `getindex(vi, :)` errors
         # Let us throw a more descriptive error message
         # Ref https://github.com/TuringLang/Turing.jl/issues/2151
         return eltype(vi[:])
