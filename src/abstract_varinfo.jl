@@ -537,117 +537,118 @@ If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variabl
 """
 function settrans!! end
 
+# For link!!, invlink!!, link, and invlink, we deliberately do not provide a fallback
+# method for the case when no `vns` is provided, that would get all the keys from the
+# `VarInfo`. Hence each subtype of `AbstractVarInfo` needs to implement separately the case
+# where `vns` is provided and the one where it is not. This is because having separate
+# implementations is typically much more performant, and because not all AbstractVarInfo
+# types support partial linking.
+
 """
     link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their linked space, using the transformation `t`,
-mutating `vi` if possible.
+Transform variables in `vi` to their linked space, mutating `vi` if possible.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
 
 See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 """
-link!!(vi::AbstractVarInfo, model::Model) = link!!(vi, SampleFromPrior(), model)
-function link!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link!!(t, vi, SampleFromPrior(), model)
+function link!!(vi::AbstractVarInfo, model::Model)
+    return link!!(default_transformation(model, vi), vi, model)
 end
-function link!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
-    # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link!!(default_transformation(model, vi), vi, spl, model)
+function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+    return link!!(default_transformation(model, vi), vi, vns, model)
 end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their linked space without mutating `vi`, using the transformation `t`.
+Transform variables in `vi` to their linked space without mutating `vi`.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
 
 See also: [`default_transformation`](@ref), [`invlink`](@ref).
 """
-link(vi::AbstractVarInfo, model::Model) = link(vi, SampleFromPrior(), model)
-function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link(t, deepcopy(vi), SampleFromPrior(), model)
+function link(vi::AbstractVarInfo, model::Model)
+    return link(default_transformation(model, vi), vi, model)
 end
-function link(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
-    # Use `default_transformation` to decide which transformation to use if none is specified.
-    return link(default_transformation(model, vi), deepcopy(vi), spl, model)
+function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+    return link(default_transformation(model, vi), vi, vns, model)
 end
 
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their constrained space, using the (inverse of)
-transformation `t`, mutating `vi` if possible.
+Transform variables in `vi` to their constrained space, mutating `vi` if possible.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
+not provided.
 
 See also: [`default_transformation`](@ref), [`link!!`](@ref).
 """
-invlink!!(vi::AbstractVarInfo, model::Model) = invlink!!(vi, SampleFromPrior(), model)
-function invlink!!(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink!!(t, vi, SampleFromPrior(), model)
+function invlink!!(vi::AbstractVarInfo, model::Model)
+    return invlink!!(default_transformation(model, vi), vi, model)
 end
-function invlink!!(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
-    # Here we extract the `transformation` from `vi` rather than using the default one.
-    return invlink!!(transformation(vi), vi, spl, model)
+function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+    return invlink!!(default_transformation(model, vi), vi, vns, model)
 end
 
 # Vector-based ones.
 function link!!(
-    t::StaticTransformation{<:Bijectors.Transform},
-    vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
     b = inverse(t.bijector)
-    x = vi[spl]
+    x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
     lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(unflatten(vi, spl, y), lp_new)
+    vi_new = setlogp!!(unflatten(vi, y), lp_new)
     return settrans!!(vi_new, t)
 end
 
 function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform},
-    vi::AbstractVarInfo,
-    spl::AbstractSampler,
-    model::Model,
+    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
     b = t.bijector
-    y = vi[spl]
+    y = vi[:]
     x, logjac = with_logabsdet_jacobian(b, y)
 
     lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(unflatten(vi, spl, x), lp_new)
+    vi_new = setlogp!!(unflatten(vi, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
+    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform the variables in `vi` to their constrained space without mutating `vi`, using the (inverse of)
-transformation `t`.
+Transform variables in `vi` to their constrained space without mutating `vi`.
 
-If `t` is not provided, `default_transformation(model, vi)` will be used.
+Either transform all variables, or only ones specified in `vns`.
+
+Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
+not provided.
 
 See also: [`default_transformation`](@ref), [`link`](@ref).
 """
-invlink(vi::AbstractVarInfo, model::Model) = invlink(vi, SampleFromPrior(), model)
-function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink(t, vi, SampleFromPrior(), model)
+function invlink(vi::AbstractVarInfo, model::Model)
+    return invlink(default_transformation(model, vi), vi, model)
 end
-function invlink(vi::AbstractVarInfo, spl::AbstractSampler, model::Model)
-    return invlink(transformation(vi), vi, spl, model)
+function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+    return invlink(default_transformation(model, vi), vi, vns, model)
 end
 
 """
-    maybe_invlink_before_eval!!([t::Transformation,] vi, context, model)
+    maybe_invlink_before_eval!!([t::Transformation,] vi, model)
 
 Return a possibly invlinked version of `vi`.
 
@@ -698,34 +699,23 @@ julia> # Now performs a single `invlink!!` before model evaluation.
 -1001.4189385332047
 ```
 """
-function maybe_invlink_before_eval!!(
-    vi::AbstractVarInfo, context::AbstractContext, model::Model
-)
-    return maybe_invlink_before_eval!!(transformation(vi), vi, context, model)
+function maybe_invlink_before_eval!!(vi::AbstractVarInfo, model::Model)
+    return maybe_invlink_before_eval!!(transformation(vi), vi, model)
 end
-function maybe_invlink_before_eval!!(
-    ::NoTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
-)
+function maybe_invlink_before_eval!!(::NoTransformation, vi::AbstractVarInfo, model::Model)
     return vi
 end
 function maybe_invlink_before_eval!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+    ::DynamicTransformation, vi::AbstractVarInfo, model::Model
 )
-    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we do nothing.
+    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we
+    # do nothing.
     return vi
 end
 function maybe_invlink_before_eval!!(
-    t::StaticTransformation, vi::AbstractVarInfo, context::AbstractContext, model::Model
+    t::StaticTransformation, vi::AbstractVarInfo, model::Model
 )
-    return invlink!!(t, vi, _default_sampler(context), model)
-end
-
-function _default_sampler(context::AbstractContext)
-    return _default_sampler(NodeTrait(_default_sampler, context), context)
-end
-_default_sampler(::IsLeaf, context::AbstractContext) = SampleFromPrior()
-function _default_sampler(::IsParent, context::AbstractContext)
-    return _default_sampler(childcontext(context))
+    return invlink!!(t, vi, model)
 end
 
 # Utilities

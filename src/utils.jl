@@ -2,6 +2,9 @@
 struct NoDefault end
 const NO_DEFAULT = NoDefault()
 
+# A short-hand for a type commonly used in type signatures for VarInfo methods.
+VarNameTuple = NTuple{N,VarName} where {N}
+
 """
     @addlogprob!(ex)
 
@@ -1268,3 +1271,47 @@ _merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
 _merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
 _merge(left::AbstractDict, right::NamedTuple{()}) = left
 _merge(left::NamedTuple{()}, right::AbstractDict) = right
+
+"""
+    unique_syms(vns::T) where {T<:NTuple{N,VarName}}
+
+Return the unique symbols of the variables in `vns`.
+
+Note that `unique_syms` is only defined for `Tuple`s of `VarName`s and, unlike
+`Base.unique`, returns a `Tuple`. The point of `unique_syms` is that it supports constant
+propagating the result, which is possible only when the argument and the return value are
+`Tuple`s.
+"""
+@generated function unique_syms(::T) where {T<:VarNameTuple}
+    retval = Expr(:tuple)
+    syms = [first(vn.parameters) for vn in T.parameters]
+    for sym in unique(syms)
+        push!(retval.args, QuoteNode(sym))
+    end
+    return retval
+end
+
+"""
+    group_varnames_by_symbol(vns::NTuple{N,VarName}) where {N}
+
+Return a `NamedTuple` of the variables in `vns` grouped by symbol.
+
+Note that `group_varnames_by_symbol` only accepts a `Tuple` of `VarName`s. This allows it to
+be type stable.
+
+Example:
+```julia
+julia> vns_tuple = (@varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2]))
+(x, y[1], x.a, z[15], y[2])
+
+julia> vns_nt = (; x=[@varname(x), @varname(x.a)], y=[@varname(y[1]), @varname(y[2])], z=[@varname(z[15])])
+(x = VarName{:x}[x, x.a], y = VarName{:y, IndexLens{Tuple{Int64}}}[y[1], y[2]], z = VarName{:z, IndexLens{Tuple{Int64}}}[z[15]])
+
+julia> group_varnames_by_symbol(vns_tuple) == vns_nt
+```
+"""
+function group_varnames_by_symbol(vns::VarNameTuple)
+    syms = unique_syms(vns)
+    elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
+    return NamedTuple{syms}(elements)
+end
