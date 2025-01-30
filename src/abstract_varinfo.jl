@@ -149,7 +149,6 @@ If `dist` is specified, the value(s) will be massaged into the representation ex
 
 """
     getindex(vi::AbstractVarInfo, ::Colon)
-    getindex(vi::AbstractVarInfo, ::AbstractSampler)
 
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s) as a flattened `Vector`.
@@ -340,9 +339,9 @@ julia> values_as(vi, Vector)
 function values_as end
 
 """
-    eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior}
+    eltype(vi::AbstractVarInfo)
 
-Determine the default `eltype` of the values returned by `vi[spl]`.
+Return the `eltype` of the values returned by `vi[:]`.
 
 !!! warning
     This should generally not be called explicitly, as it's only used in

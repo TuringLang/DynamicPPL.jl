@@ -1787,15 +1787,6 @@ function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
     return vi
 end
 
-"""
-    setindex!(vi::VarInfo, val, spl::Union{SampleFromPrior, Sampler})
-
-Set the current value(s) of the random variables sampled by `spl` in `vi` to `val`.
-
-The value(s) may or may not be transformed to Euclidean space.
-"""
-setindex!(vi::UntypedVarInfo, val, spl::Sampler) = setval!(vi, val, _getranges(vi, spl))
-
 @inline function findvns(vi, f_vns)
     if length(f_vns) == 0
         throw("Unidentified error, please report this error in an issue.")
