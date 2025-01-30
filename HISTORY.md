@@ -4,6 +4,15 @@
 
 **Breaking**
 
+### Remove indexing by samplers
+
+This release removes the feature of `VarInfo` where it kept track of which variable was associated with which sampler. This means removing all user-facing methods where `VarInfo`s where being indexed with samplers. In particular,
+
+  - `link` and `invlink`, and their `!!` versions, no longer accept a sampler as an argument to specify which variables to (inv)link. The `link(varinfo, model)` methods remain in place, and as a new addition one can give a `Tuple` of `VarName`s to (inv)link only select variables, as in `link(varinfo, varname_tuple, model)`.
+  - `set_retained_vns_del_by_spl!` has been replaced by `set_retained_vns_del!` which applies to all variables.
+
+### Reverse prefixing order
+
 - For submodels constructed using `to_submodel`, the order in which nested prefixes are applied has been changed.
   Previously, the order was that outer prefixes were applied first, then inner ones.
   This version reverses that.
