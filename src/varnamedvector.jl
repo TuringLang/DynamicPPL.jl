@@ -109,7 +109,7 @@ like `setindex!` and `getindex!` rather than directly accessing `vnv.vals`.
 
 ```jldoctest varnamedvector-struct
 julia> vnv[@varname(x)]
-2-element Vector{Float64}:
+2-element Vector{Real}:
  46.0
  48.0
 
@@ -159,10 +159,12 @@ struct VarNamedVector{
     transforms::TTrans
 
     """
-    vector of booleans indicating whether a variable has been transformed to unconstrained
-    Euclidean space or not, i.e. whether its domain is all of `ℝ^ⁿ`. Having
-    `is_unconstrained[varname_to_index[vn]] == false` does not necessarily mean that a
-    variable is constrained, but rather that it's not guaranteed to not be.
+    vector of booleans indicating whether a variable has been explicitly transformed to
+    unconstrained Euclidean space, i.e. whether its domain is all of `ℝ^ⁿ`. If
+    `is_unconstrained[varname_to_index[vn]]` is true, it guarantees that the variable
+    `vn` is not constrained. However, the converse does not hold: if `is_unconstrained`
+    is false, the variable `vn` may still happen to be unconstrained, e.g. if its
+    original distribution is itself unconstrained (like a normal distribution).
     """
     is_unconstrained::BitVector
 

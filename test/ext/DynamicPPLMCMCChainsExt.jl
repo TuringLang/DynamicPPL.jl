@@ -7,3 +7,5 @@
     @test size(chain_generated) == (1000, 1)
     @test mean(chain_generated) ≈ 0 atol = 0.1
 end
+
+# test for `predict` is in `test/model.jl`

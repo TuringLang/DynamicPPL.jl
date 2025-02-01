@@ -60,6 +60,15 @@
             end
             model = ModelOuterWorking()
             @test check_model(model; error_on_failure=true)
+
+            # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
+            @model function ModelOuterWorking2()
+                x1 ~ to_submodel(prefix(ModelInner(), :a), false)
+                x2 ~ to_submodel(prefix(ModelInner(), :b), false)
+                return (x1, x2)
+            end
+            model = ModelOuterWorking2()
+            @test check_model(model; error_on_failure=true)
         end
 
         @testset "subsumes (x then x[1])" begin

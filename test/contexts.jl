@@ -11,6 +11,7 @@ using DynamicPPL:
     PointwiseLogdensityContext,
     contextual_isassumption,
     ConditionContext,
+    decondition_context,
     hasconditioned,
     getconditioned,
     hasconditioned_nested,
@@ -161,6 +162,26 @@ end
             @test getoptic(vn_prefixed) === getoptic(vn)
         end
 
+        @testset "nested within arbitrary context stacks" begin
+            vn = @varname(x[1])
+            ctx1 = PrefixContext{:a}(DefaultContext())
+            ctx2 = SamplingContext(ctx1)
+            ctx3 = PrefixContext{:b}(ctx2)
+            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
+            vn_prefixed1 = prefix(ctx1, vn)
+            vn_prefixed2 = prefix(ctx2, vn)
+            vn_prefixed3 = prefix(ctx3, vn)
+            vn_prefixed4 = prefix(ctx4, vn)
+            @test DynamicPPL.getsym(vn_prefixed1) == Symbol("a.x")
+            @test DynamicPPL.getsym(vn_prefixed2) == Symbol("a.x")
+            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("a.b.x")
+            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("a.b.x")
+            @test DynamicPPL.getoptic(vn_prefixed1) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed2) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed3) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.getoptic(vn_prefixed4) === DynamicPPL.getoptic(vn)
+        end
+
         context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             # Sample with the context.
@@ -196,13 +217,95 @@ end
         @test EnzymeCore.EnzymeRules.inactive_type(typeof(context))
     end
 
+    @testset "ConditionContext" begin
+        @testset "Nesting" begin
+            @testset "NamedTuple" begin
+                n1 = (x=1, y=2)
+                n2 = (x=3,)
+                # Values from outer context should override inner one
+                ctx1 = ConditionContext(n1, ConditionContext(n2))
+                @test ctx1.values == (x=1, y=2)
+                # Check that the two ConditionContexts are collapsed 
+                @test childcontext(ctx1) isa DefaultContext
+                # Then test the nesting the other way round
+                ctx2 = ConditionContext(n2, ConditionContext(n1))
+                @test ctx2.values == (x=3, y=2)
+                @test childcontext(ctx2) isa DefaultContext
+            end
+
+            @testset "Dict" begin
+                # Same tests as NamedTuple above
+                d1 = Dict(@varname(x) => 1, @varname(y) => 2)
+                d2 = Dict(@varname(x) => 3)
+                ctx1 = ConditionContext(d1, ConditionContext(d2))
+                @test ctx1.values == Dict(@varname(x) => 1, @varname(y) => 2)
+                @test childcontext(ctx1) isa DefaultContext
+                ctx2 = ConditionContext(d2, ConditionContext(d1))
+                @test ctx2.values == Dict(@varname(x) => 3, @varname(y) => 2)
+                @test childcontext(ctx2) isa DefaultContext
+            end
+        end
+
+        @testset "decondition_context" begin
+            @testset "NamedTuple" begin
+                ctx = ConditionContext((x=1, y=2, z=3))
+                # Decondition all variables
+                @test decondition_context(ctx) isa DefaultContext
+                # Decondition only some variables
+                dctx = decondition_context(ctx, :x)
+                @test dctx isa ConditionContext
+                @test dctx.values == (y=2, z=3)
+                dctx = decondition_context(ctx, :y, :z)
+                @test dctx isa ConditionContext
+                @test dctx.values == (x=1,)
+                # Decondition all variables manually
+                @test decondition_context(ctx, :x, :y, :z) isa DefaultContext
+            end
+
+            @testset "Dict" begin
+                ctx = ConditionContext(
+                    Dict(@varname(x) => 1, @varname(y) => 2, @varname(z) => 3)
+                )
+                # Decondition all variables
+                @test decondition_context(ctx) isa DefaultContext
+                # Decondition only some variables
+                dctx = decondition_context(ctx, @varname(x))
+                @test dctx isa ConditionContext
+                @test dctx.values == Dict(@varname(y) => 2, @varname(z) => 3)
+                dctx = decondition_context(ctx, @varname(y), @varname(z))
+                @test dctx isa ConditionContext
+                @test dctx.values == Dict(@varname(x) => 1)
+                # Decondition all variables manually
+                @test decondition_context(ctx, @varname(x), @varname(y), @varname(z)) isa
+                    DefaultContext
+            end
+
+            @testset "Nesting" begin
+                ctx = ConditionContext(
+                    (x=1, y=2), ConditionContext(Dict(@varname(a) => 3, @varname(b) => 4))
+                )
+                # Decondition an outer variable
+                dctx = decondition_context(ctx, :x)
+                @test dctx.values == (y=2,)
+                @test childcontext(dctx).values == Dict(@varname(a) => 3, @varname(b) => 4)
+                # Decondition an inner variable
+                dctx = decondition_context(ctx, @varname(a))
+                @test dctx.values == (x=1, y=2)
+                @test childcontext(dctx).values == Dict(@varname(b) => 4)
+                # Try deconditioning everything
+                dctx = decondition_context(ctx)
+                @test dctx isa DefaultContext
+            end
+        end
+    end
+
     @testset "FixedContext" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             retval = model()
             s, m = retval.s, retval.m
 
             # Keword approach.
-            model_fixed = fix(model; s=s)
+            model_fixed = DynamicPPL.fix(model; s=s)
             @test model_fixed().s == s
             @test model_fixed().m != m
             # A fixed variable should not contribute at all to the logjoint.
@@ -210,19 +313,19 @@ end
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Positional approach.
-            model_fixed = fix(model, (; s))
+            model_fixed = DynamicPPL.fix(model, (; s))
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Pairs approach.
-            model_fixed = fix(model, @varname(s) => s)
+            model_fixed = DynamicPPL.fix(model, @varname(s) => s)
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
 
             # Dictionary approach.
-            model_fixed = fix(model, Dict(@varname(s) => s))
+            model_fixed = DynamicPPL.fix(model, Dict(@varname(s) => s))
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))

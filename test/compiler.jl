@@ -702,10 +702,17 @@ module Issue537 end
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
-            # While `values_as_in_model` should contain both `x` and `y`.
-            values = values_as_in_model(model, deepcopy(varinfo))
+            # While `values_as_in_model` should contain both `x` and `y`, if
+            # include_colon_eq is set to `true`.
+            values = values_as_in_model(model, true, deepcopy(varinfo))
             @test haskey(values, @varname(x))
             @test haskey(values, @varname(y))
+
+            # And if include_colon_eq is set to `false`, then `values` should
+            # only contain `x`.
+            values = values_as_in_model(model, false, deepcopy(varinfo))
+            @test haskey(values, @varname(x))
+            @test !haskey(values, @varname(y))
         end
     end
 
