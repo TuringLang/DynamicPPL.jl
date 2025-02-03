@@ -20,9 +20,7 @@ makedocs(;
     format=Documenter.HTML(; size_threshold=2^10 * 400),
     modules=[DynamicPPL],
     pages=[
-        "Home" => "index.md",
-        "API" => "api.md",
-        "Internals" => ["internals/varinfo.md", "internals/transformations.md"],
+        "Home" => "index.md", "API" => "api.md", "Internals" => ["internals/varinfo.md"]
     ],
     checkdocs=:exports,
     doctest=false,
