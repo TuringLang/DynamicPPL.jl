@@ -730,7 +730,7 @@ function warn_empty(body)
     return nothing
 end
 
-# TODO(mhauru) matchinvalue has methods that can accept both types and values. Why?
+# TODO(mhauru) matchingvalue has methods that can accept both types and values. Why?
 # TODO(mhauru) This function needs a more comprehensive docstring.
 """
     matchingvalue(vi, value)
