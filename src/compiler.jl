@@ -172,7 +172,7 @@ Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
 function check_tilde_rhs(@nospecialize(x))
     return throw(
         ArgumentError(
-            "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
+            "the right-hand side of a `~` must be a `Distribution`, an array of `Distribution`s, or a submodel",
         ),
     )
 end
@@ -181,6 +181,26 @@ check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
 check_tilde_rhs(x::ReturnedModelWrapper) = x
 function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_tilde_rhs(x.model)
+    return Sampleable{typeof(model),AutoPrefix}(model)
+end
+
+"""
+    check_dot_tilde_rhs(x)
+
+Check if the right-hand side `x` of a `.~` is a `Distribution` or an array of
+univariate `Distributions`, then return `x`.
+"""
+function check_dot_tilde_rhs(@nospecialize(x))
+    return throw(
+        ArgumentError(
+            "the right-hand side of a `.~` must be a `Distribution` or an array of univariate `Distribution`s",
+        ),
+    )
+end
+check_dot_tilde_rhs(x::Distribution) = x
+check_dot_tilde_rhs(x::AbstractArray{<:UnivariateDistribution}) = x
+function check_dot_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
+    model = check_dot_tilde_rhs(x.model)
     return Sampleable{typeof(model),AutoPrefix}(model)
 end
 
@@ -356,11 +376,8 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return Base.remove_linenums!(
-            generate_dot_tilde(
-                generate_mainbody!(mod, found, L, warn),
-                generate_mainbody!(mod, found, R, warn),
-            ),
+        return generate_mainbody!(
+            mod, found, Base.remove_linenums!(generate_dot_tilde(L, R)), warn
         )
     end
 
@@ -487,53 +504,47 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    isliteral(left) && return generate_tilde_literal(left, right)
-
-    # Otherwise it is determined by the model or its value,
-    # if the LHS represents an observation
-    @gensym vn isassumption value
-    return quote
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
-        )
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $(DynamicPPL.isfixed(left, vn))
-            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
-        elseif $isassumption
-            $(generate_dot_tilde_assume(left, right, vn))
-        else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
-            end
-
-            $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
-                __context__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $(maybe_view(left)),
-                $vn,
-                __varinfo__,
-            )
-            $value
+    @gensym dist left_axes num_dist_dims colons left_axes_to_loop lhs_idx lhs_indexed local_dist rhs_idx
+    tilde_statement = if isliteral(left)
+        # If the LHS is a literal, we need to first index into it to get another literal
+        # value, and then ~ on that to get a tilde_observe call.
+        quote
+            $lhs_indexed = $left[$lhs_idx...]
+            $lhs_indexed ~ $local_dist
+        end
+    else
+        # If the LHS is not a literal, we can index into it in the tilde statement.
+        quote
+            $left[$lhs_idx...] ~ $local_dist
         end
     end
-end
-
-function generate_dot_tilde_assume(left, right, vn)
-    # We don't need to use `Setfield.@set` here since
-    # `.=` is always going to be inplace + needs `left` to
-    # be something that supports `.=`.
-    @gensym value
+    # TODO(mhauru) Add informative error messages if dimensions don't match.
     return quote
-        $value, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_left_vns)(
-                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-            )...,
-            __varinfo__,
-        )
-        $left .= $value
-        $value
+        $dist = DynamicPPL.check_dot_tilde_rhs($right)
+        $left_axes = axes($left)
+        # The two that we support for the RHS, it being a Distribution or an array of
+        # univariate Distributions, need to be treated quite differently. For a Distribution
+        # the LHS needs to be indexed with colons, and the RHS can remain as-is. For an
+        # array we need to loop over the whole LHS iterable, and pick the right values from
+        # the RHS in each loop iteration.
+        if $dist isa Distributions.Distribution
+            $num_dist_dims = length(Distributions.size($dist))
+            $colons = fill(:, $num_dist_dims)
+            $left_axes_to_loop = $left_axes[(begin + $num_dist_dims):end]
+            $local_dist = $dist
+            for idx in Iterators.product($left_axes_to_loop...)
+                $lhs_idx = ($colons..., idx...)
+                $tilde_statement
+            end
+        else
+            $num_dist_dims = length(size($dist))
+            for idx in Iterators.product($left_axes...)
+                $lhs_idx = idx
+                $rhs_idx = idx[1:($num_dist_dims)]
+                $local_dist = $dist[$rhs_idx...]
+                $tilde_statement
+            end
+        end
     end
 end
 
