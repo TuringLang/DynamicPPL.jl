@@ -161,7 +161,16 @@ Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` other
 """
 isliteral(e) = false
 isliteral(::Number) = true
-isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
+function isliteral(e::Expr)
+    # In the special case that the expression is of the form `abc[blahblah]`, we consider it
+    # to be a literal if `abc` is a literal. This is necessary for cases like
+    # [1.0, 2.0][1] ~ Normal()
+    # which are generate when turning `.~` expressions into loops over `~` expressions.
+    if e.head == :ref
+        return isliteral(e.args[1])
+    end
+    return !isempty(e.args) && all(isliteral, e.args)
+end
 
 """
     check_tilde_rhs(x)
@@ -187,18 +196,14 @@ end
 """
     check_dot_tilde_rhs(x)
 
-Check if the right-hand side `x` of a `.~` is a `Distribution` or an array of
-univariate `Distributions`, then return `x`.
+Check if the right-hand side `x` of a `.~` is a `UnivariateDistribution`, then return `x`.
 """
 function check_dot_tilde_rhs(@nospecialize(x))
     return throw(
-        ArgumentError(
-            "the right-hand side of a `.~` must be a `Distribution` or an array of univariate `Distribution`s",
-        ),
+        ArgumentError("the right-hand side of a `.~` must be a `UnivariateDistribution`")
     )
 end
-check_dot_tilde_rhs(x::Distribution) = x
-check_dot_tilde_rhs(x::AbstractArray{<:UnivariateDistribution}) = x
+check_dot_tilde_rhs(x::UnivariateDistribution) = x
 function check_dot_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_dot_tilde_rhs(x.model)
     return Sampleable{typeof(model),AutoPrefix}(model)
@@ -504,46 +509,12 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    @gensym dist left_axes num_dist_dims colons left_axes_to_loop lhs_idx lhs_indexed local_dist rhs_idx
-    tilde_statement = if isliteral(left)
-        # If the LHS is a literal, we need to first index into it to get another literal
-        # value, and then ~ on that to get a tilde_observe call.
-        quote
-            $lhs_indexed = $left[$lhs_idx...]
-            $lhs_indexed ~ $local_dist
-        end
-    else
-        # If the LHS is not a literal, we can index into it in the tilde statement.
-        quote
-            $left[$lhs_idx...] ~ $local_dist
-        end
-    end
-    # TODO(mhauru) Add informative error messages if dimensions don't match.
+    @gensym dist left_axes
     return quote
         $dist = DynamicPPL.check_dot_tilde_rhs($right)
         $left_axes = axes($left)
-        # The two that we support for the RHS, it being a Distribution or an array of
-        # univariate Distributions, need to be treated quite differently. For a Distribution
-        # the LHS needs to be indexed with colons, and the RHS can remain as-is. For an
-        # array we need to loop over the whole LHS iterable, and pick the right values from
-        # the RHS in each loop iteration.
-        if $dist isa Distributions.Distribution
-            $num_dist_dims = length(Distributions.size($dist))
-            $colons = fill(:, $num_dist_dims)
-            $left_axes_to_loop = $left_axes[(begin + $num_dist_dims):end]
-            $local_dist = $dist
-            for idx in Iterators.product($left_axes_to_loop...)
-                $lhs_idx = ($colons..., idx...)
-                $tilde_statement
-            end
-        else
-            $num_dist_dims = length(size($dist))
-            for idx in Iterators.product($left_axes...)
-                $lhs_idx = idx
-                $rhs_idx = idx[1:($num_dist_dims)]
-                $local_dist = $dist[$rhs_idx...]
-                $tilde_statement
-            end
+        for idx in Iterators.product($left_axes...)
+            $left[idx...] ~ $dist
         end
     end
 end
