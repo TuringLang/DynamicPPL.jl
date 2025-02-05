@@ -6,29 +6,29 @@
         varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            f = DynamicPPL.LogDensityFunction(m, varinfo)
-
-            # use ForwardDiff result as reference
-            ad_forwarddiff_f = LogDensityProblemsAD.ADgradient(
-                ADTypes.AutoForwardDiff(; chunksize=0), f
-            )
             # convert to `Vector{Float64}` to avoid `ReverseDiff` initializing the gradients to Integer 0
             # reference: https://github.com/TuringLang/DynamicPPL.jl/pull/571#issuecomment-1924304489
-            θ = convert(Vector{Float64}, varinfo[:])
-            logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ad_forwarddiff_f, θ)
+            params = convert(Vector{Float64}, varinfo[:])
+            # Use ForwardDiff as reference AD backend
+            ref_logp, ref_grad = DynamicPPL.TestUtils.AD.ad_ldp(
+                m, params, ADTypes.AutoForwardDiff()
+            )
 
+            # Test correctness of all other backends
             @testset "$adtype" for adtype in [
                 ADTypes.AutoReverseDiff(; compile=false),
                 ADTypes.AutoReverseDiff(; compile=true),
                 ADTypes.AutoMooncake(; config=nothing),
             ]
+                @info "Testing AD correctness: $(m.f), $(adtype), $(short_varinfo_name(varinfo))"
+
                 # Mooncake can't currently handle something that is going on in
                 # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
                 if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
                     @test_broken 1 == 0
                 else
-                    ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
-                    _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
+                    logp, grad = DynamicPPL.TestUtils.AD.ad_ldp(m, params, adtype)
+                    @test logp ≈ ref_logp
                     @test grad ≈ ref_grad
                 end
             end

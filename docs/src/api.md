@@ -219,6 +219,15 @@ DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
+To test whether automatic differentiation is working correctly, the following methods can be used:
+
+```@docs
+DynamicPPL.TestUtils.AD.ad_ldp
+DynamicPPL.TestUtils.AD.ad_di
+DynamicPPL.TestUtils.AD.make_function
+DynamicPPL.TestUtils.AD.make_params
+```
+
 ## Debugging Utilities
 
 DynamicPPL provides a few methods for checking validity of a model-definition.

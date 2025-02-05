@@ -49,6 +49,11 @@ This release removes the feature of `VarInfo` where it kept track of which varia
     
     This change also affects sampling in Turing.jl.
 
+### New features
+
+The `DynamicPPL.TestUtils.AD` module now contains several functions for testing the correctness of automatic differentiation of log densities.
+Please refer to the DynamicPPL documentation for more details.
+
 ## 0.34.2
 
   - Fixed bugs in ValuesAsInModelContext as well as DebugContext where underlying PrefixContexts were not being applied.
