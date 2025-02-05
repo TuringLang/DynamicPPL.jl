@@ -149,7 +149,6 @@ If `dist` is specified, the value(s) will be massaged into the representation ex
 
 """
     getindex(vi::AbstractVarInfo, ::Colon)
-    getindex(vi::AbstractVarInfo, ::AbstractSampler)
 
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s) as a flattened `Vector`.
@@ -159,7 +158,6 @@ The default implementation is to call [`values_as`](@ref) with `Vector` as the t
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
-Base.getindex(vi::AbstractVarInfo, ::AbstractSampler) = vi[:]
 
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
@@ -341,9 +339,9 @@ julia> values_as(vi, Vector)
 function values_as end
 
 """
-    eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior}
+    eltype(vi::AbstractVarInfo)
 
-Determine the default `eltype` of the values returned by `vi[spl]`.
+Return the `eltype` of the values returned by `vi[:]`.
 
 !!! warning
     This should generally not be called explicitly, as it's only used in
@@ -352,13 +350,13 @@ Determine the default `eltype` of the values returned by `vi[spl]`.
 
     This method is considered legacy, and is likely to be deprecated in the future.
 """
-function Base.eltype(vi::AbstractVarInfo, spl::Union{AbstractSampler,SampleFromPrior})
-    T = Base.promote_op(getindex, typeof(vi), typeof(spl))
+function Base.eltype(vi::AbstractVarInfo)
+    T = Base.promote_op(getindex, typeof(vi), Colon)
     if T === Union{}
-        # In this case `getindex(vi, spl)` errors
+        # In this case `getindex(vi, :)` errors
         # Let us throw a more descriptive error message
         # Ref https://github.com/TuringLang/Turing.jl/issues/2151
-        return eltype(vi[spl])
+        return eltype(vi[:])
     end
     return eltype(T)
 end
@@ -720,25 +718,11 @@ end
 
 # Utilities
 """
-    unflatten(vi::AbstractVarInfo[, context::AbstractContext], x::AbstractVector)
+    unflatten(vi::AbstractVarInfo, x::AbstractVector)
 
 Return a new instance of `vi` with the values of `x` assigned to the variables.
-
-If `context` is provided, `x` is assumed to be realizations only for variables not
-filtered out by `context`.
 """
-function unflatten(varinfo::AbstractVarInfo, context::AbstractContext, θ)
-    if hassampler(context)
-        unflatten(getsampler(context), varinfo, context, θ)
-    else
-        DynamicPPL.unflatten(varinfo, θ)
-    end
-end
-
-# TODO: deprecate this once `sampler` is no longer the main way of filtering out variables.
-function unflatten(sampler::AbstractSampler, varinfo::AbstractVarInfo, ::AbstractContext, θ)
-    return unflatten(varinfo, sampler, θ)
-end
+function unflatten end
 
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)

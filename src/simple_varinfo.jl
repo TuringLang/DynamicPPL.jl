@@ -258,7 +258,6 @@ function typed_simple_varinfo(model::Model)
     return last(evaluate!!(model, varinfo, SamplingContext()))
 end
 
-unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)
     vals = unflatten(svi.values, x)
@@ -340,10 +339,6 @@ Base.haskey(vi::SimpleVarInfo, vn::VarName) = hasvalue(vi.values, vn)
 function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     # For `NamedTuple` we treat the symbol in `vn` as the _property_ to set.
     return Accessors.@set vi.values = set!!(vi.values, vn, val)
-end
-
-function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
-    return unflatten(vi, spl, val)
 end
 
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
@@ -428,11 +423,7 @@ const SimpleOrThreadSafeSimple{T,V,C} = Union{
 }
 
 # Necessary for `matchingvalue` to work properly.
-function Base.eltype(
-    vi::SimpleOrThreadSafeSimple{<:Any,V}, spl::Union{AbstractSampler,SampleFromPrior}
-) where {V}
-    return V
-end
+Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
@@ -562,7 +553,7 @@ istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
-islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
+islinked(vi::SimpleVarInfo) = istrans(vi)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values

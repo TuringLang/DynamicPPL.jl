@@ -942,9 +942,9 @@ function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
 end
 
 """
-    float_type_with_fallback(x)
+    float_type_with_fallback(T::DataType)
 
-Return type corresponding to `float(typeof(x))` if possible; otherwise return `float(Real)`.
+Return `float(T)` if possible; otherwise return `float(Real)`.
 """
 float_type_with_fallback(::Type) = float(Real)
 float_type_with_fallback(::Type{Union{}}) = float(Real)

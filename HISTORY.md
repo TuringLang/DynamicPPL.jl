@@ -10,6 +10,11 @@ This release removes the feature of `VarInfo` where it kept track of which varia
 
   - `link` and `invlink`, and their `!!` versions, no longer accept a sampler as an argument to specify which variables to (inv)link. The `link(varinfo, model)` methods remain in place, and as a new addition one can give a `Tuple` of `VarName`s to (inv)link only select variables, as in `link(varinfo, varname_tuple, model)`.
   - `set_retained_vns_del_by_spl!` has been replaced by `set_retained_vns_del!` which applies to all variables.
+  - `getindex`, `setindex!`, and `setindex!!` no longer accept samplers as arguments
+  - `unflatten` no longer accepts a sampler as an argument
+  - `eltype(::VarInfo)` no longer accepts a sampler as an argument
+  - `keys(::VarInfo)` no longer accepts a sampler as an argument
+  - `VarInfo(::VarInfo, ::Sampler, ::AbstactVector)` no longer accepts the sampler argument.
 
 ### Reverse prefixing order
 

@@ -510,12 +510,6 @@ function getindex_internal(vnv::VarNamedVector, ::Colon)
     end
 end
 
-# TODO(mhauru): Remove this as soon as possible. Only needed because of the old Gibbs
-# sampler.
-function Base.getindex(vnv::VarNamedVector, spl::AbstractSampler)
-    throw(ErrorException("Cannot index a VarNamedVector with a sampler."))
-end
-
 function Base.setindex!(vnv::VarNamedVector, val, vn::VarName)
     if haskey(vnv, vn)
         return update!(vnv, val, vn)
@@ -1075,15 +1069,6 @@ function unflatten(vnv::VarNamedVector, vals::AbstractVector)
         vnv.transforms,
         vnv.is_unconstrained,
     )
-end
-
-# TODO(mhauru) To be removed once the old Gibbs sampler is removed.
-function unflatten(vnv::VarNamedVector, spl::AbstractSampler, vals::AbstractVector)
-    if length(getspace(spl)) > 0
-        msg = "Selecting values in a VarNamedVector with a space is not supported."
-        throw(ArgumentError(msg))
-    end
-    return unflatten(vnv, vals)
 end
 
 function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)

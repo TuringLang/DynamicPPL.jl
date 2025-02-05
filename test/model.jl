@@ -230,8 +230,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         for i in 1:10
             # Sample with large variations.
-            r_raw = randn(length(vi[spl])) * 10
-            vi[spl] = r_raw
+            r_raw = randn(length(vi[:])) * 10
+            DynamicPPL.setall!(vi, r_raw)
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)

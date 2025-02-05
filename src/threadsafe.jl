@@ -79,7 +79,7 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
+islinked(vi::ThreadSafeVarInfo) = islinked(vi.varinfo)
 
 function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
@@ -138,17 +138,6 @@ end
 function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
     return getindex(vi.varinfo, vns, dist)
 end
-getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
-
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
     return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vn)
@@ -184,12 +173,8 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
 end
 
-# Transformations.
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
-end
-function settrans!!(vi::ThreadSafeVarInfo, spl::AbstractSampler, dist::Distribution)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, spl, dist)
 end
 
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
@@ -199,9 +184,6 @@ getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.var
 
 function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
-end
-function unflatten(vi::ThreadSafeVarInfo, spl::AbstractSampler, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten(vi.varinfo, spl, x)
 end
 
 function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
