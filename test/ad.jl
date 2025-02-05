@@ -1,5 +1,12 @@
-@testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
+TESTED_ADTYPES = [
+    ADTypes.AutoReverseDiff(; compile=false),
+    ADTypes.AutoReverseDiff(; compile=true),
+    ADTypes.AutoMooncake(; config=nothing),
+]
+
+@testset "AD correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @info "Testing AD for $(m.f)"
         f = DynamicPPL.LogDensityFunction(m)
         rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
         vns = DynamicPPL.TestUtils.varnames(m)
@@ -14,23 +21,10 @@
                 m, params, ADTypes.AutoForwardDiff()
             )
 
-            # Test correctness of all other backends
-            @testset "$adtype" for adtype in [
-                ADTypes.AutoReverseDiff(; compile=false),
-                ADTypes.AutoReverseDiff(; compile=true),
-                ADTypes.AutoMooncake(; config=nothing),
-            ]
-                @info "Testing AD correctness: $(m.f), $(adtype), $(short_varinfo_name(varinfo))"
-
-                # Mooncake can't currently handle something that is going on in
-                # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
-                if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
-                    @test_broken 1 == 0
-                else
-                    logp, grad = DynamicPPL.TestUtils.AD.ad_ldp(m, params, adtype)
-                    @test logp ≈ ref_logp
-                    @test grad ≈ ref_grad
-                end
+            @testset "$adtype" for adtype in TESTED_ADTYPES
+                logp, grad = DynamicPPL.TestUtils.AD.ad_ldp(m, params, adtype)
+                @test logp ≈ ref_logp
+                @test grad ≈ ref_grad
             end
         end
     end
