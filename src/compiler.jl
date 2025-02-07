@@ -164,8 +164,8 @@ isliteral(::Number) = true
 function isliteral(e::Expr)
     # In the special case that the expression is of the form `abc[blahblah]`, we consider it
     # to be a literal if `abc` is a literal. This is necessary for cases like
-    # [1.0, 2.0][1] ~ Normal()
-    # which are generate when turning `.~` expressions into loops over `~` expressions.
+    # [1.0, 2.0][idx...] ~ Normal()
+    # which are generated when turning `.~` expressions into loops over `~` expressions.
     if e.head == :ref
         return isliteral(e.args[1])
     end
@@ -509,12 +509,12 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    @gensym dist left_axes
+    @gensym dist left_axes idx
     return quote
         $dist = DynamicPPL.check_dot_tilde_rhs($right)
         $left_axes = axes($left)
-        for idx in Iterators.product($left_axes...)
-            $left[idx...] ~ $dist
+        for $idx in Iterators.product($left_axes...)
+            $left[$idx...] ~ $dist
         end
     end
 end
