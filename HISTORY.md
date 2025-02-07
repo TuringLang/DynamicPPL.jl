@@ -4,6 +4,63 @@
 
 **Breaking**
 
+### `.~` right hand side must be a univariate distribution
+
+Previously we allowed statements like
+
+```julia
+x .~ [Normal(), Gamma()]
+```
+
+where the right hand side of a `.~` was an array of distributions, and ones like
+
+```julia
+x .~ MvNormal(fill(0.0, 2), I)
+```
+
+where the right hand was a multivariate distribution.
+
+These are no longer allowed. The only things allowed on the right hand side of a `.~` statement are univariate distributions, such as
+
+```julia
+x = Array{Float64,3}(undef, 2, 3, 4)
+x .~ Normal()
+```
+
+The reasons for this are internal code simplification and the fact that broadcasting where both sides are multidimensional but of different dimensions is typically confusing to read.
+
+Cases where the dimension of the multivariate distribution or the array of distribution is the same as the dimension of the left hand side variable can be replaced with `product_distribution`. For example, instead of
+
+```julia
+x .~ [Normal(), Gamma()]
+```
+
+do
+
+```julia
+x ~ product_distribution([Normal(), Gamma()])
+```
+
+This is often more performant as well. Note that using a product distribution will change how a `VarInfo` views the variable: Instead of viewing each `x[i]` as a distinct univariate variable like with `.~`, with `x ~ product_distribution(...)` `x` will be viewed as a single multivariate variable. This was already the case before this release. If, for some reason, you _do_ want each `x[i]` independently in your `VarInfo`, you can always turn the `.~` statement into a loop.
+
+Cases where the right hand side is of a different dimension than the left hand side, and neither is a scalar, must be replaced with a loop. For example,
+
+```julia
+x = Array{Float64,3}(undef, 2, 3, 4)
+x .~ MvNormal(fill(0, 2), I)
+```
+
+should be replaced with something like
+
+```julia
+x = Array{Float64,3}(2, 3, 4)
+for i in 1:3, j in 1:4
+    x[:, i, j] ~ MvNormal(fill(0, 2), I)
+end
+```
+
+This release also completely rewrites the internal implementation of `.~`, where from now on all `.~` statements are turned into loops over `~` statements at macro time. However, the only breaking aspect of this change is the above change to what's allowed on the right hand side.
+
 ### Remove indexing by samplers
 
 This release removes the feature of `VarInfo` where it kept track of which variable was associated with which sampler. This means removing all user-facing methods where `VarInfo`s where being indexed with samplers. In particular,
