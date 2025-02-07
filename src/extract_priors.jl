@@ -39,11 +39,6 @@ function DynamicPPL.tilde_assume(context::PriorExtractorContext, right, vn, vi)
     return DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
 end
 
-function DynamicPPL.dot_tilde_assume(context::PriorExtractorContext, right, left, vn, vi)
-    setprior!(context, vn, right)
-    return DynamicPPL.dot_tilde_assume(childcontext(context), right, left, vn, vi)
-end
-
 """
     extract_priors([rng::Random.AbstractRNG, ]model::Model)
 
