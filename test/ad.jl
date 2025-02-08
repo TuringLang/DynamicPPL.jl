@@ -44,7 +44,7 @@ TESTED_ADTYPES = [
             x = Vector{T}(undef, TT)
             x[1] = α
             for t in 2:TT
-                x[t] = x[t-1] + η[t-1] * τ
+                x[t] = x[t - 1] + η[t - 1] * τ
             end
             # measurement model
             y ~ MvNormal(x, σ^2 * I)
