@@ -21,9 +21,6 @@ jobs:
         with:
           ref: gh-pages
 
-      - name: Install Julia
-        uses: julia-actions/setup-julia@v2
-
       - name: Insert navbar
         uses: TuringLang/actions/DocsNav@main
         with:
