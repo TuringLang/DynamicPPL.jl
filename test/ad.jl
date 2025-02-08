@@ -6,7 +6,6 @@ TESTED_ADTYPES = [
 
 @testset "AD correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-        @info "Testing AD for $(m.f)"
         f = DynamicPPL.LogDensityFunction(m)
         rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
         vns = DynamicPPL.TestUtils.varnames(m)
@@ -18,11 +17,12 @@ TESTED_ADTYPES = [
             params = convert(Vector{Float64}, varinfo[:])
             # Use ForwardDiff as reference AD backend
             ref_logp, ref_grad = DynamicPPL.TestUtils.AD.ad_ldp(
-                m, params, ADTypes.AutoForwardDiff()
+                m, params, ADTypes.AutoForwardDiff(), varinfo
             )
 
             @testset "$adtype" for adtype in TESTED_ADTYPES
-                logp, grad = DynamicPPL.TestUtils.AD.ad_ldp(m, params, adtype)
+                @info "Testing AD for $(m.f) - $(short_varinfo_name(varinfo)) - $adtype"
+                logp, grad = DynamicPPL.TestUtils.AD.ad_ldp(m, params, adtype, varinfo)
                 @test logp ≈ ref_logp
                 @test grad ≈ ref_grad
             end
@@ -44,7 +44,7 @@ TESTED_ADTYPES = [
             x = Vector{T}(undef, TT)
             x[1] = α
             for t in 2:TT
-                x[t] = x[t - 1] + η[t - 1] * τ
+                x[t] = x[t-1] + η[t-1] * τ
             end
             # measurement model
             y ~ MvNormal(x, σ^2 * I)
