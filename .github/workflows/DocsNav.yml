@@ -25,10 +25,9 @@ jobs:
         uses: julia-actions/setup-julia@v2
 
       - name: Insert navbar
-        uses: TuringLang/actions/DocsNav@v3
+        uses: TuringLang/actions/DocsNav@main
         with:
           doc-path: '.'
-          navbar-url: ${{ github.action_path }}/scripts/TuringNavbar.html
 
       - name: Commit and push changes
         run: |

@@ -25,4 +25,4 @@ jobs:
 
     steps:
       - name: Build and deploy Documenter.jl docs
-        uses: TuringLang/actions/DocsDocumenter@v3
+        uses: TuringLang/actions/DocsDocumenter@main
