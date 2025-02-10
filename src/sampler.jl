@@ -49,6 +49,9 @@ struct Sampler{T} <: AbstractSampler
     alg::T
 end
 
+# Extract the AD type from the underlying algorithm
+getadtype(s::Sampler) = getadtype(s.alg)
+
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
