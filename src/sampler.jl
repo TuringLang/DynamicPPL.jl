@@ -54,6 +54,9 @@ Sampler(alg) = Sampler(alg, Selector())
 Sampler(alg, model::Model) = Sampler(alg, model, Selector())
 Sampler(alg, model::Model, s::Selector) = Sampler(alg, s)
 
+# Extract the AD type from the underlying algorithm
+getadtype(s::Sampler) = getadtype(s.alg)
+
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,

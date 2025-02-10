@@ -9,7 +9,7 @@ using Distributions
 using DistributionsAD
 using Documenter
 using ForwardDiff
-using LogDensityProblems, LogDensityProblemsAD
+using LogDensityProblems
 using MacroTools
 using MCMCChains
 using Mooncake: Mooncake

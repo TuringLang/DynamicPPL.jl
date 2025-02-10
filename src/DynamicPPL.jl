@@ -14,7 +14,6 @@ using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
-using LogDensityProblemsAD: LogDensityProblemsAD
 
 using LinearAlgebra: LinearAlgebra, Cholesky
 
