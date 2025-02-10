@@ -1,4 +1,4 @@
-using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, ReverseDiff
+using Test, DynamicPPL, ADTypes, LogDensityProblems, ReverseDiff
 
 @testset "`getmodel` and `setmodel`" begin
     @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -6,17 +6,6 @@ using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, Rever
         ℓ = DynamicPPL.LogDensityFunction(model)
         @test DynamicPPL.getmodel(ℓ) == model
         @test DynamicPPL.setmodel(ℓ, model).model == model
-
-        # ReverseDiff related
-        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(false))
-        @test DynamicPPL.getmodel(∇ℓ) == model
-        @test DynamicPPL.getmodel(DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())) ==
-            model
-        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(true))
-        new_∇ℓ = DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())
-        @test DynamicPPL.getmodel(new_∇ℓ) == model
-        # HACK(sunxd): rely on internal implementation detail, i.e., naming of `compiledtape`
-        @test new_∇ℓ.compiledtape != ∇ℓ.compiledtape
     end
 end
 
