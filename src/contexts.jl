@@ -184,6 +184,7 @@ at which point it will return the sampler of that context.
 getsampler(context::SamplingContext) = context.sampler
 getsampler(context::AbstractContext) = getsampler(NodeTrait(context), context)
 getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(context))
+getsampler(::IsLeaf, ::AbstractContext) = error("No sampler found in context")
 
 """
     struct DefaultContext <: AbstractContext end
