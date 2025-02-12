@@ -82,7 +82,7 @@ This release removes the feature of `VarInfo` where it kept track of which varia
   - `unflatten` no longer accepts a sampler as an argument
   - `eltype(::VarInfo)` no longer accepts a sampler as an argument
   - `keys(::VarInfo)` no longer accepts a sampler as an argument
-  - `VarInfo(::VarInfo, ::Sampler, ::AbstactVector)` no longer accepts the sampler argument.
+  - `VarInfo(::VarInfo, ::Sampler, ::AbstractVector)` no longer accepts the sampler argument.
 
 ### Reverse prefixing order
 

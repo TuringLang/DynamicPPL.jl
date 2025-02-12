@@ -203,7 +203,7 @@ function check_dot_tilde_rhs(@nospecialize(x))
         ArgumentError("the right-hand side of a `.~` must be a `UnivariateDistribution`")
     )
 end
-function check_dot_tilde_rhs(x::AbstactArray{<:Distribution})
+function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
     msg = """
         As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
         Please use `product_distribution` instead, or write a loop if necessary. \
