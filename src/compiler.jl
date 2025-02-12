@@ -203,6 +203,15 @@ function check_dot_tilde_rhs(@nospecialize(x))
         ArgumentError("the right-hand side of a `.~` must be a `UnivariateDistribution`")
     )
 end
+function check_dot_tilde_rhs(x::AbstactArray{<:Distribution})
+    msg = """
+        As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
+        Please use `product_distribution` instead, or write a loop if necessary. \
+        See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
+        details.\
+    """
+    return throw(ArgumentError(msg))
+end
 check_dot_tilde_rhs(x::UnivariateDistribution) = x
 function check_dot_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_dot_tilde_rhs(x.model)
