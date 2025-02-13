@@ -1,21 +1,20 @@
 @testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-        f = DynamicPPL.LogDensityFunction(m)
         rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
         vns = DynamicPPL.TestUtils.varnames(m)
         varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             f = DynamicPPL.LogDensityFunction(m, varinfo)
-
-            # use ForwardDiff result as reference
-            ad_forwarddiff_f = LogDensityProblemsAD.ADgradient(
-                ADTypes.AutoForwardDiff(; chunksize=0), f
-            )
             # convert to `Vector{Float64}` to avoid `ReverseDiff` initializing the gradients to Integer 0
             # reference: https://github.com/TuringLang/DynamicPPL.jl/pull/571#issuecomment-1924304489
-            θ = convert(Vector{Float64}, varinfo[:])
-            logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ad_forwarddiff_f, θ)
+            x = convert(Vector{Float64}, varinfo[:])
+            # Calculate reference logp + gradient of logp using ForwardDiff
+            default_adtype = ADTypes.AutoForwardDiff()
+            ldf_with_grad = DynamicPPL.LogDensityFunctionWithGrad(f, default_adtype)
+            ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(
+                ldf_with_grad, x
+            )
 
             @testset "$adtype" for adtype in [
                 ADTypes.AutoReverseDiff(; compile=false),
@@ -27,9 +26,12 @@
                 if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
                     @test_broken 1 == 0
                 else
-                    ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
-                    _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
+                    ldf_with_grad = DynamicPPL.LogDensityFunctionWithGrad(f, adtype)
+                    logp, grad = LogDensityProblems.logdensity_and_gradient(
+                        ldf_with_grad, x
+                    )
                     @test grad ≈ ref_grad
+                    @test logp ≈ ref_logp
                 end
             end
         end
@@ -64,13 +66,17 @@
         # of implementation
         struct MyEmptyAlg end
         DynamicPPL.getspace(::DynamicPPL.Sampler{MyEmptyAlg}) = ()
-        DynamicPPL.assume(rng, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi) =
-            DynamicPPL.assume(dist, vn, vi)
+        DynamicPPL.assume(
+            ::Random.AbstractRNG, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi
+        ) = DynamicPPL.assume(dist, vn, vi)
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
         vi = VarInfo(model)
         ldf = DynamicPPL.LogDensityFunction(vi, model, SamplingContext(spl))
-        @test LogDensityProblemsAD.ADgradient(AutoReverseDiff(; compile=true), ldf) isa Any
+        ldf_grad = DynamicPPL.LogDensityFunctionWithGrad(
+            ldf, AutoReverseDiff(; compile=true)
+        )
+        @test LogDensityProblems.logdensity_and_gradient(ldf_grad, vi[:]) isa Any
     end
 end
