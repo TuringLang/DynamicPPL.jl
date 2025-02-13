@@ -28,7 +28,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [weakdeps]
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
-ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
@@ -36,7 +35,6 @@ Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 [extensions]
 DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
-DynamicPPLForwardDiffExt = ["ForwardDiff"]
 DynamicPPLJETExt = ["JET"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMooncakeExt = ["Mooncake"]
@@ -55,7 +53,6 @@ DifferentiationInterface = "0.6.39"
 Distributions = "0.25"
 DocStringExtensions = "0.9"
 EnzymeCore = "0.6 - 0.8"
-ForwardDiff = "0.10"
 JET = "0.9"
 KernelAbstractions = "0.9.33"
 LinearAlgebra = "1.6"
