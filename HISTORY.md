@@ -49,6 +49,15 @@ This release removes the feature of `VarInfo` where it kept track of which varia
     
     This change also affects sampling in Turing.jl.
 
+**Other changes**
+
+LogDensityProblemsAD is now removed as a dependency.
+Instead of constructing a `LogDensityProblemAD.ADgradient` object, we now directly use `DifferentiationInterface` to calculate the gradient of the log density with respect to model parameters.
+
+In practice, this means that if you want to calculate the gradient for a model, you can do:
+
+TODO(penelopeysm): Finish this
+
 ## 0.34.2
 
   - Fixed bugs in ValuesAsInModelContext as well as DebugContext where underlying PrefixContexts were not being applied.

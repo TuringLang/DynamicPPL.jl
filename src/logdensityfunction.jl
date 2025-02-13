@@ -4,6 +4,10 @@ import DifferentiationInterface as DI
     LogDensityFunction
 
 A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunction` implements the LogDensityProblems.jl interface,
+but only to 0th-order, i.e. it is only possible to calculate the log density,
+and not its gradient. If you need to calculate the gradient as well, you have
+to construct a [`DynamicPPL.LogDensityFunctionWithGrad`](@ref) object.
 
 # Fields
 $(FIELDS)
@@ -55,16 +59,6 @@ struct LogDensityFunction{V,M,C}
     context::C
 end
 
-# TODO: Deprecate.
-function LogDensityFunction(
-    varinfo::AbstractVarInfo,
-    model::Model,
-    sampler::AbstractSampler,
-    context::AbstractContext,
-)
-    return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
-end
-
 function LogDensityFunction(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
@@ -94,11 +88,6 @@ function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
     return Accessors.@set f.model = model
 end
 
-# HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
-# we need to define these annoying methods to ensure that we stay compatible with everything.
-getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
-hassampler(f::LogDensityFunction) = hassampler(getcontext(f))
-
 """
     getparams(f::LogDensityFunction)
 
@@ -106,11 +95,14 @@ Return the parameters of the wrapped varinfo as a vector.
 """
 getparams(f::LogDensityFunction) = f.varinfo[:]
 
-# LogDensityProblems interface
-function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
+# LogDensityProblems interface: logp (0th order)
+function LogDensityProblems.logdensity(f::LogDensityFunction, x::AbstractVector)
     context = getcontext(f)
-    vi_new = unflatten(f.varinfo, θ)
+    vi_new = unflatten(f.varinfo, x)
     return getlogp(last(evaluate!!(f.model, vi_new, context)))
+end
+function _flipped_logdensity(x::AbstractVector, f::LogDensityFunction)
+    return LogDensityProblems.logdensity(f, x)
 end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
     return LogDensityProblems.LogDensityOrder{0}()
@@ -118,24 +110,54 @@ end
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
-_flipped_logdensity(θ, f) = LogDensityProblems.logdensity(f, θ)
+# LogDensityProblems interface: gradient (1st order)
+"""
+    LogDensityFunctionWithGrad(ldf::DynamicPPL.LogDensityFunction, adtype::ADTypes.AbstractADType)
 
+A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunctionWithGrad` implements the LogDensityProblems.jl
+interface to 1st-order, meaning that you can both calculate the log density
+using
+
+    LogDensityProblems.logdensity(f, x)
+
+and its gradient using
+
+    LogDensityProblems.logdensity_and_gradient(f, x)
+
+where `f` is a `LogDensityFunctionWithGrad` object and `x` is a vector of parameters.
+
+# Fields
+$(FIELDS)
+"""
+struct LogDensityFunctionWithGrad{V,M,C,TAD<:ADTypes.AbstractADType}
+    ldf::LogDensityFunction{V,M,C}
+    adtype::TAD
+    prep::DI.GradientPrep
+
+    function LogDensityFunctionWithGrad(
+        ldf::LogDensityFunction{V,M,C}, adtype::TAD
+    ) where {V,M,C,TAD}
+        # Get a set of dummy params to use for prep and concretise type
+        x = map(identity, getparams(ldf))
+        prep = DI.prepare_gradient(_flipped_logdensity, adtype, x, DI.Constant(ldf))
+        # Store the prep with the struct
+        return new{V,M,C,TAD}(ldf, adtype, prep)
+    end
+end
+function LogDensityProblems.logdensity(f::LogDensityFunctionWithGrad)
+    return LogDensityProblems.logdensity(f.ldf)
+end
+function LogDensityProblems.capabilities(::Type{<:LogDensityFunctionWithGrad})
+    return LogDensityProblems.LogDensityOrder{1}()
+end
 # By default, the AD backend to use is inferred from the context, which would
 # typically be a SamplingContext which contains a sampler.
 function LogDensityProblems.logdensity_and_gradient(
-    f::LogDensityFunction, θ::AbstractVector
+    f::LogDensityFunctionWithGrad, x::AbstractVector
 )
-    adtype = getadtype(getsampler(getcontext(f)))
-    return LogDensityProblems.logdensity_and_gradient(f, θ, adtype)
-end
-
-# Extra method allowing one to manually specify the AD backend to use, thus
-# overriding the default AD backend inferred from the sampler.
-function LogDensityProblems.logdensity_and_gradient(
-    f::LogDensityFunction, θ::AbstractVector, adtype::ADTypes.AbstractADType
-)
-    # Ensure we concretise the elements of the params.
-    θ = map(identity, θ) # TODO: Is this needed?
-    prep = DI.prepare_gradient(_flipped_logdensity, adtype, θ, DI.Constant(f))
-    return DI.value_and_gradient(_flipped_logdensity, prep, adtype, θ, DI.Constant(f))
+    x = map(identity, x)  # Concretise type
+    return DI.value_and_gradient(
+        _flipped_logdensity, f.prep, f.adtype, x, DI.Constant(f.ldf)
+    )
 end
