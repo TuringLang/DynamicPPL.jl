@@ -54,10 +54,11 @@ logjoint
 
 ### LogDensityProblems.jl interface
 
-The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`:
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction` or `DynamicPPL.LogDensityFunctionWithGrad`.
 
 ```@docs
 DynamicPPL.LogDensityFunction
+DynamicPPL.LogDensityFunctionWithGrad
 ```
 
 ## Condition and decondition
