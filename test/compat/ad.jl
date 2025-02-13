@@ -26,32 +26,4 @@
 
         test_model_ad(wishart_ad(), logp_wishart_ad)
     end
-
-    # https://github.com/TuringLang/Turing.jl/issues/1595
-    @testset "dot_observe" begin
-        function f_dot_observe(x)
-            logp, _ = DynamicPPL.dot_observe(
-                SampleFromPrior(), [Normal(), Normal(-1.0, 2.0)], x, VarInfo()
-            )
-            return logp
-        end
-        function f_dot_observe_manual(x)
-            return logpdf(Normal(), x[1]) + logpdf(Normal(-1.0, 2.0), x[2])
-        end
-
-        # Manual computation of the gradient.
-        x = randn(2)
-        val = f_dot_observe_manual(x)
-        grad = ForwardDiff.gradient(f_dot_observe_manual, x)
-
-        @test ForwardDiff.gradient(f_dot_observe, x) ≈ grad
-
-        y, back = Tracker.forward(f_dot_observe, x)
-        @test Tracker.data(y) ≈ val
-        @test Tracker.data(back(1)[1]) ≈ grad
-
-        y, back = Zygote.pullback(f_dot_observe, x)
-        @test y ≈ val
-        @test back(1)[1] ≈ grad
-    end
 end

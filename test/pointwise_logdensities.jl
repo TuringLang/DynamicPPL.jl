@@ -48,8 +48,8 @@ end
 @testset "pointwise_logdensities chain" begin
     # We'll just test one, since `pointwise_logdensities(::Model, ::AbstractVarInfo)` is tested extensively,
     # and this is what is used to implement `pointwise_logdensities(::Model, ::Chains)`. This test suite is just
-    # to ensure that we don't accidentally break the the version on `Chains`.
-    model = DynamicPPL.TestUtils.demo_dot_assume_dot_observe()
+    # to ensure that we don't accidentally break the version on `Chains`.
+    model = DynamicPPL.TestUtils.demo_assume_index_observe()
     # FIXME(torfjelde): Make use of `varname_and_value_leaves` once we've introduced
     # an impl of this for containers.
     # NOTE(torfjelde): This only returns the varnames of the _random_ variables, i.e. excl. observed.

@@ -288,6 +288,33 @@ module Issue537 end
         x = vdemo()()
         @test all((isassigned(x, i) for i in eachindex(x)))
     end
+
+    # A couple of uses of .~ that are no longer valid as of v0.35.
+    @testset "old .~ syntax" begin
+        @model function multivariate_dot_tilde()
+            x = Vector{Float64}(undef, 2)
+            x .~ MvNormal(zeros(2), I)
+            return x
+        end
+        expected_error = ArgumentError(
+            "the right-hand side of a `.~` must be a `UnivariateDistribution`"
+        )
+        @test_throws expected_error (multivariate_dot_tilde()(); true)
+
+        @model function vector_dot_tilde()
+            x = Vector{Float64}(undef, 2)
+            x .~ [Normal(), Normal()]
+            return x
+        end
+        expected_error = ArgumentError("""
+            As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
+            Please use `product_distribution` instead, or write a loop if necessary. \
+            See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
+            details.\
+            """)
+        @test_throws expected_error (vector_dot_tilde()(); true)
+    end
+
     @testset "nested model" begin
         function makemodel(p)
             @model function testmodel(x)
