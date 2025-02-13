@@ -4,6 +4,10 @@ import DifferentiationInterface as DI
     LogDensityFunction
 
 A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunction` implements the LogDensityProblems.jl interface,
+but only to 0th-order, i.e. it is only possible to calculate the log density,
+and not its gradient. If you need to calculate the gradient as well, you have
+to construct a [`DynamicPPL.LogDensityFunctionWithGrad`](@ref) object.
 
 # Fields
 $(FIELDS)
@@ -55,16 +59,6 @@ struct LogDensityFunction{V,M,C}
     context::C
 end
 
-# TODO: Deprecate.
-function LogDensityFunction(
-    varinfo::AbstractVarInfo,
-    model::Model,
-    sampler::AbstractSampler,
-    context::AbstractContext,
-)
-    return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
-end
-
 function LogDensityFunction(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
@@ -94,11 +88,6 @@ function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
     return Accessors.@set f.model = model
 end
 
-# HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
-# we need to define these annoying methods to ensure that we stay compatible with everything.
-getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
-hassampler(f::LogDensityFunction) = hassampler(getcontext(f))
-
 """
     getparams(f::LogDensityFunction)
 
@@ -122,7 +111,26 @@ end
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
 # LogDensityProblems interface: gradient (1st order)
-struct LogDensityFunctionWithGrad{V,M,C,TAD}
+"""
+    LogDensityFunctionWithGrad(ldf::DynamicPPL.LogDensityFunction, adtype::ADTypes.AbstractADType)
+
+A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunctionWithGrad` implements the LogDensityProblems.jl
+interface to 1st-order, meaning that you can both calculate the log density
+using
+
+    LogDensityProblems.logdensity(f, x)
+
+and its gradient using
+
+    LogDensityProblems.logdensity_and_gradient(f, x)
+
+where `f` is a `LogDensityFunctionWithGrad` object and `x` is a vector of parameters.
+
+# Fields
+$(FIELDS)
+"""
+struct LogDensityFunctionWithGrad{V,M,C,TAD<:ADTypes.AbstractADType}
     ldf::LogDensityFunction{V,M,C}
     adtype::TAD
     prep::DI.GradientPrep

@@ -27,7 +27,9 @@
                     @test_broken 1 == 0
                 else
                     ldf_with_grad = DynamicPPL.LogDensityFunctionWithGrad(f, adtype)
-                    logp, grad = LogDensityProblems.logdensity_and_gradient(f, x)
+                    logp, grad = LogDensityProblems.logdensity_and_gradient(
+                        ldf_with_grad, x
+                    )
                     @test grad ≈ ref_grad
                     @test logp ≈ ref_logp
                 end
