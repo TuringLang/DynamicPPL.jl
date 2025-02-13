@@ -18,8 +18,6 @@ Sampling algorithm that samples unobserved random variables from their prior dis
 """
 struct SampleFromPrior <: AbstractSampler end
 
-getspace(::Union{SampleFromPrior,SampleFromUniform}) = ()
-
 # Initializations.
 init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
 function init(rng, dist, ::SampleFromUniform)

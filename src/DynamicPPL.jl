@@ -149,9 +149,6 @@ macro prob_str(str)
     ))
 end
 
-# Used here and overloaded in Turing
-function getspace end
-
 """
     AbstractVarInfo
 

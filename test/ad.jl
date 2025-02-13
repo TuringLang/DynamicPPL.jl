@@ -41,7 +41,7 @@
         σ = 0.3
         y = @. rand(sin(t) + Normal(0, σ))
         @model function state_space(y, TT, ::Type{T}=Float64) where {T}
-            # Priors 
+            # Priors
             α ~ Normal(y[1], 0.001)
             τ ~ Exponential(1)
             η ~ filldist(Normal(0, 1), TT - 1)
@@ -63,7 +63,6 @@
         # overload assume so that model evaluation doesn't fail due to a lack
         # of implementation
         struct MyEmptyAlg end
-        DynamicPPL.getspace(::DynamicPPL.Sampler{MyEmptyAlg}) = ()
         DynamicPPL.assume(rng, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi) =
             DynamicPPL.assume(dist, vn, vi)
 
