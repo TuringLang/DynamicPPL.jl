@@ -1023,15 +1023,6 @@ julia> ForwardDiff.gradient(f, [1.0])
 """
 replace_raw_storage(vnv::VarNamedVector, vals) = Accessors.@set vnv.vals = vals
 
-# TODO(mhauru) The space argument is used by the old Gibbs sampler. To be removed.
-function replace_raw_storage(vnv::VarNamedVector, ::Val{space}, vals) where {space}
-    if length(space) > 0
-        msg = "Selecting values in a VarNamedVector with a space is not supported."
-        throw(ArgumentError(msg))
-    end
-    return replace_raw_storage(vnv, vals)
-end
-
 vector_length(vnv::VarNamedVector) = length(vnv.vals) - num_inactive(vnv)
 
 """
