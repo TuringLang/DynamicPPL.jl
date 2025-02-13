@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Design of VarInfo · DynamicPPL</title><meta name="title" content="Design of VarInfo · DynamicPPL"/><meta property="og:title" content="Design of VarInfo · DynamicPPL"/><meta property="twitter:title" content="Design of VarInfo · DynamicPPL"/><meta name="description" content="Documentation for DynamicPPL."/><meta property="og:description" content="Documentation for DynamicPPL."/><meta property="twitter:description" content="Documentation for DynamicPPL."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body>
+<!-- NAVBAR START -->
+<style>
+    html {
+        scroll-padding-top: calc(55px + 1rem);
+    }
+
+    /* Documenter css tweaks */
+    .docs-sidebar {
+        margin-top: 3.75rem;
+    }
+
+    #documenter {
+        margin-top: 3.75rem;
+    }
+
+    .docs-version-selector {
+        margin-bottom: 60px !important;
+    }
+
+    @media screen and (max-width: 1056px) {
+        .docs-version-selector {
+            margin-bottom: 60px !important;
+        }
+
+        .docs-sidebar {
+            margin-top: 0 !important;
+        }
+    }
+    /* Documenter css tweaks ends here */
+
+    :root {
+        --heading-color: white;
+        --item-color: rgb(165, 165, 165);
+        --primary-bg: #073c44;
+        --hover-color: #8faad2;
+    }
+
+    .ext-navigation {
+        position: fixed;
+        height: 3.75rem;
+        top: 0;
+        width: 100%;
+        background-color: var(--primary-bg);
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        padding: 0 1.0625rem;
+        transition: transform 0.3s;
+    }
+
+    .ext-navbar-logo {
+        margin-left: 0.625rem;
+    }
+
+    .ext-nav-links {
+        display: flex;
+        align-items: center;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        flex-grow: 1;
+    }
+
+    .ext-nav-links li {
+        margin-left: 1rem !important;
+    }
+
+    .ext-nav-link {
+        color: white !important;
+        text-decoration: none;
+        font-size: 1.0625rem !important;
+        transition: color 0.2s ease;
+        cursor: pointer;
+    }
+
+    .ext-nav-link:hover,
+    .ext-navbar-item-single a:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-navbar-item-single a {
+        color: #fff !important;
+    }
+
+    .ext-menu-toggle {
+        display: none;
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+    }
+
+    .ext-dropdown {
+        display: none;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        grid-template-rows: auto auto auto;
+        padding: 1.875rem;
+        position: absolute;
+        width: 100%;
+        left: 0;
+        background-color: #083c44;
+        line-height: 1.875rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        transform: translateY(-0.625rem);
+    }
+
+    #library-handler::after {
+        content: "▼";
+        font-size: 0.6875rem;
+        margin-left: 0.3125rem;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #library-handler.open::after {
+        content: "▲";
+    }
+
+    .ext-dropdown.show {
+        display: grid;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .ext-dropdown ul {
+        height: auto;
+        width: 12.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .ext-dropdown ul li {
+        text-align: left;
+    }
+
+    .navbar-sub-item {
+        list-style: none;
+    }
+
+    .ext-dropdown ul a li {
+        color: var(--item-color);
+        width: 15.625rem;
+        border-radius: 3px;
+        padding: 0.125rem 0.625rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .ext-dropdown ul a li:hover {
+        background-color: rgba(107, 107, 107, 0.5);
+    }
+
+    .ext-dropdown-item-heading {
+        color: var(--heading-color);
+        text-align: center;
+    }
+
+    /* Responsive styling */
+    @media (max-width: 966px) {
+        .ext-dropdown {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .ext-nav-links {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            background-color: var(--primary-bg);
+            position: absolute;
+            top: 3.75rem;
+            left: 0;
+            padding: 0.625rem 0;
+            height: auto;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgb(141, 141, 141) grey;
+        }
+
+        .ext-nav-links.show {
+            display: flex;
+        }
+
+        .ext-nav-links li {
+            margin: 0.625rem 0;
+            text-align: center;
+        }
+
+        .ext-menu-toggle {
+            display: block;
+            margin-left: auto;
+        }
+
+        .ext-navigation.hide {
+            transform: translateY(-3.75rem);
+        }
+
+        .ext-dropdown {
+            place-content: center;
+            text-align: center;
+            grid-template-columns: 1fr;
+            line-height: 1.25rem;
+            padding: 0.625rem;
+        }
+
+        .ext-dropdown ul {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 0.3125rem;
+        }
+
+        .ext-dropdown ul li {
+            text-align: center;
+        }
+
+        .ext-dropdown ul a li {
+            width: 100%;
+        }
+
+        .ext-dropdown ul a li:hover {
+            background-color: var(--primary-bg);
+            color: #fff;
+        }
+
+        /* Modified scroll bar */
+        .ext-nav-links::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-track {
+            box-shadow: inset 0 0 5px grey;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb {
+            background: rgb(141, 141, 141);
+            border-radius: 3px;
+        }
+
+        .ext-nav-links::-webkit-scrollbar-thumb:hover {
+            background: #9b9b9b;
+        }
+    }
+</style>
+<nav class="ext-navigation">
+    <a href="https://turinglang.org/">
+        <img src="https://turinglang.org/assets/images/turing-logo.svg" alt="Turing Logo" class="ext-navbar-logo" height="24px" width="40px">
+    </a>
+    <a style="color: white !important; font-size: 21.25px !important; margin-left: 10px;" href="https://turinglang.org/">Turing.jl</a>
+    <ul class="ext-nav-links">
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/docs-00-getting-started/">Get Started</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/00-introduction/">Tutorials</a>
+        </li>
+        <li>
+            <p class="ext-nav-link" id="library-handler">Libraries</p>
+            <div class="ext-dropdown" id="ext-dropdown-items">
+                <ul>
+                    <li class="ext-dropdown-item-heading">Modelling Languages</li>
+                    <a href="https://turinglang.org/DynamicPPL.jl/">
+                        <li>DynamicPPL</li>
+                    </a>
+                    <a href="https://turinglang.org/JuliaBUGS.jl/">
+                        <li>JuliaBUGS</li>
+                    </a>
+                    <a href="https://turinglang.org/TuringGLM.jl/">
+                        <li>TuringGLM</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">MCMC</li>
+                    <a href="https://turinglang.org/AdvancedHMC.jl/">
+                        <li>AdvancedHMC</li>
+                    </a>
+                    <a href="https://turinglang.org/AbstractMCMC.jl/">
+                        <li>AbstractMCMC</li>
+                    </a>
+                    <a href="https://github.com/theogf/ThermodynamicIntegration.jl">
+                        <li>ThermodynamicIntegration</li>
+                    </a>
+                    <a href="https://turinglang.org/AdvancedPS.jl/">
+                        <li>AdvancedPS</li>
+                    </a>
+                    <a href="https://turinglang.org/SliceSampling.jl/">
+                        <li>SliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/EllipticalSliceSampling.jl/">
+                        <li>EllipticalSliceSampling</li>
+                    </a>
+                    <a href="https://turinglang.org/NestedSamplers.jl/">
+                        <li>NestedSamplers</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Diagnostics</li>
+                    <a href="https://turinglang.org/MCMCChains.jl/">
+                        <li>MCMCChains</li>
+                    </a>
+                    <a href="https://turinglang.org/MCMCDiagnosticTools.jl/">
+                        <li>MCMCDiagnosticTools</li>
+                    </a>
+                    <a href="https://turinglang.org/ParetoSmooth.jl/">
+                        <li>ParetoSmooth</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Gaussion Processes</li>
+                    <a href="https://juliagaussianprocesses.github.io/AbstractGPs.jl/">
+                        <li>AbstractGPs</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/KernelFunctions.jl/">
+                        <li>KernelFunctions</li>
+                    </a>
+                    <a href="https://juliagaussianprocesses.github.io/ApproximateGPs.jl/">
+                        <li>ApproximateGPs</li>
+                    </a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/Bijectors.jl/">Bijectors</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringCallbacks.jl/">TuringCallbacks</a>
+                    </li>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading ext-navbar-item-single">
+                        <a href="https://turinglang.org/TuringBenchmarking.jl/">TuringBenchmarking</a>
+                    </li>
+                </ul>
+            </div>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/news/">News</a>
+        </li>
+        <li>
+            <a class="ext-nav-link" href="https://turinglang.org/team/">Team</a>
+        </li>
+    </ul>
+    <a href="https://x.com/TuringLang" style="margin-left: 15px; padding-top: 2px">
+        <svg fill="#ffffff" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="32px" height="32px" viewBox="-209.92 -209.92 931.84 931.84" xml:space="preserve" stroke="#ffffff">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <g id="7935ec95c421cee6d86eb22ecd12f847">
+                    <path style="display: inline"
+                        d="M459.186,151.787c0.203,4.501,0.305,9.023,0.305,13.565 c0,138.542-105.461,298.285-298.274,298.285c-59.209,0-114.322-17.357-160.716-47.104c8.212,0.973,16.546,1.47,25.012,1.47 c49.121,0,94.318-16.759,130.209-44.884c-45.887-0.841-84.596-31.154-97.938-72.804c6.408,1.227,12.968,1.886,19.73,1.886 c9.55,0,18.816-1.287,27.617-3.68c-47.955-9.633-84.1-52.001-84.1-102.795c0-0.446,0-0.882,0.011-1.318 c14.133,7.847,30.294,12.562,47.488,13.109c-28.134-18.796-46.637-50.885-46.637-87.262c0-19.212,5.16-37.218,14.193-52.7 c51.707,63.426,128.941,105.156,216.072,109.536c-1.784-7.675-2.718-15.674-2.718-23.896c0-57.891,46.941-104.832,104.832-104.832 c30.173,0,57.404,12.734,76.525,33.102c23.887-4.694,46.313-13.423,66.569-25.438c-7.827,24.485-24.434,45.025-46.089,58.002 c21.209-2.535,41.426-8.171,60.222-16.505C497.448,118.542,479.666,137.004,459.186,151.787z">
+                    </path>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <a href="https://github.com/TuringLang/Turing.jl">
+        <svg width="32px" height="32px" viewBox="-8.2 -8.2 36.40 36.40" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000">
+            <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+            <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">
+                <title>github [#142]</title>
+                <desc>Created with Sketch.</desc>
+                <defs></defs>
+                <g id="Page-1" stroke-width="0.0002" fill="none" fill-rule="evenodd">
+                    <g id="Dribbble-Light-Preview" transform="translate(-140.000000, -7559.000000)" fill="#ffffff">
+                        <g id="icons" transform="translate(56.000000, 160.000000)">
+                            <path
+                                d="M94,7399 C99.523,7399 104,7403.59 104,7409.253 C104,7413.782 101.138,7417.624 97.167,7418.981 C96.66,7419.082 96.48,7418.762 96.48,7418.489 C96.48,7418.151 96.492,7417.047 96.492,7415.675 C96.492,7414.719 96.172,7414.095 95.813,7413.777 C98.04,7413.523 100.38,7412.656 100.38,7408.718 C100.38,7407.598 99.992,7406.684 99.35,7405.966 C99.454,7405.707 99.797,7404.664 99.252,7403.252 C99.252,7403.252 98.414,7402.977 96.505,7404.303 C95.706,7404.076 94.85,7403.962 94,7403.958 C93.15,7403.962 92.295,7404.076 91.497,7404.303 C89.586,7402.977 88.746,7403.252 88.746,7403.252 C88.203,7404.664 88.546,7405.707 88.649,7405.966 C88.01,7406.684 87.619,7407.598 87.619,7408.718 C87.619,7412.646 89.954,7413.526 92.175,7413.785 C91.889,7414.041 91.63,7414.493 91.54,7415.156 C90.97,7415.418 89.522,7415.871 88.63,7414.304 C88.63,7414.304 88.101,7413.319 87.097,7413.247 C87.097,7413.247 86.122,7413.234 87.029,7413.87 C87.029,7413.87 87.684,7414.185 88.139,7415.37 C88.139,7415.37 88.726,7417.2 91.508,7416.58 C91.513,7417.437 91.522,7418.245 91.522,7418.489 C91.522,7418.76 91.338,7419.077 90.839,7418.982 C86.865,7417.627 84,7413.783 84,7409.253 C84,7403.59 88.478,7399 94,7399"
+                                id="github-[#142]">
+                            </path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </svg>
+    </a>
+    <span class="ext-menu-toggle">&#9776;</span>
+</nav>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const menuToggle = document.querySelector(".ext-menu-toggle");
+        const navLinks = document.querySelector(".ext-nav-links");
+        const nav = document.querySelector(".ext-navigation");
+        const navigationHandler = document.getElementById("library-handler");
+        const navigationItemsContainer =
+            document.getElementById("ext-dropdown-items");
+        let lastScrollY = window.scrollY;
+
+        function setAppropriateHeight() {
+            if (window.innerWidth <= 768) {
+                const viewportHeight = window.innerHeight;
+                const navHeight = nav.offsetHeight;
+                navLinks.style.maxHeight = `${viewportHeight - navHeight}px`;
+                navLinks.style.overflowY = "auto";
+            } else {
+                navLinks.style.maxHeight = "";
+                navLinks.style.overflowY = "";
+            }
+        }
+
+        // Toggle main menu for mobile
+        menuToggle.addEventListener("click", () => {
+            navLinks.classList.toggle("show");
+            if (navLinks.classList.contains("show")) {
+                setAppropriateHeight();
+                // Ensure the dropdown is hidden when menu is first opened
+                navigationItemsContainer.style.display = "none";
+                navigationItemsContainer.classList.remove("show");
+            }
+        });
+
+        // Close menus if clicked outside
+        document.addEventListener("click", (event) => {
+            if (
+                !navLinks.contains(event.target) &&
+                !menuToggle.contains(event.target)
+            ) {
+                navLinks.classList.remove("show");
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+            }
+        });
+
+        // Hide navigation bar on scroll down in mobile view
+        window.addEventListener("scroll", () => {
+            if (window.innerWidth <= 768) {
+                nav.classList.toggle("hide", window.scrollY > lastScrollY);
+                lastScrollY = window.scrollY;
+            }
+        });
+
+        // Library API script
+        navigationHandler.addEventListener("click", (event) => {
+            event.preventDefault(); // Prevent default action of the link
+            if (navigationItemsContainer.classList.contains("show")) {
+                navigationItemsContainer.classList.remove("show");
+                navigationHandler.classList.remove("open");
+                setTimeout(() => {
+                    navigationItemsContainer.style.display = "none";
+                }, 500); // Match the timeout to the CSS transition duration
+            } else {
+                navigationItemsContainer.style.display = "grid";
+                navigationHandler.classList.add("open");
+                setTimeout(() => {
+                    navigationItemsContainer.classList.add("show");
+                }, 10); // Delay to ensure the display change takes effect before adding class
+            }
+            setAppropriateHeight(); // Recalculate height when dropdown changes
+        });
+
+        // Handle window resize
+        window.addEventListener("resize", setAppropriateHeight);
+
+        // Initial setup
+        setAppropriateHeight();
+    });
+</script>
+<!-- NAVBAR END -->
+
+<div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.svg" alt="DynamicPPL logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">DynamicPPL</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../api/">API</a></li><li><span class="tocitem">Internals</span><ul><li class="is-active"><a class="tocitem" href>Design of <code>VarInfo</code></a><ul class="internal"><li><a class="tocitem" href="#Type-stability"><span>Type-stability</span></a></li><li><a class="tocitem" href="#Efficient-storage-and-iteration"><span>Efficient storage and iteration</span></a></li><li><a class="tocitem" href="#Other-methods"><span>Other methods</span></a></li></ul></li><li><a class="tocitem" href="../transformations/">Transforming variables</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Internals</a></li><li class="is-active"><a href>Design of <code>VarInfo</code></a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Design of <code>VarInfo</code></a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl/blob/master/docs/src/internals/varinfo.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Design-of-VarInfo"><a class="docs-heading-anchor" href="#Design-of-VarInfo">Design of <code>VarInfo</code></a><a id="Design-of-VarInfo-1"></a><a class="docs-heading-anchor-permalink" href="#Design-of-VarInfo" title="Permalink"></a></h1><p><a href="../../api/#VarInfo"><code>VarInfo</code></a> is a fairly simple structure.</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.VarInfo-internals-varinfo" href="#DynamicPPL.VarInfo-internals-varinfo"><code>DynamicPPL.VarInfo</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">struct VarInfo{Tmeta, Tlogp} &lt;: AbstractVarInfo
+    metadata::Tmeta
+    logp::Base.RefValue{Tlogp}
+    num_produce::Base.RefValue{Int}
+end</code></pre><p>A light wrapper over one or more instances of <code>Metadata</code>. Let <code>vi</code> be an instance of <code>VarInfo</code>. If <code>vi isa VarInfo{&lt;:Metadata}</code>, then only one <code>Metadata</code> instance is used for all the sybmols. <code>VarInfo{&lt;:Metadata}</code> is aliased <code>UntypedVarInfo</code>. If <code>vi isa VarInfo{&lt;:NamedTuple}</code>, then <code>vi.metadata</code> is a <code>NamedTuple</code> that maps each symbol used on the LHS of <code>~</code> in the model to its <code>Metadata</code> instance. The latter allows for the type specialization of <code>vi</code> after the first sampling iteration when all the symbols have been observed. <code>VarInfo{&lt;:NamedTuple}</code> is aliased <code>TypedVarInfo</code>.</p><p>Note: It is the user&#39;s responsibility to ensure that each &quot;symbol&quot; is visited at least once whenever the model is called, regardless of any stochastic branching. Each symbol refers to a Julia variable and can be a hierarchical array of many random variables, e.g. <code>x[1] ~ ...</code> and <code>x[2] ~ ...</code> both have the same symbol <code>x</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varinfo.jl#L78-L98">source</a></section></article><p>It contains</p><ul><li>a <code>logp</code> field for accumulation of the log-density evaluation, and</li><li>a <code>metadata</code> field for storing information about the realizations of the different variables.</li></ul><p>Representing <code>logp</code> is fairly straight-forward: we&#39;ll just use a <code>Real</code> or an array of <code>Real</code>, depending on the context.</p><p><strong>Representing <code>metadata</code> is a bit trickier</strong>. This is supposed to contain all the necessary information for each <code>VarName</code> to enable the different executions of the model + extraction of different properties of interest after execution, e.g. the realization / value corresponding to a variable <code>@varname(x)</code>.</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>We want to work with <code>VarName</code> rather than something like <code>Symbol</code> or <code>String</code> as <code>VarName</code> contains additional structural information, e.g. a <code>Symbol(&quot;x[1]&quot;)</code> can be a result of either <code>var&quot;x[1]&quot; ~ Normal()</code> or <code>x[1] ~ Normal()</code>; these scenarios are disambiguated by <code>VarName</code>.</p></div></div><p>To ensure that <code>VarInfo</code> is simple and intuitive to work with, we want <code>VarInfo</code>, and hence the underlying <code>metadata</code>, to replicate the following functionality of <code>Dict</code>:</p><ul><li><code>keys(::Dict)</code>: return all the <code>VarName</code>s present in <code>metadata</code>.</li><li><code>haskey(::Dict)</code>: check if a particular <code>VarName</code> is present in <code>metadata</code>.</li><li><code>getindex(::Dict, ::VarName)</code>: return the realization corresponding to a particular <code>VarName</code>.</li><li><code>setindex!(::Dict, val, ::VarName)</code>: set the realization corresponding to a particular <code>VarName</code>.</li><li><code>push!(::Dict, ::Pair)</code>: add a new key-value pair to the container.</li><li><code>delete!(::Dict, ::VarName)</code>: delete the realization corresponding to a particular <code>VarName</code>.</li><li><code>empty!(::Dict)</code>: delete all realizations in <code>metadata</code>.</li><li><code>merge(::Dict, ::Dict)</code>: merge two <code>metadata</code> structures according to similar rules as <code>Dict</code>.</li></ul><p><em>But</em> for general-purpose samplers, we often want to work with a simple flattened structure, typically a <code>Vector{&lt;:Real}</code>. One can access a vectorised version of a variable&#39;s value with the following vector-like functions:</p><ul><li><code>getindex_internal(::VarInfo, ::VarName)</code>: get the flattened value of a single variable.</li><li><code>getindex_internal(::VarInfo, ::Colon)</code>: get the flattened values of all variables.</li><li><code>getindex_internal(::VarInfo, i::Int)</code>: get <code>i</code>th value of the flattened vector of all values</li><li><code>setindex_internal!(::VarInfo, ::AbstractVector, ::VarName)</code>: set the flattened value of a variable.</li><li><code>setindex_internal!(::VarInfo, val, i::Int)</code>: set the <code>i</code>th value of the flattened vector of all values</li><li><code>length_internal(::VarInfo)</code>: return the length of the flat representation of <code>metadata</code>.</li></ul><p>The functions have <code>_internal</code> in their name because internally <code>VarInfo</code> always stores values as vectorised.</p><p>Moreover, a link transformation can be applied to a <code>VarInfo</code> with <code>link!!</code> (and reversed with <code>invlink!!</code>), which applies a reversible transformation to the internal storage format of a variable that makes the range of the random variable cover all of Euclidean space. <code>getindex_internal</code> and <code>setindex_internal!</code> give direct access to the vectorised value after such a transformation, which is what samplers often need to be able sample in unconstrained space. One can also manually set a transformation by giving <code>setindex_internal!</code> a fourth, optional argument, that is a function that maps internally stored value to the actual value of the variable.</p><p>Finally, we want want the underlying representation used in <code>metadata</code> to have a few performance-related properties:</p><ol><li>Type-stable when possible, but functional when not.</li><li>Efficient storage and iteration when possible, but functional when not.</li></ol><p>The &quot;but functional when not&quot; is important as we want to support arbitrary models, which means that we can&#39;t always have these performance properties.</p><p>In the following sections, we&#39;ll outline how we achieve this in <a href="../../api/#VarInfo"><code>VarInfo</code></a>.</p><h2 id="Type-stability"><a class="docs-heading-anchor" href="#Type-stability">Type-stability</a><a id="Type-stability-1"></a><a class="docs-heading-anchor-permalink" href="#Type-stability" title="Permalink"></a></h2><p>Ensuring type-stability is somewhat non-trivial to address since we want this to be the case even when models mix continuous (typically <code>Float64</code>) and discrete (typically <code>Int</code>) variables.</p><p>Suppose we have an implementation of <code>metadata</code> which implements the functionality outlined in the previous section. The way we approach this in <code>VarInfo</code> is to use a <code>NamedTuple</code> with a separate <code>metadata</code> <em>for each distinct <code>Symbol</code> used</em>. For example, if we have a model of the form</p><pre><code class="language-julia hljs">using DynamicPPL, Distributions, FillArrays
+
+@model function demo()
+    x ~ product_distribution(Fill(Bernoulli(0.5), 2))
+    y ~ Normal(0, 1)
+    return nothing
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">demo (generic function with 2 methods)</code></pre><p>then we construct a type-stable representation by using a <code>NamedTuple{(:x, :y), Tuple{Vx, Vy}}</code> where</p><ul><li><code>Vx</code> is a container with <code>eltype</code> <code>Bool</code>, and</li><li><code>Vy</code> is a container with <code>eltype</code> <code>Float64</code>.</li></ul><p>Since <code>VarName</code> contains the <code>Symbol</code> used in its type, something like <code>getindex(varinfo, @varname(x))</code> can be resolved to <code>getindex(varinfo.metadata.x, @varname(x))</code> at compile-time.</p><p>For example, with the model above we have</p><pre><code class="language-julia hljs"># Type-unstable `VarInfo`
+varinfo_untyped = DynamicPPL.untyped_varinfo(demo())
+typeof(varinfo_untyped.metadata)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">DynamicPPL.Metadata{Dict{VarName, Int64}, Vector{Distribution}, Vector{VarName}, Vector{Real}, Vector{Set{DynamicPPL.Selector}}}</code></pre><pre><code class="language-julia hljs"># Type-stable `VarInfo`
+varinfo_typed = DynamicPPL.typed_varinfo(demo())
+typeof(varinfo_typed.metadata)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">@NamedTuple{x::DynamicPPL.Metadata{Dict{VarName{:x, typeof(identity)}, Int64}, Vector{Product{Discrete, Bernoulli{Float64}, FillArrays.Fill{Bernoulli{Float64}, 1, Tuple{Base.OneTo{Int64}}}}}, Vector{VarName{:x, typeof(identity)}}, BitVector, Vector{Set{DynamicPPL.Selector}}}, y::DynamicPPL.Metadata{Dict{VarName{:y, typeof(identity)}, Int64}, Vector{Normal{Float64}}, Vector{VarName{:y, typeof(identity)}}, Vector{Float64}, Vector{Set{DynamicPPL.Selector}}}}</code></pre><p>They both work as expected but one results in concrete typing and the other does not:</p><pre><code class="language-julia hljs">varinfo_untyped[@varname(x)], varinfo_untyped[@varname(y)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(Real[true, false], 0.32039858083826606)</code></pre><pre><code class="language-julia hljs">varinfo_typed[@varname(x)], varinfo_typed[@varname(y)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(Bool[0, 1], -0.7323785239722344)</code></pre><p>Notice that the untyped <code>VarInfo</code> uses <code>Vector{Real}</code> to store the boolean entries while the typed uses <code>Vector{Bool}</code>. This is because the untyped version needs the underlying container to be able to handle both the <code>Bool</code> for <code>x</code> and the <code>Float64</code> for <code>y</code>, while the typed version can use a <code>Vector{Bool}</code> for <code>x</code> and a <code>Vector{Float64}</code> for <code>y</code> due to its usage of <code>NamedTuple</code>.</p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>Of course, this <code>NamedTuple</code> approach is <em>not</em> necessarily going to help us in scenarios where the <code>Symbol</code> does not correspond to a unique type, e.g.</p><pre><code class="language-julia hljs">x[1] ~ Bernoulli(0.5)
+x[2] ~ Normal(0, 1)</code></pre><p>In this case we&#39;ll end up with a <code>NamedTuple((:x,), Tuple{Vx})</code> where <code>Vx</code> is a container with <code>eltype</code> <code>Union{Bool, Float64}</code> or something worse. This is <em>not</em> type-stable but will still be functional.</p><p>In practice, we rarely observe such mixing of types, therefore in DynamicPPL, and more widely in Turing.jl, we use a <code>NamedTuple</code> approach for type-stability with great success.</p></div></div><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>Another downside with such a <code>NamedTuple</code> approach is that if we have a model with lots of tilde-statements, e.g. <code>a ~ Normal()</code>, <code>b ~ Normal()</code>, ..., <code>z ~ Normal()</code> will result in a <code>NamedTuple</code> with 27 entries, potentially leading to long compilation times.</p><p>For these scenarios it can be useful to fall back to &quot;untyped&quot; representations.</p></div></div><p>Hence we obtain a &quot;type-stable when possible&quot;-representation by wrapping it in a <code>NamedTuple</code> and partially resolving the <code>getindex</code>, <code>setindex!</code>, etc. methods at compile-time. When type-stability is <em>not</em> desired, we can simply use a single <code>metadata</code> for all <code>VarName</code>s instead of a <code>NamedTuple</code> wrapping a collection of <code>metadata</code>s.</p><h2 id="Efficient-storage-and-iteration"><a class="docs-heading-anchor" href="#Efficient-storage-and-iteration">Efficient storage and iteration</a><a id="Efficient-storage-and-iteration-1"></a><a class="docs-heading-anchor-permalink" href="#Efficient-storage-and-iteration" title="Permalink"></a></h2><p>Efficient storage and iteration we achieve through implementation of the <code>metadata</code>. In particular, we do so with <a href="#DynamicPPL.VarNamedVector"><code>DynamicPPL.VarNamedVector</code></a>:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.VarNamedVector" href="#DynamicPPL.VarNamedVector"><code>DynamicPPL.VarNamedVector</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">VarNamedVector</code></pre><p>A container that stores values in a vectorised form, but indexable by variable names.</p><p>A <code>VarNamedVector</code> can be thought of as an ordered mapping from <code>VarName</code>s to pairs of <code>(internal_value, transform)</code>. Here <code>internal_value</code> is a vectorised value for the variable and <code>transform</code> is a function such that <code>transform(internal_value)</code> is the &quot;original&quot; value of the variable, the one that the user sees. For instance, if the variable has a matrix value, <code>internal_value</code> could bea flattened <code>Vector</code> of its elements, and <code>transform</code> would be a <code>reshape</code> call.</p><p><code>transform</code> may implement simply vectorisation, but it may do more. Most importantly, it may implement linking, where the internal storage of a random variable is in a form where all values in Euclidean space are valid. This is useful for sampling, because the sampler can make changes to <code>internal_value</code> without worrying about constraints on the space of the random variable.</p><p>The way to access this storage format directly is through the functions <code>getindex_internal</code> and <code>setindex_internal</code>. The <code>transform</code> argument for <code>setindex_internal</code> is optional, by default it is either the identity, or the existing transform if a value already exists for this <code>VarName</code>.</p><p><code>VarNamedVector</code> also provides a <code>Dict</code>-like interface that hides away the internal vectorisation. This can be accessed with <code>getindex</code> and <code>setindex!</code>. <code>setindex!</code> only takes the value, the transform is automatically set to be a simple vectorisation. The only notable deviation from the behavior of a <code>Dict</code> is that <code>setindex!</code> will throw an error if one tries to set a new value for a variable that lives in a different &quot;space&quot; than the old one (e.g. is of a different type or size). This is because <code>setindex!</code> does not change the transform of a variable, e.g. preserve linking, and thus the new value must be compatible with the old transform.</p><p>For now, a third value is in fact stored for each <code>VarName</code>: a boolean indicating whether the variable has been transformed to unconstrained Euclidean space or not. This is only in place temporarily due to the needs of our old Gibbs sampler.</p><p>Internally, <code>VarNamedVector</code> stores the values of all variables in a single contiguous vector. This makes some operations more efficient, and means that one can access the entire contents of the internal storage quickly with <code>getindex_internal(vnv, :)</code>. The other fields of <code>VarNamedVector</code> are mostly used to keep track of which part of the internal storage belongs to which <code>VarName</code>.</p><p><strong>Fields</strong></p><ul><li><code>varname_to_index</code>: mapping from a <code>VarName</code> to its integer index in <code>varnames</code>, <code>ranges</code> and <code>transforms</code></li></ul><ul><li><code>varnames</code>: vector of <code>VarNames</code> for the variables, where <code>varnames[varname_to_index[vn]] == vn</code></li></ul><ul><li><code>ranges</code>: vector of index ranges in <code>vals</code> corresponding to <code>varnames</code>; each <code>VarName</code> <code>vn</code> has a single index or a set of contiguous indices, such that the values of <code>vn</code> can be found at <code>vals[ranges[varname_to_index[vn]]]</code></li></ul><ul><li><code>vals</code>: vector of values of all variables; the value(s) of <code>vn</code> is/are <code>vals[ranges[varname_to_index[vn]]]</code></li></ul><ul><li><code>transforms</code>: vector of transformations, so that <code>transforms[varname_to_index[vn]]</code> is a callable that transforms the value of <code>vn</code> back to its original space, undoing any linking and vectorisation</li></ul><ul><li><code>is_unconstrained</code>: vector of booleans indicating whether a variable has been transformed to unconstrained Euclidean space or not, i.e. whether its domain is all of <code>ℝ^ⁿ</code>. Having <code>is_unconstrained[varname_to_index[vn]] == false</code> does not necessarily mean that a variable is constrained, but rather that it&#39;s not guaranteed to not be.</li></ul><ul><li><code>num_inactive</code>: mapping from a variable index to the number of inactive entries for that variable. Inactive entries are elements in <code>vals</code> that are not part of the value of any variable. They arise when a variable is set to a new value with a different dimension, in-place. Inactive entries always come after the last active entry for the given variable. See the extended help with <code>??VarNamedVector</code> for more details.</li></ul><p><strong>Extended help</strong></p><p>The values for different variables are internally all stored in a single vector. For instance,</p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL: ReshapeTransform, VarNamedVector, @varname, setindex!, update!, getindex_internal
+
+julia&gt; vnv = VarNamedVector();
+
+julia&gt; setindex!(vnv, [0.0, 0.0, 0.0, 0.0], @varname(x));
+
+julia&gt; setindex!(vnv, reshape(1:6, (2,3)), @varname(y));
+
+julia&gt; vnv.vals
+10-element Vector{Real}:
+ 0.0
+ 0.0
+ 0.0
+ 0.0
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6</code></pre><p>The <code>varnames</code>, <code>ranges</code>, and <code>varname_to_index</code> fields keep track of which value belongs to which variable. The <code>transforms</code> field stores the transformations that needed to transform the vectorised internal storage back to its original form:</p><pre><code class="language-julia-repl hljs">julia&gt; vnv.transforms[vnv.varname_to_index[@varname(y)]] == DynamicPPL.ReshapeTransform((6,), (2,3))
+true</code></pre><p>If a variable is updated with a new value that is of a smaller dimension than the old value, rather than resizing <code>vnv.vals</code>, some elements in <code>vnv.vals</code> are marked as inactive.</p><pre><code class="language-julia-repl hljs">julia&gt; update!(vnv, [46.0, 48.0], @varname(x))
+
+julia&gt; vnv.vals
+10-element Vector{Real}:
+ 46.0
+ 48.0
+  0.0
+  0.0
+  1
+  2
+  3
+  4
+  5
+  6
+
+julia&gt; println(vnv.num_inactive);
+OrderedDict(1 =&gt; 2)</code></pre><p>This helps avoid unnecessary memory allocations for values that repeatedly change dimension. The user does not have to worry about the inactive entries as long as they use functions like <code>setindex!</code> and <code>getindex!</code> rather than directly accessing <code>vnv.vals</code>.</p><pre><code class="language-julia-repl hljs">julia&gt; vnv[@varname(x)]
+2-element Vector{Float64}:
+ 46.0
+ 48.0
+
+julia&gt; getindex_internal(vnv, :)
+8-element Vector{Real}:
+ 46.0
+ 48.0
+  1
+  2
+  3
+  4
+  5
+  6</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L1-L127">source</a></section></article><p>In a <a href="#DynamicPPL.VarNamedVector"><code>DynamicPPL.VarNamedVector{&lt;:VarName,T}</code></a>, we achieve the desiderata by storing the values for different <code>VarName</code>s contiguously in a <code>Vector{T}</code> and keeping track of which ranges correspond to which <code>VarName</code>s.</p><p>This does require a bit of book-keeping, in particular when it comes to insertions and deletions. Internally, this is handled by assigning each <code>VarName</code> a unique <code>Int</code> index in the <code>varname_to_index</code> field, which is then used to index into the following fields:</p><ul><li><code>varnames::Vector{&lt;:VarName}</code>: the <code>VarName</code>s in the order they appear in the <code>Vector{T}</code>.</li><li><code>ranges::Vector{UnitRange{Int}}</code>: the ranges of indices in the <code>Vector{T}</code> that correspond to each <code>VarName</code>.</li><li><code>transforms::Vector</code>: the transforms associated with each <code>VarName</code>.</li></ul><p>Mutating functions, e.g. <code>setindex_internal!(vnv::VarNamedVector, val, vn::VarName)</code>, are then treated according to the following rules:</p><ol><li><p>If <code>vn</code> is not already present: add it to the end of <code>vnv.varnames</code>, add the <code>val</code> to the underlying <code>vnv.vals</code>, etc.</p></li><li><p>If <code>vn</code> is already present in <code>vnv</code>:</p><ol><li>If <code>val</code> has the <em>same length</em> as the existing value for <code>vn</code>: replace existing value.</li><li>If <code>val</code> has a <em>smaller length</em> than the existing value for <code>vn</code>: replace existing value and mark the remaining indices as &quot;inactive&quot; by increasing the entry in <code>vnv.num_inactive</code> field.</li><li>If <code>val</code> has a <em>larger length</em> than the existing value for <code>vn</code>: expand the underlying <code>vnv.vals</code> to accommodate the new value, update all <code>VarName</code>s occuring after <code>vn</code>, and update the <code>vnv.ranges</code> to point to the new range for <code>vn</code>.</li></ol></li></ol><p>This means that <code>VarNamedVector</code> is allowed to grow as needed, while &quot;shrinking&quot; (i.e. insertion of smaller elements) is handled by simply marking the redundant indices as &quot;inactive&quot;. This turns out to be efficient for use-cases that we are generally interested in.</p><p>For example, we want to optimize code-paths which effectively boil down to inner-loop in the following example:</p><pre><code class="language-julia hljs"># Construct a `VarInfo` with types inferred from `model`.
+varinfo = VarInfo(model)
+
+# Repeatedly sample from `model`.
+for _ in 1:num_samples
+    rand!(rng, model, varinfo)
+
+    # Do something with `varinfo`.
+    # ...
+end</code></pre><p>There are typically a few scenarios where we encounter changing representation sizes of a random variable <code>x</code>:</p><ol><li>We&#39;re working with a transformed version <code>x</code> which is represented in a lower-dimensional space, e.g. transforming a <code>x ~ LKJ(2, 1)</code> to unconstrained <code>y = f(x)</code> takes us from 2-by-2 <code>Matrix{Float64}</code> to a 1-length <code>Vector{Float64}</code>.</li><li><code>x</code> has a random size, e.g. in a mixture model with a prior on the number of components. Here the size of <code>x</code> can vary widly between every realization of the <code>Model</code>.</li></ol><p>In scenario (1), we&#39;re usually <em>shrinking</em> the representation of <code>x</code>, and so we end up not making any allocations for the underlying <code>Vector{T}</code> but instead just marking the redundant part as &quot;inactive&quot;.</p><p>In scenario (2), we  end up increasing the allocated memory for the randomly sized <code>x</code>, eventually leading to a vector that is large enough to hold realizations without needing to reallocate. But this can still lead to unnecessary memory usage, which might be undesirable. Hence one has to make a decision regarding the trade-off between memory usage and performance for the use-case at hand.</p><p>To help with this, we have the following functions:</p><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.has_inactive" href="#DynamicPPL.has_inactive"><code>DynamicPPL.has_inactive</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">has_inactive(vnv::VarNamedVector)</code></pre><p>Returns <code>true</code> if <code>vnv</code> has inactive entries.</p><p>See also: <a href="#DynamicPPL.num_inactive"><code>num_inactive</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L348-L354">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.num_inactive" href="#DynamicPPL.num_inactive"><code>DynamicPPL.num_inactive</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">num_inactive(vnv::VarNamedVector)</code></pre><p>Return the number of inactive entries in <code>vnv</code>.</p><p>See also: <a href="#DynamicPPL.has_inactive"><code>has_inactive</code></a>, <a href="#DynamicPPL.num_allocated"><code>num_allocated</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L357-L363">source</a></section><section><div><pre><code class="language-julia hljs">num_inactive(vnv::VarNamedVector, vn::VarName)</code></pre><p>Returns the number of inactive entries for <code>vn</code> in <code>vnv</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L366-L370">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.num_allocated" href="#DynamicPPL.num_allocated"><code>DynamicPPL.num_allocated</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">num_allocated(vnv::VarNamedVector)
+num_allocated(vnv::VarNamedVector[, vn::VarName])
+num_allocated(vnv::VarNamedVector[, idx::Int])</code></pre><p>Return the number of allocated entries in <code>vnv</code>, both active and inactive.</p><p>If either a <code>VarName</code> or an <code>Int</code> index is specified, only count entries allocated for that variable.</p><p>Allocated entries take up memory in <code>vnv.vals</code>, but, if inactive, may not currently hold any meaningful data. One can remove them with <a href="#DynamicPPL.contiguify!"><code>contiguify!</code></a>, but doing so may cause more memory allocations in the future if variables change dimension.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L374-L387">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.is_contiguous" href="#DynamicPPL.is_contiguous"><code>DynamicPPL.is_contiguous</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">is_contiguous(vnv::VarNamedVector)</code></pre><p>Returns <code>true</code> if the underlying data of <code>vnv</code> is stored in a contiguous array.</p><p>This is equivalent to negating <a href="#DynamicPPL.has_inactive"><code>has_inactive(vnv)</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L1225-L1231">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.contiguify!" href="#DynamicPPL.contiguify!"><code>DynamicPPL.contiguify!</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">contiguify!(vnv::VarNamedVector)</code></pre><p>Re-contiguify the underlying vector and shrink if possible.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL: VarNamedVector, @varname, contiguify!, update!, has_inactive
+
+julia&gt; vnv = VarNamedVector(@varname(x) =&gt; [1.0, 2.0, 3.0], @varname(y) =&gt; [3.0]);
+
+julia&gt; update!(vnv, [23.0, 24.0], @varname(x));
+
+julia&gt; has_inactive(vnv)
+true
+
+julia&gt; length(vnv.vals)
+4
+
+julia&gt; contiguify!(vnv);
+
+julia&gt; has_inactive(vnv)
+false
+
+julia&gt; length(vnv.vals)
+3
+
+julia&gt; vnv[@varname(x)]  # All the values are still there.
+2-element Vector{Float64}:
+ 23.0
+ 24.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L1304-L1337">source</a></section></article><p>For example, one might encounter the following scenario:</p><pre><code class="language-julia hljs">vnv = DynamicPPL.VarNamedVector(@varname(x) =&gt; [true])
+println(&quot;Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))&quot;)
+
+for i in 1:5
+    x = fill(true, rand(1:100))
+    DynamicPPL.update!(vnv, x, @varname(x))
+    println(
+        &quot;After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))&quot;,
+    )
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Before insertion: number of allocated entries  1
+After insertion #1 of length 98: number of allocated entries  98
+After insertion #2 of length 22: number of allocated entries  98
+After insertion #3 of length 52: number of allocated entries  98
+After insertion #4 of length 50: number of allocated entries  98
+After insertion #5 of length 82: number of allocated entries  98</code></pre><p>We can then insert a call to <a href="#DynamicPPL.contiguify!"><code>DynamicPPL.contiguify!</code></a> after every insertion whenever the allocation grows too large to reduce overall memory usage:</p><pre><code class="language-julia hljs">vnv = DynamicPPL.VarNamedVector(@varname(x) =&gt; [true])
+println(&quot;Before insertion: number of allocated entries  $(DynamicPPL.num_allocated(vnv))&quot;)
+
+for i in 1:5
+    x = fill(true, rand(1:100))
+    DynamicPPL.update!(vnv, x, @varname(x))
+    if DynamicPPL.num_allocated(vnv) &gt; 10
+        DynamicPPL.contiguify!(vnv)
+    end
+    println(
+        &quot;After insertion #$(i) of length $(length(x)): number of allocated entries  $(DynamicPPL.num_allocated(vnv))&quot;,
+    )
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Before insertion: number of allocated entries  1
+After insertion #1 of length 68: number of allocated entries  68
+After insertion #2 of length 66: number of allocated entries  66
+After insertion #3 of length 13: number of allocated entries  13
+After insertion #4 of length 59: number of allocated entries  59
+After insertion #5 of length 96: number of allocated entries  96</code></pre><p>This does incur a runtime cost as it requires re-allocation of the <code>ranges</code> in addition to a <code>resize!</code> of the underlying <code>Vector{T}</code>. However, this also ensures that the the underlying <code>Vector{T}</code> is contiguous, which is important for performance. Hence, if we&#39;re about to do a lot of work with the <code>VarNamedVector</code> without insertions, etc., it can be worth it to do a sweep to ensure that the underlying <code>Vector{T}</code> is contiguous.</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>Higher-dimensional arrays, e.g. <code>Matrix</code>, are handled by simply vectorizing them before storing them in the <code>Vector{T}</code>, and composing the <code>VarName</code>&#39;s transformation with a <code>DynamicPPL.ReshapeTransform</code>.</p></div></div><p>Continuing from the example from the previous section, we can use a <code>VarInfo</code> with a <code>VarNamedVector</code> as the <code>metadata</code> field:</p><pre><code class="language-julia hljs"># Type-unstable
+varinfo_untyped_vnv = DynamicPPL.VectorVarInfo(varinfo_untyped)
+varinfo_untyped_vnv[@varname(x)], varinfo_untyped_vnv[@varname(y)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(Real[true, false], 0.32039858083826606)</code></pre><pre><code class="language-julia hljs"># Type-stable
+varinfo_typed_vnv = DynamicPPL.VectorVarInfo(varinfo_typed)
+varinfo_typed_vnv[@varname(x)], varinfo_typed_vnv[@varname(y)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(Bool[0, 1], -0.7323785239722344)</code></pre><p>If we now try to <code>delete!</code> <code>@varname(x)</code></p><pre><code class="language-julia hljs">haskey(varinfo_untyped_vnv, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><pre><code class="language-julia hljs">DynamicPPL.has_inactive(varinfo_untyped_vnv.metadata)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">false</code></pre><pre><code class="language-julia hljs"># `delete!`
+DynamicPPL.delete!(varinfo_untyped_vnv.metadata, @varname(x))
+DynamicPPL.has_inactive(varinfo_untyped_vnv.metadata)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">false</code></pre><pre><code class="language-julia hljs">haskey(varinfo_untyped_vnv, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">false</code></pre><p>Or insert a differently-sized value for <code>@varname(x)</code></p><pre><code class="language-julia hljs">DynamicPPL.insert!(varinfo_untyped_vnv.metadata, fill(true, 1), @varname(x))
+varinfo_untyped_vnv[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">1-element Vector{Real}:
+ true</code></pre><pre><code class="language-julia hljs">DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">1</code></pre><pre><code class="language-julia hljs">DynamicPPL.update!(varinfo_untyped_vnv.metadata, fill(true, 4), @varname(x))
+varinfo_untyped_vnv[@varname(x)]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Real}:
+ true
+ true
+ true
+ true</code></pre><pre><code class="language-julia hljs">DynamicPPL.num_allocated(varinfo_untyped_vnv.metadata, @varname(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4</code></pre><h3 id="Performance-summary"><a class="docs-heading-anchor" href="#Performance-summary">Performance summary</a><a id="Performance-summary-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-summary" title="Permalink"></a></h3><p>In the end, we have the following &quot;rough&quot; performance characteristics for <code>VarNamedVector</code>:</p><table><tr><th style="text-align: center">Method</th><th style="text-align: center">Is blazingly fast?</th></tr><tr><td style="text-align: center"><code>getindex</code></td><td style="text-align: center"><span>${\color{green} \checkmark}$</span></td></tr><tr><td style="text-align: center"><code>setindex!</code> on a new <code>VarName</code></td><td style="text-align: center"><span>${\color{green} \checkmark}$</span></td></tr><tr><td style="text-align: center"><code>delete!</code></td><td style="text-align: center"><span>${\color{red} \times}$</span></td></tr><tr><td style="text-align: center"><code>update!</code> on existing <code>VarName</code></td><td style="text-align: center"><span>${\color{green} \checkmark}$</span> if smaller or same size / <span>${\color{red} \times}$</span> if larger size</td></tr><tr><td style="text-align: center"><code>values_as(::VarNamedVector, Vector{T})</code></td><td style="text-align: center"><span>${\color{green} \checkmark}$</span> if contiguous / <span>${\color{orange} \div}$</span> otherwise</td></tr></table><h2 id="Other-methods"><a class="docs-heading-anchor" href="#Other-methods">Other methods</a><a id="Other-methods-1"></a><a class="docs-heading-anchor-permalink" href="#Other-methods" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.replace_raw_storage-Tuple{DynamicPPL.VarNamedVector, AbstractVector}" href="#DynamicPPL.replace_raw_storage-Tuple{DynamicPPL.VarNamedVector, AbstractVector}"><code>DynamicPPL.replace_raw_storage</code></a> — <span class="docstring-category">Method</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">replace_raw_storage(vnv::VarNamedVector, vals::AbstractVector)</code></pre><p>Replace the values in <code>vnv</code> with <code>vals</code>, as they are stored internally.</p><p>This is useful when we want to update the entire underlying vector of values in one go or if we want to change the how the values are stored, e.g. alter the <code>eltype</code>.</p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>This replaces the raw underlying values, and so care should be taken when using this function. For example, if <code>vnv</code> has any inactive entries, then the provided <code>vals</code> should also contain the inactive entries to avoid unexpected behavior.</p></div></div><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL: VarNamedVector, replace_raw_storage
+
+julia&gt; vnv = VarNamedVector(@varname(x) =&gt; [1.0]);
+
+julia&gt; replace_raw_storage(vnv, [2.0])[@varname(x)] == [2.0]
+true</code></pre><p>This is also useful when we want to differentiate wrt. the values using automatic differentiation, e.g. ForwardDiff.jl.</p><pre><code class="language-julia-repl hljs">julia&gt; using ForwardDiff: ForwardDiff
+
+julia&gt; f(x) = sum(abs2, replace_raw_storage(vnv, x)[@varname(x)])
+f (generic function with 1 method)
+
+julia&gt; ForwardDiff.gradient(f, [1.0])
+1-element Vector{Float64}:
+ 2.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L990-L1027">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="DynamicPPL.values_as-Tuple{DynamicPPL.VarNamedVector}-internals-varinfo" href="#DynamicPPL.values_as-Tuple{DynamicPPL.VarNamedVector}-internals-varinfo"><code>DynamicPPL.values_as</code></a> — <span class="docstring-category">Method</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">values_as(vnv::VarNamedVector[, T])</code></pre><p>Return the values/realizations in <code>vnv</code> as type <code>T</code>, if implemented.</p><p>If no type <code>T</code> is provided, return values as stored in <code>vnv</code>.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using DynamicPPL: VarNamedVector
+
+julia&gt; vnv = VarNamedVector(@varname(x) =&gt; 1, @varname(y) =&gt; [2.0]);
+
+julia&gt; values_as(vnv) == [1.0, 2.0]
+true
+
+julia&gt; values_as(vnv, Vector{Float32}) == Vector{Float32}([1.0, 2.0])
+true
+
+julia&gt; values_as(vnv, OrderedDict) == OrderedDict(@varname(x) =&gt; 1.0, @varname(y) =&gt; [2.0])
+true
+
+julia&gt; values_as(vnv, NamedTuple) == (x = 1.0, y = [2.0])
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/5c8fc59c9c5650c8f522dddad9ac1800834c6851/src/varnamedvector.jl#L1461-L1487">source</a></section></article><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "neutral"
+});
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../api/">« API</a><a class="docs-footer-nextpage" href="../transformations/">Transforming variables »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Friday 13 December 2024 03:08">Friday 13 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+
