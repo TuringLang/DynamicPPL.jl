@@ -213,10 +213,6 @@ function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
     return throw(ArgumentError(msg))
 end
 check_dot_tilde_rhs(x::UnivariateDistribution) = x
-function check_dot_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
-    model = check_dot_tilde_rhs(x.model)
-    return Sampleable{typeof(model),AutoPrefix}(model)
-end
 
 """
     unwrap_right_vn(right, vn)
