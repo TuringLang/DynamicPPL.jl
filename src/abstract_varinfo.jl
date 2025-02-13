@@ -169,51 +169,6 @@ See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@re
 """
 function getindex_internal end
 
-"""
-    push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-
-Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
-the `VarInfo` `vi`, mutating if it makes sense.
-"""
-function BangBang.push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution)
-    return BangBang.push!!(vi, vn, r, dist, Set{Selector}([]))
-end
-
-"""
-    push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler)
-
-Push a new random variable `vn` with a sampled value `r` sampled with a sampler `spl`
-from a distribution `dist` to `VarInfo` `vi`, if it makes sense.
-
-The sampler is passed here to invalidate its cache where defined.
-
-$(LEGACY_WARNING)
-"""
-function BangBang.push!!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::Sampler
-)
-    return BangBang.push!!(vi, vn, r, dist, spl.selector)
-end
-function BangBang.push!!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, spl::AbstractSampler
-)
-    return BangBang.push!!(vi, vn, r, dist)
-end
-
-"""
-    push!!(vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector)
-
-Push a new random variable `vn` with a sampled value `r` sampled with a sampler of
-selector `gid` from a distribution `dist` to `VarInfo` `vi`.
-
-$(LEGACY_WARNING)
-"""
-function BangBang.push!!(
-    vi::AbstractVarInfo, vn::VarName, r, dist::Distribution, gid::Selector
-)
-    return BangBang.push!!(vi, vn, r, dist, Set([gid]))
-end
-
 @doc """
     empty!!(vi::AbstractVarInfo)
 
@@ -768,7 +723,6 @@ end
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
 increment_num_produce!(::AbstractVarInfo) = nothing
-setgid!(vi::AbstractVarInfo, gid::Selector, vn::VarName) = nothing
 
 """
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])

@@ -57,10 +57,8 @@ end
 
 has_varnamedvector(vi::DynamicPPL.ThreadSafeVarInfo) = has_varnamedvector(vi.varinfo)
 
-function BangBang.push!!(
-    vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
-)
-    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist, gidset)
+function BangBang.push!!(vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution)
+    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist)
 end
 
 get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)
@@ -70,9 +68,6 @@ set_num_produce!(vi::ThreadSafeVarInfo, n::Int) = set_num_produce!(vi.varinfo, n
 
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
-function setgid!(vi::ThreadSafeVarInfo, gid::Selector, vn::VarName)
-    return setgid!(vi.varinfo, gid, vn)
-end
 setorder!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = setorder!(vi.varinfo, vn, index)
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 

@@ -239,11 +239,11 @@ function assume(
         r = init(rng, dist, sampler)
         if istrans(vi)
             f = to_linked_internal_transform(vi, vn, dist)
-            push!!(vi, vn, f(r), dist, sampler)
+            push!!(vi, vn, f(r), dist)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
-            push!!(vi, vn, r, dist, sampler)
+            push!!(vi, vn, r, dist)
         end
     end
 
@@ -466,11 +466,11 @@ function get_and_set_val!(
             vn = vns[i]
             if istrans(vi)
                 ri_linked = _link_broadcast_new(vi, vn, dist, r[:, i])
-                push!!(vi, vn, ri_linked, dist, spl)
+                push!!(vi, vn, ri_linked, dist)
                 # `push!!` sets the trans-flag to `false` by default.
                 settrans!!(vi, true, vn)
             else
-                push!!(vi, vn, r[:, i], dist, spl)
+                push!!(vi, vn, r[:, i], dist)
             end
         end
     end
@@ -513,14 +513,14 @@ function get_and_set_val!(
         # 2. Define an anonymous function which returns `nothing`, which
         #    we then broadcast. This will allocate a vector of `nothing` though.
         if istrans(vi)
-            push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists, (spl,))
+            push!!.((vi,), vns, _link_broadcast_new.((vi,), vns, dists, r), dists)
             # NOTE: Need to add the correction.
             # FIXME: This is not great.
             acclogp!!(vi, sum(logabsdetjac.(link_transform.(dists), r)))
             # `push!!` sets the trans-flag to `false` by default.
             settrans!!.((vi,), true, vns)
         else
-            push!!.((vi,), vns, r, dists, (spl,))
+            push!!.((vi,), vns, r, dists)
         end
     end
     return r

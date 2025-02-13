@@ -18,8 +18,6 @@ Sampling algorithm that samples unobserved random variables from their prior dis
 """
 struct SampleFromPrior <: AbstractSampler end
 
-getspace(::Union{SampleFromPrior,SampleFromUniform}) = ()
-
 # Initializations.
 init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
 function init(rng, dist, ::SampleFromUniform)
@@ -31,6 +29,8 @@ function init(rng, dist, ::SampleFromUniform, n::Int)
     return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
 end
 
+# TODO(mhauru) Could we get rid of Sampler now that it's just a wrapper around `alg`?
+# (Selector has been removed).
 """
     Sampler{T}
 
@@ -47,12 +47,7 @@ By default, values are sampled from the prior.
 """
 struct Sampler{T} <: AbstractSampler
     alg::T
-    selector::Selector # Can we remove it?
-    # TODO: add space such that we can integrate existing external samplers in DynamicPPL
 end
-Sampler(alg) = Sampler(alg, Selector())
-Sampler(alg, model::Model) = Sampler(alg, model, Selector())
-Sampler(alg, model::Model, s::Selector) = Sampler(alg, s)
 
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 function AbstractMCMC.step(

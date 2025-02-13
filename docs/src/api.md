@@ -289,13 +289,6 @@ unset_flag!
 is_flagged
 ```
 
-For Gibbs sampling the following functions were added.
-
-```@docs
-setgid!
-updategid!
-```
-
 The following functions were used for sequential Monte Carlo methods.
 
 ```@docs

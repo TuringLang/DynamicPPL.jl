@@ -10,15 +10,7 @@ end
 
 # See https://github.com/TuringLang/Turing.jl/issues/1199
 ChainRulesCore.@non_differentiable BangBang.push!!(
-    vi::DynamicPPL.VarInfo,
-    vn::DynamicPPL.VarName,
-    r,
-    dist::Distributions.Distribution,
-    gidset::Set{DynamicPPL.Selector},
-)
-
-ChainRulesCore.@non_differentiable DynamicPPL.updategid!(
-    vi::DynamicPPL.AbstractVarInfo, vn::DynamicPPL.VarName, spl::DynamicPPL.Sampler
+    vi::DynamicPPL.VarInfo, vn::DynamicPPL.VarName, r, dist::Distributions.Distribution
 )
 
 # No need + causes issues for some AD backends, e.g. Zygote.
