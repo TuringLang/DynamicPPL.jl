@@ -1,7 +1,13 @@
+import DifferentiationInterface as DI
+
 """
     LogDensityFunction
 
 A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunction` implements the LogDensityProblems.jl interface,
+but only to 0th-order, i.e. it is only possible to calculate the log density,
+and not its gradient. If you need to calculate the gradient as well, you have
+to construct a [`DynamicPPL.LogDensityFunctionWithGrad`](@ref) object.
 
 # Fields
 $(FIELDS)
@@ -53,16 +59,6 @@ struct LogDensityFunction{V,M,C}
     context::C
 end
 
-# TODO: Deprecate.
-function LogDensityFunction(
-    varinfo::AbstractVarInfo,
-    model::Model,
-    sampler::AbstractSampler,
-    context::AbstractContext,
-)
-    return LogDensityFunction(varinfo, model, SamplingContext(sampler, context))
-end
-
 function LogDensityFunction(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
@@ -81,45 +77,16 @@ end
 
 Return the `DynamicPPL.Model` wrapped in the given log-density function `f`.
 """
-getmodel(f::LogDensityProblemsAD.ADGradientWrapper) =
-    getmodel(LogDensityProblemsAD.parent(f))
 getmodel(f::DynamicPPL.LogDensityFunction) = f.model
 
 """
     setmodel(f, model[, adtype])
 
 Set the `DynamicPPL.Model` in the given log-density function `f` to `model`.
-
-!!! warning
-    Note that if `f` is a `LogDensityProblemsAD.ADGradientWrapper` wrapping a
-    `DynamicPPL.LogDensityFunction`, performing an update of the `model` in `f`
-    might require recompilation of the gradient tape, depending on the AD backend.
 """
-function setmodel(
-    f::LogDensityProblemsAD.ADGradientWrapper,
-    model::DynamicPPL.Model,
-    adtype::ADTypes.AbstractADType,
-)
-    # TODO: Should we handle `SciMLBase.NoAD`?
-    # For an `ADGradientWrapper` we do the following:
-    # 1. Update the `Model` in the underlying `LogDensityFunction`.
-    # 2. Re-construct the `ADGradientWrapper` using `ADgradient` using the provided `adtype`
-    #    to ensure that the recompilation of gradient tapes, etc. also occur. For example,
-    #    ReverseDiff.jl in compiled mode will cache the compiled tape, which means that just
-    #    replacing the corresponding field with the new model won't be sufficient to obtain
-    #    the correct gradients.
-    return LogDensityProblemsAD.ADgradient(
-        adtype, setmodel(LogDensityProblemsAD.parent(f), model)
-    )
-end
 function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
     return Accessors.@set f.model = model
 end
-
-# HACK: heavy usage of `AbstractSampler` for, well, _everything_, is being phased out. In the mean time
-# we need to define these annoying methods to ensure that we stay compatible with everything.
-getsampler(f::LogDensityFunction) = getsampler(getcontext(f))
-hassampler(f::LogDensityFunction) = hassampler(getcontext(f))
 
 """
     getparams(f::LogDensityFunction)
@@ -128,10 +95,10 @@ Return the parameters of the wrapped varinfo as a vector.
 """
 getparams(f::LogDensityFunction) = f.varinfo[:]
 
-# LogDensityProblems interface
-function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
+# LogDensityProblems interface: logp (0th order)
+function LogDensityProblems.logdensity(f::LogDensityFunction, x::AbstractVector)
     context = getcontext(f)
-    vi_new = unflatten(f.varinfo, θ)
+    vi_new = unflatten(f.varinfo, x)
     return getlogp(last(evaluate!!(f.model, vi_new, context)))
 end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
@@ -140,18 +107,107 @@ end
 # TODO: should we instead implement and call on `length(f.varinfo)` (at least in the cases where no sampler is involved)?
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
-# This is important for performance -- one needs to provide `ADGradient` with a vector of
-# parameters, or DifferentiationInterface will not have sufficient information to e.g.
-# compile a rule for Mooncake (because it won't know the type of the input), or pre-allocate
-# a tape when using ReverseDiff.jl.
-function _make_ad_gradient(ad::ADTypes.AbstractADType, ℓ::LogDensityFunction)
-    x = map(identity, getparams(ℓ)) # ensure we concretise the elements of the params
-    return LogDensityProblemsAD.ADgradient(ad, ℓ; x)
+# LogDensityProblems interface: gradient (1st order)
+"""
+    use_closure(adtype::ADTypes.AbstractADType)
+
+In LogDensityProblems, we want to calculate the derivative of logdensity(f, x)
+with respect to x, where f is the model (in our case LogDensityFunction) and is
+a constant. However, DifferentiationInterface generally expects a
+single-argument function g(x) to differentiate.
+
+There are two ways of dealing with this:
+
+1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
+
+2. Use a constant context. This lets us pass a two-argument function to
+   DifferentiationInterface, as long as we also give it the 'inactive argument'
+   (i.e. the model) wrapped in `DI.Constant`.
+
+The relative performance of the two approaches, however, depends on the AD
+backend used. Some benchmarks are provided here:
+https://github.com/TuringLang/DynamicPPL.jl/pull/806#issuecomment-2658061480
+
+This function is used to determine whether a given AD backend should use a
+closure or a constant. If `use_closure(adtype)` returns `true`, then the
+closure approach will be used. By default, this function returns `false`, i.e.
+the constant approach will be used.
+"""
+use_closure(::ADTypes.AbstractADType) = false
+use_closure(::ADTypes.AutoForwardDiff) = false
+use_closure(::ADTypes.AutoMooncake) = false
+use_closure(::ADTypes.AutoReverseDiff) = true
+
+"""
+    _flipped_logdensity(f::LogDensityFunction, x::AbstractVector)
+
+This function is the same as `LogDensityProblems.logdensity(f, x)` but with the
+arguments flipped. It is used in the 'constant' approach to DifferentiationInterface
+(see `use_closure` for more information).
+"""
+function _flipped_logdensity(x::AbstractVector, f::LogDensityFunction)
+    return LogDensityProblems.logdensity(f, x)
 end
 
-function LogDensityProblemsAD.ADgradient(ad::ADTypes.AutoMooncake, f::LogDensityFunction)
-    return _make_ad_gradient(ad, f)
+"""
+    LogDensityFunctionWithGrad(ldf::DynamicPPL.LogDensityFunction, adtype::ADTypes.AbstractADType)
+
+A callable representing a log density function of a `model`.
+`DynamicPPL.LogDensityFunctionWithGrad` implements the LogDensityProblems.jl
+interface to 1st-order, meaning that you can both calculate the log density
+using
+
+    LogDensityProblems.logdensity(f, x)
+
+and its gradient using
+
+    LogDensityProblems.logdensity_and_gradient(f, x)
+
+where `f` is a `LogDensityFunctionWithGrad` object and `x` is a vector of parameters.
+
+# Fields
+$(FIELDS)
+"""
+struct LogDensityFunctionWithGrad{V,M,C,TAD<:ADTypes.AbstractADType}
+    ldf::LogDensityFunction{V,M,C}
+    adtype::TAD
+    prep::DI.GradientPrep
+    with_closure::Bool
+
+    function LogDensityFunctionWithGrad(
+        ldf::LogDensityFunction{V,M,C}, adtype::TAD
+    ) where {V,M,C,TAD}
+        # Get a set of dummy params to use for prep
+        x = map(identity, getparams(ldf))
+        with_closure = use_closure(adtype)
+        if with_closure
+            prep = DI.prepare_gradient(
+                Base.Fix1(LogDensityProblems.logdensity, ldf), adtype, x
+            )
+        else
+            prep = DI.prepare_gradient(_flipped_logdensity, adtype, x, DI.Constant(ldf))
+        end
+        # Store the prep with the struct. We also store whether a closure was used because
+        # we need to know this when calling `DI.value_and_gradient`. In practice we could
+        # recalculate it, but this runs the risk of introducing inconsistencies.
+        return new{V,M,C,TAD}(ldf, adtype, prep, with_closure)
+    end
 end
-function LogDensityProblemsAD.ADgradient(ad::ADTypes.AutoReverseDiff, f::LogDensityFunction)
-    return _make_ad_gradient(ad, f)
+function LogDensityProblems.logdensity(f::LogDensityFunctionWithGrad)
+    return LogDensityProblems.logdensity(f.ldf)
+end
+function LogDensityProblems.capabilities(::Type{<:LogDensityFunctionWithGrad})
+    return LogDensityProblems.LogDensityOrder{1}()
+end
+function LogDensityProblems.logdensity_and_gradient(
+    f::LogDensityFunctionWithGrad, x::AbstractVector
+)
+    x = map(identity, x)  # Concretise type
+    return if f.with_closure
+        DI.value_and_gradient(
+            Base.Fix1(LogDensityProblems.logdensity, f.ldf), f.prep, f.adtype, x
+        )
+    else
+        DI.value_and_gradient(_flipped_logdensity, f.prep, f.adtype, x, DI.Constant(f.ldf))
+    end
 end

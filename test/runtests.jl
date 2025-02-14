@@ -9,7 +9,7 @@ using Distributions
 using DistributionsAD
 using Documenter
 using ForwardDiff
-using LogDensityProblems, LogDensityProblemsAD
+using LogDensityProblems
 using MacroTools
 using MCMCChains
 using Mooncake: Mooncake
@@ -75,7 +75,6 @@ include("test_util.jl")
             include("ext/DynamicPPLJETExt.jl")
         end
         @testset "ad" begin
-            include("ext/DynamicPPLForwardDiffExt.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
             include("ad.jl")
         end
