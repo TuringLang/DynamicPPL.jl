@@ -374,42 +374,26 @@ end
 
 # `NamedTuple`
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,typeof(identity)},
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:NamedTuple}, ::VarName{sym,typeof(identity)}, value, ::Distribution
 ) where {sym}
     return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym},
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}, value, ::Distribution
 ) where {sym}
     return Accessors.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `AbstractDict`
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:AbstractDict},
-    vn::VarName,
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:AbstractDict}, vn::VarName, value, ::Distribution
 )
     vi.values[vn] = value
     return vi
 end
 
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:VarNamedVector},
-    vn::VarName,
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:VarNamedVector}, vn::VarName, value, ::Distribution
 )
     # The semantics of push!! for SimpleVarInfo and VarNamedVector are different. For
     # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
@@ -483,7 +467,7 @@ function assume(
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
     value_raw = to_maybe_linked_internal(vi, vn, dist, value)
-    vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
+    vi = BangBang.push!!(vi, vn, value_raw, dist)
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
@@ -550,7 +534,7 @@ function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
-istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
+istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
 islinked(vi::SimpleVarInfo) = istrans(vi)

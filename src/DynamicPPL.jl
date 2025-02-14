@@ -63,8 +63,6 @@ export AbstractVarInfo,
     is_flagged,
     set_flag!,
     unset_flag!,
-    setgid!,
-    updategid!,
     setorder!,
     istrans,
     link,
@@ -74,7 +72,6 @@ export AbstractVarInfo,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
-    inspace,
     subsumes,
     @varname,
     # Compiler
@@ -152,9 +149,6 @@ macro prob_str(str)
     ))
 end
 
-# Used here and overloaded in Turing
-function getspace end
-
 """
     AbstractVarInfo
 
@@ -166,14 +160,8 @@ See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
-const LEGACY_WARNING = """
-!!! warning
-    This method is considered legacy, and is likely to be deprecated in the future.
-"""
-
 # Necessary forward declarations
 include("utils.jl")
-include("selector.jl")
 include("chains.jl")
 include("model.jl")
 include("sampler.jl")

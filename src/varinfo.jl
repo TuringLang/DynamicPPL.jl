@@ -18,8 +18,6 @@ Let `md` be an instance of `Metadata`:
  `md.vns`, `md.ranges` `md.dists`, `md.orders` and `md.flags`.
 - `md.vns[md.idcs[vn]] == vn`.
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
-- `md.gids[md.idcs[vn]]` is the set of algorithms used to sample `vn`. This is used in
- the Gibbs sampling process.
 - `md.orders[md.idcs[vn]]` is the number of `observe` statements before `vn` is sampled.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
@@ -41,7 +39,6 @@ struct Metadata{
     TDists<:AbstractVector{<:Distribution},
     TVN<:AbstractVector{<:VarName},
     TVal<:AbstractVector{<:Real},
-    TGIds<:AbstractVector{Set{Selector}},
 }
     # Mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`
     idcs::TIdcs # Dict{<:VarName,Int}
@@ -59,10 +56,6 @@ struct Metadata{
 
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
-
-    # Vector of sampler ids corresponding to `vns`
-    # Each random variable can be sampled using multiple samplers, e.g. in Gibbs, hence the `Set`
-    gids::TGIds # AbstractVector{Set{Selector}}
 
     # Number of `observe` statements before each random variable is sampled
     orders::Vector{Int}
@@ -261,7 +254,6 @@ function replace_values(metadata::Metadata, x)
         metadata.ranges,
         x,
         metadata.dists,
-        metadata.gids,
         metadata.orders,
         metadata.flags,
     )
@@ -301,7 +293,6 @@ function Metadata()
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
-        Vector{Set{Selector}}(),
         Vector{Int}(),
         flags,
     )
@@ -320,7 +311,6 @@ function empty!(meta::Metadata)
     empty!(meta.ranges)
     empty!(meta.vals)
     empty!(meta.dists)
-    empty!(meta.gids)
     empty!(meta.orders)
     for k in keys(meta.flags)
         empty!(meta.flags[k])
@@ -418,7 +408,6 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
         ranges,
         vals,
         metadata.dists[indices_for_vns],
-        metadata.gids[indices_for_vns],
         metadata.orders[indices_for_vns],
         flags,
     )
@@ -493,7 +482,6 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    gids = Set{Selector}[]
     orders = Int[]
     flags = Dict{String,BitVector}()
     # Initialize the `flags`.
@@ -516,15 +504,13 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        gid = metadata_for_vn.gids[getidx(metadata_for_vn, vn)]
-        push!(gids, gid)
         push!(orders, getorder(metadata_for_vn, vn))
         for k in keys(flags)
             push!(flags[k], is_flagged(metadata_for_vn, vn, k))
         end
     end
 
-    return Metadata(idcs, vns, ranges, vals, dists, gids, orders, flags)
+    return Metadata(idcs, vns, ranges, vals, dists, orders, flags)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -730,13 +716,6 @@ end
     return expr
 end
 
-"""
-    getgid(vi::VarInfo, vn::VarName)
-
-Return the set of sampler selectors associated with `vn` in `vi`.
-"""
-getgid(vi::VarInfo, vn::VarName) = getmetadata(vi, vn).gids[getidx(vi, vn)]
-
 function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
     settrans!!(getmetadata(vi, vn), trans, vn)
     return vi
@@ -787,14 +766,8 @@ _getidcs(vi::TypedVarInfo) = _getidcs(vi.metadata)
     return :($(exprs...),)
 end
 
-@inline function findinds(f_meta::Metadata)
-    # Get all the idcs of the vns
-    return filter((i) -> isempty(f_meta.gids[i]), 1:length(f_meta.gids))
-end
-
-function findinds(vnv::VarNamedVector)
-    return 1:length(vnv.varnames)
-end
+@inline findinds(f_meta::Metadata) = eachindex(f_meta.vns)
+findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
 
 """
     all_varnames_grouped_by_symbol(vi::TypedVarInfo)
@@ -876,9 +849,6 @@ function TypedVarInfo(vi::UntypedVarInfo)
         sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
         # New dists
         sym_dists = getindex.((meta.dists,), inds)
-        # New gids, can make a resizeable FillArray
-        sym_gids = getindex.((meta.gids,), inds)
-        @assert length(sym_gids) <= 1 || all(x -> x == sym_gids[1], @view sym_gids[2:end])
         # New orders
         sym_orders = getindex.((meta.orders,), inds)
         # New flags
@@ -899,14 +869,7 @@ function TypedVarInfo(vi::UntypedVarInfo)
         push!(
             new_metas,
             Metadata(
-                sym_idcs,
-                sym_vns,
-                sym_ranges,
-                sym_vals,
-                sym_dists,
-                sym_gids,
-                sym_orders,
-                sym_flags,
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
             ),
         )
     end
@@ -949,21 +912,6 @@ Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
     end
 
     return expr
-end
-
-"""
-    setgid!(vi::VarInfo, gid::Selector, vn::VarName)
-
-Add `gid` to the set of sampler selectors associated with `vn` in `vi`.
-"""
-setgid!(vi::VarInfo, gid::Selector, vn::VarName) = setgid!(getmetadata(vi, vn), gid, vn)
-
-function setgid!(m::Metadata, gid::Selector, vn::VarName)
-    return push!(m.gids[getidx(m, vn)], gid)
-end
-
-function setgid!(vnv::VarNamedVector, gid::Selector, vn::VarName)
-    throw(ErrorException("Calling setgid! on a VarNamedVector isn't valid."))
 end
 
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
@@ -1348,7 +1296,6 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.gids,
         metadata.orders,
         metadata.flags,
     )
@@ -1491,7 +1438,6 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.gids,
         metadata.orders,
         metadata.flags,
     )
@@ -1675,7 +1621,6 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     | Varnames  :   $(string(vi.metadata.vns))
     | Range     :   $(vi.metadata.ranges)
     | Vals      :   $(vi.metadata.vals)
-    | GIDs      :   $(vi.metadata.gids)
     | Orders    :   $(vi.metadata.orders)
     | Logp      :   $(getlogp(vi))
     | #produce  :   $(get_num_produce(vi))
@@ -1715,13 +1660,17 @@ function Base.show(io::IO, vi::UntypedVarInfo)
     return print(io, ")")
 end
 
-function BangBang.push!!(
-    vi::VarInfo, vn::VarName, r, dist::Distribution, gidset::Set{Selector}
-)
+"""
+    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
+
+Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
+the `VarInfo` `vi`, mutating if it makes sense.
+"""
+function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist, gid=$gidset"
+        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
     elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist, gid=$gidset"
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist"
     end
 
     sym = getsym(vn)
@@ -1734,14 +1683,13 @@ function BangBang.push!!(
             [1:length(val)],
             val,
             [dist],
-            [gidset],
             [get_num_produce(vi)],
             Dict{String,BitVector}("trans" => [false], "del" => [false]),
         )
         vi = Accessors.@set vi.metadata[sym] = md
     else
         meta = getmetadata(vi, vn)
-        push!(meta, vn, r, dist, gidset, get_num_produce(vi))
+        push!(meta, vn, r, dist, get_num_produce(vi))
     end
 
     return vi
@@ -1761,7 +1709,7 @@ end
 # exist in the TypedVarInfo already. We could implement it in the cases where it it does
 # exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
 
-function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
+function Base.push!(meta::Metadata, vn, r, dist, num_produce)
     val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
@@ -1770,7 +1718,6 @@ function Base.push!(meta::Metadata, vn, r, dist, gidset, num_produce)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.gids, gidset)
     push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
@@ -1912,18 +1859,6 @@ end
         )
     end
     return expr
-end
-
-"""
-    updategid!(vi::VarInfo, vn::VarName, spl::Sampler)
-
-Set `vn`'s `gid` to `Set([spl.selector])`, if `vn` does not have a sampler selector linked
-and `vn`'s symbol is in the space of `spl`.
-"""
-function updategid!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, spl::Sampler)
-    if inspace(vn, getspace(spl))
-        setgid!(vi, spl.selector, vn)
-    end
 end
 
 # TODO: Maybe rename or something?

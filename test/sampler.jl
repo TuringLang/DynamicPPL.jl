@@ -67,7 +67,6 @@
         )
             return vi, nothing
         end
-        DynamicPPL.getspace(::Sampler{<:OnlyInitAlg}) = ()
 
         # initial samplers
         DynamicPPL.initialsampler(::Sampler{OnlyInitAlgUniform}) = SampleFromUniform()
