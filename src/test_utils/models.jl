@@ -186,31 +186,29 @@ function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
     return (s=s_unconstrained, m=m), logprior_true(model, s, m) - Δlogp
 end
 
-@model function demo_dot_assume_dot_observe(
-    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
-) where {TV}
+@model function demo_dot_assume_observe(x=[1.5, 2.0], ::Type{TV}=Vector{Float64}) where {TV}
     # `dot_assume` and `observe`
     s = TV(undef, length(x))
     m = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
 
     x ~ MvNormal(m, Diagonal(s))
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
 end
-function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
+function logprior_true(model::Model{typeof(demo_dot_assume_observe)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
 end
-function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe)}, s, m)
+function loglikelihood_true(model::Model{typeof(demo_dot_assume_observe)}, s, m)
     return loglikelihood(MvNormal(m, Diagonal(s)), model.args.x)
 end
 function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_dot_assume_dot_observe)}, s, m
+    model::Model{typeof(demo_dot_assume_observe)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function varnames(model::Model{typeof(demo_dot_assume_dot_observe)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+function varnames(model::Model{typeof(demo_dot_assume_observe)})
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
 @model function demo_assume_index_observe(
@@ -276,7 +274,7 @@ end
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
     m = TV(undef, length(x))
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
     for i in eachindex(x)
         x[i] ~ Normal(m[i], sqrt(s[i]))
     end
@@ -295,7 +293,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
@@ -355,7 +353,7 @@ end
     s = TV(undef, 2)
     m = TV(undef, 2)
     s .~ InverseGamma(2, 3)
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
 
     1.5 ~ Normal(m[1], sqrt(s[1]))
     2.0 ~ Normal(m[2], sqrt(s[2]))
@@ -376,7 +374,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
 @model function demo_assume_observe_literal()
@@ -431,7 +429,7 @@ end
     s = TV(undef, 2)
     s .~ InverseGamma(2, 3)
     m = TV(undef, 2)
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
     return s, m
 end
 
@@ -460,7 +458,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
 @model function _likelihood_multivariate_observe(s, m, x)
@@ -473,7 +471,7 @@ end
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
     m = TV(undef, length(x))
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
 
     # Submodel likelihood
     # With to_submodel, we have to have a left-hand side variable to
@@ -494,76 +492,39 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
-@model function demo_dot_assume_dot_observe_matrix(
+@model function demo_dot_assume_observe_matrix_index(
     x=transpose([1.5 2.0;]), ::Type{TV}=Vector{Float64}
 ) where {TV}
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
     m = TV(undef, length(x))
-    m .~ Normal.(0, sqrt.(s))
+    m ~ product_distribution(Normal.(0, sqrt.(s)))
 
-    # Dotted observe for `Matrix`.
-    x .~ MvNormal(m, Diagonal(s))
+    x[:, 1] ~ MvNormal(m, Diagonal(s))
 
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
 end
-function logprior_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, s, m)
+function logprior_true(model::Model{typeof(demo_dot_assume_observe_matrix_index)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
 end
-function loglikelihood_true(model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, s, m)
+function loglikelihood_true(
+    model::Model{typeof(demo_dot_assume_observe_matrix_index)}, s, m
+)
     return sum(logpdf.(Normal.(m, sqrt.(s)), model.args.x))
 end
 function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_dot_assume_dot_observe_matrix)}, s, m
+    model::Model{typeof(demo_dot_assume_observe_matrix_index)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function varnames(model::Model{typeof(demo_dot_assume_dot_observe_matrix)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m[1]), @varname(m[2])]
+function varnames(model::Model{typeof(demo_dot_assume_observe_matrix_index)})
+    return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
-@model function demo_dot_assume_matrix_dot_observe_matrix(
-    x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
-) where {TV}
-    n = length(x)
-    d = length(x) ÷ 2
-    s = TV(undef, d, 2)
-    s .~ product_distribution([InverseGamma(2, 3) for _ in 1:d])
-    s_vec = vec(s)
-    m ~ MvNormal(zeros(n), Diagonal(s_vec))
-
-    # Dotted observe for `Matrix`.
-    x .~ MvNormal(m, Diagonal(s_vec))
-
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
-end
-function logprior_true(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
-)
-    n = length(model.args.x)
-    s_vec = vec(s)
-    return loglikelihood(InverseGamma(2, 3), s_vec) +
-           logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m)
-end
-function loglikelihood_true(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
-)
-    return loglikelihood(MvNormal(m, Diagonal(vec(s))), model.args.x)
-end
-function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)}, s, m
-)
-    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
-end
-function varnames(model::Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)})
-    s = zeros(1, 2) # used for varname concretization only
-    return [@varname(s[:, 1], true), @varname(s[:, 2], true), @varname(m)]
-end
-
-@model function demo_assume_matrix_dot_observe_matrix(
+@model function demo_assume_matrix_observe_matrix_index(
     x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
 ) where {TV}
     n = length(x)
@@ -572,33 +533,32 @@ end
     s_vec = vec(s)
     m ~ MvNormal(zeros(n), Diagonal(s_vec))
 
-    # Dotted observe for `Matrix`.
-    x .~ MvNormal(m, Diagonal(s_vec))
+    x[:, 1] ~ MvNormal(m, Diagonal(s_vec))
 
     return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
 end
-function logprior_true(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m)
+function logprior_true(model::Model{typeof(demo_assume_matrix_observe_matrix_index)}, s, m)
     n = length(model.args.x)
     s_vec = vec(s)
     return loglikelihood(InverseGamma(2, 3), s_vec) +
            logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m)
 end
 function loglikelihood_true(
-    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
+    model::Model{typeof(demo_assume_matrix_observe_matrix_index)}, s, m
 )
     return loglikelihood(MvNormal(m, Diagonal(vec(s))), model.args.x)
 end
 function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_assume_matrix_dot_observe_matrix)}, s, m
+    model::Model{typeof(demo_assume_matrix_observe_matrix_index)}, s, m
 )
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
-function varnames(model::Model{typeof(demo_assume_matrix_dot_observe_matrix)})
+function varnames(model::Model{typeof(demo_assume_matrix_observe_matrix_index)})
     return [@varname(s), @varname(m)]
 end
 
 const DemoModels = Union{
-    Model{typeof(demo_dot_assume_dot_observe)},
+    Model{typeof(demo_dot_assume_observe)},
     Model{typeof(demo_assume_index_observe)},
     Model{typeof(demo_assume_multivariate_observe)},
     Model{typeof(demo_dot_assume_observe_index)},
@@ -609,9 +569,8 @@ const DemoModels = Union{
     Model{typeof(demo_dot_assume_observe_index_literal)},
     Model{typeof(demo_assume_submodel_observe_index_literal)},
     Model{typeof(demo_dot_assume_observe_submodel)},
-    Model{typeof(demo_dot_assume_dot_observe_matrix)},
-    Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
-    Model{typeof(demo_assume_matrix_dot_observe_matrix)},
+    Model{typeof(demo_dot_assume_observe_matrix_index)},
+    Model{typeof(demo_assume_matrix_observe_matrix_index)},
 }
 
 const UnivariateAssumeDemoModels = Union{
@@ -637,7 +596,7 @@ function rand_prior_true(rng::Random.AbstractRNG, model::UnivariateAssumeDemoMod
 end
 
 const MultivariateAssumeDemoModels = Union{
-    Model{typeof(demo_dot_assume_dot_observe)},
+    Model{typeof(demo_dot_assume_observe)},
     Model{typeof(demo_assume_index_observe)},
     Model{typeof(demo_assume_multivariate_observe)},
     Model{typeof(demo_dot_assume_observe_index)},
@@ -645,8 +604,7 @@ const MultivariateAssumeDemoModels = Union{
     Model{typeof(demo_dot_assume_observe_index_literal)},
     Model{typeof(demo_assume_submodel_observe_index_literal)},
     Model{typeof(demo_dot_assume_observe_submodel)},
-    Model{typeof(demo_dot_assume_dot_observe_matrix)},
-    Model{typeof(demo_dot_assume_matrix_dot_observe_matrix)},
+    Model{typeof(demo_dot_assume_observe_matrix_index)},
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
@@ -699,7 +657,7 @@ function rand_prior_true(rng::Random.AbstractRNG, model::MultivariateAssumeDemoM
 end
 
 const MatrixvariateAssumeDemoModels = Union{
-    Model{typeof(demo_assume_matrix_dot_observe_matrix)}
+    Model{typeof(demo_assume_matrix_observe_matrix_index)}
 }
 function posterior_mean(model::MatrixvariateAssumeDemoModels)
     # Get some containers to fill.
@@ -786,7 +744,7 @@ And for the multivariate one (the latter one):
 
 """
 const DEMO_MODELS = (
-    demo_dot_assume_dot_observe(),
+    demo_dot_assume_observe(),
     demo_assume_index_observe(),
     demo_assume_multivariate_observe(),
     demo_dot_assume_observe_index(),
@@ -797,7 +755,6 @@ const DEMO_MODELS = (
     demo_assume_observe_literal(),
     demo_assume_submodel_observe_index_literal(),
     demo_dot_assume_observe_submodel(),
-    demo_dot_assume_dot_observe_matrix(),
-    demo_dot_assume_matrix_dot_observe_matrix(),
-    demo_assume_matrix_dot_observe_matrix(),
+    demo_dot_assume_observe_matrix_index(),
+    demo_assume_matrix_observe_matrix_index(),
 )

@@ -30,67 +30,6 @@ function tilde_assume(
     return r, lp, setindex!!(vi, r_transformed, vn)
 end
 
-function dot_tilde_assume(
-    ::DynamicTransformationContext{isinverse},
-    dist::Distribution,
-    var::AbstractArray,
-    vns::AbstractArray{<:VarName},
-    vi,
-) where {isinverse}
-    r = getindex.((vi,), vns, (dist,))
-    b = link_transform(dist)
-
-    is_trans_uniques = unique(istrans.((vi,), vns))
-    @assert length(is_trans_uniques) == 1 "DynamicTransformationContext only supports transforming all variables"
-    is_trans = first(is_trans_uniques)
-    if is_trans
-        @assert isinverse "Trying to link already transformed variables"
-    else
-        @assert !isinverse "Trying to invlink non-transformed variables"
-    end
-
-    # Only transform if `!isinverse` since `vi[vn, right]`
-    # already performs the inverse transformation if it's transformed.
-    r_transformed = isinverse ? r : b.(r)
-    lp = sum(Bijectors.logpdf_with_trans.((dist,), r, (!isinverse,)))
-    return r, lp, setindex!!(vi, r_transformed, vns)
-end
-
-function dot_tilde_assume(
-    ::DynamicTransformationContext{isinverse},
-    dist::MultivariateDistribution,
-    var::AbstractMatrix,
-    vns::AbstractVector{<:VarName},
-    vi::AbstractVarInfo,
-) where {isinverse}
-    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
-    r = vi[vns, dist]
-
-    # Compute `logpdf` with logabsdet-jacobian correction.
-    lp = sum(zip(vns, eachcol(r))) do (vn, ri)
-        return Bijectors.logpdf_with_trans(dist, ri, !isinverse)
-    end
-
-    # Transform _all_ values.
-    is_trans_uniques = unique(istrans.((vi,), vns))
-    @assert length(is_trans_uniques) == 1 "DynamicTransformationContext only supports transforming all variables"
-    is_trans = first(is_trans_uniques)
-    if is_trans
-        @assert isinverse "Trying to link already transformed variables"
-    else
-        @assert !isinverse "Trying to invlink non-transformed variables"
-    end
-
-    b = link_transform(dist)
-    for (vn, ri) in zip(vns, eachcol(r))
-        # Only transform if `!isinverse` since `vi[vn, right]`
-        # already performs the inverse transformation if it's transformed.
-        vi = setindex!!(vi, isinverse ? ri : b(ri), vn)
-    end
-
-    return r, lp, vi
-end
-
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end

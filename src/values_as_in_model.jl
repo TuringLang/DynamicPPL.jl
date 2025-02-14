@@ -90,29 +90,6 @@ function tilde_assume(
     return value, logp, vi
 end
 
-# `dot_tilde_assume`
-function dot_tilde_assume(context::ValuesAsInModelContext, right, left, vn, vi)
-    value, logp, vi = dot_tilde_assume(childcontext(context), right, left, vn, vi)
-
-    # Save the value.
-    _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-    broadcast_push!(context, _vns, value)
-
-    return value, logp, vi
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, left, vn, vi
-)
-    value, logp, vi = dot_tilde_assume(
-        rng, childcontext(context), sampler, right, left, vn, vi
-    )
-    # Save the value.
-    _right, _left, _vns = unwrap_right_left_vns(right, left, vn)
-    broadcast_push!(context, _vns, value)
-
-    return value, logp, vi
-end
-
 """
     values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo[, context::AbstractContext])
 
