@@ -142,11 +142,11 @@ end
 
     @testset "PrefixContext" begin
         @testset "prefixing" begin
-            ctx = @inferred PrefixContext{:f}(
-                PrefixContext{:e}(
-                    PrefixContext{:d}(
-                        PrefixContext{:c}(
-                            PrefixContext{:b}(PrefixContext{:a}(DefaultContext()))
+            ctx = @inferred PrefixContext{:a}(
+                PrefixContext{:b}(
+                    PrefixContext{:c}(
+                        PrefixContext{:d}(
+                            PrefixContext{:e}(PrefixContext{:f}(DefaultContext()))
                         ),
                     ),
                 ),
@@ -174,8 +174,8 @@ end
             vn_prefixed4 = prefix(ctx4, vn)
             @test DynamicPPL.getsym(vn_prefixed1) == Symbol("a.x")
             @test DynamicPPL.getsym(vn_prefixed2) == Symbol("a.x")
-            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("a.b.x")
-            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("a.b.x")
+            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("b.a.x")
+            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("b.a.x")
             @test DynamicPPL.getoptic(vn_prefixed1) === DynamicPPL.getoptic(vn)
             @test DynamicPPL.getoptic(vn_prefixed2) === DynamicPPL.getoptic(vn)
             @test DynamicPPL.getoptic(vn_prefixed3) === DynamicPPL.getoptic(vn)

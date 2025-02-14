@@ -79,72 +79,53 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-islinked(vi::ThreadSafeVarInfo, spl::AbstractSampler) = islinked(vi.varinfo, spl)
+islinked(vi::ThreadSafeVarInfo) = islinked(vi.varinfo)
 
-function link!!(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, spl, model)
+function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
 end
 
-function invlink!!(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, spl, model)
+function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
 
-function link(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, spl, model)
+function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, args...)
 end
 
-function invlink(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, spl, model)
+function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, args...)
 end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
 # NOTE: We also can't just defer to the wrapped varinfo, because we need to ensure
 # consistency between `vi.logps` field and `getlogp(vi.varinfo)`, which accumulates
 # to define `getlogp(vi)`.
-function link!!(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
+function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
 
-function invlink!!(
-    ::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
+function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     return settrans!!(
         last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
         NoTransformation(),
     )
 end
 
-function link(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return link!!(t, deepcopy(vi), spl, model)
+function link(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return link!!(t, deepcopy(vi), model)
 end
 
-function invlink(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo, spl::AbstractSampler, model::Model
-)
-    return invlink!!(t, deepcopy(vi), spl, model)
+function invlink(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return invlink!!(t, deepcopy(vi), model)
 end
 
-function maybe_invlink_before_eval!!(
-    vi::ThreadSafeVarInfo, context::AbstractContext, model::Model
-)
+function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
-    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the `getlogp(vi.varinfo)`
-    # hence the log-absdet-jacobian term will correctly be included in the `getlogp(vi)`.
-    return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(
-        vi.varinfo, context, model
-    )
+    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the
+    # `getlogp(vi.varinfo)` hence the log-absdet-jacobian term will correctly be included in
+    # the `getlogp(vi)`.
+    return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(vi.varinfo, model)
 end
 
 # `getindex`
@@ -156,17 +137,6 @@ function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
 end
 function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
     return getindex(vi.varinfo, vns, dist)
-end
-getindex(vi::ThreadSafeVarInfo, spl::AbstractSampler) = getindex(vi.varinfo, spl)
-
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::AbstractSampler)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromPrior)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, val, spl::SampleFromUniform)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, val, spl)
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
@@ -182,8 +152,8 @@ function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
     return vector_getranges(vi.varinfo, vns)
 end
 
-function set_retained_vns_del_by_spl!(vi::ThreadSafeVarInfo, spl::Sampler)
-    return set_retained_vns_del_by_spl!(vi.varinfo, spl)
+function set_retained_vns_del!(vi::ThreadSafeVarInfo)
+    return set_retained_vns_del!(vi.varinfo)
 end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
@@ -203,12 +173,8 @@ function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
     return is_flagged(vi.varinfo, vn, flag)
 end
 
-# Transformations.
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
-end
-function settrans!!(vi::ThreadSafeVarInfo, spl::AbstractSampler, dist::Distribution)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, spl, dist)
 end
 
 istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
@@ -218,9 +184,6 @@ getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.var
 
 function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
-end
-function unflatten(vi::ThreadSafeVarInfo, spl::AbstractSampler, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten(vi.varinfo, spl, x)
 end
 
 function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
