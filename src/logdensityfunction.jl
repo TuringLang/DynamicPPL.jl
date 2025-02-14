@@ -101,9 +101,6 @@ function LogDensityProblems.logdensity(f::LogDensityFunction, x::AbstractVector)
     vi_new = unflatten(f.varinfo, x)
     return getlogp(last(evaluate!!(f.model, vi_new, context)))
 end
-function _flipped_logdensity(x::AbstractVector, f::LogDensityFunction)
-    return LogDensityProblems.logdensity(f, x)
-end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction})
     return LogDensityProblems.LogDensityOrder{0}()
 end
@@ -111,6 +108,47 @@ end
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
 # LogDensityProblems interface: gradient (1st order)
+"""
+    use_closure(adtype::ADTypes.AbstractADType)
+
+In LogDensityProblems, we want to calculate the derivative of logdensity(f, x)
+with respect to x, where f is the model (in our case LogDensityFunction) and is
+a constant. However, DifferentiationInterface generally expects a
+single-argument function g(x) to differentiate.
+
+There are two ways of dealing with this:
+
+1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
+
+2. Use a constant context. This lets us pass a two-argument function to
+   DifferentiationInterface, as long as we also give it the 'inactive argument'
+   (i.e. the model) wrapped in `DI.Constant`.
+
+The relative performance of the two approaches, however, depends on the AD
+backend used. Some benchmarks are provided here:
+https://github.com/TuringLang/DynamicPPL.jl/pull/806#issuecomment-2658061480
+
+This function is used to determine whether a given AD backend should use a
+closure or a constant. If `use_closure(adtype)` returns `true`, then the
+closure approach will be used. By default, this function returns `false`, i.e.
+the constant approach will be used.
+"""
+use_closure(::ADTypes.AbstractADType) = false
+use_closure(::ADTypes.AutoForwardDiff) = false
+use_closure(::ADTypes.AutoMooncake) = false
+use_closure(::ADTypes.AutoReverseDiff) = true
+
+"""
+    _flipped_logdensity(f::LogDensityFunction, x::AbstractVector)
+
+This function is the same as `LogDensityProblems.logdensity(f, x)` but with the
+arguments flipped. It is used in the 'constant' approach to DifferentiationInterface
+(see `use_closure` for more information).
+"""
+function _flipped_logdensity(x::AbstractVector, f::LogDensityFunction)
+    return LogDensityProblems.logdensity(f, x)
+end
+
 """
     LogDensityFunctionWithGrad(ldf::DynamicPPL.LogDensityFunction, adtype::ADTypes.AbstractADType)
 
@@ -134,15 +172,25 @@ struct LogDensityFunctionWithGrad{V,M,C,TAD<:ADTypes.AbstractADType}
     ldf::LogDensityFunction{V,M,C}
     adtype::TAD
     prep::DI.GradientPrep
+    with_closure::Bool
 
     function LogDensityFunctionWithGrad(
         ldf::LogDensityFunction{V,M,C}, adtype::TAD
     ) where {V,M,C,TAD}
-        # Get a set of dummy params to use for prep and concretise type
+        # Get a set of dummy params to use for prep
         x = map(identity, getparams(ldf))
-        prep = DI.prepare_gradient(_flipped_logdensity, adtype, x, DI.Constant(ldf))
-        # Store the prep with the struct
-        return new{V,M,C,TAD}(ldf, adtype, prep)
+        with_closure = use_closure(adtype)
+        if with_closure
+            prep = DI.prepare_gradient(
+                Base.Fix1(LogDensityProblems.logdensity, ldf), adtype, x
+            )
+        else
+            prep = DI.prepare_gradient(_flipped_logdensity, adtype, x, DI.Constant(ldf))
+        end
+        # Store the prep with the struct. We also store whether a closure was used because
+        # we need to know this when calling `DI.value_and_gradient`. In practice we could
+        # recalculate it, but this runs the risk of introducing inconsistencies.
+        return new{V,M,C,TAD}(ldf, adtype, prep, with_closure)
     end
 end
 function LogDensityProblems.logdensity(f::LogDensityFunctionWithGrad)
@@ -151,13 +199,15 @@ end
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunctionWithGrad})
     return LogDensityProblems.LogDensityOrder{1}()
 end
-# By default, the AD backend to use is inferred from the context, which would
-# typically be a SamplingContext which contains a sampler.
 function LogDensityProblems.logdensity_and_gradient(
     f::LogDensityFunctionWithGrad, x::AbstractVector
 )
     x = map(identity, x)  # Concretise type
-    return DI.value_and_gradient(
-        _flipped_logdensity, f.prep, f.adtype, x, DI.Constant(f.ldf)
-    )
+    return if f.with_closure
+        DI.value_and_gradient(
+            Base.Fix1(LogDensityProblems.logdensity, f.ldf), f.prep, f.adtype, x
+        )
+    else
+        DI.value_and_gradient(_flipped_logdensity, f.prep, f.adtype, x, DI.Constant(f.ldf))
+    end
 end
