@@ -2,6 +2,9 @@ module DynamicPPLBenchmarks
 
 using DynamicPPL
 using BenchmarkTools
+using InteractiveUtils
+
+using ComponentArrays: ComponentArrays
 
 using Weave: Weave
 using Markdown: Markdown
@@ -33,6 +36,44 @@ function benchmark_typed_varinfo!(suite, m)
     return suite
 end
 
+function benchmark_simple_varinfo_namedtuple!(suite, m)
+    # We expect the model to return the random variables as a `NamedTuple`.
+    retvals = m()
+
+    # Populate.
+    vi = SimpleVarInfo{Float64}(retvals)
+    vi_ca = SimpleVarInfo{Float64}(ComponentArrays.ComponentArray(retvals))
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
+    suite["evaluation_simple_varinfo_componentarrays"] = @benchmarkable $m(
+        $vi_ca, $(DefaultContext())
+    )
+    return suite
+end
+
+function benchmark_simple_varinfo_dict!(suite, m)
+    # Populate.
+    vi = SimpleVarInfo{Float64}(Dict())
+    retvals = m(vi)
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_dict"] = @benchmarkable $m($vi, $(DefaultContext()))
+
+    # We expect the model to return the random variables as a `NamedTuple`.
+    vns = map(keys(retvals)) do k
+        VarName{k}()
+    end
+    vi = SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
+
+    # Evaluate.
+    suite["evaluation_simple_varinfo_dict_from_nt"] = @benchmarkable $m(
+        $vi, $(DefaultContext())
+    )
+
+    return suite
+end
+
 function typed_code(m, vi=VarInfo(m))
     rng = Random.MersenneTwister(42)
     spl = SampleFromPrior()
@@ -51,6 +92,11 @@ function make_suite(model)
     suite = BenchmarkGroup()
     benchmark_untyped_varinfo!(suite, model)
     benchmark_typed_varinfo!(suite, model)
+
+    if isdefined(DynamicPPL, :SimpleVarInfo)
+        benchmark_simple_varinfo_namedtuple!(suite, model)
+        benchmark_simple_varinfo_dict!(suite, model)
+    end
 
     return suite
 end
@@ -152,6 +198,7 @@ function weave_benchmarks(
     name=default_name(; include_commit_id=include_commit_id),
     name_old=nothing,
     include_typed_code=false,
+    seconds=10,
     doctype="github",
     outpath="results/$(name)/",
     kwargs...,
@@ -160,6 +207,7 @@ function weave_benchmarks(
         :benchmarkbody => benchmarkbody,
         :name => name,
         :include_typed_code => include_typed_code,
+        :seconds => seconds,
     )
     if !isnothing(name_old)
         args[:name_old] = name_old
@@ -168,5 +216,37 @@ function weave_benchmarks(
     mkpath(outpath)
     return Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
 end
+
+function display_environment()
+    display("text/markdown", "Computer Information:")
+    vinfo = sprint(InteractiveUtils.versioninfo)
+    display(
+        "text/markdown",
+        """
+```
+$(vinfo)
+```
+""",
+    )
+
+    ctx = Pkg.API.Context()
+
+    pkg_status = let io = IOBuffer()
+        Pkg.status(Pkg.API.Context(); io=io)
+        String(take!(io))
+    end
+
+    display(
+        "text/markdown",
+        """
+Package Information:
+""",
+    )
+
+    md = "```\n$(pkg_status)\n```"
+    return display("text/markdown", md)
+end
+
+include("tables.jl")
 
 end # module
