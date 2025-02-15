@@ -6,9 +6,6 @@ on:
       - master
       - backport-*
   pull_request:
-    branches:
-      - master
-      - backport-*
   merge_group:
     types: [checks_requested]
 
