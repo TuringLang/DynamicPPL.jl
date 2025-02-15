@@ -1,6 +1,20 @@
 import DifferentiationInterface as DI
 
 """
+    is_supported(adtype::AbstractADType)
+
+Check if the given AD type is formally supported by DynamicPPL.
+
+AD backends that are not formally supported can still be used for gradient
+calculation; it is just that the DynamicPPL developers do not commit to
+maintaining compatibility with them.
+"""
+is_supported(::ADTypes.AbstractADType) = false
+is_supported(::ADTypes.AutoForwardDiff) = true
+is_supported(::ADTypes.AutoMooncake) = true
+is_supported(::ADTypes.AutoReverseDiff) = true
+
+"""
     LogDensityFunction(
         model::Model,
         varinfo::AbstractVarInfo=VarInfo(model),
@@ -105,6 +119,9 @@ struct LogDensityFunction{
             prep = nothing
             with_closure = false
         else
+            # Check support
+            is_supported(adtype) ||
+                @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
             # Get a set of dummy params to use for prep
             x = map(identity, varinfo[:])
             with_closure = use_closure(adtype)
