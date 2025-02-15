@@ -1,4 +1,4 @@
-using DynamicPPL: LogDensityFunction, LogDensityFunctionWithGrad
+using DynamicPPL: LogDensityFunction
 
 @testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
@@ -10,11 +10,9 @@ using DynamicPPL: LogDensityFunction, LogDensityFunctionWithGrad
             f = LogDensityFunction(m, varinfo)
             x = DynamicPPL.getparams(f)
             # Calculate reference logp + gradient of logp using ForwardDiff
-            default_adtype = ADTypes.AutoForwardDiff()
-            ldf_with_grad = LogDensityFunctionWithGrad(f, default_adtype)
-            ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(
-                ldf_with_grad, x
-            )
+            ref_adtype = ADTypes.AutoForwardDiff()
+            ref_ldf = LogDensityFunction(m, varinfo; adtype=ref_adtype)
+            ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
 
             @testset "$adtype" for adtype in [
                 AutoReverseDiff(; compile=false),
@@ -33,20 +31,18 @@ using DynamicPPL: LogDensityFunction, LogDensityFunctionWithGrad
                 # Mooncake doesn't work with several combinations of SimpleVarInfo.
                 if is_mooncake && is_1_11 && is_svi_vnv
                     # https://github.com/compintell/Mooncake.jl/issues/470
-                    @test_throws ArgumentError LogDensityFunctionWithGrad(f, adtype)
+                    @test_throws ArgumentError DynamicPPL.setadtype(ref_ldf, adtype)
                 elseif is_mooncake && is_1_10 && is_svi_vnv
                     # TODO: report upstream
-                    @test_throws UndefRefError LogDensityFunctionWithGrad(f, adtype)
+                    @test_throws UndefRefError DynamicPPL.setadtype(ref_ldf, adtype)
                 elseif is_mooncake && is_1_10 && is_svi_od
                     # TODO: report upstream
-                    @test_throws Mooncake.MooncakeRuleCompilationError LogDensityFunctionWithGrad(
-                        f, adtype
+                    @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.setadtype(
+                        ref_ldf, adtype
                     )
                 else
-                    ldf_with_grad = LogDensityFunctionWithGrad(f, adtype)
-                    logp, grad = LogDensityProblems.logdensity_and_gradient(
-                        ldf_with_grad, x
-                    )
+                    ldf = DynamicPPL.setadtype(ref_ldf, adtype)
+                    logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
                     @test grad ≈ ref_grad
                     @test logp ≈ ref_logp
                 end
@@ -89,8 +85,9 @@ using DynamicPPL: LogDensityFunction, LogDensityFunctionWithGrad
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
         vi = VarInfo(model)
-        ldf = LogDensityFunction(vi, model, SamplingContext(spl))
-        ldf_grad = LogDensityFunctionWithGrad(ldf, AutoReverseDiff(; compile=true))
-        @test LogDensityProblems.logdensity_and_gradient(ldf_grad, vi[:]) isa Any
+        ldf = LogDensityFunction(
+            model, vi, SamplingContext(spl); adtype=AutoReverseDiff(; compile=true)
+        )
+        @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end
 end
