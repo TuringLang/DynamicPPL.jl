@@ -153,6 +153,19 @@ function getargs_tilde(expr::Expr)
 end
 
 """
+    getargs_longrightarrow(x)
+
+Same but for L --> R
+"""
+getargs_longrightarrow(x) = nothing
+function getargs_longrightarrow(expr::Expr)
+    return MacroTools.@match expr begin
+        (L_ --> R_) => (L, R)
+        x_ => nothing
+    end
+end
+
+"""
     getargs_assignment(x)
 
 Return the arguments `L` and `R`, if `x` is an expression of the form `L = R`, or `nothing`

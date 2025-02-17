@@ -259,21 +259,33 @@ function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
     return PrefixContext{Prefix}(child)
 end
 
-const PREFIX_SEPARATOR = Symbol(".")
+function optic_to_vn(::Accessors.PropertyLens{sym}) where {sym}
+    return VarName{sym}()
+end
+function optic_to_vn(o::Base.ComposedFunction{Outer,typeof(identity)}) where {Outer}
+    return optic_to_vn(o.outer)
+end
+function optic_to_vn(
+    o::Base.ComposedFunction{Outer,Accessors.PropertyLens{sym}}
+) where {Outer,sym}
+    return VarName{sym}(o.outer)
+end
+function optic_to_vn(@nospecialize(o))
+    return error("optic_to_vn failed with optic $o")
+end
 
-@generated function PrefixContext{PrefixOuter}(
-    context::PrefixContext{PrefixInner}
-) where {PrefixOuter,PrefixInner}
-    return :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-        context.context
-    ))
+function unprefix_outer_layer(vn::VarName{sym}) where {sym}
+    return optic_to_vn(getoptic(vn))
 end
 
 function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    vn_prefixed_inner = prefix(childcontext(ctx), vn)
-    return VarName{Symbol(Prefix, PREFIX_SEPARATOR, getsym(vn_prefixed_inner))}(
-        getoptic(vn_prefixed_inner)
-    )
+    optic = getoptic(vn)
+    new_optic = if optic === identity
+        Accessors.PropertyLens{Sym}()
+    else
+        Base.ComposedFunction(optic, Accessors.PropertyLens{Sym}())
+    end
+    return VarName{Symbol(Prefix)}(new_optic)
 end
 prefix(ctx::AbstractContext, vn::VarName) = prefix(NodeTrait(ctx), ctx, vn)
 prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn

@@ -187,6 +187,7 @@ function check_tilde_rhs(@nospecialize(x))
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
+check_tilde_rhs(x::Model) = x
 check_tilde_rhs(x::ReturnedModelWrapper) = x
 function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_tilde_rhs(x.model)
@@ -395,12 +396,25 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        return Base.remove_linenums!(
-            generate_tilde(
-                generate_mainbody!(mod, found, L, warn),
-                generate_mainbody!(mod, found, R, warn),
-            ),
-        )
+        # Check for a ~ b --> c
+        args_longrightarrow = getargs_longrightarrow(R)
+        if args_longrightarrow !== nothing
+            M, R = args_longrightarrow
+            return Base.remove_linenums!(
+                generate_tilde_longrightarrow(
+                    generate_mainbody!(mod, found, L, warn),
+                    generate_mainbody!(mod, found, M, warn),
+                    generate_mainbody!(mod, found, R, warn),
+                ),
+            )
+        else
+            return Base.remove_linenums!(
+                generate_tilde(
+                    generate_mainbody!(mod, found, L, warn),
+                    generate_mainbody!(mod, found, R, warn),
+                ),
+            )
+        end
     end
 
     # Modify the assignment operators.
@@ -466,7 +480,7 @@ function generate_tilde(left, right)
         if $(DynamicPPL.isfixed(left, vn))
             $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
         elseif $isassumption
-            $(generate_tilde_assume(left, dist, vn))
+            $(generate_tilde_assume(left, dist, vn, nothing))
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
@@ -485,12 +499,48 @@ function generate_tilde(left, right)
     end
 end
 
-function generate_tilde_assume(left, right, vn)
+"""
+    generate_tilde_longrightarrow(left, middle, right)
+
+Generate the expression that replaces `left ~ middle --> right` in the model body.
+"""
+function generate_tilde_longrightarrow(left, middle, right)
+    isliteral(left) && error("Observing `a` is not supported in `a ~ b --> c`") # TODO
+
+    @gensym vn isassumption model retval
+
+    return quote
+        $model = $middle
+        $vn = $(DynamicPPL.resolve_varnames)(
+            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $model
+        )
+        $isassumption = $(DynamicPPL.isassumption(left, vn))
+        if $(DynamicPPL.isfixed(left, vn))
+            error("Fixing `a` is not supported in `a ~ b --> c`") # TODO
+        elseif $isassumption
+            $(generate_tilde_assume(left, model, vn, right))
+        else
+            error("Observing `a` is not supported in `a ~ b --> c`") # TODO
+        end
+    end
+end
+
+function generate_tilde_assume(left, dist_or_model, vn, maybe_right)
     # HACK: Because the Setfield.jl macro does not support assignment
     # with multiple arguments on the LHS, we need to capture the return-values
     # and then update the LHS variables one by one.
+
     @gensym value
-    expr = :($left = $value)
+
+    has_right = maybe_right !== nothing
+    expr = if has_right
+        :(($left, $maybe_right) = $value)
+    else
+        :($left = $value)
+    end
+
+    # TODO(penelopeysm): What does this line even do? Not sure if I need to modify it for the
+    # a ~ b --> c case.
     if left isa Expr
         expr = AbstractPPL.drop_escape(
             Accessors.setmacro(BangBang.prefermutation, expr; overwrite=true)
@@ -500,8 +550,11 @@ function generate_tilde_assume(left, right, vn)
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __context__,
-            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+            $(DynamicPPL.unwrap_right_vn)(
+                $(DynamicPPL.check_tilde_rhs)($dist_or_model), $vn
+            )...,
             __varinfo__,
+            $has_right,
         )
         $expr
         $value
