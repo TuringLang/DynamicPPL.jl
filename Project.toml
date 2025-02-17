@@ -15,8 +15,6 @@ ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
-# TODO(penelopeysm,mhauru) KernelAbstractions is only a dependency so that we can pin its version, see
-# https://github.com/TuringLang/DynamicPPL.jl/pull/781#event-16017866767
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
@@ -55,9 +53,7 @@ Compat = "4"
 ConstructionBase = "1.5.4"
 Distributions = "0.25"
 DocStringExtensions = "0.9"
-# TODO(penelopeysm,mhauru) See https://github.com/TuringLang/DynamicPPL.jl/pull/781#event-16017866767
-# for why KernelAbstractions is pinned like this.
-KernelAbstractions = "< 0.9.32"
+KernelAbstractions = "0.9.33"
 EnzymeCore = "0.6 - 0.8"
 ForwardDiff = "0.10"
 JET = "0.9"

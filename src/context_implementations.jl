@@ -239,11 +239,11 @@ function assume(
         r = init(rng, dist, sampler)
         if istrans(vi)
             f = to_linked_internal_transform(vi, vn, dist)
-            push!!(vi, vn, f(r), dist, sampler)
+            push!!(vi, vn, f(r), dist)
             # By default `push!!` sets the transformed flag to `false`.
             settrans!!(vi, true, vn)
         else
-            push!!(vi, vn, r, dist, sampler)
+            push!!(vi, vn, r, dist)
         end
     end
 

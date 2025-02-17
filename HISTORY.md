@@ -83,6 +83,8 @@ This release removes the feature of `VarInfo` where it kept track of which varia
   - `eltype(::VarInfo)` no longer accepts a sampler as an argument
   - `keys(::VarInfo)` no longer accepts a sampler as an argument
   - `VarInfo(::VarInfo, ::Sampler, ::AbstractVector)` no longer accepts the sampler argument.
+  - `push!!` and `push!` no longer accept samplers or `Selector`s as arguments
+  - `getgid`, `setgid!`, `updategid!`, `getspace`, and `inspace` no longer exist
 
 ### Reverse prefixing order
 
