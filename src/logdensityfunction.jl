@@ -106,8 +106,6 @@ struct LogDensityFunction{
     adtype::AD
     "(internal use only) gradient preparation object for the model"
     prep::Union{Nothing,DI.GradientPrep}
-    "(internal use only) whether a closure was used for the gradient preparation"
-    with_closure::Bool
 
     function LogDensityFunction(
         model::Model,
@@ -117,15 +115,13 @@ struct LogDensityFunction{
     )
         if adtype === nothing
             prep = nothing
-            with_closure = false
         else
             # Check support
             is_supported(adtype) ||
                 @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
             # Get a set of dummy params to use for prep
             x = map(identity, varinfo[:])
-            with_closure = use_closure(adtype)
-            if with_closure
+            if use_closure(adtype)
                 prep = DI.prepare_gradient(
                     x -> logdensity_at(x, model, varinfo, context), adtype, x
                 )
@@ -139,10 +135,9 @@ struct LogDensityFunction{
                     DI.Constant(context),
                 )
             end
-            with_closure = with_closure
         end
         return new{typeof(model),typeof(varinfo),typeof(context),typeof(adtype)}(
-            model, varinfo, context, adtype, prep, with_closure
+            model, varinfo, context, adtype, prep
         )
     end
 end
@@ -150,9 +145,9 @@ end
 """
     setadtype(f::LogDensityFunction, adtype::Union{Nothing,ADTypes.AbstractADType})
 
-Set the AD type used for evaluation of log density gradient in the given LogDensityFunction.
-This function also performs preparation of the gradient, and sets the `prep`
-and `with_closure` fields of the LogDensityFunction.
+Set the AD type used for evaluation of log density gradient in the given
+LogDensityFunction. This function also performs preparation of the gradient,
+and sets the `prep` field of the LogDensityFunction.
 
 If `adtype` is `nothing`, the `prep` field will be set to `nothing` as well.
 
@@ -208,7 +203,9 @@ function LogDensityProblems.logdensity_and_gradient(
     f.prep === nothing &&
         error("Gradient preparation not available; this should not happen")
     x = map(identity, x)  # Concretise type
-    return if f.with_closure
+    # Make branching statically inferrable, i.e. type-stable (even if the two
+    # branches happen to return different types)
+    return if use_closure(f.adtype)
         DI.value_and_gradient(
             x -> logdensity_at(x, f.model, f.varinfo, f.context), f.prep, f.adtype, x
         )
