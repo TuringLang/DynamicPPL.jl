@@ -39,17 +39,21 @@ using DynamicPPL: LogDensityFunction
                     # Mooncake doesn't work with several combinations of SimpleVarInfo.
                     if is_mooncake && is_1_11 && is_svi_vnv
                         # https://github.com/compintell/Mooncake.jl/issues/470
-                        @test_throws ArgumentError DynamicPPL.setadtype(ref_ldf, adtype)
+                        @test_throws ArgumentError DynamicPPL.LogDensityFunction(
+                            ref_ldf, adtype
+                        )
                     elseif is_mooncake && is_1_10 && is_svi_vnv
                         # TODO: report upstream
-                        @test_throws UndefRefError DynamicPPL.setadtype(ref_ldf, adtype)
+                        @test_throws UndefRefError DynamicPPL.LogDensityFunction(
+                            ref_ldf, adtype
+                        )
                     elseif is_mooncake && is_1_10 && is_svi_od
                         # TODO: report upstream
-                        @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.setadtype(
+                        @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
                             ref_ldf, adtype
                         )
                     else
-                        ldf = DynamicPPL.setadtype(ref_ldf, adtype)
+                        ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
                         logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
                         @test grad ≈ ref_grad
                         @test logp ≈ ref_logp

@@ -155,13 +155,14 @@ LogDensityProblems.logdensity_and_gradient(ldf, params)
 
 without having to construct a separate `ADgradient` object.
 
-If you prefer, you can also use `setadtype` to tack on the AD type afterwards:
+If you prefer, you can also construct a new `LogDensityFunction` with a new AD type afterwards.
+The model, varinfo, and context will be taken from the original `LogDensityFunction`:
 
 ```julia
 @model f() = ...
 
 ldf = LogDensityFunction(f())  # by default, no adtype set
-ldf_with_ad = setadtype(ldf, AutoForwardDiff())
+ldf_with_ad = LogDensityFunction(ldf, AutoForwardDiff())
 ```
 
 ## 0.34.2

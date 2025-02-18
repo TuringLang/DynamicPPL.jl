@@ -143,18 +143,18 @@ struct LogDensityFunction{
 end
 
 """
-    setadtype(f::LogDensityFunction, adtype::Union{Nothing,ADTypes.AbstractADType})
+    LogDensityFunction(
+        ldf::LogDensityFunction,
+        adtype::Union{Nothing,ADTypes.AbstractADType}
+    )
 
-Set the AD type used for evaluation of log density gradient in the given
-LogDensityFunction. This function also performs preparation of the gradient,
-and sets the `prep` field of the LogDensityFunction.
-
-If `adtype` is `nothing`, the `prep` field will be set to `nothing` as well.
-
-This function returns a new LogDensityFunction with the updated AD type, i.e. it does
-not mutate the input LogDensityFunction.
+Create a new LogDensityFunction using the model, varinfo, and context from the given
+`ldf` argument, but with the AD type set to `adtype`. To remove the AD type, pass
+`nothing` as the second argument.
 """
-function setadtype(f::LogDensityFunction, adtype::Union{Nothing,ADTypes.AbstractADType})
+function LogDensityFunction(
+    f::LogDensityFunction, adtype::Union{Nothing,ADTypes.AbstractADType}
+)
     return if adtype === f.adtype
         f  # Avoid recomputing prep if not needed
     else
