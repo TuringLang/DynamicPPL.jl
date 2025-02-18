@@ -116,7 +116,9 @@ struct LogDensityFunction{
         if adtype === nothing
             prep = nothing
         else
-            # Check support
+            # Make backend-specific tweaks to the adtype
+            adtype = tweak_adtype(adtype, model, varinfo, context)
+            # Check whether it is supported
             is_supported(adtype) ||
                 @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
             # Get a set of dummy params to use for prep
@@ -226,6 +228,26 @@ end
 LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
 
 ### Utils
+
+"""
+    tweak_adtype(
+        adtype::ADTypes.AbstractADType,
+        model::Model,
+        varinfo::AbstractVarInfo,
+        context::AbstractContext
+    )
+
+Return an 'optimised' form of the adtype. This is useful for doing
+backend-specific optimisation of the adtype (e.g., for ForwardDiff, calculating
+the chunk size: see the method override in `ext/DynamicPPLForwardDiffExt.jl`).
+The model is passed as a parameter in case the optimisation depends on the
+model.
+
+By default, this just returns the input unchanged.
+"""
+tweak_adtype(
+    adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
+) = adtype
 
 """
     use_closure(adtype::ADTypes.AbstractADType)
