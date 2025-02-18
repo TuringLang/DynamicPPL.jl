@@ -440,10 +440,8 @@ DynamicPPL.Experimental.is_suitable_varinfo
 
 ```@docs
 tilde_assume
-dot_tilde_assume
 ```
 
 ```@docs
 tilde_observe
-dot_tilde_observe
 ```

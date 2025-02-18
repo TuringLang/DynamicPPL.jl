@@ -4,6 +4,74 @@
 
 **Breaking**
 
+### `.~` right hand side must be a univariate distribution
+
+Previously we allowed statements like
+
+```julia
+x .~ [Normal(), Gamma()]
+```
+
+where the right hand side of a `.~` was an array of distributions, and ones like
+
+```julia
+x .~ MvNormal(fill(0.0, 2), I)
+```
+
+where the right hand side was a multivariate distribution.
+
+These are no longer allowed. The only things allowed on the right hand side of a `.~` statement are univariate distributions, such as
+
+```julia
+x = Array{Float64,3}(undef, 2, 3, 4)
+x .~ Normal()
+```
+
+The reasons for this are internal code simplification and the fact that broadcasting where both sides are multidimensional but of different dimensions is typically confusing to read.
+
+If the right hand side and the left hand side have the same dimension, one can simply use `~`. Arrays of distributions can be replaced with `product_distribution`. So instead of
+
+```julia
+x .~ [Normal(), Gamma()]
+x .~ Normal.(y)
+x .~ MvNormal(fill(0.0, 2), I)
+```
+
+do
+
+```julia
+x ~ product_distribution([Normal(), Gamma()])
+x ~ product_distribution(Normal.(y))
+x ~ MvNormal(fill(0.0, 2), I)
+```
+
+This is often more performant as well. Note that using `~` rather than `.~` does change the internal storage format a bit: With `.~` `x[i]` are stored as separate variables, with `~` as a single multivariate variable `x`. In most cases this does not change anything for the user, but if it does cause issues, e.g. if you are dealing with `VarInfo` objects directly and need to keep the old behavior, you can always expand into a loop, such as
+
+```julia
+dists = Normal.(y)
+for i in 1:length(dists)
+    x[i] ~ dists[i]
+end
+```
+
+Cases where the right hand side is of a different dimension than the left hand side, and neither is a scalar, must be replaced with a loop. For example,
+
+```julia
+x = Array{Float64,3}(undef, 2, 3, 4)
+x .~ MvNormal(fill(0, 2), I)
+```
+
+should be replaced with something like
+
+```julia
+x = Array{Float64,3}(2, 3, 4)
+for i in 1:3, j in 1:4
+    x[:, i, j] ~ MvNormal(fill(0, 2), I)
+end
+```
+
+This release also completely rewrites the internal implementation of `.~`, where from now on all `.~` statements are turned into loops over `~` statements at macro time. However, the only breaking aspect of this change is the above change to what's allowed on the right hand side.
+
 ### Remove indexing by samplers
 
 This release removes the feature of `VarInfo` where it kept track of which variable was associated with which sampler. This means removing all user-facing methods where `VarInfo`s where being indexed with samplers. In particular,
@@ -14,7 +82,7 @@ This release removes the feature of `VarInfo` where it kept track of which varia
   - `unflatten` no longer accepts a sampler as an argument
   - `eltype(::VarInfo)` no longer accepts a sampler as an argument
   - `keys(::VarInfo)` no longer accepts a sampler as an argument
-  - `VarInfo(::VarInfo, ::Sampler, ::AbstactVector)` no longer accepts the sampler argument.
+  - `VarInfo(::VarInfo, ::Sampler, ::AbstractVector)` no longer accepts the sampler argument.
   - `push!!` and `push!` no longer accept samplers or `Selector`s as arguments
   - `getgid`, `setgid!`, `updategid!`, `getspace`, and `inspace` no longer exist
 

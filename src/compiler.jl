@@ -161,7 +161,16 @@ Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` other
 """
 isliteral(e) = false
 isliteral(::Number) = true
-isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
+function isliteral(e::Expr)
+    # In the special case that the expression is of the form `abc[blahblah]`, we consider it
+    # to be a literal if `abc` is a literal. This is necessary for cases like
+    # [1.0, 2.0][idx...] ~ Normal()
+    # which are generated when turning `.~` expressions into loops over `~` expressions.
+    if e.head == :ref
+        return isliteral(e.args[1])
+    end
+    return !isempty(e.args) && all(isliteral, e.args)
+end
 
 """
     check_tilde_rhs(x)
@@ -172,7 +181,7 @@ Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
 function check_tilde_rhs(@nospecialize(x))
     return throw(
         ArgumentError(
-            "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
+            "the right-hand side of a `~` must be a `Distribution`, an array of `Distribution`s, or a submodel",
         ),
     )
 end
@@ -183,6 +192,27 @@ function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_tilde_rhs(x.model)
     return Sampleable{typeof(model),AutoPrefix}(model)
 end
+
+"""
+    check_dot_tilde_rhs(x)
+
+Check if the right-hand side `x` of a `.~` is a `UnivariateDistribution`, then return `x`.
+"""
+function check_dot_tilde_rhs(@nospecialize(x))
+    return throw(
+        ArgumentError("the right-hand side of a `.~` must be a `UnivariateDistribution`")
+    )
+end
+function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
+    msg = """
+        As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
+        Please use `product_distribution` instead, or write a loop if necessary. \
+        See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
+        details.\
+    """
+    return throw(ArgumentError(msg))
+end
+check_dot_tilde_rhs(x::UnivariateDistribution) = x
 
 """
     unwrap_right_vn(right, vn)
@@ -356,11 +386,8 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return Base.remove_linenums!(
-            generate_dot_tilde(
-                generate_mainbody!(mod, found, L, warn),
-                generate_mainbody!(mod, found, R, warn),
-            ),
+        return generate_mainbody!(
+            mod, found, Base.remove_linenums!(generate_dot_tilde(L, R)), warn
         )
     end
 
@@ -487,53 +514,13 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    isliteral(left) && return generate_tilde_literal(left, right)
-
-    # Otherwise it is determined by the model or its value,
-    # if the LHS represents an observation
-    @gensym vn isassumption value
+    @gensym dist left_axes idx
     return quote
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
-        )
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $(DynamicPPL.isfixed(left, vn))
-            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
-        elseif $isassumption
-            $(generate_dot_tilde_assume(left, right, vn))
-        else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
-            end
-
-            $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
-                __context__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $(maybe_view(left)),
-                $vn,
-                __varinfo__,
-            )
-            $value
+        $dist = DynamicPPL.check_dot_tilde_rhs($right)
+        $left_axes = axes($left)
+        for $idx in Iterators.product($left_axes...)
+            $left[$idx...] ~ $dist
         end
-    end
-end
-
-function generate_dot_tilde_assume(left, right, vn)
-    # We don't need to use `Setfield.@set` here since
-    # `.=` is always going to be inplace + needs `left` to
-    # be something that supports `.=`.
-    @gensym value
-    return quote
-        $value, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_left_vns)(
-                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-            )...,
-            __varinfo__,
-        )
-        $left .= $value
-        $value
     end
 end
 

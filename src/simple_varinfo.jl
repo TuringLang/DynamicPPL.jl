@@ -471,57 +471,6 @@ function assume(
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
 end
 
-function dot_assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    vns::AbstractArray{<:VarName},
-    var::AbstractArray,
-    vi::SimpleOrThreadSafeSimple,
-)
-    f = (vn, dist) -> init(rng, dist, spl)
-    value = f.(vns, dists)
-
-    # Transform if we're working in transformed space.
-    value_raw = if dists isa Distribution
-        to_maybe_linked_internal.((vi,), vns, (dists,), value)
-    else
-        to_maybe_linked_internal.((vi,), vns, dists, value)
-    end
-
-    # Update `vi`
-    vi = BangBang.setindex!!(vi, value_raw, vns)
-
-    # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
-    return value, lp, vi
-end
-
-function dot_assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dist::MultivariateDistribution,
-    vns::AbstractVector{<:VarName},
-    var::AbstractMatrix,
-    vi::SimpleOrThreadSafeSimple,
-)
-    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
-
-    # r = get_and_set_val!(rng, vi, vns, dist, spl)
-    n = length(vns)
-    value = init(rng, dist, spl, n)
-
-    # Update `vi`.
-    for (vn, val) in zip(vns, eachcol(value))
-        val_linked = to_maybe_linked_internal(vi, vn, dist, val)
-        vi = BangBang.setindex!!(vi, val_linked, vn)
-    end
-
-    # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
-    return value, lp, vi
-end
-
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
