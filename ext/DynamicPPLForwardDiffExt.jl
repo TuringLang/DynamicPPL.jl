@@ -1,54 +1,40 @@
 module DynamicPPLForwardDiffExt
 
-if isdefined(Base, :get_extension)
-    using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
-    using ForwardDiff
-else
-    using ..DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems, LogDensityProblemsAD
-    using ..ForwardDiff
-end
+using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems
+using ForwardDiff
 
-getchunksize(::ADTypes.AutoForwardDiff{chunk}) where {chunk} = chunk
+# check if the AD type already has a tag
+use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
+use_dynamicppl_tag(::ADTypes.AutoForwardDiff) = false
 
-standardtag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
-standardtag(::ADTypes.AutoForwardDiff) = false
+function DynamicPPL.tweak_adtype(
+    ad::ADTypes.AutoForwardDiff{chunk_size},
+    ::DynamicPPL.Model,
+    vi::DynamicPPL.AbstractVarInfo,
+    ::DynamicPPL.AbstractContext,
+) where {chunk_size}
+    params = vi[:]
 
-function LogDensityProblemsAD.ADgradient(
-    ad::ADTypes.AutoForwardDiff, ℓ::DynamicPPL.LogDensityFunction
-)
-    θ = DynamicPPL.getparams(ℓ)
-    f = Base.Fix1(LogDensityProblems.logdensity, ℓ)
-
-    # Define configuration for ForwardDiff.
-    tag = if standardtag(ad)
-        ForwardDiff.Tag(DynamicPPL.DynamicPPLTag(), eltype(θ))
+    # Use DynamicPPL tag to improve stack traces
+    # https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+    # NOTE: DifferentiationInterface disables tag checking if the
+    # tag inside the AutoForwardDiff type is not nothing. See
+    # https://github.com/JuliaDiff/DifferentiationInterface.jl/blob/1df562180bdcc3e91c885aa5f4162a0be2ced850/DifferentiationInterface/ext/DifferentiationInterfaceForwardDiffExt/onearg.jl#L338-L350.
+    # So we don't currently need to override ForwardDiff.checktag as well.
+    tag = if use_dynamicppl_tag(ad)
+        ForwardDiff.Tag(DynamicPPL.DynamicPPLTag(), eltype(params))
     else
-        ForwardDiff.Tag(f, eltype(θ))
+        ad.tag
     end
-    chunk_size = getchunksize(ad)
+
+    # Optimise chunk size according to size of model
     chunk = if chunk_size == 0 || chunk_size === nothing
-        ForwardDiff.Chunk(θ)
+        ForwardDiff.Chunk(params)
     else
-        ForwardDiff.Chunk(length(θ), chunk_size)
+        ForwardDiff.Chunk(length(params), chunk_size)
     end
 
-    return LogDensityProblemsAD.ADgradient(Val(:ForwardDiff), ℓ; chunk, tag, x=θ)
-end
-
-# Allow Turing tag in gradient etc. calls of the log density function
-function ForwardDiff.checktag(
-    ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag,V}},
-    ::DynamicPPL.LogDensityFunction,
-    ::AbstractArray{W},
-) where {V,W}
-    return true
-end
-function ForwardDiff.checktag(
-    ::Type{ForwardDiff.Tag{DynamicPPL.DynamicPPLTag,V}},
-    ::Base.Fix1{typeof(LogDensityProblems.logdensity),<:DynamicPPL.LogDensityFunction},
-    ::AbstractArray{W},
-) where {V,W}
-    return true
+    return ADTypes.AutoForwardDiff(; chunksize=ForwardDiff.chunksize(chunk), tag=tag)
 end
 
 end # module

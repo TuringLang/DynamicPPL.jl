@@ -1,4 +1,4 @@
-using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, ReverseDiff
+using Test, DynamicPPL, ADTypes, LogDensityProblems, ForwardDiff
 
 @testset "`getmodel` and `setmodel`" begin
     @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -6,17 +6,6 @@ using Test, DynamicPPL, ADTypes, LogDensityProblems, LogDensityProblemsAD, Rever
         ℓ = DynamicPPL.LogDensityFunction(model)
         @test DynamicPPL.getmodel(ℓ) == model
         @test DynamicPPL.setmodel(ℓ, model).model == model
-
-        # ReverseDiff related
-        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(false))
-        @test DynamicPPL.getmodel(∇ℓ) == model
-        @test DynamicPPL.getmodel(DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())) ==
-            model
-        ∇ℓ = LogDensityProblemsAD.ADgradient(:ReverseDiff, ℓ; compile=Val(true))
-        new_∇ℓ = DynamicPPL.setmodel(∇ℓ, model, AutoReverseDiff())
-        @test DynamicPPL.getmodel(new_∇ℓ) == model
-        # HACK(sunxd): rely on internal implementation detail, i.e., naming of `compiledtape`
-        @test new_∇ℓ.compiledtape != ∇ℓ.compiledtape
     end
 end
 
@@ -32,5 +21,16 @@ end
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
         end
+    end
+
+    @testset "capabilities" begin
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        ldf = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.capabilities(typeof(ldf)) ==
+            LogDensityProblems.LogDensityOrder{0}()
+
+        ldf_with_ad = DynamicPPL.LogDensityFunction(model; adtype=AutoForwardDiff())
+        @test LogDensityProblems.capabilities(typeof(ldf_with_ad)) ==
+            LogDensityProblems.LogDensityOrder{1}()
     end
 end

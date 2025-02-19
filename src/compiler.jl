@@ -3,7 +3,7 @@ const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 """
     need_concretize(expr)
 
-Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or 
+Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or
 requires a dynamic optic.
 
 # Examples
@@ -161,7 +161,16 @@ Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` other
 """
 isliteral(e) = false
 isliteral(::Number) = true
-isliteral(e::Expr) = !isempty(e.args) && all(isliteral, e.args)
+function isliteral(e::Expr)
+    # In the special case that the expression is of the form `abc[blahblah]`, we consider it
+    # to be a literal if `abc` is a literal. This is necessary for cases like
+    # [1.0, 2.0][idx...] ~ Normal()
+    # which are generated when turning `.~` expressions into loops over `~` expressions.
+    if e.head == :ref
+        return isliteral(e.args[1])
+    end
+    return !isempty(e.args) && all(isliteral, e.args)
+end
 
 """
     check_tilde_rhs(x)
@@ -172,7 +181,7 @@ Check if the right-hand side `x` of a `~` is a `Distribution` or an array of
 function check_tilde_rhs(@nospecialize(x))
     return throw(
         ArgumentError(
-            "the right-hand side of a `~` must be a `Distribution` or an array of `Distribution`s",
+            "the right-hand side of a `~` must be a `Distribution`, an array of `Distribution`s, or a submodel",
         ),
     )
 end
@@ -183,6 +192,27 @@ function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
     model = check_tilde_rhs(x.model)
     return Sampleable{typeof(model),AutoPrefix}(model)
 end
+
+"""
+    check_dot_tilde_rhs(x)
+
+Check if the right-hand side `x` of a `.~` is a `UnivariateDistribution`, then return `x`.
+"""
+function check_dot_tilde_rhs(@nospecialize(x))
+    return throw(
+        ArgumentError("the right-hand side of a `.~` must be a `UnivariateDistribution`")
+    )
+end
+function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
+    msg = """
+        As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
+        Please use `product_distribution` instead, or write a loop if necessary. \
+        See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
+        details.\
+    """
+    return throw(ArgumentError(msg))
+end
+check_dot_tilde_rhs(x::UnivariateDistribution) = x
 
 """
     unwrap_right_vn(right, vn)
@@ -356,11 +386,8 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
     args_dottilde = getargs_dottilde(expr)
     if args_dottilde !== nothing
         L, R = args_dottilde
-        return Base.remove_linenums!(
-            generate_dot_tilde(
-                generate_mainbody!(mod, found, L, warn),
-                generate_mainbody!(mod, found, R, warn),
-            ),
+        return generate_mainbody!(
+            mod, found, Base.remove_linenums!(generate_dot_tilde(L, R)), warn
         )
     end
 
@@ -487,53 +514,13 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    isliteral(left) && return generate_tilde_literal(left, right)
-
-    # Otherwise it is determined by the model or its value,
-    # if the LHS represents an observation
-    @gensym vn isassumption value
+    @gensym dist left_axes idx
     return quote
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $right
-        )
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $(DynamicPPL.isfixed(left, vn))
-            $left .= $(DynamicPPL.getfixed_nested)(__context__, $vn)
-        elseif $isassumption
-            $(generate_dot_tilde_assume(left, right, vn))
-        else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left .= $(DynamicPPL.getconditioned_nested)(__context__, $vn)
-            end
-
-            $value, __varinfo__ = $(DynamicPPL.dot_tilde_observe!!)(
-                __context__,
-                $(DynamicPPL.check_tilde_rhs)($right),
-                $(maybe_view(left)),
-                $vn,
-                __varinfo__,
-            )
-            $value
+        $dist = DynamicPPL.check_dot_tilde_rhs($right)
+        $left_axes = axes($left)
+        for $idx in Iterators.product($left_axes...)
+            $left[$idx...] ~ $dist
         end
-    end
-end
-
-function generate_dot_tilde_assume(left, right, vn)
-    # We don't need to use `Setfield.@set` here since
-    # `.=` is always going to be inplace + needs `left` to
-    # be something that supports `.=`.
-    @gensym value
-    return quote
-        $value, __varinfo__ = $(DynamicPPL.dot_tilde_assume!!)(
-            __context__,
-            $(DynamicPPL.unwrap_right_left_vns)(
-                $(DynamicPPL.check_tilde_rhs)($right), $(maybe_view(left)), $vn
-            )...,
-            __varinfo__,
-        )
-        $left .= $value
-        $value
     end
 end
 
@@ -730,19 +717,19 @@ function warn_empty(body)
     return nothing
 end
 
+# TODO(mhauru) matchingvalue has methods that can accept both types and values. Why?
+# TODO(mhauru) This function needs a more comprehensive docstring.
 """
-    matchingvalue(sampler, vi, value)
-    matchingvalue(context::AbstractContext, vi, value)
+    matchingvalue(vi, value)
 
-Convert the `value` to the correct type for the `sampler` or `context` and the `vi` object.
-
-For a `context` that is _not_ a `SamplingContext`, we fall back to
-`matchingvalue(SampleFromPrior(), vi, value)`.
+Convert the `value` to the correct type for the `vi` object.
 """
-function matchingvalue(sampler, vi, value)
+function matchingvalue(vi, value)
     T = typeof(value)
     if hasmissing(T)
-        _value = convert(get_matching_type(sampler, vi, T), value)
+        _value = convert(get_matching_type(vi, T), value)
+        # TODO(mhauru) Why do we make a deepcopy, even though in the !hasmissing branch we
+        # are happy to return `value` as-is?
         if _value === value
             return deepcopy(_value)
         else
@@ -752,45 +739,30 @@ function matchingvalue(sampler, vi, value)
         return value
     end
 end
-# If we hit `Type` or `TypeWrap`, we immediately jump to `get_matching_type`.
-function matchingvalue(sampler::AbstractSampler, vi, value::FloatOrArrayType)
-    return get_matching_type(sampler, vi, value)
+
+function matchingvalue(vi, value::FloatOrArrayType)
+    return get_matching_type(vi, value)
 end
-function matchingvalue(sampler::AbstractSampler, vi, value::TypeWrap{T}) where {T}
-    return TypeWrap{get_matching_type(sampler, vi, T)}()
+function matchingvalue(vi, ::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(vi, T)}()
 end
 
-function matchingvalue(context::AbstractContext, vi, value)
-    return matchingvalue(NodeTrait(matchingvalue, context), context, vi, value)
-end
-function matchingvalue(::IsLeaf, context::AbstractContext, vi, value)
-    return matchingvalue(SampleFromPrior(), vi, value)
-end
-function matchingvalue(::IsParent, context::AbstractContext, vi, value)
-    return matchingvalue(childcontext(context), vi, value)
-end
-function matchingvalue(context::SamplingContext, vi, value)
-    return matchingvalue(context.sampler, vi, value)
-end
-
+# TODO(mhauru) This function needs a more comprehensive docstring. What is it for?
 """
-    get_matching_type(spl::AbstractSampler, vi, ::TypeWrap{T}) where {T}
+    get_matching_type(vi, ::TypeWrap{T}) where {T}
 
-Get the specialized version of type `T` for sampler `spl`.
-
-For example, if `T === Float64` and `spl::Hamiltonian`, the matching type is
-`eltype(vi[spl])`.
+Get the specialized version of type `T` for `vi`.
 """
-get_matching_type(spl::AbstractSampler, vi, ::Type{T}) where {T} = T
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,float_type_with_fallback(eltype(vi, spl))}
+get_matching_type(_, ::Type{T}) where {T} = T
+function get_matching_type(vi, ::Type{<:Union{Missing,AbstractFloat}})
+    return Union{Missing,float_type_with_fallback(eltype(vi))}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:AbstractFloat})
-    return float_type_with_fallback(eltype(vi, spl))
+function get_matching_type(vi, ::Type{<:AbstractFloat})
+    return float_type_with_fallback(eltype(vi))
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(spl, vi, T),N}
+function get_matching_type(vi, ::Type{<:Array{T,N}}) where {T,N}
+    return Array{get_matching_type(vi, T),N}
 end
-function get_matching_type(spl::AbstractSampler, vi, ::Type{<:Array{T}}) where {T}
-    return Array{get_matching_type(spl, vi, T)}
+function get_matching_type(vi, ::Type{<:Array{T}}) where {T}
+    return Array{get_matching_type(vi, T)}
 end
