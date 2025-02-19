@@ -1,35 +1,63 @@
-@testset "AD: ForwardDiff, ReverseDiff, and Mooncake" begin
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-        f = DynamicPPL.LogDensityFunction(m)
-        rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
-        vns = DynamicPPL.TestUtils.varnames(m)
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
+using DynamicPPL: LogDensityFunction
 
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            f = DynamicPPL.LogDensityFunction(m, varinfo)
+@testset "Automatic differentiation" begin
+    @testset "Unsupported backends" begin
+        @model demo() = x ~ Normal()
+        @test_logs (:warn, r"not officially supported") LogDensityFunction(
+            demo(); adtype=AutoZygote()
+        )
+    end
 
-            # use ForwardDiff result as reference
-            ad_forwarddiff_f = LogDensityProblemsAD.ADgradient(
-                ADTypes.AutoForwardDiff(; chunksize=0), f
-            )
-            # convert to `Vector{Float64}` to avoid `ReverseDiff` initializing the gradients to Integer 0
-            # reference: https://github.com/TuringLang/DynamicPPL.jl/pull/571#issuecomment-1924304489
-            θ = convert(Vector{Float64}, varinfo[:])
-            logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ad_forwarddiff_f, θ)
+    @testset "Correctness: ForwardDiff, ReverseDiff, and Mooncake" begin
+        @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+            rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
+            vns = DynamicPPL.TestUtils.varnames(m)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
-            @testset "$adtype" for adtype in [
-                ADTypes.AutoReverseDiff(; compile=false),
-                ADTypes.AutoReverseDiff(; compile=true),
-                ADTypes.AutoMooncake(; config=nothing),
-            ]
-                # Mooncake can't currently handle something that is going on in
-                # SimpleVarInfo{<:VarNamedVector}. Disable all SimpleVarInfo tests for now.
-                if adtype isa ADTypes.AutoMooncake && varinfo isa DynamicPPL.SimpleVarInfo
-                    @test_broken 1 == 0
-                else
-                    ad_f = LogDensityProblemsAD.ADgradient(adtype, f)
-                    _, grad = LogDensityProblems.logdensity_and_gradient(ad_f, θ)
-                    @test grad ≈ ref_grad
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                f = LogDensityFunction(m, varinfo)
+                x = DynamicPPL.getparams(f)
+                # Calculate reference logp + gradient of logp using ForwardDiff
+                ref_adtype = ADTypes.AutoForwardDiff()
+                ref_ldf = LogDensityFunction(m, varinfo; adtype=ref_adtype)
+                ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
+
+                @testset "$adtype" for adtype in [
+                    AutoReverseDiff(; compile=false),
+                    AutoReverseDiff(; compile=true),
+                    AutoMooncake(; config=nothing),
+                ]
+                    @info "Testing AD on: $(m.f) - $(short_varinfo_name(varinfo)) - $adtype"
+
+                    # Put predicates here to avoid long lines
+                    is_mooncake = adtype isa AutoMooncake
+                    is_1_10 = v"1.10" <= VERSION < v"1.11"
+                    is_1_11 = v"1.11" <= VERSION < v"1.12"
+                    is_svi_vnv = varinfo isa SimpleVarInfo{<:DynamicPPL.VarNamedVector}
+                    is_svi_od = varinfo isa SimpleVarInfo{<:OrderedDict}
+
+                    # Mooncake doesn't work with several combinations of SimpleVarInfo.
+                    if is_mooncake && is_1_11 && is_svi_vnv
+                        # https://github.com/compintell/Mooncake.jl/issues/470
+                        @test_throws ArgumentError DynamicPPL.LogDensityFunction(
+                            ref_ldf, adtype
+                        )
+                    elseif is_mooncake && is_1_10 && is_svi_vnv
+                        # TODO: report upstream
+                        @test_throws UndefRefError DynamicPPL.LogDensityFunction(
+                            ref_ldf, adtype
+                        )
+                    elseif is_mooncake && is_1_10 && is_svi_od
+                        # TODO: report upstream
+                        @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
+                            ref_ldf, adtype
+                        )
+                    else
+                        ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
+                        logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
+                        @test grad ≈ ref_grad
+                        @test logp ≈ ref_logp
+                    end
                 end
             end
         end
@@ -63,13 +91,16 @@
         # overload assume so that model evaluation doesn't fail due to a lack
         # of implementation
         struct MyEmptyAlg end
-        DynamicPPL.assume(rng, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi) =
-            DynamicPPL.assume(dist, vn, vi)
+        DynamicPPL.assume(
+            ::Random.AbstractRNG, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi
+        ) = DynamicPPL.assume(dist, vn, vi)
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
         vi = VarInfo(model)
-        ldf = DynamicPPL.LogDensityFunction(vi, model, SamplingContext(spl))
-        @test LogDensityProblemsAD.ADgradient(AutoReverseDiff(; compile=true), ldf) isa Any
+        ldf = LogDensityFunction(
+            model, vi, SamplingContext(spl); adtype=AutoReverseDiff(; compile=true)
+        )
+        @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end
 end

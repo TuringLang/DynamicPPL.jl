@@ -2,7 +2,7 @@
 
 ## 0.35.0
 
-**Breaking**
+**Breaking changes**
 
 ### `.~` right hand side must be a univariate distribution
 
@@ -118,6 +118,52 @@ This release removes the feature of `VarInfo` where it kept track of which varia
     (Note that this change brings `to_submodel`'s behaviour in line with the now-deprecated `@submodel` macro.)
     
     This change also affects sampling in Turing.jl.
+
+### `LogDensityFunction` argument order
+
+  - The method `LogDensityFunction(varinfo, model, context)` has been removed.
+    The only accepted order is `LogDensityFunction(model, varinfo, context; adtype)`.
+    (For an explanation of `adtype`, see below.)
+    The varinfo and context arguments are both still optional.
+
+**Other changes**
+
+### `LogDensityProblems` interface
+
+LogDensityProblemsAD is now removed as a dependency.
+Instead of constructing a `LogDensityProblemAD.ADgradient` object, we now directly use `DifferentiationInterface` to calculate the gradient of the log density with respect to model parameters.
+
+Note that if you wish, you can still construct an `ADgradient` out of a `LogDensityFunction` object (there is nothing preventing this).
+
+However, in this version, `LogDensityFunction` now takes an extra AD type argument.
+If this argument is not provided, the behaviour is exactly the same as before, i.e. you can calculate `logdensity` but not its gradient.
+However, if you do pass an AD type, that will allow you to calculate the gradient as well.
+You may thus find that it is easier to instead do this:
+
+```julia
+@model f() = ...
+
+ldf = LogDensityFunction(f(); adtype=AutoForwardDiff())
+```
+
+This will return an object which satisfies the `LogDensityProblems` interface to first-order, i.e. you can now directly call both
+
+```
+LogDensityProblems.logdensity(ldf, params)
+LogDensityProblems.logdensity_and_gradient(ldf, params)
+```
+
+without having to construct a separate `ADgradient` object.
+
+If you prefer, you can also construct a new `LogDensityFunction` with a new AD type afterwards.
+The model, varinfo, and context will be taken from the original `LogDensityFunction`:
+
+```julia
+@model f() = ...
+
+ldf = LogDensityFunction(f())  # by default, no adtype set
+ldf_with_ad = LogDensityFunction(ldf, AutoForwardDiff())
+```
 
 ## 0.34.2
 
