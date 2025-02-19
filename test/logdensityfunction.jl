@@ -1,4 +1,4 @@
-using Test, DynamicPPL, ADTypes, LogDensityProblems, ReverseDiff
+using Test, DynamicPPL, ADTypes, LogDensityProblems, ForwardDiff
 
 @testset "`getmodel` and `setmodel`" begin
     @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -21,5 +21,16 @@ end
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
         end
+    end
+
+    @testset "capabilities" begin
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        ldf = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.capabilities(typeof(ldf)) ==
+            LogDensityProblems.LogDensityOrder{0}()
+
+        ldf_with_ad = DynamicPPL.LogDensityFunction(model; adtype=AutoForwardDiff())
+        @test LogDensityProblems.capabilities(typeof(ldf_with_ad)) ==
+            LogDensityProblems.LogDensityOrder{1}()
     end
 end
