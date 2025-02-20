@@ -1,0 +1,32 @@
+name: Benchmarking
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - name: Install Dependencies
+        run: julia --project=benchmarks/ -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Run Benchmarks and Generate Reports
+        run: julia --project=benchmarks/ -e 'using DynamicPPLBenchmarks; weave_benchmarks()'
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./benchmarks/results
+          publish_branch: gh-pages
