@@ -2,251 +2,52 @@ module DynamicPPLBenchmarks
 
 using DynamicPPL
 using BenchmarkTools
-using InteractiveUtils
+using TuringBenchmarking: make_turing_suite
 
-using ComponentArrays: ComponentArrays
-
-using Weave: Weave
-using Markdown: Markdown
-
-using LibGit2: LibGit2
-using Pkg: Pkg
-using Random: Random
-
-export weave_benchmarks
-
-function time_model_def(model_def, args...)
-    return @time model_def(args...)
-end
-
-function benchmark_untyped_varinfo!(suite, m)
-    vi = VarInfo()
-    # Populate.
-    m(vi)
-    # Evaluate.
-    suite["evaluation_untyped"] = @benchmarkable $m($vi, $(DefaultContext()))
-    return suite
-end
-
-function benchmark_typed_varinfo!(suite, m)
-    # Populate.
-    vi = VarInfo(m)
-    # Evaluate.
-    suite["evaluation_typed"] = @benchmarkable $m($vi, $(DefaultContext()))
-    return suite
-end
-
-function benchmark_simple_varinfo_namedtuple!(suite, m)
-    # We expect the model to return the random variables as a `NamedTuple`.
-    retvals = m()
-
-    # Populate.
-    vi = SimpleVarInfo{Float64}(retvals)
-    vi_ca = SimpleVarInfo{Float64}(ComponentArrays.ComponentArray(retvals))
-
-    # Evaluate.
-    suite["evaluation_simple_varinfo_nt"] = @benchmarkable $m($vi, $(DefaultContext()))
-    suite["evaluation_simple_varinfo_componentarrays"] = @benchmarkable $m(
-        $vi_ca, $(DefaultContext())
-    )
-    return suite
-end
-
-function benchmark_simple_varinfo_dict!(suite, m)
-    # Populate.
-    vi = SimpleVarInfo{Float64}(Dict())
-    retvals = m(vi)
-
-    # Evaluate.
-    suite["evaluation_simple_varinfo_dict"] = @benchmarkable $m($vi, $(DefaultContext()))
-
-    # We expect the model to return the random variables as a `NamedTuple`.
-    vns = map(keys(retvals)) do k
-        VarName{k}()
-    end
-    vi = SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
-
-    # Evaluate.
-    suite["evaluation_simple_varinfo_dict_from_nt"] = @benchmarkable $m(
-        $vi, $(DefaultContext())
-    )
-
-    return suite
-end
-
-function typed_code(m, vi=VarInfo(m))
-    rng = Random.MersenneTwister(42)
-    spl = SampleFromPrior()
-    ctx = SamplingContext(rng, spl, DefaultContext())
-
-    results = code_typed(m.f, Base.typesof(m, vi, ctx, m.args...))
-    return first(results)
-end
+export make_suite
 
 """
-    make_suite(model)
+    make_suite(model, varinfo_choice::Symbol, adbackend::Symbol)
 
-Create default benchmark suite for `model`.
+Create a benchmark suite for `model` using the selected varinfo type and AD backend.
+Available varinfo choices:
+  • `:untyped`           → uses `VarInfo()`
+  • `:typed`             → uses `VarInfo(model)`
+  • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
+  • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
+
+The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversediff`, `:zygote`).
 """
-function make_suite(model)
+function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol)
     suite = BenchmarkGroup()
-    benchmark_untyped_varinfo!(suite, model)
-    benchmark_typed_varinfo!(suite, model)
-
-    if isdefined(DynamicPPL, :SimpleVarInfo)
-        benchmark_simple_varinfo_namedtuple!(suite, model)
-        benchmark_simple_varinfo_dict!(suite, model)
+    context = DefaultContext()
+    
+    # Create the chosen varinfo.
+    vi = nothing
+    if varinfo_choice == :untyped
+        vi = VarInfo()
+        model(vi)
+    elseif varinfo_choice == :typed
+        vi = VarInfo(model)
+    elseif varinfo_choice == :simple_namedtuple
+        vi = SimpleVarInfo{Float64}(model())
+    elseif varinfo_choice == :simple_dict
+        retvals = model()
+        vns = map(keys(retvals)) do k
+            VarName{k}()
+        end
+        vi = SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
+    else
+        error("Unknown varinfo choice: $varinfo_choice")
     end
 
+    # Add the evaluation benchmark.
+    suite["evaluation"] = @benchmarkable $model($vi, $context)
+    
+    # Add the AD benchmarking suite.
+    suite["AD_Benchmarking"] = make_turing_suite(model; adbackends=[adbackend])
+    
     return suite
 end
-
-"""
-    weave_child(indoc; mod, args, kwargs...)
-
-Weave `indoc` with scope of `mod` into markdown.
-
-Useful for weaving within weaving, e.g.
-```julia
-weave_child(child_jmd_path, mod = @__MODULE__, args = WEAVE_ARGS)
-```
-together with `results="markup"` and `echo=false` will simply insert
-the weaved version of `indoc`.
-
-# Notes
-- Currently only supports `doctype == "github"`. Other outputs are "supported"
-  in the sense that it works but you might lose niceties such as syntax highlighting.
-"""
-function weave_child(indoc; mod, args, kwargs...)
-    # FIXME: Make this work for other output formats than just `github`.
-    doc = Weave.WeaveDoc(indoc, nothing)
-    doc = Weave.run_doc(doc; doctype="github", mod=mod, args=args, kwargs...)
-    rendered = Weave.render_doc(doc)
-    return display(Markdown.parse(rendered))
-end
-
-"""
-    pkgversion(m::Module)
-
-Return version of module `m` as listed in its Project.toml.
-"""
-function pkgversion(m::Module)
-    projecttoml_path = joinpath(dirname(pathof(m)), "..", "Project.toml")
-    return Pkg.TOML.parsefile(projecttoml_path)["version"]
-end
-
-"""
-    default_name(; include_commit_id=false)
-
-Construct a name from either repo information or package version
-of `DynamicPPL`.
-
-If the path of `DynamicPPL` is a git-repo, return name of current branch,
-joined with the commit id if `include_commit_id` is `true`.
-
-If path of `DynamicPPL` is _not_ a git-repo, it is assumed to be a release,
-resulting in a name of the form `release-VERSION`.
-"""
-function default_name(; include_commit_id=false)
-    dppl_path = abspath(joinpath(dirname(pathof(DynamicPPL)), ".."))
-
-    # Extract branch name and commit id
-    local name
-    try
-        githead = LibGit2.head(LibGit2.GitRepo(dppl_path))
-        branchname = LibGit2.shortname(githead)
-
-        name = replace(branchname, "/" => "_")
-        if include_commit_id
-            gitcommit = LibGit2.peel(LibGit2.GitCommit, githead)
-            commitid = string(LibGit2.GitHash(gitcommit))
-            name *= "-$(commitid)"
-        end
-    catch e
-        if e isa LibGit2.GitError
-            @info "No git repo found for $(dppl_path); extracting name from package version."
-            name = "release-$(pkgversion(DynamicPPL))"
-        else
-            rethrow(e)
-        end
-    end
-
-    return name
-end
-
-"""
-    weave_benchmarks(input="benchmarks.jmd"; kwargs...)
-
-Weave benchmarks present in `benchmarks.jmd` into a single file.
-
-# Keyword arguments
-- `benchmarkbody`: JMD-file to be rendered for each model.
-- `include_commit_id=false`: specify whether to include commit-id in the default name.
-- `name`: the name of directory in `results/` to use as output directory.
-- `name_old=nothing`: if specified, comparisons of current run vs. the run pinted to
-  by `name_old` will be included in the generated document.
-- `include_typed_code=false`: if `true`, output of `code_typed` for the evaluator
-  of the model will be included in the weaved document.
-- Rest of the passed `kwargs` will be passed on to `Weave.weave`.
-"""
-function weave_benchmarks(
-    input=joinpath(dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmarks.jmd");
-    benchmarkbody=joinpath(
-        dirname(pathof(DynamicPPLBenchmarks)), "..", "benchmark_body.jmd"
-    ),
-    include_commit_id=false,
-    name=default_name(; include_commit_id=include_commit_id),
-    name_old=nothing,
-    include_typed_code=false,
-    seconds=10,
-    doctype="github",
-    outpath="results/$(name)/",
-    kwargs...,
-)
-    args = Dict(
-        :benchmarkbody => benchmarkbody,
-        :name => name,
-        :include_typed_code => include_typed_code,
-        :seconds => seconds,
-    )
-    if !isnothing(name_old)
-        args[:name_old] = name_old
-    end
-    @info "Storing output in $(outpath)"
-    mkpath(outpath)
-    return Weave.weave(input, doctype; out_path=outpath, args=args, kwargs...)
-end
-
-function display_environment()
-    display("text/markdown", "Computer Information:")
-    vinfo = sprint(InteractiveUtils.versioninfo)
-    display(
-        "text/markdown",
-        """
-```
-$(vinfo)
-```
-""",
-    )
-
-    ctx = Pkg.API.Context()
-
-    pkg_status = let io = IOBuffer()
-        Pkg.status(Pkg.API.Context(); io=io)
-        String(take!(io))
-    end
-
-    display(
-        "text/markdown",
-        """
-Package Information:
-""",
-    )
-
-    md = "```\n$(pkg_status)\n```"
-    return display("text/markdown", md)
-end
-
-include("tables.jl")
 
 end # module

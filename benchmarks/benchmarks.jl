@@ -1,24 +1,11 @@
-using BenchmarkTools
 using DynamicPPL
+using DynamicPPLBenchmarks
+using BenchmarkTools
+using TuringBenchmarking
 using Distributions
-using DynamicPPLBenchmarks: time_model_def, make_suite
 using PrettyTables
-using Dates
-using LibGit2
 
-const RESULTS_DIR = "results"
-const BENCHMARK_NAME = let
-    repo = try
-        LibGit2.GitRepo(joinpath(pkgdir(DynamicPPL), ".."))
-    catch
-        nothing
-    end
-    isnothing(repo) ? "benchmarks_$(Dates.format(now(), "yyyy-mm-dd_HH-MM-SS"))" :
-    "$(LibGit2.headname(repo))_$(string(LibGit2.GitHash(LibGit2.peel(LibGit2.GitCommit, LibGit2.head(repo))))[1:6])"
-end
-
-mkpath(joinpath(RESULTS_DIR, BENCHMARK_NAME))
-
+# Define models
 @model function demo1(x)
     m ~ Normal()
     x ~ Normal(m, 1)
@@ -34,61 +21,67 @@ end
     return (; p)
 end
 
-models = [
-    (name = "demo1", model = demo1, data = (1.0,)),
-    (name = "demo2", model = demo2, data = (rand(0:1, 10),))
+demo1_data = randn()
+demo2_data = rand(Bool, 10)
+
+# Create model instances with the data
+demo1_instance = demo1(demo1_data)
+demo2_instance = demo2(demo2_data)
+
+# Define available AD backends
+available_ad_backends = Dict(
+    :forwarddiff => :forwarddiff,
+    :reversediff => :reversediff,
+    :zygote      => :zygote
+)
+
+# Define available VarInfo types.
+# Each entry is (Name, function to produce the VarInfo)
+available_varinfo_types = Dict(
+    :untyped           => ("UntypedVarInfo", VarInfo),
+    :typed             => ("TypedVarInfo", m -> VarInfo(m)),
+    :simple_namedtuple => ("SimpleVarInfo (NamedTuple)", m -> SimpleVarInfo{Float64}(m())),
+    :simple_dict       => ("SimpleVarInfo (Dict)", m -> begin
+        retvals = m()
+        varnames = map(keys(retvals)) do k
+            VarName{k}()
+        end
+        SimpleVarInfo{Float64}(Dict(zip(varnames, values(retvals))))
+    end)
+)
+
+# Specify the combinations to test:
+# (Model Name, model instance, VarInfo choice, AD backend)
+chosen_combinations = [
+    ("Demo1", demo1_instance, :typed,           :forwarddiff),
+    ("Demo1", demo1_instance, :simple_namedtuple, :zygote),
+    ("Demo2", demo2_instance, :untyped,           :reversediff),
+    ("Demo2", demo2_instance, :simple_dict,       :forwarddiff)
 ]
 
-results = []
-for (model_name, model_def, data) in models
-    println(">> Running benchmarks for model: $model_name")
-    m = time_model_def(model_def, data...)
-    println()
-    suite = make_suite(m)
-    bench_results = run(suite, seconds=10)
-    
-    output_path = joinpath(RESULTS_DIR, BENCHMARK_NAME, "$(model_name)_benchmarks.json")
-    BenchmarkTools.save(output_path, bench_results)
-    
-    for (eval_type, trial) in bench_results
-        push!(results, (
-            Model = model_name,
-            Evaluation = eval_type,
-            Time = minimum(trial).time,
-            Memory = trial.memory,
-            Allocations = trial.allocs,
-            Samples = length(trial.times)
-        ))
+# Store results as tuples: (Model, AD Backend, VarInfo Type, Eval Time, AD Eval Time)
+results_table = Tuple{String, String, String, Float64, Float64}[]
+
+for (model_name, model, varinfo_choice, adbackend) in chosen_combinations
+    suite = make_suite(model, varinfo_choice, adbackend)
+    results = run(suite)
+    eval_time    = median(results["evaluation"]).time
+    ad_eval_time = median(results["AD_Benchmarking"]["evaluation"]["standard"]).time
+    push!(results_table, (model_name, string(adbackend), string(varinfo_choice), eval_time, ad_eval_time))
+end
+
+# Convert results to a 2D array for PrettyTables
+function to_matrix(tuples::Vector{<:NTuple{5,Any}})
+    n = length(tuples)
+    data = Array{Any}(undef, n, 5)
+    for i in 1:n
+        for j in 1:5
+            data[i, j] = tuples[i][j]
+        end
     end
+    return data
 end
 
-formatted = map(results) do r
-    (Model = r.Model,
-     Evaluation = replace(r.Evaluation, "_" => " "),
-     Time = BenchmarkTools.prettytime(r.Time),
-     Memory = BenchmarkTools.prettymemory(r.Memory),
-     Allocations = string(r.Allocations),
-     Samples = string(r.Samples))
-end
-
-md_output = """
-## DynamicPPL Benchmark Results ($BENCHMARK_NAME)
-
-### Execution Environment
-- Julia version: $(VERSION)
-- DynamicPPL version: $(pkgversion(DynamicPPL))
-- Benchmark date: $(now())
-
-$(pretty_table(String, formatted,
-    tf = tf_markdown,
-    header = ["Model", "Evaluation Type", "Time", "Memory", "Allocs", "Samples"],
-    alignment = [:l, :l, :r, :r, :r, :r]
-))
-"""
-
-println(md_output)
-open(joinpath(RESULTS_DIR, BENCHMARK_NAME, "REPORT.md"), "w") do io
-    write(io, md_output)
-end
-
-println("Benchmark results saved to: $RESULTS_DIR/$BENCHMARK_NAME")
+table_matrix = to_matrix(results_table)
+header = ["Model", "AD Backend", "VarInfo Type", "Evaluation Time (ns)", "AD Eval Time (ns)"]
+pretty_table(table_matrix; header=header, tf=PrettyTables.tf_markdown)
