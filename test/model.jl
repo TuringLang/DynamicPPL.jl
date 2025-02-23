@@ -100,6 +100,16 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
+    @testset "model adtype" begin
+        # Check that adtype can be set and unset
+        @model demo_adtype() = x ~ Normal()
+        adtype = AutoForwardDiff()
+        model = Model(demo_adtype(), adtype)
+        @test model.adtype == adtype
+        model = Model(model, nothing)
+        @test model.adtype === nothing
+    end
+
     @testset "model de/conditioning" begin
         @model function demo_condition()
             x ~ Normal()

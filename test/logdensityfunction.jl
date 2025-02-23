@@ -9,6 +9,22 @@ using Test, DynamicPPL, ADTypes, LogDensityProblems, ForwardDiff
     end
 end
 
+@testset "AD type forwarding from model" begin
+    @model demo_simple() = x ~ Normal()
+    model = Model(demo_simple(), AutoForwardDiff())
+    ldf = DynamicPPL.LogDensityFunction(model)
+    # Check that the model's AD type is forwarded to the LDF
+    # Note: can't check ldf.adtype == AutoForwardDiff() because `tweak_adtype`
+    # modifies the underlying parameters a bit, so just check that it is still
+    # the correct backend package.
+    @test ldf.adtype isa AutoForwardDiff
+    # Check that the gradient can be evaluated on the resulting LDF
+    @test LogDensityProblems.capabilities(typeof(ldf)) ==
+        LogDensityProblems.LogDensityOrder{1}()
+    @test LogDensityProblems.logdensity(ldf, [1.0]) isa Any
+    @test LogDensityProblems.logdensity_and_gradient(ldf, [1.0]) isa Any
+end
+
 @testset "LogDensityFunction" begin
     @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)

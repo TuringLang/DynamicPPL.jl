@@ -1,17 +1,23 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
+struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,TAD<:Union{Nothing,ADTypes.AbstractADType}}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
         context::Ctx=DefaultContext()
+        adtype::TAD=nothing
     end
 
-A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
-arguments `missings`, and evaluation context of type `Ctx`.
+A `Model` struct contains the following fields:
+- `f`, a model evaluation function of type `F`
+- `args`, arguments of names `argnames` with types `Targs`
+- `defaults`, default arguments of names `defaultnames` with types `Tdefaults`
+- `context`, an evaluation context of type `Ctx`
+- `adtype`, which can be nothing, or an automatic differentiation backend of type `TAD`
 
+Its missing arguments are also stored as a type parameter `missings`.
 Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
-`context` is by default `DefaultContext()`.
+
+`context` is by default `DefaultContext()`, and `adtype` is by default `nothing`.
 
 An argument with a type of `Missing` will be in `missings` by default. However, in
 non-traditional use-cases `missings` can be defined differently. All variables in `missings`
@@ -33,12 +39,21 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
-       AbstractProbabilisticProgram
+struct Model{
+    F,
+    argnames,
+    defaultnames,
+    missings,
+    Targs,
+    Tdefaults,
+    Ctx<:AbstractContext,
+    TAD<:Union{Nothing,ADTypes.AbstractADType},
+} <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
+    adtype::TAD
 
     @doc """
         Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
@@ -51,9 +66,10 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractConte
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
-            f, args, defaults, context
+        adtype::TAD=nothing,
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,TAD}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,TAD}(
+            f, args, defaults, context, adtype
         )
     end
 end
@@ -71,22 +87,40 @@ model with different arguments.
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-) where {F,argnames,Targs,kwargnames,Tkwargs}
+    adtype::TAD=nothing,
+) where {F,argnames,Targs,kwargnames,Tkwargs,TAD}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
     )
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
+    return :(Model{$(missing_args..., missing_kwargs...)}(
+        f, args, defaults, context, adtype
+    ))
 end
 
 function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
-    return Model(f, args, NamedTuple(kwargs), context)
+    return Model(f, args, NamedTuple(kwargs), context, nothing)
 end
 
+"""
+    Model(model::Model, adtype::Union{Nothing,ADTypes.AbstractADType})
+
+Create a new model with the same evaluation function and arguments as `model`, but with
+automatic differentiation backend `adtype`.
+"""
+function Model(model::Model, adtype::Union{Nothing,ADTypes.AbstractADType})
+    return Model(model.f, model.args, model.defaults, model.context, adtype)
+end
+
+"""
+    contextualize(model::Model, context::AbstractContext)
+
+Set the context of `model` to `context`.
+"""
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context)
+    return Model(model.f, model.args, model.defaults, context, model.adtype)
 end
 
 """

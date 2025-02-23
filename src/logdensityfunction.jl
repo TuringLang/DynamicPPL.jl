@@ -111,7 +111,7 @@ struct LogDensityFunction{
         model::Model,
         varinfo::AbstractVarInfo=VarInfo(model),
         context::AbstractContext=leafcontext(model.context);
-        adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        adtype::Union{ADTypes.AbstractADType,Nothing}=model.adtype,
     )
         if adtype === nothing
             prep = nothing

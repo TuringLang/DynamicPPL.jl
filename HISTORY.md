@@ -1,5 +1,23 @@
 # DynamicPPL Changelog
 
+## 0.36.0
+
+### Models now store AD backend types
+
+In `DynamicPPL.Model`, an extra field `adtype::Union{Nothing,ADTypes.AbstractADType}` has been added.
+This field is used to store the AD backend which should be used when calculating gradients of the log density.
+
+The field can be set by passing an extra argument to the `Model` constructor, but more realistically, it is likely that you will want to manually set the `adtype` field on an existing model using `Model(::Model, ::AbstractADType)`:
+
+```julia
+@model f() = ...
+model = f()
+model_with_adtype = Model(model, AutoForwardDiff())
+```
+
+As far as `DynamicPPL.Model` is concerned, this field does not actually have any effect.
+However, when a `LogDensityFunction` is constructed from said model, it will inherit the `adtype` field from the model.
+
 ## 0.35.5
 
 Several internal methods have been removed:
@@ -174,7 +192,8 @@ Instead of constructing a `LogDensityProblemAD.ADgradient` object, we now direct
 Note that if you wish, you can still construct an `ADgradient` out of a `LogDensityFunction` object (there is nothing preventing this).
 
 However, in this version, `LogDensityFunction` now takes an extra AD type argument.
-If this argument is not provided, the behaviour is exactly the same as before, i.e. you can calculate `logdensity` but not its gradient.
+By default, this AD type is inherited from the model that the `LogDensityFunction` is constructed from.
+If the model does not have an AD type, or if the argument is explicitly set to `nothing`, the behaviour is exactly the same as before, i.e. you can calculate `logdensity` but not its gradient.
 However, if you do pass an AD type, that will allow you to calculate the gradient as well.
 You may thus find that it is easier to instead do this:
 
