@@ -941,19 +941,19 @@ end
 
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_b, dists[2])
         randr(vi, vn_z2, dists[1])
         randr(vi, vn_a2, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
         @test DynamicPPL.get_num_produce(vi) == 3
 
-        DynamicPPL.reset_num_produce!(vi)
+        vi = DynamicPPL.reset_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
@@ -961,12 +961,12 @@ end
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z2, dists[1])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
         @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
@@ -975,21 +975,21 @@ end
         vi = empty!!(DynamicPPL.typed_varinfo(vi))
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_b, dists[2])
         randr(vi, vn_z2, dists[1])
         randr(vi, vn_a2, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         @test vi.metadata.z.orders == [1, 2, 3]
         @test vi.metadata.a.orders == [1, 2]
         @test vi.metadata.b.orders == [2]
         @test DynamicPPL.get_num_produce(vi) == 3
 
-        DynamicPPL.reset_num_produce!(vi)
+        vi = DynamicPPL.reset_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
@@ -997,12 +997,12 @@ end
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z2, dists[1])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
         @test vi.metadata.z.orders == [1, 2, 3]

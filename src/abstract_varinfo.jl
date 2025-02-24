@@ -91,12 +91,26 @@ function transformation end
 
 # Accumulation of log-probabilities.
 """
-    getlogp(vi::AbstractVarInfo)
+    getlogjoint(vi::AbstractVarInfo)
 
 Return the log of the joint probability of the observed data and parameters sampled in
 `vi`.
 """
-function getlogp end
+getlogjoint(vi::AbstractVarInfo) = getlogprior(vi) + getloglikelihood(vi)
+getlogp(vi::AbstractVarInfo) = getlogjoint(vi)
+
+function setaccs!! end
+function getaccs end
+
+getlogprior(vi::AbstractVarInfo) = getacc(vi, LogPrior).logp
+getloglikelihood(vi::AbstractVarInfo) = getacc(vi, LogLikelihood).logp
+
+function setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
+    return setaccs!!(vi, setacc!!(getaccs(vi), acc))
+end
+
+setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPrior(logp))
+setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihood(logp))
 
 """
     setlogp!!(vi::AbstractVarInfo, logp)
@@ -104,23 +118,43 @@ function getlogp end
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`, mutating if it makes sense.
 """
-function setlogp!! end
+function setlogp!!(vi::AbstractVarInfo, logp)
+    vi = setlogprior!!(vi, zero(logp))
+    vi = setloglikelihood!!(vi, logp)
+    return vi
+end
+
+function getacc(vi::AbstractVarInfo, ::Type{AccType}) where {AccType}
+    return getacc(getaccs(vi), AccType)
+end
+
+function accumulate_assume!!(vi::AbstractVarInfo, r, logp, vn, right)
+    return setaccs!!(vi, accumulate_assume!!(getaccs(vi), r, logp, vn, right))
+end
+
+function accumulate_observe!!(vi::AbstractVarInfo, left, right)
+    return setaccs!!(vi, accumulate_observe!!(getaccs(vi), left, right))
+end
+
+function acc!!(vi::AbstractVarInfo, ::Type{AccType}, args...) where {AccType}
+    return setaccs!!(vi, acc!!(getaccs(vi), AccType, args...))
+end
+
+function acclogprior!!(vi::AbstractVarInfo, logp)
+    return acc!!(vi, LogPrior, logp)
+end
+
+function accloglikelihood!!(vi::AbstractVarInfo, logp)
+    return acc!!(vi, LogLikelihood, logp)
+end
 
 """
-    acclogp!!([context::AbstractContext, ]vi::AbstractVarInfo, logp)
+    acclogp!!(vi::AbstractVarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!!(context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(NodeTrait(context), context, vi, logp)
-end
-function acclogp!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(vi, logp)
-end
-function acclogp!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(childcontext(context), vi, logp)
-end
+acclogp!!(vi::AbstractVarInfo, logp) = accloglikelihood!!(vi, logp)
 
 """
     resetlogp!!(vi::AbstractVarInfo)
@@ -725,7 +759,7 @@ end
 
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
-increment_num_produce!(::AbstractVarInfo) = nothing
+increment_num_produce!!(::AbstractVarInfo) = nothing
 
 """
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])

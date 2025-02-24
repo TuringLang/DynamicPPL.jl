@@ -76,7 +76,6 @@ Base.@kwdef struct AssumeStmt <: Stmt
     varname
     right
     value
-    logp
     varinfo = nothing
 end
 
@@ -90,15 +89,12 @@ function Base.show(io::IO, stmt::AssumeStmt)
     print(io, RESULT_SYMBOL)
     print(io, " ")
     print(io, stmt.value)
-    print(io, " (logprob = ")
-    print(io, stmt.logp)
     return print(io, ")")
 end
 
 Base.@kwdef struct ObserveStmt <: Stmt
     left
     right
-    logp
     varinfo = nothing
 end
 
@@ -108,8 +104,6 @@ function Base.show(io::IO, stmt::ObserveStmt)
     show_right(io, stmt.left)
     print(io, " ~ ")
     show_right(io, stmt.right)
-    print(io, " (logprob = ")
-    print(io, stmt.logp)
     return print(io, ")")
 end
 
@@ -257,12 +251,11 @@ function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
     return nothing
 end
 
-function record_post_tilde_assume!(context::DebugContext, vn, dist, value, logp, varinfo)
+function record_post_tilde_assume!(context::DebugContext, vn, dist, value, varinfo)
     stmt = AssumeStmt(;
         varname=vn,
         right=dist,
         value=value,
-        logp=logp,
         varinfo=context.record_varinfo ? varinfo : nothing,
     )
     if context.record_statements
@@ -273,19 +266,19 @@ end
 
 function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, logp, vi)
-    return value, logp, vi
+    value, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
+    record_post_tilde_assume!(context, vn, right, value, vi)
+    return value, vi
 end
 function DynamicPPL.tilde_assume(
     rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
 )
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(
+    value, vi = DynamicPPL.tilde_assume(
         rng, childcontext(context), sampler, right, vn, vi
     )
-    record_post_tilde_assume!(context, vn, right, value, logp, vi)
-    return value, logp, vi
+    record_post_tilde_assume!(context, vn, right, value, vi)
+    return value, vi
 end
 
 # observe
@@ -300,11 +293,10 @@ function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
     end
 end
 
-function record_post_tilde_observe!(context::DebugContext, left, right, logp, varinfo)
+function record_post_tilde_observe!(context::DebugContext, left, right, varinfo)
     stmt = ObserveStmt(;
         left=left,
         right=right,
-        logp=logp,
         varinfo=context.record_varinfo ? varinfo : nothing,
     )
     if context.record_statements
@@ -315,15 +307,15 @@ end
 
 function DynamicPPL.tilde_observe(context::DebugContext, right, left, vi)
     record_pre_tilde_observe!(context, left, right, vi)
-    logp, vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
-    record_post_tilde_observe!(context, left, right, logp, vi)
-    return logp, vi
+    vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
+    record_post_tilde_observe!(context, left, right, vi)
+    return vi
 end
 function DynamicPPL.tilde_observe(context::DebugContext, sampler, right, left, vi)
     record_pre_tilde_observe!(context, left, right, vi)
-    logp, vi = DynamicPPL.tilde_observe(childcontext(context), sampler, right, left, vi)
-    record_post_tilde_observe!(context, left, right, logp, vi)
-    return logp, vi
+    vi = DynamicPPL.tilde_observe(childcontext(context), sampler, right, left, vi)
+    record_post_tilde_observe!(context, left, right, vi)
+    return vi
 end
 
 _conditioned_varnames(d::AbstractDict) = keys(d)

@@ -54,9 +54,9 @@ export AbstractVarInfo,
     acclogp!!,
     resetlogp!!,
     get_num_produce,
-    set_num_produce!,
-    reset_num_produce!,
-    increment_num_produce!,
+    set_num_produce!!,
+    reset_num_produce!!,
+    increment_num_produce!!,
     set_retained_vns_del!,
     is_flagged,
     set_flag!,
@@ -92,9 +92,6 @@ export AbstractVarInfo,
     # Contexts
     SamplingContext,
     DefaultContext,
-    LikelihoodContext,
-    PriorContext,
-    MiniBatchContext,
     PrefixContext,
     ConditionContext,
     assume,
@@ -166,6 +163,7 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varnamedvector.jl")
+include("accumulators.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")

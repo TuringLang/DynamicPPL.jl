@@ -4,9 +4,10 @@
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
         @test threadsafe_vi.varinfo === vi
-        @test threadsafe_vi.logps isa Vector{typeof(Ref(getlogp(vi)))}
-        @test length(threadsafe_vi.logps) == Threads.nthreads()
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        @test threadsafe_vi.accs_by_thread isa Vector{<:DynamicPPL.AccumulatorTuple}
+        @test length(threadsafe_vi.accs_by_thread) == Threads.nthreads()
+        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in vi.accs)...)
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
     # TODO: Add more tests of the public API
@@ -17,20 +18,20 @@
         lp = getlogp(vi)
         @test getlogp(threadsafe_vi) == lp
 
-        acclogp!!(threadsafe_vi, 42)
-        @test threadsafe_vi.logps[Threads.threadid()][] == 42
+        threadsafe_vi = DynamicPPL.acclogprior!!(threadsafe_vi, 42)
+        @test threadsafe_vi.accs_by_thread[Threads.threadid()][:LogPrior].logp == 42
         @test getlogp(vi) == lp
         @test getlogp(threadsafe_vi) == lp + 42
 
-        resetlogp!!(threadsafe_vi)
-        @test iszero(getlogp(vi))
+        threadsafe_vi = resetlogp!!(threadsafe_vi)
         @test iszero(getlogp(threadsafe_vi))
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...)
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
 
-        setlogp!!(threadsafe_vi, 42)
-        @test getlogp(vi) == 42
+        threadsafe_vi = setlogp!!(threadsafe_vi, 42)
         @test getlogp(threadsafe_vi) == 42
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...)
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
     @testset "model" begin

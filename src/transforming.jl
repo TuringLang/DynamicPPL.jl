@@ -27,7 +27,12 @@ function tilde_assume(
     # Only transform if `!isinverse` since `vi[vn, right]`
     # already performs the inverse transformation if it's transformed.
     r_transformed = isinverse ? r : link_transform(right)(r)
-    return r, lp, setindex!!(vi, r_transformed, vn)
+    vi = acclogprior!!(vi, lp)
+    return r, setindex!!(vi, r_transformed, vn)
+end
+
+function tilde_observe(::DynamicTransformationContext, right, vn, vi)
+    return observe(right, vn, vi)
 end
 
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
