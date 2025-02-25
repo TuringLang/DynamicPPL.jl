@@ -31,37 +31,26 @@ jobs:
           # Current stable version
           - version: '1'
             os: ubuntu-latest
-            arch: x64
             num_threads: 2
           # Minimum supported version
           - version: 'min'
             os: ubuntu-latest
-            arch: x64
             num_threads: 2
           # Single-threaded
           - version: '1'
             os: ubuntu-latest
-            arch: x64
             num_threads: 1
           # Minimum supported version, single-threaded
           - version: 'min'
             os: ubuntu-latest
-            arch: x64
             num_threads: 1
-          # x86
-          - version: '1'
-            os: ubuntu-latest
-            arch: x86
-            num_threads: 2
           # Windows
           - version: '1'
             os: windows-latest
-            arch: x64
             num_threads: 2
           # macOS
           - version: '1'
             os: macos-latest
-            arch: aarch64
             num_threads: 2
         test_group:
           - Group1
@@ -73,7 +62,6 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.runner.version }}
-          arch: ${{ matrix.runner.arch }}
 
       - uses: julia-actions/cache@v2
 
