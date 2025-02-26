@@ -57,7 +57,7 @@ logjoint
 The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`.
 
 ```@docs
-DynamicPPL.LogDensityFunction
+LogDensityFunction
 ```
 
 ## Condition and decondition

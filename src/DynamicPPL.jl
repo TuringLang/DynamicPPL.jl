@@ -88,6 +88,8 @@ export AbstractVarInfo,
     Sampler,
     SampleFromPrior,
     SampleFromUniform,
+    # LogDensityFunction
+    LogDensityFunction,
     # Contexts
     SamplingContext,
     DefaultContext,
