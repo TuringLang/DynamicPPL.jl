@@ -108,14 +108,14 @@ unfix
 
 DynamicPPL provides functionality for generating samples from the posterior predictive distribution through the `predict` function. This allows you to use posterior parameter samples to generate predictions for unobserved data points.
 
-```@docs
-predict
-```
-
 The `predict` function has two main methods:
 
  1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
- 2. For `MCMCChains.Chains` - useful when you have posterior samples in the form of a `Chains` object from MCMCChains.jl.
+ 2. For `MCMCChains.Chains` (only available when `MCMCChains.jl` is loaded) - useful when you have posterior samples in the form of an `MCMCChains.Chains` object.
+
+```@docs
+predict
+```
 
 ### Basic Usage
 
