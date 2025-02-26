@@ -9,9 +9,11 @@ using DynamicPPL: AbstractPPL
 # consistent with that.
 using Distributions
 using DocumenterMermaid
+# load MCMCChains package extension to make `predict` available
+using MCMCChains
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL); recursive=true)
+DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL, MCMCChains); recursive=true)
 
 makedocs(;
     sitename="DynamicPPL",
