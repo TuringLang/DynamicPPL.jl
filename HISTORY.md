@@ -128,6 +128,10 @@ This release removes the feature of `VarInfo` where it kept track of which varia
 
 **Other changes**
 
+### New exports
+
+`LogDensityFunction` and `predict` are now exported from DynamicPPL.
+
 ### `LogDensityProblems` interface
 
 LogDensityProblemsAD is now removed as a dependency.
