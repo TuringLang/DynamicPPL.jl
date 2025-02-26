@@ -114,21 +114,21 @@ predict
 
 The `predict` function has two main methods:
 
-1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
-2. For `MCMCChains.Chains` - useful when you have posterior samples in the form of a `Chains` object from MCMCChains.jl.
+ 1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
+ 2. For `MCMCChains.Chains` - useful when you have posterior samples in the form of a `Chains` object from MCMCChains.jl.
 
 ### Basic Usage
 
 The typical workflow for posterior prediction involves:
 
-1. Fitting a model to observed data to obtain posterior samples
-2. Creating a new model instance with some variables marked as missing (unobserved)
-3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
+ 1. Fitting a model to observed data to obtain posterior samples
+ 2. Creating a new model instance with some variables marked as missing (unobserved)
+ 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
 
 When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
 
-- `include_all=false` (default): Include only newly predicted variables
-- `include_all=true`: Include both parameters from the original chain and predicted variables
+  - `include_all=false` (default): Include only newly predicted variables
+  - `include_all=true`: Include both parameters from the original chain and predicted variables
 
 ## Models within models
 

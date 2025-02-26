@@ -13,7 +13,9 @@ using DocumenterMermaid
 using MCMCChains
 
 # Doctest setup
-DocMeta.setdocmeta!(DynamicPPL, :DocTestSetup, :(using DynamicPPL, MCMCChains); recursive=true)
+DocMeta.setdocmeta!(
+    DynamicPPL, :DocTestSetup, :(using DynamicPPL, MCMCChains); recursive=true
+)
 
 makedocs(;
     sitename="DynamicPPL",
