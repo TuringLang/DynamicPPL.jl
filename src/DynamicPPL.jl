@@ -14,7 +14,6 @@ using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
-using LogDensityProblemsAD: LogDensityProblemsAD
 
 using LinearAlgebra: LinearAlgebra, Cholesky
 
@@ -59,12 +58,10 @@ export AbstractVarInfo,
     set_num_produce!,
     reset_num_produce!,
     increment_num_produce!,
-    set_retained_vns_del_by_spl!,
+    set_retained_vns_del!,
     is_flagged,
     set_flag!,
     unset_flag!,
-    setgid!,
-    updategid!,
     setorder!,
     istrans,
     link,
@@ -74,7 +71,6 @@ export AbstractVarInfo,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
-    inspace,
     subsumes,
     @varname,
     # Compiler
@@ -92,6 +88,8 @@ export AbstractVarInfo,
     Sampler,
     SampleFromPrior,
     SampleFromUniform,
+    # LogDensityFunction
+    LogDensityFunction,
     # Contexts
     SamplingContext,
     DefaultContext,
@@ -101,13 +99,9 @@ export AbstractVarInfo,
     PrefixContext,
     ConditionContext,
     assume,
-    dot_assume,
     observe,
-    dot_observe,
     tilde_assume,
     tilde_observe,
-    dot_tilde_assume,
-    dot_tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -153,9 +147,6 @@ macro prob_str(str)
     ))
 end
 
-# Used here and overloaded in Turing
-function getspace end
-
 """
     AbstractVarInfo
 
@@ -167,14 +158,8 @@ See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
-const LEGACY_WARNING = """
-!!! warning
-    This method is considered legacy, and is likely to be deprecated in the future.
-"""
-
 # Necessary forward declarations
 include("utils.jl")
-include("selector.jl")
 include("chains.jl")
 include("model.jl")
 include("sampler.jl")

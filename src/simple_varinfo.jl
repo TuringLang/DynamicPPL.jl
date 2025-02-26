@@ -258,7 +258,6 @@ function typed_simple_varinfo(model::Model)
     return last(evaluate!!(model, varinfo, SamplingContext()))
 end
 
-unflatten(svi::SimpleVarInfo, spl::AbstractSampler, x::AbstractVector) = unflatten(svi, x)
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     logp = getlogp(svi)
     vals = unflatten(svi.values, x)
@@ -342,10 +341,6 @@ function BangBang.setindex!!(vi::SimpleVarInfo, val, vn::VarName)
     return Accessors.@set vi.values = set!!(vi.values, vn, val)
 end
 
-function BangBang.setindex!!(vi::SimpleVarInfo, val, spl::AbstractSampler)
-    return unflatten(vi, spl, val)
-end
-
 # TODO: Specialize to handle certain cases, e.g. a collection of `VarName` with
 # same symbol and same type of, say, `IndexLens`, for improved `.~` performance.
 function BangBang.setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarName})
@@ -379,42 +374,26 @@ end
 
 # `NamedTuple`
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym,typeof(identity)},
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:NamedTuple}, ::VarName{sym,typeof(identity)}, value, ::Distribution
 ) where {sym}
     return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:NamedTuple},
-    vn::VarName{sym},
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:NamedTuple}, vn::VarName{sym}, value, ::Distribution
 ) where {sym}
     return Accessors.@set vi.values = set!!(vi.values, vn, value)
 end
 
 # `AbstractDict`
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:AbstractDict},
-    vn::VarName,
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:AbstractDict}, vn::VarName, value, ::Distribution
 )
     vi.values[vn] = value
     return vi
 end
 
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:VarNamedVector},
-    vn::VarName,
-    value,
-    dist::Distribution,
-    gidset::Set{Selector},
+    vi::SimpleVarInfo{<:VarNamedVector}, vn::VarName, value, ::Distribution
 )
     # The semantics of push!! for SimpleVarInfo and VarNamedVector are different. For
     # SimpleVarInfo, push!! allows the key to exist already, for VarNamedVector it does not.
@@ -428,11 +407,7 @@ const SimpleOrThreadSafeSimple{T,V,C} = Union{
 }
 
 # Necessary for `matchingvalue` to work properly.
-function Base.eltype(
-    vi::SimpleOrThreadSafeSimple{<:Any,V}, spl::Union{AbstractSampler,SampleFromPrior}
-) where {V}
-    return V
-end
+Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
@@ -492,59 +467,8 @@ function assume(
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
     value_raw = to_maybe_linked_internal(vi, vn, dist, value)
-    vi = BangBang.push!!(vi, vn, value_raw, dist, sampler)
+    vi = BangBang.push!!(vi, vn, value_raw, dist)
     return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
-end
-
-function dot_assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dists::Union{Distribution,AbstractArray{<:Distribution}},
-    vns::AbstractArray{<:VarName},
-    var::AbstractArray,
-    vi::SimpleOrThreadSafeSimple,
-)
-    f = (vn, dist) -> init(rng, dist, spl)
-    value = f.(vns, dists)
-
-    # Transform if we're working in transformed space.
-    value_raw = if dists isa Distribution
-        to_maybe_linked_internal.((vi,), vns, (dists,), value)
-    else
-        to_maybe_linked_internal.((vi,), vns, dists, value)
-    end
-
-    # Update `vi`
-    vi = BangBang.setindex!!(vi, value_raw, vns)
-
-    # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans.(dists, value, istrans.((vi,), vns)))
-    return value, lp, vi
-end
-
-function dot_assume(
-    rng,
-    spl::Union{SampleFromPrior,SampleFromUniform},
-    dist::MultivariateDistribution,
-    vns::AbstractVector{<:VarName},
-    var::AbstractMatrix,
-    vi::SimpleOrThreadSafeSimple,
-)
-    @assert length(dist) == size(var, 1) "dimensionality of `var` ($(size(var, 1))) is incompatible with dimensionality of `dist` $(length(dist))"
-
-    # r = get_and_set_val!(rng, vi, vns, dist, spl)
-    n = length(vns)
-    value = init(rng, dist, spl, n)
-
-    # Update `vi`.
-    for (vn, val) in zip(vns, eachcol(value))
-        val_linked = to_maybe_linked_internal(vi, vn, dist, val)
-        vi = BangBang.setindex!!(vi, val_linked, vn)
-    end
-
-    # Compute logp.
-    lp = sum(Bijectors.logpdf_with_trans(dist, value, istrans(vi)))
-    return value, lp, vi
 end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
@@ -559,10 +483,10 @@ function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
-istrans(vi::SimpleVarInfo, vn::VarName) = istrans(vi)
+istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
 
-islinked(vi::SimpleVarInfo, ::Union{Sampler,SampleFromPrior}) = istrans(vi)
+islinked(vi::SimpleVarInfo) = istrans(vi)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
@@ -680,8 +604,7 @@ Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarIn
 function link!!(
     t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
-    spl::AbstractSampler,
-    model::Model,
+    ::Model,
 )
     # TODO: Make sure that `spl` is respected.
     b = inverse(t.bijector)
@@ -695,8 +618,7 @@ end
 function invlink!!(
     t::StaticTransformation{<:Bijectors.NamedTransform},
     vi::SimpleVarInfo{<:NamedTuple},
-    spl::AbstractSampler,
-    model::Model,
+    ::Model,
 )
     # TODO: Make sure that `spl` is respected.
     b = t.bijector

@@ -54,10 +54,10 @@ logjoint
 
 ### LogDensityProblems.jl interface
 
-The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`:
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`.
 
 ```@docs
-DynamicPPL.LogDensityFunction
+LogDensityFunction
 ```
 
 ## Condition and decondition
@@ -315,13 +315,6 @@ unset_flag!
 is_flagged
 ```
 
-For Gibbs sampling the following functions were added.
-
-```@docs
-setgid!
-updategid!
-```
-
 The following functions were used for sequential Monte Carlo methods.
 
 ```@docs
@@ -330,7 +323,7 @@ set_num_produce!
 increment_num_produce!
 reset_num_produce!
 setorder!
-set_retained_vns_del_by_spl!
+set_retained_vns_del!
 ```
 
 ```@docs
@@ -473,10 +466,8 @@ DynamicPPL.Experimental.is_suitable_varinfo
 
 ```@docs
 tilde_assume
-dot_tilde_assume
 ```
 
 ```@docs
 tilde_observe
-dot_tilde_observe
 ```

@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - backport-*
+      - release-0.35
   pull_request:
   merge_group:
     types: [checks_requested]
