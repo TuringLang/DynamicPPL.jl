@@ -208,7 +208,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 @model function demo_assume_index_observe(
@@ -293,7 +293,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 # Using vector of `length` 1 here so the posterior of `m` is the same
@@ -374,7 +374,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_index_literal)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 @model function demo_assume_observe_literal()
@@ -458,7 +458,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 @model function _likelihood_multivariate_observe(s, m, x)
@@ -492,7 +492,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 @model function demo_dot_assume_observe_matrix_index(
@@ -521,7 +521,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_dot_assume_observe_matrix_index)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(s), @varname(m)]
 end
 
 @model function demo_assume_matrix_observe_matrix_index(

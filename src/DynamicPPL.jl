@@ -5,6 +5,7 @@ using AbstractPPL
 using Bijectors
 using Compat
 using Distributions
+using DistributionsAD: filldist
 using OrderedCollections: OrderedCollections, OrderedDict
 
 using AbstractMCMC: AbstractMCMC

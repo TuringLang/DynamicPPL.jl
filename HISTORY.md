@@ -45,7 +45,9 @@ x ~ product_distribution(Normal.(y))
 x ~ MvNormal(fill(0.0, 2), I)
 ```
 
-This is often more performant as well. Note that using `~` rather than `.~` does change the internal storage format a bit: With `.~` `x[i]` are stored as separate variables, with `~` as a single multivariate variable `x`. In most cases this does not change anything for the user, but if it does cause issues, e.g. if you are dealing with `VarInfo` objects directly and need to keep the old behavior, you can always expand into a loop, such as
+This is often more performant as well.
+
+The new implementation of `x .~ ...` is just a short-hand for `x ~ filldist(...)`, which means that `x` will be seen as a single multivariate variable. In most cases this does not change anything for the user, with the one notable exception being `pointwise_loglikelihoods`, which previously treated `.~` assignments as assigning multiple univariate variables. If you _do_ want a variable to be seen as an array of univariate variables rather than a single multivariate variable, you can always expand into a loop, such as
 
 ```julia
 dists = Normal.(y)
@@ -54,7 +56,7 @@ for i in 1:length(dists)
 end
 ```
 
-Cases where the right hand side is of a different dimension than the left hand side, and neither is a scalar, must be replaced with a loop. For example,
+Cases where the right hand side is of a different dimension than the left hand side, and neither is a scalar, must always be replaced with a loop. For example,
 
 ```julia
 x = Array{Float64,3}(undef, 2, 3, 4)
@@ -69,8 +71,6 @@ for i in 1:3, j in 1:4
     x[:, i, j] ~ MvNormal(fill(0, 2), I)
 end
 ```
-
-This release also completely rewrites the internal implementation of `.~`, where from now on all `.~` statements are turned into loops over `~` statements at macro time. However, the only breaking aspect of this change is the above change to what's allowed on the right hand side.
 
 ### Remove indexing by samplers
 

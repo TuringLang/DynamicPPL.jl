@@ -426,12 +426,7 @@ end
         # Transform only one variable
         all_vns = vcat(meta.s.vns, meta.m.vns, meta.x.vns, meta.y.vns)
         for vn in [
-            @varname(s),
-            @varname(m),
-            @varname(x),
-            @varname(y),
-            @varname(x[2]),
-            @varname(y[2])
+            @varname(s), @varname(m), @varname(x), @varname(y), @varname(x), @varname(y[2])
         ]
             target_vns = filter(x -> subsumes(vn, x), all_vns)
             other_vns = filter(x -> !subsumes(vn, x), all_vns)
@@ -874,7 +869,7 @@ end
         varinfo2 = last(
             DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
         )
-        for vn in [@varname(x), @varname(y[1])]
+        for vn in [@varname(x), @varname(y)]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
     end

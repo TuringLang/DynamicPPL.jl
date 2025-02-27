@@ -514,13 +514,10 @@ end
 Generate the expression that replaces `left .~ right` in the model body.
 """
 function generate_dot_tilde(left, right)
-    @gensym dist left_axes idx
+    @gensym dist
     return quote
         $dist = DynamicPPL.check_dot_tilde_rhs($right)
-        $left_axes = axes($left)
-        for $idx in Iterators.product($left_axes...)
-            $left[$idx...] ~ $dist
-        end
+        $left ~ DynamicPPL.filldist($dist, Base.size($left)...)
     end
 end
 
