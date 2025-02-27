@@ -223,15 +223,10 @@ julia> @model function demo(x)
            x .~ Normal()
        end;
 
-julia> m = demo([1.0, ]);
-
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x)])
--1.4189385332046727
-
 julia> m = demo([1.0; 1.0]);
 
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
-(-1.4189385332046727, -1.4189385332046727)
+julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x)])
+-2.8378770664093453
 ```
 
 """
