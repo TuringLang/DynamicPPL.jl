@@ -1,17 +1,17 @@
 name: Benchmarking
 
 on:
-  push:
-    branches:
-      - master
+  pull_request:
 
 jobs:
-  benchmark:
+  benchmarks:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
@@ -21,12 +21,46 @@ jobs:
       - name: Install Dependencies
         run: julia --project=benchmarks/ -e 'using Pkg; Pkg.instantiate()'
 
-      - name: Run Benchmarks and Generate Reports
-        run: julia --project=benchmarks/ -e 'using DynamicPPLBenchmarks; weave_benchmarks()'
+      - name: Run Benchmarks
+        id: run_benchmarks
+        run: |
+          # Capture version info into a variable, print it, and set it as an env var for later steps
+          version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
+          echo "$version_info"
+          echo "VERSION_INFO<<EOF" >> $GITHUB_ENV
+          echo "$version_info" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+          # Capture benchmark output into a variable
+          echo "Running Benchmarks..."
+          benchmark_output=$(julia --project=benchmarks benchmarks/benchmarks.jl)
+          
+          # Print benchmark results directly to the workflow log
+          echo "Benchmark Results:"
+          echo "$benchmark_output"
+          
+          # Set the benchmark output as an env var for later steps
+          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$benchmark_output" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Find Existing Comment
+        uses: peter-evans/find-comment@v3
+        id: find_comment
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./benchmarks/results
-          publish_branch: gh-pages
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+
+      - name: Post Benchmark Results as PR Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Computer Information
+            ```
+            ${{ env.VERSION_INFO }}
+            ```
+            ## Benchmark Report
+            ${{ env.BENCHMARK_OUTPUT }}
+          comment-id: ${{ steps.find_comment.outputs.comment-id }}
+          edit-mode: replace
