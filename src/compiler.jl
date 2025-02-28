@@ -517,7 +517,7 @@ function generate_dot_tilde(left, right)
     @gensym dist
     return quote
         $dist = DynamicPPL.check_dot_tilde_rhs($right)
-        $left ~ DynamicPPL.filldist($dist, Base.size($left)...)
+        $left ~ DynamicPPL.product_distribution(Base.fill($dist, Base.size($left)...))
     end
 end
 
