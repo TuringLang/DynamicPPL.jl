@@ -121,7 +121,7 @@ This release removes the feature of `VarInfo` where it kept track of which varia
 
 ### `LogDensityFunction` argument order
 
-  - The method `LogDensityFunction(varinfo, model, context)` has been removed.
+  - The method `LogDensityFunction(varinfo, model, sampler)` has been removed.
     The only accepted order is `LogDensityFunction(model, varinfo, context; adtype)`.
     (For an explanation of `adtype`, see below.)
     The varinfo and context arguments are both still optional.
