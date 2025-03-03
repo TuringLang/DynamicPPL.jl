@@ -24,18 +24,28 @@ export simple_assume_observe_non_model,
 
 # This one is like simple_assume_observe, but explicitly does not use DynamicPPL.
 # Other runtimes are normalised by this one's runtime.
-function simple_assume_observe_non_model(x, obs)
-    logp = logdf(x, Normal())
-    logp += logpdf(obs, Normal(x, 1))
-    return logp
+function simple_assume_observe_non_model(obs)
+    x = rand(Normal())
+    logp = logpdf(Normal(), x)
+    logp += logpdf(Normal(x, 1), obs)
+    return (; logp=logp, x=x)
 end
 
+"""
+A simple model that does one scalar assumption and one scalar observation.
+"""
 @model function simple_assume_observe(obs)
     x ~ Normal()
     obs ~ Normal(x, 1)
     return (; x=x)
 end
 
+"""
+A short model that tries to cover many DynamicPPL features.
+
+Includes scalar, vector univariate, and multivariate variables; ~, .~, and loops; allocating
+a variable vector; observations passed as arguments, and as literals.
+"""
 @model function smorgasbord(x, y, ::Type{TV}=Vector{Float64}) where {TV}
     @assert length(x) == length(y)
     m ~ truncated(Normal(); lower=0)
@@ -50,6 +60,13 @@ end
     return (; m=m, means=means, stds=stds)
 end
 
+"""
+A model that loops over two vectors of univariate normals of length `num_dims`.
+
+The second variable, `o`, is meant to be conditioned on after model instantiation.
+
+See `multivariate` for a version that uses `product_distribution` rather than loops.
+"""
 @model function loop_univariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
@@ -63,6 +80,13 @@ end
     return (; a=a)
 end
 
+"""
+A model with two multivariate normal distributed variables of dimension `num_dims`.
+
+The second variable, `o`, is meant to be conditioned on after model instantiation.
+
+See `loop_univariate` for a version that uses loops rather than `product_distribution`.
+"""
 @model function multivariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
@@ -72,17 +96,29 @@ end
     return (; a=a)
 end
 
+"""
+A submodel for `parent`. Not exported.
+"""
 @model function sub()
     x ~ Normal()
     return x
 end
 
-@model function parent(y)
+"""
+Like simple_assume_observe, but with a submodel for the assumed random variable.
+"""
+@model function parent(obs)
     x ~ to_submodel(sub())
-    y ~ Normal(x, 1)
+    obs ~ Normal(x, 1)
     return (; x=x)
 end
 
+"""
+A model with random variables that have changing support.
+
+Includes both variables the dimension of which depends on other variables, and variables
+the support of which changes under linking.
+"""
 @model function dynamic(::Type{T}=Vector{Float64}) where {T}
     eta ~ truncated(Normal(); lower=0.0)
     mat1 ~ LKJCholesky(4, eta)
@@ -93,6 +129,9 @@ end
     return (; eta=eta, mat1=mat1, mat2=mat2, vec=vec)
 end
 
+"""
+A simple Linear Discriminant Analysis model.
+"""
 @model function lda(K, d, w)
     V = length(unique(w))
     D = length(unique(d))
