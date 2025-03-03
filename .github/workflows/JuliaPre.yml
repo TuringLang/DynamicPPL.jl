@@ -3,10 +3,8 @@ name: JuliaPre
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
-    branches:
-      - master
 
 # needed to allow julia-actions/cache to delete old caches that it has created
 permissions:
