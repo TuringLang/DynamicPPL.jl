@@ -54,10 +54,10 @@ logjoint
 
 ### LogDensityProblems.jl interface
 
-The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by simply wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`:
+The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`.
 
 ```@docs
-DynamicPPL.LogDensityFunction
+LogDensityFunction
 ```
 
 ## Condition and decondition
@@ -103,6 +103,32 @@ Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original 
 ```@docs
 unfix
 ```
+
+## Predicting
+
+DynamicPPL provides functionality for generating samples from the posterior predictive distribution through the `predict` function. This allows you to use posterior parameter samples to generate predictions for unobserved data points.
+
+The `predict` function has two main methods:
+
+ 1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
+ 2. For `MCMCChains.Chains` (only available when `MCMCChains.jl` is loaded) - useful when you have posterior samples in the form of an `MCMCChains.Chains` object.
+
+```@docs
+predict
+```
+
+### Basic Usage
+
+The typical workflow for posterior prediction involves:
+
+ 1. Fitting a model to observed data to obtain posterior samples
+ 2. Creating a new model instance with some variables marked as missing (unobserved)
+ 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
+
+When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
+
+  - `include_all=false` (default): Include only newly predicted variables
+  - `include_all=true`: Include both parameters from the original chain and predicted variables
 
 ## Models within models
 
@@ -289,13 +315,6 @@ unset_flag!
 is_flagged
 ```
 
-For Gibbs sampling the following functions were added.
-
-```@docs
-setgid!
-updategid!
-```
-
 The following functions were used for sequential Monte Carlo methods.
 
 ```@docs
@@ -304,7 +323,7 @@ set_num_produce!
 increment_num_produce!
 reset_num_produce!
 setorder!
-set_retained_vns_del_by_spl!
+set_retained_vns_del!
 ```
 
 ```@docs
@@ -447,10 +466,8 @@ DynamicPPL.Experimental.is_suitable_varinfo
 
 ```@docs
 tilde_assume
-dot_tilde_assume
 ```
 
 ```@docs
 tilde_observe
-dot_tilde_observe
 ```

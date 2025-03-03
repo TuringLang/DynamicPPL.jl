@@ -1,5 +1,5 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstactContext}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -948,9 +948,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue(context_new, varinfo, model.args.$var)...)
+            :($matchingvalue(varinfo, model.args.$var)...)
         else
-            :($matchingvalue(context_new, varinfo, model.args.$var))
+            :($matchingvalue(varinfo, model.args.$var))
         end for var in argnames
     ]
 
@@ -971,7 +971,7 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             # lazy `invlink`-ing of the parameters. This can be useful for
             # speeding up computation. See docs for `maybe_invlink_before_eval!!`
             # for more information.
-            maybe_invlink_before_eval!!(varinfo, context_new, model),
+            maybe_invlink_before_eval!!(varinfo, model),
             context_new,
             $(unwrap_args...),
         )
@@ -1169,10 +1169,10 @@ end
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
 
-Generate samples from the posterior predictive distribution by evaluating `model` at each set 
-of parameter values provided in `chain`. The number of posterior predictive samples matches 
+Generate samples from the posterior predictive distribution by evaluating `model` at each set
+of parameter values provided in `chain`. The number of posterior predictive samples matches
 the length of `chain`. The returned `AbstractVarInfo`s will contain both the posterior parameter values
-and the predicted values. 
+and the predicted values.
 """
 function predict(
     rng::Random.AbstractRNG, model::Model, chain::AbstractArray{<:AbstractVarInfo}

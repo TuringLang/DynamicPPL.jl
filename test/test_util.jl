@@ -56,6 +56,15 @@ function short_varinfo_name(vi::TypedVarInfo)
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
 short_varinfo_name(::DynamicPPL.VectorVarInfo) = "VectorVarInfo"
+function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
+    return "SimpleVarInfo{<:NamedTuple,<:Ref}"
+end
+function short_varinfo_name(::SimpleVarInfo{<:OrderedDict,<:Ref})
+    return "SimpleVarInfo{<:OrderedDict,<:Ref}"
+end
+function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector,<:Ref})
+    return "SimpleVarInfo{<:VarNamedVector,<:Ref}"
+end
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
 function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector})

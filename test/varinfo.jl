@@ -1,8 +1,3 @@
-# Dummy algorithm for testing
-# Invoke with: DynamicPPL.Sampler(MyAlg{(:x, :y)}(), ...)
-struct MyAlg{space} end
-DynamicPPL.getspace(::DynamicPPL.Sampler{MyAlg{space}}) where {space} = space
-
 function check_varinfo_keys(varinfo, vns)
     if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
@@ -19,16 +14,13 @@ function check_varinfo_keys(varinfo, vns)
     end
 end
 
-function randr(
-    vi::DynamicPPL.VarInfo,
-    vn::VarName,
-    dist::Distribution,
-    spl::DynamicPPL.Sampler,
-    count::Bool=false,
-)
+"""
+Return the value of `vn` in `vi`. If one doesn't exist, sample and set it.
+"""
+function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
     if !haskey(vi, vn)
         r = rand(dist)
-        push!!(vi, vn, r, dist, spl)
+        push!!(vi, vn, r, dist)
         r
     elseif DynamicPPL.is_flagged(vi, vn, "del")
         DynamicPPL.unset_flag!(vi, vn, "del")
@@ -37,8 +29,6 @@ function randr(
         DynamicPPL.setorder!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     else
-        count && checkindex(vn, vi, spl)
-        DynamicPPL.updategid!(vi, vn, spl)
         vi[vn]
     end
 end
@@ -66,7 +56,6 @@ end
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
                 @test meta.orders[ind] == fmeta.orders[tind]
-                @test meta.gids[ind] == fmeta.gids[tind]
                 for flag in keys(meta.flags)
                     @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
                 end
@@ -89,22 +78,6 @@ end
         vn2 = @varname x[1][2]
         @test vn2 == vn1
         @test hash(vn2) == hash(vn1)
-        @test inspace(vn1, (:x,))
-
-        # Tests for `inspace`
-        space = (:x, :y, @varname(z[1]), @varname(M[1:10, :]))
-
-        @test inspace(@varname(x), space)
-        @test inspace(@varname(y), space)
-        @test inspace(@varname(x[1]), space)
-        @test inspace(@varname(z[1][1]), space)
-        @test inspace(@varname(z[1][:]), space)
-        @test inspace(@varname(z[1][2:3:10]), space)
-        @test inspace(@varname(M[[2, 3], 1]), space)
-        @test_throws ErrorException inspace(@varname(M[:, 1:4]), space)
-        @test inspace(@varname(M[1, [2, 4, 6]]), space)
-        @test !inspace(@varname(z[2]), space)
-        @test !inspace(@varname(z), space)
 
         function test_base!!(vi_original)
             vi = empty!!(vi_original)
@@ -114,38 +87,31 @@ end
             vn = @varname x
             dist = Normal(0, 1)
             r = rand(dist)
-            gid = DynamicPPL.Selector()
 
             @test isempty(vi)
             @test ~haskey(vi, vn)
             @test !(vn in keys(vi))
-            vi = push!!(vi, vn, r, dist, gid)
+            vi = push!!(vi, vn, r, dist)
             @test ~isempty(vi)
             @test haskey(vi, vn)
             @test vn in keys(vi)
 
             @test length(vi[vn]) == 1
-            @test length(vi[SampleFromPrior()]) == 1
-
             @test vi[vn] == r
-            @test vi[SampleFromPrior()][1] == r
             vi = DynamicPPL.setindex!!(vi, 2 * r, vn)
             @test vi[vn] == 2 * r
-            @test vi[SampleFromPrior()][1] == 2 * r
-            vi = DynamicPPL.setindex!!(vi, [3 * r], SampleFromPrior())
-            @test vi[vn] == 3 * r
-            @test vi[SampleFromPrior()][1] == 3 * r
 
             # TODO(mhauru) Implement these functions for other VarInfo types too.
             if vi isa DynamicPPL.VectorVarInfo
                 delete!(vi, vn)
                 @test isempty(vi)
-                vi = push!!(vi, vn, r, dist, gid)
+                vi = push!!(vi, vn, r, dist)
             end
 
             vi = empty!!(vi)
             @test isempty(vi)
-            return push!!(vi, vn, r, dist, gid)
+            vi = push!!(vi, vn, r, dist)
+            @test ~isempty(vi)
         end
 
         vi = VarInfo()
@@ -182,9 +148,8 @@ end
             vn_x = @varname x
             dist = Normal(0, 1)
             r = rand(dist)
-            gid = Selector()
 
-            push!!(vi, vn_x, r, dist, gid)
+            push!!(vi, vn_x, r, dist)
 
             # del is set by default
             @test !is_flagged(vi, vn_x, "del")
@@ -204,33 +169,11 @@ end
         vn_x = @varname x
         vn_y = @varname y
         untyped_vi = VarInfo()
-        untyped_vi = push!!(untyped_vi, vn_x, 1.0, Normal(0, 1), Selector())
+        untyped_vi = push!!(untyped_vi, vn_x, 1.0, Normal(0, 1))
         typed_vi = TypedVarInfo(untyped_vi)
-        typed_vi = push!!(typed_vi, vn_y, 2.0, Normal(0, 1), Selector())
+        typed_vi = push!!(typed_vi, vn_y, 2.0, Normal(0, 1))
         @test typed_vi[vn_x] == 1.0
         @test typed_vi[vn_y] == 2.0
-    end
-
-    @testset "setgid!" begin
-        vi = VarInfo(DynamicPPL.Metadata())
-        meta = vi.metadata
-        vn = @varname x
-        dist = Normal(0, 1)
-        r = rand(dist)
-        gid1 = Selector()
-        gid2 = Selector(2, :HMC)
-
-        push!!(vi, vn, r, dist, gid1)
-        @test meta.gids[meta.idcs[vn]] == Set([gid1])
-        setgid!(vi, gid2, vn)
-        @test meta.gids[meta.idcs[vn]] == Set([gid1, gid2])
-
-        vi = empty!!(TypedVarInfo(vi))
-        meta = vi.metadata
-        push!!(vi, vn, r, dist, gid1)
-        @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1])
-        setgid!(vi, gid2, vn)
-        @test meta.x.gids[meta.x.idcs[vn]] == Set([gid1, gid2])
     end
 
     @testset "setval! & setval_and_resample!" begin
@@ -397,10 +340,9 @@ end
         """
         function test_setval!(model, chain; sample_idx=1, chain_idx=1)
             var_info = VarInfo(model)
-            spl = SampleFromPrior()
-            θ_old = var_info[spl]
+            θ_old = var_info[:]
             DynamicPPL.setval!(var_info, chain, sample_idx, chain_idx)
-            θ_new = var_info[spl]
+            θ_new = var_info[:]
             @test θ_old != θ_new
             vals = DynamicPPL.values_as(var_info, OrderedDict)
             iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
@@ -432,13 +374,21 @@ end
     end
 
     @testset "link!! and invlink!!" begin
-        @model gdemo(x, y) = begin
+        @model gdemo(a, b, ::Type{T}=Float64) where {T} = begin
             s ~ InverseGamma(2, 3)
             m ~ Uniform(0, 2)
-            x ~ Normal(m, sqrt(s))
-            y ~ Normal(m, sqrt(s))
+            x = Vector{T}(undef, length(a))
+            x .~ Normal(m, sqrt(s))
+            y = Vector{T}(undef, length(a))
+            for i in eachindex(y)
+                y[i] ~ Normal(m, sqrt(s))
+            end
+            a .~ Normal(m, sqrt(s))
+            for i in eachindex(b)
+                b[i] ~ Normal(x[i] * y[i], sqrt(s))
+            end
         end
-        model = gdemo(1.0, 2.0)
+        model = gdemo([1.0, 1.5], [2.0, 2.5])
 
         # Check that instantiating the model does not perform linking
         vi = VarInfo()
@@ -448,38 +398,55 @@ end
 
         # Check that linking and invlinking set the `trans` flag accordingly
         v = copy(meta.vals)
-        link!!(vi, model)
+        vi = link!!(vi, model)
         @test all(x -> istrans(vi, x), meta.vns)
-        invlink!!(vi, model)
+        vi = invlink!!(vi, model)
         @test all(x -> !istrans(vi, x), meta.vns)
         @test meta.vals ≈ v atol = 1e-10
 
         # Check that linking and invlinking preserves the values
         vi = TypedVarInfo(vi)
         meta = vi.metadata
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
-        link!!(vi, model)
+        v_x = copy(meta.x.vals)
+        v_y = copy(meta.y.vals)
+
+        @test all(x -> !istrans(vi, x), meta.s.vns)
+        @test all(x -> !istrans(vi, x), meta.m.vns)
+        vi = link!!(vi, model)
         @test all(x -> istrans(vi, x), meta.s.vns)
         @test all(x -> istrans(vi, x), meta.m.vns)
-        invlink!!(vi, model)
+        vi = invlink!!(vi, model)
         @test all(x -> !istrans(vi, x), meta.s.vns)
         @test all(x -> !istrans(vi, x), meta.m.vns)
         @test meta.s.vals ≈ v_s atol = 1e-10
         @test meta.m.vals ≈ v_m atol = 1e-10
 
-        # Transform only one variable (`s`) but not the others (`m`)
-        spl = DynamicPPL.Sampler(MyAlg{(:s,)}(), model)
-        link!!(vi, spl, model)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
-        invlink!!(vi, spl, model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
-        @test meta.s.vals ≈ v_s atol = 1e-10
-        @test meta.m.vals ≈ v_m atol = 1e-10
+        # Transform only one variable
+        all_vns = vcat(meta.s.vns, meta.m.vns, meta.x.vns, meta.y.vns)
+        for vn in [
+            @varname(s),
+            @varname(m),
+            @varname(x),
+            @varname(y),
+            @varname(x[2]),
+            @varname(y[2])
+        ]
+            target_vns = filter(x -> subsumes(vn, x), all_vns)
+            other_vns = filter(x -> !subsumes(vn, x), all_vns)
+            @test !isempty(target_vns)
+            @test !isempty(other_vns)
+            vi = link!!(vi, (vn,), model)
+            @test all(x -> istrans(vi, x), target_vns)
+            @test all(x -> !istrans(vi, x), other_vns)
+            vi = invlink!!(vi, (vn,), model)
+            @test all(x -> !istrans(vi, x), all_vns)
+            @test meta.s.vals ≈ v_s atol = 1e-10
+            @test meta.m.vals ≈ v_m atol = 1e-10
+            @test meta.x.vals ≈ v_x atol = 1e-10
+            @test meta.y.vals ≈ v_y atol = 1e-10
+        end
     end
 
     @testset "istrans" begin
@@ -856,73 +823,17 @@ end
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
             @test DynamicPPL.istrans(varinfo_merged, @varname(x))
         end
-
-        # The below used to error, testing to avoid regression.
-        @testset "merge gids" begin
-            gidset_left = Set([Selector(1)])
-            vi_left = VarInfo()
-            vi_left = push!!(vi_left, @varname(x), 1.0, Normal(), gidset_left)
-            gidset_right = Set([Selector(2)])
-            vi_right = VarInfo()
-            vi_right = push!!(vi_right, @varname(y), 2.0, Normal(), gidset_right)
-            varinfo_merged = merge(vi_left, vi_right)
-            @test DynamicPPL.getgid(varinfo_merged, @varname(x)) == gidset_left
-            @test DynamicPPL.getgid(varinfo_merged, @varname(y)) == gidset_right
-        end
-
-        # The below used to error, testing to avoid regression.
-        @testset "merge different dimensions" begin
-            vn = @varname(x)
-            vi_single = VarInfo()
-            vi_single = push!!(vi_single, vn, 1.0, Normal())
-            vi_double = VarInfo()
-            vi_double = push!!(vi_double, vn, [0.5, 0.6], Dirichlet(2, 1.0))
-            @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
-            @test merge(vi_double, vi_single)[vn] == 1.0
-        end
     end
 
-    @testset "VarInfo with selectors" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = VarInfo(
-                model,
-                DynamicPPL.SampleFromPrior(),
-                DynamicPPL.DefaultContext(),
-                DynamicPPL.Metadata(),
-            )
-            selector = DynamicPPL.Selector()
-            spl = Sampler(MyAlg{(:s,)}(), model, selector)
-
-            vns = DynamicPPL.TestUtils.varnames(model)
-            vns_s = filter(vn -> DynamicPPL.getsym(vn) === :s, vns)
-            vns_m = filter(vn -> DynamicPPL.getsym(vn) === :m, vns)
-            for vn in vns_s
-                DynamicPPL.updategid!(varinfo, vn, spl)
-            end
-
-            # Should only get the variables subsumed by `@varname(s)`.
-            @test varinfo[spl] ==
-                mapreduce(Base.Fix1(DynamicPPL.getindex_internal, varinfo), vcat, vns_s)
-
-            # `link`
-            varinfo_linked = DynamicPPL.link(varinfo, spl, model)
-            # `s` variables should be linked
-            @test any(Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_s)
-            # `m` variables should NOT be linked
-            @test any(!Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_m)
-            # And `varinfo` should be unchanged
-            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo), vns)
-
-            # `invlink`
-            varinfo_invlinked = DynamicPPL.invlink(varinfo_linked, spl, model)
-            # `s` variables should no longer be linked
-            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo_invlinked), vns_s)
-            # `m` variables should still not be linked
-            @test all(!Base.Fix1(DynamicPPL.istrans, varinfo_invlinked), vns_m)
-            # And `varinfo_linked` should be unchanged
-            @test any(Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_s)
-            @test any(!Base.Fix1(DynamicPPL.istrans, varinfo_linked), vns_m)
-        end
+    # The below used to error, testing to avoid regression.
+    @testset "merge different dimensions" begin
+        vn = @varname(x)
+        vi_single = VarInfo()
+        vi_single = push!!(vi_single, vn, 1.0, Normal())
+        vi_double = VarInfo()
+        vi_double = push!!(vi_double, vn, [0.5, 0.6], Dirichlet(2, 1.0))
+        @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
+        @test merge(vi_double, vi_single)[vn] == 1.0
     end
 
     @testset "sampling from linked varinfo" begin
@@ -1025,25 +936,22 @@ end
         vi = DynamicPPL.VarInfo()
         dists = [Categorical([0.7, 0.3]), Normal()]
 
-        spl1 = DynamicPPL.Sampler(MyAlg{()}(), empty_model())
-        spl2 = DynamicPPL.Sampler(MyAlg{()}(), empty_model())
-
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z1, dists[1], spl1)
-        randr(vi, vn_a1, dists[2], spl1)
+        randr(vi, vn_z1, dists[1])
+        randr(vi, vn_a1, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_b, dists[2], spl2)
-        randr(vi, vn_z2, dists[1], spl1)
-        randr(vi, vn_a2, dists[2], spl1)
+        randr(vi, vn_b, dists[2])
+        randr(vi, vn_z2, dists[1])
+        randr(vi, vn_a2, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z3, dists[1], spl1)
+        randr(vi, vn_z3, dists[1])
         @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
         @test DynamicPPL.get_num_produce(vi) == 3
 
         DynamicPPL.reset_num_produce!(vi)
-        DynamicPPL.set_retained_vns_del_by_spl!(vi, spl1)
+        DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
         @test DynamicPPL.is_flagged(vi, vn_z2, "del")
@@ -1051,13 +959,13 @@ end
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z1, dists[1], spl1)
-        randr(vi, vn_a1, dists[2], spl1)
+        randr(vi, vn_z1, dists[1])
+        randr(vi, vn_a1, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z2, dists[1], spl1)
+        randr(vi, vn_z2, dists[1])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z3, dists[1], spl1)
-        randr(vi, vn_a2, dists[2], spl1)
+        randr(vi, vn_z3, dists[1])
+        randr(vi, vn_a2, dists[2])
         @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
         @test DynamicPPL.get_num_produce(vi) == 3
 
@@ -1065,21 +973,21 @@ end
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z1, dists[1], spl1)
-        randr(vi, vn_a1, dists[2], spl1)
+        randr(vi, vn_z1, dists[1])
+        randr(vi, vn_a1, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_b, dists[2], spl2)
-        randr(vi, vn_z2, dists[1], spl1)
-        randr(vi, vn_a2, dists[2], spl1)
+        randr(vi, vn_b, dists[2])
+        randr(vi, vn_z2, dists[1])
+        randr(vi, vn_a2, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z3, dists[1], spl1)
+        randr(vi, vn_z3, dists[1])
         @test vi.metadata.z.orders == [1, 2, 3]
         @test vi.metadata.a.orders == [1, 2]
         @test vi.metadata.b.orders == [2]
         @test DynamicPPL.get_num_produce(vi) == 3
 
         DynamicPPL.reset_num_produce!(vi)
-        DynamicPPL.set_retained_vns_del_by_spl!(vi, spl1)
+        DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
         @test DynamicPPL.is_flagged(vi, vn_z2, "del")
@@ -1087,69 +995,16 @@ end
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z1, dists[1], spl1)
-        randr(vi, vn_a1, dists[2], spl1)
+        randr(vi, vn_z1, dists[1])
+        randr(vi, vn_a1, dists[2])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z2, dists[1], spl1)
+        randr(vi, vn_z2, dists[1])
         DynamicPPL.increment_num_produce!(vi)
-        randr(vi, vn_z3, dists[1], spl1)
-        randr(vi, vn_a2, dists[2], spl1)
+        randr(vi, vn_z3, dists[1])
+        randr(vi, vn_a2, dists[2])
         @test vi.metadata.z.orders == [1, 2, 3]
         @test vi.metadata.a.orders == [1, 3]
         @test vi.metadata.b.orders == [2]
         @test DynamicPPL.get_num_produce(vi) == 3
-    end
-
-    @testset "varinfo ranges" begin
-        @model empty_model() = x = 1
-        dists = [Normal(0, 1), MvNormal(zeros(2), I), Wishart(7, [1 0.5; 0.5 1])]
-
-        function test_varinfo!(vi)
-            spl2 = DynamicPPL.Sampler(MyAlg{(:w, :u)}(), empty_model())
-            vn_w = @varname w
-            randr(vi, vn_w, dists[1], spl2, true)
-
-            vn_x = @varname x
-            vn_y = @varname y
-            vn_z = @varname z
-            vns = [vn_x, vn_y, vn_z]
-
-            spl1 = DynamicPPL.Sampler(MyAlg{(:x, :y, :z)}(), empty_model())
-            for i in 1:3
-                r = randr(vi, vns[i], dists[i], spl1, false)
-                val = vi[vns[i]]
-                @test sum(val - r) <= 1e-9
-            end
-
-            idcs = DynamicPPL._getidcs(vi, spl1)
-            if idcs isa NamedTuple
-                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 3
-            else
-                @test length(idcs) == 3
-            end
-            @test length(vi[spl1]) == 7
-
-            idcs = DynamicPPL._getidcs(vi, spl2)
-            if idcs isa NamedTuple
-                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 1
-            else
-                @test length(idcs) == 1
-            end
-            @test length(vi[spl2]) == 1
-
-            vn_u = @varname u
-            randr(vi, vn_u, dists[1], spl2, true)
-
-            idcs = DynamicPPL._getidcs(vi, spl2)
-            if idcs isa NamedTuple
-                @test sum(length(getfield(idcs, f)) for f in fieldnames(typeof(idcs))) == 2
-            else
-                @test length(idcs) == 2
-            end
-            @test length(vi[spl2]) == 2
-        end
-        vi = DynamicPPL.VarInfo()
-        test_varinfo!(vi)
-        test_varinfo!(empty!!(DynamicPPL.TypedVarInfo(vi)))
     end
 end

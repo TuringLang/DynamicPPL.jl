@@ -48,4 +48,27 @@
         x = rand(dist)
         @test DynamicPPL.tovec(x) == vec(x.UL)
     end
+
+    @testset "unique_syms" begin
+        vns = (@varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2]))
+        @inferred DynamicPPL.unique_syms(vns)
+        @inferred DynamicPPL.unique_syms(())
+        @test DynamicPPL.unique_syms(vns) == (:x, :y, :z)
+        @test DynamicPPL.unique_syms(()) == ()
+    end
+
+    @testset "group_varnames_by_symbol" begin
+        vns_tuple = (
+            @varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2])
+        )
+        vns_vec = collect(vns_tuple)
+        vns_nt = (;
+            x=[@varname(x), @varname(x.a)],
+            y=[@varname(y[1]), @varname(y[2])],
+            z=[@varname(z[15])],
+        )
+        vns_vec_single_symbol = [@varname(x.a), @varname(x.b), @varname(x[1])]
+        @inferred DynamicPPL.group_varnames_by_symbol(vns_tuple)
+        @test DynamicPPL.group_varnames_by_symbol(vns_tuple) == vns_nt
+    end
 end

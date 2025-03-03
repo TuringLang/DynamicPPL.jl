@@ -26,20 +26,8 @@ function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, v
     value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
     return value, logp * context.mod, vi
 end
-function DynamicPPL.dot_tilde_assume(
-    context::TestLogModifyingChildContext, right, left, vn, vi
-)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(context.context, right, left, vn, vi)
-    return value, logp * context.mod, vi
-end
 function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
     logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
-    return logp * context.mod, vi
-end
-function DynamicPPL.dot_tilde_observe(
-    context::TestLogModifyingChildContext, right, left, vi
-)
-    logp, vi = DynamicPPL.dot_tilde_observe(context.context, right, left, vi)
     return logp * context.mod, vi
 end
 

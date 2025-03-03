@@ -67,7 +67,6 @@
         )
             return vi, nothing
         end
-        DynamicPPL.getspace(::Sampler{<:OnlyInitAlg}) = ()
 
         # initial samplers
         DynamicPPL.initialsampler(::Sampler{OnlyInitAlgUniform}) = SampleFromUniform()
@@ -196,11 +195,11 @@
             vi = VarInfo(model)
 
             @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, [initial_z, initial_x], DynamicPPL.SampleFromPrior(), model
+                vi, [initial_z, initial_x], model
             )
 
             @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, (X=initial_x, Z=initial_z), DynamicPPL.SampleFromPrior(), model
+                vi, (X=initial_x, Z=initial_z), model
             )
         end
     end
