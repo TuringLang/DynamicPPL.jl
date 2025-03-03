@@ -6,18 +6,19 @@ observed (this is used for constructing SimpleVarInfos).
 """
 module Models
 
-using DynamicPPL: @model, to_submodel
 using Distributions:
     Categorical,
     Dirichlet,
     Exponential,
     Gamma,
     LKJCholesky,
-    MatrixBeta,
+    InverseWishart,
     Normal,
     logpdf,
     product_distribution,
     truncated
+using DynamicPPL: @model, to_submodel
+using LinearAlgebra: cholesky
 
 export simple_assume_observe_non_model,
     simple_assume_observe, smorgasbord, loop_univariate, multivariate, parent, dynamic, lda
@@ -114,19 +115,14 @@ Like simple_assume_observe, but with a submodel for the assumed random variable.
 end
 
 """
-A model with random variables that have changing support.
-
-Includes both variables the dimension of which depends on other variables, and variables
-the support of which changes under linking.
+A model with random variables that have changing support under linking, or otherwise
+complicated bijectors.
 """
 @model function dynamic(::Type{T}=Vector{Float64}) where {T}
-    eta ~ truncated(Normal(); lower=0.0)
+    eta ~ truncated(Normal(); lower=0.0, upper=0.1)
     mat1 ~ LKJCholesky(4, eta)
-    mat2 ~ MatrixBeta(5, 6.0, 8.0)
-    dim = eta > 0.2 ? 2 : 3
-    vec = T(undef, dim)
-    vec .~ truncated(Exponential(0.5); lower=0.0, upper=1.0)
-    return (; eta=eta, mat1=mat1, mat2=mat2, vec=vec)
+    mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))
+    return (; eta=eta, mat1=mat1, mat2=mat2)
 end
 
 """
