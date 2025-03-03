@@ -97,7 +97,7 @@ header = [
     "AD Backend",
     "VarInfo Type",
     "Linked",
-    "Evaluation Time / Reference Time",
+    "Eval Time / Ref Time",
     "AD Time / Eval Time",
 ]
 PrettyTables.pretty_table(
