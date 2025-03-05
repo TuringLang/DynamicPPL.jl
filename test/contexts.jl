@@ -39,44 +39,39 @@ end
 Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
-"""
-    remove_prefix(vn::VarName)
-
-Return `vn` but now with the prefix removed.
-"""
-function remove_prefix(vn::VarName)
-    return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(
-        getoptic(vn)
-    )
-end
-
 @testset "contexts.jl" begin
-    child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
+    child_contexts = Dict(
+        :default => DefaultContext(),
+        :prior => PriorContext(),
+        :likelihood => LikelihoodContext(),
+    )
 
-    parent_contexts = [
-        DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
-        SamplingContext(),
-        MiniBatchContext(DefaultContext(), 0.0),
-        PrefixContext{:x}(DefaultContext()),
-        PointwiseLogdensityContext(),
-        ConditionContext((x=1.0,)),
-        ConditionContext(
+    parent_contexts = Dict(
+        :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
+        :sampling => SamplingContext(),
+        :minibatch => MiniBatchContext(DefaultContext(), 0.0),
+        :prefix => PrefixContext{:x}(DefaultContext()),
+        :pointwiselogdensity => PointwiseLogdensityContext(),
+        :condition1 => ConditionContext((x=1.0,)),
+        :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
         ),
-        ConditionContext((x=1.0,), PrefixContext{:a}(ConditionContext((var"a.y"=2.0,)))),
-        ConditionContext((x=[1.0, missing],)),
-    ]
+        :condition3 => ConditionContext(
+            (x=1.0,), PrefixContext{:a}(ConditionContext(Dict(@varname(a.y) => 2.0)))
+        ),
+        :condition4 => ConditionContext((x=[1.0, missing],)),
+    )
 
-    contexts = vcat(child_contexts, parent_contexts)
+    contexts = merge(child_contexts, parent_contexts)
 
-    @testset "$(context)" for context in contexts
+    @testset "$(name)" for (name, context) in contexts
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             DynamicPPL.TestUtils.test_context(context, model)
         end
     end
 
     @testset "contextual_isassumption" begin
-        @testset "$context" for context in contexts
+        @testset "$(name)" for (name, context) in contexts
             # Any `context` should return `true` by default.
             @test contextual_isassumption(context, VarName{gensym(:x)}())
 
@@ -85,14 +80,28 @@ end
                 # Let's first extract the conditioned variables.
                 conditioned_values = DynamicPPL.conditioned(context)
 
-                for (sym, val) in pairs(conditioned_values)
-                    vn = VarName{sym}()
+                # The conditioned values might be a NamedTuple, or a Dict.
+                # We convert to a Dict for consistency
+                if conditioned_values isa NamedTuple
+                    conditioned_values = Dict(
+                        VarName{sym}() => val for (sym, val) in pairs(conditioned_values)
+                    )
+                end
 
+                for (vn, val) in pairs(conditioned_values)
                     # We need to drop the prefix of `var` since in `contextual_isassumption`
                     # it will be threaded through the `PrefixContext` before it reaches
                     # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = remove_prefix(vn)
+                    vn_without_prefix = if getoptic(vn) isa PropertyLens
+                        # Hacky: This assumes that there is exactly one level of prefixing
+                        # that we need to undo. This is appropriate for the :condition3
+                        # test case above, but is not generally correct.
+                        AbstractPPL.unprefix(vn, VarName{getsym(vn)}())
+                    else
+                        vn
+                    end
 
+                    @show DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
                     # Let's check elementwise.
                     for vn_child in
                         DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
@@ -108,7 +117,7 @@ end
     end
 
     @testset "getconditioned_nested & hasconditioned_nested" begin
-        @testset "$context" for context in contexts
+        @testset "$name" for (name, context) in contexts
             fake_vn = VarName{gensym(:x)}()
             @test !hasconditioned_nested(context, fake_vn)
             @test_throws ErrorException getconditioned_nested(context, fake_vn)
@@ -118,14 +127,26 @@ end
 
                 # Let's first extract the conditioned variables.
                 conditioned_values = DynamicPPL.conditioned(context)
+                # The conditioned values might be a NamedTuple, or a Dict.
+                # We convert to a Dict for consistency
+                if conditioned_values isa NamedTuple
+                    conditioned_values = Dict(
+                        VarName{sym}() => val for (sym, val) in pairs(conditioned_values)
+                    )
+                end
 
-                for (sym, val) in pairs(conditioned_values)
-                    vn = VarName{sym}()
-
+                for (vn, val) in pairs(conditioned_values)
                     # We need to drop the prefix of `var` since in `contextual_isassumption`
                     # it will be threaded through the `PrefixContext` before it reaches
                     # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = remove_prefix(vn)
+                    vn_without_prefix = if getoptic(vn) isa PropertyLens
+                        # Hacky: This assumes that there is exactly one level of prefixing
+                        # that we need to undo. This is appropriate for the :condition3
+                        # test case above, but is not generally correct.
+                        AbstractPPL.unprefix(vn, VarName{getsym(vn)}())
+                    else
+                        vn
+                    end
 
                     for vn_child in
                         DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
@@ -152,52 +173,43 @@ end
                 ),
             )
             vn = VarName{:x}()
-            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-            @test getoptic(vn_prefixed) === getoptic(vn)
+            vn_prefixed = @inferred DynamicPPL.prefix_with_context(ctx, vn)
+            @test vn_prefixed == @varname(a.b.c.d.e.f.x)
 
             vn = VarName{:x}(((1,),))
-            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-            @test getoptic(vn_prefixed) === getoptic(vn)
+            vn_prefixed = @inferred DynamicPPL.prefix_with_context(ctx, vn)
+            @test vn_prefixed == @varname(a.b.c.d.e.f.x[1])
         end
 
         @testset "nested within arbitrary context stacks" begin
             vn = @varname(x[1])
             ctx1 = PrefixContext{:a}(DefaultContext())
+            @test DynamicPPL.prefix_with_context(ctx1, vn) == @varname(a.x[1])
             ctx2 = SamplingContext(ctx1)
+            @test DynamicPPL.prefix_with_context(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext{:b}(ctx2)
+            @test DynamicPPL.prefix_with_context(ctx3, vn) == @varname(b.a.x[1])
             ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
-            vn_prefixed1 = prefix(ctx1, vn)
-            vn_prefixed2 = prefix(ctx2, vn)
-            vn_prefixed3 = prefix(ctx3, vn)
-            vn_prefixed4 = prefix(ctx4, vn)
-            @test DynamicPPL.getsym(vn_prefixed1) == Symbol("a.x")
-            @test DynamicPPL.getsym(vn_prefixed2) == Symbol("a.x")
-            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("b.a.x")
-            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("b.a.x")
-            @test DynamicPPL.getoptic(vn_prefixed1) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed2) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed3) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed4) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.prefix_with_context(ctx4, vn) == @varname(b.a.x[1])
         end
 
-        context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            prefix = :my_prefix
+            context = DynamicPPL.PrefixContext{prefix}(SamplingContext())
             # Sample with the context.
             varinfo = DynamicPPL.VarInfo()
             DynamicPPL.evaluate!!(model, varinfo, context)
-            # Extract the resulting symbols.
-            vns_varinfo_syms = Set(map(DynamicPPL.getsym, keys(varinfo)))
+            # Extract the resulting varnames
+            vns_actual = Set(keys(varinfo))
 
-            # Extract the ground truth symbols.
-            vns_syms = Set([
-                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for
+            # Extract the ground truth varnames
+            vns_expected = Set([
+                AbstractPPL.prefix(vn, VarName{prefix}()) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             ])
 
             # Check that all variables are prefixed correctly.
-            @test vns_syms == vns_varinfo_syms
+            @test vns_actual == vns_expected
         end
     end
 

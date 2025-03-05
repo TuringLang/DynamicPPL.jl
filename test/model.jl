@@ -456,7 +456,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             for model in (outer_auto_prefix(), outer_manual_prefix())
                 vi = VarInfo(model)
                 vns = Set(keys(values_as_in_model(model, false, vi)))
-                @test vns == Set([@varname(var"a.x"), @varname(var"b.x")])
+                @test vns == Set([@varname(a.x), @varname(b.x)])
             end
         end
     end

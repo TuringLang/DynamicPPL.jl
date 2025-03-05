@@ -85,12 +85,14 @@ function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, rig
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
-    return tilde_assume(context.context, right, prefix(context, vn), vi)
+    return tilde_assume(context.context, right, prefix_with_context(context, vn), vi)
 end
 function tilde_assume(
     rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
 )
-    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
+    return tilde_assume(
+        rng, context.context, sampler, right, prefix_with_context(context, vn), vi
+    )
 end
 
 """
