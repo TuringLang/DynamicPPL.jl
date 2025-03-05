@@ -260,21 +260,8 @@ function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
     return PrefixContext{Prefix}(child)
 end
 
-const PREFIX_SEPARATOR = Symbol(".")
-
-@generated function PrefixContext{PrefixOuter}(
-    context::PrefixContext{PrefixInner}
-) where {PrefixOuter,PrefixInner}
-    return :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-        context.context
-    ))
-end
-
 function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    vn_prefixed_inner = prefix(childcontext(ctx), vn)
-    return VarName{Symbol(Prefix, PREFIX_SEPARATOR, getsym(vn_prefixed_inner))}(
-        getoptic(vn_prefixed_inner)
-    )
+    return AbstractPPL.prefix(vn, VarName{Symbol(Prefix)}())
 end
 prefix(ctx::AbstractContext, vn::VarName) = prefix(NodeTrait(ctx), ctx, vn)
 prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn

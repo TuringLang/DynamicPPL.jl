@@ -1,5 +1,39 @@
 # DynamicPPL Changelog
 
+## 0.36.0
+
+**Breaking changes**
+
+### VarName prefixing behaviour
+
+Previously, a prefixed varname would concatenate its prefixes with the symbol.
+Now, a prefixed varname creates a new field on the prefix.
+This is rather abstract, so it's best explained through an example.
+Consider this model and submodel:
+
+```julia
+using DynamicPPL, Distributions
+@model inner() = x ~ Normal()
+@model outer() = a ~ to_submodel(inner())
+```
+
+In previous versions, the inner variable `x` would be saved as `a.x`.
+However, this was represented as a single symbol `Symbol("a.x")`:
+
+```julia
+julia> dump(keys(VarInfo(outer()))[1])
+VarName{Symbol("a.x"), typeof(identity)}
+  optic: identity (function of type typeof(identity))
+```
+
+Now, the inner variable is stored as a field `x` on the VarName `a`:
+
+```julia
+julia> dump(keys(VarInfo(outer()))[1])
+VarName{:a, Accessors.PropertyLens{:x}}
+  optic: Accessors.PropertyLens{:x} (@o _.x)
+```
+
 ## 0.35.5
 
 Several internal methods have been removed:

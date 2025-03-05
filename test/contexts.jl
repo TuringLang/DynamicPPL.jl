@@ -39,17 +39,6 @@ end
 Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
-"""
-    remove_prefix(vn::VarName)
-
-Return `vn` but now with the prefix removed.
-"""
-function remove_prefix(vn::VarName)
-    return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(
-        getoptic(vn)
-    )
-end
-
 @testset "contexts.jl" begin
     child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
 
