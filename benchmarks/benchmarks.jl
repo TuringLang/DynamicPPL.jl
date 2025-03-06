@@ -51,7 +51,9 @@ chosen_combinations = [
     ("Multivariate 1k", multivariate1k, :typed, :reversediff, true),
     ("Loop univariate 10k", loop_univariate10k, :typed, :reversediff, true),
     ("Multivariate 10k", multivariate10k, :typed, :reversediff, true),
-    ("Dynamic", Models.dynamic(), :typed, :reversediff, true),
+    # TODO(mhauru) Would like to use :reversediff here, but see
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/835
+    ("Dynamic", Models.dynamic(), :typed, :forwarddiff, true),
     ("Submodel", Models.parent(randn()), :typed, :reversediff, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
