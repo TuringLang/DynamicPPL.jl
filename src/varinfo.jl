@@ -351,7 +351,7 @@ end
         # TODO(mhauru) Note that this could still generate an empty metadata object if none
         # of the lenses in `vns` are in `metadata`. Not sure if that's okay. Checking for
         # emptiness would make this type unstable again.
-        :(NamedTuple{($sym,)}(tuple(subset(metadata.$sym, vns))))
+        :((; $sym=subset(metadata.$sym, vns)))
     else
         :(NamedTuple{}())
     end
