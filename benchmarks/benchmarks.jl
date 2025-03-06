@@ -62,22 +62,12 @@ end
 results_table = Tuple{String,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
-    suite = make_suite(model, varinfo_choice, adbackend)
+    suite = make_suite(model, varinfo_choice, adbackend, islinked)
     results = run(suite)
-    result_key = islinked ? "linked" : "standard"
-
-    eval_time = median(results["evaluation"][result_key]).time
+    eval_time = median(results["evaluation"]).time
     relative_eval_time = eval_time / reference_time
-
-    grad_group = results["gradient"]
-    if isempty(grad_group)
-        relative_ad_eval_time = NaN
-    else
-        grad_backend_key = first(keys(grad_group))
-        ad_eval_time = median(grad_group[grad_backend_key][result_key]).time
-        relative_ad_eval_time = ad_eval_time / eval_time
-    end
-
+    ad_eval_time = median(results["gradient"]).time
+    relative_ad_eval_time = ad_eval_time / eval_time
     push!(
         results_table,
         (

@@ -17,7 +17,7 @@ using Distributions:
     logpdf,
     product_distribution,
     truncated
-using DynamicPPL: @model, to_submodel
+using DynamicPPL: DynamicPPL, @model, to_submodel
 using LinearAlgebra: cholesky
 
 export simple_assume_observe_non_model,
