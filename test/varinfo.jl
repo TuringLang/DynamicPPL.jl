@@ -736,6 +736,8 @@ end
                 vns_subset_reversed = reverse(vns_subset)
                 varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
                 @test varinfo_subset[:] == varinfo_subset_reversed[:]
+                ground_truth = [varinfo[vn] for vn in vns_subset]
+                @test varinfo_subset[:] == ground_truth
             end
         end
 
