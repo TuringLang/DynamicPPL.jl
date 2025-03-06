@@ -1,3 +1,7 @@
+using Pkg
+# To ensure we benchmark the local version of DynamicPPL, dev the folder above.
+Pkg.develop(; path=joinpath(@__DIR__, ".."))
+
 using DynamicPPLBenchmarks: Models, make_suite
 using BenchmarkTools: @benchmark, median, run
 using PrettyTables: PrettyTables, ft_printf
