@@ -729,6 +729,14 @@ end
                 # Values should be the same.
                 @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
+
+            @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
+                                                                         vns_supported
+                varinfo_subset = subset(varinfo, vns_subset)
+                vns_subset_reversed = reverse(vns_subset)
+                varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
+                @test varinfo_subset[:] == varinfo_subset_reversed[:]
+            end
         end
 
         # For certain varinfos we should have errors.
