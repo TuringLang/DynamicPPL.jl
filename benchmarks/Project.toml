@@ -3,9 +3,22 @@ uuid = "d94a1522-c11e-44a7-981a-42bf5dc1a001"
 version = "0.1.0"
 
 [deps]
+ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
-TuringBenchmarking = "0db1332d-5c25-4deb-809f-459bc696f94f"
+ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+
+[compat]
+ADTypes = "1.14.0"
+BenchmarkTools = "1.6.0"
+Distributions = "0.25.117"
+# DynamicPPL deliberately has no compat bound, to allow using the local version.
+ForwardDiff = "0.10.38"
+LogDensityProblems = "2.1.2"
+PrettyTables = "2.4.0"
+ReverseDiff = "1.15.3"

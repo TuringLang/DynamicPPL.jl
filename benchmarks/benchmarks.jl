@@ -1,3 +1,7 @@
+using Pkg
+# To ensure we benchmark the local version of DynamicPPL, dev the folder above.
+Pkg.develop(; path=joinpath(@__DIR__, ".."))
+
 using DynamicPPLBenchmarks: Models, make_suite
 using BenchmarkTools: @benchmark, median, run
 using PrettyTables: PrettyTables, ft_printf
@@ -47,7 +51,9 @@ chosen_combinations = [
     ("Multivariate 1k", multivariate1k, :typed, :reversediff, true),
     ("Loop univariate 10k", loop_univariate10k, :typed, :reversediff, true),
     ("Multivariate 10k", multivariate10k, :typed, :reversediff, true),
-    ("Dynamic", Models.dynamic(), :typed, :reversediff, true),
+    # TODO(mhauru) Would like to use :reversediff here, but see
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/835
+    ("Dynamic", Models.dynamic(), :typed, :forwarddiff, true),
     ("Submodel", Models.parent(randn()), :typed, :reversediff, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
@@ -62,22 +68,12 @@ end
 results_table = Tuple{String,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
-    suite = make_suite(model, varinfo_choice, adbackend)
+    suite = make_suite(model, varinfo_choice, adbackend, islinked)
     results = run(suite)
-    result_key = islinked ? "linked" : "standard"
-
-    eval_time = median(results["evaluation"][result_key]).time
+    eval_time = median(results["evaluation"]).time
     relative_eval_time = eval_time / reference_time
-
-    grad_group = results["gradient"]
-    if isempty(grad_group)
-        relative_ad_eval_time = NaN
-    else
-        grad_backend_key = first(keys(grad_group))
-        ad_eval_time = median(grad_group[grad_backend_key][result_key]).time
-        relative_ad_eval_time = ad_eval_time / eval_time
-    end
-
+    ad_eval_time = median(results["gradient"]).time
+    relative_ad_eval_time = ad_eval_time / eval_time
     push!(
         results_table,
         (
