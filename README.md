@@ -2,11 +2,11 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/stable)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/dev)
-[![CI](https://github.com/TuringLang/DynamicPPL.jl/workflows/CI/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ACI+branch%3Amaster)
-[![JuliaPre](https://github.com/TuringLang/DynamicPPL.jl/workflows/JuliaPre/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AJuliaPre+branch%3Amaster)
-[![IntegrationTest](https://github.com/TuringLang/DynamicPPL.jl/workflows/IntegrationTest/badge.svg?branch=master)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AIntegrationTest+branch%3Amaster)
-[![Coverage Status](https://coveralls.io/repos/github/TuringLang/DynamicPPL.jl/badge.svg?branch=master)](https://coveralls.io/github/TuringLang/DynamicPPL.jl?branch=master)
-[![Codecov](https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/TuringLang/DynamicPPL.jl)
+[![CI](https://github.com/TuringLang/DynamicPPL.jl/workflows/CI/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ACI+branch%3Amain)
+[![JuliaPre](https://github.com/TuringLang/DynamicPPL.jl/workflows/JuliaPre/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AJuliaPre+branch%3Amain)
+[![IntegrationTest](https://github.com/TuringLang/DynamicPPL.jl/workflows/IntegrationTest/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AIntegrationTest+branch%3Amain)
+[![Coverage Status](https://coveralls.io/repos/github/TuringLang/DynamicPPL.jl/badge.svg?branch=main)](https://coveralls.io/github/TuringLang/DynamicPPL.jl?branch=main)
+[![Codecov](https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/TuringLang/DynamicPPL.jl)
 [![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
 [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://docs.sciml.ai/ColPrac/stable/)
 
