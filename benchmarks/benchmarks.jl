@@ -44,17 +44,15 @@ chosen_combinations = [
     ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
-    # TODO(mhauru) Add Mooncake once TuringBenchmarking.jl supports it. Consider changing
-    # all the below :reversediffs to :mooncakes too.
-    #("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
-    ("Loop univariate 1k", loop_univariate1k, :typed, :reversediff, true),
-    ("Multivariate 1k", multivariate1k, :typed, :reversediff, true),
-    ("Loop univariate 10k", loop_univariate10k, :typed, :reversediff, true),
-    ("Multivariate 10k", multivariate10k, :typed, :reversediff, true),
-    # TODO(mhauru) Would like to use :reversediff here, but see
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/835
-    ("Dynamic", Models.dynamic(), :typed, :forwarddiff, true),
-    ("Submodel", Models.parent(randn()), :typed, :reversediff, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
+    ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
+    ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
+    ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
+    ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
+    ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
+    ("Submodel", Models.parent(randn()), :typed, :mooncake, true),
+    # TODO(mhauru) Switch to :mooncake once
+    # https://github.com/compintell/Mooncake.jl/issues/513 is resolved
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
 

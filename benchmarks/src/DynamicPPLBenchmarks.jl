@@ -6,8 +6,8 @@ using DynamicPPL: DynamicPPL
 using ADTypes: ADTypes
 using LogDensityProblems: LogDensityProblems
 
-# Load some the default backends to trigger conditional loading.
 using ForwardDiff: ForwardDiff
+using Mooncake: Mooncake
 using ReverseDiff: ReverseDiff
 
 include("./Models.jl")
