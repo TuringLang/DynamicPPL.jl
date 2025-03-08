@@ -44,6 +44,13 @@ jobs:
           echo "$benchmark_output" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+          # Get the current commit SHA of DynamicPPL
+          DPPL_COMMIT_SHA=$(git rev-parse HEAD)
+          echo "DPPL_COMMIT_SHA=$DPPL_COMMIT_SHA" >> $GITHUB_ENV
+
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/$DPPL_COMMIT_SHA"
+          echo "DPPL_COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
+
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v3
         id: find_comment
@@ -56,11 +63,12 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Computer Information
+            ## Benchmark Report for Commit [`${{ env.DPPL_COMMIT_SHA }}`](${{ env.DPPL_COMMIT_URL }})
+            ### Computer Information
             ```
             ${{ env.VERSION_INFO }}
             ```
-            ## Benchmark Report
+            ### Benchmark Results
             ```
             ${{ env.BENCHMARK_OUTPUT }}
             ```
