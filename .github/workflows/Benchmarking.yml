@@ -61,6 +61,8 @@ jobs:
             ${{ env.VERSION_INFO }}
             ```
             ## Benchmark Report
+            ```
             ${{ env.BENCHMARK_OUTPUT }}
+            ```
           comment-id: ${{ steps.find_comment.outputs.comment-id }}
           edit-mode: replace
