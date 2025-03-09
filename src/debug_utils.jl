@@ -113,52 +113,6 @@ function Base.show(io::IO, stmt::ObserveStmt)
     return print(io, ")")
 end
 
-Base.@kwdef struct DotAssumeStmt <: Stmt
-    varname
-    left
-    right
-    value
-    logp
-    varinfo = nothing
-end
-
-function Base.show(io::IO, stmt::DotAssumeStmt)
-    io = add_io_context(io)
-    print(io, " assume: ")
-    show_varname(io, stmt.varname)
-    print(io, " = ")
-    print(io, stmt.left)
-    print(io, " .~ ")
-    show_right(io, stmt.right)
-    print(io, " ")
-    print(io, RESULT_SYMBOL)
-    print(io, " ")
-    print(io, stmt.value)
-    print(io, " (logprob = ")
-    print(io, stmt.logp)
-    return print(io, ")")
-end
-
-Base.@kwdef struct DotObserveStmt <: Stmt
-    left
-    right
-    logp
-    varinfo = nothing
-end
-
-function Base.show(io::IO, stmt::DotObserveStmt)
-    io = add_io_context(io)
-    print(io, "observe: ")
-    print(io, stmt.left)
-    print(io, " .~ ")
-    show_right(io, stmt.right)
-    print(io, " ")
-    print(io, RESULT_SYMBOL)
-    print(io, " (logprob = ")
-    print(io, stmt.logp)
-    return print(io, ")")
-end
-
 # Some utility methods for extracting information from a trace.
 """
     varnames_in_trace(trace)
@@ -168,24 +122,14 @@ Return all the varnames present in the trace.
 varnames_in_trace(trace::AbstractVector) = mapreduce(varnames_in_stmt, vcat, trace)
 
 varnames_in_stmt(stmt::AssumeStmt) = [stmt.varname]
-function varnames_in_stmt(stmt::DotAssumeStmt)
-    return stmt.varname isa VarName ? [stmt.varname] : stmt.varname
-end
 varnames_in_stmt(::ObserveStmt) = []
-varnames_in_stmt(::DotObserveStmt) = []
 
 function distributions_in_trace(trace::AbstractVector)
     return mapreduce(distributions_in_stmt, vcat, trace)
 end
 
 distributions_in_stmt(stmt::AssumeStmt) = [stmt.right]
-function distributions_in_stmt(stmt::DotAssumeStmt)
-    return stmt.right isa AbstractArray ? vec(stmt.right) : [stmt.right]
-end
 distributions_in_stmt(stmt::ObserveStmt) = [stmt.right]
-function distributions_in_stmt(stmt::DotObserveStmt)
-    return stmt.right isa AbstractArray ? vec(stmt.right) : [stmt.right]
-end
 
 """
     DebugContext <: AbstractContext
@@ -239,42 +183,43 @@ function DynamicPPL.setchildcontext(context::DebugContext, child)
 end
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
-    if haskey(context.varnames_seen, varname)
+    prefixed_varname = prefix(context, varname)
+    if haskey(context.varnames_seen, prefixed_varname)
         if context.error_on_failure
-            error("varname $varname used multiple times in model")
+            error("varname $prefixed_varname used multiple times in model")
         else
-            @warn "varname $varname used multiple times in model"
+            @warn "varname $prefixed_varname used multiple times in model"
         end
-        context.varnames_seen[varname] += 1
+        context.varnames_seen[prefixed_varname] += 1
     else
         # We need to check:
         # 1. Does this `varname` subsume any of the other keys.
         # 2. Does any of the other keys subsume `varname`.
         vns = collect(keys(context.varnames_seen))
         # Is `varname` subsumed by any of the other keys?
-        idx_parent = findfirst(Base.Fix2(subsumes, varname), vns)
+        idx_parent = findfirst(Base.Fix2(subsumes, prefixed_varname), vns)
         if idx_parent !== nothing
             varname_parent = vns[idx_parent]
             if context.error_on_failure
                 error(
-                    "varname $(varname_parent) used multiple times in model (subsumes $varname)",
+                    "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)",
                 )
             else
-                @warn "varname $(varname_parent) used multiple times in model (subsumes $varname)"
+                @warn "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)"
             end
             # Update count of parent.
             context.varnames_seen[varname_parent] += 1
         else
             # Does `varname` subsume any of the other keys?
-            idx_child = findfirst(Base.Fix1(subsumes, varname), vns)
+            idx_child = findfirst(Base.Fix1(subsumes, prefixed_varname), vns)
             if idx_child !== nothing
                 varname_child = vns[idx_child]
                 if context.error_on_failure
                     error(
-                        "varname $(varname_child) used multiple times in model (subsumed by $varname)",
+                        "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)",
                     )
                 else
-                    @warn "varname $(varname_child) used multiple times in model (subsumed by $varname)"
+                    @warn "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)"
                 end
 
                 # Update count of child.
@@ -282,7 +227,7 @@ function record_varname!(context::DebugContext, varname::VarName, dist)
             end
         end
 
-        context.varnames_seen[varname] = 1
+        context.varnames_seen[prefixed_varname] = 1
     end
 end
 
@@ -378,95 +323,6 @@ function DynamicPPL.tilde_observe(context::DebugContext, sampler, right, left, v
     record_pre_tilde_observe!(context, left, right, vi)
     logp, vi = DynamicPPL.tilde_observe(childcontext(context), sampler, right, left, vi)
     record_post_tilde_observe!(context, left, right, logp, vi)
-    return logp, vi
-end
-
-# dot-assume
-function record_pre_dot_tilde_assume!(context::DebugContext, vn, left, right, varinfo)
-    # Check for `missing`s; these should not end up here.
-    if _has_missings(left)
-        error(
-            "Variable $(vn) has missing has missing value(s)!\n" *
-            "Usage of `missing` is not supported for dotted syntax, such as " *
-            "`@. x ~ dist` or `x .~ dist`",
-        )
-    end
-
-    # TODO: Can we do without the memory allocation here?
-    record_varname!.(broadcast_safe(context), vn, broadcast_safe(right))
-
-    # Check that `left` does not contain any ``
-    return nothing
-end
-
-function record_post_dot_tilde_assume!(
-    context::DebugContext, vns, left, right, value, logp, varinfo
-)
-    stmt = DotAssumeStmt(;
-        varname=vns,
-        left=left,
-        right=right,
-        value=value,
-        logp=logp,
-        varinfo=context.record_varinfo ? deepcopy(varinfo) : nothing,
-    )
-    if context.record_statements
-        push!(context.statements, stmt)
-    end
-
-    return nothing
-end
-
-function DynamicPPL.dot_tilde_assume(context::DebugContext, right, left, vn, vi)
-    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(
-        childcontext(context), right, left, vn, vi
-    )
-    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
-end
-
-function DynamicPPL.dot_tilde_assume(
-    rng::Random.AbstractRNG, context::DebugContext, sampler, right, left, vn, vi
-)
-    record_pre_dot_tilde_assume!(context, vn, left, right, vi)
-    value, logp, vi = DynamicPPL.dot_tilde_assume(
-        rng, childcontext(context), sampler, right, left, vn, vi
-    )
-    record_post_dot_tilde_assume!(context, vn, left, right, value, logp, vi)
-    return value, logp, vi
-end
-
-# dot-observe
-function record_pre_dot_tilde_observe!(context::DebugContext, left, right, vi)
-    # Check for `missing`s; these should not end up here.
-    if _has_missings(left)
-        # TODO: Once `observe` statements receive `vn`, refer to this in the
-        # error message.
-        error(
-            "Encountered missing value(s) in observe!\n" *
-            "Usage of `missing` is not supported for dotted syntax, such as " *
-            "`@. x ~ dist` or `x .~ dist`",
-        )
-    end
-end
-
-function record_post_dot_tilde_observe!(context::DebugContext, left, right, logp, vi)
-    stmt = DotObserveStmt(;
-        left=left,
-        right=right,
-        logp=logp,
-        varinfo=context.record_varinfo ? deepcopy(vi) : nothing,
-    )
-    if context.record_statements
-        push!(context.statements, stmt)
-    end
-    return nothing
-end
-function DynamicPPL.dot_tilde_observe(context::DebugContext, right, left, vi)
-    record_pre_dot_tilde_observe!(context, left, right, vi)
-    logp, vi = DynamicPPL.dot_tilde_observe(childcontext(context), right, left, vi)
-    record_post_dot_tilde_observe!(context, left, right, logp, vi)
     return logp, vi
 end
 

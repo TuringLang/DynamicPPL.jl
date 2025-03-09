@@ -19,9 +19,9 @@ wants to extract the realization of a model in a constrained space.
 # Fields
 $(TYPEDFIELDS)
 """
-struct ValuesAsInModelContext{T,C<:AbstractContext} <: AbstractContext
+struct ValuesAsInModelContext{C<:AbstractContext} <: AbstractContext
     "values that are extracted from the model"
-    values::T
+    values::OrderedDict
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
     "child context"
@@ -45,7 +45,7 @@ is_extracting_values(::IsParent, ::AbstractContext) = false
 is_extracting_values(::IsLeaf, ::AbstractContext) = false
 
 function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
-    return setindex!(context.values, copy(value), vn)
+    return setindex!(context.values, copy(value), prefix(context, vn))
 end
 
 function broadcast_push!(context::ValuesAsInModelContext, vns, values)
@@ -90,58 +90,33 @@ function tilde_assume(
     return value, logp, vi
 end
 
-# `dot_tilde_assume`
-function dot_tilde_assume(context::ValuesAsInModelContext, right, left, vn, vi)
-    value, logp, vi = dot_tilde_assume(childcontext(context), right, left, vn, vi)
-
-    # Save the value.
-    _right, _left, _vns = unwrap_right_left_vns(right, var, vn)
-    broadcast_push!(context, _vns, value)
-
-    return value, logp, vi
-end
-function dot_tilde_assume(
-    rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, left, vn, vi
-)
-    value, logp, vi = dot_tilde_assume(
-        rng, childcontext(context), sampler, right, left, vn, vi
-    )
-    # Save the value.
-    _right, _left, _vns = unwrap_right_left_vns(right, left, vn)
-    broadcast_push!(context, _vns, value)
-
-    return value, logp, vi
-end
-
 """
-    values_as_in_model(model::Model, include_colon_eq::Bool[, varinfo::AbstractVarInfo, context::AbstractContext])
-    values_as_in_model(rng::Random.AbstractRNG, model::Model, include_colon_eq::Bool[, varinfo::AbstractVarInfo, context::AbstractContext])
+    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo[, context::AbstractContext])
 
 Get the values of `varinfo` as they would be seen in the model.
 
-If no `varinfo` is provided, then this is effectively the same as
-[`Base.rand(rng::Random.AbstractRNG, model::Model)`](@ref).
+More specifically, this method attempts to extract the realization _as seen in
+the model_. For example, `x[1] ~ truncated(Normal(); lower=0)` will result in a
+realization that is compatible with `truncated(Normal(); lower=0)` -- i.e. one
+where the value of `x[1]` is positive -- regardless of whether `varinfo` is
+working in unconstrained space.
 
-More specifically, this method attempts to extract the realization _as seen in the model_.
-For example, `x[1] ~ truncated(Normal(); lower=0)` will result in a realization compatible
-with `truncated(Normal(); lower=0)` regardless of whether `varinfo` is working in unconstrained
-space.
-
-Hence this method is a "safe" way of obtaining realizations in constrained space at the cost
-of additional model evaluations.
+Hence this method is a "safe" way of obtaining realizations in constrained
+space at the cost of additional model evaluations.
 
 # Arguments
 - `model::Model`: model to extract realizations from.
 - `include_colon_eq::Bool`: whether to also include variables on the LHS of `:=`.
 - `varinfo::AbstractVarInfo`: variable information to use for the extraction.
-- `context::AbstractContext`: context to use for the extraction. If `rng` is specified, then `context`
-    will be wrapped in a [`SamplingContext`](@ref) with the provided `rng`.
+- `context::AbstractContext`: base context to use for the extraction. Defaults
+   to `DynamicPPL.DefaultContext()`.
 
 # Examples
 
 ## When `VarInfo` fails
 
-The following demonstrates a common pitfall when working with [`VarInfo`](@ref) and constrained variables.
+The following demonstrates a common pitfall when working with [`VarInfo`](@ref)
+and constrained variables.
 
 ```jldoctest
 julia> using Distributions, StableRNGs
@@ -191,19 +166,10 @@ true
 function values_as_in_model(
     model::Model,
     include_colon_eq::Bool,
-    varinfo::AbstractVarInfo=VarInfo(),
+    varinfo::AbstractVarInfo,
     context::AbstractContext=DefaultContext(),
 )
     context = ValuesAsInModelContext(include_colon_eq, context)
     evaluate!!(model, varinfo, context)
     return context.values
-end
-function values_as_in_model(
-    rng::Random.AbstractRNG,
-    model::Model,
-    include_colon_eq::Bool,
-    varinfo::AbstractVarInfo=VarInfo(),
-    context::AbstractContext=DefaultContext(),
-)
-    return values_as_in_model(model, true, varinfo, SamplingContext(rng, context))
 end

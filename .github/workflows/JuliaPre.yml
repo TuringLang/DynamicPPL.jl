@@ -3,10 +3,8 @@ name: JuliaPre
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
-    branches:
-      - master
 
 # needed to allow julia-actions/cache to delete old caches that it has created
 permissions:
@@ -21,7 +19,6 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: 'pre' # pre-release
-          arch: x64
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

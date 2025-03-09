@@ -1,5 +1,5 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstactContext}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -96,7 +96,8 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values) = condition(model, values)
+Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}}) =
+    condition(model, values)
 
 """
     condition(model::Model; values...)
@@ -264,10 +265,31 @@ julia> conditioned_model_dict()
 1.0
 ```
 """
-AbstractPPL.condition(model::Model; values...) = condition(model, NamedTuple(values))
-function AbstractPPL.condition(model::Model, value, values...)
-    return contextualize(model, condition(model.context, value, values...))
+function AbstractPPL.condition(model::Model, values...)
+    # Positional arguments - need to handle cases carefully
+    return contextualize(
+        model, ConditionContext(_make_conditioning_values(values...), model.context)
+    )
 end
+function AbstractPPL.condition(model::Model; values...)
+    # Keyword arguments -- just convert to a NamedTuple
+    return contextualize(model, ConditionContext(NamedTuple(values), model.context))
+end
+
+"""
+    _make_conditioning_values(vals...)
+
+Convert different types of input to either a `NamedTuple` or `AbstractDict` of
+conditioning values, suitable for storage in a `ConditionContext`.
+
+This handles all the cases where `vals` is either already a NamedTuple or
+AbstractDict (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g.
+`condition(model, x=1, y=2)`).
+"""
+_make_conditioning_values(values::Union{NamedTuple,AbstractDict}) = values
+_make_conditioning_values(values::Tuple{Pair{<:VarName}}) = Dict(values)
+_make_conditioning_values(v::Pair{<:Symbol}, vs::Pair{<:Symbol}...) = NamedTuple(v, vs...)
+_make_conditioning_values(v::Pair{<:VarName}, vs::Pair{<:VarName}...) = Dict(v, vs...)
 
 """
     decondition(model::Model)
@@ -379,7 +401,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms...)
-    return contextualize(model, decondition(model.context, syms...))
+    return contextualize(model, decondition_context(model.context, syms...))
 end
 
 """
@@ -413,7 +435,7 @@ julia> # Returns all the variables we have conditioned on + their values.
 (x = 100.0, m = 1.0)
 
 julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(m=1.0))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((m=1.0,)))), x=100.0);
 
 julia> conditioned(cm)
 (x = 100.0, m = 1.0)
@@ -425,7 +447,7 @@ julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
-       cm = condition(contextualize(m, PrefixContext{:a}(condition(var"a.m"=1.0))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((var"a.m"=1.0,)))), x=100.0);
 
 julia> conditioned(cm).x
 100.0
@@ -433,7 +455,7 @@ julia> conditioned(cm).x
 julia> conditioned(cm).var"a.m"
 1.0
 
-julia> keys(VarInfo(cm)) # <= no variables are sampled
+julia> keys(VarInfo(cm)) # No variables are sampled
 VarName[]
 ```
 """
@@ -926,9 +948,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue(context_new, varinfo, model.args.$var)...)
+            :($matchingvalue(varinfo, model.args.$var)...)
         else
-            :($matchingvalue(context_new, varinfo, model.args.$var))
+            :($matchingvalue(varinfo, model.args.$var))
         end for var in argnames
     ]
 
@@ -949,7 +971,7 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             # lazy `invlink`-ing of the parameters. This can be useful for
             # speeding up computation. See docs for `maybe_invlink_before_eval!!`
             # for more information.
-            maybe_invlink_before_eval!!(varinfo, context_new, model),
+            maybe_invlink_before_eval!!(varinfo, model),
             context_new,
             $(unwrap_args...),
         )
@@ -1147,10 +1169,10 @@ end
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
 
-Generate samples from the posterior predictive distribution by evaluating `model` at each set 
-of parameter values provided in `chain`. The number of posterior predictive samples matches 
+Generate samples from the posterior predictive distribution by evaluating `model` at each set
+of parameter values provided in `chain`. The number of posterior predictive samples matches
 the length of `chain`. The returned `AbstractVarInfo`s will contain both the posterior parameter values
-and the predicted values. 
+and the predicted values.
 """
 function predict(
     rng::Random.AbstractRNG, model::Model, chain::AbstractArray{<:AbstractVarInfo}

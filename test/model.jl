@@ -100,6 +100,39 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
+    @testset "model de/conditioning" begin
+        @model function demo_condition()
+            x ~ Normal()
+            return y ~ Normal(x)
+        end
+        model = demo_condition()
+
+        # Test that different syntaxes work and give the same underlying ConditionContext
+        @testset "conditioning NamedTuple" begin
+            expected_values = (y=2,)
+            @test condition(model, (y=2,)).context.values == expected_values
+            @test condition(model; y=2).context.values == expected_values
+            @test condition(model; y=2).context.values == expected_values
+            @test (model | (y=2,)).context.values == expected_values
+            conditioned_model = condition(model, (y=2,))
+            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
+        end
+        @testset "conditioning AbstractDict" begin
+            expected_values = Dict(@varname(y) => 2)
+            @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
+            @test condition(model, @varname(y) => 2).context.values == expected_values
+            @test (model | (@varname(y) => 2,)).context.values == expected_values
+            conditioned_model = condition(model, Dict(@varname(y) => 2))
+            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
+        end
+
+        @testset "deconditioning" begin
+            conditioned_model = condition(model, (y=2,))
+            deconditioned_model = decondition(conditioned_model)
+            @test keys(VarInfo(deconditioned_model)) == [@varname(x), @varname(y)]
+        end
+    end
+
     @testset "DynamicPPL#684: threadsafe evaluation with multiple types" begin
         @model function multiple_types(x)
             ns ~ filldist(Normal(0, 2.0), 3)
@@ -193,12 +226,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         spl = SampleFromPrior()
         vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata())
-        link!!(vi, spl, model)
+        vi = link!!(vi, model)
 
         for i in 1:10
             # Sample with large variations.
-            r_raw = randn(length(vi[spl])) * 10
-            vi[spl] = r_raw
+            r_raw = randn(length(vi[:])) * 10
+            DynamicPPL.setall!(vi, r_raw)
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)
@@ -397,19 +430,24 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
         end
 
-        @testset "check that sampling obeys rng if passed" begin
-            @model function f()
-                x ~ Normal(0)
-                return y ~ Normal(x)
+        @testset "Prefixing" begin
+            @model inner() = x ~ Normal()
+
+            @model function outer_auto_prefix()
+                a ~ to_submodel(inner(), true)
+                b ~ to_submodel(inner(), true)
+                return nothing
             end
-            model = f()
-            # Call values_as_in_model with the rng
-            values = values_as_in_model(Random.Xoshiro(43), model, false)
-            # Check that they match the values that would be used if vi was seeded
-            # with that seed instead
-            expected_vi = VarInfo(Random.Xoshiro(43), model)
-            for vn in keys(values)
-                @test values[vn] == expected_vi[vn]
+            @model function outer_manual_prefix()
+                a ~ to_submodel(prefix(inner(), :a), false)
+                b ~ to_submodel(prefix(inner(), :b), false)
+                return nothing
+            end
+
+            for model in (outer_auto_prefix(), outer_manual_prefix())
+                vi = VarInfo(model)
+                vns = Set(keys(values_as_in_model(model, false, vi)))
+                @test vns == Set([@varname(var"a.x"), @varname(var"b.x")])
             end
         end
     end

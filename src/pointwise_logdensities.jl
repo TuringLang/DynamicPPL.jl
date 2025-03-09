@@ -100,52 +100,6 @@ function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, v
     return left, acclogp!!(vi, logp)
 end
 
-function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
-    # Defer literal `observe` to child-context.
-    return dot_tilde_observe!!(context.context, right, left, vi)
-end
-function dot_tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
-    # Completely defer to child context if we are not tracking likelihoods.
-    if !(_include_likelihood(context))
-        return dot_tilde_observe!!(context.context, right, left, vn, vi)
-    end
-
-    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
-    # we have to intercept the call to `dot_tilde_observe!`.
-
-    # We want to treat `.~` as a collection of independent observations,
-    # hence we need the `logp` for each of them. Broadcasting the univariate
-    # `tilde_observe` does exactly this.
-    logps = _pointwise_tilde_observe(context.context, right, left, vi)
-
-    # Need to unwrap the `vn`, i.e. get one `VarName` for each entry in `left`.
-    _, _, vns = unwrap_right_left_vns(right, left, vn)
-    for (vn, logp) in zip(vns, logps)
-        # Track loglikelihood value.
-        push!(context, vn, logp)
-    end
-
-    return left, acclogp!!(vi, sum(logps))
-end
-
-# FIXME: This is really not a good approach since it needs to stay in sync with
-# the `dot_assume` implementations, but as things are _right now_ this is the best we can do.
-function _pointwise_tilde_observe(context, right, left, vi)
-    # We need to drop the `vi` returned.
-    return broadcast(right, left) do r, l
-        return first(tilde_observe(context, r, l, vi))
-    end
-end
-
-function _pointwise_tilde_observe(
-    context, right::MultivariateDistribution, left::AbstractMatrix, vi::AbstractVarInfo
-)
-    # We need to drop the `vi` returned.
-    return map(eachcol(left)) do l
-        return first(tilde_observe(context, right, l, vi))
-    end
-end
-
 # Note on submodels (penelopeysm)
 #
 # We don't need to overload tilde_observe!! for Sampleables (yet), because it
@@ -172,44 +126,6 @@ function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
     # Track loglikelihood value.
     push!(context, vn, logp)
     return value, acclogp!!(vi, logp)
-end
-
-function dot_tilde_assume!!(context::PointwiseLogdensityContext, right, left, vns, vi)
-    !_include_prior(context) &&
-        return (dot_tilde_assume!!(context.context, right, left, vns, vi))
-    value, logps = _pointwise_tilde_assume(context, right, left, vns, vi)
-    # Track loglikelihood values.
-    for (vn, logp) in zip(vns, logps)
-        push!(context, vn, logp)
-    end
-    return value, acclogp!!(vi, sum(logps))
-end
-
-function _pointwise_tilde_assume(context, right, left, vns, vi)
-    # We need to drop the `vi` returned.
-    values_and_logps = broadcast(right, left, vns) do r, l, vn
-        # HACK(torfjelde): This drops the `vi` returned, which means the `vi` is not updated
-        # in case of immutable varinfos. But a) atm we're only using mutable varinfos for this,
-        # and b) even if the variables aren't stored in the vi correctly, we're not going to use
-        # this vi for anything downstream anyways, i.e. I don't see a case where this would matter
-        # for this particular use case.
-        val, logp, _ = tilde_assume(context, r, vn, vi)
-        return val, logp
-    end
-    return map(first, values_and_logps), map(last, values_and_logps)
-end
-function _pointwise_tilde_assume(
-    context, right::MultivariateDistribution, left::AbstractMatrix, vns, vi
-)
-    # We need to drop the `vi` returned.
-    values_and_logps = map(eachcol(left), vns) do l, vn
-        val, logp, _ = tilde_assume(context, right, vn, vi)
-        return val, logp
-    end
-    # HACK(torfjelde): Due to the way we handle `.~`, we should use `recombine` to stay consistent.
-    # But this also means that we need to first flatten the entire `values` component before recombining.
-    values = recombine(right, mapreduce(vec ∘ first, vcat, values_and_logps), length(vns))
-    return values, map(last, values_and_logps)
 end
 
 """
@@ -357,7 +273,7 @@ end
 
 """
     pointwise_loglikelihoods(model, chain[, keytype, context])
-    
+
 Compute the pointwise log-likelihoods of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the likelihood terms.
