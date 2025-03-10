@@ -66,6 +66,7 @@ end
 results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
+    @info "Running benchmark for $model_name"
     suite = make_suite(model, varinfo_choice, adbackend, islinked)
     results = run(suite)
     eval_time = median(results["evaluation"]).time
