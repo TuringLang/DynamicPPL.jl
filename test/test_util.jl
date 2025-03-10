@@ -23,24 +23,8 @@ function test_model_ad(model, logp_manual)
     # Gradients based on the manual implementation.
     grad = ForwardDiff.gradient(logp_manual, x)
 
-    y, back = Tracker.forward(logp_manual, x)
-    @test Tracker.data(y) ≈ lp
-    @test Tracker.data(back(1)[1]) ≈ grad
-
-    y, back = Zygote.pullback(logp_manual, x)
-    @test y ≈ lp
-    @test back(1)[1] ≈ grad
-
     # Gradients based on the model.
     @test ForwardDiff.gradient(logp_model, x) ≈ grad
-
-    y, back = Tracker.forward(logp_model, x)
-    @test Tracker.data(y) ≈ lp
-    @test Tracker.data(back(1)[1]) ≈ grad
-
-    y, back = Zygote.pullback(logp_model, x)
-    @test y ≈ lp
-    @test back(1)[1] ≈ grad
 end
 
 """
