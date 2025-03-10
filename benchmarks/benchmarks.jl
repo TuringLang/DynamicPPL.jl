@@ -2,7 +2,7 @@ using Pkg
 # To ensure we benchmark the local version of DynamicPPL, dev the folder above.
 Pkg.develop(; path=joinpath(@__DIR__, ".."))
 
-using DynamicPPLBenchmarks: Models, make_suite
+using DynamicPPLBenchmarks: Models, make_suite, model_dimension
 using BenchmarkTools: @benchmark, median, run
 using PrettyTables: PrettyTables, ft_printf
 using Random: seed!
@@ -63,7 +63,7 @@ reference_time = begin
     median(@benchmark Models.simple_assume_observe_non_model(obs)).time
 end
 
-results_table = Tuple{String,String,String,Bool,Float64,Float64}[]
+results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
     suite = make_suite(model, varinfo_choice, adbackend, islinked)
@@ -76,6 +76,7 @@ for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinati
         results_table,
         (
             model_name,
+            model_dimension(model, islinked),
             string(adbackend),
             string(varinfo_choice),
             islinked,
@@ -88,6 +89,7 @@ end
 table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
 header = [
     "Model",
+    "Dimension",
     "AD Backend",
     "VarInfo Type",
     "Linked",

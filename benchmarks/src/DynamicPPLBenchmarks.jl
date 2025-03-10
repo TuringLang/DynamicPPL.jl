@@ -13,7 +13,21 @@ using ReverseDiff: ReverseDiff
 include("./Models.jl")
 using .Models: Models
 
-export Models, make_suite
+export Models, make_suite, model_dimension
+
+"""
+    model_dimension(model, islinked)
+
+Return the dimension of `model`, accounting for linking, if any.
+"""
+function model_dimension(model, islinked)
+    vi = VarInfo()
+    model(vi)
+    if islinked
+        vi = DynamicPPL.link(vi, model)
+    end
+    return length(vi[:])
+end
 
 # Utility functions for representing AD backends using symbols.
 # Copied from TuringBenchmarking.jl.
