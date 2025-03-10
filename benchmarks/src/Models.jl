@@ -56,7 +56,7 @@ a variable vector; observations passed as arguments, and as literals.
     for i in 1:length(x)
         x[i] ~ Normal(means[i], stds[i])
     end
-    y ~ product_distribution([Normal(means[i], stds[i]) for i in 1:length(x)])
+    y ~ product_distribution(map((mean, std) -> Normal(mean, std), means, stds))
     0.0 ~ Normal(sum(y), 1)
     return (; m=m, means=means, stds=stds)
 end
