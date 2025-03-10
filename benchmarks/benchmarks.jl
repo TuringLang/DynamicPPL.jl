@@ -51,8 +51,6 @@ chosen_combinations = [
     ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
     ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
     ("Submodel", Models.parent(randn()), :typed, :mooncake, true),
-    # TODO(mhauru) Switch to :mooncake once
-    # https://github.com/compintell/Mooncake.jl/issues/513 is resolved
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
 
