@@ -5,20 +5,20 @@ Pkg.develop(; path=joinpath(@__DIR__, ".."))
 using DynamicPPLBenchmarks: Models, make_suite, model_dimension
 using BenchmarkTools: @benchmark, median, run
 using PrettyTables: PrettyTables, ft_printf
-using Random: seed!
+using StableRNGs: StableRNG
 
-seed!(23)
+rng = StableRNG(23)
 
 # Create DynamicPPL.Model instances to run benchmarks on.
-smorgasbord_instance = Models.smorgasbord(randn(100), randn(100))
+smorgasbord_instance = Models.smorgasbord(randn(rng, 100), randn(rng, 100))
 loop_univariate1k, multivariate1k = begin
-    data_1k = randn(1_000)
+    data_1k = randn(rng, 1_000)
     loop = Models.loop_univariate(length(data_1k)) | (; o=data_1k)
     multi = Models.multivariate(length(data_1k)) | (; o=data_1k)
     loop, multi
 end
 loop_univariate10k, multivariate10k = begin
-    data_10k = randn(10_000)
+    data_10k = randn(rng, 10_000)
     loop = Models.loop_univariate(length(data_10k)) | (; o=data_10k)
     multi = Models.multivariate(length(data_10k)) | (; o=data_10k)
     loop, multi
@@ -34,7 +34,7 @@ end
 chosen_combinations = [
     (
         "Simple assume observe",
-        Models.simple_assume_observe(randn()),
+        Models.simple_assume_observe(randn(rng)),
         :typed,
         :forwarddiff,
         false,
@@ -50,14 +50,14 @@ chosen_combinations = [
     ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
     ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
     ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-    ("Submodel", Models.parent(randn()), :typed, :mooncake, true),
+    ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
 
 # Time running a model-like function that does not use DynamicPPL, as a reference point.
 # Eval timings will be relative to this.
 reference_time = begin
-    obs = randn()
+    obs = randn(rng)
     median(@benchmark Models.simple_assume_observe_non_model(obs)).time
 end
 
