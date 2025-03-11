@@ -15,7 +15,6 @@ using MCMCChains
 using Mooncake: Mooncake
 using StableRNGs
 using ReverseDiff
-using Zygote
 using Compat
 
 using Distributed
