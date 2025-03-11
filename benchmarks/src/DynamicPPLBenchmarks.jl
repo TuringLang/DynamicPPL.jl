@@ -32,7 +32,7 @@ end
 # Utility functions for representing AD backends using symbols.
 # Copied from TuringBenchmarking.jl.
 const SYMBOL_TO_BACKEND = Dict(
-    :forwarddiff => ADTypes.AutoForwardDiff(; chunksize=0),
+    :forwarddiff => ADTypes.AutoForwardDiff(),
     :reversediff => ADTypes.AutoReverseDiff(; compile=false),
     :reversediff_compiled => ADTypes.AutoReverseDiff(; compile=true),
     :mooncake => ADTypes.AutoMooncake(; config=nothing),
@@ -104,7 +104,7 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     suite["gradient"] = @benchmarkable $(LogDensityProblems.logdensity_and_gradient)($f, $θ)
 
     # Also benchmark just standard model evaluation because why not.
-    suite["evaluation"] = @benchmarkable $(DynamicPPL.evaluate!!)($model, $vi, $context)
+    suite["evaluation"] = @benchmarkable $(LogDensityProblems.logdensity)($f, $θ)
 
     return suite
 end
