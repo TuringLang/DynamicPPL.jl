@@ -86,18 +86,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
         vi = DynamicPPL.link(vi, model)
     end
 
-    # We construct `LogDensityFunction` using different values
-    # than the ones we're going to use for the test. Some of the AD backends
-    # compile the tape upon `LogDensityFunction` construction, and we want to
-    # evaluate using inputs different from those that the tape was compiled for.
     f = DynamicPPL.LogDensityFunction(model, vi, context; adtype=adbackend)
-
     # The parameters at which we evaluate f.
-    θ = if islinked
-        randn(length(vi[:]))
-    else
-        rand(Vector, model)
-    end
+    θ = vi[:]
 
     # Run once to trigger compilation.
     LogDensityProblems.logdensity_and_gradient(f, θ)
