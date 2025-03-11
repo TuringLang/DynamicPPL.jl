@@ -99,5 +99,5 @@ PrettyTables.pretty_table(
     table_matrix;
     header=header,
     tf=PrettyTables.tf_markdown,
-    formatters=ft_printf("%.1f", [5, 6]),
+    formatters=ft_printf("%.1f", [6, 7]),
 )
