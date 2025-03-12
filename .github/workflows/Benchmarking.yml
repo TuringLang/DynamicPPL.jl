@@ -1,0 +1,76 @@
+name: Benchmarking
+
+on:
+  pull_request:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - name: Install Dependencies
+        run: julia --project=benchmarks/ -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Run Benchmarks
+        id: run_benchmarks
+        run: |
+          # Capture version info into a variable, print it, and set it as an env var for later steps
+          version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
+          echo "$version_info"
+          echo "VERSION_INFO<<EOF" >> $GITHUB_ENV
+          echo "$version_info" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          # Capture benchmark output into a variable
+          echo "Running Benchmarks..."
+          benchmark_output=$(julia --project=benchmarks benchmarks/benchmarks.jl)
+          
+          # Print benchmark results directly to the workflow log
+          echo "Benchmark Results:"
+          echo "$benchmark_output"
+          
+          # Set the benchmark output as an env var for later steps
+          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$benchmark_output" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          # Get the current commit SHA of DynamicPPL
+          DPPL_COMMIT_SHA=$(git rev-parse HEAD)
+          echo "DPPL_COMMIT_SHA=$DPPL_COMMIT_SHA" >> $GITHUB_ENV
+
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/$DPPL_COMMIT_SHA"
+          echo "DPPL_COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
+
+      - name: Find Existing Comment
+        uses: peter-evans/find-comment@v3
+        id: find_comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+
+      - name: Post Benchmark Results as PR Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Benchmark Report for Commit [`${{ env.DPPL_COMMIT_SHA }}`](${{ env.DPPL_COMMIT_URL }})
+            ### Computer Information
+            ```
+            ${{ env.VERSION_INFO }}
+            ```
+            ### Benchmark Results
+            ```
+            ${{ env.BENCHMARK_OUTPUT }}
+            ```
+          comment-id: ${{ steps.find_comment.outputs.comment-id }}
+          edit-mode: replace
