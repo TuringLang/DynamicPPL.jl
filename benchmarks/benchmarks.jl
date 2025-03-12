@@ -51,6 +51,7 @@ chosen_combinations = [
     ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
     ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
     ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
+    ("LDA", lda_instance, :typed, :mooncake, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
 
