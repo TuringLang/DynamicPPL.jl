@@ -416,9 +416,9 @@ end
 
 function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
     vns_present = collect(keys(x))
-    vns_found = mapreduce(vcat, vns; init=VN[]) do vn
-        return filter(Base.Fix1(subsumes, vn), vns_present)
-    end
+    vns_found = filter(
+        vn_present -> any(subsumes(vn, vn_present) for vn in vns), vns_present
+    )
     C = ConstructionBase.constructorof(typeof(x))
     if isempty(vns_found)
         return C()
@@ -439,7 +439,8 @@ function _subset(x::NamedTuple, vns)
     end
 
     syms = map(getsym, vns)
-    return NamedTuple{Tuple(syms)}(Tuple(map(Base.Fix1(getindex, x), syms)))
+    x_syms = filter(Base.Fix2(in, syms), keys(x))
+    return NamedTuple{Tuple(x_syms)}(Tuple(map(Base.Fix1(getindex, x), x_syms)))
 end
 
 _subset(x::VarNamedVector, vns) = subset(x, vns)

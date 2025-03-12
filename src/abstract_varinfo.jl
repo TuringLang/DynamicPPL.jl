@@ -331,12 +331,7 @@ has_varnamedvector(vi::AbstractVarInfo) = false
 
 Subset a `varinfo` to only contain the variables `vns`.
 
-!!! warning
-    The ordering of the variables in the resulting `varinfo` is _not_
-    guaranteed to follow the ordering of the variables in `varinfo`.
-    Hence care must be taken, in particular when used in conjunction with
-    other methods which uses the vector-representation of the `varinfo`,
-    e.g. `getindex(varinfo, sampler)`.
+The ordering of variables in the return value will be the same as in `varinfo`.
 
 # Examples
 ```jldoctest varinfo-subset; setup = :(using Distributions, DynamicPPL)
