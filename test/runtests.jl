@@ -14,7 +14,6 @@ using MacroTools
 using MCMCChains
 using Mooncake: Mooncake
 using StableRNGs
-using Tracker
 using ReverseDiff
 using Zygote
 using Compat

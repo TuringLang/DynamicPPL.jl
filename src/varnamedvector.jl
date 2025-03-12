@@ -1138,6 +1138,8 @@ Return a new `VarNamedVector` containing the values from `vnv` for variables in 
 Which variables to include is determined by the `VarName`'s `subsumes` relation, meaning
 that e.g. `subset(vnv, [@varname(x)])` will include variables like `@varname(x.a[1])`.
 
+Preserves the order of variables in `vnv`.
+
 # Examples
 
 ```jldoctest varnamedvector-subset
@@ -1151,18 +1153,17 @@ true
 julia> subset(vnv, [@varname(x[2])]) == VarNamedVector(@varname(x[2]) => [2.0])
 true
 """
-function subset(vnv::VarNamedVector, vns_given::AbstractVector{VN}) where {VN<:VarName}
+function subset(vnv::VarNamedVector, vns_given::AbstractVector{<:VarName})
     # NOTE: This does not specialize types when possible.
-    vns = mapreduce(vcat, vns_given; init=VN[]) do vn
-        filter(Base.Fix1(subsumes, vn), vnv.varnames)
-    end
     vnv_new = similar(vnv)
     # Return early if possible.
     isempty(vnv) && return vnv_new
 
-    for vn in vns
-        insert_internal!(vnv_new, getindex_internal(vnv, vn), vn, gettransform(vnv, vn))
-        settrans!(vnv_new, istrans(vnv, vn), vn)
+    for vn in vnv.varnames
+        if any(subsumes(vn_given, vn) for vn_given in vns_given)
+            insert_internal!(vnv_new, getindex_internal(vnv, vn), vn, gettransform(vnv, vn))
+            settrans!(vnv_new, istrans(vnv, vn), vn)
+        end
     end
 
     return vnv_new
