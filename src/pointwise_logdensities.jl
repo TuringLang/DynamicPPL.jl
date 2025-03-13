@@ -157,8 +157,8 @@ y .~ Normal(μ, σ)
 y ~ MvNormal(fill(μ, n), σ^2 * I)
 ```
 
-In (1) and (2), `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,
-while in (3) `y` will be treated as a _single_ n-dimensional observation.
+In (1) `y` will be treated as a collection of `n` i.i.d. 1-dimensional variables,
+while in (2) and (3) `y` will be treated as a _single_ n-dimensional observation.
 
 This is important to keep in mind, in particular if the computation is used
 for downstream computations.
@@ -216,23 +216,17 @@ OrderedDict{VarName, Matrix{Float64}} with 6 entries:
 ```
 
 ## Broadcasting
-Note that `x .~ Dist()` will treat `x` as a collection of
-_independent_ observations rather than as a single observation.
+Note that `x .~ Dist()` will treat `x` as a single multivariate observation.
 
 ```jldoctest; setup = :(using Distributions)
 julia> @model function demo(x)
            x .~ Normal()
        end;
 
-julia> m = demo([1.0, ]);
-
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x[1])])
--1.4189385332046727
-
 julia> m = demo([1.0; 1.0]);
 
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
-(-1.4189385332046727, -1.4189385332046727)
+julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x)])
+-2.8378770664093453
 ```
 
 """
