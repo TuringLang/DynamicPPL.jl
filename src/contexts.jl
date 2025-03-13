@@ -335,6 +335,8 @@ function ConditionContext(values::Union{NamedTuple,AbstractDict})
 end
 # Optimisation when there are no values to condition on
 ConditionContext(::NamedTuple{()}, context::AbstractContext) = context
+# Same as above, and avoids method ambiguity with below
+ConditionContext(::NamedTuple{()}, context::NamedConditionContext) = context
 # Collapse consecutive levels of `ConditionContext`. Note that this overrides
 # values inside the child context, thus giving precedence to the outermost
 # `ConditionContext`.

@@ -250,7 +250,10 @@ x[1][3]
 ```
 """
 unwrap_right_left_vns(right, left, vns) = right, left, vns
-function unwrap_right_left_vns(right::NamedDist, left, vns)
+function unwrap_right_left_vns(right::NamedDist, left::AbstractArray, ::VarName)
+    return unwrap_right_left_vns(right.dist, left, right.name)
+end
+function unwrap_right_left_vns(right::NamedDist, left::AbstractMatrix, ::VarName)
     return unwrap_right_left_vns(right.dist, left, right.name)
 end
 function unwrap_right_left_vns(

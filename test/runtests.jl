@@ -35,6 +35,7 @@ using OrderedCollections: OrderedSet
 using DynamicPPL: getargs_dottilde, getargs_tilde
 
 const GROUP = get(ENV, "GROUP", "All")
+const AQUA = get(ENV, "AQUA", "true") == "true"
 Random.seed!(100)
 
 include("test_util.jl")
@@ -44,6 +45,9 @@ include("test_util.jl")
     # groups are chosen to make both groups take roughly the same amount of
     # time, but beyond that there is no particular reason for the split.
     if GROUP == "All" || GROUP == "Group1"
+        if AQUA
+            include("Aqua.jl")
+        end
         include("utils.jl")
         include("compiler.jl")
         include("varnamedvector.jl")
