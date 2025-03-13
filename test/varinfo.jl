@@ -1017,4 +1017,15 @@ end
         @test vi.metadata.b.orders == [2]
         @test DynamicPPL.get_num_produce(vi) == 3
     end
+
+    @testset "issue #842" begin
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        varinfo = VarInfo(model)
+
+        n = length(varinfo[:])
+        # `Bool`.
+        @test getlogp(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
+        # `Int`.
+        @test getlogp(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
+    end
 end
