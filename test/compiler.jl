@@ -289,6 +289,20 @@ module Issue537 end
         @test all((isassigned(x, i) for i in eachindex(x)))
     end
 
+    # Test that that using @. to stop unwanted broadcasting on the RHS works.
+    @testset "@. ~ with interpolation" begin
+        @model function at_dot_with_interpolation()
+            x = Vector{Float64}(undef, 2)
+            # Without the interpolation the RHS would turn into `Normal.(sum.([1.0, 2.0]))`,
+            # which would crash.
+            @. x ~ $(Normal(sum([1.0, 2.0])))
+        end
+
+        # The main check is just that calling at_dot_with_interpolation() doesn't crash,
+        # the check of the keys is not very important.
+        @show keys(VarInfo(at_dot_with_interpolation())) == [@varname(x[1]), @varname(x[2])]
+    end
+
     # A couple of uses of .~ that are no longer valid as of v0.35.
     @testset "old .~ syntax" begin
         @model function multivariate_dot_tilde()

@@ -103,4 +103,73 @@ using DynamicPPL: LogDensityFunction
         )
         @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end
+
+    # Test that various different ways of specifying array types as arguments work with all
+    # ADTypes.
+    @testset "Array argument types" begin
+        reference_adtype = AutoForwardDiff()
+        test_m = randn(2, 3)
+
+        function eval_logp_and_grad(model, m, adtype)
+            model_instance = model()
+            vi = VarInfo(model_instance)
+            ldf = LogDensityFunction(model_instance, vi, DefaultContext(); adtype=adtype)
+            return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
+        end
+
+        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
+            m = Matrix{T}(undef, 2, 3)
+            return m ~ filldist(MvNormal(zeros(2), I), 3)
+        end
+
+        scalar_matrix_model_reference = eval_logp_and_grad(
+            scalar_matrix_model, test_m, reference_adtype
+        )
+
+        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
+            m = T(undef, 2, 3)
+            return m ~ filldist(MvNormal(zeros(2), I), 3)
+        end
+
+        matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, reference_adtype)
+
+        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
+            m = Array{T}(undef, 2, 3)
+            return m ~ filldist(MvNormal(zeros(2), I), 3)
+        end
+
+        scalar_array_model_reference = eval_logp_and_grad(
+            scalar_array_model, test_m, reference_adtype
+        )
+
+        @model function array_model(::Type{T}=Array{Float64}) where {T}
+            m = T(undef, 2, 3)
+            return m ~ filldist(MvNormal(zeros(2), I), 3)
+        end
+
+        array_model_reference = eval_logp_and_grad(array_model, test_m, reference_adtype)
+
+        @testset "$adtype" for adtype in [
+            AutoReverseDiff(; compile=false),
+            AutoReverseDiff(; compile=true),
+            AutoMooncake(; config=nothing),
+        ]
+            scalar_matrix_model_logp_and_grad = eval_logp_and_grad(
+                scalar_matrix_model, test_m, adtype
+            )
+            @test scalar_matrix_model_logp_and_grad[1] ≈ scalar_matrix_model_reference[1]
+            @test scalar_matrix_model_logp_and_grad[2] ≈ scalar_matrix_model_reference[2]
+            matrix_model_logp_and_grad = eval_logp_and_grad(matrix_model, test_m, adtype)
+            @test matrix_model_logp_and_grad[1] ≈ matrix_model_reference[1]
+            @test matrix_model_logp_and_grad[2] ≈ matrix_model_reference[2]
+            scalar_array_model_logp_and_grad = eval_logp_and_grad(
+                scalar_array_model, test_m, adtype
+            )
+            @test scalar_array_model_logp_and_grad[1] ≈ scalar_array_model_reference[1]
+            @test scalar_array_model_logp_and_grad[2] ≈ scalar_array_model_reference[2]
+            array_model_logp_and_grad = eval_logp_and_grad(array_model, test_m, adtype)
+            @test array_model_logp_and_grad[1] ≈ array_model_reference[1]
+            @test array_model_logp_and_grad[2] ≈ array_model_reference[2]
+        end
+    end
 end
