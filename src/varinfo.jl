@@ -215,7 +215,11 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     md = unflatten_metadata(vi.metadata, x)
     # Note that use of RefValue{eltype(x)} rather than Ref is necessary to deal with cases
     # where e.g. x is a type gradient of some AD backend.
-    return VarInfo(md, Base.RefValue{eltype(x)}(getlogp(vi)), Ref(get_num_produce(vi)))
+    return VarInfo(
+        md,
+        Base.RefValue{float_type_with_fallback(eltype(x))}(getlogp(vi)),
+        Ref(get_num_produce(vi)),
+    )
 end
 
 # We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
