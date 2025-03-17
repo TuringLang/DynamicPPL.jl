@@ -9,6 +9,7 @@ using LogDensityProblems: LogDensityProblems
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
 using ReverseDiff: ReverseDiff
+using StableRNGs: StableRNG
 
 include("./Models.jl")
 using .Models: Models
@@ -61,18 +62,20 @@ The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversedi
 `islinked` determines whether to link the VarInfo for evaluation.
 """
 function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+    rng = StableRNG(23)
+
     suite = BenchmarkGroup()
 
     vi = if varinfo_choice == :untyped
         vi = VarInfo()
-        model(vi)
+        model(rng, vi)
         vi
     elseif varinfo_choice == :typed
-        VarInfo(model)
+        VarInfo(rng, model)
     elseif varinfo_choice == :simple_namedtuple
-        SimpleVarInfo{Float64}(model())
+        SimpleVarInfo{Float64}(model(rng))
     elseif varinfo_choice == :simple_dict
-        retvals = model()
+        retvals = model(rng)
         vns = [VarName{k}() for k in keys(retvals)]
         SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
     else

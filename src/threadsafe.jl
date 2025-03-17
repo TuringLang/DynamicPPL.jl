@@ -115,6 +115,19 @@ function invlink(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
 end
 
+# These two StaticTransformation methods needed to resolve ambiguities
+function link!!(
+    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
+)
+    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, model)
+end
+
+function invlink!!(
+    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
+)
+    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, model)
+end
+
 function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
     # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the

@@ -17,6 +17,10 @@ Base.length(dist::NamedDist) = Base.length(dist.dist)
 Base.size(dist::NamedDist) = Base.size(dist.dist)
 
 Distributions.logpdf(dist::NamedDist, x::Real) = Distributions.logpdf(dist.dist, x)
+function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real,0})
+    # extract the singleton value from 0-dimensional array
+    return Distributions.logpdf(dist.dist, first(x))
+end
 function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})
     return Distributions.logpdf(dist.dist, x)
 end
