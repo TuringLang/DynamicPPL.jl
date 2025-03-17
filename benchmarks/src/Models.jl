@@ -127,19 +127,22 @@ end
 
 """
 A simple Linear Discriminant Analysis model.
+
+The default value for `z` is chosen randomly to make autodiff work. Alternatively one 
+could marginalise out `z`. 
 """
-@model function lda(K, d, w)
+@model function lda(K, d, w, z=rand(1:K, length(d)), ::Type{T}=Float64) where {T}
     V = length(unique(w))
     D = length(unique(d))
     N = length(d)
     @assert length(w) == N
 
-    ϕ = Vector{Vector{Real}}(undef, K)
+    ϕ = Vector{Vector{T}}(undef, K)
     for i in 1:K
         ϕ[i] ~ Dirichlet(ones(V) / V)
     end
 
-    θ = Vector{Vector{Real}}(undef, D)
+    θ = Vector{Vector{T}}(undef, D)
     for i in 1:D
         θ[i] ~ Dirichlet(ones(K) / K)
     end
@@ -150,7 +153,7 @@ A simple Linear Discriminant Analysis model.
         z[i] ~ Categorical(θ[d[i]])
         w[i] ~ Categorical(ϕ[d[i]])
     end
-    return (; ϕ=ϕ, θ=θ, z=z)
+    return (; ϕ=ϕ, θ=θ)
 end
 
 end

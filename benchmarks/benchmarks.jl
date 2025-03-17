@@ -39,6 +39,20 @@ chosen_combinations = [
         :forwarddiff,
         false,
     ),
+    (
+        "Simple assume observe",
+        Models.simple_assume_observe(randn(rng)),
+        :typed,
+        :reversediff,
+        false,
+    ),
+    (
+        "Simple assume observe",
+        Models.simple_assume_observe(randn(rng)),
+        :typed,
+        :mooncake,
+        false,
+    ),
     ("Smorgasbord", smorgasbord_instance, :typed, :forwarddiff, false),
     ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
@@ -51,6 +65,7 @@ chosen_combinations = [
     ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
     ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
     ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
+    ("LDA", lda_instance, :typed, :mooncake, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
 ]
 
