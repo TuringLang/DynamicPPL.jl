@@ -111,9 +111,7 @@ using DynamicPPL: LogDensityFunction
         test_m = randn(2, 3)
 
         function eval_logp_and_grad(model, m, adtype)
-            model_instance = model()
-            vi = VarInfo(model_instance)
-            ldf = LogDensityFunction(model_instance, vi, DefaultContext(); adtype=adtype)
+            ldf = LogDensityFunction(model(); adtype=adtype)
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
