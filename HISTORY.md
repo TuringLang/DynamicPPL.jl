@@ -1,5 +1,30 @@
 # DynamicPPL Changelog
 
+## 0.36.0
+
+**Breaking changes**
+
+### `set_tracked_varnames`
+
+There is now a new method `set_tracked_varnames(::Model, ::Union{Nothing,Array{<:VarName}})`, which allows you to specify the variables that are collected when `values_as_in_model` is run.
+Internally in DynamicPPL this does not have much impact.
+However, Turing.jl uses `values_as_in_model` to collect the variable names and values during sampling, and so this method will effectively allow you to control which variables are ultimately stored in a chain.
+
+Example usage:
+
+```julia
+@model function f()
+    x ~ Normal()
+    y ~ Normal()
+    return x, y
+end
+
+model = f()
+model = set_tracked_varnames(model, [@varname(y)])
+```
+
+If you then sample from `model`, only the value of `y` will be stored in the chain, and not `x`.
+
 ## 0.35.0
 
 **Breaking changes**
