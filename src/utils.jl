@@ -253,7 +253,7 @@ function (f::UnwrapSingletonTransform)(x)
 end
 
 function Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x)
-    return f(x), zero(eltype(x))
+    return f(x), zero(float_type_with_fallback(eltype(x)))
 end
 
 function Bijectors.with_logabsdet_jacobian(
@@ -261,7 +261,7 @@ function Bijectors.with_logabsdet_jacobian(
 )
     f = inv_f.orig
     result = reshape([x], f.input_size)
-    return result, zero(eltype(x))
+    return result, zero(float_type_with_fallback(eltype(x)))
 end
 
 """
@@ -310,10 +310,12 @@ function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
     return inverse(x)
 end
 
-Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), zero(eltype(x)))
+function Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x)
+    return f(x), zero(float_type_with_fallback(eltype(x)))
+end
 
 function Bijectors.with_logabsdet_jacobian(inv_f::Bijectors.Inverse{<:ReshapeTransform}, x)
-    return inv_f(x), zero(eltype(x))
+    return inv_f(x), zero(float_type_with_fallback(eltype(x)))
 end
 
 struct ToChol <: Bijectors.Bijector
@@ -321,11 +323,11 @@ struct ToChol <: Bijectors.Bijector
 end
 
 function Bijectors.with_logabsdet_jacobian(f::ToChol, x)
-    return Cholesky(Matrix(x), f.uplo, 0), zero(eltype(x))
+    return Cholesky(Matrix(x), f.uplo, 0), zero(float_type_with_fallback(eltype(x)))
 end
 
 function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky)
-    return y.UL, zero(eltype(y))
+    return y.UL, zero(float_type_with_fallback(eltype(y)))
 end
 
 function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)

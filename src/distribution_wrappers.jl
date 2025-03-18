@@ -54,30 +54,38 @@ function Distributions.rand!(
 ) where {N}
     return Distributions.rand!(rng, d.dist, x)
 end
-Distributions.logpdf(::NoDist{<:Univariate}, x::Real) = zero(eltype(x))
-Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractVector{<:Real}) = zero(eltype(x))
-function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
-    return zeros(eltype(x), size(x, 2))
+function Distributions.logpdf(::NoDist{<:Univariate}, x::Real)
+    return zero(float_type_with_fallback(eltype(x)))
 end
-Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real}) = zero(eltype(x))
+function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractVector{<:Real})
+    return zero(float_type_with_fallback(eltype(x)))
+end
+function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
+    return zeros(float_type_with_fallback(eltype(x)), size(x, 2))
+end
+function Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real})
+    return zero(float_type_with_fallback(eltype(x)))
+end
 Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
-Bijectors.logpdf_with_trans(::NoDist{<:Univariate}, x::Real, ::Bool) = zero(eltype(x))
+function Bijectors.logpdf_with_trans(::NoDist{<:Univariate}, x::Real, ::Bool)
+    return zero(float_type_with_fallback(eltype(x)))
+end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Multivariate}, x::AbstractVector{<:Real}, ::Bool
 )
-    return zero(eltype(x))
+    return zero(float_type_with_fallback(eltype(x)))
 end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
 )
-    return zeros(eltype(x), size(x, 2))
+    return zeros(float_type_with_fallback(eltype(x)), size(x, 2))
 end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real}, ::Bool
 )
-    return zero(eltype(x))
+    return zero(float_type_with_fallback(eltype(x)))
 end
 
 Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)
