@@ -117,13 +117,22 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             conditioned_model = condition(model, (y=2,))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
         end
+
         @testset "conditioning AbstractDict" begin
+            # condition just 1 variable
             expected_values = Dict(@varname(y) => 2)
             @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
             @test condition(model, @varname(y) => 2).context.values == expected_values
             @test (model | (@varname(y) => 2,)).context.values == expected_values
             conditioned_model = condition(model, Dict(@varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
+
+            # condition 2 variables
+            expected_values = Dict(@varname(x) => 1, @varname(y) => 2)
+            @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
+                expected_values
+            conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
+            @test keys(VarInfo(conditioned_model)) == []
         end
 
         @testset "deconditioning" begin

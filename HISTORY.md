@@ -1,5 +1,20 @@
 # DynamicPPL Changelog
 
+## 0.35.3
+
+`model | (@varname(x) => 1.0, @varname(y) => 2.0)` now works.
+Previously, this would throw a `MethodError` if the tuple had more than one element.
+
+## 0.35.2
+
+`unflatten(::VarInfo, params)` now works with params that have non-float types (such as Int or Bool).
+
+## 0.35.1
+
+`subset(::AbstractVarInfo, ::AbstractVector{<:VarName})` now preserves the ordering of the varnames in the original varinfo argument.
+Previously, this would select the varnames according to their order in the second argument.
+This fixes an upstream Turing.jl issue with Gibbs sampling when a component sampler was assigned multiple variables.
+
 ## 0.35.0
 
 **Breaking changes**
