@@ -198,7 +198,6 @@ function values_as_in_model(
     tracked_varnames=model.tracked_varnames,
     context::AbstractContext=DefaultContext(),
 )
-    @show tracked_varnames
     tracked_varnames = isnothing(tracked_varnames) ? nothing : collect(tracked_varnames)
     context = ValuesAsInModelContext(include_colon_eq, tracked_varnames, context)
     evaluate!!(model, varinfo, context)
