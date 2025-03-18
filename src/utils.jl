@@ -252,12 +252,16 @@ function (f::UnwrapSingletonTransform)(x)
     return only(x)
 end
 
-Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x) = (f(x), 0)
+function Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x)
+    return f(x), zero(eltype(x))
+end
+
 function Bijectors.with_logabsdet_jacobian(
     inv_f::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
 )
     f = inv_f.orig
-    return (reshape([x], f.input_size), 0)
+    result = reshape([x], f.input_size)
+    return result, zero(eltype(x))
 end
 
 """
@@ -306,18 +310,24 @@ function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
     return inverse(x)
 end
 
-Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), 0)
+Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x) = (f(x), zero(eltype(x)))
 
 function Bijectors.with_logabsdet_jacobian(inv_f::Bijectors.Inverse{<:ReshapeTransform}, x)
-    return (inv_f(x), 0)
+    return inv_f(x), zero(eltype(x))
 end
 
 struct ToChol <: Bijectors.Bijector
     uplo::Char
 end
 
-Bijectors.with_logabsdet_jacobian(f::ToChol, x) = (Cholesky(Matrix(x), f.uplo, 0), 0)
-Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky) = (y.UL, 0)
+function Bijectors.with_logabsdet_jacobian(f::ToChol, x)
+    return Cholesky(Matrix(x), f.uplo, 0), zero(eltype(x))
+end
+
+function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky)
+    return y.UL, zero(eltype(y))
+end
+
 function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)
     return error(
         "Inverse{ToChol} is only defined for Cholesky factorizations. " *
