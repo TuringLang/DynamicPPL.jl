@@ -1,3 +1,12 @@
+"""
+    TrackedValue{T}
+
+A struct that wraps something on the right-hand side of `:=`. This is needed
+because the DynamicPPL compiler actually converts `lhs := rhs` to `lhs ~
+TrackedValue(rhs)` (so that we can hit the `tilde_assume` method below). Having
+the rhs wrapped in a TrackedValue makes sure that the logpdf of the rhs is not
+computed (as it wouldn't make sense).
+"""
 struct TrackedValue{T}
     value::T
 end
@@ -24,17 +33,27 @@ struct ValuesAsInModelContext{C<:AbstractContext} <: AbstractContext
     values::OrderedDict
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
+    "varnames to be tracked; `nothing` means track all varnames"
+    tracked_varnames::Union{Nothing,Array{<:VarName}}
     "child context"
     context::C
 end
-function ValuesAsInModelContext(include_colon_eq, context::AbstractContext)
-    return ValuesAsInModelContext(OrderedDict(), include_colon_eq, context)
+function ValuesAsInModelContext(
+    include_colon_eq::Bool,
+    tracked_varnames::Union{Nothing,Array{<:VarName}},
+    context::AbstractContext,
+)
+    return ValuesAsInModelContext(
+        OrderedDict(), include_colon_eq, tracked_varnames, context
+    )
 end
 
 NodeTrait(::ValuesAsInModelContext) = IsParent()
 childcontext(context::ValuesAsInModelContext) = context.context
 function setchildcontext(context::ValuesAsInModelContext, child)
-    return ValuesAsInModelContext(context.values, context.include_colon_eq, child)
+    return ValuesAsInModelContext(
+        context.values, context.include_colon_eq, context.tracked_varnames, child
+    )
 end
 
 is_extracting_values(context::ValuesAsInModelContext) = context.include_colon_eq
@@ -63,29 +82,38 @@ end
 
 # `tilde_asssume`
 function tilde_assume(context::ValuesAsInModelContext, right, vn, vi)
-    if is_tracked_value(right)
+    is_tracked_value_right = is_tracked_value(right)
+    if is_tracked_value_right
         value = right.value
         logp = zero(getlogp(vi))
     else
         value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
     end
     # Save the value.
-    push!(context, vn, value)
-    # Save the value.
+    if is_tracked_value_right ||
+        isnothing(context.tracked_varnames) ||
+        any(tracked_vn -> subsumes(tracked_vn, vn), context.tracked_varnames)
+        push!(context, vn, value)
+    end
     # Pass on.
     return value, logp, vi
 end
 function tilde_assume(
     rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, vn, vi
 )
-    if is_tracked_value(right)
+    is_tracked_value_right = is_tracked_value(right)
+    if is_tracked_value_right
         value = right.value
         logp = zero(getlogp(vi))
     else
         value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
     end
     # Save the value.
-    push!(context, vn, value)
+    if is_tracked_value_right ||
+        isnothing(context.tracked_varnames) ||
+        any(tracked_vn -> subsumes(tracked_vn, vn), context.tracked_varnames)
+        push!(context, vn, value)
+    end
     # Pass on.
     return value, logp, vi
 end
@@ -167,9 +195,39 @@ function values_as_in_model(
     model::Model,
     include_colon_eq::Bool,
     varinfo::AbstractVarInfo,
+    tracked_varnames=tracked_varnames(model),
     context::AbstractContext=DefaultContext(),
 )
-    context = ValuesAsInModelContext(include_colon_eq, context)
+    tracked_varnames = isnothing(tracked_varnames) ? nothing : collect(tracked_varnames)
+    context = ValuesAsInModelContext(include_colon_eq, tracked_varnames, context)
     evaluate!!(model, varinfo, context)
     return context.values
 end
+
+"""
+    tracked_varnames(model::Model)
+
+Returns a set of `VarName`s that the model should track.
+
+By default, this returns `nothing`, which means that all `VarName`s should be
+tracked.
+
+If you want to track only a subset of `VarName`s, you can override this method
+in your model definition:
+
+```julia
+@model function mymodel()
+    x ~ Normal()
+    y ~ Normal(x, 1)
+end
+
+DynamicPPL.tracked_varnames(::Model{typeof(mymodel)}) = [@varname(y)]
+```
+
+Then, when you sample from `mymodel()`, only the value of `y` will be tracked
+(and not `x`).
+
+Note that quantities on the left-hand side of `:=` are always tracked, and will
+ignore the varnames specified in this method.
+"""
+tracked_varnames(::Model) = nothing
