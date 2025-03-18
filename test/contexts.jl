@@ -167,7 +167,7 @@ end
             ctx1 = PrefixContext{:a}(DefaultContext())
             ctx2 = SamplingContext(ctx1)
             ctx3 = PrefixContext{:b}(ctx2)
-            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
+            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, nothing, ctx3)
             vn_prefixed1 = prefix(ctx1, vn)
             vn_prefixed2 = prefix(ctx2, vn)
             vn_prefixed3 = prefix(ctx3, vn)

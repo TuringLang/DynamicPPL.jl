@@ -4,11 +4,19 @@
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
         context::Ctx=DefaultContext()
+        tracked_varnames::Union{Nothing,Array{<:VarName}}
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
 types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
 arguments `missings`, and evaluation context of type `Ctx`.
+
+`tracked_varnames` is an array of VarNames that should be tracked during sampling. During
+model evaluation (with `DynamicPPL.evaluate!!`) all random variables are tracked; however,
+at the end of each iteration of MCMC sampling, `DynamicPPL.values_as_in_model` is used to
+extract the values of _only_ the tracked variables. This allows the user to control which
+variables are ultimately stored in the chain. This field can be set using the
+[`set_tracked_varnames`](@ref) function.
 
 Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
 `context` is by default `DefaultContext()`.
@@ -23,14 +31,17 @@ different arguments.
 # Examples
 
 ```julia
+julia> f(x) = x + 1  # Dummy function
+f (generic function with 1 method)
+
 julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
+Model{typeof(f), (:x, :y), (), (), Tuple{Float64, Float64}, Tuple{}, DefaultContext}(f, (x = 1.0, y = 2.0), NamedTuple(), DefaultContext(), nothing)
 
 julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
-Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+Model{typeof(f), (:x, :y), (:x,), (), Tuple{Float64, Float64}, Tuple{Int64}, DefaultContext}(f, (x = 1.0, y = 2.0), (x = 42,), DefaultContext(), nothing)
 
 julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
-Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+Model{typeof(f), (:x, :y), (:x,), (:y,), Tuple{Float64, Float64}, Tuple{Int64}, DefaultContext}(f, (x = 1.0, y = 2.0), (x = 42,), DefaultContext(), nothing)
 ```
 """
 struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
@@ -39,6 +50,7 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractConte
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
+    tracked_varnames::Union{Nothing,Array{<:VarName}}
 
     @doc """
         Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
@@ -51,9 +63,10 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractConte
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
+        tracked_varnames::Union{Nothing,Array{<:VarName}}=nothing,
     ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
         return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
-            f, args, defaults, context
+            f, args, defaults, context, tracked_varnames
         )
     end
 end
@@ -71,6 +84,7 @@ model with different arguments.
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
+    tracked_varnames::Union{Nothing,Array{<:VarName}}=nothing,
 ) where {F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
@@ -78,15 +92,36 @@ model with different arguments.
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
+    return :(Model{$(missing_args..., missing_kwargs...)}(
+        f, args, defaults, context, tracked_varnames
+    ))
 end
 
-function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
-    return Model(f, args, NamedTuple(kwargs), context)
+function Model(
+    f,
+    args::NamedTuple,
+    context::AbstractContext=DefaultContext(),
+    tracked_varnames::Union{Nothing,Array{<:VarName}}=nothing;
+    kwargs...,
+)
+    return Model(f, args, NamedTuple(kwargs), context, tracked_varnames)
 end
 
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context)
+    return Model(model.f, model.args, model.defaults, context, model.tracked_varnames)
+end
+
+"""
+    set_tracked_varnames(model::Model, varnames::Union{Nothing,Array{<:VarName}})
+
+Return a new `Model` which only tracks a subset of variables during sampling.
+
+If `varnames` is `nothing`, then all variables will be tracked. Otherwise, only
+the variables subsumed by `varnames` are tracked. For example, if `varnames =
+[@varname(x)]`, then any variable `x`, `x[1]`, `x.a`, ... will be tracked.
+"""
+function set_tracked_varnames(model::Model, varnames::Union{Nothing,Array{<:VarName}})
+    return Model(model.f, model.args, model.defaults, model.context, varnames)
 end
 
 """

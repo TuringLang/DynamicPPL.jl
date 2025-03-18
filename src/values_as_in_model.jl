@@ -195,39 +195,12 @@ function values_as_in_model(
     model::Model,
     include_colon_eq::Bool,
     varinfo::AbstractVarInfo,
-    tracked_varnames=tracked_varnames(model),
+    tracked_varnames=model.tracked_varnames,
     context::AbstractContext=DefaultContext(),
 )
+    @show tracked_varnames
     tracked_varnames = isnothing(tracked_varnames) ? nothing : collect(tracked_varnames)
     context = ValuesAsInModelContext(include_colon_eq, tracked_varnames, context)
     evaluate!!(model, varinfo, context)
     return context.values
 end
-
-"""
-    tracked_varnames(model::Model)
-
-Returns a set of `VarName`s that the model should track.
-
-By default, this returns `nothing`, which means that all `VarName`s should be
-tracked.
-
-If you want to track only a subset of `VarName`s, you can override this method
-in your model definition:
-
-```julia
-@model function mymodel()
-    x ~ Normal()
-    y ~ Normal(x, 1)
-end
-
-DynamicPPL.tracked_varnames(::Model{typeof(mymodel)}) = [@varname(y)]
-```
-
-Then, when you sample from `mymodel()`, only the value of `y` will be tracked
-(and not `x`).
-
-Note that quantities on the left-hand side of `:=` are always tracked, and will
-ignore the varnames specified in this method.
-"""
-tracked_varnames(::Model) = nothing

@@ -82,9 +82,9 @@
         @test !haskey(values, @varname(y))
         @test haskey(values, @varname(z))  # := is always included
 
-        # Specify instead using `tracked_varnames` method
-        DynamicPPL.tracked_varnames(::Model{typeof(track_specific)}) = [@varname(y)]
-        values = values_as_in_model(model, true, vi)
+        # Specify instead using `set_tracked_varnames` method
+        model2 = DynamicPPL.set_tracked_varnames(model, [@varname(y)])
+        values = values_as_in_model(model2, true, vi)
         @test !haskey(values, @varname(x[1]))
         @test !haskey(values, @varname(x[2]))
         @test haskey(values, @varname(y))
