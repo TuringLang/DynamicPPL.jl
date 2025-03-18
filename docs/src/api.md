@@ -201,6 +201,13 @@ Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are see
 values_as_in_model
 ```
 
+`values_as_in_model` also uses the `tracked_varnames` field on a [`Model`](@ref) to determine which variables are extracted.
+To change the value of this field, you can use [`set_tracked_varnames`](@ref).
+
+```@docs
+set_tracked_varnames
+```
+
 ```@docs
 NamedDist
 ```

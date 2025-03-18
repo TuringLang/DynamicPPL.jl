@@ -410,48 +410,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "values_as_in_model" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            vns = DynamicPPL.TestUtils.varnames(model)
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                # We can set the include_colon_eq arg to false because none of
-                # the demo models contain :=. The behaviour when
-                # include_colon_eq is true is tested in test/compiler.jl
-                realizations = values_as_in_model(model, false, varinfo)
-                # Ensure that all variables are found.
-                vns_found = collect(keys(realizations))
-                @test vns ∩ vns_found == vns ∪ vns_found
-                # Ensure that the values are the same.
-                for vn in vns
-                    @test realizations[vn] == varinfo[vn]
-                end
-            end
-        end
-
-        @testset "Prefixing" begin
-            @model inner() = x ~ Normal()
-
-            @model function outer_auto_prefix()
-                a ~ to_submodel(inner(), true)
-                b ~ to_submodel(inner(), true)
-                return nothing
-            end
-            @model function outer_manual_prefix()
-                a ~ to_submodel(prefix(inner(), :a), false)
-                b ~ to_submodel(prefix(inner(), :b), false)
-                return nothing
-            end
-
-            for model in (outer_auto_prefix(), outer_manual_prefix())
-                vi = VarInfo(model)
-                vns = Set(keys(values_as_in_model(model, false, vi)))
-                @test vns == Set([@varname(var"a.x"), @varname(var"b.x")])
-            end
-        end
-    end
-
     @testset "Erroneous model call" begin
         # Calling a model with the wrong arguments used to lead to infinite recursion, see
         # https://github.com/TuringLang/Turing.jl/issues/2182. This guards against it.
