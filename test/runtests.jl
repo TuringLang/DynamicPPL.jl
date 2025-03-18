@@ -62,14 +62,14 @@ include("test_util.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
         include("lkj.jl")
-        include("deprecated.jl")
-    end
-
-    if GROUP == "All" || GROUP == "Group2"
         include("contexts.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
+        include("deprecated.jl")
+    end
+
+    if GROUP == "All" || GROUP == "Group2"
         @testset "compat" begin
             include(joinpath("compat", "ad.jl"))
         end
