@@ -1,5 +1,13 @@
 # DynamicPPL Changelog
 
+## 0.35.4
+
+Fixed a type instability in an implementation of `with_logabsdet_jacobian`, which resulted in the log-jacobian returned being an Int in some cases and a Float in others.
+This resolves an Enzyme.jl error on a number of models.
+More generally, this version also changes the type of various log probabilities to be more consistent with one another.
+Although we aren't fully there yet, our eventual aim is that log probabilities will generally default to Float64 on 64-bit systems, and Float32 on 32-bit systems.
+If you run into any issues with these types, please get in touch.
+
 ## 0.35.3
 
 `model | (@varname(x) => 1.0, @varname(y) => 2.0)` now works.
