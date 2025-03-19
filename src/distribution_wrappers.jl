@@ -54,30 +54,38 @@ function Distributions.rand!(
 ) where {N}
     return Distributions.rand!(rng, d.dist, x)
 end
-Distributions.logpdf(d::NoDist{<:Univariate}, ::Real) = 0
-Distributions.logpdf(d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}) = 0
-function Distributions.logpdf(d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
-    return zeros(Int, size(x, 2))
+function Distributions.logpdf(::NoDist{<:Univariate}, x::Real)
+    return zero(LogProbType)
 end
-Distributions.logpdf(d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}) = 0
+function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractVector{<:Real})
+    return zero(LogProbType)
+end
+function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
+    return zeros(LogProbType, size(x, 2))
+end
+function Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real})
+    return zero(LogProbType)
+end
 Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
-Bijectors.logpdf_with_trans(d::NoDist{<:Univariate}, ::Real, ::Bool) = 0
-function Bijectors.logpdf_with_trans(
-    d::NoDist{<:Multivariate}, ::AbstractVector{<:Real}, ::Bool
-)
-    return 0
+function Bijectors.logpdf_with_trans(::NoDist{<:Univariate}, x::Real, ::Bool)
+    return zero(LogProbType)
 end
 function Bijectors.logpdf_with_trans(
-    d::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
+    ::NoDist{<:Multivariate}, x::AbstractVector{<:Real}, ::Bool
 )
-    return zeros(Int, size(x, 2))
+    return zero(LogProbType)
 end
 function Bijectors.logpdf_with_trans(
-    d::NoDist{<:Matrixvariate}, ::AbstractMatrix{<:Real}, ::Bool
+    ::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
 )
-    return 0
+    return zeros(LogProbType, size(x, 2))
+end
+function Bijectors.logpdf_with_trans(
+    ::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real}, ::Bool
+)
+    return zero(LogProbType)
 end
 
 Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)

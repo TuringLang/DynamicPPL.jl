@@ -821,7 +821,7 @@ end
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
 
 function TypedVarInfo(vi::VectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
