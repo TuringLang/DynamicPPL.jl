@@ -5,6 +5,16 @@ const NO_DEFAULT = NoDefault()
 # A short-hand for a type commonly used in type signatures for VarInfo methods.
 VarNameTuple = NTuple{N,VarName} where {N}
 
+# TODO(mhauru) This is currently used in the transformation functions of NoDist,
+# ReshapeTransform, and UnwrapSingletonTransform, and in VarInfo. We should also use it in
+# SimpleVarInfo and maybe other places.
+"""
+The type for all log probability variables.
+
+This is Float64 on 64-bit systems and Float32 on 32-bit systems.
+"""
+const LogProbType = float(Real)
+
 """
     @addlogprob!(ex)
 
@@ -253,7 +263,7 @@ function (f::UnwrapSingletonTransform)(x)
 end
 
 function Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x)
-    return f(x), zero(float_type_with_fallback(eltype(x)))
+    return f(x), zero(LogProbType)
 end
 
 function Bijectors.with_logabsdet_jacobian(
@@ -261,7 +271,7 @@ function Bijectors.with_logabsdet_jacobian(
 )
     f = inv_f.orig
     result = reshape([x], f.input_size)
-    return result, zero(float_type_with_fallback(eltype(x)))
+    return result, zero(LogProbType)
 end
 
 """
@@ -311,11 +321,11 @@ function (inv_f::Bijectors.Inverse{<:ReshapeTransform})(x)
 end
 
 function Bijectors.with_logabsdet_jacobian(f::ReshapeTransform, x)
-    return f(x), zero(float_type_with_fallback(eltype(x)))
+    return f(x), zero(LogProbType)
 end
 
 function Bijectors.with_logabsdet_jacobian(inv_f::Bijectors.Inverse{<:ReshapeTransform}, x)
-    return inv_f(x), zero(float_type_with_fallback(eltype(x)))
+    return inv_f(x), zero(LogProbType)
 end
 
 struct ToChol <: Bijectors.Bijector
@@ -323,11 +333,11 @@ struct ToChol <: Bijectors.Bijector
 end
 
 function Bijectors.with_logabsdet_jacobian(f::ToChol, x)
-    return Cholesky(Matrix(x), f.uplo, 0), zero(float_type_with_fallback(eltype(x)))
+    return Cholesky(Matrix(x), f.uplo, 0), zero(LogProbType)
 end
 
 function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y::Cholesky)
-    return y.UL, zero(float_type_with_fallback(eltype(y)))
+    return y.UL, zero(LogProbType)
 end
 
 function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)

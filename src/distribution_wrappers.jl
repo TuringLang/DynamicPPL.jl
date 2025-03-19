@@ -55,37 +55,37 @@ function Distributions.rand!(
     return Distributions.rand!(rng, d.dist, x)
 end
 function Distributions.logpdf(::NoDist{<:Univariate}, x::Real)
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractVector{<:Real})
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real})
-    return zeros(float_type_with_fallback(eltype(x)), size(x, 2))
+    return zeros(LogProbType, size(x, 2))
 end
 function Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real})
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 Distributions.minimum(d::NoDist) = minimum(d.dist)
 Distributions.maximum(d::NoDist) = maximum(d.dist)
 
 function Bijectors.logpdf_with_trans(::NoDist{<:Univariate}, x::Real, ::Bool)
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Multivariate}, x::AbstractVector{<:Real}, ::Bool
 )
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Multivariate}, x::AbstractMatrix{<:Real}, ::Bool
 )
-    return zeros(float_type_with_fallback(eltype(x)), size(x, 2))
+    return zeros(LogProbType, size(x, 2))
 end
 function Bijectors.logpdf_with_trans(
     ::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real}, ::Bool
 )
-    return zero(float_type_with_fallback(eltype(x)))
+    return zero(LogProbType)
 end
 
 Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)
