@@ -21,10 +21,9 @@ using EnzymeCore: set_runtime_activity, Forward, Reverse
 
     @testset "Correctness on supported AD backends" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-            # rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
-            # vns = DynamicPPL.TestUtils.varnames(m)
-            # varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
-            varinfos = [VarInfo(m)]
+            rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
+            vns = DynamicPPL.TestUtils.varnames(m)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 f = LogDensityFunction(m, varinfo)
