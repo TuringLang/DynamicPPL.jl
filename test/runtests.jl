@@ -8,6 +8,7 @@ using DifferentiationInterface
 using Distributions
 using DistributionsAD
 using Documenter
+using Enzyme: Enzyme
 using ForwardDiff
 using LogDensityProblems
 using MacroTools
