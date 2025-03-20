@@ -200,7 +200,11 @@ function VarInfo(
 )
     return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
 end
-VarInfo(model::Model, args...) = VarInfo(Random.default_rng(), model, args...)
+function VarInfo(
+    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
+)
+    return VarInfo(Random.default_rng(), model, args...)
+end
 
 """
     vector_length(varinfo::VarInfo)
@@ -215,7 +219,11 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     md = unflatten_metadata(vi.metadata, x)
     # Note that use of RefValue{eltype(x)} rather than Ref is necessary to deal with cases
     # where e.g. x is a type gradient of some AD backend.
-    return VarInfo(md, Base.RefValue{eltype(x)}(getlogp(vi)), Ref(get_num_produce(vi)))
+    return VarInfo(
+        md,
+        Base.RefValue{float_type_with_fallback(eltype(x))}(getlogp(vi)),
+        Ref(get_num_produce(vi)),
+    )
 end
 
 # We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
@@ -326,43 +334,41 @@ else
     _tail(nt::NamedTuple) = Base.tail(nt)
 end
 
-function subset(varinfo::UntypedVarInfo, vns::AbstractVector{<:VarName})
+function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
     return VarInfo(metadata, deepcopy(varinfo.logp), deepcopy(varinfo.num_produce))
 end
 
-function subset(varinfo::VectorVarInfo, vns::AbstractVector{<:VarName})
-    metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, deepcopy(varinfo.logp), deepcopy(varinfo.num_produce))
-end
-
-function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName{sym}}) where {sym}
-    # If all the variables are using the same symbol, then we can just extract that field from the metadata.
-    metadata = subset(getfield(varinfo.metadata, sym), vns)
-    return VarInfo(
-        NamedTuple{(sym,)}(tuple(metadata)),
-        deepcopy(varinfo.logp),
-        deepcopy(varinfo.num_produce),
-    )
-end
-
-function subset(varinfo::TypedVarInfo, vns::AbstractVector{<:VarName})
-    syms = Tuple(unique(map(getsym, vns)))
+function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
+    vns_syms = Set(unique(map(getsym, vns)))
+    syms = filter(Base.Fix2(in, vns_syms), keys(metadata))
     metadatas = map(syms) do sym
-        subset(getfield(varinfo.metadata, sym), filter(==(sym) ∘ getsym, vns))
+        subset(getfield(metadata, sym), filter(==(sym) ∘ getsym, vns))
     end
+    return NamedTuple{syms}(metadatas)
+end
 
-    return VarInfo(
-        NamedTuple{syms}(metadatas), deepcopy(varinfo.logp), deepcopy(varinfo.num_produce)
-    )
+# The above method is type unstable since we don't know which symbols are in `vns`.
+# In the below special case, when all `vns` have the same symbol, we can write a type stable
+# version.
+
+@generated function subset(
+    metadata::NamedTuple{names}, vns::AbstractVector{<:VarName{sym}}
+) where {names,sym}
+    return if (sym in names)
+        # TODO(mhauru) Note that this could still generate an empty metadata object if none
+        # of the lenses in `vns` are in `metadata`. Not sure if that's okay. Checking for
+        # emptiness would make this type unstable again.
+        :((; $sym=subset(metadata.$sym, vns)))
+    else
+        :(NamedTuple{}())
+    end
 end
 
 function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:VarName}
     # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
-    # For each `vn` in `vns`, get the variables subsumed by `vn`.
-    vns = mapreduce(vcat, vns_given; init=VN[]) do vn
-        filter(Base.Fix1(subsumes, vn), metadata.vns)
-    end
+    # Find all the vns in metadata that are subsumed by one of the given vns.
+    vns = filter(vn -> any(subsumes(vn_given, vn) for vn_given in vns_given), metadata.vns)
     indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
     indices = if isempty(vns)
         Dict{VarName,Int}()
@@ -815,7 +821,7 @@ end
 
 # VarInfo
 
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{Float64}(0.0), Ref(0))
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
 
 function TypedVarInfo(vi::VectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)

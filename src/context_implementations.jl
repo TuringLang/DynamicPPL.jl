@@ -195,7 +195,7 @@ function tilde_observe!!(context, right, left, vi)
     return left, acclogp_observe!!(context, vi, logp)
 end
 
-function assume(rng, spl::Sampler, dist)
+function assume(rng::Random.AbstractRNG, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 

@@ -14,7 +14,6 @@ using MacroTools
 using MCMCChains
 using Mooncake: Mooncake
 using StableRNGs
-using Tracker
 using ReverseDiff
 using Zygote
 using Compat
@@ -36,6 +35,7 @@ using OrderedCollections: OrderedSet
 using DynamicPPL: getargs_dottilde, getargs_tilde
 
 const GROUP = get(ENV, "GROUP", "All")
+const AQUA = get(ENV, "AQUA", "true") == "true"
 Random.seed!(100)
 
 include("test_util.jl")
@@ -45,6 +45,9 @@ include("test_util.jl")
     # groups are chosen to make both groups take roughly the same amount of
     # time, but beyond that there is no particular reason for the split.
     if GROUP == "All" || GROUP == "Group1"
+        if AQUA
+            include("Aqua.jl")
+        end
         include("utils.jl")
         include("compiler.jl")
         include("varnamedvector.jl")
@@ -59,14 +62,14 @@ include("test_util.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
         include("lkj.jl")
-        include("deprecated.jl")
-    end
-
-    if GROUP == "All" || GROUP == "Group2"
         include("contexts.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
+        include("deprecated.jl")
+    end
+
+    if GROUP == "All" || GROUP == "Group2"
         @testset "compat" begin
             include(joinpath("compat", "ad.jl"))
         end

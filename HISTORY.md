@@ -1,5 +1,28 @@
 # DynamicPPL Changelog
 
+## 0.35.4
+
+Fixed a type instability in an implementation of `with_logabsdet_jacobian`, which resulted in the log-jacobian returned being an Int in some cases and a Float in others.
+This resolves an Enzyme.jl error on a number of models.
+More generally, this version also changes the type of various log probabilities to be more consistent with one another.
+Although we aren't fully there yet, our eventual aim is that log probabilities will generally default to Float64 on 64-bit systems, and Float32 on 32-bit systems.
+If you run into any issues with these types, please get in touch.
+
+## 0.35.3
+
+`model | (@varname(x) => 1.0, @varname(y) => 2.0)` now works.
+Previously, this would throw a `MethodError` if the tuple had more than one element.
+
+## 0.35.2
+
+`unflatten(::VarInfo, params)` now works with params that have non-float types (such as Int or Bool).
+
+## 0.35.1
+
+`subset(::AbstractVarInfo, ::AbstractVector{<:VarName})` now preserves the ordering of the varnames in the original varinfo argument.
+Previously, this would select the varnames according to their order in the second argument.
+This fixes an upstream Turing.jl issue with Gibbs sampling when a component sampler was assigned multiple variables.
+
 ## 0.35.0
 
 **Breaking changes**

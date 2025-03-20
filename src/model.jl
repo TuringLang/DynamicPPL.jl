@@ -287,7 +287,7 @@ AbstractDict (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g.
 `condition(model, x=1, y=2)`).
 """
 _make_conditioning_values(values::Union{NamedTuple,AbstractDict}) = values
-_make_conditioning_values(values::Tuple{Pair{<:VarName}}) = Dict(values)
+_make_conditioning_values(values::NTuple{N,Pair{<:VarName}}) where {N} = Dict(values)
 _make_conditioning_values(v::Pair{<:Symbol}, vs::Pair{<:Symbol}...) = NamedTuple(v, vs...)
 _make_conditioning_values(v::Pair{<:VarName}, vs::Pair{<:VarName}...) = Dict(v, vs...)
 

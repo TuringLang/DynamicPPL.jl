@@ -729,6 +729,16 @@ end
                 # Values should be the same.
                 @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
             end
+
+            @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
+                                                                         vns_supported
+                varinfo_subset = subset(varinfo, vns_subset)
+                vns_subset_reversed = reverse(vns_subset)
+                varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
+                @test varinfo_subset[:] == varinfo_subset_reversed[:]
+                ground_truth = [varinfo[vn] for vn in vns_subset]
+                @test varinfo_subset[:] == ground_truth
+            end
         end
 
         # For certain varinfos we should have errors.
@@ -1006,5 +1016,16 @@ end
         @test vi.metadata.a.orders == [1, 3]
         @test vi.metadata.b.orders == [2]
         @test DynamicPPL.get_num_produce(vi) == 3
+    end
+
+    @testset "issue #842" begin
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        varinfo = VarInfo(model)
+
+        n = length(varinfo[:])
+        # `Bool`.
+        @test getlogp(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
+        # `Int`.
+        @test getlogp(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
     end
 end
