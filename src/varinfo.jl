@@ -106,14 +106,6 @@ const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
 # multiple times.
 transformation(::VarInfo) = DynamicTransformation()
 
-# TODO(mhauru) Isn't this the same as unflatten and/or replace_values?
-function VarInfo(old_vi::VarInfo, x::AbstractVector)
-    md = replace_values(old_vi.metadata, x)
-    return VarInfo(
-        md, Base.RefValue{eltype(x)}(getlogp(old_vi)), Ref(get_num_produce(old_vi))
-    )
-end
-
 # No-op if we're already working with a `VarNamedVector`.
 metadata_to_varnamedvector(vnv::VarNamedVector) = vnv
 function metadata_to_varnamedvector(md::Metadata)
@@ -243,9 +235,8 @@ end
     return :($(exprs...),)
 end
 
-# For Metadata unflatten and replace_values are the same. For VarNamedVector they are not.
 function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return replace_values(md, x)
+    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.orders, md.flags)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
@@ -253,31 +244,6 @@ unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
 # without AbstractSampler
 function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
     return VarInfo(rng, model, SampleFromPrior(), context)
-end
-
-function replace_values(metadata::Metadata, x)
-    return Metadata(
-        metadata.idcs,
-        metadata.vns,
-        metadata.ranges,
-        x,
-        metadata.dists,
-        metadata.orders,
-        metadata.flags,
-    )
-end
-
-@generated function replace_values(metadata::NamedTuple{names}, x) where {names}
-    exprs = []
-    offset = :(0)
-    for f in names
-        mdf = :(metadata.$f)
-        len = :(sum(length, $mdf.ranges))
-        push!(exprs, :($f = replace_values($mdf, x[($offset + 1):($offset + $len)])))
-        offset = :($offset + $len)
-    end
-    length(exprs) == 0 && return :(NamedTuple())
-    return :($(exprs...),)
 end
 
 ####
@@ -652,9 +618,19 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # what a bijector would result in, even if the input is a view (`SubArray`).
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
 getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
-
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
+end
+getindex_internal(vi::VarInfo, ::Colon) = getindex_internal(vi.metadata, Colon())
+# NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
+# See for example https://github.com/JuliaLang/julia/pull/46381.
+function getindex_internal(vi::TypedVarInfo, ::Colon)
+    return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
+end
+function getindex_internal(md::Metadata, ::Colon)
+    return mapreduce(
+        Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
+    )
 end
 
 """
@@ -670,56 +646,6 @@ function setval!(md::Metadata, val::AbstractVector, vn::VarName)
 end
 function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
-end
-
-"""
-    getall(vi::VarInfo)
-
-Return the values of all the variables in `vi`.
-
-The values may or may not be transformed to Euclidean space.
-"""
-getall(vi::VarInfo) = getall(vi.metadata)
-# NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
-# See for example https://github.com/JuliaLang/julia/pull/46381.
-getall(vi::TypedVarInfo) = reduce(vcat, map(getall, vi.metadata))
-function getall(md::Metadata)
-    return mapreduce(
-        Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
-    )
-end
-getall(vnv::VarNamedVector) = getindex_internal(vnv, Colon())
-
-"""
-    setall!(vi::VarInfo, val)
-
-Set the values of all the variables in `vi` to `val`.
-
-The values may or may not be transformed to Euclidean space.
-"""
-setall!(vi::VarInfo, val) = _setall!(vi.metadata, val)
-
-function _setall!(metadata::Metadata, val)
-    for r in metadata.ranges
-        metadata.vals[r] .= val[r]
-    end
-end
-function _setall!(vnv::VarNamedVector, val)
-    # TODO(mhauru) Do something more efficient here.
-    for i in 1:length_internal(vnv)
-        setindex_internal!(vnv, val[i], i)
-    end
-end
-@generated function _setall!(metadata::NamedTuple{names}, val) where {names}
-    expr = Expr(:block)
-    start = :(1)
-    for f in names
-        length = :(sum(length, metadata.$f.ranges))
-        finish = :($start + $length - 1)
-        push!(expr.args, :(copyto!(metadata.$f.vals, 1, val, $start, $length)))
-        start = :($start + $length)
-    end
-    return expr
 end
 
 function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
@@ -2114,7 +2040,7 @@ function _setval_and_resample_kernel!(
 end
 
 values_as(vi::VarInfo) = vi.metadata
-values_as(vi::VarInfo, ::Type{Vector}) = copy(getall(vi))
+values_as(vi::VarInfo, ::Type{Vector}) = copy(getindex_internal(vi, Colon()))
 function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))

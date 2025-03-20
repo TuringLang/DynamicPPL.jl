@@ -163,12 +163,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 Random.seed!(100 + i)
                 vi = VarInfo()
                 model(Random.default_rng(), vi, sampler)
-                vals = DynamicPPL.getall(vi)
+                vals = vi[:]
 
                 Random.seed!(100 + i)
                 vi = VarInfo()
                 model(Random.default_rng(), vi, sampler)
-                @test DynamicPPL.getall(vi) == vals
+                @test vi[:] == vals
             end
         end
     end
@@ -240,7 +240,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         for i in 1:10
             # Sample with large variations.
             r_raw = randn(length(vi[:])) * 10
-            DynamicPPL.setall!(vi, r_raw)
+            vi = DynamicPPL.unflatten(vi, r_raw)
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)
