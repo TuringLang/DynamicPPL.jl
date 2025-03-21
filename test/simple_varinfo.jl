@@ -258,7 +258,7 @@
                 # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
                 lp = getlogp(svi)
                 # needs higher atol because of https://github.com/TuringLang/Bijectors.jl/issues/375
-                @test lp ≈ lp_true atol=1.2e-5
+                @test lp ≈ lp_true atol = 1.2e-5
             end
         end
     end
