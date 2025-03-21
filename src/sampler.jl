@@ -151,7 +151,21 @@ By default, it returns an instance of [`SampleFromPrior`](@ref).
 """
 initialsampler(spl::Sampler) = SampleFromPrior()
 
-function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector)
+"""
+    set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
+    set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
+
+Take the values inside `initial_params`, replace the corresponding values in
+the given VarInfo object, and return a new VarInfo object with the updated values.
+
+This differs from `DynamicPPL.unflatten` in two ways:
+
+1. It works with `NamedTuple` arguments.
+2. For the `AbstractVector` method, if any of the elements are missing, it will not
+overwrite the original value in the VarInfo (it will just use the original
+value instead).
+"""
+function set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
     throw(
         ArgumentError(
             "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
@@ -160,7 +174,7 @@ function set_values!!(varinfo::AbstractVarInfo, initial_params::AbstractVector)
     )
 end
 
-function set_values!!(
+function set_initial_values(
     varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}
 )
     flattened_param_vals = varinfo[:]
@@ -180,11 +194,12 @@ function set_values!!(
     end
 
     # Update in `varinfo`.
-    setall!(varinfo, flattened_param_vals)
-    return varinfo
+    new_varinfo = unflatten(varinfo, flattened_param_vals)
+    return new_varinfo
 end
 
-function set_values!!(varinfo::AbstractVarInfo, initial_params::NamedTuple)
+function set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
+    varinfo = deepcopy(varinfo)
     vars_in_varinfo = keys(varinfo)
     for v in keys(initial_params)
         vn = VarName{v}()
@@ -219,7 +234,7 @@ function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Mod
     end
 
     # Set the values in `vi`.
-    vi = set_values!!(vi, initial_params)
+    vi = set_initial_values(vi, initial_params)
 
     # `invlink` if needed.
     if linked

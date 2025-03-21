@@ -8,9 +8,10 @@
 end
 const gdemo_default = gdemo_d()
 
+# TODO(penelopeysm): Remove this (and also test/compat/ad.jl)
 function test_model_ad(model, logp_manual)
     vi = VarInfo(model)
-    x = DynamicPPL.getall(vi)
+    x = vi[:]
 
     # Log probabilities using the model.
     ℓ = DynamicPPL.LogDensityFunction(model, vi)
