@@ -243,7 +243,7 @@ julia> model() ≠ 1.0
 true
 
 julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
-       conditioned_model = model | (var"inner.m" = 1.0, );
+       conditioned_model = model | (@varname(inner.m) => 1.0, );
 
 julia> conditioned_model()
 1.0
@@ -254,15 +254,6 @@ julia> # However, it's not possible to condition `inner` directly.
 julia> conditioned_model_fail()
 ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
 [...]
-```
-
-And similarly when using `Dict`:
-
-```jldoctest condition
-julia> conditioned_model_dict = model | (@varname(var"inner.m") => 1.0);
-
-julia> conditioned_model_dict()
-1.0
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
@@ -583,7 +574,7 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> fixed_model = fix(model, var"inner.m" = 1.0, );
+julia> fixed_model = fix(model, (@varname(inner.m) => 1.0, ));
 
 julia> fixed_model()
 1.0
@@ -599,24 +590,9 @@ julia> fixed_model()
 2.0
 ```
 
-And similarly when using `Dict`:
-
-```jldoctest fix
-julia> fixed_model_dict = fix(model, @varname(var"inner.m") => 1.0);
-
-julia> fixed_model_dict()
-1.0
-
-julia> fixed_model_dict = fix(model, @varname(inner) => 2.0);
-
-julia> fixed_model_dict()
-2.0
-```
-
 ## Difference from `condition`
 
-A very similar functionality is also provided by [`condition`](@ref) which,
-not surprisingly, _conditions_ variables instead of fixing them. The only
+A very similar functionality is also provided by [`condition`](@ref). The only
 difference between fixing and conditioning is as follows:
 - `condition`ed variables are considered to be observations, and are thus
   included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
@@ -798,11 +774,11 @@ julia> fixed(cm)
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
+1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
 julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
-       cm = fix(contextualize(m, PrefixContext{:a}(fix(var"a.m"=1.0))), x=100.0);
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(@varname(a.m) => 1.0,))), x=100.0);
 
 julia> fixed(cm).x
 100.0

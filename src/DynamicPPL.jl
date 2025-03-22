@@ -39,7 +39,7 @@ import Base:
     keys,
     haskey
 
-import AbstractPPL: predict
+import AbstractPPL: predict, prefix
 
 # VarInfo
 export AbstractVarInfo,

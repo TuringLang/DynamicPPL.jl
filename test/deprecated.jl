@@ -31,7 +31,7 @@
             @test outer()() isa Tuple{Float64,Float64}
             vi = VarInfo(outer())
             @test @varname(x) in keys(vi)
-            @test @varname(var"sub.x") in keys(vi)
+            @test @varname(sub.x) in keys(vi)
         end
 
         @testset "logp is still accumulated properly" begin
