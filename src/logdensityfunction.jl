@@ -18,16 +18,25 @@ is_supported(::ADTypes.AutoReverseDiff) = true
     LogDensityFunction(
         model::Model,
         varinfo::AbstractVarInfo=VarInfo(model),
-        context::AbstractContext=DefaultContext()
+        context::AbstractContext=DefaultContext();
+        adtype::Union{Nothing,ADTypes.AbstractADType}=model.adtype,
     )
 
 A struct which contains a model, along with all the information necessary to
 calculate its log density at a given point.
 
+If the `adtype` keyword argument is specified, it is used to overwrite the
+existing `adtype` in the model supplied.
+
 At its most basic level, a LogDensityFunction wraps the model together with its
 the type of varinfo to be used, as well as the evaluation context. These must
 be known in order to calculate the log density (using
 [`DynamicPPL.evaluate!!`](@ref)).
+
+Using this information, `DynamicPPL.LogDensityFunction` implements the
+LogDensityProblems.jl interface. If the underlying model's `adtype` is nothing,
+then only `logdensity` is implemented. If the model's `adtype` is a concrete AD
+backend type, then `logdensity_and_gradient` is also implemented.
 
 # Fields
 $(FIELDS)
@@ -79,6 +88,12 @@ julia> f = LogDensityFunction(model_with_ad);
 
 julia> LogDensityProblems.logdensity_and_gradient(f, [0.0])
 (-2.3378770664093453, [1.0])
+
+julia> # Alternatively, we can set the AD backend when creating the LogDensityFunction.
+       f = LogDensityFunction(model, adtype=ADTypes.AutoForwardDiff());
+
+julia> LogDensityProblems.logdensity_and_gradient(f, [0.0])
+(-2.3378770664093453, [1.0])
 ```
 """
 struct LogDensityFunction{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}
@@ -94,18 +109,16 @@ struct LogDensityFunction{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}
     function LogDensityFunction(
         model::Model,
         varinfo::AbstractVarInfo=VarInfo(model),
-        context::AbstractContext=leafcontext(model.context),
+        context::AbstractContext=leafcontext(model.context);
+        adtype::Union{Nothing,ADTypes.AbstractADType}=model.adtype,
     )
-        adtype = model.adtype
         if adtype === nothing
             prep = nothing
         else
-            # Make backend-specific tweaks to the adtype
-            # This should arguably be done in the model constructor, but it needs the
-            # varinfo and context to do so, and it seems excessive to construct a
-            # varinfo at the point of calling Model().
             adtype = tweak_adtype(adtype, model, varinfo, context)
-            model = Model(model, adtype)
+            if adtype != model.adtype
+                model = Model(model, adtype)
+            end
             # Check whether it is supported
             is_supported(adtype) ||
                 @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
@@ -148,7 +161,7 @@ function LogDensityFunction(
     return if adtype === f.model.adtype
         f  # Avoid recomputing prep if not needed
     else
-        LogDensityFunction(Model(f.model, adtype), f.varinfo, f.context)
+        LogDensityFunction(f.model, f.varinfo, f.context; adtype=adtype)
     end
 end
 
