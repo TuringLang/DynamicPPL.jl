@@ -162,8 +162,16 @@ Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
     getindex_internal(vi::AbstractVarInfo, vns::Vector{<:VarName})
+    getindex_internal(vi::AbstractVarInfo, ::Colon)
 
-Return the current value(s) of `vn` (`vns`) in `vi` as represented internally in `vi`.
+Return the internal value of the varname `vn`, varnames `vns`, or all varnames
+in `vi` respectively. The internal value is the value of the variables that is
+stored in the varinfo object; this may be the actual realisation of the random
+variable (i.e. the value sampled from the distribution), or it may have been
+transformed to Euclidean space, depending on whether the varinfo was linked.
+
+See https://turinglang.org/docs/developers/transforms/dynamicppl/ for more
+information on how transformed variables are stored in DynamicPPL.
 
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
