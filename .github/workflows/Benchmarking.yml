@@ -63,7 +63,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Benchmark Report for Commit [`${{ env.DPPL_COMMIT_SHA }}`](${{ env.DPPL_COMMIT_URL }})
+            ## Benchmark Report for Commit ${{ env.DPPL_COMMIT_SHA }}
             ### Computer Information
             ```
             ${{ env.VERSION_INFO }}
