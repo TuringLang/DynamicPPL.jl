@@ -45,16 +45,16 @@ using DynamicPPL: LogDensityFunction
                         @test_throws ArgumentError DynamicPPL.LogDensityFunction(
                             ref_ldf, adtype
                         )
-                    elseif is_mooncake && is_1_10 && is_svi_vnv
-                        # TODO: report upstream
-                        @test_throws UndefRefError DynamicPPL.LogDensityFunction(
-                            ref_ldf, adtype
-                        )
-                    elseif is_mooncake && is_1_10 && is_svi_od
-                        # TODO: report upstream
-                        @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
-                            ref_ldf, adtype
-                        )
+                        # elseif is_mooncake && is_1_10 && is_svi_vnv
+                        #     # TODO: report upstream
+                        #     @test_throws UndefRefError DynamicPPL.LogDensityFunction(
+                        #         ref_ldf, adtype
+                        #     )
+                        # elseif is_mooncake && is_1_10 && is_svi_od
+                        #     # TODO: report upstream
+                        #     @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
+                        #         ref_ldf, adtype
+                        #     )
                     else
                         ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
                         logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
