@@ -3,6 +3,7 @@ using Pkg
 Pkg.develop(; path=joinpath(@__DIR__, ".."))
 
 using DynamicPPL: DynamicPPL, make_benchmark_suite, VarInfo
+using ADTypes
 using BenchmarkTools: @benchmark, median, run
 using PrettyTables: PrettyTables, ft_printf
 using ForwardDiff: ForwardDiff
@@ -48,6 +49,21 @@ lda_instance = begin
     Models.lda(2, d, w)
 end
 
+# AD types setup
+fd = AutoForwardDiff()
+rd = AutoReverseDiff()
+mc = AutoMooncake(; config=nothing)
+"""
+    get_adtype_shortname(adtype::ADTypes.AbstractADType)
+
+Get the package name that corresponds to the the AD backend `adtype`. Only used
+for pretty-printing.
+"""
+get_adtype_shortname(::AutoMooncake) = "Mooncake"
+get_adtype_shortname(::AutoForwardDiff) = "ForwardDiff"
+get_adtype_shortname(::AutoReverseDiff{false}) = "ReverseDiff"
+get_adtype_shortname(::AutoReverseDiff{true}) = "ReverseDiff:Compiled"
+
 # Specify the combinations to test:
 # (Model Name, model instance, VarInfo choice, AD backend, linked)
 chosen_combinations = [
@@ -55,22 +71,22 @@ chosen_combinations = [
         "Simple assume observe",
         Models.simple_assume_observe(randn(StableRNG(23))),
         :typed,
-        :forwarddiff,
+        fd,
         false,
     ),
-    ("Smorgasbord", smorgasbord_instance, :typed, :forwarddiff, false),
-    ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
-    ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
-    ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
-    ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
-    ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
-    ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
-    ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-    ("Submodel", Models.parent(randn(StableRNG(23))), :typed, :mooncake, true),
-    ("LDA", lda_instance, :typed, :reversediff, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, fd, false),
+    ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, fd, true),
+    ("Smorgasbord", smorgasbord_instance, :untyped, fd, true),
+    ("Smorgasbord", smorgasbord_instance, :simple_dict, fd, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, rd, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, mc, true),
+    ("Loop univariate 1k", loop_univariate1k, :typed, mc, true),
+    ("Multivariate 1k", multivariate1k, :typed, mc, true),
+    ("Loop univariate 10k", loop_univariate10k, :typed, mc, true),
+    ("Multivariate 10k", multivariate10k, :typed, mc, true),
+    ("Dynamic", Models.dynamic(), :typed, mc, true),
+    ("Submodel", Models.parent(randn(StableRNG(23))), :typed, mc, true),
+    ("LDA", lda_instance, :typed, rd, true),
 ]
 
 # Time running a model-like function that does not use DynamicPPL, as a reference point.
@@ -83,7 +99,7 @@ end
 results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
-    @info "Running benchmark for $model_name"
+    @info "Running benchmark for $model_name / $varinfo_choice / $(get_adtype_shortname(adbackend))"
     suite = make_benchmark_suite(StableRNG(23), model, varinfo_choice, adbackend, islinked)
     results = run(suite)
     eval_time = median(results["evaluation"]).time
@@ -95,7 +111,7 @@ for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinati
         (
             model_name,
             model_dimension(model, islinked),
-            string(adbackend),
+            get_adtype_shortname(adbackend),
             string(varinfo_choice),
             islinked,
             relative_eval_time,
