@@ -125,6 +125,8 @@ export AbstractVarInfo,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
+    # Benchmarking
+    make_benchmark_suite,
     # Deprecated.
     @logprob_str,
     @prob_str,

@@ -245,6 +245,24 @@ DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
+## Benchmarking Utilities
+
+If you have `BenchmarkTools` loaded, this function will be available:
+
+```@docs
+DynamicPPL.make_benchmark_suite
+```
+
+For more fine-grained control over this, you can construct a [`LogDensityFunction`](@ref) yourself and run something along the lines of:
+
+```julia
+# set up your model and varinfo here
+ldf = LogDensityFunction(model, varinfo; adtype=adtype)
+params = varinfo[:]
+@benchmark LogDensityProblems.logdensity($ldf, params)
+@benchmark LogDensityProblems.logdensity_with_gradient($ldf, params)
+```
+
 ## Debugging Utilities
 
 DynamicPPL provides a few methods for checking validity of a model-definition.

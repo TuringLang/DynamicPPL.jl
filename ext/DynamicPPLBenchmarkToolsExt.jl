@@ -16,14 +16,17 @@ using Random: Random
 
 Create a benchmark suite for `model` using the selected varinfo type and AD backend.
 Available varinfo choices:
-  • `:untyped`           → uses `VarInfo()`
-  • `:typed`             → uses `VarInfo(model)`
-  • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
-  • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
+- `:untyped`           → uses `VarInfo()`
+- `:typed`             → uses `VarInfo(model)`
+- `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
+- `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
+
+Note that to run AD with a given backend, you will also need to load the backend yourself. For example,
+if `adtype` is `AutoForwardDiff()`, you will need to `import ForwardDiff`.
 
 `islinked` determines whether to link the VarInfo for evaluation.
 """
-function make_benchmark_suite(
+function DynamicPPL.make_benchmark_suite(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo_choice::Symbol,
@@ -67,10 +70,10 @@ function make_benchmark_suite(
 
     return suite
 end
-function make_benchmark_suite(
+function DynamicPPL.make_benchmark_suite(
     model::Model, varinfo_choice::Symbol, adtype::Symbol, islinked::Bool
 )
-    return make_benchmark_suite(
+    return DynamicPPL.make_benchmark_suite(
         Random.default_rng(), model, varinfo_choice, adtype, islinked
     )
 end

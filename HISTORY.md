@@ -1,5 +1,26 @@
 # DynamicPPL Changelog
 
+## 0.36.0
+
+### BenchmarkTools extension
+
+DynamicPPL now contains a BenchmarkTools extension.
+If you have both packages loaded, then it exports a single function `make_benchmark_suite`, which returns a `BenchmarkTools.BenchmarkGroup` object.
+Running this will give you information about the time taken to evaluate the log density of the model ("evaluation"), as well as the time taken to evaluate its gradient.
+
+Note that benchmarking both of these is in general much easier since the changes in 0.35.0.
+If you just want to run a single model, the easiest way is to do this:
+
+```julia
+@model f() = ...
+ldf = LogDensityFunction(f(); adtype=AutoMyBackend())
+params = ldf.varinfo[:]
+@btime LogDensityProblems.logdensity($ldf, params)
+@btime LogDensityProblems.logdensity_and_gradient($ldf, params)
+```
+
+The `make_benchmark_suite` function is essentially a nice wrapper around this.
+
 ## 0.35.5
 
 Several internal methods have been removed:
