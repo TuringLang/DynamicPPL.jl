@@ -217,8 +217,11 @@ if isdefined(Base.Experimental, :register_error_hint)
     end
 end
 
-# Standard tag: Improves stacktraces
-# Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
+# DynamicPPLForwardDiffExt
+# Improves stacktraces, see https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
 struct DynamicPPLTag end
+
+# DynamicPPLBenchmarkToolsExt
+function make_benchmark_suite end
 
 end # module
