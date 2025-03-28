@@ -4,6 +4,10 @@
 
 **Breaking changes**
 
+### VarInfo constructor
+
+`VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
+
 ### VarName prefixing behaviour
 
 The way in which VarNames in submodels are prefixed has been changed.
