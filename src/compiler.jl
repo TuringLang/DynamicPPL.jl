@@ -113,7 +113,7 @@ function contextual_isassumption(context::ConditionContext, vn)
     return contextual_isassumption(childcontext(context), vn)
 end
 function contextual_isassumption(context::PrefixContext, vn)
-    return contextual_isassumption(childcontext(context), prefix_with_context(context, vn))
+    return contextual_isassumption(childcontext(context), prefix(context, vn))
 end
 
 isfixed(expr, vn) = false
@@ -132,7 +132,7 @@ function contextual_isfixed(context::AbstractContext, vn)
     return contextual_isfixed(NodeTrait(context), context, vn)
 end
 function contextual_isfixed(context::PrefixContext, vn)
-    return contextual_isfixed(childcontext(context), prefix_with_context(context, vn))
+    return contextual_isfixed(childcontext(context), prefix(context, vn))
 end
 function contextual_isfixed(context::FixedContext, vn)
     if hasfixed(context, vn)

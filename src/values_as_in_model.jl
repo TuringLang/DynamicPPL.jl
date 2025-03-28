@@ -45,7 +45,7 @@ is_extracting_values(::IsParent, ::AbstractContext) = false
 is_extracting_values(::IsLeaf, ::AbstractContext) = false
 
 function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
-    return setindex!(context.values, copy(value), prefix_with_context(context, vn))
+    return setindex!(context.values, copy(value), prefix(context, vn))
 end
 
 function broadcast_push!(context::ValuesAsInModelContext, vns, values)

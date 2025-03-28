@@ -173,24 +173,24 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 ),
             )
             vn = VarName{:x}()
-            vn_prefixed = @inferred DynamicPPL.prefix_with_context(ctx, vn)
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
             @test vn_prefixed == @varname(a.b.c.d.e.f.x)
 
             vn = VarName{:x}(((1,),))
-            vn_prefixed = @inferred DynamicPPL.prefix_with_context(ctx, vn)
+            vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
             @test vn_prefixed == @varname(a.b.c.d.e.f.x[1])
         end
 
         @testset "nested within arbitrary context stacks" begin
             vn = @varname(x[1])
             ctx1 = PrefixContext{:a}(DefaultContext())
-            @test DynamicPPL.prefix_with_context(ctx1, vn) == @varname(a.x[1])
+            @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
             ctx2 = SamplingContext(ctx1)
-            @test DynamicPPL.prefix_with_context(ctx2, vn) == @varname(a.x[1])
+            @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext{:b}(ctx2)
-            @test DynamicPPL.prefix_with_context(ctx3, vn) == @varname(b.a.x[1])
+            @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
             ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
-            @test DynamicPPL.prefix_with_context(ctx4, vn) == @varname(b.a.x[1])
+            @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS

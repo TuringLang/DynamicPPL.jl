@@ -261,23 +261,19 @@ function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
 end
 
 """
-    prefix_with_context(ctx::AbstractContext, vn::VarName)
+    prefix(ctx::AbstractContext, vn::VarName)
 
 Apply the prefixes in the context `ctx` to the variable name `vn`.
 """
-function prefix_with_context(
-    ctx::PrefixContext{Prefix}, vn::VarName{Sym}
-) where {Prefix,Sym}
-    return AbstractPPL.prefix(
-        prefix_with_context(childcontext(ctx), vn), VarName{Symbol(Prefix)}()
-    )
+function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
+    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Symbol(Prefix)}())
 end
-function prefix_with_context(ctx::AbstractContext, vn::VarName)
-    return prefix_with_context(NodeTrait(ctx), ctx, vn)
+function prefix(ctx::AbstractContext, vn::VarName)
+    return prefix(NodeTrait(ctx), ctx, vn)
 end
-prefix_with_context(::IsLeaf, ::AbstractContext, vn::VarName) = vn
-function prefix_with_context(::IsParent, ctx::AbstractContext, vn::VarName)
-    return prefix_with_context(childcontext(ctx), vn)
+prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn
+function prefix(::IsParent, ctx::AbstractContext, vn::VarName)
+    return prefix(childcontext(ctx), vn)
 end
 
 """
@@ -392,7 +388,7 @@ function hasconditioned_nested(::IsParent, context, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
 function hasconditioned_nested(context::PrefixContext, vn)
-    return hasconditioned_nested(childcontext(context), prefix_with_context(context, vn))
+    return hasconditioned_nested(childcontext(context), prefix(context, vn))
 end
 
 """
@@ -410,7 +406,7 @@ function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getconditioned_nested(context::PrefixContext, vn)
-    return getconditioned_nested(childcontext(context), prefix_with_context(context, vn))
+    return getconditioned_nested(childcontext(context), prefix(context, vn))
 end
 function getconditioned_nested(::IsParent, context, vn)
     return if hasconditioned(context, vn)
@@ -543,7 +539,7 @@ function hasfixed_nested(::IsParent, context, vn)
     return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
 end
 function hasfixed_nested(context::PrefixContext, vn)
-    return hasfixed_nested(childcontext(context), prefix_with_context(context, vn))
+    return hasfixed_nested(childcontext(context), prefix(context, vn))
 end
 
 """
@@ -561,7 +557,7 @@ function getfixed_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getfixed_nested(context::PrefixContext, vn)
-    return getfixed_nested(childcontext(context), prefix_with_context(context, vn))
+    return getfixed_nested(childcontext(context), prefix(context, vn))
 end
 function getfixed_nested(::IsParent, context, vn)
     return if hasfixed(context, vn)

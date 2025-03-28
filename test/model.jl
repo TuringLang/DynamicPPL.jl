@@ -448,8 +448,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 return nothing
             end
             @model function outer_manual_prefix()
-                a ~ to_submodel(prefix(inner(), :a), false)
-                b ~ to_submodel(prefix(inner(), :b), false)
+                a ~ to_submodel(DynamicPPL.prefix(inner(), :a), false)
+                b ~ to_submodel(DynamicPPL.prefix(inner(), :b), false)
                 return nothing
             end
 
