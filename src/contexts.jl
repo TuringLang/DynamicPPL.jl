@@ -260,25 +260,21 @@ function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
     return PrefixContext{Prefix}(child)
 end
 
-const PREFIX_SEPARATOR = Symbol(".")
+"""
+    prefix(ctx::AbstractContext, vn::VarName)
 
-@generated function PrefixContext{PrefixOuter}(
-    context::PrefixContext{PrefixInner}
-) where {PrefixOuter,PrefixInner}
-    return :(PrefixContext{$(QuoteNode(Symbol(PrefixOuter, PREFIX_SEPARATOR, PrefixInner)))}(
-        context.context
-    ))
-end
-
+Apply the prefixes in the context `ctx` to the variable name `vn`.
+"""
 function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    vn_prefixed_inner = prefix(childcontext(ctx), vn)
-    return VarName{Symbol(Prefix, PREFIX_SEPARATOR, getsym(vn_prefixed_inner))}(
-        getoptic(vn_prefixed_inner)
-    )
+    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Symbol(Prefix)}())
 end
-prefix(ctx::AbstractContext, vn::VarName) = prefix(NodeTrait(ctx), ctx, vn)
+function prefix(ctx::AbstractContext, vn::VarName)
+    return prefix(NodeTrait(ctx), ctx, vn)
+end
 prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn
-prefix(::IsParent, ctx::AbstractContext, vn::VarName) = prefix(childcontext(ctx), vn)
+function prefix(::IsParent, ctx::AbstractContext, vn::VarName)
+    return prefix(childcontext(ctx), vn)
+end
 
 """
     prefix(model::Model, x)

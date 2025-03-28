@@ -183,7 +183,7 @@ function DynamicPPL.setchildcontext(context::DebugContext, child)
 end
 
 function record_varname!(context::DebugContext, varname::VarName, dist)
-    prefixed_varname = prefix(context, varname)
+    prefixed_varname = DynamicPPL.prefix(context, varname)
     if haskey(context.varnames_seen, prefixed_varname)
         if context.error_on_failure
             error("varname $prefixed_varname used multiple times in model")

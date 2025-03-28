@@ -149,7 +149,7 @@ In the past, one would instead embed sub-models using [`@submodel`](@ref), which
 In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
 
 ```@docs
-prefix
+DynamicPPL.prefix
 ```
 
 Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else

@@ -448,15 +448,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 return nothing
             end
             @model function outer_manual_prefix()
-                a ~ to_submodel(prefix(inner(), :a), false)
-                b ~ to_submodel(prefix(inner(), :b), false)
+                a ~ to_submodel(DynamicPPL.prefix(inner(), :a), false)
+                b ~ to_submodel(DynamicPPL.prefix(inner(), :b), false)
                 return nothing
             end
 
             for model in (outer_auto_prefix(), outer_manual_prefix())
                 vi = VarInfo(model)
                 vns = Set(keys(values_as_in_model(model, false, vi)))
-                @test vns == Set([@varname(var"a.x"), @varname(var"b.x")])
+                @test vns == Set([@varname(a.x), @varname(b.x)])
             end
         end
     end

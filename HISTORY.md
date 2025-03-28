@@ -1,5 +1,54 @@
 # DynamicPPL Changelog
 
+## 0.36.0
+
+**Breaking changes**
+
+### VarName prefixing behaviour
+
+The way in which VarNames in submodels are prefixed has been changed.
+This is best explained through an example.
+Consider this model and submodel:
+
+```julia
+using DynamicPPL, Distributions
+@model inner() = x ~ Normal()
+@model outer() = a ~ to_submodel(inner())
+```
+
+In previous versions, the inner variable `x` would be saved as `a.x`.
+However, this was represented as a single symbol `Symbol("a.x")`:
+
+```julia
+julia> dump(keys(VarInfo(outer()))[1])
+VarName{Symbol("a.x"), typeof(identity)}
+  optic: identity (function of type typeof(identity))
+```
+
+Now, the inner variable is stored as a field `x` on the VarName `a`:
+
+```julia
+julia> dump(keys(VarInfo(outer()))[1])
+VarName{:a, Accessors.PropertyLens{:x}}
+  optic: Accessors.PropertyLens{:x} (@o _.x)
+```
+
+In practice, this means that if you are trying to condition a variable in the submodel, you now need to use
+
+```julia
+outer() | (@varname(a.x) => 1.0,)
+```
+
+instead of either of these (which would have worked previously)
+
+```julia
+outer() | (@varname(var"a.x") => 1.0,)
+outer() | (a.x=1.0,)
+```
+
+If you are sampling from a model with submodels, this doesn't affect the way you interact with the `MCMCChains.Chains` object, because VarNames are converted into Symbols when stored in the chain.
+(This behaviour will likely be changed in the future, in that Chains should be indexable by VarNames and not just Symbols, but that has not been implemented yet.)
+
 ## 0.35.5
 
 Several internal methods have been removed:
