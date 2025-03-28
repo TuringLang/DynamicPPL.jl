@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.35.6
+
+Fixed the implementation of `.~`, such that running a model with it no longer requires DynamicPPL itself to be loaded.
+
 ## 0.35.5
 
 Several internal methods have been removed:
