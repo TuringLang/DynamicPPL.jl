@@ -100,8 +100,6 @@ const TypedVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
-# TODO: Remove this
-@deprecate VarInfo(vi::VarInfo, x::AbstractVector) unflatten(vi, x)
 
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
