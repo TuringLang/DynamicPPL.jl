@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.35.7
+
+Adds compatibility for ForwardDiff 1.0.
+
 ## 0.35.6
 
 Fixed the implementation of `.~`, such that running a model with it no longer requires DynamicPPL itself to be loaded.
