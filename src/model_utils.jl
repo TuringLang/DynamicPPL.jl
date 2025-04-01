@@ -4,7 +4,7 @@
 
 Return `true` if all variable names in `model`/`varinfo` are in `chain`.
 """
-varnames_in_chain(model::Model, chain) = varnames_in_chain(VarInfo(model), chain)
+varnames_in_chain(model::Model, chain) = varnames_in_chain(TypedVarInfo(model), chain)
 function varnames_in_chain(varinfo::VarInfo, chain)
     return all(vn -> varname_in_chain(varinfo, vn, chain, 1, 1), keys(varinfo))
 end
@@ -16,7 +16,7 @@ end
 Return `out` with `true` for all variable names in `model` that are in `chain`.
 """
 function varnames_in_chain!(model::Model, chain, out)
-    return varnames_in_chain!(VarInfo(model), chain, out)
+    return varnames_in_chain!(TypedVarInfo(model), chain, out)
 end
 function varnames_in_chain!(varinfo::VarInfo, chain, out)
     for vn in keys(varinfo)
@@ -33,7 +33,7 @@ end
 Return `true` if `vn` is in `chain` at `chain_idx` and `iteration_idx`.
 """
 function varname_in_chain(model::Model, vn, chain, chain_idx, iteration_idx)
-    return varname_in_chain(VarInfo(model), vn, chain, chain_idx, iteration_idx)
+    return varname_in_chain(TypedVarInfo(model), vn, chain, chain_idx, iteration_idx)
 end
 
 function varname_in_chain(varinfo::AbstractVarInfo, vn, chain, chain_idx, iteration_idx)
@@ -60,7 +60,7 @@ This differs from [`varname_in_chain`](@ref) in that it returns a dictionary
 rather than a single boolean. This can be quite useful for debugging purposes.
 """
 function varname_in_chain!(model::Model, vn, chain, chain_idx, iteration_idx, out)
-    return varname_in_chain!(VarInfo(model), vn, chain, chain_idx, iteration_idx, out)
+    return varname_in_chain!(TypedVarInfo(model), vn, chain, chain_idx, iteration_idx, out)
 end
 
 function varname_in_chain!(
@@ -132,7 +132,7 @@ Mutate `out` to map each variable name in `model`/`varinfo` to its value in
 `chain` at `chain_idx` and `iteration_idx`.
 """
 function values_from_chain!(model::Model, chain, chain_idx, iteration_idx, out)
-    return values_from_chain(VarInfo(model), chain, chain_idx, iteration_idx, out)
+    return values_from_chain(TypedVarInfo(model), chain, chain_idx, iteration_idx, out)
 end
 
 function values_from_chain!(vi::AbstractVarInfo, chain, chain_idx, iteration_idx, out)
@@ -197,7 +197,7 @@ julia> conditioned_model()  # <= results in same values as the `first(iter)` abo
 ```
 """
 function value_iterator_from_chain(model::Model, chain)
-    return value_iterator_from_chain(VarInfo(model), chain)
+    return value_iterator_from_chain(TypedVarInfo(model), chain)
 end
 
 function value_iterator_from_chain(vi::AbstractVarInfo, chain)

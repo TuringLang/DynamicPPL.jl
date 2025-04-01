@@ -175,10 +175,16 @@ function UntypedVarInfo(
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
+    # No rng
     return UntypedVarInfo(Random.default_rng(), model, sampler, context)
 end
+function UntypedVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return UntypedVarInfo(rng, model, SampleFromPrior(), context)
+end
 function UntypedVarInfo(model::Model, context::AbstractContext)
-    return UntypedVarInfo(Random.default_rng(), model, SampleFromPrior(), context)
+    # No sampler, no rng
+    return UntypedVarInfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -259,8 +265,21 @@ function TypedVarInfo(
 )
     return TypedVarInfo(UntypedVarInfo(rng, model, sampler, context))
 end
-function TypedVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
-    return TypedVarInfo(Random.default_rng(), model, args...)
+function TypedVarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return TypedVarInfo(Random.default_rng(), model, sampler, context)
+end
+function TypedVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return TypedVarInfo(rng, model, SampleFromPrior(), context)
+end
+function TypedVarInfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return TypedVarInfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -288,8 +307,23 @@ function UntypedVectorVarInfo(
 )
     return UntypedVectorVarInfo(UntypedVarInfo(rng, model, sampler, context))
 end
-function UntypedVectorVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
-    return UntypedVectorVarInfo(UntypedVarInfo(Random.default_rng(), model, args...))
+function UntypedVectorVarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return UntypedVectorVarInfo(Random.default_rng(), model, sampler, context)
+end
+function UntypedVectorVarInfo(
+    rng::Random.AbstractRNG, model::Model, context::AbstractContext
+)
+    # No sampler
+    return UntypedVectorVarInfo(rng, model, SampleFromPrior(), context)
+end
+function UntypedVectorVarInfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return UntypedVectorVarInfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -324,8 +358,21 @@ function TypedVectorVarInfo(
 )
     return TypedVectorVarInfo(UntypedVectorVarInfo(rng, model, sampler, context))
 end
-function TypedVectorVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
-    return TypedVectorVarInfo(Random.default_rng(), model, args...)
+function TypedVectorVarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return TypedVectorVarInfo(Random.default_rng(), model, sampler, context)
+end
+function TypedVectorVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return TypedVectorVarInfo(rng, model, SampleFromPrior(), context)
+end
+function TypedVectorVarInfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return TypedVectorVarInfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -1956,7 +2003,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m);
+julia> var_info = DynamicPPL.TypedVarInfo(rng, m);
 
 julia> var_info[@varname(m)]
 -0.6702516921145671
@@ -2020,7 +2067,8 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata());  # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
+julia> var_info = DynamicPPL.TypedVarInfo(rng, m);
+       # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
 
 julia> var_info[@varname(m)]
 -0.6702516921145671

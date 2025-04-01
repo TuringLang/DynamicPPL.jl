@@ -433,7 +433,7 @@ julia> conditioned(cm)
 
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
-       keys(VarInfo(cm))
+       keys(TypedVarInfo(cm))
 1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
@@ -446,7 +446,7 @@ julia> conditioned(cm)[@varname(x)]
 julia> conditioned(cm)[@varname(a.m)]
 1.0
 
-julia> keys(VarInfo(cm)) # No variables are sampled
+julia> keys(TypedVarInfo(cm)) # No variables are sampled
 VarName[]
 ```
 """
@@ -773,7 +773,7 @@ julia> fixed(cm)
 
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
-       keys(VarInfo(cm))
+       keys(TypedVarInfo(cm))
 1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
@@ -786,7 +786,7 @@ julia> fixed(cm)[@varname(x)]
 julia> fixed(cm)[@varname(a.m)]
 1.0
 
-julia> keys(VarInfo(cm)) # <= no variables are sampled
+julia> keys(TypedVarInfo(cm)) # <= no variables are sampled
 VarName[]
 ```
 """

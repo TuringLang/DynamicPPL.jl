@@ -137,7 +137,7 @@ julia> # When `prefix` is unspecified, no prefix is used.
        @model submodel_noprefix() = @submodel a = inner()
 submodel_noprefix (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(submodel_noprefix()))
+julia> @varname(x) in keys(TypedVarInfo(submodel_noprefix()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -147,7 +147,7 @@ julia> # Explicitely don't use any prefix.
        @model submodel_prefix_false() = @submodel prefix=false a = inner()
 submodel_prefix_false (generic function with 2 methods)
 
-julia> @varname(x) in keys(VarInfo(submodel_prefix_false()))
+julia> @varname(x) in keys(TypedVarInfo(submodel_prefix_false()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -157,7 +157,7 @@ julia> # Automatically determined from `a`.
        @model submodel_prefix_true() = @submodel prefix=true a = inner()
 submodel_prefix_true (generic function with 2 methods)
 
-julia> @varname(a.x) in keys(VarInfo(submodel_prefix_true()))
+julia> @varname(a.x) in keys(TypedVarInfo(submodel_prefix_true()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -167,7 +167,7 @@ julia> # Using a static string.
        @model submodel_prefix_string() = @submodel prefix="my prefix" a = inner()
 submodel_prefix_string (generic function with 2 methods)
 
-julia> @varname(var"my prefix".x) in keys(VarInfo(submodel_prefix_string()))
+julia> @varname(var"my prefix".x) in keys(TypedVarInfo(submodel_prefix_string()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -177,7 +177,7 @@ julia> # Using string interpolation.
        @model submodel_prefix_interpolation() = @submodel prefix="\$(nameof(inner()))" a = inner()
 submodel_prefix_interpolation (generic function with 2 methods)
 
-julia> @varname(inner.x) in keys(VarInfo(submodel_prefix_interpolation()))
+julia> @varname(inner.x) in keys(TypedVarInfo(submodel_prefix_interpolation()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -187,7 +187,7 @@ julia> # Or using some arbitrary expression.
        @model submodel_prefix_expr() = @submodel prefix=1 + 2 a = inner()
 submodel_prefix_expr (generic function with 2 methods)
 
-julia> @varname(var"3".x) in keys(VarInfo(submodel_prefix_expr()))
+julia> @varname(var"3".x) in keys(TypedVarInfo(submodel_prefix_expr()))
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
