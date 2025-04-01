@@ -10,7 +10,7 @@ Currently only implemented for `NT<:NamedTuple` and `NT<:AbstractDict`.
 $(FIELDS)
 
 # Notes
-The major differences between this and `TypedVarInfo` are:
+The major differences between this and `NTVarInfo` are:
 1. `SimpleVarInfo` does not require linearization.
 2. `SimpleVarInfo` can use more efficient bijectors.
 3. `SimpleVarInfo` is only type-stable if `NT<:NamedTuple` and either
@@ -244,7 +244,7 @@ function SimpleVarInfo{T}(
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::TypedVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
+function SimpleVarInfo(vi::NTVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
     return SimpleVarInfo{eltype(getlogp(vi))}(vi, D; kwargs...)
 end
 function SimpleVarInfo{T}(

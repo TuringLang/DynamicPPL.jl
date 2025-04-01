@@ -83,7 +83,7 @@ for all the sybmols. `VarInfo{<:Metadata}` is aliased `UntypedVarInfo`. If
 `vi isa VarInfo{<:NamedTuple}`, then `vi.metadata` is a `NamedTuple` that maps each
 symbol used on the LHS of `~` in the model to its `Metadata` instance. The latter allows
 for the type specialization of `vi` after the first sampling iteration when all the
-symbols have been observed. `VarInfo{<:NamedTuple}` is aliased `TypedVarInfo`.
+symbols have been observed. `VarInfo{<:NamedTuple}` is aliased `NTVarInfo`.
 
 Note: It is the user's responsibility to ensure that each "symbol" is visited at least
 once whenever the model is called, regardless of any stochastic branching. Each symbol
@@ -98,16 +98,12 @@ VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
-# TODO: TypedVarInfo carries no information about the type of the actual
-# metadata i.e. the elements of the NamedTuple. It could be Metadata or it
-# could be VarNamedVector. Calling TypedVarInfo(model) will result in a
-# TypedVarInfo where the elements are Metadata.
+# TODO: NTVarInfo carries no information about the type of the actual metadata
+# i.e. the elements of the NamedTuple. It could be Metadata or it could be
 # Resolving this ambiguity would likely require us to replace NamedTuple with
 # something which carried both its keys as well as its values' types as type
 # parameters.
-# Note that below we also define a function TypedVectorVarInfo, which generates
-# a TypedVarInfo where the metadata is a NamedTuple of VarNameVectors.
-const TypedVarInfo = VarInfo{<:NamedTuple}
+const NTVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
@@ -145,7 +141,7 @@ end
 
 function has_varnamedvector(vi::VarInfo)
     return vi.metadata isa VarNamedVector ||
-           (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
+           (vi isa NTVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
 ########################
@@ -237,7 +233,12 @@ function TypedVarInfo(vi::UntypedVarInfo)
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
-TypedVarInfo(vi::TypedVarInfo) = vi
+function TypedVarInfo(vi::NTVarInfo)
+    # This function preserves the behaviour of TypedVarInfo(vi) where vi is
+    # already a TypedVarInfo
+    has_varnamedvector(vi) && error("Cannot convert TypedVectorVarInfo to TypedVarInfo")
+    return vi
+end
 function TypedVarInfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -267,7 +268,7 @@ function UntypedVectorVarInfo(model::Model, args::Union{AbstractSampler,Abstract
     return UntypedVectorVarInfo(UntypedVarInfo(Random.default_rng(), model, args...))
 end
 
-function TypedVectorVarInfo(vi::TypedVarInfo)
+function TypedVectorVarInfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
@@ -297,7 +298,7 @@ end
 Return the length of the vector representation of `varinfo`.
 """
 vector_length(varinfo::VarInfo) = length(varinfo.metadata)
-vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
+vector_length(varinfo::NTVarInfo) = sum(length, varinfo.metadata)
 vector_length(md::Metadata) = sum(length, md.ranges)
 
 function unflatten(vi::VarInfo, x::AbstractVector)
@@ -588,7 +589,7 @@ setval!(vi::UntypedVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
 Return the metadata in `vi` that belongs to `vn`.
 """
 getmetadata(vi::VarInfo, vn::VarName) = vi.metadata
-getmetadata(vi::TypedVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
+getmetadata(vi::NTVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
 
 """
     getidx(vi::VarInfo, vn::VarName)
@@ -629,7 +630,7 @@ end
 Return the range corresponding to `varname` in the vector representation of `varinfo`.
 """
 vector_getrange(vi::VarInfo, vn::VarName) = getrange(vi.metadata, vn)
-function vector_getrange(vi::TypedVarInfo, vn::VarName)
+function vector_getrange(vi::NTVarInfo, vn::VarName)
     offset = 0
     for md in values(vi.metadata)
         # First, we need to check if `vn` is in `md`.
@@ -651,8 +652,8 @@ Return the range corresponding to `varname` in the vector representation of `var
 function vector_getranges(varinfo::VarInfo, varname::Vector{<:VarName})
     return map(Base.Fix1(vector_getrange, varinfo), varname)
 end
-# Specialized version for `TypedVarInfo`.
-function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
+# Specialized version for `NTVarInfo`.
+function vector_getranges(varinfo::NTVarInfo, vns::Vector{<:VarName})
     # TODO: Does it help if we _don't_ convert to a vector here?
     metadatas = collect(values(varinfo.metadata))
     # Extract the offsets.
@@ -712,7 +713,7 @@ end
 getindex_internal(vi::VarInfo, ::Colon) = getindex_internal(vi.metadata, Colon())
 # NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
 # See for example https://github.com/JuliaLang/julia/pull/46381.
-function getindex_internal(vi::TypedVarInfo, ::Colon)
+function getindex_internal(vi::NTVarInfo, ::Colon)
     return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
 end
 function getindex_internal(md::Metadata, ::Colon)
@@ -772,10 +773,10 @@ settrans!!(vi::VarInfo, trans::AbstractTransformation) = settrans!!(vi, true)
 Returns a tuple of the unique symbols of random variables in `vi`.
 """
 syms(vi::UntypedVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
-syms(vi::TypedVarInfo) = keys(vi.metadata)
+syms(vi::NTVarInfo) = keys(vi.metadata)
 
 _getidcs(vi::UntypedVarInfo) = 1:length(vi.metadata.idcs)
-_getidcs(vi::TypedVarInfo) = _getidcs(vi.metadata)
+_getidcs(vi::NTVarInfo) = _getidcs(vi.metadata)
 
 @generated function _getidcs(metadata::NamedTuple{names}) where {names}
     exprs = []
@@ -790,12 +791,11 @@ end
 findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
 
 """
-    all_varnames_grouped_by_symbol(vi::TypedVarInfo)
+    all_varnames_grouped_by_symbol(vi::NTVarInfo)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
-all_varnames_grouped_by_symbol(vi::TypedVarInfo) =
-    all_varnames_grouped_by_symbol(vi.metadata)
+all_varnames_grouped_by_symbol(vi::NTVarInfo) = all_varnames_grouped_by_symbol(vi.metadata)
 
 @generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
@@ -855,8 +855,8 @@ Base.keys(vi::VarInfo) = Base.keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
 # on other methods in the codebase which requires `Vector{<:VarName}`.
-Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
-@generated function Base.keys(vi::TypedVarInfo{<:NamedTuple{names}}) where {names}
+Base.keys(vi::NTVarInfo{<:NamedTuple{()}}) = VarName[]
+@generated function Base.keys(vi::NTVarInfo{<:NamedTuple{names}}) where {names}
     expr = Expr(:call)
     push!(expr.args, :vcat)
 
@@ -919,7 +919,7 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
     return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
-function link!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function link!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
@@ -973,13 +973,13 @@ function _link!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _link!(vi::TypedVarInfo, vns::VarNameTuple)
+# If we try to _link! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _link!(vi::NTVarInfo, vns::VarNameTuple)
     return _link!(vi, group_varnames_by_symbol(vns))
 end
 
-function _link!(vi::TypedVarInfo, vns::NamedTuple)
+function _link!(vi::NTVarInfo, vns::NamedTuple)
     return _link!(vi.metadata, vi, vns)
 end
 
@@ -1023,7 +1023,7 @@ end
     return expr
 end
 
-function invlink!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function invlink!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
@@ -1085,13 +1085,13 @@ function _invlink!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink!(vi::TypedVarInfo, vns::VarNameTuple)
+# If we try to _invlink! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _invlink!(vi::NTVarInfo, vns::VarNameTuple)
     return _invlink!(vi.metadata, vi, group_varnames_by_symbol(vns))
 end
 
-function _invlink!(vi::TypedVarInfo, vns::NamedTuple)
+function _invlink!(vi::NTVarInfo, vns::NamedTuple)
     return _invlink!(vi.metadata, vi, vns)
 end
 
@@ -1142,7 +1142,7 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     return vi
 end
 
-function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function link(::DynamicTransformation, vi::NTVarInfo, model::Model)
     return _link(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
@@ -1177,13 +1177,13 @@ function _link(model::Model, varinfo::VarInfo, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
-# If we try to _link a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
+# If we try to _link a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _link(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
     return _link(model, varinfo, group_varnames_by_symbol(vns))
 end
 
-function _link(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
+function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
@@ -1278,7 +1278,7 @@ function _link_metadata!!(
     return metadata
 end
 
-function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function invlink(::DynamicTransformation, vi::NTVarInfo, model::Model)
     return _invlink(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
@@ -1318,13 +1318,13 @@ function _invlink(model::Model, varinfo::VarInfo, vns)
     )
 end
 
-# If we try to _invlink a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
+# If we try to _invlink a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _invlink(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
     return _invlink(model, varinfo, group_varnames_by_symbol(vns))
 end
 
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
+function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
@@ -1415,7 +1415,7 @@ end
 
 # TODO(mhauru) The treatment of the case when some variables are linked and others are not
 # should be revised. It used to be the case that for UntypedVarInfo `islinked` returned
-# whether the first variable was linked. For TypedVarInfo we did an OR over the first
+# whether the first variable was linked. For NTVarInfo we did an OR over the first
 # variables under each symbol. We now more consistently use OR, but I'm not convinced this
 # is really the right thing to do.
 """
@@ -1559,7 +1559,7 @@ Base.haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
 Check whether `vn` has a value in `vi`.
 """
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
-function Base.haskey(vi::TypedVarInfo, vn::VarName)
+function Base.haskey(vi::NTVarInfo, vn::VarName)
     md_haskey = map(vi.metadata) do metadata
         haskey(metadata, vn)
     end
@@ -1622,12 +1622,12 @@ the `VarInfo` `vi`, mutating if it makes sense.
 function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     if vi isa UntypedVarInfo
         @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
-    elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist"
+    elseif vi isa NTVarInfo
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
     end
 
     sym = getsym(vn)
-    if vi isa TypedVarInfo && ~haskey(vi.metadata, sym)
+    if vi isa NTVarInfo && ~haskey(vi.metadata, sym)
         # The NamedTuple doesn't have an entry for this variable, let's add one.
         val = tovec(r)
         md = Metadata(
@@ -1658,8 +1658,8 @@ function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
     return push!(vi, vn, val, args...)
 end
 
-# TODO(mhauru) push! can't be implemented in-place for TypedVarInfo if the symbol doesn't
-# exist in the TypedVarInfo already. We could implement it in the cases where it it does
+# TODO(mhauru) push! can't be implemented in-place for NTVarInfo if the symbol doesn't
+# exist in the NTVarInfo already. We could implement it in the cases where it it does
 # exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
 
 function Base.push!(meta::Metadata, vn, r, dist, num_produce)
@@ -1781,7 +1781,7 @@ function set_retained_vns_del!(vi::UntypedVarInfo)
     end
     return nothing
 end
-function set_retained_vns_del!(vi::TypedVarInfo)
+function set_retained_vns_del!(vi::NTVarInfo)
     idcs = _getidcs(vi)
     return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
 end
@@ -1842,12 +1842,12 @@ function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
     return vi
 end
 
-function _apply!(kernel!, vi::TypedVarInfo, values, keys)
+function _apply!(kernel!, vi::NTVarInfo, values, keys)
     return _typed_apply!(kernel!, vi, vi.metadata, values, collect_maybe(keys))
 end
 
 @generated function _typed_apply!(
-    kernel!, vi::TypedVarInfo, metadata::NamedTuple{names}, values, keys
+    kernel!, vi::NTVarInfo, metadata::NamedTuple{names}, values, keys
 ) where {names}
     updates = map(names) do n
         quote

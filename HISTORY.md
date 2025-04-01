@@ -27,6 +27,12 @@ The reason for this change is that there were several flavours of VarInfo.
 Some, like TypedVarInfo, were easy to construct because we had convenience methods for them; however, the others were more difficult.
 This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
+The `untyped_varinfo` and `typed_varinfo` functions have also been removed; you can use `UntypedVarInfo` and `TypedVarInfo` as direct replacements.
+
+Finally, `TypedVarInfo` is no longer a type.
+It has been replaced with `NTVarInfo`.
+If you were dispatching on this, you should replace it with `NTVarInfo` instead.
+
 ### VarName prefixing behaviour
 
 The way in which VarNames in submodels are prefixed has been changed.
