@@ -176,7 +176,7 @@ function UntypedVarInfo(
 )
     return UntypedVarInfo(Random.default_rng(), model, sampler, context)
 end
-function UntypedVarInfo(model::Model, context::AbstractContext=DefaultContext())
+function UntypedVarInfo(model::Model, context::AbstractContext)
     return UntypedVarInfo(Random.default_rng(), model, SampleFromPrior(), context)
 end
 

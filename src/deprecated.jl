@@ -11,6 +11,4 @@ Base.@deprecate VarInfo(
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 ) TypedVarInfo(model, sampler, context)
-Base.@deprecate VarInfo(model::Model, context::AbstractContext=DefaultContext()) TypedVarInfo(
-    model, context
-)
+Base.@deprecate VarInfo(model::Model, context::AbstractContext) TypedVarInfo(model, context)

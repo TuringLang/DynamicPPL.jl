@@ -101,7 +101,7 @@ end
             @test vi[vn] == 2 * r
 
             # TODO(mhauru) Implement these functions for other VarInfo types too.
-            if vi isa DynamicPPL.VectorVarInfo
+            if vi isa DynamicPPL.UntypedVectorVarInfo
                 delete!(vi, vn)
                 @test isempty(vi)
                 vi = push!!(vi, vn, r, dist)

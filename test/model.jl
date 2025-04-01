@@ -25,9 +25,9 @@ function innermost_distribution_type(d::Distributions.Product)
     return dists[1]
 end
 
-is_typed_varinfo(::DynamicPPL.AbstractVarInfo) = false
-is_typed_varinfo(varinfo::DynamicPPL.TypedVarInfo) = true
-is_typed_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
+is_type_stable_varinfo(::DynamicPPL.AbstractVarInfo) = false
+is_type_stable_varinfo(varinfo::DynamicPPL.NTVarInfo) = true
+is_type_stable_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
@@ -399,7 +399,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
                 varinfos = filter(
-                    is_typed_varinfo,
+                    is_type_stable_varinfo,
                     DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos

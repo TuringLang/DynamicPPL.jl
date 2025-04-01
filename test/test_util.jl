@@ -35,12 +35,12 @@ Return string representing a short description of `vi`.
 """
 short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
     "threadsafe($(short_varinfo_name(vi.varinfo)))"
-function short_varinfo_name(vi::TypedVarInfo)
-    DynamicPPL.has_varnamedvector(vi) && return "TypedVarInfo with VarNamedVector"
+function short_varinfo_name(vi::NTVarInfo)
+    DynamicPPL.has_varnamedvector(vi) && return "TypedVectorVarInfo"
     return "TypedVarInfo"
 end
 short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
-short_varinfo_name(::DynamicPPL.VectorVarInfo) = "VectorVarInfo"
+short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
 function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
     return "SimpleVarInfo{<:NamedTuple,<:Ref}"
 end
