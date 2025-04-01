@@ -110,7 +110,7 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    varinfo = DynamicPPL.VarInfo(model)
+    varinfo = DynamicPPL.TypedVarInfo(model)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
@@ -245,7 +245,7 @@ julia> returned(model, chain)
 """
 function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Chains)
     chain = MCMCChains.get_sections(chain_full, :parameters)
-    varinfo = DynamicPPL.VarInfo(model)
+    varinfo = DynamicPPL.TypedVarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
         # TODO: Use `fix` once we've addressed https://github.com/TuringLang/DynamicPPL.jl/issues/702.
