@@ -14,7 +14,7 @@
 
         @model demo2() = x ~ Normal()
         @test DynamicPPL.Experimental.determine_suitable_varinfo(demo2()) isa
-            DynamicPPL.TypedVarInfo
+            DynamicPPL.NTVarInfo
 
         @model function demo3()
             # Just making sure that nothing strange happens when type inference fails.
@@ -53,7 +53,7 @@
         end
         # Should pass if we're only checking the tilde statements.
         @test DynamicPPL.Experimental.determine_suitable_varinfo(demo5()) isa
-            DynamicPPL.TypedVarInfo
+            DynamicPPL.NTVarInfo
         # Should fail if we're including errors in the model body.
         @test DynamicPPL.Experimental.determine_suitable_varinfo(
             demo5(); only_ddpl=false
@@ -75,7 +75,7 @@
             )
             JET.test_call(f_sample, argtypes_sample)
             # For our demo models, they should all result in typed.
-            is_typed = varinfo isa DynamicPPL.TypedVarInfo
+            is_typed = varinfo isa DynamicPPL.NTVarInfo
             @test is_typed
             # If the test failed, check why it didn't infer a typed varinfo
             if !is_typed
