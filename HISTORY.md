@@ -4,9 +4,28 @@
 
 **Breaking changes**
 
-### VarInfo constructor
+### VarInfo constructors
 
 `VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
+
+**The `VarInfo([rng, ]model[, sampler, context, metadata])` constructor has been replaced with the following methods:**
+
+ 1. `UntypedVarInfo([rng, ]model[, sampler, context])`
+ 2. `TypedVarInfo([rng, ]model[, sampler, context])`
+ 3. `DynamicPPL.UntypedVectorVarInfo([rng, ]model[, sampler, context])`
+ 4. `DynamicPPL.TypedVectorVarInfo([rng, ]model[, sampler, context])`
+
+**If you were not using the `metadata` argument (most likely), then you can directly replace calls to this constructor with `TypedVarInfo` instead.**
+That is to say, if you were using `VarInfo(model)`, you can replace this with `TypedVarInfo(model)`.
+
+If you were using the `metadata` argument to specify a blank `VarNamedVector`, then you should replace calls to `VarInfo` with `TypedVectorVarInfo` instead.
+Note that the `VectorVarInfo` constructors (both `Untyped` and `Typed`) are not exported by default.
+
+If you were passing a non-empty metadata argument, you should use a different constructor of `VarInfo` instead.
+
+The reason for this change is that there were several flavours of VarInfo.
+Some, like TypedVarInfo, were easy to construct because we had convenience methods for them; however, the others were more difficult.
+This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
 ### VarName prefixing behaviour
 

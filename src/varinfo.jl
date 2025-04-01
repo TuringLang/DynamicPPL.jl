@@ -94,8 +94,17 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
 end
-const VectorVarInfo = VarInfo{<:VarNamedVector}
+const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
+# TODO: TypedVarInfo carries no information about the type of the actual
+# metadata i.e. the elements of the NamedTuple. It could be Metadata or it
+# could be VarNamedVector. Calling TypedVarInfo(model) will result in a
+# TypedVarInfo where the elements are Metadata.
+# Resolving this ambiguity would likely require us to replace NamedTuple with
+# something which carried both its keys as well as its values' types as type
+# parameters.
+# Note that below we also define a function TypedVectorVarInfo, which generates
+# a TypedVarInfo where the metadata is a NamedTuple of VarNameVectors.
 const TypedVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
@@ -132,70 +141,84 @@ function metadata_to_varnamedvector(md::Metadata)
     )
 end
 
-function VectorVarInfo(vi::UntypedVarInfo)
-    md = metadata_to_varnamedvector(vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
-end
-
-function VectorVarInfo(vi::TypedVarInfo)
-    md = map(metadata_to_varnamedvector, vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
-end
-
 function has_varnamedvector(vi::VarInfo)
     return vi.metadata isa VarNamedVector ||
            (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
+########################
+# VarInfo constructors #
+########################
+
 """
-    untyped_varinfo(model[, context, metadata])
+    UntypedVarInfo([rng, ]model[, sampler, context, metadata])
 
 Return an untyped varinfo object for the given `model` and `context`.
 
 # Arguments
-- `model::Model`: The model for which to create the varinfo object.
-- `context::AbstractContext`: The context in which to evaluate the model. Default: `SamplingContext()`.
-- `metadata::Union{Metadata,VarNamedVector}`: The metadata to use for the varinfo object.
-    Default: `Metadata()`.
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
-function untyped_varinfo(
-    model::Model,
-    context::AbstractContext=SamplingContext(),
-    metadata::Union{Metadata,VarNamedVector}=Metadata(),
-)
-    varinfo = VarInfo(metadata)
-    return last(
-        evaluate!!(model, varinfo, hassampler(context) ? context : SamplingContext(context))
-    )
-end
-
-"""
-    typed_varinfo(model[, context, metadata])
-
-Return a typed varinfo object for the given `model`, `sampler` and `context`.
-
-This simply calls [`DynamicPPL.untyped_varinfo`](@ref) and converts the resulting
-varinfo object to a typed varinfo object.
-
-See also: [`DynamicPPL.untyped_varinfo`](@ref)
-"""
-typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
-
-function VarInfo(
+function UntypedVarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
-    metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
+    varinfo = VarInfo(Metadata())
+    context = SamplingContext(rng, sampler, context)
+    return last(evaluate!!(model, varinfo, context))
 end
-function VarInfo(
-    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
+function UntypedVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
+    return UntypedVarInfo(Random.default_rng(), model, args...)
+end
+
+function TypedVarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
-    return VarInfo(Random.default_rng(), model, args...)
+    return TypedVarInfo(UntypedVarInfo(rng, model, sampler, context))
+end
+function TypedVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
+    return TypedVarInfo(Random.default_rng(), model, args...)
+end
+
+function UntypedVectorVarInfo(vi::UntypedVarInfo)
+    md = metadata_to_varnamedvector(vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+end
+function UntypedVectorVarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return UntypedVectorVarInfo(UntypedVarInfo(rng, model, sampler, context))
+end
+function UntypedVectorVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
+    return UntypedVectorVarInfo(UntypedVarInfo(Random.default_rng(), model, args...))
+end
+
+function TypedVectorVarInfo(vi::TypedVarInfo)
+    md = map(metadata_to_varnamedvector, vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+end
+function TypedVectorVarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return TypedVectorVarInfo(TypedVarInfo(rng, model, sampler, context))
+end
+function TypedVectorVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
+    return TypedVectorVarInfo(Random.default_rng(), model, args...)
 end
 
 """
@@ -749,7 +772,7 @@ end
 
 VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
 
-function TypedVarInfo(vi::VectorVarInfo)
+function TypedVarInfo(vi::UntypedVectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
@@ -1627,12 +1650,12 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     return vi
 end
 
-function Base.push!(vi::VectorVarInfo, vn::VarName, val, args...)
+function Base.push!(vi::UntypedVectorVarInfo, vn::VarName, val, args...)
     push!(getmetadata(vi, vn), vn, val, args...)
     return vi
 end
 
-function Base.push!(vi::VectorVarInfo, pair::Pair, args...)
+function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
     vn, val = pair
     return push!(vi, vn, val, args...)
 end
@@ -2061,8 +2084,8 @@ function values_as(
     return ConstructionBase.constructorof(D)(iter)
 end
 
-values_as(vi::VectorVarInfo, args...) = values_as(vi.metadata, args...)
-values_as(vi::VectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
+values_as(vi::UntypedVectorVarInfo, args...) = values_as(vi.metadata, args...)
+values_as(vi::UntypedVectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
 
 function values_from_metadata(md::Metadata)
     return (
