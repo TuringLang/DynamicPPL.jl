@@ -227,13 +227,13 @@ Continuing from the example from the previous section, we can use a `VarInfo` wi
 
 ```@example varinfo-design
 # Type-unstable
-varinfo_untyped_vnv = DynamicPPL.VectorVarInfo(varinfo_untyped)
+varinfo_untyped_vnv = DynamicPPL.UntypedVectorVarInfo(varinfo_untyped)
 varinfo_untyped_vnv[@varname(x)], varinfo_untyped_vnv[@varname(y)]
 ```
 
 ```@example varinfo-design
 # Type-stable
-varinfo_typed_vnv = DynamicPPL.VectorVarInfo(varinfo_typed)
+varinfo_typed_vnv = DynamicPPL.TypedVectorVarInfo(varinfo_typed)
 varinfo_typed_vnv[@varname(x)], varinfo_typed_vnv[@varname(y)]
 ```
 

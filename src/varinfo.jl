@@ -151,7 +151,8 @@ end
 """
     UntypedVarInfo([rng, ]model[, sampler, context, metadata])
 
-Return an untyped varinfo object for the given `model` and `context`.
+Return a VarInfo object for the given `model` and `context`, which has just a
+single `Metadata` as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
@@ -181,6 +182,17 @@ function UntypedVarInfo(model::Model, context::AbstractContext)
 end
 
 """
+    TypedVarInfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has a NamedTuple of
+`Metadata` structs as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+
     TypedVarInfo(vi::UntypedVarInfo)
 
 This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
@@ -251,6 +263,18 @@ function TypedVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}
     return TypedVarInfo(Random.default_rng(), model, args...)
 end
 
+"""
+    UntypedVectorVarInfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has just a
+single `VarNamedVector` as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
 function UntypedVectorVarInfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     lp = getlogp(vi)
@@ -268,6 +292,18 @@ function UntypedVectorVarInfo(model::Model, args::Union{AbstractSampler,Abstract
     return UntypedVectorVarInfo(UntypedVarInfo(Random.default_rng(), model, args...))
 end
 
+"""
+    TypedVectorVarInfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has a
+NamedTuple of `VarNamedVector`s as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
 function TypedVectorVarInfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
     lp = getlogp(vi)

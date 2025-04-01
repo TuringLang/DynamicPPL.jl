@@ -1,6 +1,6 @@
 module DynamicPPLBenchmarks
 
-using DynamicPPL: VarInfo, SimpleVarInfo, VarName
+using DynamicPPL: VarInfo, UntypedVarInfo, TypedVarInfo, SimpleVarInfo, VarName
 using BenchmarkTools: BenchmarkGroup, @benchmarkable
 using DynamicPPL: DynamicPPL
 using ADTypes: ADTypes
@@ -52,8 +52,8 @@ end
 
 Create a benchmark suite for `model` using the selected varinfo type and AD backend.
 Available varinfo choices:
-  • `:untyped`           → uses `VarInfo()`
-  • `:typed`             → uses `VarInfo(model)`
+  • `:untyped`           → uses `UntypedVarInfo(model)`
+  • `:typed`             → uses `TypedVarInfo(model)`
   • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
   • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
 
