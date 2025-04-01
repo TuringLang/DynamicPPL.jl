@@ -10,7 +10,7 @@ const gdemo_default = gdemo_d()
 
 # TODO(penelopeysm): Remove this (and also test/compat/ad.jl)
 function test_model_ad(model, logp_manual)
-    vi = VarInfo(model)
+    vi = TypedVarInfo(model)
     x = vi[:]
 
     # Log probabilities using the model.

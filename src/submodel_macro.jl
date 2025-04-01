@@ -24,7 +24,7 @@ julia> @model function demo2(x, y)
 
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel
-julia> vi = VarInfo(demo2(missing, 0.4));
+julia> vi = TypedVarInfo(demo2(missing, 0.4));
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1
@@ -91,7 +91,7 @@ julia> @model function demo2(x, y, z)
 When we sample from the model `demo2(missing, missing, 0.4)` random variables `sub1.x` and
 `sub2.x` will be sampled:
 ```jldoctest submodelprefix
-julia> vi = VarInfo(demo2(missing, missing, 0.4));
+julia> vi = TypedVarInfo(demo2(missing, missing, 0.4));
 ┌ Warning: `@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax.
 │   caller = ip:0x0
 └ @ Core :-1

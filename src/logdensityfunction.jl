@@ -79,7 +79,7 @@ julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
 
 julia> # This also respects the context in `model`.
-       f_prior = LogDensityFunction(contextualize(model, DynamicPPL.PriorContext()), VarInfo(model));
+       f_prior = LogDensityFunction(contextualize(model, DynamicPPL.PriorContext()), TypedVarInfo(model));
 
 julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
 true
@@ -109,7 +109,7 @@ struct LogDensityFunction{
 
     function LogDensityFunction(
         model::Model,
-        varinfo::AbstractVarInfo=VarInfo(model),
+        varinfo::AbstractVarInfo=TypedVarInfo(model),
         context::AbstractContext=leafcontext(model.context);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )

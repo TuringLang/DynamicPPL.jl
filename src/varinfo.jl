@@ -94,6 +94,8 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
 end
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
+
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
 # TODO: TypedVarInfo carries no information about the type of the actual
@@ -171,10 +173,71 @@ function UntypedVarInfo(
     context = SamplingContext(rng, sampler, context)
     return last(evaluate!!(model, varinfo, context))
 end
-function UntypedVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
-    return UntypedVarInfo(Random.default_rng(), model, args...)
+function UntypedVarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return UntypedVarInfo(Random.default_rng(), model, sampler, context)
+end
+function UntypedVarInfo(model::Model, context::AbstractContext=DefaultContext())
+    return UntypedVarInfo(Random.default_rng(), model, SampleFromPrior(), context)
 end
 
+"""
+    TypedVarInfo(vi::UntypedVarInfo)
+
+This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
+`vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
+global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `metadata` as
+a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
+symbol.
+"""
+function TypedVarInfo(vi::UntypedVarInfo)
+    meta = vi.metadata
+    new_metas = Metadata[]
+    # Symbols of all instances of `VarName{sym}` in `vi.vns`
+    syms_tuple = Tuple(syms(vi))
+    for s in syms_tuple
+        # Find all indices in `vns` with symbol `s`
+        inds = findall(vn -> getsym(vn) === s, meta.vns)
+        n = length(inds)
+        # New `vns`
+        sym_vns = getindex.((meta.vns,), inds)
+        # New idcs
+        sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
+        # New dists
+        sym_dists = getindex.((meta.dists,), inds)
+        # New orders
+        sym_orders = getindex.((meta.orders,), inds)
+        # New flags
+        sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
+
+        # Extract new ranges and vals
+        _ranges = getindex.((meta.ranges,), inds)
+        # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
+        _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
+        sym_ranges = Vector{eltype(_ranges)}(undef, n)
+        start = 0
+        for i in 1:n
+            sym_ranges[i] = (start + 1):(start + length(_vals[i]))
+            start += length(_vals[i])
+        end
+        sym_vals = foldl(vcat, _vals)
+
+        push!(
+            new_metas,
+            Metadata(
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
+            ),
+        )
+    end
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple{syms_tuple}(Tuple(new_metas))
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
+TypedVarInfo(vi::TypedVarInfo) = vi
 function TypedVarInfo(
     rng::Random.AbstractRNG,
     model::Model,
@@ -209,13 +272,20 @@ function TypedVectorVarInfo(vi::TypedVarInfo)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
+function TypedVectorVarInfo(vi::UntypedVectorVarInfo)
+    new_metas = group_by_symbol(vi.metadata)
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple(new_metas)
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
 function TypedVectorVarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
-    return TypedVectorVarInfo(TypedVarInfo(rng, model, sampler, context))
+    return TypedVectorVarInfo(UntypedVectorVarInfo(rng, model, sampler, context))
 end
 function TypedVectorVarInfo(model::Model, args::Union{AbstractSampler,AbstractContext}...)
     return TypedVectorVarInfo(Random.default_rng(), model, args...)
@@ -263,11 +333,6 @@ function unflatten_metadata(md::Metadata, x::AbstractVector)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
-
-# without AbstractSampler
-function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
-    return VarInfo(rng, model, SampleFromPrior(), context)
-end
 
 ####
 #### Internal functions
@@ -767,73 +832,6 @@ end
 ####
 #### APIs for typed and untyped VarInfo
 ####
-
-# VarInfo
-
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
-
-function TypedVarInfo(vi::UntypedVectorVarInfo)
-    new_metas = group_by_symbol(vi.metadata)
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
-    nt = NamedTuple(new_metas)
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
-end
-
-"""
-    TypedVarInfo(vi::UntypedVarInfo)
-
-This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
-`vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
-global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `metadata` as
-a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
-symbol.
-"""
-function TypedVarInfo(vi::UntypedVarInfo)
-    meta = vi.metadata
-    new_metas = Metadata[]
-    # Symbols of all instances of `VarName{sym}` in `vi.vns`
-    syms_tuple = Tuple(syms(vi))
-    for s in syms_tuple
-        # Find all indices in `vns` with symbol `s`
-        inds = findall(vn -> getsym(vn) === s, meta.vns)
-        n = length(inds)
-        # New `vns`
-        sym_vns = getindex.((meta.vns,), inds)
-        # New idcs
-        sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
-        # New dists
-        sym_dists = getindex.((meta.dists,), inds)
-        # New orders
-        sym_orders = getindex.((meta.orders,), inds)
-        # New flags
-        sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
-
-        # Extract new ranges and vals
-        _ranges = getindex.((meta.ranges,), inds)
-        # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
-        _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
-        sym_ranges = Vector{eltype(_ranges)}(undef, n)
-        start = 0
-        for i in 1:n
-            sym_ranges[i] = (start + 1):(start + length(_vals[i]))
-            start += length(_vals[i])
-        end
-        sym_vals = foldl(vcat, _vals)
-
-        push!(
-            new_metas,
-            Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
-            ),
-        )
-    end
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
-    nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
-end
-TypedVarInfo(vi::TypedVarInfo) = vi
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)

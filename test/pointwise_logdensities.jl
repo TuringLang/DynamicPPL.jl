@@ -5,7 +5,7 @@
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
-        vi = VarInfo(model)
+        vi = TypedVarInfo(model)
         for vn in DynamicPPL.TestUtils.varnames(model)
             vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
         end

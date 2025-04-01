@@ -13,7 +13,7 @@ using Test: @test, @testset
     MODEL_SIZE = 10
     @model f() = x ~ MvNormal(zeros(MODEL_SIZE), I)
     model = f()
-    varinfo = VarInfo(model)
+    varinfo = TypedVarInfo(model)
     context = DefaultContext()
 
     @testset "Chunk size setting" for chunksize in (nothing, 0)

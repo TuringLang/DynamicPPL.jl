@@ -193,7 +193,7 @@ module Issue537 end
             return x
         end
         model = testmodel_missing3([1.0])
-        varinfo = VarInfo(model)
+        varinfo = TypedVarInfo(model)
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
@@ -213,7 +213,7 @@ module Issue537 end
         end false
         lpold = lp
         model = testmodel_missing4([1.0])
-        varinfo = VarInfo(model)
+        varinfo = TypedVarInfo(model)
         @test getlogp(varinfo) == lp == lpold
 
         # test DPPL#61
@@ -234,13 +234,13 @@ module Issue537 end
             end
         end
         x = [1.0, missing]
-        VarInfo(gdemo(x))
+        TypedVarInfo(gdemo(x))
         @test ismissing(x[2])
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
-        vi = VarInfo(gdemo(x))
+        vi = TypedVarInfo(gdemo(x))
         @test haskey(vi.metadata, :x)
-        vi = VarInfo(gdemo(x))
+        vi = TypedVarInfo(gdemo(x))
         @test haskey(vi.metadata, :x)
 
         # Non-array variables
@@ -339,16 +339,16 @@ module Issue537 end
             return testmodel
         end
         model = makemodel(0.5)([1.0])
-        varinfo = VarInfo(model)
+        varinfo = TypedVarInfo(model)
         @test getlogp(varinfo) == lp
     end
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
         @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:, 1]))
         @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
-        vi1 = VarInfo(f1())
-        vi2 = VarInfo(f2())
-        vi3 = VarInfo(f3())
+        vi1 = TypedVarInfo(f1())
+        vi2 = TypedVarInfo(f2())
+        vi3 = TypedVarInfo(f3())
         @test haskey(vi1.metadata, :y)
         @test first(Base.keys(vi1.metadata.y)) == @varname(y)
         @test haskey(vi2.metadata, :y)
@@ -434,28 +434,28 @@ module Issue537 end
         end
         # No observation.
         m = demo2(missing, missing)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
         m = demo2(missing, 1.0)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
         m = demo2(1000.0, missing)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
         m = demo2(1000.0, 0.5)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
 
@@ -479,7 +479,7 @@ module Issue537 end
             return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
         m = demo_useval(missing, missing)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
         ks = keys(vi)
         @test @varname(sub1.x) ∈ ks
         @test @varname(sub2.x) ∈ ks
@@ -512,7 +512,7 @@ module Issue537 end
 
         ys = [randn(10), randn(10)]
         m = demo(ys)
-        vi = VarInfo(m)
+        vi = TypedVarInfo(m)
 
         for vn in
             [@varname(α), @varname(μ), @varname(σ), @varname(ar1_1.η), @varname(ar1_2.η)]
@@ -600,7 +600,7 @@ module Issue537 end
         # Make sure that a return-value of `x = 1` isn't combined into
         # an attempt at a `NamedTuple` of the form `(x = 1, __varinfo__)`.
         @model empty_model() = return x = 1
-        empty_vi = VarInfo()
+        empty_vi = TypedVarInfo()
         retval_and_vi = DynamicPPL.evaluate!!(empty_model(), empty_vi, SamplingContext())
         @test retval_and_vi isa Tuple{Int,typeof(empty_vi)}
 
@@ -740,7 +740,7 @@ module Issue537 end
             @test model() isa NamedTuple{(:x, :y)}
 
             # `VarInfo` should only contain `x`.
-            varinfo = VarInfo(model)
+            varinfo = TypedVarInfo(model)
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 

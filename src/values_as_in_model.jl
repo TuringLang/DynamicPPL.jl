@@ -131,7 +131,7 @@ julia> @model function model_changing_support()
 julia> model = model_changing_support();
 
 julia> # Construct initial type-stable `VarInfo`.
-       varinfo = VarInfo(rng, model);
+       varinfo = TypedVarInfo(rng, model);
 
 julia> # Link it so it works in unconstrained space.
        varinfo_linked = DynamicPPL.link(varinfo, model);

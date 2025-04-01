@@ -29,7 +29,7 @@
                 return a, b
             end
             @test outer()() isa Tuple{Float64,Float64}
-            vi = VarInfo(outer())
+            vi = TypedVarInfo(outer())
             @test @varname(x) in keys(vi)
             @test @varname(sub.x) in keys(vi)
         end
@@ -46,7 +46,7 @@
             @test model() == y_val
 
             x_val = 1.5
-            vi = VarInfo(outer(y_val))
+            vi = TypedVarInfo(outer(y_val))
             DynamicPPL.setindex!!(vi, x_val, @varname(x))
             @test logprior(model, vi) ≈ logpdf(Normal(), x_val)
             @test loglikelihood(model, vi) ≈ logpdf(Normal(x_val), y_val)

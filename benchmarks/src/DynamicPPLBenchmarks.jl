@@ -67,11 +67,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     suite = BenchmarkGroup()
 
     vi = if varinfo_choice == :untyped
-        vi = VarInfo()
-        model(rng, vi)
-        vi
+        UntypedVarInfo(rng, model)
     elseif varinfo_choice == :typed
-        VarInfo(rng, model)
+        TypedVarInfo(rng, model)
     elseif varinfo_choice == :simple_namedtuple
         SimpleVarInfo{Float64}(model(rng))
     elseif varinfo_choice == :simple_dict

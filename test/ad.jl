@@ -100,7 +100,7 @@ using DynamicPPL: LogDensityFunction
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
-        vi = VarInfo(model)
+        vi = TypedVarInfo(model)
         ldf = LogDensityFunction(
             model, vi, SamplingContext(spl); adtype=AutoReverseDiff(; compile=true)
         )

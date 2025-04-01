@@ -7,7 +7,7 @@
         end
 
         model = testmodel()
-        varinfo = VarInfo(model)
+        varinfo = TypedVarInfo(model)
         @test iszero(lp_before)
         @test getlogp(varinfo) == lp_after == 42
     end

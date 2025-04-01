@@ -226,12 +226,12 @@ julia> @model function demo(x)
 
 julia> m = demo([1.0, ]);
 
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first(ℓ[@varname(x[1])])
+julia> ℓ = pointwise_logdensities(m, TypedVarInfo(m)); first(ℓ[@varname(x[1])])
 -1.4189385332046727
 
 julia> m = demo([1.0; 1.0]);
 
-julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
+julia> ℓ = pointwise_logdensities(m, TypedVarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
 (-1.4189385332046727, -1.4189385332046727)
 ```
 
@@ -240,7 +240,7 @@ function pointwise_logdensities(
     model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
     # Get the data by executing the model once
-    vi = VarInfo(model)
+    vi = TypedVarInfo(model)
     point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))

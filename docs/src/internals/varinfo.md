@@ -79,13 +79,13 @@ For example, with the model above we have
 
 ```@example varinfo-design
 # Type-unstable `VarInfo`
-varinfo_untyped = DynamicPPL.untyped_varinfo(demo())
+varinfo_untyped = DynamicPPL.UntypedVarInfo(demo())
 typeof(varinfo_untyped.metadata)
 ```
 
 ```@example varinfo-design
 # Type-stable `VarInfo`
-varinfo_typed = DynamicPPL.typed_varinfo(demo())
+varinfo_typed = DynamicPPL.TypedVarInfo(demo())
 typeof(varinfo_typed.metadata)
 ```
 
@@ -154,7 +154,7 @@ For example, we want to optimize code-paths which effectively boil down to inner
 
 ```julia
 # Construct a `VarInfo` with types inferred from `model`.
-varinfo = VarInfo(model)
+varinfo = TypedVarInfo(model)
 
 # Repeatedly sample from `model`.
 for _ in 1:num_samples

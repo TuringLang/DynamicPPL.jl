@@ -251,7 +251,7 @@ julia> values_as(SimpleVarInfo(data), Vector)
 
 ```jldoctest
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+       vi = TypedVarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
@@ -277,7 +277,7 @@ julia> values_as(vi, Vector)
 
 ```jldoctest
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = VarInfo(); DynamicPPL.TestUtils.demo_assume_dot_observe()(vi);
+       vi = UntypedVarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
@@ -354,7 +354,7 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> varinfo = VarInfo(model);
+julia> varinfo = TypedVarInfo(model);
 
 julia> keys(varinfo)
 4-element Vector{VarName}:

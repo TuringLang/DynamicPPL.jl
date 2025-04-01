@@ -36,7 +36,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = GDEMO_DEFAULT
 
         # sample from model and extract variables
-        vi = VarInfo(model)
+        vi = TypedVarInfo(model)
         s = vi[@varname(s)]
         m = vi[@varname(m)]
 
@@ -67,7 +67,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # Construct mapping of varname symbols to varname-parent symbols.
             # Here, varname_leaves is used to ensure compatibility with the
             # variables stored in the chain
-            var_info = VarInfo(model)
+            var_info = TypedVarInfo(model)
             chain_sym_map = Dict{Symbol,Symbol}()
             for vn_parent in keys(var_info)
                 sym = DynamicPPL.getsym(vn_parent)
@@ -219,7 +219,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = GDEMO_DEFAULT
 
         # sample from model and extract variables
-        vi = VarInfo(model)
+        vi = TypedVarInfo(model)
 
         # Second component of return-value of `evaluate!!` should
         # be a `DynamicPPL.AbstractVarInfo`.
@@ -233,8 +233,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "Dynamic constraints, Metadata" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        spl = SampleFromPrior()
-        vi = VarInfo(model, spl, DefaultContext(), DynamicPPL.Metadata())
+        vi = TypedVarInfo(model)
         vi = link!!(vi, model)
 
         for i in 1:10
@@ -250,7 +249,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     @testset "Dynamic constraints, VectorVarInfo" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         for i in 1:10
-            vi = VarInfo(model)
+            vi = TypedVarInfo(model)
             @test vi[@varname(x)] >= vi[@varname(m)]
         end
     end
@@ -454,7 +453,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             for model in (outer_auto_prefix(), outer_manual_prefix())
-                vi = VarInfo(model)
+                vi = TypedVarInfo(model)
                 vns = Set(keys(values_as_in_model(model, false, vi)))
                 @test vns == Set([@varname(a.x), @varname(b.x)])
             end
@@ -482,8 +481,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = product_dirichlet()
 
         varinfos = [
-            DynamicPPL.untyped_varinfo(model),
-            DynamicPPL.typed_varinfo(model),
+            DynamicPPL.UntypedVarInfo(model),
+            DynamicPPL.TypedVarInfo(model),
             DynamicPPL.typed_simple_varinfo(model),
             DynamicPPL.untyped_simple_varinfo(model),
         ]
