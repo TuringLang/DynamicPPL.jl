@@ -57,13 +57,9 @@ import DifferentiationInterfaceTest as DIT
                             ref_ldf, adtype
                         )
                     else
-                        scen = DynamicPPL.TestUtils.AD.make_scenario(
+                        DynamicPPL.TestUtils.AD.run_ad(
                             m, adtype; varinfo=varinfo, expected_grad=ref_grad
                         )
-                        tadtype = DynamicPPL.tweak_adtype(
-                            adtype, m, varinfo, DefaultContext()
-                        )
-                        DIT.test_differentiation(tadtype, [scen]; scenario_intact=false)
                     end
                 end
             end

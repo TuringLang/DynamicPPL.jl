@@ -20,7 +20,7 @@ it's the default AD backend used in Turing.jl.
 const REFERENCE_ADTYPE = ADTypes.AutoForwardDiff()
 
 """
-    DynamicPPL.TestUtils.AD.make_scenario(
+    make_scenario(
         model::Model,
         adtype::ADTypes.AbstractADType,
         varinfo::AbstractVarInfo=VarInfo(model),
@@ -33,7 +33,7 @@ Construct a DifferentiationInterfaceTest.Scenario for the given `model` and `adt
 
 More docs to follow.
 """
-function DynamicPPL.TestUtils.AD.make_scenario(
+function make_scenario(
     model::Model,
     adtype::ADTypes.AbstractADType;
     varinfo::AbstractVarInfo=VarInfo(model),
@@ -62,6 +62,24 @@ function DynamicPPL.TestUtils.AD.make_scenario(
 
     return DIT.Scenario{:gradient,:out}(
         f, params; contexts=di_contexts, res1=grad_true, name="$(model.f)"
+    )
+end
+
+function DynamicPPL.TestUtils.AD.run_ad(
+    model::Model,
+    adtype::ADTypes.AbstractADType;
+    varinfo::AbstractVarInfo=VarInfo(model),
+    params::Vector{<:Real}=varinfo[:],
+    reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
+    expected_grad::Union{Nothing,Vector{<:Real}}=nothing,
+    kwargs...,
+)
+    scen = make_scenario(model, adtype; varinfo=varinfo, expected_grad=expected_grad)
+    tweaked_adtype = DynamicPPL.tweak_adtype(
+        adtype, model, varinfo, DynamicPPL.DefaultContext()
+    )
+    return DIT.test_differentiation(
+        tweaked_adtype, [scen]; scenario_intact=false, kwargs...
     )
 end
 
