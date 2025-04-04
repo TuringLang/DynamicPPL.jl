@@ -205,7 +205,16 @@ values_as_in_model
 NamedDist
 ```
 
-## Testing Utilities
+## AD testing and benchmarking utilities
+
+To test and/or benchmark the performance of an AD backend on a model, DynamicPPL provides the following utilities:
+
+```@docs
+DynamicPPL.TestUtils.AD.run_ad
+DynamicPPL.TestUtils.AD.ADResult
+```
+
+## Demo models
 
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
 
