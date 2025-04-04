@@ -5,10 +5,10 @@ using DynamicPPL:
     ADTypes,
     LogDensityProblems,
     Model,
+    DI,  # DifferentiationInterface
     AbstractVarInfo,
     VarInfo,
     LogDensityFunction
-import DifferentiationInterface as DI
 import DifferentiationInterfaceTest as DIT
 
 """
