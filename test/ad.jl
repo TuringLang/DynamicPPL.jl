@@ -1,4 +1,5 @@
 using DynamicPPL: LogDensityFunction
+import DifferentiationInterfaceTest as DIT
 
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
@@ -27,7 +28,7 @@ using DynamicPPL: LogDensityFunction
                 x = DynamicPPL.getparams(f)
                 # Calculate reference logp + gradient of logp using ForwardDiff
                 ref_ldf = LogDensityFunction(m, varinfo; adtype=ref_adtype)
-                ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
+                ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)[2]
 
                 @testset "$adtype" for adtype in test_adtypes
                     @info "Testing AD on: $(m.f) - $(short_varinfo_name(varinfo)) - $adtype"
@@ -56,10 +57,13 @@ using DynamicPPL: LogDensityFunction
                             ref_ldf, adtype
                         )
                     else
-                        ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
-                        logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
-                        @test grad ≈ ref_grad
-                        @test logp ≈ ref_logp
+                        scen = DynamicPPL.TestUtils.AD.make_scenario(
+                            m, adtype; varinfo=varinfo, expected_grad=ref_grad
+                        )
+                        tadtype = DynamicPPL.tweak_adtype(
+                            adtype, m, varinfo, DefaultContext()
+                        )
+                        DIT.test_differentiation(tadtype, [scen]; scenario_intact=false)
                     end
                 end
             end

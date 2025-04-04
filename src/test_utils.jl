@@ -19,4 +19,8 @@ include("test_utils/contexts.jl")
 include("test_utils/varinfo.jl")
 include("test_utils/sampler.jl")
 
+module AD
+    function make_scenario end
+end
+
 end
