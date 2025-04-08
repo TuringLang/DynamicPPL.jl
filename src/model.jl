@@ -433,7 +433,7 @@ julia> conditioned(cm)
 
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
-       keys(TypedVarInfo(cm))
+       keys(VarInfo(cm))
 1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
@@ -446,7 +446,7 @@ julia> conditioned(cm)[@varname(x)]
 julia> conditioned(cm)[@varname(a.m)]
 1.0
 
-julia> keys(TypedVarInfo(cm)) # No variables are sampled
+julia> keys(VarInfo(cm)) # No variables are sampled
 VarName[]
 ```
 """
@@ -773,7 +773,7 @@ julia> fixed(cm)
 
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
-       keys(TypedVarInfo(cm))
+       keys(VarInfo(cm))
 1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
@@ -786,7 +786,7 @@ julia> fixed(cm)[@varname(x)]
 julia> fixed(cm)[@varname(a.m)]
 1.0
 
-julia> keys(TypedVarInfo(cm)) # <= no variables are sampled
+julia> keys(VarInfo(cm)) # <= no variables are sampled
 VarName[]
 ```
 """
@@ -1037,7 +1037,7 @@ julia> logjoint(demo_model([1., 2.]), chain);
 ```
 """
 function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = TypedVarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn_parent =>
@@ -1084,7 +1084,7 @@ julia> logprior(demo_model([1., 2.]), chain);
 ```
 """
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = TypedVarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn_parent =>
@@ -1131,7 +1131,7 @@ julia> loglikelihood(demo_model([1., 2.]), chain);
 ```
 """
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = TypedVarInfo(model) # extract variables info from the model
+    var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict(
             vn_parent =>
@@ -1339,7 +1339,7 @@ julia> @model function demo2(x, y)
 
 When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
 ```jldoctest submodel-to_submodel
-julia> vi = TypedVarInfo(demo2(missing, 0.4));
+julia> vi = VarInfo(demo2(missing, 0.4));
 
 julia> @varname(a.x) in keys(vi)
 true
@@ -1376,7 +1376,7 @@ julia> @model function demo2_no_prefix(x, z)
             return z ~ Uniform(-a, 1)
        end;
 
-julia> vi = TypedVarInfo(demo2_no_prefix(missing, 0.4));
+julia> vi = VarInfo(demo2_no_prefix(missing, 0.4));
 
 julia> @varname(x) in keys(vi)  # here we just use `x` instead of `a.x`
 true
@@ -1391,7 +1391,7 @@ julia> @model function demo2(x, y, z)
             return z ~ Uniform(-a, b)
        end;
 
-julia> vi = TypedVarInfo(demo2(missing, missing, 0.4));
+julia> vi = VarInfo(demo2(missing, missing, 0.4));
 
 julia> @varname(sub1.x) in keys(vi)
 true

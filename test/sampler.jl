@@ -192,7 +192,7 @@
             initial_z = 15
             initial_x = [0.2, 0.5]
             model = constrained_uniform(n)
-            vi = TypedVarInfo(model)
+            vi = VarInfo(model)
 
             @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
                 vi, [initial_z, initial_x], model

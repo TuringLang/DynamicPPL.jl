@@ -79,7 +79,7 @@
             @test is_typed
             # If the test failed, check why it didn't infer a typed varinfo
             if !is_typed
-                typed_vi = TypedVarInfo(model)
+                typed_vi = DynamicPPL.typed_varinfo(model)
                 f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
                     model, typed_vi
                 )

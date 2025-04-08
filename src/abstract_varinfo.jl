@@ -247,11 +247,11 @@ julia> values_as(SimpleVarInfo(data), Vector)
  2.0
 ```
 
-`TypedVarInfo`:
+`VarInfo` with `NamedTuple` of `Metadata`:
 
 ```jldoctest
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = TypedVarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+       vi = DynamicPPL.typed_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
@@ -273,11 +273,11 @@ julia> values_as(vi, Vector)
  2.0
 ```
 
-`UntypedVarInfo`:
+`VarInfo` with `Metadata`:
 
 ```jldoctest
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = UntypedVarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+       vi = DynamicPPL.untyped_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
 julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
 
@@ -354,7 +354,7 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> varinfo = TypedVarInfo(model);
+julia> varinfo = VarInfo(model);
 
 julia> keys(varinfo)
 4-element Vector{VarName}:

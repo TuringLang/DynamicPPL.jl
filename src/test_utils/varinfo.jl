@@ -27,10 +27,10 @@ function setup_varinfos(
     model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
 )
     # VarInfo
-    vi_untyped_metadata = UntypedVarInfo(model)
-    vi_untyped_vnv = DynamicPPL.UntypedVectorVarInfo(model)
-    vi_typed_metadata = TypedVarInfo(vi_untyped_metadata)
-    vi_typed_vnv = DynamicPPL.TypedVectorVarInfo(vi_untyped_vnv)
+    vi_untyped_metadata = DynamicPPL.untyped_varinfo(model)
+    vi_untyped_vnv = DynamicPPL.untyped_vector_varinfo(model)
+    vi_typed_metadata = DynamicPPL.typed_varinfo(model)
+    vi_typed_vnv = DynamicPPL.typed_vector_varinfo(model)
 
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)

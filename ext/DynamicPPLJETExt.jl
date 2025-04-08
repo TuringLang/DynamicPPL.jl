@@ -27,7 +27,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     model::DynamicPPL.Model, context::DynamicPPL.AbstractContext; only_ddpl::Bool=true
 )
     # First we try with the typed varinfo.
-    varinfo = DynamicPPL.TypedVarInfo(model, context)
+    varinfo = DynamicPPL.typed_varinfo(model, context)
 
     # Let's make sure that both evaluation and sampling doesn't result in type errors.
     issuccess, result = DynamicPPL.Experimental.is_suitable_varinfo(
@@ -46,7 +46,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     else
         # Warn the user that we can't use the type stable one.
         @warn "Model seems incompatible with typed varinfo. Falling back to untyped varinfo."
-        DynamicPPL.UntypedVarInfo(model, context)
+        DynamicPPL.untyped_varinfo(model, context)
     end
 end
 

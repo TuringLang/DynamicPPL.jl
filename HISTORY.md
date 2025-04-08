@@ -8,30 +8,20 @@
 
 `VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
 
-**The `VarInfo([rng, ]model[, sampler, context, metadata])` constructor has been replaced with the following methods:**
+The `metadata` argument to `VarInfo([rng, ]model[, sampler, context, metadata])` has been removed.
+If you were not using this argument (most likely), then there is no change needed.
+If you were using the `metadata` argument to specify a blank `VarNamedVector`, then you should replace calls to `VarInfo` with `DynamicPPL.typed_vector_varinfo` instead (see 'Other changes' below).
 
- 1. `UntypedVarInfo([rng, ]model[, sampler, context])`
- 2. `TypedVarInfo([rng, ]model[, sampler, context])`
- 3. `DynamicPPL.UntypedVectorVarInfo([rng, ]model[, sampler, context])`
- 4. `DynamicPPL.TypedVectorVarInfo([rng, ]model[, sampler, context])`
+The `UntypedVarInfo` constructor and type is no longer exported.
+If you needed to construct one, you should now use `DynamicPPL.untyped_varinfo` instead.
 
-**If you were not using the `metadata` argument (most likely), then you can directly replace calls to this constructor with `TypedVarInfo` instead.**
-That is to say, if you were using `VarInfo(model)`, you can replace this with `TypedVarInfo(model)`.
+The `TypedVarInfo` constructor and type is no longer exported.
+The _type_ has been replaced with `DynamicPPL.NTVarInfo`.
+The _constructor_ has been replaced with `DynamicPPL.typed_varinfo`.
 
-If you were using the `metadata` argument to specify a blank `VarNamedVector`, then you should replace calls to `VarInfo` with `TypedVectorVarInfo` instead.
-Note that the `VectorVarInfo` constructors (both `Untyped` and `Typed`) are not exported by default.
-
-If you were passing a non-empty metadata argument, you should use a different constructor of `VarInfo` instead.
-
-The reason for this change is that there were several flavours of VarInfo.
-Some, like TypedVarInfo, were easy to construct because we had convenience methods for them; however, the others were more difficult.
-This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
-
-The `untyped_varinfo` and `typed_varinfo` functions have also been removed; you can use `UntypedVarInfo` and `TypedVarInfo` as direct replacements.
-
-Finally, `TypedVarInfo` is no longer a type.
-It has been replaced with `NTVarInfo`.
-If you were dispatching on this, you should replace it with `NTVarInfo` instead.
+Note that the exact kind of VarInfo returned by `VarInfo(rng, model, ...)` is an implementation detail.
+Previously, it was guaranteed that this would always be a VarInfo whose metadata was a `NamedTuple` containing `Metadata` structs.
+Going forward, this is no longer the case, and you should only assume that the returned object obeys the `AbstractVarInfo` interface.
 
 ### VarName prefixing behaviour
 
@@ -77,6 +67,20 @@ outer() | (a.x=1.0,)
 
 If you are sampling from a model with submodels, this doesn't affect the way you interact with the `MCMCChains.Chains` object, because VarNames are converted into Symbols when stored in the chain.
 (This behaviour will likely be changed in the future, in that Chains should be indexable by VarNames and not just Symbols, but that has not been implemented yet.)
+
+**Other changes**
+
+While these are technically breaking, they are only internal changes and do not affect the public API.
+The following four functions have been added and/or reworked to make it easier to construct VarInfos with different types of metadata:
+
+ 1. `DynamicPPL.untyped_varinfo([rng, ]model[, sampler, context])`
+ 2. `DynamicPPL.typed_varinfo([rng, ]model[, sampler, context])`
+ 3. `DynamicPPL.untyped_vector_varinfo([rng, ]model[, sampler, context])`
+ 4. `DynamicPPL.typed_vector_varinfo([rng, ]model[, sampler, context])`
+
+The reason for this change is that there were several flavours of VarInfo.
+Some, like `typed_varinfo`, were easy to construct because we had convenience methods for them; however, the others were more difficult.
+This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
 ## 0.35.5
 

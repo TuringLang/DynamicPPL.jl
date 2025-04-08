@@ -193,7 +193,7 @@ module Issue537 end
             return x
         end
         model = testmodel_missing3([1.0])
-        varinfo = TypedVarInfo(model)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
@@ -213,7 +213,7 @@ module Issue537 end
         end false
         lpold = lp
         model = testmodel_missing4([1.0])
-        varinfo = TypedVarInfo(model)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp == lpold
 
         # test DPPL#61
@@ -234,13 +234,13 @@ module Issue537 end
             end
         end
         x = [1.0, missing]
-        TypedVarInfo(gdemo(x))
+        VarInfo(gdemo(x))
         @test ismissing(x[2])
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
-        vi = TypedVarInfo(gdemo(x))
+        vi = VarInfo(gdemo(x))
         @test haskey(vi.metadata, :x)
-        vi = TypedVarInfo(gdemo(x))
+        vi = VarInfo(gdemo(x))
         @test haskey(vi.metadata, :x)
 
         # Non-array variables
@@ -339,16 +339,16 @@ module Issue537 end
             return testmodel
         end
         model = makemodel(0.5)([1.0])
-        varinfo = TypedVarInfo(model)
+        varinfo = VarInfo(model)
         @test getlogp(varinfo) == lp
     end
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
         @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:, 1]))
         @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
-        vi1 = TypedVarInfo(f1())
-        vi2 = TypedVarInfo(f2())
-        vi3 = TypedVarInfo(f3())
+        vi1 = VarInfo(f1())
+        vi2 = VarInfo(f2())
+        vi3 = VarInfo(f3())
         @test haskey(vi1.metadata, :y)
         @test first(Base.keys(vi1.metadata.y)) == @varname(y)
         @test haskey(vi2.metadata, :y)
@@ -434,28 +434,28 @@ module Issue537 end
         end
         # No observation.
         m = demo2(missing, missing)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
         m = demo2(missing, 1.0)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
         m = demo2(1000.0, missing)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
         m = demo2(1000.0, 0.5)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
 
@@ -479,7 +479,7 @@ module Issue537 end
             return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
         m = demo_useval(missing, missing)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(sub1.x) ∈ ks
         @test @varname(sub2.x) ∈ ks
@@ -512,7 +512,7 @@ module Issue537 end
 
         ys = [randn(10), randn(10)]
         m = demo(ys)
-        vi = TypedVarInfo(m)
+        vi = VarInfo(m)
 
         for vn in
             [@varname(α), @varname(μ), @varname(σ), @varname(ar1_1.η), @varname(ar1_2.η)]
@@ -740,7 +740,7 @@ module Issue537 end
             @test model() isa NamedTuple{(:x, :y)}
 
             # `VarInfo` should only contain `x`.
-            varinfo = TypedVarInfo(model)
+            varinfo = VarInfo(model)
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 

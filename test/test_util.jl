@@ -10,7 +10,7 @@ const gdemo_default = gdemo_d()
 
 # TODO(penelopeysm): Remove this (and also test/compat/ad.jl)
 function test_model_ad(model, logp_manual)
-    vi = TypedVarInfo(model)
+    vi = VarInfo(model)
     x = vi[:]
 
     # Log probabilities using the model.
@@ -33,13 +33,17 @@ end
 
 Return string representing a short description of `vi`.
 """
-short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
-    "threadsafe($(short_varinfo_name(vi.varinfo)))"
-function short_varinfo_name(vi::NTVarInfo)
-    DynamicPPL.has_varnamedvector(vi) && return "TypedVectorVarInfo"
-    return "TypedVarInfo"
+function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
+    return "threadsafe($(short_varinfo_name(vi.varinfo)))"
 end
-short_varinfo_name(::UntypedVarInfo) = "UntypedVarInfo"
+function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
+    return if DynamicPPL.has_varnamedvector(vi)
+        "TypedVectorVarInfo"
+    else
+        "TypedVarInfo"
+    end
+end
+short_varinfo_name(::DynamicPPL.UntypedVarInfo) = "UntypedVarInfo"
 short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
 function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
     return "SimpleVarInfo{<:NamedTuple,<:Ref}"

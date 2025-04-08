@@ -72,7 +72,7 @@ julia> # Typed varinfo cannot handle this random support model properly
 ┌ Warning: Model seems incompatible with typed varinfo. Falling back to untyped varinfo.
 └ @ DynamicPPLJETExt ~/.julia/dev/DynamicPPL.jl/ext/DynamicPPLJETExt.jl:48
 
-julia> vi isa typeof(DynamicPPL.UntypedVarInfo(model))
+julia> vi isa typeof(DynamicPPL.untyped_varinfo(model))
 true
 
 julia> # In contrast, a simple model with no random support can be handled by typed varinfo.
@@ -81,7 +81,7 @@ model_with_static_support (generic function with 2 methods)
 
 julia> vi = determine_suitable_varinfo(model_with_static_support());
 
-julia> vi isa typeof(DynamicPPL.TypedVarInfo(model_with_static_support()))
+julia> vi isa typeof(DynamicPPL.typed_varinfo(model_with_static_support()))
 true
 ```
 """
@@ -97,7 +97,7 @@ function determine_suitable_varinfo(
         # Warn the user.
         @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."
         # Otherwise, we use the, possibly incorrect, default typed varinfo (to stay backwards compat).
-        DynamicPPL.TypedVarInfo(model, context)
+        DynamicPPL.typed_varinfo(model, context)
     end
 end
 

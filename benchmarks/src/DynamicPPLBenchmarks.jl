@@ -1,6 +1,6 @@
 module DynamicPPLBenchmarks
 
-using DynamicPPL: VarInfo, UntypedVarInfo, TypedVarInfo, SimpleVarInfo, VarName
+using DynamicPPL: VarInfo, SimpleVarInfo, VarName
 using BenchmarkTools: BenchmarkGroup, @benchmarkable
 using DynamicPPL: DynamicPPL
 using ADTypes: ADTypes
@@ -52,8 +52,8 @@ end
 
 Create a benchmark suite for `model` using the selected varinfo type and AD backend.
 Available varinfo choices:
-  • `:untyped`           → uses `UntypedVarInfo(model)`
-  • `:typed`             → uses `TypedVarInfo(model)`
+  • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
+  • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
   • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
   • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
 
@@ -67,9 +67,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     suite = BenchmarkGroup()
 
     vi = if varinfo_choice == :untyped
-        UntypedVarInfo(rng, model)
+        DynamicPPL.untyped_varinfo(rng, model)
     elseif varinfo_choice == :typed
-        TypedVarInfo(rng, model)
+        DynamicPPL.typed_varinfo(rng, model)
     elseif varinfo_choice == :simple_namedtuple
         SimpleVarInfo{Float64}(model(rng))
     elseif varinfo_choice == :simple_dict

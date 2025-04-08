@@ -244,7 +244,7 @@ function SimpleVarInfo{T}(
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::NTVarInfo, ::Type{D}=NamedTuple; kwargs...) where {D}
+function SimpleVarInfo(vi::NTVarInfo, (::Type{D})=NamedTuple; kwargs...) where {D}
     return SimpleVarInfo{eltype(getlogp(vi))}(vi, D; kwargs...)
 end
 function SimpleVarInfo{T}(

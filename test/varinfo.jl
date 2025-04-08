@@ -34,7 +34,7 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
 end
 
 @testset "varinfo.jl" begin
-    @testset "TypedVarInfo with Metadata" begin
+    @testset "VarInfo with NT of Metadata" begin
         @model gdemo(x, y) = begin
             s ~ InverseGamma(2, 3)
             m ~ truncated(Normal(0.0, sqrt(s)), 0.0, 2.0)
@@ -43,8 +43,8 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        vi = UntypedVarInfo(model, SampleFromUniform())
-        tvi = TypedVarInfo(vi)
+        vi = DynamicPPL.untyped_varinfo(model, SampleFromUniform())
+        tvi = DynamicPPL.typed_varinfo(vi)
 
         meta = vi.metadata
         for f in fieldnames(typeof(tvi.metadata))
@@ -115,7 +115,7 @@ end
 
         vi = VarInfo()
         test_base!!(vi)
-        test_base!!(TypedVarInfo(vi))
+        test_base!!(DynamicPPL.typed_varinfo(vi))
         test_base!!(SimpleVarInfo())
         test_base!!(SimpleVarInfo(Dict()))
         test_base!!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
@@ -134,7 +134,7 @@ end
 
         vi = VarInfo()
         test_varinfo_logp!(vi)
-        test_varinfo_logp!(TypedVarInfo(vi))
+        test_varinfo_logp!(DynamicPPL.typed_varinfo(vi))
         test_varinfo_logp!(SimpleVarInfo())
         test_varinfo_logp!(SimpleVarInfo(Dict()))
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
@@ -161,15 +161,15 @@ end
         end
         vi = VarInfo()
         test_varinfo!(vi)
-        test_varinfo!(empty!!(TypedVarInfo(vi)))
+        test_varinfo!(empty!!(DynamicPPL.typed_varinfo(vi)))
     end
 
-    @testset "push!! to TypedVarInfo" begin
+    @testset "push!! to VarInfo with NT of Metadata" begin
         vn_x = @varname x
         vn_y = @varname y
         untyped_vi = VarInfo()
         untyped_vi = push!!(untyped_vi, vn_x, 1.0, Normal(0, 1))
-        typed_vi = TypedVarInfo(untyped_vi)
+        typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
         typed_vi = push!!(typed_vi, vn_y, 2.0, Normal(0, 1))
         @test typed_vi[vn_x] == 1.0
         @test typed_vi[vn_y] == 2.0
@@ -205,10 +205,10 @@ end
             m_vns = model == model_uv ? [@varname(m[i]) for i in 1:5] : @varname(m)
             s_vns = @varname(s)
 
-            vi_typed = TypedVarInfo(model)
-            vi_untyped = UntypedVarInfo(model)
-            vi_vnv = DynamicPPL.UntypedVectorVarInfo(model)
-            vi_vnv_typed = DynamicPPL.TypedVectorVarInfo(model)
+            vi_typed = DynamicPPL.typed_varinfo(model)
+            vi_untyped = DynamicPPL.untyped_varinfo(model)
+            vi_vnv = DynamicPPL.untyped_vector_varinfo(model)
+            vi_vnv_typed = DynamicPPL.typed_vector_varinfo(model)
 
             model_name = model == model_uv ? "univariate" : "multivariate"
             @testset "$(model_name), $(short_varinfo_name(vi))" for vi in [
@@ -311,7 +311,7 @@ end
             return x ~ filldist(MvNormal([1, 100], I), 2)
         end
 
-        vi = TypedVarInfo(demo())
+        vi = VarInfo(demo())
         vals_prev = vi.metadata.x.vals
         ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
         DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
@@ -332,7 +332,7 @@ end
         `m`, `m[1]`, `m[1, 2]`, not `m[1][1]`, etc.
         """
         function test_setval!(model, chain; sample_idx=1, chain_idx=1)
-            var_info = TypedVarInfo(model)
+            var_info = VarInfo(model)
             θ_old = var_info[:]
             DynamicPPL.setval!(var_info, chain, sample_idx, chain_idx)
             θ_new = var_info[:]
@@ -398,7 +398,7 @@ end
         @test meta.vals ≈ v atol = 1e-10
 
         # Check that linking and invlinking preserves the values
-        vi = TypedVarInfo(vi)
+        vi = DynamicPPL.typed_varinfo(vi)
         meta = vi.metadata
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)
@@ -452,8 +452,9 @@ end
         # Need to run once since we can't specify that we want to _sample_
         # in the unconstrained space for `VarInfo` without having `vn`
         # present in the `varinfo`.
-        ## `UntypedVarInfo`
-        vi = UntypedVarInfo(model)
+
+        ## `untyped_varinfo`
+        vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
@@ -461,8 +462,8 @@ end
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
-        ## `TypedVarInfo`
-        vi = TypedVarInfo(model)
+        ## `typed_varinfo`
+        vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
@@ -813,8 +814,8 @@ end
             model_left = demo_merge_different_y()
             model_right = demo_merge_different_z()
 
-            varinfo_left = TypedVarInfo(model_left)
-            varinfo_right = TypedVarInfo(model_right)
+            varinfo_left = VarInfo(model_left)
+            varinfo_right = VarInfo(model_right)
             varinfo_right = DynamicPPL.settrans!!(varinfo_right, true, @varname(x))
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
@@ -869,7 +870,7 @@ end
             return x
         end
         model1 = demo_dot(1)
-        varinfo1 = DynamicPPL.link!!(DynamicPPL.UntypedVarInfo(model1), model1)
+        varinfo1 = DynamicPPL.link!!(DynamicPPL.untyped_varinfo(model1), model1)
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo_dot(2)
@@ -971,7 +972,7 @@ end
         @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
         @test DynamicPPL.get_num_produce(vi) == 3
 
-        vi = empty!!(DynamicPPL.TypedVarInfo(vi))
+        vi = empty!!(DynamicPPL.typed_varinfo(vi))
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
         DynamicPPL.increment_num_produce!(vi)
@@ -1012,7 +1013,7 @@ end
 
     @testset "issue #842" begin
         model = DynamicPPL.TestUtils.DEMO_MODELS[1]
-        varinfo = TypedVarInfo(model)
+        varinfo = VarInfo(model)
 
         n = length(varinfo[:])
         # `Bool`.

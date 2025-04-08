@@ -295,8 +295,13 @@ But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
 
 ```@docs
 VarInfo
-UntypedVarInfo
-TypedVarInfo
+```
+
+```@docs
+DynamicPPL.untyped_varinfo
+DynamicPPL.typed_varinfo
+DynamicPPL.untyped_vector_varinfo
+DynamicPPL.typed_vector_varinfo
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
@@ -449,7 +454,7 @@ Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a give
 DynamicPPL.default_varinfo
 ```
 
-There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.TypedVarInfo`](@ref) or [`DynamicPPL.UntypedVarInfo`](@ref), depending on which supports the model:
+There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
 
 ```@docs
 DynamicPPL.Experimental.determine_suitable_varinfo

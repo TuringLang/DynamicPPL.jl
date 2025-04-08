@@ -95,11 +95,40 @@ struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     num_produce::Base.RefValue{Int}
 end
 VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
+function VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return typed_varinfo(rng, model, sampler, context)
+end
+function VarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return VarInfo(Random.default_rng(), model, sampler, context)
+end
+function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No rng
+    return VarInfo(Random.default_rng(), model, sampler, context)
+end
+function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return VarInfo(rng, model, SampleFromPrior(), context)
+end
+function VarInfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return VarInfo(Random.default_rng(), model, SampleFromPrior(), context)
+end
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
 # TODO: NTVarInfo carries no information about the type of the actual metadata
 # i.e. the elements of the NamedTuple. It could be Metadata or it could be
+# VarNamedVector.
 # Resolving this ambiguity would likely require us to replace NamedTuple with
 # something which carried both its keys as well as its values' types as type
 # parameters.
@@ -149,7 +178,7 @@ end
 ########################
 
 """
-    UntypedVarInfo([rng, ]model[, sampler, context, metadata])
+    untyped_varinfo([rng, ]model[, sampler, context, metadata])
 
 Return a VarInfo object for the given `model` and `context`, which has just a
 single `Metadata` as its metadata field.
@@ -160,7 +189,7 @@ single `Metadata` as its metadata field.
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
 - `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
-function UntypedVarInfo(
+function untyped_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
@@ -170,36 +199,25 @@ function UntypedVarInfo(
     context = SamplingContext(rng, sampler, context)
     return last(evaluate!!(model, varinfo, context))
 end
-function UntypedVarInfo(
+function untyped_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
     # No rng
-    return UntypedVarInfo(Random.default_rng(), model, sampler, context)
+    return untyped_varinfo(Random.default_rng(), model, sampler, context)
 end
-function UntypedVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+function untyped_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
     # No sampler
-    return UntypedVarInfo(rng, model, SampleFromPrior(), context)
+    return untyped_varinfo(rng, model, SampleFromPrior(), context)
 end
-function UntypedVarInfo(model::Model, context::AbstractContext)
+function untyped_varinfo(model::Model, context::AbstractContext)
     # No sampler, no rng
-    return UntypedVarInfo(model, SampleFromPrior(), context)
+    return untyped_varinfo(model, SampleFromPrior(), context)
 end
 
 """
-    TypedVarInfo([rng, ]model[, sampler, context, metadata])
-
-Return a VarInfo object for the given `model` and `context`, which has a NamedTuple of
-`Metadata` structs as its metadata field.
-
-# Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
-- `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
-- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
-
-    TypedVarInfo(vi::UntypedVarInfo)
+    typed_varinfo(vi::UntypedVarInfo)
 
 This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
 `vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
@@ -207,7 +225,7 @@ global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `meta
 a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
 symbol.
 """
-function TypedVarInfo(vi::UntypedVarInfo)
+function typed_varinfo(vi::UntypedVarInfo)
     meta = vi.metadata
     new_metas = Metadata[]
     # Symbols of all instances of `VarName{sym}` in `vi.vns`
@@ -251,39 +269,53 @@ function TypedVarInfo(vi::UntypedVarInfo)
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
-function TypedVarInfo(vi::NTVarInfo)
-    # This function preserves the behaviour of TypedVarInfo(vi) where vi is
-    # already a TypedVarInfo
-    has_varnamedvector(vi) && error("Cannot convert TypedVectorVarInfo to TypedVarInfo")
+function typed_varinfo(vi::NTVarInfo)
+    # This function preserves the behaviour of typed_varinfo(vi) where vi is
+    # already a NTVarInfo
+    has_varnamedvector(vi) && error(
+        "Cannot convert VarInfo with NamedTuple of VarNamedVector to VarInfo with NamedTuple of Metadata",
+    )
     return vi
 end
-function TypedVarInfo(
+"""
+    typed_varinfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has a NamedTuple of
+`Metadata` structs as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
+function typed_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
-    return TypedVarInfo(UntypedVarInfo(rng, model, sampler, context))
+    return typed_varinfo(untyped_varinfo(rng, model, sampler, context))
 end
-function TypedVarInfo(
+function typed_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
     # No rng
-    return TypedVarInfo(Random.default_rng(), model, sampler, context)
+    return typed_varinfo(Random.default_rng(), model, sampler, context)
 end
-function TypedVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+function typed_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
     # No sampler
-    return TypedVarInfo(rng, model, SampleFromPrior(), context)
+    return typed_varinfo(rng, model, SampleFromPrior(), context)
 end
-function TypedVarInfo(model::Model, context::AbstractContext)
+function typed_varinfo(model::Model, context::AbstractContext)
     # No sampler, no rng
-    return TypedVarInfo(model, SampleFromPrior(), context)
+    return typed_varinfo(model, SampleFromPrior(), context)
 end
 
 """
-    UntypedVectorVarInfo([rng, ]model[, sampler, context, metadata])
+    untyped_vector_varinfo([rng, ]model[, sampler, context, metadata])
 
 Return a VarInfo object for the given `model` and `context`, which has just a
 single `VarNamedVector` as its metadata field.
@@ -294,40 +326,40 @@ single `VarNamedVector` as its metadata field.
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
 - `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
-function UntypedVectorVarInfo(vi::UntypedVarInfo)
+function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
-function UntypedVectorVarInfo(
+function untyped_vector_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
-    return UntypedVectorVarInfo(UntypedVarInfo(rng, model, sampler, context))
+    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler, context))
 end
-function UntypedVectorVarInfo(
+function untyped_vector_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
     # No rng
-    return UntypedVectorVarInfo(Random.default_rng(), model, sampler, context)
+    return untyped_vector_varinfo(Random.default_rng(), model, sampler, context)
 end
-function UntypedVectorVarInfo(
+function untyped_vector_varinfo(
     rng::Random.AbstractRNG, model::Model, context::AbstractContext
 )
     # No sampler
-    return UntypedVectorVarInfo(rng, model, SampleFromPrior(), context)
+    return untyped_vector_varinfo(rng, model, SampleFromPrior(), context)
 end
-function UntypedVectorVarInfo(model::Model, context::AbstractContext)
+function untyped_vector_varinfo(model::Model, context::AbstractContext)
     # No sampler, no rng
-    return UntypedVectorVarInfo(model, SampleFromPrior(), context)
+    return untyped_vector_varinfo(model, SampleFromPrior(), context)
 end
 
 """
-    TypedVectorVarInfo([rng, ]model[, sampler, context, metadata])
+    typed_vector_varinfo([rng, ]model[, sampler, context, metadata])
 
 Return a VarInfo object for the given `model` and `context`, which has a
 NamedTuple of `VarNamedVector`s as its metadata field.
@@ -338,41 +370,43 @@ NamedTuple of `VarNamedVector`s as its metadata field.
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
 - `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
-function TypedVectorVarInfo(vi::NTVarInfo)
+function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
     lp = getlogp(vi)
     return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
 end
-function TypedVectorVarInfo(vi::UntypedVectorVarInfo)
+function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
     logp = getlogp(vi)
     num_produce = get_num_produce(vi)
     nt = NamedTuple(new_metas)
     return VarInfo(nt, Ref(logp), Ref(num_produce))
 end
-function TypedVectorVarInfo(
+function typed_vector_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
-    return TypedVectorVarInfo(UntypedVectorVarInfo(rng, model, sampler, context))
+    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler, context))
 end
-function TypedVectorVarInfo(
+function typed_vector_varinfo(
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
 )
     # No rng
-    return TypedVectorVarInfo(Random.default_rng(), model, sampler, context)
+    return typed_vector_varinfo(Random.default_rng(), model, sampler, context)
 end
-function TypedVectorVarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+function typed_vector_varinfo(
+    rng::Random.AbstractRNG, model::Model, context::AbstractContext
+)
     # No sampler
-    return TypedVectorVarInfo(rng, model, SampleFromPrior(), context)
+    return typed_vector_varinfo(rng, model, SampleFromPrior(), context)
 end
-function TypedVectorVarInfo(model::Model, context::AbstractContext)
+function typed_vector_varinfo(model::Model, context::AbstractContext)
     # No sampler, no rng
-    return TypedVectorVarInfo(model, SampleFromPrior(), context)
+    return typed_vector_varinfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -2003,7 +2037,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.TypedVarInfo(rng, m);
+julia> var_info = DynamicPPL.VarInfo(rng, m);
 
 julia> var_info[@varname(m)]
 -0.6702516921145671
@@ -2067,7 +2101,7 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.TypedVarInfo(rng, m);
+julia> var_info = DynamicPPL.VarInfo(rng, m);
        # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
 
 julia> var_info[@varname(m)]

@@ -79,13 +79,13 @@ For example, with the model above we have
 
 ```@example varinfo-design
 # Type-unstable `VarInfo`
-varinfo_untyped = DynamicPPL.UntypedVarInfo(demo())
+varinfo_untyped = DynamicPPL.untyped_varinfo(demo())
 typeof(varinfo_untyped.metadata)
 ```
 
 ```@example varinfo-design
 # Type-stable `VarInfo`
-varinfo_typed = DynamicPPL.TypedVarInfo(demo())
+varinfo_typed = DynamicPPL.typed_varinfo(demo())
 typeof(varinfo_typed.metadata)
 ```
 
@@ -154,7 +154,7 @@ For example, we want to optimize code-paths which effectively boil down to inner
 
 ```julia
 # Construct a `VarInfo` with types inferred from `model`.
-varinfo = TypedVarInfo(model)
+varinfo = VarInfo(model)
 
 # Repeatedly sample from `model`.
 for _ in 1:num_samples
@@ -227,13 +227,13 @@ Continuing from the example from the previous section, we can use a `VarInfo` wi
 
 ```@example varinfo-design
 # Type-unstable
-varinfo_untyped_vnv = DynamicPPL.UntypedVectorVarInfo(varinfo_untyped)
+varinfo_untyped_vnv = DynamicPPL.untyped_vector_varinfo(varinfo_untyped)
 varinfo_untyped_vnv[@varname(x)], varinfo_untyped_vnv[@varname(y)]
 ```
 
 ```@example varinfo-design
 # Type-stable
-varinfo_typed_vnv = DynamicPPL.TypedVectorVarInfo(varinfo_typed)
+varinfo_typed_vnv = DynamicPPL.typed_vector_varinfo(varinfo_typed)
 varinfo_typed_vnv[@varname(x)], varinfo_typed_vnv[@varname(y)]
 ```
 
