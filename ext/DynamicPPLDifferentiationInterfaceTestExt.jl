@@ -54,7 +54,7 @@ function make_scenario(
 
     # Calculate ground truth to compare against
     grad_true = if expected_grad === nothing
-        ldf_reference = LogDensityFunction(model; adtype=reference_adtype)
+        ldf_reference = LogDensityFunction(model, varinfo; adtype=reference_adtype)
         LogDensityProblems.logdensity_and_gradient(ldf_reference, params)[2]
     else
         expected_grad
