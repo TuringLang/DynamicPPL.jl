@@ -138,7 +138,7 @@ function run_ad(
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     params = map(identity, params)
     verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model; adtype=adtype)
+    ldf = LogDensityFunction(model, varinfo; adtype=adtype)
 
     value, grad = logdensity_and_gradient(ldf, params)
     grad = _to_vec_f64(grad)
@@ -147,7 +147,7 @@ function run_ad(
     if test
         # Calculate ground truth to compare against
         value_true, grad_true = if expected_value_and_grad === nothing
-            ldf_reference = LogDensityFunction(model; adtype=reference_adtype)
+            ldf_reference = LogDensityFunction(model, varinfo; adtype=reference_adtype)
             logdensity_and_gradient(ldf_reference, params)
         else
             expected_value_and_grad
