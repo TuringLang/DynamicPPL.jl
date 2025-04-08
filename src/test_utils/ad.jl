@@ -94,15 +94,18 @@ There are two positional arguments, which absolutely must be provided:
 
 Everything else is optional, and can be categorised into several groups:
 
-1. _How to specify the VarInfo._ DynamicPPL contains several different types of
-   VarInfo objects which change the way model evaluation occurs. If you want to
-   use a specific type of VarInfo, pass it as the `varinfo` argument.
-   Otherwise, it will default to using a `TypedVarInfo` generated from the
-   model.
+1. _How to specify the VarInfo._
 
-2. _How to specify the parameters._ For maximum control over this, generate a
-   vector of parameters yourself and pass this as the `params` argument. If you
-   don't specify this, it will be taken from the contents of the VarInfo.
+   DynamicPPL contains several different types of VarInfo objects which change
+   the way model evaluation occurs. If you want to use a specific type of
+   VarInfo, pass it as the `varinfo` argument. Otherwise, it will default to
+   using a `TypedVarInfo` generated from the model.
+
+2. _How to specify the parameters._
+
+   For maximum control over this, generate a vector of parameters yourself and
+   pass this as the `params` argument. If you don't specify this, it will be
+   taken from the contents of the VarInfo.
 
    Note that if the VarInfo is not specified (and thus automatically generated)
    the parameters in it will have been sampled from the prior of the model. If
@@ -116,9 +119,10 @@ Everything else is optional, and can be categorised into several groups:
    prep_params)`. You could then evaluate the gradient at a different set of
    parameters using the `params` keyword argument.
 
-3. _How to specify the results to compare against._ (Only if `test=true`.) Once
-   logp and its gradient has been calculated with the specified `adtype`, it
-   must be tested for correctness.
+3. _How to specify the results to compare against._ (Only if `test=true`.)
+
+   Once logp and its gradient has been calculated with the specified `adtype`,
+   it must be tested for correctness.
 
    This can be done either by specifying `reference_adtype`, in which case logp
    and its gradient will also be calculated with this reference in order to
@@ -130,12 +134,15 @@ Everything else is optional, and can be categorised into several groups:
    The default reference backend is ForwardDiff. If none of these parameters are
    specified, ForwardDiff will be used to calculate the ground truth.
 
-4. _How to specify the tolerances._ (Only if `test=true`.) The tolerances for
-the value and gradient can be set using `value_atol` and `grad_atol`. These
-default to 1e-6.
+4. _How to specify the tolerances._ (Only if `test=true`.)
 
-5. _Whether to output extra logging information._ By default, this function
-prints a message when it runs. To silence it, set `verbose=false`.
+   The tolerances for the value and gradient can be set using `value_atol` and
+   `grad_atol`. These default to 1e-6.
+
+5. _Whether to output extra logging information._
+
+   By default, this function prints messages when it runs. To silence it, set
+   `verbose=false`.
 """
 function run_ad(
     model::Model,
