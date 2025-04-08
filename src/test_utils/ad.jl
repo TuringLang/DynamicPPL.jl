@@ -78,13 +78,16 @@ Test the correctness and/or benchmark the AD backend `adtype` for the model
 `model`.
 
 Whether to test and benchmark is controlled by the `test` and `benchmark`
-keyword arguments. By default, `test` is `true` and `benchmark` is `false.
+keyword arguments. By default, `test` is `true` and `benchmark` is `false`.
 
 Returns an [`ADResult`](@ref) object, which contains the results of the
 test and/or benchmark.
 
-This function is not as complicated as its signature makes it look. There are
-two things that must be provided:
+Note that to run AD successfully you will need to import the AD backend itself.
+For example, to test with `AutoReverseDiff()` you will need to run `import
+ReverseDiff`.
+
+There are two positional arguments, which absolutely must be provided:
 
 1. `model` - The model being tested.
 2. `adtype` - The AD backend being tested.
@@ -92,28 +95,40 @@ two things that must be provided:
 Everything else is optional, and can be categorised into several groups:
 
 1. _How to specify the VarInfo._ DynamicPPL contains several different types of
-VarInfo objects which change the way model evaluation occurs. If you want to
-use a specific type of VarInfo, pass it as the `varinfo` argument. Otherwise,
-it will default to using a `TypedVarInfo` generated from the model.
+   VarInfo objects which change the way model evaluation occurs. If you want to
+   use a specific type of VarInfo, pass it as the `varinfo` argument.
+   Otherwise, it will default to using a `TypedVarInfo` generated from the
+   model.
 
 2. _How to specify the parameters._ For maximum control over this, generate a
-vector of parameters yourself and pass this as the `params` argument. If you
-don't specify this, it will be taken from the contents of the VarInfo. Note
-that if the VarInfo is not specified (and thus automatically generated) the
-parameters in it will have been sampled from the prior of the model. If you
-want to seed the parameter generation, the easiest way is to pass a `rng`
-argument to the VarInfo constructor (i.e. do `VarInfo(rng, model)`).
+   vector of parameters yourself and pass this as the `params` argument. If you
+   don't specify this, it will be taken from the contents of the VarInfo.
+
+   Note that if the VarInfo is not specified (and thus automatically generated)
+   the parameters in it will have been sampled from the prior of the model. If
+   you want to seed the parameter generation, the easiest way is to pass a
+   `rng` argument to the VarInfo constructor (i.e. do `VarInfo(rng, model)`).
+
+   Finally, note that these only reflect the parameters used for _evaluating_
+   the gradient. If you also want to control the parameters used for
+   _preparing_ the gradient, then you need to manually set these parameters in
+   the VarInfo object, for example using `vi = DynamicPPL.unflatten(vi,
+   prep_params)`. You could then evaluate the gradient at a different set of
+   parameters using the `params` keyword argument.
 
 3. _How to specify the results to compare against._ (Only if `test=true`.) Once
-logp and its gradient has been calculated with the specified `adtype`, it must
-be tested for correctness. This can be done either by specifying
-`reference_adtype`, in which case logp and its gradient will also be calculated
-with this reference in order to obtain the ground truth; or by using
-`expected_value_and_grad`, which is a tuple of (logp, gradient) that the
-calculated values must match. The latter is useful if you are testing multiple
-AD backends and want to avoid recalculating the ground truth multiple times.
-The default reference backend is ForwardDiff. If none of these parameters are
-specified, that will be used to calculate the ground truth.
+   logp and its gradient has been calculated with the specified `adtype`, it
+   must be tested for correctness.
+
+   This can be done either by specifying `reference_adtype`, in which case logp
+   and its gradient will also be calculated with this reference in order to
+   obtain the ground truth; or by using `expected_value_and_grad`, which is a
+   tuple of `(logp, gradient)` that the calculated values must match. The
+   latter is useful if you are testing multiple AD backends and want to avoid
+   recalculating the ground truth multiple times.
+
+   The default reference backend is ForwardDiff. If none of these parameters are
+   specified, ForwardDiff will be used to calculate the ground truth.
 
 4. _How to specify the tolerances._ (Only if `test=true`.) The tolerances for
 the value and gradient can be set using `value_atol` and `grad_atol`. These
