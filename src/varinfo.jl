@@ -136,7 +136,7 @@ function VarInfo(
     # No rng
     return VarInfo(Random.default_rng(), model, sampler, context)
 end
-function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+function VarInfo(model::Model, sampler::AbstractSampler, context::AbstractContext)
     # No rng
     return VarInfo(Random.default_rng(), model, sampler, context)
 end
