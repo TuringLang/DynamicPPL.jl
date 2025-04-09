@@ -45,8 +45,6 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
-    UntypedVarInfo,
-    TypedVarInfo,
     SimpleVarInfo,
     push!!,
     empty!!,

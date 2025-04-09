@@ -52,8 +52,8 @@ end
 
 Create a benchmark suite for `model` using the selected varinfo type and AD backend.
 Available varinfo choices:
-  • `:untyped`           → uses `VarInfo()`
-  • `:typed`             → uses `VarInfo(model)`
+  • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
+  • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
   • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
   • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
 
@@ -67,11 +67,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     suite = BenchmarkGroup()
 
     vi = if varinfo_choice == :untyped
-        vi = VarInfo()
-        model(rng, vi)
-        vi
+        DynamicPPL.untyped_varinfo(rng, model)
     elseif varinfo_choice == :typed
-        VarInfo(rng, model)
+        DynamicPPL.typed_varinfo(rng, model)
     elseif varinfo_choice == :simple_namedtuple
         SimpleVarInfo{Float64}(model(rng))
     elseif varinfo_choice == :simple_dict

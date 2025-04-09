@@ -92,7 +92,7 @@
             SimpleVarInfo(Dict()),
             SimpleVarInfo(values_constrained),
             SimpleVarInfo(DynamicPPL.VarNamedVector()),
-            VarInfo(model),
+            DynamicPPL.typed_varinfo(model),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)

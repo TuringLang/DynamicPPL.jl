@@ -69,34 +69,91 @@ end
 ###########
 
 """
-```
-struct VarInfo{Tmeta, Tlogp} <: AbstractVarInfo
-    metadata::Tmeta
-    logp::Base.RefValue{Tlogp}
-    num_produce::Base.RefValue{Int}
-end
-```
+    struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
+        metadata::Tmeta
+        logp::Base.RefValue{Tlogp}
+        num_produce::Base.RefValue{Int}
+    end
 
-A light wrapper over one or more instances of `Metadata`. Let `vi` be an instance of
-`VarInfo`. If `vi isa VarInfo{<:Metadata}`, then only one `Metadata` instance is used
-for all the sybmols. `VarInfo{<:Metadata}` is aliased `UntypedVarInfo`. If
-`vi isa VarInfo{<:NamedTuple}`, then `vi.metadata` is a `NamedTuple` that maps each
-symbol used on the LHS of `~` in the model to its `Metadata` instance. The latter allows
-for the type specialization of `vi` after the first sampling iteration when all the
-symbols have been observed. `VarInfo{<:NamedTuple}` is aliased `TypedVarInfo`.
+A light wrapper over some kind of metadata.
 
-Note: It is the user's responsibility to ensure that each "symbol" is visited at least
-once whenever the model is called, regardless of any stochastic branching. Each symbol
-refers to a Julia variable and can be a hierarchical array of many random variables, e.g. `x[1] ~ ...` and `x[2] ~ ...` both have the same symbol `x`.
+The type of the metadata can be one of a number of options. It may either be a
+`Metadata` or a `VarNamedVector`, _or_, it may be a `NamedTuple` which maps
+symbols to `Metadata` or `VarNamedVector` instances. Here, a _symbol_ refers
+to a Julia variable and may consist of one or more `VarName`s which appear on
+the left-hand side of tilde statements. For example, `x[1]` and `x[2]` both
+have the same symbol `x`.
+
+Several type aliases are provided for these forms of VarInfos:
+- `VarInfo{<:Metadata}` is `UntypedVarInfo`
+- `VarInfo{<:VarNamedVector}` is `UntypedVectorVarInfo`
+- `VarInfo{<:NamedTuple}` is `NTVarInfo`
+
+The NamedTuple form, i.e. `NTVarInfo`, is useful for maintaining type stability
+of model evaluation. However, the element type of NamedTuples are not contained
+in its type itself: thus, there is no way to use the type system to determine
+whether the elements of the NamedTuple are `Metadata` or `VarNamedVector`.
+
+Note that for NTVarInfo, it is the user's responsibility to ensure that each
+symbol is visited at least once during model evaluation, regardless of any
+stochastic branching.
 """
 struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
     metadata::Tmeta
     logp::Base.RefValue{Tlogp}
     num_produce::Base.RefValue{Int}
 end
-const VectorVarInfo = VarInfo{<:VarNamedVector}
+VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
+"""
+    VarInfo([rng, ]model[, sampler, context])
+
+Generate a `VarInfo` object for the given `model`, by evaluating it once using
+the given `rng`, `sampler`, and `context`.
+
+!!! warning
+
+    This function currently returns a `VarInfo` with its metadata field set to
+    a `NamedTuple` of `Metadata`. This is an implementation detail. In general,
+    this function may return any kind of object that satisfies the
+    `AbstractVarInfo` interface. If you require precise control over the type
+    of `VarInfo` returned, use the internal functions `untyped_varinfo`,
+    `typed_varinfo`, `untyped_vector_varinfo`, or `typed_vector_varinfo`
+    instead.
+"""
+function VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return typed_varinfo(rng, model, sampler, context)
+end
+function VarInfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return VarInfo(Random.default_rng(), model, sampler, context)
+end
+function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return VarInfo(rng, model, SampleFromPrior(), context)
+end
+function VarInfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return VarInfo(Random.default_rng(), model, SampleFromPrior(), context)
+end
+
+const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
 const UntypedVarInfo = VarInfo{<:Metadata}
-const TypedVarInfo = VarInfo{<:NamedTuple}
+# TODO: NTVarInfo carries no information about the type of the actual metadata
+# i.e. the elements of the NamedTuple. It could be Metadata or it could be
+# VarNamedVector.
+# Resolving this ambiguity would likely require us to replace NamedTuple with
+# something which carried both its keys as well as its values' types as type
+# parameters.
+const NTVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
@@ -132,70 +189,245 @@ function metadata_to_varnamedvector(md::Metadata)
     )
 end
 
-function VectorVarInfo(vi::UntypedVarInfo)
-    md = metadata_to_varnamedvector(vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
-end
-
-function VectorVarInfo(vi::TypedVarInfo)
-    md = map(metadata_to_varnamedvector, vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
-end
-
 function has_varnamedvector(vi::VarInfo)
     return vi.metadata isa VarNamedVector ||
-           (vi isa TypedVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
+           (vi isa NTVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
 end
 
-"""
-    untyped_varinfo(model[, context, metadata])
+########################
+# VarInfo constructors #
+########################
 
-Return an untyped varinfo object for the given `model` and `context`.
+"""
+    untyped_varinfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has just a
+single `Metadata` as its metadata field.
 
 # Arguments
-- `model::Model`: The model for which to create the varinfo object.
-- `context::AbstractContext`: The context in which to evaluate the model. Default: `SamplingContext()`.
-- `metadata::Union{Metadata,VarNamedVector}`: The metadata to use for the varinfo object.
-    Default: `Metadata()`.
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
 function untyped_varinfo(
-    model::Model,
-    context::AbstractContext=SamplingContext(),
-    metadata::Union{Metadata,VarNamedVector}=Metadata(),
-)
-    varinfo = VarInfo(metadata)
-    return last(
-        evaluate!!(model, varinfo, hassampler(context) ? context : SamplingContext(context))
-    )
-end
-
-"""
-    typed_varinfo(model[, context, metadata])
-
-Return a typed varinfo object for the given `model`, `sampler` and `context`.
-
-This simply calls [`DynamicPPL.untyped_varinfo`](@ref) and converts the resulting
-varinfo object to a typed varinfo object.
-
-See also: [`DynamicPPL.untyped_varinfo`](@ref)
-"""
-typed_varinfo(args...) = TypedVarInfo(untyped_varinfo(args...))
-
-function VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler=SampleFromPrior(),
     context::AbstractContext=DefaultContext(),
-    metadata::Union{Metadata,VarNamedVector}=Metadata(),
 )
-    return typed_varinfo(model, SamplingContext(rng, sampler, context), metadata)
+    varinfo = VarInfo(Metadata())
+    context = SamplingContext(rng, sampler, context)
+    return last(evaluate!!(model, varinfo, context))
 end
-function VarInfo(
-    model::Model, args::Union{AbstractSampler,AbstractContext,Metadata,VarNamedVector}...
+function untyped_varinfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
 )
-    return VarInfo(Random.default_rng(), model, args...)
+    # No rng
+    return untyped_varinfo(Random.default_rng(), model, sampler, context)
+end
+function untyped_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return untyped_varinfo(rng, model, SampleFromPrior(), context)
+end
+function untyped_varinfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return untyped_varinfo(model, SampleFromPrior(), context)
+end
+
+"""
+    typed_varinfo(vi::UntypedVarInfo)
+
+This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
+`vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
+global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `metadata` as
+a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
+symbol.
+"""
+function typed_varinfo(vi::UntypedVarInfo)
+    meta = vi.metadata
+    new_metas = Metadata[]
+    # Symbols of all instances of `VarName{sym}` in `vi.vns`
+    syms_tuple = Tuple(syms(vi))
+    for s in syms_tuple
+        # Find all indices in `vns` with symbol `s`
+        inds = findall(vn -> getsym(vn) === s, meta.vns)
+        n = length(inds)
+        # New `vns`
+        sym_vns = getindex.((meta.vns,), inds)
+        # New idcs
+        sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
+        # New dists
+        sym_dists = getindex.((meta.dists,), inds)
+        # New orders
+        sym_orders = getindex.((meta.orders,), inds)
+        # New flags
+        sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
+
+        # Extract new ranges and vals
+        _ranges = getindex.((meta.ranges,), inds)
+        # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
+        _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
+        sym_ranges = Vector{eltype(_ranges)}(undef, n)
+        start = 0
+        for i in 1:n
+            sym_ranges[i] = (start + 1):(start + length(_vals[i]))
+            start += length(_vals[i])
+        end
+        sym_vals = foldl(vcat, _vals)
+
+        push!(
+            new_metas,
+            Metadata(
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
+            ),
+        )
+    end
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple{syms_tuple}(Tuple(new_metas))
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
+function typed_varinfo(vi::NTVarInfo)
+    # This function preserves the behaviour of typed_varinfo(vi) where vi is
+    # already a NTVarInfo
+    has_varnamedvector(vi) && error(
+        "Cannot convert VarInfo with NamedTuple of VarNamedVector to VarInfo with NamedTuple of Metadata",
+    )
+    return vi
+end
+"""
+    typed_varinfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has a NamedTuple of
+`Metadata` structs as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
+function typed_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return typed_varinfo(untyped_varinfo(rng, model, sampler, context))
+end
+function typed_varinfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return typed_varinfo(Random.default_rng(), model, sampler, context)
+end
+function typed_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
+    # No sampler
+    return typed_varinfo(rng, model, SampleFromPrior(), context)
+end
+function typed_varinfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return typed_varinfo(model, SampleFromPrior(), context)
+end
+
+"""
+    untyped_vector_varinfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has just a
+single `VarNamedVector` as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
+function untyped_vector_varinfo(vi::UntypedVarInfo)
+    md = metadata_to_varnamedvector(vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+end
+function untyped_vector_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler, context))
+end
+function untyped_vector_varinfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return untyped_vector_varinfo(Random.default_rng(), model, sampler, context)
+end
+function untyped_vector_varinfo(
+    rng::Random.AbstractRNG, model::Model, context::AbstractContext
+)
+    # No sampler
+    return untyped_vector_varinfo(rng, model, SampleFromPrior(), context)
+end
+function untyped_vector_varinfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return untyped_vector_varinfo(model, SampleFromPrior(), context)
+end
+
+"""
+    typed_vector_varinfo([rng, ]model[, sampler, context, metadata])
+
+Return a VarInfo object for the given `model` and `context`, which has a
+NamedTuple of `VarNamedVector`s as its metadata field.
+
+# Arguments
+- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
+- `model::Model`: The model for which to create the varinfo object
+- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
+"""
+function typed_vector_varinfo(vi::NTVarInfo)
+    md = map(metadata_to_varnamedvector, vi.metadata)
+    lp = getlogp(vi)
+    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+end
+function typed_vector_varinfo(vi::UntypedVectorVarInfo)
+    new_metas = group_by_symbol(vi.metadata)
+    logp = getlogp(vi)
+    num_produce = get_num_produce(vi)
+    nt = NamedTuple(new_metas)
+    return VarInfo(nt, Ref(logp), Ref(num_produce))
+end
+function typed_vector_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler, context))
+end
+function typed_vector_varinfo(
+    model::Model,
+    sampler::AbstractSampler=SampleFromPrior(),
+    context::AbstractContext=DefaultContext(),
+)
+    # No rng
+    return typed_vector_varinfo(Random.default_rng(), model, sampler, context)
+end
+function typed_vector_varinfo(
+    rng::Random.AbstractRNG, model::Model, context::AbstractContext
+)
+    # No sampler
+    return typed_vector_varinfo(rng, model, SampleFromPrior(), context)
+end
+function typed_vector_varinfo(model::Model, context::AbstractContext)
+    # No sampler, no rng
+    return typed_vector_varinfo(model, SampleFromPrior(), context)
 end
 
 """
@@ -204,7 +436,7 @@ end
 Return the length of the vector representation of `varinfo`.
 """
 vector_length(varinfo::VarInfo) = length(varinfo.metadata)
-vector_length(varinfo::TypedVarInfo) = sum(length, varinfo.metadata)
+vector_length(varinfo::NTVarInfo) = sum(length, varinfo.metadata)
 vector_length(md::Metadata) = sum(length, md.ranges)
 
 function unflatten(vi::VarInfo, x::AbstractVector)
@@ -240,11 +472,6 @@ function unflatten_metadata(md::Metadata, x::AbstractVector)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
-
-# without AbstractSampler
-function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
-    return VarInfo(rng, model, SampleFromPrior(), context)
-end
 
 ####
 #### Internal functions
@@ -500,7 +727,7 @@ setval!(vi::UntypedVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
 Return the metadata in `vi` that belongs to `vn`.
 """
 getmetadata(vi::VarInfo, vn::VarName) = vi.metadata
-getmetadata(vi::TypedVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
+getmetadata(vi::NTVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
 
 """
     getidx(vi::VarInfo, vn::VarName)
@@ -541,7 +768,7 @@ end
 Return the range corresponding to `varname` in the vector representation of `varinfo`.
 """
 vector_getrange(vi::VarInfo, vn::VarName) = getrange(vi.metadata, vn)
-function vector_getrange(vi::TypedVarInfo, vn::VarName)
+function vector_getrange(vi::NTVarInfo, vn::VarName)
     offset = 0
     for md in values(vi.metadata)
         # First, we need to check if `vn` is in `md`.
@@ -563,8 +790,8 @@ Return the range corresponding to `varname` in the vector representation of `var
 function vector_getranges(varinfo::VarInfo, varname::Vector{<:VarName})
     return map(Base.Fix1(vector_getrange, varinfo), varname)
 end
-# Specialized version for `TypedVarInfo`.
-function vector_getranges(varinfo::TypedVarInfo, vns::Vector{<:VarName})
+# Specialized version for `NTVarInfo`.
+function vector_getranges(varinfo::NTVarInfo, vns::Vector{<:VarName})
     # TODO: Does it help if we _don't_ convert to a vector here?
     metadatas = collect(values(varinfo.metadata))
     # Extract the offsets.
@@ -624,7 +851,7 @@ end
 getindex_internal(vi::VarInfo, ::Colon) = getindex_internal(vi.metadata, Colon())
 # NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
 # See for example https://github.com/JuliaLang/julia/pull/46381.
-function getindex_internal(vi::TypedVarInfo, ::Colon)
+function getindex_internal(vi::NTVarInfo, ::Colon)
     return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
 end
 function getindex_internal(md::Metadata, ::Colon)
@@ -684,10 +911,10 @@ settrans!!(vi::VarInfo, trans::AbstractTransformation) = settrans!!(vi, true)
 Returns a tuple of the unique symbols of random variables in `vi`.
 """
 syms(vi::UntypedVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
-syms(vi::TypedVarInfo) = keys(vi.metadata)
+syms(vi::NTVarInfo) = keys(vi.metadata)
 
 _getidcs(vi::UntypedVarInfo) = 1:length(vi.metadata.idcs)
-_getidcs(vi::TypedVarInfo) = _getidcs(vi.metadata)
+_getidcs(vi::NTVarInfo) = _getidcs(vi.metadata)
 
 @generated function _getidcs(metadata::NamedTuple{names}) where {names}
     exprs = []
@@ -702,12 +929,11 @@ end
 findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
 
 """
-    all_varnames_grouped_by_symbol(vi::TypedVarInfo)
+    all_varnames_grouped_by_symbol(vi::NTVarInfo)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
-all_varnames_grouped_by_symbol(vi::TypedVarInfo) =
-    all_varnames_grouped_by_symbol(vi.metadata)
+all_varnames_grouped_by_symbol(vi::NTVarInfo) = all_varnames_grouped_by_symbol(vi.metadata)
 
 @generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
@@ -745,73 +971,6 @@ end
 #### APIs for typed and untyped VarInfo
 ####
 
-# VarInfo
-
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
-
-function TypedVarInfo(vi::VectorVarInfo)
-    new_metas = group_by_symbol(vi.metadata)
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
-    nt = NamedTuple(new_metas)
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
-end
-
-"""
-    TypedVarInfo(vi::UntypedVarInfo)
-
-This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
-`vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
-global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `metadata` as
-a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
-symbol.
-"""
-function TypedVarInfo(vi::UntypedVarInfo)
-    meta = vi.metadata
-    new_metas = Metadata[]
-    # Symbols of all instances of `VarName{sym}` in `vi.vns`
-    syms_tuple = Tuple(syms(vi))
-    for s in syms_tuple
-        # Find all indices in `vns` with symbol `s`
-        inds = findall(vn -> getsym(vn) === s, meta.vns)
-        n = length(inds)
-        # New `vns`
-        sym_vns = getindex.((meta.vns,), inds)
-        # New idcs
-        sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
-        # New dists
-        sym_dists = getindex.((meta.dists,), inds)
-        # New orders
-        sym_orders = getindex.((meta.orders,), inds)
-        # New flags
-        sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
-
-        # Extract new ranges and vals
-        _ranges = getindex.((meta.ranges,), inds)
-        # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
-        _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
-        sym_ranges = Vector{eltype(_ranges)}(undef, n)
-        start = 0
-        for i in 1:n
-            sym_ranges[i] = (start + 1):(start + length(_vals[i]))
-            start += length(_vals[i])
-        end
-        sym_vals = foldl(vcat, _vals)
-
-        push!(
-            new_metas,
-            Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
-            ),
-        )
-    end
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
-    nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
-end
-TypedVarInfo(vi::TypedVarInfo) = vi
-
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
     resetlogp!!(vi)
@@ -834,8 +993,8 @@ Base.keys(vi::VarInfo) = Base.keys(vi.metadata)
 
 # HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
 # on other methods in the codebase which requires `Vector{<:VarName}`.
-Base.keys(vi::TypedVarInfo{<:NamedTuple{()}}) = VarName[]
-@generated function Base.keys(vi::TypedVarInfo{<:NamedTuple{names}}) where {names}
+Base.keys(vi::NTVarInfo{<:NamedTuple{()}}) = VarName[]
+@generated function Base.keys(vi::NTVarInfo{<:NamedTuple{names}}) where {names}
     expr = Expr(:call)
     push!(expr.args, :vcat)
 
@@ -898,7 +1057,7 @@ _isempty(vnv::VarNamedVector) = isempty(vnv)
     return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
 end
 
-function link!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function link!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
@@ -952,13 +1111,13 @@ function _link!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _link! a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _link!(vi::TypedVarInfo, vns::VarNameTuple)
+# If we try to _link! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _link!(vi::NTVarInfo, vns::VarNameTuple)
     return _link!(vi, group_varnames_by_symbol(vns))
 end
 
-function _link!(vi::TypedVarInfo, vns::NamedTuple)
+function _link!(vi::NTVarInfo, vns::NamedTuple)
     return _link!(vi.metadata, vi, vns)
 end
 
@@ -1002,7 +1161,7 @@ end
     return expr
 end
 
-function invlink!!(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function invlink!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
@@ -1064,13 +1223,13 @@ function _invlink!(vi::UntypedVarInfo, vns)
     end
 end
 
-# If we try to _invlink! a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink!(vi::TypedVarInfo, vns::VarNameTuple)
+# If we try to _invlink! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _invlink!(vi::NTVarInfo, vns::VarNameTuple)
     return _invlink!(vi.metadata, vi, group_varnames_by_symbol(vns))
 end
 
-function _invlink!(vi::TypedVarInfo, vns::NamedTuple)
+function _invlink!(vi::NTVarInfo, vns::NamedTuple)
     return _invlink!(vi.metadata, vi, vns)
 end
 
@@ -1121,7 +1280,7 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     return vi
 end
 
-function link(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function link(::DynamicTransformation, vi::NTVarInfo, model::Model)
     return _link(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
@@ -1156,13 +1315,13 @@ function _link(model::Model, varinfo::VarInfo, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
 end
 
-# If we try to _link a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _link(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
+# If we try to _link a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _link(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
     return _link(model, varinfo, group_varnames_by_symbol(vns))
 end
 
-function _link(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
+function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
@@ -1257,7 +1416,7 @@ function _link_metadata!!(
     return metadata
 end
 
-function invlink(::DynamicTransformation, vi::TypedVarInfo, model::Model)
+function invlink(::DynamicTransformation, vi::NTVarInfo, model::Model)
     return _invlink(model, vi, all_varnames_grouped_by_symbol(vi))
 end
 
@@ -1297,13 +1456,13 @@ function _invlink(model::Model, varinfo::VarInfo, vns)
     )
 end
 
-# If we try to _invlink a TypedVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the TypedVarInfo.
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::VarNameTuple)
+# If we try to _invlink a NTVarInfo with a Tuple of VarNames, first convert it to a
+# NamedTuple that matches the structure of the NTVarInfo.
+function _invlink(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
     return _invlink(model, varinfo, group_varnames_by_symbol(vns))
 end
 
-function _invlink(model::Model, varinfo::TypedVarInfo, vns::NamedTuple)
+function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
@@ -1394,7 +1553,7 @@ end
 
 # TODO(mhauru) The treatment of the case when some variables are linked and others are not
 # should be revised. It used to be the case that for UntypedVarInfo `islinked` returned
-# whether the first variable was linked. For TypedVarInfo we did an OR over the first
+# whether the first variable was linked. For NTVarInfo we did an OR over the first
 # variables under each symbol. We now more consistently use OR, but I'm not convinced this
 # is really the right thing to do.
 """
@@ -1538,7 +1697,7 @@ Base.haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
 Check whether `vn` has a value in `vi`.
 """
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
-function Base.haskey(vi::TypedVarInfo, vn::VarName)
+function Base.haskey(vi::NTVarInfo, vn::VarName)
     md_haskey = map(vi.metadata) do metadata
         haskey(metadata, vn)
     end
@@ -1601,12 +1760,12 @@ the `VarInfo` `vi`, mutating if it makes sense.
 function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     if vi isa UntypedVarInfo
         @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
-    elseif vi isa TypedVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to TypedVarInfo of syms $(syms(vi)) with dist=$dist"
+    elseif vi isa NTVarInfo
+        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
     end
 
     sym = getsym(vn)
-    if vi isa TypedVarInfo && ~haskey(vi.metadata, sym)
+    if vi isa NTVarInfo && ~haskey(vi.metadata, sym)
         # The NamedTuple doesn't have an entry for this variable, let's add one.
         val = tovec(r)
         md = Metadata(
@@ -1627,18 +1786,18 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     return vi
 end
 
-function Base.push!(vi::VectorVarInfo, vn::VarName, val, args...)
+function Base.push!(vi::UntypedVectorVarInfo, vn::VarName, val, args...)
     push!(getmetadata(vi, vn), vn, val, args...)
     return vi
 end
 
-function Base.push!(vi::VectorVarInfo, pair::Pair, args...)
+function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
     vn, val = pair
     return push!(vi, vn, val, args...)
 end
 
-# TODO(mhauru) push! can't be implemented in-place for TypedVarInfo if the symbol doesn't
-# exist in the TypedVarInfo already. We could implement it in the cases where it it does
+# TODO(mhauru) push! can't be implemented in-place for NTVarInfo if the symbol doesn't
+# exist in the NTVarInfo already. We could implement it in the cases where it it does
 # exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
 
 function Base.push!(meta::Metadata, vn, r, dist, num_produce)
@@ -1760,7 +1919,7 @@ function set_retained_vns_del!(vi::UntypedVarInfo)
     end
     return nothing
 end
-function set_retained_vns_del!(vi::TypedVarInfo)
+function set_retained_vns_del!(vi::NTVarInfo)
     idcs = _getidcs(vi)
     return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
 end
@@ -1821,12 +1980,12 @@ function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
     return vi
 end
 
-function _apply!(kernel!, vi::TypedVarInfo, values, keys)
+function _apply!(kernel!, vi::NTVarInfo, values, keys)
     return _typed_apply!(kernel!, vi, vi.metadata, values, collect_maybe(keys))
 end
 
 @generated function _typed_apply!(
-    kernel!, vi::TypedVarInfo, metadata::NamedTuple{names}, values, keys
+    kernel!, vi::NTVarInfo, metadata::NamedTuple{names}, values, keys
 ) where {names}
     updates = map(names) do n
         quote
@@ -1963,7 +2122,8 @@ julia> rng = StableRNG(42);
 
 julia> m = demo([missing]);
 
-julia> var_info = DynamicPPL.VarInfo(rng, m, SampleFromPrior(), DefaultContext(), DynamicPPL.Metadata());  # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
+julia> var_info = DynamicPPL.VarInfo(rng, m);
+       # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
 
 julia> var_info[@varname(m)]
 -0.6702516921145671
@@ -2061,8 +2221,8 @@ function values_as(
     return ConstructionBase.constructorof(D)(iter)
 end
 
-values_as(vi::VectorVarInfo, args...) = values_as(vi.metadata, args...)
-values_as(vi::VectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
+values_as(vi::UntypedVectorVarInfo, args...) = values_as(vi.metadata, args...)
+values_as(vi::UntypedVectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
 
 function values_from_metadata(md::Metadata)
     return (
