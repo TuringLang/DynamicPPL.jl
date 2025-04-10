@@ -521,7 +521,7 @@ function has_static_constraints(
     rng::Random.AbstractRNG, model::Model; num_evals=5, kwargs...
 )
     results = map(1:num_evals) do _
-        check_model_and_trace(rng, model; kwargs...)
+        return check_model_and_trace(rng, model; kwargs...)
     end
     issuccess = all(first, results)
     issuccess || throw(ArgumentError("model check failed"))
@@ -530,7 +530,7 @@ function has_static_constraints(
     traces = map(last, results)
     dists_per_trace = map(distributions_in_trace, traces)
     transforms = map(dists_per_trace) do dists
-        map(DynamicPPL.link_transform, dists)
+        return map(DynamicPPL.link_transform, dists)
     end
 
     # Check if the distributions are the same across all runs.

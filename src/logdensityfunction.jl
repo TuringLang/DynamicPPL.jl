@@ -248,7 +248,7 @@ By default, this just returns the input unchanged.
 function tweak_adtype(
     adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
 )
-    adtype
+    return adtype
 end
 
 """

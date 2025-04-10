@@ -1,2 +1,6 @@
 style="blue"
 format_markdown = true
+# The below should actually be part of Blue according to
+# https://github.com/JuliaDiff/BlueStyle?tab=readme-ov-file#method-definitions
+# but JuliaFormatter v2.10 doesn't enforce it.
+always_use_return = true

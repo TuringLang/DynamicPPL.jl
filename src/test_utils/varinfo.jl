@@ -58,7 +58,7 @@ function setup_varinfos(
         svi_vnv_ref,
     )) do vi
         # Set them all to the same values.
-        DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
+        return DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
     end
 
     if include_threadsafe

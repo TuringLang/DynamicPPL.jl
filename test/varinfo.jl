@@ -534,7 +534,9 @@ end
                     vals = values_as(vi, OrderedDict)
                     # All varnames in `vns` should be subsumed by one of `keys(vals)`.
                     @test all(vns) do vn
-                        any(DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals))
+                        return any(
+                            DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals)
+                        )
                     end
                     # Iterate over `keys(vals)` because we might have scenarios such as
                     # `vals = OrderedDict(@varname(m) => [1.0])` but `@varname(m[1])` is

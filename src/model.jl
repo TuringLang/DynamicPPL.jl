@@ -97,7 +97,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 See [`condition`](@ref) for more information and examples.
 """
 function Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}})
-    condition(model, values)
+    return condition(model, values)
 end
 
 """
@@ -1069,7 +1069,7 @@ function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        logjoint(model, argvals_dict)
+        return logjoint(model, argvals_dict)
     end
 end
 
@@ -1116,7 +1116,7 @@ function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        logprior(model, argvals_dict)
+        return logprior(model, argvals_dict)
     end
 end
 
@@ -1163,7 +1163,7 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
         )
-        loglikelihood(model, argvals_dict)
+        return loglikelihood(model, argvals_dict)
     end
 end
 
@@ -1469,5 +1469,5 @@ ERROR: ArgumentError: `~` with a model on the right-hand side of an observe stat
 ```
 """
 function to_submodel(model::Model, auto_prefix::Bool=true)
-    to_sampleable(returned(model), auto_prefix)
+    return to_sampleable(returned(model), auto_prefix)
 end

@@ -254,7 +254,7 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
         DynamicPPL.setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
         # NOTE: Some of the varialbes can be a view into the `varinfo`, so we need to
         # `deepcopy` the `varinfo` before passing it to the `model`.
-        model(deepcopy(varinfo))
+        return model(deepcopy(varinfo))
     end
 end
 

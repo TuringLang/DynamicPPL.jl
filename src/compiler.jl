@@ -635,7 +635,7 @@ end
 
 function namedtuple_from_splitargs(splitargs)
     names = map(splitargs) do (arg_name, arg_type, is_splat, default)
-        is_splat ? Symbol("#splat#$(arg_name)") : arg_name
+        return is_splat ? Symbol("#splat#$(arg_name)") : arg_name
     end
     names_expr = Expr(:tuple, map(QuoteNode, names)...)
     vals = Expr(:tuple, map(first, splitargs)...)

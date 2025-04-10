@@ -315,7 +315,7 @@ function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
 end
 function Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}, dist::Distribution)
     vals_linked = mapreduce(vcat, vns) do vn
-        getindex(vi, vn, dist)
+        return getindex(vi, vn, dist)
     end
     return recombine(dist, vals_linked, length(vns))
 end
@@ -362,7 +362,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
     # Attempt to split into `parent` and `child` optic.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(dict, VarName(vn, o))
+        return haskey(dict, VarName(vn, o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent

@@ -1,6 +1,6 @@
 macro custom(expr)
     (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
-    quote
+    return quote
         $(esc(expr.args[2])) = 0.0
     end
 end

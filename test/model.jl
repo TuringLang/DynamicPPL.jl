@@ -353,7 +353,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         )
         vns = map(first, first(vns_and_vals_xs))
         vals = map(vns_and_vals_xs) do vns_and_vals
-            map(last, vns_and_vals)
+            return map(last, vns_and_vals)
         end
 
         # Construct the chain.
@@ -376,7 +376,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             d
         end
         vals_with_extra = map(enumerate(vals)) do (i, v)
-            vcat(v, i)
+            return vcat(v, i)
         end
         chain_with_extra = MCMCChains.Chains(
             permutedims(stack(vals_with_extra)),

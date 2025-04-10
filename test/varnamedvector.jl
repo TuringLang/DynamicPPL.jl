@@ -14,7 +14,7 @@ function need_varnames_relaxation(vnv::DynamicPPL.VarNamedVector, vn::VarName, v
         # we need `vn` to also be of this type.
         # => If the varname types don't match, we need to relax the container type.
         return any(keys(vnv)) do vn_present
-            typeof(vn_present) !== typeof(val)
+            return typeof(vn_present) !== typeof(val)
         end
     end
 
@@ -40,7 +40,7 @@ function need_transforms_relaxation(vnv::DynamicPPL.VarNamedVector, vn::VarName,
         # If the container is concrete, we need to make sure that the sizes match.
         # => If the sizes don't match, we need to relax the container type.
         any(keys(vnv)) do vn_present
-            size(vnv[vn_present]) != size(val)
+            return size(vnv[vn_present]) != size(val)
         end
     elseif eltype(vnv.transforms) !== Any
         # If it's not concrete AND it's not `Any`, then we should just make it `Any`.
