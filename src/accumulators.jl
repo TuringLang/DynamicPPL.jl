@@ -9,7 +9,8 @@ A collection of accumulators, stored as a `NamedTuple`.
 
 This is defined as a separate type to be able to dispatch on it cleanly and without method
 ambiguities or conflicts with other `NamedTuple` types. We also use this type to enforce the
-constraint the name in the tuple for each accumulator `acc` must be `accumulator_name(acc)`.
+constraint that the name in the tuple for each accumulator `acc` must be
+`accumulator_name(acc)`.
 """
 struct AccumulatorTuple{N,T<:NamedTuple}
     nt::T
@@ -36,8 +37,8 @@ function getacc(at::AccumulatorTuple, ::Type{AccType}) where {AccType}
     return at[accumulator_name(AccType)]
 end
 
-function accumulate_assume!!(at::AccumulatorTuple, r, logp, vn, right)
-    return AccumulatorTuple(map(acc -> accumulate_assume!!(acc, r, logp, vn, right), at.nt))
+function accumulate_assume!!(at::AccumulatorTuple, r, logjac, vn, right)
+    return AccumulatorTuple(map(acc -> accumulate_assume!!(acc, r, logjac, vn, right), at.nt))
 end
 
 function accumulate_observe!!(at::AccumulatorTuple, left, right)

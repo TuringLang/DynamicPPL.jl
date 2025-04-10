@@ -128,8 +128,8 @@ function getacc(vi::AbstractVarInfo, ::Type{AccType}) where {AccType}
     return getacc(getaccs(vi), AccType)
 end
 
-function accumulate_assume!!(vi::AbstractVarInfo, r, logp, vn, right)
-    return setaccs!!(vi, accumulate_assume!!(getaccs(vi), r, logp, vn, right))
+function accumulate_assume!!(vi::AbstractVarInfo, r, logjac, vn, right)
+    return setaccs!!(vi, accumulate_assume!!(getaccs(vi), r, logjac, vn, right))
 end
 
 function accumulate_observe!!(vi::AbstractVarInfo, left, right)
