@@ -49,7 +49,7 @@ x[4:5] ~ Dirichlet([1.0, 2.0])
 ```
 """
 @model function demo_one_variable_multiple_constraints(
-    ::Type{TV}=Vector{Float64}
+    (::Type{TV})=Vector{Float64}
 ) where {TV}
     x = TV(undef, 5)
     x[1] ~ Normal()
@@ -186,7 +186,9 @@ function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
     return (s=s_unconstrained, m=m), logprior_true(model, s, m) - Δlogp
 end
 
-@model function demo_dot_assume_observe(x=[1.5, 2.0], ::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe(
+    x=[1.5, 2.0], (::Type{TV})=Vector{Float64}
+) where {TV}
     # `dot_assume` and `observe`
     s = TV(undef, length(x))
     m = TV(undef, length(x))
@@ -212,7 +214,7 @@ function varnames(model::Model{typeof(demo_dot_assume_observe)})
 end
 
 @model function demo_assume_index_observe(
-    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], (::Type{TV})=Vector{Float64}
 ) where {TV}
     # `assume` with indexing and `observe`
     s = TV(undef, length(x))
@@ -268,7 +270,7 @@ function varnames(model::Model{typeof(demo_assume_multivariate_observe)})
 end
 
 @model function demo_dot_assume_observe_index(
-    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], (::Type{TV})=Vector{Float64}
 ) where {TV}
     # `dot_assume` and `observe` with indexing
     s = TV(undef, length(x))
@@ -348,7 +350,9 @@ function varnames(model::Model{typeof(demo_assume_multivariate_observe_literal)}
     return [@varname(s), @varname(m)]
 end
 
-@model function demo_dot_assume_observe_index_literal(::Type{TV}=Vector{Float64}) where {TV}
+@model function demo_dot_assume_observe_index_literal(
+    (::Type{TV})=Vector{Float64}
+) where {TV}
     # `dot_assume` and literal `observe` with indexing
     s = TV(undef, 2)
     m = TV(undef, 2)
@@ -425,7 +429,7 @@ function varnames(model::Model{typeof(demo_assume_dot_observe_literal)})
 end
 
 # Only used as a submodel
-@model function _prior_dot_assume(::Type{TV}=Vector{Float64}) where {TV}
+@model function _prior_dot_assume((::Type{TV})=Vector{Float64}) where {TV}
     s = TV(undef, 2)
     s .~ InverseGamma(2, 3)
     m = TV(undef, 2)
@@ -466,7 +470,7 @@ end
 end
 
 @model function demo_dot_assume_observe_submodel(
-    x=[1.5, 2.0], ::Type{TV}=Vector{Float64}
+    x=[1.5, 2.0], (::Type{TV})=Vector{Float64}
 ) where {TV}
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
@@ -496,7 +500,7 @@ function varnames(model::Model{typeof(demo_dot_assume_observe_submodel)})
 end
 
 @model function demo_dot_assume_observe_matrix_index(
-    x=transpose([1.5 2.0;]), ::Type{TV}=Vector{Float64}
+    x=transpose([1.5 2.0;]), (::Type{TV})=Vector{Float64}
 ) where {TV}
     s = TV(undef, length(x))
     s .~ InverseGamma(2, 3)
@@ -525,7 +529,7 @@ function varnames(model::Model{typeof(demo_dot_assume_observe_matrix_index)})
 end
 
 @model function demo_assume_matrix_observe_matrix_index(
-    x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
+    x=transpose([1.5 2.0;]), (::Type{TV})=Array{Float64}
 ) where {TV}
     n = length(x)
     d = n ÷ 2

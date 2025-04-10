@@ -619,7 +619,7 @@ end
             @test getlogp(varinfo_sample) != getlogp(varinfo)
             # Values should be different.
             DynamicPPL.TestUtils.test_values(
-                varinfo_sample, value_true, vns; compare=!isequal
+                varinfo_sample, value_true, vns; compare=(!isequal)
             )
         end
     end

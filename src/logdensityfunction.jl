@@ -245,9 +245,11 @@ model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(
+function tweak_adtype(
     adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
-) = adtype
+)
+    adtype
+end
 
 """
     use_closure(adtype::ADTypes.AbstractADType)

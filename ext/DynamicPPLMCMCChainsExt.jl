@@ -161,8 +161,8 @@ function _predictive_samples_to_arrays(predictive_samples)
 
     variable_names = collect(variable_names_set)
     variable_values = [
-        get(sample_dicts[i], key, missing) for i in eachindex(sample_dicts),
-        key in variable_names
+        get(sample_dicts[i], key, missing) for
+        i in eachindex(sample_dicts), key in variable_names
     ]
 
     return variable_names, variable_values

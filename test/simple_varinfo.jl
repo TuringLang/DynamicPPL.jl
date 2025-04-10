@@ -87,6 +87,7 @@
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
                                                           DynamicPPL.TestUtils.DEMO_MODELS
+
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$(typeof(vi))" for vi in (
             SimpleVarInfo(Dict()),

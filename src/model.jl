@@ -96,8 +96,9 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}}) =
+function Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}})
     condition(model, values)
+end
 
 """
     condition(model::Model; values...)
@@ -1467,5 +1468,6 @@ ERROR: ArgumentError: `~` with a model on the right-hand side of an observe stat
 [...]
 ```
 """
-to_submodel(model::Model, auto_prefix::Bool=true) =
+function to_submodel(model::Model, auto_prefix::Bool=true)
     to_sampleable(returned(model), auto_prefix)
+end

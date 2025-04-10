@@ -327,7 +327,7 @@ end
         # TODO(mhauru) Note that this could still generate an empty metadata object if none
         # of the lenses in `vns` are in `metadata`. Not sure if that's okay. Checking for
         # emptiness would make this type unstable again.
-        :((; $sym=subset(metadata.$sym, vns)))
+        :((; ($sym)=subset(metadata.$sym, vns)))
     else
         :(NamedTuple{}())
     end
@@ -708,8 +708,9 @@ findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
-all_varnames_grouped_by_symbol(vi::TypedVarInfo) =
+function all_varnames_grouped_by_symbol(vi::TypedVarInfo)
     all_varnames_grouped_by_symbol(vi.metadata)
+end
 
 @generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
@@ -981,25 +982,22 @@ end
         if !(f in vns_names)
             continue
         end
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
-                if !isempty(f_vns)
-                    if !istrans(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = internal_to_linked_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, true, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to link a linked vi")
+        push!(expr.args, quote
+            f_vns = vi.metadata.$f.vns
+            f_vns = filter_subsumed(vns.$f, f_vns)
+            if !isempty(f_vns)
+                if !istrans(vi, f_vns[1])
+                    # Iterate over all `f_vns` and transform
+                    for vn in f_vns
+                        f = internal_to_linked_internal_transform(vi, vn)
+                        _inner_transform!(vi, vn, f)
+                        settrans!!(vi, true, vn)
                     end
+                else
+                    @warn("[DynamicPPL] attempt to link a linked vi")
                 end
-            end,
-        )
+            end
+        end)
     end
     return expr
 end
@@ -1085,23 +1083,20 @@ end
             continue
         end
 
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
-                if istrans(vi, f_vns[1])
-                    # Iterate over all `f_vns` and transform
-                    for vn in f_vns
-                        f = linked_internal_to_internal_transform(vi, vn)
-                        _inner_transform!(vi, vn, f)
-                        settrans!!(vi, false, vn)
-                    end
-                else
-                    @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+        push!(expr.args, quote
+            f_vns = vi.metadata.$f.vns
+            f_vns = filter_subsumed(vns.$f, f_vns)
+            if istrans(vi, f_vns[1])
+                # Iterate over all `f_vns` and transform
+                for vn in f_vns
+                    f = linked_internal_to_internal_transform(vi, vn)
+                    _inner_transform!(vi, vn, f)
+                    settrans!!(vi, false, vn)
                 end
-            end,
-        )
+            else
+                @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+            end
+        end)
     end
     return expr
 end
@@ -1774,23 +1769,20 @@ end
         f_idcs = :(idcs.$f)
         f_orders = :(metadata.$f.orders)
         f_flags = :(metadata.$f.flags)
-        push!(
-            expr.args,
-            quote
-                # Set the flag for variables with symbol `f`
-                if num_produce == 0
-                    for i in length($f_idcs):-1:1
-                        $f_flags["del"][$f_idcs[i]] = true
-                    end
-                else
-                    for i in 1:length($f_orders)
-                        if i in $f_idcs && $f_orders[i] > num_produce
-                            $f_flags["del"][i] = true
-                        end
+        push!(expr.args, quote
+            # Set the flag for variables with symbol `f`
+            if num_produce == 0
+                for i in length($f_idcs):-1:1
+                    $f_flags["del"][$f_idcs[i]] = true
+                end
+            else
+                for i in 1:length($f_orders)
+                    if i in $f_idcs && $f_orders[i] > num_produce
+                        $f_flags["del"][i] = true
                     end
                 end
-            end,
-        )
+            end
+        end)
     end
     return expr
 end

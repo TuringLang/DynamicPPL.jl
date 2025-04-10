@@ -487,7 +487,7 @@ module Issue537 end
         @test abs(mean([VarInfo(m)[@varname(z)] for i in 1:10]) - 100) ≤ 10
 
         # AR1 model. Dynamic prefixing.
-        @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
+        @model function AR1(num_steps, α, μ, σ, (::Type{TV})=Vector{Float64}) where {TV}
             η ~ MvNormal(zeros(num_steps), I)
             δ = sqrt(1 - α^2)
             x = TV(undef, num_steps)
@@ -678,7 +678,7 @@ module Issue537 end
     end
 
     @testset "issue #393: anonymous argument with type parameter" begin
-        @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
+        @model f_393((::Val{ispredict})=Val(false)) where {ispredict} = ispredict ? 0 : 1
         @test f_393()() == 1
         @test f_393(Val(true))() == 0
     end
@@ -759,7 +759,7 @@ module Issue537 end
 
     @testset "signature parsing + TypeWrap" begin
         @model function demo_typewrap(
-            a, b=1, ::Type{T1}=Float64; c, d=2, t::Type{T2}=Int
+            a, b=1, (::Type{T1})=Float64; c, d=2, t::Type{T2}=Int
         ) where {T1,T2}
             return (; a, b, c, d, t)
         end
