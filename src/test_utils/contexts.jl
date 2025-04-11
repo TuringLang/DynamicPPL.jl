@@ -61,7 +61,7 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
 
     # To see change, let's make sure we're using a different leaf context than the current.
     leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
-        PriorContext()
+        DynamicPPL.DynamicTransformationContext{false}()
     else
         DefaultContext()
     end

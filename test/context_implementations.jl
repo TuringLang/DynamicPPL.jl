@@ -10,7 +10,7 @@
             end
         end
 
-        test([1, 1, -1])(VarInfo(), SampleFromPrior(), LikelihoodContext())
+        test([1, 1, -1])(VarInfo(), SampleFromPrior(), DefaultContext())
     end
 
     @testset "dot tilde with varying sizes" begin

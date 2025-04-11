@@ -419,7 +419,6 @@ SamplingContext
 DefaultContext
 LikelihoodContext
 PriorContext
-MiniBatchContext
 PrefixContext
 ConditionContext
 ```

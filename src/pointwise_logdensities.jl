@@ -122,8 +122,12 @@ end
 
 function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
     !_include_prior(context) && return (tilde_assume!!(context.context, right, vn, vi))
-    value, logp, vi = tilde_assume(context.context, right, vn, vi)
+    value, vi = tilde_assume(context.context, right, vn, vi)
     # Track loglikelihood value.
+    # TODO(mhauru) logp here should be the logp that resulted from this tilde call.
+    # Implement this with a suitable accumulator. The current setting to zero is just to
+    # make this run, it produces nonsense results.
+    logp = zero(getlogjoint(vi))
     push!(context, vn, logp)
     return value, acclogp!!(vi, logp)
 end

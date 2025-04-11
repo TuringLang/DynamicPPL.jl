@@ -37,6 +37,7 @@ Return the descendant context of `context`.
 """
 childcontext
 
+# TODO(mhauru) Rework the below docstring to not use PriorContext.
 """
     setchildcontext(parent::AbstractContext, child::AbstractContext)
 
@@ -129,7 +130,7 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 Create a context that allows you to sample parameters with the `sampler` when running the model.
 The `context` determines how the returned log density is computed when running the model.
 
-See also: [`DefaultContext`](@ref), [`LikelihoodContext`](@ref), [`PriorContext`](@ref)
+See also: [`DefaultContext`](@ref)
 """
 struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
     rng::R
@@ -193,48 +194,7 @@ The `DefaultContext` is used by default to compute the log joint probability of 
 and parameters when running the model.
 """
 struct DefaultContext <: AbstractContext end
-NodeTrait(context::DefaultContext) = IsLeaf()
-
-"""
-    PriorContext <: AbstractContext
-
-A leaf context resulting in the exclusion of likelihood terms when running the model.
-"""
-struct PriorContext <: AbstractContext end
-NodeTrait(context::PriorContext) = IsLeaf()
-
-"""
-    LikelihoodContext <: AbstractContext
-
-A leaf context resulting in the exclusion of prior terms when running the model.
-"""
-struct LikelihoodContext <: AbstractContext end
-NodeTrait(context::LikelihoodContext) = IsLeaf()
-
-"""
-    struct MiniBatchContext{Tctx, T} <: AbstractContext
-        context::Tctx
-        loglike_scalar::T
-    end
-
-The `MiniBatchContext` enables the computation of
-`log(prior) + s * log(likelihood of a batch)` when running the model, where `s` is the
-`loglike_scalar` field, typically equal to `the number of data points / batch size`.
-This is useful in batch-based stochastic gradient descent algorithms to be optimizing
-`log(prior) + log(likelihood of all the data points)` in the expectation.
-"""
-struct MiniBatchContext{Tctx,T} <: AbstractContext
-    context::Tctx
-    loglike_scalar::T
-end
-function MiniBatchContext(context=DefaultContext(); batch_size, npoints)
-    return MiniBatchContext(context, npoints / batch_size)
-end
-NodeTrait(context::MiniBatchContext) = IsParent()
-childcontext(context::MiniBatchContext) = context.context
-function setchildcontext(parent::MiniBatchContext, child)
-    return MiniBatchContext(child, parent.loglike_scalar)
-end
+NodeTrait(::DefaultContext) = IsLeaf()
 
 """
     PrefixContext{Prefix}(context)

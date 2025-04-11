@@ -23,7 +23,8 @@
             svi = SimpleVarInfo{Float32}(; m=1.0)
             @test getlogp(svi) isa Float32
 
-            svi = SimpleVarInfo((m=1.0,), 1.0)
+            svi = SimpleVarInfo((m=1.0,))
+            svi = acclogp!!(svi, 1.0)
             @test getlogp(svi) == 1.0
         end
 
@@ -98,7 +99,6 @@
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
-            lp_orig = getlogp(vi)
 
             # `link!!`
             vi_linked = link!!(deepcopy(vi), model)
@@ -158,7 +158,7 @@
             # DynamicPPL.settrans!!(deepcopy(svi_dict), true),
             # DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
         )
-            # RandOM seed is set in each `@testset`, so we need to sample
+            # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
             retval = model()
 
