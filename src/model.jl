@@ -243,7 +243,7 @@ julia> model() ≠ 1.0
 true
 
 julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
-       conditioned_model = model | (var"inner.m" = 1.0, );
+       conditioned_model = model | (@varname(inner.m) => 1.0, );
 
 julia> conditioned_model()
 1.0
@@ -254,15 +254,6 @@ julia> # However, it's not possible to condition `inner` directly.
 julia> conditioned_model_fail()
 ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
 [...]
-```
-
-And similarly when using `Dict`:
-
-```jldoctest condition
-julia> conditioned_model_dict = model | (@varname(var"inner.m") => 1.0);
-
-julia> conditioned_model_dict()
-1.0
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
@@ -443,16 +434,16 @@ julia> conditioned(cm)
 julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
+1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
 julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
-       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((var"a.m"=1.0,)))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext(Dict(@varname(a.m) => 1.0)))), x=100.0);
 
-julia> conditioned(cm).x
+julia> conditioned(cm)[@varname(x)]
 100.0
 
-julia> conditioned(cm).var"a.m"
+julia> conditioned(cm)[@varname(a.m)]
 1.0
 
 julia> keys(VarInfo(cm)) # No variables are sampled
@@ -583,7 +574,7 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> fixed_model = fix(model, var"inner.m" = 1.0, );
+julia> fixed_model = fix(model, (@varname(inner.m) => 1.0, ));
 
 julia> fixed_model()
 1.0
@@ -599,24 +590,9 @@ julia> fixed_model()
 2.0
 ```
 
-And similarly when using `Dict`:
-
-```jldoctest fix
-julia> fixed_model_dict = fix(model, @varname(var"inner.m") => 1.0);
-
-julia> fixed_model_dict()
-1.0
-
-julia> fixed_model_dict = fix(model, @varname(inner) => 2.0);
-
-julia> fixed_model_dict()
-2.0
-```
-
 ## Difference from `condition`
 
-A very similar functionality is also provided by [`condition`](@ref) which,
-not surprisingly, _conditions_ variables instead of fixing them. The only
+A very similar functionality is also provided by [`condition`](@ref). The only
 difference between fixing and conditioning is as follows:
 - `condition`ed variables are considered to be observations, and are thus
   included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
@@ -798,16 +774,16 @@ julia> fixed(cm)
 julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
        # `a.m` is treated as a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{Symbol("a.m"), typeof(identity)}}:
+1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
  a.m
 
 julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
-       cm = fix(contextualize(m, PrefixContext{:a}(fix(var"a.m"=1.0))), x=100.0);
+       cm = fix(contextualize(m, PrefixContext{:a}(fix(@varname(a.m) => 1.0,))), x=100.0);
 
-julia> fixed(cm).x
+julia> fixed(cm)[@varname(x)]
 100.0
 
-julia> fixed(cm).var"a.m"
+julia> fixed(cm)[@varname(a.m)]
 1.0
 
 julia> keys(VarInfo(cm)) # <= no variables are sampled
@@ -1365,7 +1341,7 @@ When we sample from the model `demo2(missing, 0.4)` random variable `x` will be 
 ```jldoctest submodel-to_submodel
 julia> vi = VarInfo(demo2(missing, 0.4));
 
-julia> @varname(var\"a.x\") in keys(vi)
+julia> @varname(a.x) in keys(vi)
 true
 ```
 
@@ -1379,7 +1355,7 @@ false
 We can check that the log joint probability of the model accumulated in `vi` is correct:
 
 ```jldoctest submodel-to_submodel
-julia> x = vi[@varname(var\"a.x\")];
+julia> x = vi[@varname(a.x)];
 
 julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
 true
@@ -1417,10 +1393,10 @@ julia> @model function demo2(x, y, z)
 
 julia> vi = VarInfo(demo2(missing, missing, 0.4));
 
-julia> @varname(var"sub1.x") in keys(vi)
+julia> @varname(sub1.x) in keys(vi)
 true
 
-julia> @varname(var"sub2.x") in keys(vi)
+julia> @varname(sub2.x) in keys(vi)
 true
 ```
 
@@ -1437,9 +1413,9 @@ false
 We can check that the log joint probability of the model accumulated in `vi` is correct:
 
 ```jldoctest submodel-to_submodel-prefix
-julia> sub1_x = vi[@varname(var"sub1.x")];
+julia> sub1_x = vi[@varname(sub1.x)];
 
-julia> sub2_x = vi[@varname(var"sub2.x")];
+julia> sub2_x = vi[@varname(sub2.x)];
 
 julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
 

@@ -481,8 +481,8 @@ module Issue537 end
         m = demo_useval(missing, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test VarName{Symbol("sub1.x")}() ∈ ks
-        @test VarName{Symbol("sub2.x")}() ∈ ks
+        @test @varname(sub1.x) ∈ ks
+        @test @varname(sub2.x) ∈ ks
         @test @varname(z) ∈ ks
         @test abs(mean([VarInfo(m)[@varname(z)] for i in 1:10]) - 100) ≤ 10
 
@@ -505,7 +505,7 @@ module Issue537 end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x ~ to_submodel(prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
+                x ~ to_submodel(DynamicPPL.prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
@@ -514,8 +514,9 @@ module Issue537 end
         m = demo(ys)
         vi = VarInfo(m)
 
-        for k in [:α, :μ, :σ, Symbol("ar1_1.η"), Symbol("ar1_2.η")]
-            @test VarName{k}() ∈ keys(vi)
+        for vn in
+            [@varname(α), @varname(μ), @varname(σ), @varname(ar1_1.η), @varname(ar1_2.η)]
+            @test vn ∈ keys(vi)
         end
     end
 

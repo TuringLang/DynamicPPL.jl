@@ -1285,14 +1285,18 @@ broadcast_safe(x) = x
 broadcast_safe(x::Distribution) = (x,)
 broadcast_safe(x::AbstractContext) = (x,)
 
+# Convert (x=1,) to Dict(@varname(x) => 1)
+_nt_to_varname_dict(nt) = Dict(VarName{k}() => v for (k, v) in pairs(nt))
 # Version of `merge` used by `conditioned` and `fixed` to handle
 # the scenario where we might try to merge a dict with an empty
 # tuple.
 # TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
 _merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
 _merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
-_merge(left::AbstractDict, right::NamedTuple{()}) = left
-_merge(left::NamedTuple{()}, right::AbstractDict) = right
+_merge(left::AbstractDict, ::NamedTuple{()}) = left
+_merge(left::AbstractDict, right::NamedTuple) = merge(left, _nt_to_varname_dict(right))
+_merge(::NamedTuple{()}, right::AbstractDict) = right
+_merge(left::NamedTuple, right::AbstractDict) = merge(_nt_to_varname_dict(left), right)
 
 """
     unique_syms(vns::T) where {T<:NTuple{N,VarName}}

@@ -21,6 +21,9 @@ using DocStringExtensions
 
 using Random: Random
 
+# For extending
+import AbstractPPL: predict
+
 # TODO: Remove these when it's possible.
 import Bijectors: link, invlink
 
@@ -39,13 +42,9 @@ import Base:
     keys,
     haskey
 
-import AbstractPPL: predict
-
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
-    UntypedVarInfo,
-    TypedVarInfo,
     SimpleVarInfo,
     push!!,
     empty!!,
