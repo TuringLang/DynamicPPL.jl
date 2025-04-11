@@ -41,9 +41,9 @@ function accumulate_assume!!(vi::ThreadSafeVarInfo, r, logp, vn, right)
     return vi
 end
 
-function accumulate_observe!!(vi::ThreadSafeVarInfo, left, right)
+function accumulate_observe!!(vi::ThreadSafeVarInfo, right, left, vn)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = accumulate_observe!!(vi.accs_by_thread[tid], left, right)
+    vi.accs_by_thread[tid] = accumulate_observe!!(vi.accs_by_thread[tid], right, left, vn)
     return vi
 end
 
@@ -171,16 +171,15 @@ end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
-    return resetlogp!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
+    return resetaccs!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
 end
 
-function resetlogp!!(vi::ThreadSafeVarInfo)
-    vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
-    logprior = split(getacc(vi.varinfo, LogPrior))
-    loglikelihood = split(getacc(vi.varinfo, LogLikelihood))
+function resetaccs!!(vi::ThreadSafeVarInfo)
+    vi = Accessors.@set vi.varinfo = resetaccs!!(vi.varinfo)
     for i in eachindex(vi.accs_by_thread)
-        vi.accs_by_thread[i] = setacc!!(vi.accs_by_thread[i], logprior)
-        vi.accs_by_thread[i] = setacc!!(vi.accs_by_thread[i], loglikelihood)
+        for acc in getaccs(vi.varinfo)
+            vi.accs_by_thread[i] = setacc!!(vi.accs_by_thread[i], split(acc))
+        end
     end
     return vi
 end

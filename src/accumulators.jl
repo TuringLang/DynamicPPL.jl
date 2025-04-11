@@ -38,11 +38,13 @@ function getacc(at::AccumulatorTuple, ::Type{AccType}) where {AccType}
 end
 
 function accumulate_assume!!(at::AccumulatorTuple, r, logjac, vn, right)
-    return AccumulatorTuple(map(acc -> accumulate_assume!!(acc, r, logjac, vn, right), at.nt))
+    return AccumulatorTuple(
+        map(acc -> accumulate_assume!!(acc, r, logjac, vn, right), at.nt)
+    )
 end
 
-function accumulate_observe!!(at::AccumulatorTuple, left, right)
-    return AccumulatorTuple(map(acc -> accumulate_observe!!(acc, left, right), at.nt))
+function accumulate_observe!!(at::AccumulatorTuple, right, left, vn)
+    return AccumulatorTuple(map(acc -> accumulate_observe!!(acc, right, left, vn), at.nt))
 end
 
 function acc!!(at::AccumulatorTuple, ::Type{AccType}, args...) where {AccType}
@@ -72,6 +74,12 @@ accumulator_name(::Type{<:LogPrior}) = :LogPrior
 accumulator_name(::Type{<:LogLikelihood}) = :LogLikelihood
 accumulator_name(::Type{<:NumProduce}) = :NumProduce
 
+resetacc!!(acc::LogPrior) = LogPrior(zero(acc.logp))
+resetacc!!(acc::LogLikelihood) = LogLikelihood(zero(acc.logp))
+# TODO(mhauru) How to handle reset for NumProduce? Do we need to define different types of
+# resets?
+resetacc!!(acc::NumProduce) = acc
+
 split(::LogPrior{T}) where {T} = LogPrior(zero(T))
 split(::LogLikelihood{T}) where {T} = LogLikelihood(zero(T))
 split(acc::NumProduce) = acc
@@ -89,12 +97,12 @@ acc!!(acc::NumProduce, n) = NumProduce(acc.num + n)
 function accumulate_assume!!(acc::LogPrior, val, logjac, vn, right)
     return acc!!(acc, logpdf(right, val) + logjac)
 end
-accumulate_observe!!(acc::LogPrior, left, right) = acc
+accumulate_observe!!(acc::LogPrior, right, left, vn) = acc
 
 accumulate_assume!!(acc::LogLikelihood, val, logjac, vn, right) = acc
-function accumulate_observe!!(acc::LogLikelihood, left, right)
+function accumulate_observe!!(acc::LogLikelihood, right, left, vn)
     return acc!!(acc, logpdf(right, left))
 end
 
 accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc
-accumulate_observe!!(acc::NumProduce, left, right) = acc!!(acc, 1)
+accumulate_observe!!(acc::NumProduce, right, left, vn) = acc!!(acc, 1)

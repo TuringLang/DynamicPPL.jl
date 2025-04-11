@@ -101,8 +101,14 @@ struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
     metadata::Tmeta
     accs::Accs
 end
-VarInfo(meta=Metadata()) = VarInfo(meta, AccumulatorTuple(LogPrior{LogProbType}(), 
-    LogLikelihood{LogProbType}(), NumProduce{Int}()))
+function VarInfo(meta=Metadata())
+    return VarInfo(
+        meta,
+        AccumulatorTuple(
+            LogPrior{LogProbType}(), LogLikelihood{LogProbType}(), NumProduce{Int}()
+        ),
+    )
+end
 
 """
     VarInfo([rng, ]model[, sampler, context])
@@ -959,7 +965,7 @@ end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    vi = resetlogp!!(vi)
+    vi = resetaccs!!(vi)
     vi = reset_num_produce!!(vi)
     return vi
 end

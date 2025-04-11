@@ -6,7 +6,9 @@
         @test threadsafe_vi.varinfo === vi
         @test threadsafe_vi.accs_by_thread isa Vector{<:DynamicPPL.AccumulatorTuple}
         @test length(threadsafe_vi.accs_by_thread) == Threads.nthreads()
-        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in vi.accs)...)
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in vi.accs)...
+        )
         @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
@@ -25,12 +27,16 @@
 
         threadsafe_vi = resetlogp!!(threadsafe_vi)
         @test iszero(getlogp(threadsafe_vi))
-        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...)
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...
+        )
         @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
 
         threadsafe_vi = setlogp!!(threadsafe_vi, 42)
         @test getlogp(threadsafe_vi) == 42
-        expected_accs = DynamicPPL.AccumulatorTuple((DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...)
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in threadsafe_vi.varinfo.accs)...
+        )
         @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 

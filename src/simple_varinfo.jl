@@ -252,7 +252,7 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
-    return resetlogp!!(Accessors.@set vi.values = empty!!(vi.values))
+    return resetaccs!!(Accessors.@set vi.values = empty!!(vi.values))
 end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 

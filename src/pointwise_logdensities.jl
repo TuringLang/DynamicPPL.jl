@@ -1,135 +1,68 @@
-# Context version
-struct PointwiseLogdensityContext{A,Ctx} <: AbstractContext
-    logdensities::A
-    context::Ctx
+struct PointwiseLogProbAccumulator{whichlogprob,KeyType,D<:AbstractDict{KeyType}} <:
+       AbstractAccumulator
+    logps::D
 end
 
-function PointwiseLogdensityContext(
-    likelihoods=OrderedDict{VarName,Vector{Float64}}(),
-    context::AbstractContext=DefaultContext(),
-)
-    return PointwiseLogdensityContext{typeof(likelihoods),typeof(context)}(
-        likelihoods, context
-    )
+function PointwiseLogProbAccumulator{whichlogprob}() where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob,VarName}()
 end
 
-NodeTrait(::PointwiseLogdensityContext) = IsParent()
-childcontext(context::PointwiseLogdensityContext) = context.context
-function setchildcontext(context::PointwiseLogdensityContext, child)
-    return PointwiseLogdensityContext(context.logdensities, child)
+function PointwiseLogProbAccumulator{whichlogprob,KeyType}() where {whichlogprob,KeyType}
+    logps = OrderedDict{KeyType,Vector{LogProbType}}()
+    return PointwiseLogProbAccumulator{whichlogprob,KeyType,typeof(logps)}(logps)
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
+function Base.push!(acc::PointwiseLogProbAccumulator, vn, logp)
+    logps = acc.logps
+    # The last(fieldtypes(eltype(...))) gets the type of the values, rather than the keys.
+    T = last(fieldtypes(eltype(logps)))
+    logpvec = get!(logps, vn, T())
+    return push!(logpvec, logp)
 end
 
 function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logdensities[vn] = logp
+    acc::PointwiseLogProbAccumulator{whichlogprob,String}, vn::VarName, logp
+) where {whichlogprob}
+    return push!(acc, string(vn), logp)
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, string(vn), Float64[])
-    return push!(ℓ, logp)
+function accumulator_name(
+    ::Type{<:PointwiseLogProbAccumulator{whichlogprob}}
+) where {whichlogprob}
+    return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logdensities[string(vn)] = logp
-end
+# TODO(mhauru) Implement these to make PointwiseLogProbAccumulator work with
+# ThreadSafeVarInfo.
+# split(::LogPrior{T}) where {T} = LogPrior(zero(T))
+# combine(acc::LogPrior, acc2::LogPrior) = LogPrior(acc.logp + acc2.logp)
+# acc!!(acc::PointwiseLogPrior, logp) = LogPrior(acc.logp + logp)
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::String,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
-end
+resetacc!!(acc::PointwiseLogProbAccumulator) = acc
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
-    vn::String,
-    logp::Real,
-)
-    return context.logdensities[vn] = logp
-end
-
-function _include_prior(context::PointwiseLogdensityContext)
-    return leafcontext(context) isa Union{PriorContext,DefaultContext}
-end
-function _include_likelihood(context::PointwiseLogdensityContext)
-    return leafcontext(context) isa Union{LikelihoodContext,DefaultContext}
-end
-
-function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
-    # Defer literal `observe` to child-context.
-    return tilde_observe!!(context.context, right, left, vi)
-end
-function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
-    # Completely defer to child context if we are not tracking likelihoods.
-    if !(_include_likelihood(context))
-        return tilde_observe!!(context.context, right, left, vn, vi)
+function accumulate_assume!!(
+    acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right
+) where {whichlogprob}
+    if whichlogprob == :both || whichlogprob == :prior
+        subacc = accumulate_assume!!(LogPrior{LogProbType}(), val, logjac, vn, right)
+        push!(acc, vn, subacc.logp)
     end
-
-    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
-    # we have to intercept the call to `tilde_observe!`.
-    logp, vi = tilde_observe(context.context, right, left, vi)
-
-    # Track loglikelihood value.
-    push!(context, vn, logp)
-
-    return left, acclogp!!(vi, logp)
+    return acc
 end
 
-# Note on submodels (penelopeysm)
-#
-# We don't need to overload tilde_observe!! for Sampleables (yet), because it
-# is currently not possible to evaluate a model with a Sampleable on the RHS
-# of an observe statement.
-#
-# Note that calling tilde_assume!! on a Sampleable does not necessarily imply
-# that there are no observe statements inside the Sampleable. There could well
-# be likelihood terms in there, which must be included in the returned logp.
-# See e.g. the `demo_dot_assume_observe_submodel` demo model.
-#
-# This is handled by passing the same context to rand_like!!, which figures out
-# which terms to include using the context, and also mutates the context and vi
-# appropriately. Thus, we don't need to check against _include_prior(context)
-# here.
-function tilde_assume!!(context::PointwiseLogdensityContext, right::Sampleable, vn, vi)
-    value, vi = DynamicPPL.rand_like!!(right, context, vi)
-    return value, vi
-end
-
-function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
-    !_include_prior(context) && return (tilde_assume!!(context.context, right, vn, vi))
-    value, vi = tilde_assume(context.context, right, vn, vi)
-    # Track loglikelihood value.
-    # TODO(mhauru) logp here should be the logp that resulted from this tilde call.
-    # Implement this with a suitable accumulator. The current setting to zero is just to
-    # make this run, it produces nonsense results.
-    logp = zero(getlogjoint(vi))
-    push!(context, vn, logp)
-    return value, acclogp!!(vi, logp)
+function accumulate_observe!!(
+    acc::PointwiseLogProbAccumulator{whichlogprob}, right, left, vn
+) where {whichlogprob}
+    # If `vn` is nothing the LHS of ~ is a literal and we don't have a name to attach this
+    # acc to, and thus do nothing.
+    if vn === nothing
+        return acc
+    end
+    if whichlogprob == :both || whichlogprob == :likelihood
+        subacc = accumulate_observe!!(LogLikelihood{LogProbType}(), right, left, vn)
+        push!(acc, vn, subacc.logp)
+    end
+    return acc
 end
 
 """
@@ -238,14 +171,19 @@ julia> m = demo([1.0; 1.0]);
 julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
 (-1.4189385332046727, -1.4189385332046727)
 ```
-
 """
 function pointwise_logdensities(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
-) where {T}
+    model::Model,
+    chain,
+    ::Type{KeyType}=String,
+    context::AbstractContext=DefaultContext(),
+    ::Val{whichlogprob}=Val(:both),
+) where {KeyType,whichlogprob}
     # Get the data by executing the model once
     vi = VarInfo(model)
-    point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
+
+    acctype = PointwiseLogProbAccumulator{whichlogprob,KeyType}
+    vi = setaccs!!(vi, AccumulatorTuple(acctype()))
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -253,26 +191,29 @@ function pointwise_logdensities(
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, point_context)
+        vi = last(evaluate!!(model, vi, context))
     end
 
+    logps = getacc(vi, acctype).logps
     niters = size(chain, 1)
     nchains = size(chain, 3)
     logdensities = OrderedDict(
-        varname => reshape(logliks, niters, nchains) for
-        (varname, logliks) in point_context.logdensities
+        varname => reshape(vals, niters, nchains) for (varname, vals) in logps
     )
     return logdensities
 end
 
 function pointwise_logdensities(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
-)
-    point_context = PointwiseLogdensityContext(
-        OrderedDict{VarName,Vector{Float64}}(), context
-    )
-    model(varinfo, point_context)
-    return point_context.logdensities
+    model::Model,
+    varinfo::AbstractVarInfo,
+    context::AbstractContext=DefaultContext(),
+    ::Val{whichlogprob}=Val(:both),
+) where {whichlogprob}
+    acctype = PointwiseLogProbAccumulator{whichlogprob}
+    # TODO(mhauru) Don't needlessly evaluate the model twice.
+    varinfo = setaccs!!(varinfo, AccumulatorTuple(acctype()))
+    varinfo = last(evaluate!!(model, varinfo, context))
+    return getacc(varinfo, acctype).logps
 end
 
 """
@@ -284,26 +225,15 @@ including the likelihood terms.
 See also: [`pointwise_logdensities`](@ref).
 """
 function pointwise_loglikelihoods(
-    model::Model,
-    chain,
-    keytype::Type{T}=String,
-    context::AbstractContext=LikelihoodContext(),
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
-    if !(leafcontext(context) isa LikelihoodContext)
-        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
-    end
-
-    return pointwise_logdensities(model, chain, T, context)
+    return pointwise_logdensities(model, chain, T, context, Val(:likelihood))
 end
 
 function pointwise_loglikelihoods(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=LikelihoodContext()
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
 )
-    if !(leafcontext(context) isa LikelihoodContext)
-        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
-    end
-
-    return pointwise_logdensities(model, varinfo, context)
+    return pointwise_logdensities(model, varinfo, context, Val(:likelihood))
 end
 
 """
@@ -315,21 +245,13 @@ including the prior terms.
 See also: [`pointwise_logdensities`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=PriorContext()
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
-    if !(leafcontext(context) isa PriorContext)
-        throw(ArgumentError("Leaf context should be a PriorContext"))
-    end
-
-    return pointwise_logdensities(model, chain, T, context)
+    return pointwise_logdensities(model, chain, T, context, Val(:prior))
 end
 
 function pointwise_prior_logdensities(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=PriorContext()
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
 )
-    if !(leafcontext(context) isa PriorContext)
-        throw(ArgumentError("Leaf context should be a PriorContext"))
-    end
-
-    return pointwise_logdensities(model, varinfo, context)
+    return pointwise_logdensities(model, varinfo, context, Val(:prior))
 end

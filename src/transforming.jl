@@ -31,8 +31,8 @@ function tilde_assume(
     return r, setindex!!(vi, r_transformed, vn)
 end
 
-function tilde_observe(::DynamicTransformationContext, right, vn, vi)
-    return observe(right, vn, vi)
+function tilde_observe!!(::DynamicTransformationContext, right, left, vn, vi)
+    return tilde_observe!!(DefaultContext(), right, left, vn, vi)
 end
 
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)

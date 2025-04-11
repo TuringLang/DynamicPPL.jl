@@ -8,7 +8,6 @@ using DynamicPPL:
     NodeTrait,
     IsLeaf,
     IsParent,
-    PointwiseLogdensityContext,
     contextual_isassumption,
     ConditionContext,
     decondition_context,
@@ -40,15 +39,12 @@ Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
 @testset "contexts.jl" begin
-    child_contexts = Dict(
-        :default => DefaultContext(),
-    )
+    child_contexts = Dict(:default => DefaultContext())
 
     parent_contexts = Dict(
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :sampling => SamplingContext(),
         :prefix => PrefixContext{:x}(DefaultContext()),
-        :pointwiselogdensity => PointwiseLogdensityContext(),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))

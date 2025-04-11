@@ -79,34 +79,30 @@ end
 
 # observe
 """
-    tilde_observe(context::SamplingContext, right, left, vi)
+    tilde_observe!!(context::SamplingContext, right, left, vi)
 
 Handle observed constants with a `context` associated with a sampler.
 
-Falls back to `tilde_observe(context.context, context.sampler, right, left, vi)`.
+Falls back to `tilde_observe!!(context.context, right, left, vi)`.
 """
-function tilde_observe(context::SamplingContext, right, left, vi)
-    return tilde_observe(context.context, context.sampler, right, left, vi)
+function tilde_observe!!(context::SamplingContext, right, left, vn, vi)
+    return tilde_observe!!(context.context, right, left, vn, vi)
 end
 
-function tilde_observe(context::AbstractContext, args...)
-    return tilde_observe(childcontext(context), args...)
-end
-
-function tilde_observe(::DefaultContext, args...)
-    return observe(args...)
+function tilde_observe!!(context::AbstractContext, right, left, vn, vi)
+    return tilde_observe!!(childcontext(context), right, left, vn, vi)
 end
 
 # `PrefixContext`
-function tilde_observe(context::PrefixContext, right, left, vi)
-    return tilde_observe(context.context, right, left, vi)
-end
-function tilde_observe(context::PrefixContext, sampler, right, left, vi)
-    return tilde_observe(context.context, sampler, right, left, vi)
+function tilde_observe!!(context::PrefixContext, right, left, vn, vi)
+    # In the observe case, unlike assume, `vn` may be `nothing` if the LHS is a literal
+    # value.
+    prefixed_varname = vn !== nothing ? prefix(context, vn) : vn
+    return tilde_observe!!(context.context, right, left, prefixed_varname, vi)
 end
 
 """
-    tilde_observe!!(context, right, left, vname, vi)
+    tilde_observe!!(context, right, left, vn, vi)
 
 Handle observed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the observed value and updated `vi`.
@@ -114,40 +110,18 @@ accumulate the log probability, and return the observed value and updated `vi`.
 Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!!(context, right, left, vname, vi)
+function tilde_observe!!(context::DefaultContext, right, left, vn, vi)
     is_rhs_model(right) && throw(
         ArgumentError(
             "`~` with a model on the right-hand side of an observe statement is not supported",
         ),
     )
-    return tilde_observe!!(context, right, left, vi)
-end
-
-"""
-    tilde_observe(context, right, left, vi)
-
-Handle observed constants, e.g., `1.0 ~ Normal()`, accumulate the log probability, and
-return the observed value.
-
-By default, calls `tilde_observe(context, right, left, vi)` and accumulates the log
-probability of `vi` with the returned value.
-"""
-function tilde_observe!!(context, right, left, vi)
-    is_rhs_model(right) && throw(
-        ArgumentError(
-            "`~` with a model on the right-hand side of an observe statement is not supported",
-        ),
-    )
-    vi = tilde_observe(context, right, left, vi)
+    vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
 end
 
 function assume(rng::Random.AbstractRNG, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
-end
-
-function observe(spl::Sampler, weight)
-    return error("DynamicPPL.observe: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 # fallback without sampler
@@ -200,11 +174,4 @@ function assume(
     logjac = logabsdetjac(istrans(vi, vn) ? link_transform(dist) : identity, r)
     vi = accumulate_assume!!(vi, r, -logjac, vn, dist)
     return r, vi
-end
-
-# default fallback (used e.g. by `SampleFromPrior` and `SampleUniform`)
-observe(sampler::AbstractSampler, right, left, vi) = observe(right, left, vi)
-
-function observe(right::Distribution, left, vi)
-    return accumulate_observe!!(vi, left, right)
 end

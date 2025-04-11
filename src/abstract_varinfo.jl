@@ -132,8 +132,8 @@ function accumulate_assume!!(vi::AbstractVarInfo, r, logjac, vn, right)
     return setaccs!!(vi, accumulate_assume!!(getaccs(vi), r, logjac, vn, right))
 end
 
-function accumulate_observe!!(vi::AbstractVarInfo, left, right)
-    return setaccs!!(vi, accumulate_observe!!(getaccs(vi), left, right))
+function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
+    return setaccs!!(vi, accumulate_observe!!(getaccs(vi), right, left, vn))
 end
 
 function acc!!(vi::AbstractVarInfo, ::Type{AccType}, args...) where {AccType}
@@ -162,7 +162,15 @@ acclogp!!(vi::AbstractVarInfo, logp) = accloglikelihood!!(vi, logp)
 Reset the value of the log of the joint probability of the observed data and parameters
 sampled in `vi` to 0, mutating if it makes sense.
 """
-resetlogp!!(vi::AbstractVarInfo) = setlogp!!(vi, zero(getlogp(vi)))
+function resetaccs!!(vi::AbstractVarInfo)
+    accs = getaccs(vi)
+    for acc in accs
+        accs = setacc!!(accs, resetacc!!(acc))
+    end
+    return setaccs!!(vi, accs)
+end
+
+haslogp(vi::AbstractVarInfo) = hasacc(vi, LogPrior) || hasacc(vi, LogLikelihood)
 
 # Variables and their realizations.
 @doc """

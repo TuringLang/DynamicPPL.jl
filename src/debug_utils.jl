@@ -274,9 +274,7 @@ function DynamicPPL.tilde_assume(
     rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
 )
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, vi = DynamicPPL.tilde_assume(
-        rng, childcontext(context), sampler, right, vn, vi
-    )
+    value, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, vi)
     return value, vi
 end
@@ -295,9 +293,7 @@ end
 
 function record_post_tilde_observe!(context::DebugContext, left, right, varinfo)
     stmt = ObserveStmt(;
-        left=left,
-        right=right,
-        varinfo=context.record_varinfo ? varinfo : nothing,
+        left=left, right=right, varinfo=context.record_varinfo ? varinfo : nothing
     )
     if context.record_statements
         push!(context.statements, stmt)
@@ -305,15 +301,15 @@ function record_post_tilde_observe!(context::DebugContext, left, right, varinfo)
     return nothing
 end
 
-function DynamicPPL.tilde_observe(context::DebugContext, right, left, vi)
+function DynamicPPL.tilde_observe!!(context::DebugContext, right, left, vn, vi)
     record_pre_tilde_observe!(context, left, right, vi)
-    vi = DynamicPPL.tilde_observe(childcontext(context), right, left, vi)
+    vi = DynamicPPL.tilde_observe!!(childcontext(context), right, left, vn, vi)
     record_post_tilde_observe!(context, left, right, vi)
     return vi
 end
-function DynamicPPL.tilde_observe(context::DebugContext, sampler, right, left, vi)
+function DynamicPPL.tilde_observe!!(context::DebugContext, sampler, right, left, vn, vi)
     record_pre_tilde_observe!(context, left, right, vi)
-    vi = DynamicPPL.tilde_observe(childcontext(context), sampler, right, left, vi)
+    vi = DynamicPPL.tilde_observe!!(childcontext(context), sampler, right, left, vn, vi)
     record_post_tilde_observe!(context, left, right, vi)
     return vi
 end
