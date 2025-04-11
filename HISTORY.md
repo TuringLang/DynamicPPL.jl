@@ -82,6 +82,10 @@ The reason for this change is that there were several flavours of VarInfo.
 Some, like `typed_varinfo`, were easy to construct because we had convenience methods for them; however, the others were more difficult.
 This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
+## 0.35.7
+
+`check_model_and_trace` now errors if any NaN's are encountered when evaluating the model.
+
 ## 0.35.6
 
 Fixed the implementation of `.~`, such that running a model with it no longer requires DynamicPPL itself to be loaded.

@@ -123,6 +123,17 @@
         end
     end
 
+    @testset "NaN in data" begin
+        @model function demo_nan_in_data(x)
+            a ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(a)
+            end
+        end
+        model = demo_nan_in_data([1.0, NaN])
+        @test_throws ErrorException check_model(model; error_on_failure=true)
+    end
+
     @testset "incorrect use of condition" begin
         @testset "missing in multivariate" begin
             @model function demo_missing_in_multivariate(x)
