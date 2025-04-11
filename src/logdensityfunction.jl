@@ -175,7 +175,7 @@ end
 Evaluate the log density of the given `model` at the given parameter values `x`,
 using the given `varinfo` and `context`. Note that the `varinfo` argument is provided
 only for its structure, in the sense that the parameters from the vector `x` are inserted into
-it, and its own parameters are discarded. 
+it, and its own parameters are discarded.
 """
 function logdensity_at(
     x::AbstractVector, model::Model, varinfo::AbstractVarInfo, context::AbstractContext
@@ -245,9 +245,11 @@ model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(
+function tweak_adtype(
     adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
-) = adtype
+)
+    return adtype
+end
 
 """
     use_closure(adtype::ADTypes.AbstractADType)

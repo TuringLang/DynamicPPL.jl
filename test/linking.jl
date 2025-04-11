@@ -182,10 +182,9 @@ end
         @model function demo_highdim_dirichlet(ns...)
             return x ~ filldist(Dirichlet(ones(2)), ns...)
         end
-        @testset "ns=$ns" for ns in [
-            (3,),
-            # TODO: Uncomment once we have https://github.com/TuringLang/Bijectors.jl/pull/304
-            # (3, 4), (3, 4, 5)
+        @testset "ns=$ns" for ns in [(3,),
+        # TODO: Uncomment once we have https://github.com/TuringLang/Bijectors.jl/pull/304
+        # (3, 4), (3, 4, 5)
         ]
             model = demo_highdim_dirichlet(ns...)
             example_values = rand(NamedTuple, model)

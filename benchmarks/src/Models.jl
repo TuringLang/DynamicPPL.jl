@@ -47,7 +47,7 @@ A short model that tries to cover many DynamicPPL features.
 Includes scalar, vector univariate, and multivariate variables; ~, .~, and loops; allocating
 a variable vector; observations passed as arguments, and as literals.
 """
-@model function smorgasbord(x, y, ::Type{TV}=Vector{Float64}) where {TV}
+@model function smorgasbord(x, y, (::Type{TV})=Vector{Float64}) where {TV}
     @assert length(x) == length(y)
     m ~ truncated(Normal(); lower=0)
     means ~ product_distribution(fill(Exponential(m), length(x)))
@@ -68,7 +68,7 @@ The second variable, `o`, is meant to be conditioned on after model instantiatio
 
 See `multivariate` for a version that uses `product_distribution` rather than loops.
 """
-@model function loop_univariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+@model function loop_univariate(num_dims, (::Type{TV})=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
     for i in 1:num_dims
@@ -88,7 +88,7 @@ The second variable, `o`, is meant to be conditioned on after model instantiatio
 
 See `loop_univariate` for a version that uses loops rather than `product_distribution`.
 """
-@model function multivariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+@model function multivariate(num_dims, (::Type{TV})=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
     a ~ product_distribution(fill(Normal(0, 1), num_dims))
@@ -118,7 +118,7 @@ end
 A model with random variables that have changing support under linking, or otherwise
 complicated bijectors.
 """
-@model function dynamic(::Type{T}=Vector{Float64}) where {T}
+@model function dynamic((::Type{T})=Vector{Float64}) where {T}
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
     mat1 ~ LKJCholesky(4, eta)
     mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))

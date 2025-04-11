@@ -204,6 +204,8 @@ function value_iterator_from_chain(vi::AbstractVarInfo, chain)
     return Iterators.map(
         Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     ) do (iteration_idx, chain_idx)
-        values_from_chain!(vi, chain, chain_idx, iteration_idx, OrderedDict{VarName,Any}())
+        return values_from_chain!(
+            vi, chain, chain_idx, iteration_idx, OrderedDict{VarName,Any}()
+        )
     end
 end
