@@ -56,10 +56,12 @@ using DynamicPPL: LogDensityFunction
                             ref_ldf, adtype
                         )
                     else
-                        ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
-                        logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
-                        @test grad ≈ ref_grad
-                        @test logp ≈ ref_logp
+                        DynamicPPL.TestUtils.AD.run_ad(
+                            m,
+                            adtype;
+                            varinfo=varinfo,
+                            expected_value_and_grad=(ref_logp, ref_grad),
+                        )
                     end
                 end
             end
