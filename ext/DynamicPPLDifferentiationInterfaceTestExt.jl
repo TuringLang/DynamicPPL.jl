@@ -44,6 +44,7 @@ function make_scenario(
     params = map(identity, params)
     context = DynamicPPL.DefaultContext()
     adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo, context)
+    # Below is a performance optimisation, see: https://github.com/TuringLang/DynamicPPL.jl/pull/806#issuecomment-2658049143
     if DynamicPPL.use_closure(adtype)
         f = x -> DynamicPPL.logdensity_at(x, model, varinfo, context)
         di_contexts = ()
