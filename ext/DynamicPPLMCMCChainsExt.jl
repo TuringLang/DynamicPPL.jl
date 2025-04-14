@@ -48,10 +48,10 @@ end
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
 in `chain`, and return the resulting `Chains`.
 
-The `model` passed to `predict` is often different from the one used to generate `chain`. 
-Typically, the model from which `chain` originated treats certain variables as observed (i.e., 
-data points), while the model you pass to `predict` may mark these same variables as missing 
-or unobserved. Calling `predict` then leverages the previously inferred parameter values to 
+The `model` passed to `predict` is often different from the one used to generate `chain`.
+Typically, the model from which `chain` originated treats certain variables as observed (i.e.,
+data points), while the model you pass to `predict` may mark these same variables as missing
+or unobserved. Calling `predict` then leverages the previously inferred parameter values to
 simulate what new, unobserved data might look like, given your posterior beliefs.
 
 For each parameter configuration in `chain`:
@@ -59,7 +59,7 @@ For each parameter configuration in `chain`:
 2. Any variables not included in `chain` are sampled from their prior distributions.
 
 If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
-the samples in `chain`. This is useful when you want to sample only new variables from the posterior 
+the samples in `chain`. This is useful when you want to sample only new variables from the posterior
 predictive distribution.
 
 # Examples
@@ -161,8 +161,8 @@ function _predictive_samples_to_arrays(predictive_samples)
 
     variable_names = collect(variable_names_set)
     variable_values = [
-        get(sample_dicts[i], key, missing) for i in eachindex(sample_dicts),
-        key in variable_names
+        get(sample_dicts[i], key, missing) for
+        i in eachindex(sample_dicts), key in variable_names
     ]
 
     return variable_names, variable_values
@@ -254,7 +254,7 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
         DynamicPPL.setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
         # NOTE: Some of the varialbes can be a view into the `varinfo`, so we need to
         # `deepcopy` the `varinfo` before passing it to the `model`.
-        model(deepcopy(varinfo))
+        return model(deepcopy(varinfo))
     end
 end
 

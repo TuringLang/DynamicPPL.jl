@@ -43,7 +43,7 @@ end
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))
-            pd_from_triangular(M, uplo)
+            return pd_from_triangular(M, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
     end
@@ -54,7 +54,7 @@ end
         # Build correlation matrix from factor
         corr_matrices = map(samples) do s
             M = reshape(s.metadata.vals, (2, 2))
-            pd_from_triangular(M, uplo)
+            return pd_from_triangular(M, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
     end

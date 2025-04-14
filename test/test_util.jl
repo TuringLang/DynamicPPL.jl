@@ -33,8 +33,9 @@ end
 
 Return string representing a short description of `vi`.
 """
-short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo) =
-    "threadsafe($(short_varinfo_name(vi.varinfo)))"
+function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
+    return "threadsafe($(short_varinfo_name(vi.varinfo)))"
+end
 function short_varinfo_name(vi::TypedVarInfo)
     DynamicPPL.has_varnamedvector(vi) && return "TypedVarInfo with VarNamedVector"
     return "TypedVarInfo"
@@ -91,7 +92,7 @@ function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::I
         iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
         tuples = mapreduce(collect, vcat, iters)
         push!(varnames, map(first, tuples)...)
-        OrderedDict(tuples)
+        return OrderedDict(tuples)
     end
     # Convert back to list
     varnames = collect(varnames)

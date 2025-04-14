@@ -311,7 +311,7 @@ function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
     vns_syms = Set(unique(map(getsym, vns)))
     syms = filter(Base.Fix2(in, vns_syms), keys(metadata))
     metadatas = map(syms) do sym
-        subset(getfield(metadata, sym), filter(==(sym) ∘ getsym, vns))
+        return subset(getfield(metadata, sym), filter(==(sym) ∘ getsym, vns))
     end
     return NamedTuple{syms}(metadatas)
 end
@@ -327,7 +327,7 @@ end
         # TODO(mhauru) Note that this could still generate an empty metadata object if none
         # of the lenses in `vns` are in `metadata`. Not sure if that's okay. Checking for
         # emptiness would make this type unstable again.
-        :((; $sym=subset(metadata.$sym, vns)))
+        :((; ($sym)=subset(metadata.$sym, vns)))
     else
         :(NamedTuple{}())
     end
@@ -708,8 +708,9 @@ findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
 
 Return a `NamedTuple` of the variables in `vi` grouped by symbol.
 """
-all_varnames_grouped_by_symbol(vi::TypedVarInfo) =
-    all_varnames_grouped_by_symbol(vi.metadata)
+function all_varnames_grouped_by_symbol(vi::TypedVarInfo)
+    return all_varnames_grouped_by_symbol(vi.metadata)
+end
 
 @generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
@@ -981,25 +982,22 @@ end
         if !(f in vns_names)
             continue
         end
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
-                if !isempty(f_vns)
-                    if !istrans(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = internal_to_linked_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, true, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to link a linked vi")
+        push!(expr.args, quote
+            f_vns = vi.metadata.$f.vns
+            f_vns = filter_subsumed(vns.$f, f_vns)
+            if !isempty(f_vns)
+                if !istrans(vi, f_vns[1])
+                    # Iterate over all `f_vns` and transform
+                    for vn in f_vns
+                        f = internal_to_linked_internal_transform(vi, vn)
+                        _inner_transform!(vi, vn, f)
+                        settrans!!(vi, true, vn)
                     end
+                else
+                    @warn("[DynamicPPL] attempt to link a linked vi")
                 end
-            end,
-        )
+            end
+        end)
     end
     return expr
 end
@@ -1085,23 +1083,20 @@ end
             continue
         end
 
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
-                if istrans(vi, f_vns[1])
-                    # Iterate over all `f_vns` and transform
-                    for vn in f_vns
-                        f = linked_internal_to_internal_transform(vi, vn)
-                        _inner_transform!(vi, vn, f)
-                        settrans!!(vi, false, vn)
-                    end
-                else
-                    @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+        push!(expr.args, quote
+            f_vns = vi.metadata.$f.vns
+            f_vns = filter_subsumed(vns.$f, f_vns)
+            if istrans(vi, f_vns[1])
+                # Iterate over all `f_vns` and transform
+                for vn in f_vns
+                    f = linked_internal_to_internal_transform(vi, vn)
+                    _inner_transform!(vi, vn, f)
+                    settrans!!(vi, false, vn)
                 end
-            end,
-        )
+            else
+                @warn("[DynamicPPL] attempt to invlink an invlinked vi")
+            end
+        end)
     end
     return expr
 end
@@ -1496,7 +1491,7 @@ end
 function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
     @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
     vals_linked = mapreduce(vcat, vns) do vn
-        getindex(vi, vn, dist)
+        return getindex(vi, vn, dist)
     end
     return recombine(dist, vals_linked, length(vns))
 end
@@ -1542,7 +1537,7 @@ Check whether `vn` has a value in `vi`.
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
 function Base.haskey(vi::TypedVarInfo, vn::VarName)
     md_haskey = map(vi.metadata) do metadata
-        haskey(metadata, vn)
+        return haskey(metadata, vn)
     end
     return any(md_haskey)
 end
@@ -1774,23 +1769,20 @@ end
         f_idcs = :(idcs.$f)
         f_orders = :(metadata.$f.orders)
         f_flags = :(metadata.$f.flags)
-        push!(
-            expr.args,
-            quote
-                # Set the flag for variables with symbol `f`
-                if num_produce == 0
-                    for i in length($f_idcs):-1:1
-                        $f_flags["del"][$f_idcs[i]] = true
-                    end
-                else
-                    for i in 1:length($f_orders)
-                        if i in $f_idcs && $f_orders[i] > num_produce
-                            $f_flags["del"][i] = true
-                        end
+        push!(expr.args, quote
+            # Set the flag for variables with symbol `f`
+            if num_produce == 0
+                for i in length($f_idcs):-1:1
+                    $f_flags["del"][$f_idcs[i]] = true
+                end
+            else
+                for i in 1:length($f_orders)
+                    if i in $f_idcs && $f_orders[i] > num_produce
+                        $f_flags["del"][i] = true
                     end
                 end
-            end,
-        )
+            end
+        end)
     end
     return expr
 end
@@ -1831,7 +1823,7 @@ end
     kernel!, vi::TypedVarInfo, metadata::NamedTuple{names}, values, keys
 ) where {names}
     updates = map(names) do n
-        quote
+        return quote
             for vn in Base.keys(metadata.$n)
                 indices_found = kernel!(vi, vn, values, keys_strings)
                 if indices_found !== nothing
@@ -1863,7 +1855,7 @@ function _find_missing_keys(vi::VarInfoOrThreadSafeVarInfo, keys)
     string_vns = map(string, collect_maybe(Base.keys(vi)))
     # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
     missing_keys = filter(keys) do key
-        !any(Base.Fix2(subsumes_string, key), string_vns)
+        return !any(Base.Fix2(subsumes_string, key), string_vns)
     end
 
     return missing_keys

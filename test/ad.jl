@@ -73,7 +73,7 @@ using DynamicPPL: LogDensityFunction
         t = 1:0.05:8
         σ = 0.3
         y = @. rand(sin(t) + Normal(0, σ))
-        @model function state_space(y, TT, ::Type{T}=Float64) where {T}
+        @model function state_space(y, TT, (::Type{T})=Float64) where {T}
             # Priors
             α ~ Normal(y[1], 0.001)
             τ ~ Exponential(1)
@@ -96,9 +96,11 @@ using DynamicPPL: LogDensityFunction
         # overload assume so that model evaluation doesn't fail due to a lack
         # of implementation
         struct MyEmptyAlg end
-        DynamicPPL.assume(
+        function DynamicPPL.assume(
             ::Random.AbstractRNG, ::DynamicPPL.Sampler{MyEmptyAlg}, dist, vn, vi
-        ) = DynamicPPL.assume(dist, vn, vi)
+        )
+            return DynamicPPL.assume(dist, vn, vi)
+        end
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
@@ -119,7 +121,7 @@ using DynamicPPL: LogDensityFunction
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
-        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_matrix_model((::Type{T})=Float64) where {T<:Real}
             m = Matrix{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -128,14 +130,14 @@ using DynamicPPL: LogDensityFunction
             scalar_matrix_model, test_m, ref_adtype
         )
 
-        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
+        @model function matrix_model((::Type{T})=Matrix{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
 
         matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, ref_adtype)
 
-        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_array_model((::Type{T})=Float64) where {T<:Real}
             m = Array{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -144,7 +146,7 @@ using DynamicPPL: LogDensityFunction
             scalar_array_model, test_m, ref_adtype
         )
 
-        @model function array_model(::Type{T}=Array{Float64}) where {T}
+        @model function array_model((::Type{T})=Array{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end

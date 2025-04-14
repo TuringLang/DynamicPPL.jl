@@ -710,7 +710,7 @@ ERROR: Could not find x.a[2] in x.a[1]
 function remove_parent_optic(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
     _, child, issuccess = splitoptic(getoptic(vn_child)) do optic
         o = optic === nothing ? identity : optic
-        VarName(vn_child, o) == vn_parent
+        return VarName(vn_child, o) == vn_parent
     end
 
     issuccess || error("Could not find $vn_parent in $vn_child")
@@ -905,7 +905,7 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(vals, VarName(vn, o))
+        return haskey(vals, VarName(vn, o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -934,7 +934,7 @@ function nested_getindex(values::AbstractDict, vn::VarName)
     # Split the optic into the key / `parent` and the extraction optic / `child`.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(values, VarName(vn, o))
+        return haskey(values, VarName(vn, o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -1078,7 +1078,7 @@ end
 function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         optic = Accessors.PropertyLens{sym}()
-        varname_leaves(VarName(vn, optic ∘ getoptic(vn)), optic(val))
+        return varname_leaves(VarName(vn, optic ∘ getoptic(vn)), optic(val))
     end
     return Iterators.flatten(iter)
 end
@@ -1244,7 +1244,7 @@ end
 function varname_and_value_leaves_inner(vn::DynamicPPL.VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do sym
         optic = DynamicPPL.Accessors.PropertyLens{sym}()
-        varname_and_value_leaves_inner(
+        return varname_and_value_leaves_inner(
             VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val)
         )
     end

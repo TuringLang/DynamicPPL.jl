@@ -184,7 +184,7 @@ end
             return x ~ MvNormal(m, s^2 * I)
         end
 
-        @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
+        @model function testmodel_univariate(x, (::Type{TV})=Vector{Float64}) where {TV}
             n = length(x)
             s ~ truncated(Normal(), 0, Inf)
 
@@ -374,7 +374,7 @@ end
     end
 
     @testset "link!! and invlink!!" begin
-        @model gdemo(a, b, ::Type{T}=Float64) where {T} = begin
+        @model gdemo(a, b, (::Type{T})=Float64) where {T} = begin
             s ~ InverseGamma(2, 3)
             m ~ Uniform(0, 2)
             x = Vector{T}(undef, length(a))
@@ -534,7 +534,9 @@ end
                     vals = values_as(vi, OrderedDict)
                     # All varnames in `vns` should be subsumed by one of `keys(vals)`.
                     @test all(vns) do vn
-                        any(DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals))
+                        return any(
+                            DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals)
+                        )
                     end
                     # Iterate over `keys(vals)` because we might have scenarios such as
                     # `vals = OrderedDict(@varname(m) => [1.0])` but `@varname(m[1])` is
@@ -624,7 +626,7 @@ end
     end
 
     @testset "subset" begin
-        @model function demo_subsetting_varinfo(::Type{TV}=Vector{Float64}) where {TV}
+        @model function demo_subsetting_varinfo((::Type{TV})=Vector{Float64}) where {TV}
             s ~ InverseGamma(2, 3)
             m ~ Normal(0, sqrt(s))
             x = TV(undef, 2)
@@ -691,12 +693,14 @@ end
 
             @testset ("$(convert(Vector{VarName}, vns_subset)) empty") for vns_subset in
                                                                            vns_supported
+
                 varinfo_subset = subset(varinfo, VarName[])
                 @test isempty(varinfo_subset)
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
                                                                    vns_supported
+
                 varinfo_subset = subset(varinfo, vns_subset)
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_subset)
@@ -715,6 +719,7 @@ end
             @testset "$(convert(Vector{VarName}, vns_subset))" for (
                 vns_subset, vns_target
             ) in vns_supported_with_subsumes
+
                 varinfo_subset = subset(varinfo, vns_subset)
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_target)
@@ -732,6 +737,7 @@ end
 
             @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
                                                                          vns_supported
+
                 varinfo_subset = subset(varinfo, vns_subset)
                 vns_subset_reversed = reverse(vns_subset)
                 varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
