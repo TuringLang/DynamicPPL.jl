@@ -30,9 +30,6 @@ const REFERENCE_ADTYPE = AutoForwardDiff()
     ADResult
 
 Data structure to store the results of the AD correctness test.
-
-If you want to quickly check whether the result is a success or failure, you
-can use `isnothing(result.error)`.
 """
 struct ADResult
     "The DynamicPPL model that was tested"
