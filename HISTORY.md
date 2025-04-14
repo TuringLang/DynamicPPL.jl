@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.35.8
+
+Added the `DynamicPPL.TestUtils.AD.run_ad` function to test the correctness and/or benchmark the performance of an automatic differentiation backend on DynamicPPL models.
+Please see [the docstring](https://turinglang.org/DynamicPPL.jl/api/#DynamicPPL.TestUtils.AD.run_ad) for more information.
+
 ## 0.35.7
 
 `check_model_and_trace` now errors if any NaN's are encountered when evaluating the model.
