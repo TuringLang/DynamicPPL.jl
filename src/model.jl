@@ -931,7 +931,13 @@ end
 
 Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
 """
-function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
+@noinline function _evaluate!!(
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext
+)
+    # NOTE(penelopeysm): This @noinline is a workaround for
+    # https://github.com/EnzymeAD/Enzyme.jl/issues/2337 and only really affects
+    # the smallest models (e.g. those with a single parameter). This call can
+    # be removed once that issue is fixed.
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
     return model.f(args...; kwargs...)
 end
