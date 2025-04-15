@@ -23,6 +23,7 @@ using DynamicPPL: LogDensityFunction
             varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                # TODO: This runs unlinked. Should we test linked as well?
                 f = LogDensityFunction(m, varinfo)
                 x = DynamicPPL.getparams(f)
                 # Calculate reference logp + gradient of logp using ForwardDiff
@@ -56,9 +57,11 @@ using DynamicPPL: LogDensityFunction
                             ref_ldf, adtype
                         )
                     else
+                        # TODO: Should we test linked as well?
                         DynamicPPL.TestUtils.AD.run_ad(
                             m,
                             adtype;
+                            linked=false,
                             varinfo=varinfo,
                             expected_value_and_grad=(ref_logp, ref_grad),
                         )
