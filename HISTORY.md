@@ -82,6 +82,11 @@ The reason for this change is that there were several flavours of VarInfo.
 Some, like `typed_varinfo`, were easy to construct because we had convenience methods for them; however, the others were more difficult.
 This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
+## 0.35.8
+
+Added the `DynamicPPL.TestUtils.AD.run_ad` function to test the correctness and/or benchmark the performance of an automatic differentiation backend on DynamicPPL models.
+Please see [the docstring](https://turinglang.org/DynamicPPL.jl/api/#DynamicPPL.TestUtils.AD.run_ad) for more information.
+
 ## 0.35.7
 
 `check_model_and_trace` now errors if any NaN's are encountered when evaluating the model.
