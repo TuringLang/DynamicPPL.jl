@@ -58,13 +58,12 @@ using DynamicPPL: LogDensityFunction
                         )
                     else
                         # TODO: Should we test linked as well?
-                        DynamicPPL.TestUtils.AD.run_ad(
+                        @test DynamicPPL.TestUtils.AD.run_ad(
                             m,
                             adtype;
-                            linked=false,
                             varinfo=varinfo,
                             expected_value_and_grad=(ref_logp, ref_grad),
-                        )
+                        ) isa Any
                     end
                 end
             end
