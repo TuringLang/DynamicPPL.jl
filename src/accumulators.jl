@@ -60,19 +60,20 @@ Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
 
 """
-    setacc(at::AccumulatorTuple, acc::AbstractAccumulator)
+    setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
 
 Add `acc` to `at`. Returns a new `AccumulatorTuple`.
 
 If an `AbstractAccumulator` with the same `accumulator_name` already exists in `at` it is
-replaced.
+replaced. `at` will never be mutated, but the name has the `!!` for consistency with the
+corresponding function for `AbstractVarInfo`.
 """
-function setacc(at::AccumulatorTuple, acc::AbstractAccumulator)
+function setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
     return Accessors.@set at.nt[accumulator_name(acc)] = acc
 end
 
-function getacc(at::AccumulatorTuple, ::Type{AccType}) where {AccType}
-    return at[accumulator_name(AccType)]
+function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
+    return at[accname]
 end
 
 function accumulate_assume!!(at::AccumulatorTuple, r, logjac, vn, right)
@@ -85,8 +86,7 @@ function accumulate_observe!!(at::AccumulatorTuple, right, left, vn)
     return AccumulatorTuple(map(acc -> accumulate_observe!!(acc, right, left, vn), at.nt))
 end
 
-function acc!!(at::AccumulatorTuple, ::Type{AccType}, args...) where {AccType}
-    accname = accumulator_name(AccType)
+function acc!!(at::AccumulatorTuple, ::Val{accname}, args...) where {accname}
     return Accessors.@set at.nt[accname] = acc!!(at[accname], args...)
 end
 

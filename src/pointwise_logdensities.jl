@@ -194,7 +194,7 @@ function pointwise_logdensities(
         vi = last(evaluate!!(model, vi, context))
     end
 
-    logps = getacc(vi, acctype).logps
+    logps = getacc(vi, Val(accumulator_name(acctype))).logps
     niters = size(chain, 1)
     nchains = size(chain, 3)
     logdensities = OrderedDict(
@@ -213,7 +213,7 @@ function pointwise_logdensities(
     # TODO(mhauru) Don't needlessly evaluate the model twice.
     varinfo = setaccs!!(varinfo, AccumulatorTuple(acctype()))
     varinfo = last(evaluate!!(model, varinfo, context))
-    return getacc(varinfo, acctype).logps
+    return getacc(varinfo, Val(accumulator_name(acctype))).logps
 end
 
 """

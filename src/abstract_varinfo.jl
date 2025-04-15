@@ -102,8 +102,8 @@ getlogp(vi::AbstractVarInfo) = getlogjoint(vi)
 function setaccs!! end
 function getaccs end
 
-getlogprior(vi::AbstractVarInfo) = getacc(vi, LogPrior).logp
-getloglikelihood(vi::AbstractVarInfo) = getacc(vi, LogLikelihood).logp
+getlogprior(vi::AbstractVarInfo) = getacc(vi, Val(:LogPrior)).logp
+getloglikelihood(vi::AbstractVarInfo) = getacc(vi, Val(:LogLikelihood)).logp
 
 function setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
     return setaccs!!(vi, setacc!!(getaccs(vi), acc))
@@ -124,8 +124,8 @@ function setlogp!!(vi::AbstractVarInfo, logp)
     return vi
 end
 
-function getacc(vi::AbstractVarInfo, ::Type{AccType}) where {AccType}
-    return getacc(getaccs(vi), AccType)
+function getacc(vi::AbstractVarInfo, accname)
+    return getacc(getaccs(vi), accname)
 end
 
 function accumulate_assume!!(vi::AbstractVarInfo, r, logjac, vn, right)
@@ -136,16 +136,16 @@ function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
     return setaccs!!(vi, accumulate_observe!!(getaccs(vi), right, left, vn))
 end
 
-function acc!!(vi::AbstractVarInfo, ::Type{AccType}, args...) where {AccType}
-    return setaccs!!(vi, acc!!(getaccs(vi), AccType, args...))
+function acc!!(vi::AbstractVarInfo, accname, args...)
+    return setaccs!!(vi, acc!!(getaccs(vi), accname, args...))
 end
 
 function acclogprior!!(vi::AbstractVarInfo, logp)
-    return acc!!(vi, LogPrior, logp)
+    return acc!!(vi, Val(:LogPrior), logp)
 end
 
 function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return acc!!(vi, LogLikelihood, logp)
+    return acc!!(vi, Val(:LogLikelihood), logp)
 end
 
 """
@@ -170,7 +170,7 @@ function resetaccs!!(vi::AbstractVarInfo)
     return setaccs!!(vi, accs)
 end
 
-haslogp(vi::AbstractVarInfo) = hasacc(vi, LogPrior) || hasacc(vi, LogLikelihood)
+haslogp(vi::AbstractVarInfo) = hasacc(vi, Val(:LogPrior)) || hasacc(vi, Val(:LogLikelihood))
 
 # Variables and their realizations.
 @doc """

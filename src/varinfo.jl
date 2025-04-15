@@ -1008,7 +1008,7 @@ setaccs!!(vi::VarInfo, accs) = Accessors.@set vi.accs = accs
 
 Return the `num_produce` of `vi`.
 """
-get_num_produce(vi::VarInfo) = getacc(vi, NumProduce).num
+get_num_produce(vi::VarInfo) = getacc(vi, Val(:NumProduce)).num
 
 """
     set_num_produce!!(vi::VarInfo, n::Int)

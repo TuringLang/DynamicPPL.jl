@@ -28,9 +28,9 @@ end
 
 # Get both the main accumulator and the thread-specific accumulators of the same type and
 # combine them.
-function getacc(vi::ThreadSafeVarInfo, ::Type{AccType}) where {AccType}
-    main_acc = getacc(vi.varinfo, AccType)
-    other_accs = map(accs -> getacc(accs, AccType), vi.accs_by_thread)
+function getacc(vi::ThreadSafeVarInfo, accname)
+    main_acc = getacc(vi.varinfo, accname)
+    other_accs = map(accs -> getacc(accs, accname), vi.accs_by_thread)
     return foldl(combine, other_accs; init=main_acc)
 end
 
@@ -47,9 +47,9 @@ function accumulate_observe!!(vi::ThreadSafeVarInfo, right, left, vn)
     return vi
 end
 
-function acc!!(vi::ThreadSafeVarInfo, ::Type{AccType}, args...) where {AccType}
+function acc!!(vi::ThreadSafeVarInfo, accname, args...)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = acc!!(vi.accs_by_thread[tid], AccType, args...)
+    vi.accs_by_thread[tid] = acc!!(vi.accs_by_thread[tid], accname, args...)
     return vi
 end
 
