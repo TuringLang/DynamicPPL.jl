@@ -1,3 +1,26 @@
+"""
+    AbstractAccumulator
+
+An abstract type for accumulators.
+
+An accumulator is an object that may change its value at every tilde_assume or tilde_observe
+call based on the value of the random variable in question. The obvious examples of
+accumulators or the log prior and log likelihood. Others examples might be a variable that
+counts the number of observations in a trace, or the names of random variables seen so far.
+
+An accumulator must implement the following methods:
+- `accumulator_name(acc::AbstractAccumulator)`: returns a Symbol by which accumulators of
+this type are identified. This name is unique in the sense that a `VarInfo` can only have
+one accumulator for each name. Often the name is just the name of the type.
+- `accumulate_observe!!(acc::AbstractAccumulator, right, left, vn)`: updates `acc` based on
+observing the random variable `vn` with value `left`, with `right` being the distribution on
+the RHS of the tilde statement. `accumulate_observe!!` may mutate `acc`, but not any of the
+other arguments. `vn` is `nothing` in the case of literal observations like
+`0.0 ~ Normal()`. `accumulate_observe!!` is called within `tilde_observe!!` for each
+accumulator in the current `VarInfo`.
+- `accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, right)`: updates `acc`
+at when a `tilde_assume` call is made. `vn` is the name of the variable being assumed
+"""
 abstract type AbstractAccumulator end
 
 accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
@@ -5,12 +28,19 @@ accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
 """
     AccumulatorTuple{N,T<:NamedTuple}
 
-A collection of accumulators, stored as a `NamedTuple`.
+A collection of accumulators, stored as a `NamedTuple` of length `N`
 
 This is defined as a separate type to be able to dispatch on it cleanly and without method
 ambiguities or conflicts with other `NamedTuple` types. We also use this type to enforce the
 constraint that the name in the tuple for each accumulator `acc` must be
-`accumulator_name(acc)`.
+`accumulator_name(acc)`, and these names must be unique.
+
+The constructor can be called with a tuple or a `VarArgs` of `AbstractAccumulators`. The
+names will be generated automatically. One can also call the constructor with a `NamedTuple`
+but the names in the argument will be discarded in favour of the generated ones.
+
+# Fields
+$(TYPEDFIELDS)
 """
 struct AccumulatorTuple{N,T<:NamedTuple}
     nt::T
@@ -29,7 +59,15 @@ Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
 
-function setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
+"""
+    setacc(at::AccumulatorTuple, acc::AbstractAccumulator)
+
+Add `acc` to `at`. Returns a new `AccumulatorTuple`.
+
+If an `AbstractAccumulator` with the same `accumulator_name` already exists in `at` it is
+replaced.
+"""
+function setacc(at::AccumulatorTuple, acc::AbstractAccumulator)
     return Accessors.@set at.nt[accumulator_name(acc)] = acc
 end
 
