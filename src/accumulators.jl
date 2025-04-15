@@ -16,7 +16,7 @@ struct AccumulatorTuple{N,T<:NamedTuple}
     nt::T
 
     function AccumulatorTuple(t::T) where {N,T<:NTuple{N,AbstractAccumulator}}
-        names = accumulator_name.(t)
+        names = map(accumulator_name, t)
         nt = NamedTuple{names}(t)
         return new{N,typeof(nt)}(nt)
     end
