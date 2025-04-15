@@ -12,6 +12,10 @@ If the calculated value or gradient is incorrect, it also throws a `DynamicPPL.T
 This exception contains the actual and expected gradient so you can inspect it if needed; see the documentation for more information.
 From a practical perspective, this means that if you need to add this to a test suite, you need to use `@test run_ad(...) isa Any` rather than just `run_ad(...)`.
 
+### SimpleVarInfo linking / invlinking
+
+Linking a linked SimpleVarInfo, or invlinking an unlinked SimpleVarInfo, now displays a warning instead of an error.
+
 ### VarInfo constructors
 
 `VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
