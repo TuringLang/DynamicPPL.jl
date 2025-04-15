@@ -64,8 +64,9 @@ end
         benchmark=false,
         value_atol=1e-6,
         grad_atol=1e-6,
-        varinfo::AbstractVarInfo=link(VarInfo(model), model),
-        params::Vector{<:Real}=varinfo[:],
+        linked::Bool=true,
+        varinfo::AbstractVarInfo=VarInfo(model),
+        params::Union{Nothing,Vector{<:Real}}=nothing,
         reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
         expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,
         verbose=true,
@@ -96,10 +97,12 @@ Everything else is optional, and can be categorised into several groups:
    DynamicPPL contains several different types of VarInfo objects which change
    the way model evaluation occurs. If you want to use a specific type of
    VarInfo, pass it as the `varinfo` argument. Otherwise, it will default to
-   using a `TypedVarInfo` generated from the model. It will also perform
-   _linking_, that is, the parameters in the VarInfo will be transformed to
-   unconstrained Euclidean space if they aren't already in that space. Note
-   that the act of linking may change the length of the parameters.
+   using a `TypedVarInfo` generated from the model.
+
+   It will also perform _linking_, that is, the parameters in the VarInfo will
+   be transformed to unconstrained Euclidean space if they aren't already in
+   that space. Note that the act of linking may change the length of the
+   parameters. To disable linking, set `linked=false`.
 
 2. _How to specify the parameters._
 
@@ -151,14 +154,22 @@ function run_ad(
     benchmark=false,
     value_atol=1e-6,
     grad_atol=1e-6,
-    varinfo::AbstractVarInfo=link(VarInfo(model), model),
-    params::Vector{<:Real}=varinfo[:],
+    linked::Bool=true,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    params::Union{Nothing,Vector{<:Real}}=nothing,
     reference_adtype::AbstractADType=REFERENCE_ADTYPE,
     expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,
     verbose=true,
 )::ADResult
-    verbose && @info "Running AD on $(model.f) with $(adtype)\n"
+    if linked
+        varinfo = link(varinfo, model)
+    end
+    if isnothing(params)
+        params = varinfo[:]
+    end
     params = map(identity, params)
+
+    verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
     ldf = LogDensityFunction(model, varinfo; adtype=adtype)
 

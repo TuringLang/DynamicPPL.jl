@@ -7,6 +7,7 @@
 ### AD testing utilities
 
 `DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.
+To disable this, pass the `linked=false` keyword argument.
 
 ### VarInfo constructors
 
