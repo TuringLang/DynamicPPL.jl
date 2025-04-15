@@ -4,7 +4,7 @@ using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
-using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo
+using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: Random, Xoshiro
 using Statistics: median
@@ -64,7 +64,7 @@ end
         benchmark=false,
         value_atol=1e-6,
         grad_atol=1e-6,
-        varinfo::AbstractVarInfo=VarInfo(model),
+        varinfo::AbstractVarInfo=link(VarInfo(model), model),
         params::Vector{<:Real}=varinfo[:],
         reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
         expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,
@@ -96,7 +96,10 @@ Everything else is optional, and can be categorised into several groups:
    DynamicPPL contains several different types of VarInfo objects which change
    the way model evaluation occurs. If you want to use a specific type of
    VarInfo, pass it as the `varinfo` argument. Otherwise, it will default to
-   using a `TypedVarInfo` generated from the model.
+   using a `TypedVarInfo` generated from the model. It will also perform
+   _linking_, that is, the parameters in the VarInfo will be transformed to
+   unconstrained Euclidean space if they aren't already in that space. Note
+   that the act of linking may change the length of the parameters.
 
 2. _How to specify the parameters._
 
@@ -148,7 +151,7 @@ function run_ad(
     benchmark=false,
     value_atol=1e-6,
     grad_atol=1e-6,
-    varinfo::AbstractVarInfo=VarInfo(model),
+    varinfo::AbstractVarInfo=link(VarInfo(model), model),
     params::Vector{<:Real}=varinfo[:],
     reference_adtype::AbstractADType=REFERENCE_ADTYPE,
     expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,

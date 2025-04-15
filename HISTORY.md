@@ -4,6 +4,10 @@
 
 **Breaking changes**
 
+### AD testing utilities
+
+`DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.
+
 ### VarInfo constructors
 
 `VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
