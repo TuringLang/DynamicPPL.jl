@@ -104,12 +104,27 @@ probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
     return if is_rhs_model(right)
-        # Prefix the variables using the `vn`.
-        rand_like!!(
-            right,
-            should_auto_prefix(right) ? PrefixContext{Symbol(vn)}(context) : context,
-            vi,
-        )
+        # Here, we apply the PrefixContext _not_ to the parent `context`, but
+        # to the context of the submodel being evaluated. This means that later=
+        # on in `make_evaluate_args_and_kwargs`, the context stack will be
+        # correctly arranged such that it goes like this:
+        #  parent_context[1] -> parent_context[2] -> ... -> PrefixContext ->
+        #    submodel_context[1] -> submodel_context[2] -> ... -> leafcontext
+        # See the docstring of `make_evaluate_args_and_kwargs`, and the internal
+        # DynamicPPL documentation on submodel conditioning, for more details.
+        #
+        # NOTE: This relies on the existence of `right.model.model`. Right now,
+        # the only thing that can return true for `is_rhs_model` is something
+        # (a `Sampleable`) that has a `model` field that itself (a
+        # `ReturnedModelWrapper`) has a `model` field. This may or may not
+        # change in the future.
+        if should_auto_prefix(right)
+            dppl_model = right.model.model # This isa DynamicPPL.Model
+            prefixed_submodel_context = PrefixContext{getsym(vn)}(dppl_model.context)
+            new_dppl_model = contextualize(dppl_model, prefixed_submodel_context)
+            right = to_submodel(new_dppl_model, true)
+        end
+        rand_like!!(right, context, vi)
     else
         value, logp, vi = tilde_assume(context, right, vn, vi)
         value, acclogp_assume!!(context, vi, logp)

@@ -53,7 +53,9 @@ function isassumption(
     vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
 )
     return quote
-        if $(DynamicPPL.contextual_isassumption)(__context__, $vn)
+        if $(DynamicPPL.contextual_isassumption)(
+            __context__, $(DynamicPPL.prefix)(__context__, $vn)
+        )
             # Considered an assumption by `__context__` which means either:
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
@@ -112,8 +114,10 @@ function contextual_isassumption(context::ConditionContext, vn)
     # so we defer to `childcontext` if we haven't concluded that anything yet.
     return contextual_isassumption(childcontext(context), vn)
 end
-function contextual_isassumption(context::PrefixContext, vn)
-    return contextual_isassumption(childcontext(context), prefix(context, vn))
+function contextual_isassumption(context::PrefixContext{Prefix}, vn) where {Prefix}
+    return contextual_isassumption(
+        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
+    )
 end
 
 isfixed(expr, vn) = false
@@ -473,7 +477,9 @@ function generate_tilde(left, right)
         else
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getconditioned_nested)(__context__, $vn)
+                $left = $(DynamicPPL.getconditioned_nested)(
+                    __context__, $(DynamicPPL.prefix)(__context__, $vn)
+                )
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(

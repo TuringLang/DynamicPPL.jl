@@ -265,8 +265,8 @@ end
 
 Apply the prefixes in the context `ctx` to the variable name `vn`.
 """
-function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Symbol(Prefix)}())
+function prefix(ctx::PrefixContext{Prefix}, vn::VarName) where {Prefix}
+    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Prefix}())
 end
 function prefix(ctx::AbstractContext, vn::VarName)
     return prefix(NodeTrait(ctx), ctx, vn)
@@ -352,6 +352,43 @@ childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
 
 """
+    prefix_conditioned_variables(context::AbstractContext, prefix::VarName)
+
+Prefix all the conditioned variables in a given context with `prefix`.
+
+```jldoctest
+julia> using DynamicPPL: prefix_conditioned_variables, ConditionContext
+
+julia> c1 = ConditionContext((a=1, ))
+ConditionContext((a = 1,), DefaultContext())
+
+julia> prefix_conditioned_variables(c1, @varname(y))
+ConditionContext(Dict(y.a => 1), DefaultContext())
+```
+"""
+function prefix_conditioned_variables(ctx::ConditionContext, prefix::VarName)
+    # Replace the prefix of the conditioned variables
+    vn_dict = to_varname_dict(ctx.values)
+    prefixed_vn_dict = Dict(
+        AbstractPPL.prefix(vn, prefix) => value for (vn, value) in vn_dict
+    )
+    # Prefix the child context as well
+    prefixed_child_ctx = prefix_conditioned_variables(childcontext(ctx), prefix)
+    return ConditionContext(prefixed_vn_dict, prefixed_child_ctx)
+end
+function prefix_conditioned_variables(c::AbstractContext, prefix::VarName)
+    return prefix_conditioned_variables(
+        NodeTrait(prefix_conditioned_variables, c), c, prefix
+    )
+end
+prefix_conditioned_variables(::IsLeaf, context::AbstractContext, prefix::VarName) = context
+function prefix_conditioned_variables(::IsParent, context::AbstractContext, prefix::VarName)
+    return setchildcontext(
+        context, prefix_conditioned_variables(childcontext(context), prefix)
+    )
+end
+
+"""
     hasconditioned(context::AbstractContext, vn::VarName)
 
 Return `true` if `vn` is found in `context`.
@@ -370,7 +407,9 @@ Return value of `vn` in `context`.
 function getconditioned(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-getconditioned(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
+function getconditioned(context::ConditionContext, vn::VarName)
+    return getvalue(context.values, vn)
+end
 
 """
     hasconditioned_nested(context, vn)
@@ -387,8 +426,10 @@ hasconditioned_nested(::IsLeaf, context, vn) = hasconditioned(context, vn)
 function hasconditioned_nested(::IsParent, context, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
-function hasconditioned_nested(context::PrefixContext, vn)
-    return hasconditioned_nested(childcontext(context), prefix(context, vn))
+function hasconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
+    return hasconditioned_nested(
+        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
+    )
 end
 
 """
@@ -405,8 +446,10 @@ end
 function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
-function getconditioned_nested(context::PrefixContext, vn)
-    return getconditioned_nested(childcontext(context), prefix(context, vn))
+function getconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
+    return getconditioned_nested(
+        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
+    )
 end
 function getconditioned_nested(::IsParent, context, vn)
     return if hasconditioned(context, vn)
