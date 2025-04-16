@@ -21,13 +21,13 @@ it's the default AD backend used in Turing.jl.
 const REFERENCE_ADTYPE = AutoForwardDiff()
 
 """
-    ADIncorrectException{T<:Real}
+    ADIncorrectException{T<:AbstractFloat}
 
 Exception thrown when an AD backend returns an incorrect value or gradient.
 
 The type parameter `T` is the numeric type of the value and gradient.
 """
-struct ADIncorrectException{T<:Real} <: Exception
+struct ADIncorrectException{T<:AbstractFloat} <: Exception
     value_expected::T
     value_actual::T
     grad_expected::Vector{T}
@@ -35,14 +35,14 @@ struct ADIncorrectException{T<:Real} <: Exception
 end
 
 """
-    ADResult{Tparams<:Real,Tresult<:Real}
+    ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
 
 Data structure to store the results of the AD correctness test.
 
 The type parameter `Tparams` is the numeric type of the parameters passed in;
 `Tresult` is the type of the value and the gradient.
 """
-struct ADResult{Tparams<:Real,Tresult<:Real}
+struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
     "The DynamicPPL model that was tested"
     model::Model
     "The VarInfo that was used"
@@ -76,9 +76,9 @@ end
         value_atol=1e-6,
         grad_atol=1e-6,
         varinfo::AbstractVarInfo=link(VarInfo(model), model),
-        params::Union{Nothing,Vector{<:Real}}=nothing,
+        params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
         reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
-        expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,
+        expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
         verbose=true,
     )::ADResult
 
@@ -108,12 +108,9 @@ Everything else is optional, and can be categorised into several groups:
    DynamicPPL contains several different types of VarInfo objects which change
    the way model evaluation occurs. If you want to use a specific type of
    VarInfo, pass it as the `varinfo` argument. Otherwise, it will default to
-   using a `TypedVarInfo` generated from the model.
-
-   It will also perform _linking_, that is, the parameters in the VarInfo will
-   be transformed to unconstrained Euclidean space if they aren't already in
-   that space. Note that the act of linking may change the length of the
-   parameters. To disable linking, set `linked=false`.
+   using a linked `TypedVarInfo` generated from the model. Here, _linked_
+   means that the parameters in the VarInfo have been transformed to
+   unconstrained Euclidean space if they aren't already in that space.
 
 2. _How to specify the parameters._
 
@@ -172,12 +169,12 @@ function run_ad(
     adtype::AbstractADType;
     test::Bool=true,
     benchmark::Bool=false,
-    value_atol::Real=1e-6,
-    grad_atol::Real=1e-6,
+    value_atol::AbstractFloat=1e-6,
+    grad_atol::AbstractFloat=1e-6,
     varinfo::AbstractVarInfo=link(VarInfo(model), model),
-    params::Union{Nothing,Vector{<:Real}}=nothing,
+    params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
     reference_adtype::AbstractADType=REFERENCE_ADTYPE,
-    expected_value_and_grad::Union{Nothing,Tuple{Real,Vector{<:Real}}}=nothing,
+    expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
     verbose=true,
 )::ADResult
     if isnothing(params)
