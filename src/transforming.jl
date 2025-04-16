@@ -19,9 +19,9 @@ function tilde_assume(
     lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
 
     if istrans(vi, vn)
-        @assert isinverse "Trying to link already transformed variables"
+        isinverse || @warn "Trying to link an already transformed variable ($vn)"
     else
-        @assert !isinverse "Trying to invlink non-transformed variables"
+        isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"
     end
 
     # Only transform if `!isinverse` since `vi[vn, right]`

@@ -94,7 +94,7 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     @test (DynamicPPL.evaluate!!(model, varinfo_untyped, SamplingContext(context)); true)
     @test (DynamicPPL.evaluate!!(model, varinfo_untyped, context); true)
     # Typed varinfo.
-    varinfo_typed = DynamicPPL.TypedVarInfo(varinfo_untyped)
+    varinfo_typed = DynamicPPL.typed_varinfo(varinfo_untyped)
     @test (DynamicPPL.evaluate!!(model, varinfo_typed, SamplingContext(context)); true)
     @test (DynamicPPL.evaluate!!(model, varinfo_typed, context); true)
 end
