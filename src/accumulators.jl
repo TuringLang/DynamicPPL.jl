@@ -268,22 +268,23 @@ function combine(acc::NumProduce, acc2::NumProduce)
     return NumProduce(max(acc.num, acc2.num))
 end
 
-Base.:+(acc::LogPrior{T}, logp::T) where {T} = LogPrior(acc.logp + logp)
-Base.:+(acc::LogLikelihood{T}, logp::T) where {T} = LogLikelihood(acc.logp + logp)
-Base.:+(acc::NumProduce{T}, num::T) where {T} = NumProduce(acc.num + num)
+Base.:+(acc1::LogPrior, acc2::LogPrior) = LogPrior(acc1.logp + acc2.logp)
+Base.:+(acc1::LogLikelihood, acc2::LogLikelihood) = LogLikelihood(acc1.logp + acc2.logp)
+increment(acc::NumProduce) = NumProduce(acc.num + oneunit(acc.num))
+
 Base.zero(acc::LogPrior) = LogPrior(zero(acc.logp))
 Base.zero(acc::LogLikelihood) = LogLikelihood(zero(acc.logp))
 Base.zero(acc::NumProduce) = NumProduce(zero(acc.num))
 
 function accumulate_assume!!(acc::LogPrior, val, logjac, vn, right)
-    return acc + (logpdf(right, val) + logjac)
+    return acc + LogPrior(logpdf(right, val) + logjac)
 end
 accumulate_observe!!(acc::LogPrior, right, left, vn) = acc
 
 accumulate_assume!!(acc::LogLikelihood, val, logjac, vn, right) = acc
 function accumulate_observe!!(acc::LogLikelihood, right, left, vn)
-    return acc + logpdf(right, left)
+    return acc + LogLikelihood(logpdf(right, left))
 end
 
 accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc
-accumulate_observe!!(acc::NumProduce, right, left, vn) = acc + 1
+accumulate_observe!!(acc::NumProduce, right, left, vn) = increment(acc)

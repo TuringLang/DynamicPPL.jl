@@ -1022,10 +1022,7 @@ set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduce(n))
 
 Add 1 to `num_produce` in `vi`.
 """
-function increment_num_produce!!(vi::VarInfo)
-    num_produce = get_num_produce(vi)
-    return set_num_produce!!(vi, num_produce + oneunit(num_produce))
-end
+increment_num_produce!!(vi::VarInfo) = map_accumulator!!(vi, Val(:NumProduce), increment)
 
 """
     reset_num_produce!!(vi::VarInfo)

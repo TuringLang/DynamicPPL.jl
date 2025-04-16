@@ -253,7 +253,7 @@ Add `logp` to the value of the log of the prior probability in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
 function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(vi, Val(:LogPrior), +, logp)
+    return map_accumulator!!(vi, Val(:LogPrior), +, LogPrior(logp))
 end
 
 """
@@ -264,7 +264,7 @@ Add `logp` to the value of the log of the likelihood in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
 """
 function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(vi, Val(:LogLikelihood), +, logp)
+    return map_accumulator!!(vi, Val(:LogLikelihood), +, LogLikelihood(logp))
 end
 
 """
