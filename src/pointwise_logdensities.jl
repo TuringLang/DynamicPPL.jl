@@ -36,9 +36,6 @@ end
 # ThreadSafeVarInfo.
 # split(::LogPrior{T}) where {T} = LogPrior(zero(T))
 # combine(acc::LogPrior, acc2::LogPrior) = LogPrior(acc.logp + acc2.logp)
-# acc!!(acc::PointwiseLogPrior, logp) = LogPrior(acc.logp + logp)
-
-resetacc!!(acc::PointwiseLogProbAccumulator) = acc
 
 function accumulate_assume!!(
     acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right

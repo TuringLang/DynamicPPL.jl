@@ -965,7 +965,7 @@ end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    vi = resetaccs!!(vi)
+    vi = resetlogp!!(vi)
     vi = reset_num_produce!!(vi)
     return vi
 end
@@ -1022,7 +1022,10 @@ set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduce(n))
 
 Add 1 to `num_produce` in `vi`.
 """
-increment_num_produce!!(vi::VarInfo) = set_num_produce!!(vi, get_num_produce(vi) + 1)
+function increment_num_produce!!(vi::VarInfo)
+    num_produce = get_num_produce(vi)
+    return set_num_produce!!(vi, num_produce + oneunit(num_produce))
+end
 
 """
     reset_num_produce!!(vi::VarInfo)
@@ -1030,7 +1033,7 @@ increment_num_produce!!(vi::VarInfo) = set_num_produce!!(vi, get_num_produce(vi)
 Reset the value of `num_produce` the log of the joint probability of the observed data
 and parameters sampled in `vi` to 0.
 """
-reset_num_produce!!(vi::VarInfo) = set_num_produce!!(vi, 0)
+reset_num_produce!!(vi::VarInfo) = map_accumulator!!(vi, Val(:NumProduce), zero)
 
 # Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
 isempty(vi::VarInfo) = _isempty(vi.metadata)

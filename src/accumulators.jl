@@ -18,9 +18,6 @@ To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
 - `combine(acc::T, acc2::T)`
 
-It may also want to implement
-- `acc!!(acc::T, args...)`
-
 See the documentation for each of these functions for more details.
 """
 abstract type AbstractAccumulator end
@@ -138,6 +135,7 @@ AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
+Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname} = haskey(at.nt, accname)
 
 """
     setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
@@ -149,7 +147,9 @@ replaced. `at` will never be mutated, but the name has the `!!` for consistency 
 corresponding function for `AbstractVarInfo`.
 """
 function setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
-    return Accessors.@set at.nt[accumulator_name(acc)] = acc
+    accname = accumulator_name(acc)
+    new_nt = merge(at.nt, NamedTuple{(accname,)}((acc,)))
+    return AccumulatorTuple(new_nt)
 end
 
 """
@@ -162,31 +162,37 @@ function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
 end
 
 """
-    accumulate_assume!!(at::AccumulatorTuple, r, logjac, vn, right)
+    map_accumulator!!(at::AccumulatorTuple, func::Function, args...)
 
-Call `accumulate_assume!!` on each accumulator in `at`.
+Update the accumulators in `at` by calling `func(acc, args...)` on them and replacing them
+with the return values.
 
-Returns a new AccumulatorTuple.
+Returns a new `AccumulatorTuple`. The `!!` in the name is for consistency with the
+corresponding function for `AbstractVarInfo`.
 """
-function accumulate_assume!!(at::AccumulatorTuple, r, logjac, vn, right)
-    return AccumulatorTuple(
-        map(acc -> accumulate_assume!!(acc, r, logjac, vn, right), at.nt)
-    )
+function map_accumulator!!(at::AccumulatorTuple, func::Function, args...)
+    return AccumulatorTuple(map(acc -> func(acc, args...), at.nt))
 end
 
 """
-    accumulate_observe!!(at::AccumulatorTuple, right, left, vn)
+    map_accumulator!!(at::AccumulatorTuple, ::Val{accname}, func::Function, args...)
 
-Call `accumulate_observe!!` on each accumulator in `at`.
+Update the accumulator with name `accname` in `at` by calling `func(acc, args...)` on it
+and replacing it with the return value.
 
-Returns a new AccumulatorTuple.
+Returns a new `AccumulatorTuple`. The `!!` in the name is for consistency with the
+corresponding function for `AbstractVarInfo`.
 """
-function accumulate_observe!!(at::AccumulatorTuple, right, left, vn)
-    return AccumulatorTuple(map(acc -> accumulate_observe!!(acc, right, left, vn), at.nt))
-end
-
-function acc!!(at::AccumulatorTuple, ::Val{accname}, args...) where {accname}
-    return Accessors.@set at.nt[accname] = acc!!(at[accname], args...)
+function map_accumulator!!(
+    at::AccumulatorTuple, ::Val{accname}, func::Function, args...
+) where {accname}
+    # Would like to write this as
+    # return Accessors.@set at.nt[accname] = func(at[accname], args...)
+    # for readability, but that one isn't type stable due to
+    # https://github.com/JuliaObjects/Accessors.jl/issues/198
+    new_val = func(at[accname], args...)
+    new_nt = merge(at.nt, NamedTuple{(accname,)}((new_val,)))
+    return AccumulatorTuple(new_nt)
 end
 
 # END ACCUMULATOR TUPLE, BEGIN LOG PROB AND NUM PRODUCE ACCUMULATORS
@@ -252,12 +258,6 @@ accumulator_name(::Type{<:LogPrior}) = :LogPrior
 accumulator_name(::Type{<:LogLikelihood}) = :LogLikelihood
 accumulator_name(::Type{<:NumProduce}) = :NumProduce
 
-resetacc!!(acc::LogPrior) = LogPrior(zero(acc.logp))
-resetacc!!(acc::LogLikelihood) = LogLikelihood(zero(acc.logp))
-# TODO(mhauru) How to handle reset for NumProduce? Do we need to define different types of
-# resets?
-resetacc!!(acc::NumProduce) = acc
-
 split(::LogPrior{T}) where {T} = LogPrior(zero(T))
 split(::LogLikelihood{T}) where {T} = LogLikelihood(zero(T))
 split(acc::NumProduce) = acc
@@ -268,19 +268,22 @@ function combine(acc::NumProduce, acc2::NumProduce)
     return NumProduce(max(acc.num, acc2.num))
 end
 
-acc!!(acc::LogPrior, logp) = LogPrior(acc.logp + logp)
-acc!!(acc::LogLikelihood, logp) = LogLikelihood(acc.logp + logp)
-acc!!(acc::NumProduce, n) = NumProduce(acc.num + n)
+Base.:+(acc::LogPrior{T}, logp::T) where {T} = LogPrior(acc.logp + logp)
+Base.:+(acc::LogLikelihood{T}, logp::T) where {T} = LogLikelihood(acc.logp + logp)
+Base.:+(acc::NumProduce{T}, num::T) where {T} = NumProduce(acc.num + num)
+Base.zero(acc::LogPrior) = LogPrior(zero(acc.logp))
+Base.zero(acc::LogLikelihood) = LogLikelihood(zero(acc.logp))
+Base.zero(acc::NumProduce) = NumProduce(zero(acc.num))
 
 function accumulate_assume!!(acc::LogPrior, val, logjac, vn, right)
-    return acc!!(acc, logpdf(right, val) + logjac)
+    return acc + (logpdf(right, val) + logjac)
 end
 accumulate_observe!!(acc::LogPrior, right, left, vn) = acc
 
 accumulate_assume!!(acc::LogLikelihood, val, logjac, vn, right) = acc
 function accumulate_observe!!(acc::LogLikelihood, right, left, vn)
-    return acc!!(acc, logpdf(right, left))
+    return acc + logpdf(right, left)
 end
 
 accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc
-accumulate_observe!!(acc::NumProduce, right, left, vn) = acc!!(acc, 1)
+accumulate_observe!!(acc::NumProduce, right, left, vn) = acc + 1

@@ -208,7 +208,7 @@
             end
 
             # Reset the logp accumulators.
-            svi_eval = DynamicPPL.resetaccs!!(svi_eval)
+            svi_eval = DynamicPPL.resetlogp!!(svi_eval)
 
             # Compute `logjoint` using the varinfo.
             logπ = logjoint(model, svi_eval)

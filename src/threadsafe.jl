@@ -34,22 +34,19 @@ function getacc(vi::ThreadSafeVarInfo, accname)
     return foldl(combine, other_accs; init=main_acc)
 end
 
-# Calls to accumulate_assume!!, accumulate_observe!!, and acc!! are thread-specific.
-function accumulate_assume!!(vi::ThreadSafeVarInfo, r, logp, vn, right)
+# Calls to map_accumulator!! are thread-specific by default. For any use of them that should
+# _not_ be thread-specific a specific method has to be written.
+function map_accumulator!!(vi::ThreadSafeVarInfo, accname::Val, func::Function, args...)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = accumulate_assume!!(vi.accs_by_thread[tid], r, logp, vn, right)
+    vi.accs_by_thread[tid] = map_accumulator!!(
+        vi.accs_by_thread[tid], accname, func, args...
+    )
     return vi
 end
 
-function accumulate_observe!!(vi::ThreadSafeVarInfo, right, left, vn)
+function map_accumulator!!(vi::ThreadSafeVarInfo, func::Function, args...)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = accumulate_observe!!(vi.accs_by_thread[tid], right, left, vn)
-    return vi
-end
-
-function acc!!(vi::ThreadSafeVarInfo, accname, args...)
-    tid = Threads.threadid()
-    vi.accs_by_thread[tid] = acc!!(vi.accs_by_thread[tid], accname, args...)
+    vi.accs_by_thread[tid] = map_accumulator!!(vi.accs_by_thread[tid], func, args...)
     return vi
 end
 
@@ -171,15 +168,16 @@ end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
-    return resetaccs!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
+    return resetlogp!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
 end
 
-function resetaccs!!(vi::ThreadSafeVarInfo)
-    vi = Accessors.@set vi.varinfo = resetaccs!!(vi.varinfo)
+function resetlogp!!(vi::ThreadSafeVarInfo)
+    vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
     for i in eachindex(vi.accs_by_thread)
-        for acc in getaccs(vi.varinfo)
-            vi.accs_by_thread[i] = setacc!!(vi.accs_by_thread[i], split(acc))
-        end
+        vi.accs_by_thread[i] = map_accumulator!!(vi.accs_by_thread[i], Val(:LogPrior), zero)
+        vi.accs_by_thread[i] = map_accumulator!!(
+            vi.accs_by_thread[i], Val(:LogLikelihood), zero
+        )
     end
     return vi
 end
