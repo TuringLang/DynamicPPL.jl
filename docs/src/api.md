@@ -212,6 +212,7 @@ To test and/or benchmark the performance of an AD backend on a model, DynamicPPL
 ```@docs
 DynamicPPL.TestUtils.AD.run_ad
 DynamicPPL.TestUtils.AD.ADResult
+DynamicPPL.TestUtils.AD.ADIncorrectException
 ```
 
 ## Demo models
