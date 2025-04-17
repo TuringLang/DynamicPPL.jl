@@ -14,9 +14,8 @@ See https://github.com/TuringLang/DynamicPPL.jl/issues/857 for a full illustrati
     x ~ Normal()
     return y ~ Normal()
 end
-inner_conditioned = inner() | (x=1.0,)
 @model function outer()
-    return a ~ to_submodel(inner_conditioned)
+    return a ~ to_submodel(inner() | (x=1.0,))
 end
 ```
 
