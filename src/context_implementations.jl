@@ -57,7 +57,6 @@ function tilde_assume(context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), context, args...)
 end
 function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vi)
-    @show "isleaf", vn
     return assume(right, vn, vi)
 end
 function tilde_assume(::IsParent, context::AbstractContext, args...)

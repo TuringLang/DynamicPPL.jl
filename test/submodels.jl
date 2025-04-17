@@ -5,74 +5,101 @@ using Distributions
 using Test
 
 @testset "submodels.jl" begin
-    @testset "Conditioning variables" begin
+    @testset "$op" for op in [condition, fix]
+        x_val = 1.0
+        x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
+
         @testset "Auto prefix" begin
             @model function inner()
                 x ~ Normal()
-                return y ~ Normal()
+                y ~ Normal()
+                return (x, y)
             end
             @model function outer()
                 return a ~ to_submodel(inner())
             end
-            inner_cond = inner() | (@varname(x) => 1.0)
-            with_outer_cond = outer() | (@varname(a.x) => 1.0)
-
-            # No conditioning
-            @test Set(keys(VarInfo(outer()))) == Set([@varname(a.x), @varname(a.y)])
-            # Conditioning from the outside
-            @test Set(keys(VarInfo(with_outer_cond))) == Set([@varname(a.y)])
-            # Conditioning from the inside
+            inner_op = op(inner(), (@varname(x) => x_val))
             @model function outer2()
-                return a ~ to_submodel(inner_cond)
+                return a ~ to_submodel(inner_op)
             end
-            with_inner_cond = outer2()
-            @test Set(keys(VarInfo(with_inner_cond))) == Set([@varname(a.y)])
+            with_inner_op = outer2()
+            with_outer_op = op(outer(), (@varname(a.x) => x_val))
+
+            # No conditioning/fixing
+            @test Set(keys(VarInfo(outer()))) == Set([@varname(a.x), @varname(a.y)])
+
+            # With conditioning/fixing
+            @testset "$model" for model in [with_inner_op, with_outer_op]
+                # Test that the value was correctly set
+                @test model()[1] == x_val
+                # Test that the logp was correctly set
+                vi = VarInfo(model)
+                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(a.y)])
+                # Check the keys
+                @test Set(keys(VarInfo(model))) == Set([@varname(a.y)])
+            end
         end
 
         @testset "No prefix" begin
             @model function inner()
                 x ~ Normal()
-                return y ~ Normal()
+                y ~ Normal()
+                return x
             end
             @model function outer()
                 return a ~ to_submodel(inner(), false)
             end
-            inner_cond = inner() | (@varname(x) => 1.0)
-            with_outer_cond = outer() | (@varname(x) => 1.0)
-
-            # No conditioning
-            @test Set(keys(VarInfo(outer()))) == Set([@varname(x), @varname(y)])
-            # Conditioning from the outside
-            @test Set(keys(VarInfo(with_outer_cond))) == Set([@varname(y)])
-            # Conditioning from the inside
             @model function outer2()
-                return a ~ to_submodel(inner_cond, false)
+                return a ~ to_submodel(inner_op, false)
             end
-            with_inner_cond = outer2()
-            @test Set(keys(VarInfo(with_inner_cond))) == Set([@varname(y)])
+            with_inner_op = outer2()
+            inner_op = op(inner(), (@varname(x) => x_val))
+            with_outer_op = op(outer(), (@varname(x) => x_val))
+
+            # No conditioning/fixing
+            @test Set(keys(VarInfo(outer()))) == Set([@varname(x), @varname(y)])
+
+            # With conditioning/fixing
+            @testset "$model" for model in [with_inner_op, with_outer_op]
+                # Test that the value was correctly set
+                @test model()[1] == x_val
+                # Test that the logp was correctly set
+                vi = VarInfo(model)
+                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(y)])
+                # Check the keys
+                @test Set(keys(VarInfo(model))) == Set([@varname(y)])
+            end
         end
 
         @testset "Manual prefix" begin
             @model function inner()
                 x ~ Normal()
-                return y ~ Normal()
+                y ~ Normal()
+                return x
             end
             @model function outer()
                 return a ~ to_submodel(prefix(inner(), :b), false)
             end
-            inner_cond = inner() | (@varname(x) => 1.0)
-            with_outer_cond = outer() | (@varname(b.x) => 1.0)
-
-            # No conditioning
-            @test Set(keys(VarInfo(outer()))) == Set([@varname(b.x), @varname(b.y)])
-            # Conditioning from the outside
-            @test Set(keys(VarInfo(with_outer_cond))) == Set([@varname(b.y)])
-            # Conditioning from the inside
+            inner_op = op(inner(), (@varname(x) => x_val))
             @model function outer2()
-                return a ~ to_submodel(prefix(inner_cond, :b), false)
+                return a ~ to_submodel(prefix(inner_op, :b), false)
             end
-            with_inner_cond = outer2()
-            @test Set(keys(VarInfo(with_inner_cond))) == Set([@varname(b.y)])
+            with_inner_op = outer2()
+            with_outer_op = op(outer(), (@varname(b.x) => x_val))
+
+            # No conditioning/fixing
+            @test Set(keys(VarInfo(outer()))) == Set([@varname(b.x), @varname(b.y)])
+
+            # With conditioning/fixing
+            @testset "$model" for model in [with_inner_op, with_outer_op]
+                # Test that the value was correctly set
+                @test model()[1] == x_val
+                # Test that the logp was correctly set
+                vi = VarInfo(model)
+                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(b.y)])
+                # Check the keys
+                @test Set(keys(VarInfo(model))) == Set([@varname(b.y)])
+            end
         end
 
         @testset "Nested submodels" begin
@@ -90,21 +117,21 @@ using Test
             # No conditioning
             @test Set(keys(VarInfo(h()))) == Set([@varname(a.b.x), @varname(a.b.y)])
 
-            # Conditioning at the top level
-            condition_h = h() | (@varname(a.b.x) => 1.0)
-            @test Set(keys(VarInfo(condition_h))) == Set([@varname(a.b.y)])
+            # Conditioning/fixing at the top level
+            op_h = op(h(), (@varname(a.b.x) => x_val))
+            @test Set(keys(VarInfo(op_h))) == Set([@varname(a.b.y)])
 
-            # Conditioning at the second level
-            condition_g = g() | (@varname(b.x) => 1.0)
+            # Conditioning/fixing at the second level
+            op_g = op(g(), (@varname(b.x) => x_val))
             @model function h2()
-                return a ~ to_submodel(condition_g)
+                return a ~ to_submodel(op_g)
             end
             @test Set(keys(VarInfo(h2()))) == Set([@varname(a.b.y)])
 
-            # Conditioning at the very bottom
-            condition_f = f() | (@varname(x) => 1.0)
+            # Conditioning/fixing at the very bottom
+            op_f = op(f(), (@varname(x) => x_val))
             @model function g2()
-                return _unused ~ to_submodel(prefix(condition_f, :b), false)
+                return _unused ~ to_submodel(prefix(op_f, :b), false)
             end
             @model function h3()
                 return a ~ to_submodel(g2())

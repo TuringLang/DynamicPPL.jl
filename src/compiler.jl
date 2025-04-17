@@ -105,7 +105,11 @@ function contextual_isassumption(context::AbstractContext, vn)
 end
 
 isfixed(expr, vn) = false
-isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context__, $vn))
+function isfixed(::Union{Symbol,Expr}, vn)
+    return :($(DynamicPPL.contextual_isfixed)(
+        __context__, $(DynamicPPL.prefix)(__context__, $vn)
+    ))
+end
 
 """
     contextual_isfixed(context, vn)
@@ -443,7 +447,9 @@ function generate_tilde(left, right)
         )
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
-            $left = $(DynamicPPL.getfixed_nested)(__context__, $vn)
+            $left = $(DynamicPPL.getfixed_nested)(
+                __context__, $(DynamicPPL.prefix)(__context__, $vn)
+            )
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
