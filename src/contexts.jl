@@ -277,6 +277,30 @@ function prefix(::IsParent, ctx::AbstractContext, vn::VarName)
 end
 
 """
+    prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
+
+Same as `prefix`, but additionally returns a new context stack that has all the
+PrefixContexts removed.
+"""
+function prefix_and_strip_contexts(ctx::PrefixContext{Prefix}, vn::VarName) where {Prefix}
+    child_context = childcontext(ctx)
+    # vn_prefixed contains the prefixes from all lower levels
+    vn_prefixed, child_context_without_prefixes = prefix_and_strip_contexts(
+        child_context, vn
+    )
+    return AbstractPPL.prefix(vn_prefixed, VarName{Prefix}()),
+    child_context_without_prefixes
+end
+function prefix_and_strip_contexts(ctx::AbstractContext, vn::VarName)
+    return prefix_and_strip_contexts(NodeTrait(ctx), ctx, vn)
+end
+prefix_and_strip_contexts(::IsLeaf, ctx::AbstractContext, vn::VarName) = (vn, ctx)
+function prefix_and_strip_contexts(::IsParent, ctx::AbstractContext, vn::VarName)
+    vn, new_ctx = prefix_and_strip_contexts(childcontext(ctx), vn)
+    return vn, setchildcontext(ctx, new_ctx)
+end
+
+"""
     prefix(model::Model, x)
 
 Return `model` but with all random variables prefixed by `x`.
@@ -350,6 +374,29 @@ end
 NodeTrait(::ConditionContext) = IsParent()
 childcontext(context::ConditionContext) = context.context
 setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
+
+"""
+    collapse_prefix_and_condition(context::AbstractContext)
+
+Apply `PrefixContext`s to any conditioned values inside them, and remove
+the `PrefixContext`s from the context stack.
+
+```jldoctest
+julia> using DynamicPPL: collapse_prefix_and_condition
+
+julia> c1 = PrefixContext({:a}(ConditionContext((x=1, )))
+```
+"""
+function collapse_prefix_and_condition(context::PrefixContext{Prefix}) where {Prefix}
+    # Collapse the child context (thus applying any inner prefixes first)
+    collapsed = collapse_prefix_and_condition(childcontext(context))
+    # Prefix any conditioned variables with the current prefix
+    # Note: prefix_conditioned_variables is O(N) in the depth of the context stack.
+    # So is this function. In the worst case scenario, this is O(N^2) in the
+    # depth of the context stack.
+    return prefix_conditioned_variables(collapsed, VarName{Prefix}())
+end
+collapse_prefix_and_condition(context::AbstractContext) = context
 
 """
     prefix_conditioned_variables(context::AbstractContext, prefix::VarName)
@@ -427,9 +474,7 @@ function hasconditioned_nested(::IsParent, context, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
 function hasconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
-    return hasconditioned_nested(
-        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
-    )
+    return hasconditioned_nested(collapse_prefix_and_condition(context), vn)
 end
 
 """
@@ -447,9 +492,7 @@ function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
-    return getconditioned_nested(
-        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
-    )
+    return getconditioned_nested(collapse_prefix_and_condition(context), vn)
 end
 function getconditioned_nested(::IsParent, context, vn)
     return if hasconditioned(context, vn)

@@ -57,6 +57,7 @@ function tilde_assume(context::AbstractContext, args...)
     return tilde_assume(NodeTrait(tilde_assume, context), context, args...)
 end
 function tilde_assume(::IsLeaf, context::AbstractContext, right, vn, vi)
+    @show "isleaf", vn
     return assume(right, vn, vi)
 end
 function tilde_assume(::IsParent, context::AbstractContext, args...)
@@ -85,12 +86,25 @@ function tilde_assume(rng::Random.AbstractRNG, ::LikelihoodContext, sampler, rig
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
-    return tilde_assume(context.context, right, prefix(context, vn), vi)
+    # The slightly tricky thing about PrefixContext is that they are applied
+    # from the outside in, so `PrefixContext{:a}(PrefixContext{:b}(ctx))` means
+    # that variables get prefixed like `a.b.x`.
+    # This motivates the implementation shown here, where the function
+    # `prefix_and_strip_contexts` is responsible for not only adding the
+    # prefixes, but also removing the `PrefixContext`s from the context stack
+    # so that they don't get applied twice when recursing.
+    # TODO(penelopeysm): It would be nice to switch this round, but it's a very
+    # tricky task. Essentially it forces us to use a foldr inside
+    # `prefix_and_strip_contexts`, rather than a foldl which is what most of
+    # DynamicPPL uses.
+    new_vn, new_context = prefix_and_strip_contexts(context, vn)
+    return tilde_assume(new_context, right, new_vn, vi)
 end
 function tilde_assume(
     rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
 )
-    return tilde_assume(rng, context.context, sampler, right, prefix(context, vn), vi)
+    new_vn, new_context = prefix_and_strip_contexts(context, vn)
+    return tilde_assume(rng, new_context, sampler, right, new_vn, vi)
 end
 
 """
