@@ -1001,7 +1001,7 @@ istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
 istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
 
 getaccs(vi::VarInfo) = vi.accs
-setaccs!!(vi::VarInfo, accs) = Accessors.@set vi.accs = accs
+setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
 
 """
     get_num_produce(vi::VarInfo)

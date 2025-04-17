@@ -1,5 +1,4 @@
 import DifferentiationInterface as DI
-# TOOD(mhauru) Rework this file to use LogPrior and LogLikelihood.
 
 """
     is_supported(adtype::AbstractADType)
@@ -52,7 +51,7 @@ $(FIELDS)
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: LogDensityFunction, contextualize
+julia> using DynamicPPL: LogDensityFunction, setaccs!!
 
 julia> @model function demo(x)
            m ~ Normal()
@@ -79,8 +78,8 @@ julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
 julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
 
-julia> # This also respects the context in `model`.
-       f_prior = LogDensityFunction(contextualize(model, DynamicPPL.PriorContext()), VarInfo(model));
+julia> # LogDensityFunction respects the accumulators in VarInfo:
+       f_prior = LogDensityFunction(model, setaccs!!(VarInfo(model), (LogPrior(),)));
 
 julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
 true
@@ -182,7 +181,18 @@ function logdensity_at(
     x::AbstractVector, model::Model, varinfo::AbstractVarInfo, context::AbstractContext
 )
     varinfo_new = unflatten(varinfo, x)
-    return getlogjoint(last(evaluate!!(model, varinfo_new, context)))
+    varinfo_eval = last(evaluate!!(model, varinfo_new, context))
+    has_prior = hasacc(varinfo_eval, Val(:LogPrior))
+    has_likelihood = hasacc(varinfo_eval, Val(:LogLikelihood))
+    if has_prior && has_likelihood
+        return getlogjoint(varinfo_eval)
+    elseif has_prior
+        return getlogprior(varinfo_eval)
+    elseif has_likelihood
+        return getloglikelihood(varinfo_eval)
+    else
+        error("LogDensityFunction: varinfo tracks neither log prior nor log likelihood")
+    end
 end
 
 ### LogDensityProblems interface

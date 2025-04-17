@@ -257,7 +257,7 @@ end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
 getaccs(vi::SimpleVarInfo) = vi.accs
-setaccs!!(vi::SimpleVarInfo, accs) = Accessors.@set vi.accs = accs
+setaccs!!(vi::SimpleVarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
 
 """
     keys(vi::SimpleVarInfo)

@@ -218,6 +218,7 @@ end
 Create a new `LogPrior` accumulator with the log prior initialized to zero.
 """
 LogPrior{T}() where {T} = LogPrior(zero(T))
+LogPrior() = LogPrior{LogProbType}()
 
 """
     LogLikelihood{T} <: AbstractAccumulator
@@ -237,6 +238,7 @@ end
 Create a new `LogLikelihood` accumulator with the log likelihood initialized to zero.
 """
 LogLikelihood{T}() where {T} = LogLikelihood(zero(T))
+LogLikelihood() = LogLikelihood{LogProbType}()
 
 """
     NumProduce{T} <: AbstractAccumulator
@@ -256,6 +258,7 @@ end
 Create a new `NumProduce` accumulator with the number of observations initialized to zero.
 """
 NumProduce{T}() where {T} = NumProduce(zero(T))
+NumProduce() = NumProduce{Int}()
 
 Base.show(io::IO, acc::LogPrior) = print(io, "LogPrior($(repr(acc.logp)))")
 Base.show(io::IO, acc::LogLikelihood) = print(io, "LogLikelihood($(repr(acc.logp)))")
