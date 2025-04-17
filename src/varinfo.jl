@@ -1738,19 +1738,35 @@ function Base.haskey(vi::NTVarInfo, vn::VarName)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
-    vi_str = """
-    /=======================================================================
-    | VarInfo
-    |-----------------------------------------------------------------------
-    | Varnames  :   $(string(vi.metadata.vns))
-    | Range     :   $(vi.metadata.ranges)
-    | Vals      :   $(vi.metadata.vals)
-    | Orders    :   $(vi.metadata.orders)
-    | Logp      :   $(getlogp(vi))
-    | #produce  :   $(get_num_produce(vi))
-    | flags     :   $(vi.metadata.flags)
-    \\=======================================================================
-    """
+    lines = Tuple{String,Any}[
+        ("VarNames", vi.metadata.vns),
+        ("Range", vi.metadata.ranges),
+        ("Vals", vi.metadata.vals),
+        ("Orders", vi.metadata.orders),
+    ]
+    for accname in acckeys(vi)
+        push!(lines, (string(accname), getacc(vi, Val(accname))))
+    end
+    push!(lines, ("flags", vi.metadata.flags))
+    max_name_length = maximum(map(length ∘ first, lines))
+    fmt = Printf.Format("%-$(max_name_length)s")
+    vi_str = (
+        """
+        /=======================================================================
+        | VarInfo
+        |-----------------------------------------------------------------------
+        """ *
+        prod(
+            map(lines) do (name, value)
+                """
+                | $(Printf.format(fmt, name)) : $(value)
+                """
+            end,
+        ) *
+        """
+        \\=======================================================================
+        """
+    )
     return print(io, vi_str)
 end
 
@@ -1780,7 +1796,11 @@ end
 function Base.show(io::IO, vi::UntypedVarInfo)
     print(io, "VarInfo (")
     _show_varnames(io, vi)
-    print(io, "; logp: ", round(getlogp(vi); digits=3))
+    print(io, "; accumulators: ")
+    # TODO(mhauru) This uses "text/plain" because we are doing quite a condensed repretation
+    # of vi anyway. However, technically `show(io, x)` should give full details of x and
+    # preferably output valid Julia code.
+    show(io, MIME"text/plain"(), getaccs(vi))
     return print(io, ")")
 end
 

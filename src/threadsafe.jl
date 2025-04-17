@@ -28,10 +28,22 @@ end
 
 # Get both the main accumulator and the thread-specific accumulators of the same type and
 # combine them.
-function getacc(vi::ThreadSafeVarInfo, accname)
+function getacc(vi::ThreadSafeVarInfo, accname::Val)
     main_acc = getacc(vi.varinfo, accname)
     other_accs = map(accs -> getacc(accs, accname), vi.accs_by_thread)
     return foldl(combine, other_accs; init=main_acc)
+end
+
+hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
+acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
+
+function getaccs(vi::ThreadSafeVarInfo)
+    # This method is a bit finicky to maintain type stability. For instance, moving the
+    # accname -> Val(accname) part in the main `map` call makes constant propagation fail
+    # and this becomes unstable. Do check the effects if you make edits.
+    accnames = acckeys(vi)
+    accname_vals = map(Val, accnames)
+    return AccumulatorTuple(map(anv -> getacc(vi, anv), accname_vals))
 end
 
 # Calls to map_accumulator!! are thread-specific by default. For any use of them that should
@@ -96,8 +108,8 @@ end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
 # NOTE: We also can't just defer to the wrapped varinfo, because we need to ensure
-# consistency between `vi.logps` field and `getlogp(vi.varinfo)`, which accumulates
-# to define `getlogp(vi)`.
+# consistency between `vi.accs_by_thread` field and `getacc(vi.varinfo)`, which accumulates
+# to define `getacc(vi)`.
 function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
 end
@@ -132,9 +144,9 @@ end
 
 function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
-    # NOTE: When computing `getlogp` for `ThreadSafeVarInfo` we do include the
-    # `getlogp(vi.varinfo)` hence the log-absdet-jacobian term will correctly be included in
-    # the `getlogp(vi)`.
+    # NOTE: When computing `getacc` for `ThreadSafeVarInfo` we do include the
+    # `getacc(vi.varinfo)` hence the log-absdet-jacobian term will correctly be included in
+    # the `getlogprior(vi)`.
     return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(vi.varinfo, model)
 end
 

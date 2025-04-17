@@ -18,13 +18,14 @@
             @model function test(x, size)
                 y = Array{Float64,length(size)}(undef, size...)
                 y .~ Normal(x)
-                return y, getlogp(__varinfo__)
+                return y
             end
 
             for ysize in ((2,), (2, 3), (2, 3, 4))
                 x = randn()
                 model = test(x, ysize)
-                y, lp = model()
+                y = model()
+                lp = logjoint(model, (; y=y))
                 @test lp ≈ sum(logpdf.(Normal.(x), y))
 
                 ys = [first(model()) for _ in 1:10_000]

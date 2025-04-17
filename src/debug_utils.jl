@@ -88,8 +88,7 @@ function Base.show(io::IO, stmt::AssumeStmt)
     print(io, " ")
     print(io, RESULT_SYMBOL)
     print(io, " ")
-    print(io, stmt.value)
-    return print(io, ")")
+    return print(io, stmt.value)
 end
 
 Base.@kwdef struct ObserveStmt <: Stmt
@@ -103,8 +102,7 @@ function Base.show(io::IO, stmt::ObserveStmt)
     print(io, "observe: ")
     show_right(io, stmt.left)
     print(io, " ~ ")
-    show_right(io, stmt.right)
-    return print(io, ")")
+    return show_right(io, stmt.right)
 end
 
 # Some utility methods for extracting information from a trace.
@@ -397,7 +395,7 @@ julia> issuccess
 true
 
 julia> print(trace)
- assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252 (logprob = -1.14356)
+ assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252
 
 julia> issuccess, trace = check_model_and_trace(rng, demo_correct() | (x = 1.0,));
 
@@ -405,7 +403,7 @@ julia> issuccess
 true
 
 julia> print(trace)
-observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0) (logprob = -1.41894)
+observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0)
 ```
 
 ## Incorrect model

@@ -899,7 +899,7 @@ See also: [`evaluate_threadunsafe!!`](@ref)
 function evaluate_threadsafe!!(model, varinfo, context)
     wrapper = ThreadSafeVarInfo(resetlogp!!(varinfo))
     result, wrapper_new = _evaluate!!(model, wrapper, context)
-    return result, setlogp!!(wrapper_new.varinfo, getlogp(wrapper_new))
+    return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
 end
 
 """
@@ -1009,7 +1009,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    return getlogp(last(evaluate!!(model, varinfo, DefaultContext())))
+    return getlogjoint(last(evaluate!!(model, varinfo, DefaultContext())))
 end
 
 """
@@ -1357,7 +1357,7 @@ We can check that the log joint probability of the model accumulated in `vi` is 
 ```jldoctest submodel-to_submodel
 julia> x = vi[@varname(a.x)];
 
-julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+julia> getlogjoint(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
 true
 ```
 
@@ -1421,7 +1421,7 @@ julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
 
 julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
 
-julia> getlogp(vi) ≈ logprior + loglikelihood
+julia> getlogjoint(vi) ≈ logprior + loglikelihood
 true
 ```
 

@@ -45,7 +45,7 @@ We can check that the log joint probability of the model accumulated in `vi` is 
 ```jldoctest submodel
 julia> x = vi[@varname(x)];
 
-julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+julia> getlogjoint(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
 true
 ```
 """
@@ -124,7 +124,7 @@ julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
 
 julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
 
-julia> getlogp(vi) ≈ logprior + loglikelihood
+julia> getlogjoint(vi) ≈ logprior + loglikelihood
 true
 ```
 

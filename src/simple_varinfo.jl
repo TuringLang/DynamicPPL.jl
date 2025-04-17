@@ -125,18 +125,18 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), 0.0)
+Transformed SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihood(0.0), LogPrior = LogPrior(0.0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
-       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+       getlogjoint(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
 -1.3678794411714423
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), 0.0)
+SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihood(0.0), LogPrior = LogPrior(0.0)))
 
 julia> # (✓) No probability mass on negative numbers!
-       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+       getlogjoint(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
 -Inf
 ```
 
@@ -267,12 +267,12 @@ Return an iterator of keys present in `vi`.
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
 Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
-function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
+function Base.show(io::IO, mime::MIME"text/plain", svi::SimpleVarInfo)
     if !(svi.transformation isa NoTransformation)
         print(io, "Transformed ")
     end
 
-    return print(io, "SimpleVarInfo(", svi.values, ", ", getaccs(svi), ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", repr(mime, getaccs(svi)), ")")
 end
 
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)

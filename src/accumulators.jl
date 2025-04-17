@@ -132,10 +132,13 @@ end
 AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 
+# When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
+Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
 Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname} = haskey(at.nt, accname)
+Base.keys(at::AccumulatorTuple) = keys(at.nt)
 
 """
     setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
@@ -254,6 +257,10 @@ Create a new `NumProduce` accumulator with the number of observations initialize
 """
 NumProduce{T}() where {T} = NumProduce(zero(T))
 
+Base.show(io::IO, acc::LogPrior) = print(io, "LogPrior($(repr(acc.logp)))")
+Base.show(io::IO, acc::LogLikelihood) = print(io, "LogLikelihood($(repr(acc.logp)))")
+Base.show(io::IO, acc::NumProduce) = print(io, "NumProduce($(repr(acc.num)))")
+
 accumulator_name(::Type{<:LogPrior}) = :LogPrior
 accumulator_name(::Type{<:LogLikelihood}) = :LogLikelihood
 accumulator_name(::Type{<:NumProduce}) = :NumProduce
@@ -283,7 +290,10 @@ accumulate_observe!!(acc::LogPrior, right, left, vn) = acc
 
 accumulate_assume!!(acc::LogLikelihood, val, logjac, vn, right) = acc
 function accumulate_observe!!(acc::LogLikelihood, right, left, vn)
-    return acc + LogLikelihood(logpdf(right, left))
+    # Note that it's important to use the loglikelihood function here, not logpdf, because
+    # they handle vectors differently:
+    # https://github.com/JuliaStats/Distributions.jl/issues/1972
+    return acc + LogLikelihood(Distributions.loglikelihood(right, left))
 end
 
 accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc

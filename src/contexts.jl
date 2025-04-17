@@ -46,15 +46,17 @@ effectively updating the child context.
 
 # Examples
 ```jldoctest
+julia> using DynamicPPL: DynamicTransformationContext
+
 julia> ctx = SamplingContext();
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
 
-julia> ctx_prior = DynamicPPL.setchildcontext(ctx, PriorContext()); # only compute the logprior
+julia> ctx_prior = DynamicPPL.setchildcontext(ctx, DynamicTransformationContext{true}());
 
 julia> DynamicPPL.childcontext(ctx_prior)
-PriorContext()
+DynamicTransformationContext{true}()
 ```
 """
 setchildcontext
@@ -79,7 +81,7 @@ original leaf context of `left`.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext, DynamicTransformationContext
 
 julia> struct ParentContext{C} <: AbstractContext
            context::C
@@ -97,8 +99,8 @@ julia> ctx = ParentContext(ParentContext(DefaultContext()))
 ParentContext(ParentContext(DefaultContext()))
 
 julia> # Replace the leaf context with another leaf.
-       leafcontext(setleafcontext(ctx, PriorContext()))
-PriorContext()
+       leafcontext(setleafcontext(ctx, DynamicTransformationContext{true}()))
+DynamicTransformationContext{true}()
 
 julia> # Append another parent context.
        setleafcontext(ctx, ParentContext(DefaultContext()))

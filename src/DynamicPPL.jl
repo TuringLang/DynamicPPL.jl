@@ -6,6 +6,7 @@ using Bijectors
 using Compat
 using Distributions
 using OrderedCollections: OrderedCollections, OrderedDict
+using Printf: Printf
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
@@ -50,8 +51,15 @@ export AbstractVarInfo,
     empty!!,
     subset,
     getlogp,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
     setlogp!!,
+    setlogprior!!,
+    setloglikelihood!!,
     acclogp!!,
+    acclogprior!!,
+    accloglikelihood!!,
     resetlogp!!,
     get_num_produce,
     set_num_produce!!,
@@ -115,6 +123,7 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
+    @addloglikelihood!,
     @submodel,
     value_iterator_from_chain,
     check_model,

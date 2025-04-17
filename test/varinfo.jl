@@ -80,7 +80,7 @@ end
 
         function test_base!!(vi_original)
             vi = empty!!(vi_original)
-            @test getlogp(vi) == 0
+            @test getlogjoint(vi) == 0
             @test isempty(vi[:])
 
             vn = @varname x
@@ -123,13 +123,25 @@ end
 
     @testset "get/set/acc/resetlogp" begin
         function test_varinfo_logp!(vi)
-            @test DynamicPPL.getlogp(vi) === 0.0
-            vi = DynamicPPL.setlogp!!(vi, 1.0)
-            @test DynamicPPL.getlogp(vi) === 1.0
-            vi = DynamicPPL.acclogp!!(vi, 1.0)
-            @test DynamicPPL.getlogp(vi) === 2.0
+            @test DynamicPPL.getlogjoint(vi) === 0.0
+            vi = DynamicPPL.setlogprior!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 1.0
+            @test DynamicPPL.getloglikelihood(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 1.0
+            vi = DynamicPPL.acclogprior!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 2.0
+            vi = DynamicPPL.setloglikelihood!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 1.0
+            @test DynamicPPL.getlogjoint(vi) === 3.0
+            vi = DynamicPPL.accloglikelihood!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 2.0
+            @test DynamicPPL.getlogjoint(vi) === 4.0
             vi = DynamicPPL.resetlogp!!(vi)
-            @test DynamicPPL.getlogp(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 0.0
         end
 
         vi = VarInfo()
@@ -460,7 +472,7 @@ end
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
@@ -469,7 +481,7 @@ end
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
@@ -478,7 +490,7 @@ end
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
@@ -486,7 +498,7 @@ end
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
@@ -494,7 +506,7 @@ end
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
     end
 
     @testset "values_as" begin
@@ -596,8 +608,8 @@ end
 
                     lp = logjoint(model, varinfo)
                     @test lp ≈ lp_true
-                    @test getlogp(varinfo) ≈ lp_true
-                    lp_linked = getlogp(varinfo_linked)
+                    @test getlogjoint(varinfo) ≈ lp_true
+                    lp_linked = getlogjoint(varinfo_linked)
                     @test lp_linked ≈ lp_linked_true
 
                     # TODO: Compare values once we are no longer working with `NamedTuple` for
@@ -609,7 +621,7 @@ end
                             varinfo_linked_unflattened, model
                         )
                         @test length(varinfo_invlinked[:]) == length(varinfo[:])
-                        @test getlogp(varinfo_invlinked) ≈ lp_true
+                        @test getlogjoint(varinfo_invlinked) ≈ lp_true
                     end
                 end
             end
@@ -1017,8 +1029,8 @@ end
 
         n = length(varinfo[:])
         # `Bool`.
-        @test getlogp(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
+        @test getlogjoint(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
         # `Int`.
-        @test getlogp(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
+        @test getlogjoint(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
     end
 end

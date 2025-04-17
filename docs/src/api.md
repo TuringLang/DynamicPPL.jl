@@ -163,7 +163,7 @@ returned(::Model)
 It is possible to manually increase (or decrease) the accumulated log density from within a model function.
 
 ```@docs
-@addlogprob!
+@addloglikelihood!
 ```
 
 Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
@@ -340,9 +340,13 @@ SimpleVarInfo
 #### Accumulation of log-probabilities
 
 ```@docs
-getlogp
-setlogp!!
-acclogp!!
+getlogprior
+getloglikelihood
+getlogjoint
+setlogprior!!
+setloglikelihood!!
+acclogprior!!
+accloglikelihood!!
 resetlogp!!
 ```
 

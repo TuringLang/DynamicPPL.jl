@@ -129,6 +129,21 @@ function getaccs end
 Return a boolean for whether `vi` has an accumulator with name `accname`.
 """
 hasacc(vi::AbstractVarInfo, accname::Val) = haskey(getaccs(vi), accname)
+function hassacc(vi::AbstractVarInfo, accname::Symbol)
+    return error(
+        """
+        The method hasacc(vi::AbstractVarInfo, accname::Symbol) does not exist. For type
+        stability reasons use hasacc(vi::AbstractVarInfo, Val(accname)) instead.
+        """
+    )
+end
+
+"""
+    acckeys(vi::AbstractVarInfo)
+
+Return the names of the accumulators in `vi`.
+"""
+acckeys(vi::AbstractVarInfo) = keys(getaccs(vi))
 
 """
     getlogprior(vi::AbstractVarInfo)
@@ -203,8 +218,16 @@ end
 
 Return the `AbstractAccumulator` of `vi` with name `accname`.
 """
-function getacc(vi::AbstractVarInfo, accname)
+function getacc(vi::AbstractVarInfo, accname::Val)
     return getacc(getaccs(vi), accname)
+end
+function getacc(vi::AbstractVarInfo, accname::Symbol)
+    return error(
+        """
+        The method getacc(vi::AbstractVarInfo, accname::Symbol) does not exist. For type
+        stability reasons use getacc(vi::AbstractVarInfo, Val(accname)) instead.
+        """
+    )
 end
 
 """
@@ -243,6 +266,18 @@ it with the return value.
 """
 function map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
     return setaccs!!(vi, map_accumulator!!(getaccs(vi), accname, func, args...))
+end
+
+function map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+    return error(
+        """
+        The method
+        map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+        does not exist. For type stability reasons use
+        map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
+        instead.
+        """
+    )
 end
 
 """
@@ -732,8 +767,8 @@ function link!!(
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
-    lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(unflatten(vi, y), lp_new)
+    lp_new = getlogprior(vi) - logjac
+    vi_new = setlogprior!!(unflatten(vi, y), lp_new)
     return settrans!!(vi_new, t)
 end
 
@@ -744,8 +779,8 @@ function invlink!!(
     y = vi[:]
     x, logjac = with_logabsdet_jacobian(b, y)
 
-    lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(unflatten(vi, x), lp_new)
+    lp_new = getlogprior(vi) + logjac
+    vi_new = setlogprior!!(unflatten(vi, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 
