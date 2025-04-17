@@ -2,12 +2,12 @@
     @testset "constructor & indexing" begin
         @testset "NamedTuple" begin
             svi = SimpleVarInfo(; m=1.0)
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
             svi = SimpleVarInfo(; m=[1.0])
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
@@ -21,20 +21,21 @@
             @test !haskey(svi, @varname(m.a.b))
 
             svi = SimpleVarInfo{Float32}(; m=1.0)
-            @test getlogp(svi) isa Float32
+            @test getlogjoint(svi) isa Float32
 
-            svi = SimpleVarInfo((m=1.0,), 1.0)
-            @test getlogp(svi) == 1.0
+            svi = SimpleVarInfo((m=1.0,))
+            svi = accloglikelihood!!(svi, 1.0)
+            @test getlogjoint(svi) == 1.0
         end
 
         @testset "Dict" begin
             svi = SimpleVarInfo(Dict(@varname(m) => 1.0))
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
             svi = SimpleVarInfo(Dict(@varname(m) => [1.0]))
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
@@ -59,12 +60,12 @@
 
         @testset "VarNamedVector" begin
             svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => 1.0))
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
             svi = SimpleVarInfo(push!!(DynamicPPL.VarNamedVector(), @varname(m) => [1.0]))
-            @test getlogp(svi) == 0.0
+            @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
@@ -98,11 +99,10 @@
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
             vi = last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
-            lp_orig = getlogp(vi)
 
             # `link!!`
             vi_linked = link!!(deepcopy(vi), model)
-            lp_linked = getlogp(vi_linked)
+            lp_linked = getlogjoint(vi_linked)
             values_unconstrained, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                 model, values_constrained...
             )
@@ -113,7 +113,7 @@
 
             # `invlink!!`
             vi_invlinked = invlink!!(deepcopy(vi_linked), model)
-            lp_invlinked = getlogp(vi_invlinked)
+            lp_invlinked = getlogjoint(vi_invlinked)
             lp_invlinked_true = DynamicPPL.TestUtils.logjoint_true(
                 model, values_constrained...
             )
@@ -152,7 +152,7 @@
             # DynamicPPL.settrans!!(deepcopy(svi_dict), true),
             # DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
         )
-            # RandOM seed is set in each `@testset`, so we need to sample
+            # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
             retval = model()
 
@@ -166,7 +166,7 @@
             end
 
             # Logjoint should be non-zero wp. 1.
-            @test getlogp(svi_new) != 0
+            @test getlogjoint(svi_new) != 0
 
             ### Evaluation ###
             values_eval_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -201,7 +201,7 @@
                 svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
             end
 
-            # Reset the logp field.
+            # Reset the logp accumulators.
             svi_eval = DynamicPPL.resetlogp!!(svi_eval)
 
             # Compute `logjoint` using the varinfo.
@@ -250,7 +250,7 @@
                 end
 
                 # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
-                lp = getlogp(svi)
+                lp = getlogjoint(svi)
                 # needs higher atol because of https://github.com/TuringLang/Bijectors.jl/issues/375
                 @test lp ≈ lp_true atol = 1.2e-5
             end
@@ -306,7 +306,7 @@
                 DynamicPPL.tovec(retval_unconstrained.m)
 
             # The resulting varinfo should hold the correct logp.
-            lp = getlogp(vi_linked_result)
+            lp = getlogjoint(vi_linked_result)
             @test lp ≈ lp_true
         end
     end

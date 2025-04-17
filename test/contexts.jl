@@ -8,7 +8,6 @@ using DynamicPPL:
     NodeTrait,
     IsLeaf,
     IsParent,
-    PointwiseLogdensityContext,
     contextual_isassumption,
     ConditionContext,
     decondition_context,
@@ -40,18 +39,12 @@ Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
 @testset "contexts.jl" begin
-    child_contexts = Dict(
-        :default => DefaultContext(),
-        :prior => PriorContext(),
-        :likelihood => LikelihoodContext(),
-    )
+    child_contexts = Dict(:default => DefaultContext())
 
     parent_contexts = Dict(
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :sampling => SamplingContext(),
-        :minibatch => MiniBatchContext(DefaultContext(), 0.0),
         :prefix => PrefixContext{:x}(DefaultContext()),
-        :pointwiselogdensity => PointwiseLogdensityContext(),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
@@ -237,7 +230,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # Values from outer context should override inner one
                 ctx1 = ConditionContext(n1, ConditionContext(n2))
                 @test ctx1.values == (x=1, y=2)
-                # Check that the two ConditionContexts are collapsed 
+                # Check that the two ConditionContexts are collapsed
                 @test childcontext(ctx1) isa DefaultContext
                 # Then test the nesting the other way round
                 ctx2 = ConditionContext(n2, ConditionContext(n1))

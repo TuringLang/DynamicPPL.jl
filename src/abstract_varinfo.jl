@@ -91,44 +91,250 @@ function transformation end
 
 # Accumulation of log-probabilities.
 """
-    getlogp(vi::AbstractVarInfo)
+    getlogjoint(vi::AbstractVarInfo)
 
-Return the log of the joint probability of the observed data and parameters sampled in
-`vi`.
+Return the log of the joint probability of the observed data and parameters in `vi`.
+
+See also: [`getlogprior`](@ref), [`getloglikelihood`](@ref).
 """
-function getlogp end
+getlogjoint(vi::AbstractVarInfo) = getlogprior(vi) + getloglikelihood(vi)
+function getlogp(vi::AbstractVarInfo)
+    Base.depwarn("getlogp is deprecated, use getlogjoint instead", :getlogp)
+    return getlogjoint(vi)
+end
+
+"""
+    setaccs!!(vi::AbstractVarInfo, accs::AccumulatorTuple)
+    setaccs!!(vi::AbstractVarInfo, accs::AbstractAccumulator...)
+
+Update the `AccumulatorTuple` of `vi` to `accs`, mutating if it makes sense.
+
+`setaccs!!(vi:AbstractVarInfo, accs::AccumulatorTuple) should be implemented by each subtype
+of `AbstractVarInfo`.
+"""
+function setaccs!! end
+
+function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator}) where {N}
+    return setaccs!!(vi, AccumulatorTuple(accs))
+end
+
+"""
+    getaccs(vi::AbstractVarInfo)
+
+Return the `AccumulatorTuple` of `vi`.
+
+This should be implemented by each subtype of `AbstractVarInfo`. `getaccs` is not
+user-facing, but used in the implementation of many other functions.
+"""
+function getaccs end
+
+"""
+    hasacc(vi::AbstractVarInfo, ::Val{accname}) where {accname}
+
+Return a boolean for whether `vi` has an accumulator with name `accname`.
+"""
+hasacc(vi::AbstractVarInfo, accname::Val) = haskey(getaccs(vi), accname)
+function hassacc(vi::AbstractVarInfo, accname::Symbol)
+    return error(
+        """
+        The method hasacc(vi::AbstractVarInfo, accname::Symbol) does not exist. For type
+        stability reasons use hasacc(vi::AbstractVarInfo, Val(accname)) instead.
+        """
+    )
+end
+
+"""
+    acckeys(vi::AbstractVarInfo)
+
+Return the names of the accumulators in `vi`.
+"""
+acckeys(vi::AbstractVarInfo) = keys(getaccs(vi))
+
+"""
+    getlogprior(vi::AbstractVarInfo)
+
+Return the log of the prior probability of the parameters in `vi`.
+
+See also: [`getlogjoint`](@ref), [`getloglikelihood`](@ref), [`setlogprior!!`](@ref).
+"""
+getlogprior(vi::AbstractVarInfo) = getacc(vi, Val(:LogPrior)).logp
+
+"""
+    getloglikelihood(vi::AbstractVarInfo)
+
+Return the log of the likelihood probability of the observed data in `vi`.
+
+See also: [`getlogjoint`](@ref), [`getlogprior`](@ref), [`setloglikelihood!!`](@ref).
+"""
+getloglikelihood(vi::AbstractVarInfo) = getacc(vi, Val(:LogLikelihood)).logp
+
+"""
+    setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
+
+Add `acc` to the `AccumulatorTuple` of `vi`, mutating if it makes sense.
+
+If an accumulator with the same [`accumulator_name`](@ref) already exists, it will be
+replaced.
+
+See also: [`getaccs`](@ref).
+"""
+function setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
+    return setaccs!!(vi, setacc!!(getaccs(vi), acc))
+end
+
+"""
+    setlogprior!!(vi::AbstractVarInfo, logp)
+
+Set the log of the prior probability of the parameters sampled in `vi` to `logp`.
+
+See also: [`setloglikelihood!!`](@ref), [`setlogp!!`](@ref), [`getlogprior`](@ref).
+"""
+setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPrior(logp))
+
+"""
+    setloglikelihood!!(vi::AbstractVarInfo, logp)
+
+Set the log of the likelihood probability of the observed data sampled in `vi` to `logp`.
+
+See also: [`setlogprior!!`](@ref), [`setlogp!!`](@ref), [`getloglikelihood`](@ref).
+"""
+setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihood(logp))
 
 """
     setlogp!!(vi::AbstractVarInfo, logp)
 
 Set the log of the joint probability of the observed data and parameters sampled in
 `vi` to `logp`, mutating if it makes sense.
+
+See also: [`setlogprior!!`](@ref), [`setloglikelihood!!`](@ref), [`getlogp`](@ref).
 """
-function setlogp!! end
+function setlogp!!(vi::AbstractVarInfo, logp)
+    Base.depwarn(
+        "setlogp!! is deprecated, use setlogprior!! or setloglikelihood!! instead",
+        :setlogp!!,
+    )
+    vi = setlogprior!!(vi, zero(logp))
+    vi = setloglikelihood!!(vi, logp)
+    return vi
+end
 
 """
-    acclogp!!([context::AbstractContext, ]vi::AbstractVarInfo, logp)
+    getacc(vi::AbstractVarInfo, accname)
+
+Return the `AbstractAccumulator` of `vi` with name `accname`.
+"""
+function getacc(vi::AbstractVarInfo, accname::Val)
+    return getacc(getaccs(vi), accname)
+end
+function getacc(vi::AbstractVarInfo, accname::Symbol)
+    return error(
+        """
+        The method getacc(vi::AbstractVarInfo, accname::Symbol) does not exist. For type
+        stability reasons use getacc(vi::AbstractVarInfo, Val(accname)) instead.
+        """
+    )
+end
+
+"""
+    accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
+
+Update all the accumulators of `vi` by calling `accumulate_assume!!` on them.
+"""
+function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
+    return map_accumulator!!(vi, accumulate_assume!!, val, logjac, vn, right)
+end
+
+"""
+    accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
+
+Update all the accumulators of `vi` by calling `accumulate_observe!!` on them.
+"""
+function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
+    return map_accumulator!!(vi, accumulate_observe!!, right, left, vn)
+end
+
+"""
+    map_accumulator!!(vi::AbstractVarInfo, func::Function, args...) where {accname}
+
+Update all accumulators of `vi` by calling `func(acc, args...)` on them and replacing
+them with the return values.
+"""
+function map_accumulator!!(vi::AbstractVarInfo, func::Function, args...)
+    return setaccs!!(vi, map_accumulator!!(getaccs(vi), func, args...))
+end
+
+"""
+    map_accumulator!!(vi::AbstractVarInfo, ::Val{accname}, func::Function, args...) where {accname}
+
+Update the accumulator `accname` of `vi` by calling `func(acc, args...)` on and replacing
+it with the return value.
+"""
+function map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
+    return setaccs!!(vi, map_accumulator!!(getaccs(vi), accname, func, args...))
+end
+
+function map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+    return error(
+        """
+        The method
+        map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+        does not exist. For type stability reasons use
+        map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
+        instead.
+        """
+    )
+end
+
+"""
+    acclogprior!!(vi::AbstractVarInfo, logp)
+
+Add `logp` to the value of the log of the prior probability in `vi`.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
+"""
+function acclogprior!!(vi::AbstractVarInfo, logp)
+    return map_accumulator!!(vi, Val(:LogPrior), +, LogPrior(logp))
+end
+
+"""
+    accloglikelihood!!(vi::AbstractVarInfo, logp)
+
+Add `logp` to the value of the log of the likelihood in `vi`.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
+"""
+function accloglikelihood!!(vi::AbstractVarInfo, logp)
+    return map_accumulator!!(vi, Val(:LogLikelihood), +, LogLikelihood(logp))
+end
+
+"""
+    acclogp!!(vi::AbstractVarInfo, logp)
 
 Add `logp` to the value of the log of the joint probability of the observed data and
 parameters sampled in `vi`, mutating if it makes sense.
 """
-function acclogp!!(context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(NodeTrait(context), context, vi, logp)
-end
-function acclogp!!(::IsLeaf, context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(vi, logp)
-end
-function acclogp!!(::IsParent, context::AbstractContext, vi::AbstractVarInfo, logp)
-    return acclogp!!(childcontext(context), vi, logp)
+function acclogp!!(vi::AbstractVarInfo, logp)
+    Base.depwarn(
+        "acclogp!! is deprecated, use acclogprior!! or accloglikelihood!! instead",
+        :acclogp!!,
+    )
+    return accloglikelihood!!(vi, logp)
 end
 
 """
     resetlogp!!(vi::AbstractVarInfo)
 
-Reset the value of the log of the joint probability of the observed data and parameters
-sampled in `vi` to 0, mutating if it makes sense.
+Reset the values of the log probabilities (prior and likelihood) in `vi`
 """
-resetlogp!!(vi::AbstractVarInfo) = setlogp!!(vi, zero(getlogp(vi)))
+function resetlogp!!(vi::AbstractVarInfo)
+    if hasacc(vi, Val(:LogPrior))
+        vi = map_accumulator!!(vi, Val(:LogPrior), zero)
+    end
+    if hasacc(vi, Val(:LogLikelihood))
+        vi = map_accumulator!!(vi, Val(:LogLikelihood), zero)
+    end
+    return vi
+end
 
 # Variables and their realizations.
 @doc """
@@ -566,8 +772,8 @@ function link!!(
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
-    lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(unflatten(vi, y), lp_new)
+    lp_new = getlogprior(vi) - logjac
+    vi_new = setlogprior!!(unflatten(vi, y), lp_new)
     return settrans!!(vi_new, t)
 end
 
@@ -578,8 +784,8 @@ function invlink!!(
     y = vi[:]
     x, logjac = with_logabsdet_jacobian(b, y)
 
-    lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(unflatten(vi, x), lp_new)
+    lp_new = getlogprior(vi) + logjac
+    vi_new = setlogprior!!(unflatten(vi, x), lp_new)
     return settrans!!(vi_new, NoTransformation())
 end
 
@@ -725,7 +931,7 @@ end
 
 # Legacy code that is currently overloaded for the sake of simplicity.
 # TODO: Remove when possible.
-increment_num_produce!(::AbstractVarInfo) = nothing
+increment_num_produce!!(::AbstractVarInfo) = nothing
 
 """
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])

@@ -6,6 +6,7 @@ using Bijectors
 using Compat
 using Distributions
 using OrderedCollections: OrderedCollections, OrderedDict
+using Printf: Printf
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
@@ -46,17 +47,27 @@ import Base:
 export AbstractVarInfo,
     VarInfo,
     SimpleVarInfo,
+    LogLikelihood,
+    LogPrior,
+    NumProduce,
     push!!,
     empty!!,
     subset,
     getlogp,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
     setlogp!!,
+    setlogprior!!,
+    setloglikelihood!!,
     acclogp!!,
+    acclogprior!!,
+    accloglikelihood!!,
     resetlogp!!,
     get_num_produce,
-    set_num_produce!,
-    reset_num_produce!,
-    increment_num_produce!,
+    set_num_produce!!,
+    reset_num_produce!!,
+    increment_num_produce!!,
     set_retained_vns_del!,
     is_flagged,
     set_flag!,
@@ -92,15 +103,10 @@ export AbstractVarInfo,
     # Contexts
     SamplingContext,
     DefaultContext,
-    LikelihoodContext,
-    PriorContext,
-    MiniBatchContext,
     PrefixContext,
     ConditionContext,
     assume,
-    observe,
     tilde_assume,
-    tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -120,6 +126,7 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
+    @addloglikelihood!,
     @submodel,
     value_iterator_from_chain,
     check_model,
@@ -166,6 +173,7 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varnamedvector.jl")
+include("accumulators.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")

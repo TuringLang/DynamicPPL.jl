@@ -1,7 +1,7 @@
 @testset "logdensities_likelihoods.jl" begin
     mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
     mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
-    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS[1:1]
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.

@@ -1,15 +1,15 @@
 @testset "utils.jl" begin
-    @testset "addlogprob!" begin
+    @testset "addloglikelihood!" begin
         @model function testmodel()
-            global lp_before = getlogp(__varinfo__)
-            @addlogprob!(42)
-            return global lp_after = getlogp(__varinfo__)
+            global lp_before = getlogjoint(__varinfo__)
+            @addloglikelihood!(42)
+            return global lp_after = getlogjoint(__varinfo__)
         end
 
         model = testmodel()
         varinfo = VarInfo(model)
         @test iszero(lp_before)
-        @test getlogp(varinfo) == lp_after == 42
+        @test getlogjoint(varinfo) == lp_after == 42
     end
 
     @testset "getargs_dottilde" begin
