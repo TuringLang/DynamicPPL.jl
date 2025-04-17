@@ -4,6 +4,25 @@
 
 **Breaking changes**
 
+### Submodels
+
+Variables in a submodel can now be conditioned and fixed in a correct way.
+See https://github.com/TuringLang/DynamicPPL.jl/issues/857 for a full illustration, but essentially it means you can now do this:
+
+```julia
+@model function inner()
+    x ~ Normal()
+    return y ~ Normal()
+end
+inner_conditioned = inner() | (x=1.0,)
+@model function outer()
+    return a ~ to_submodel(inner_conditioned)
+end
+```
+
+and the `inner.x` variable will be correctly conditioned.
+(Previously, you would have to condition `inner()` with the variable `a.x`, meaning that you would need to know what prefix to use before you had actually prefixed it.)
+
 ### AD testing utilities
 
 `DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.

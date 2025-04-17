@@ -691,6 +691,14 @@ end
 Apply `PrefixContext`s to any conditioned or fixed values inside them, and remove
 the `PrefixContext`s from the context stack.
 
+!!! note
+    If you are reading this docstring, you might probably be interested in a more
+thorough explanation of how PrefixContext and ConditionContext / FixedContext
+interact with one another, especially in the context of submodels.
+    The DynamicPPL documentation contains [a separate page on this
+topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_condition/)
+which explains this in much more detail.
+
 ```jldoctest
 julia> using DynamicPPL: collapse_prefix_stack
 
