@@ -1,4 +1,5 @@
 using Test, DynamicPPL, Accessors
+using AbstractPPL: getoptic
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -57,7 +58,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
         ),
         :condition3 => ConditionContext(
-            (x=1.0,), PrefixContext{:a}(ConditionContext(Dict(@varname(a.y) => 2.0)))
+            (x=1.0,), PrefixContext{:a}(ConditionContext(Dict(@varname(y) => 2.0)))
         ),
         :condition4 => ConditionContext((x=[1.0, missing],)),
     )
@@ -70,10 +71,16 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         end
     end
 
-    @testset "contextual_isassumption" begin
+    @testset "extracting conditioned values" begin
+        # This testset tests `contextual_isassumption`, `getconditioned_nested`, and
+        # `hasconditioned_nested`.
+
         @testset "$(name)" for (name, context) in contexts
-            # Any `context` should return `true` by default.
-            @test contextual_isassumption(context, VarName{gensym(:x)}())
+            # If the varname doesn't exist, it should always be an assumption.
+            fake_vn = VarName{gensym(:x)}()
+            @test contextual_isassumption(context, fake_vn)
+            @test !hasconditioned_nested(context, fake_vn)
+            @test_throws ErrorException getconditioned_nested(context, fake_vn)
 
             if any(Base.Fix2(isa, ConditionContext), context)
                 # We have a `ConditionContext` among us.
@@ -82,79 +89,35 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
                 # The conditioned values might be a NamedTuple, or a Dict.
                 # We convert to a Dict for consistency
-                if conditioned_values isa NamedTuple
-                    conditioned_values = Dict(
-                        VarName{sym}() => val for (sym, val) in pairs(conditioned_values)
-                    )
-                end
+                conditioned_values = DynamicPPL.to_varname_dict(conditioned_values)
 
-                for (vn, val) in pairs(conditioned_values)
-                    # We need to drop the prefix of `var` since in `contextual_isassumption`
-                    # it will be threaded through the `PrefixContext` before it reaches
-                    # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = if getoptic(vn) isa PropertyLens
-                        # Hacky: This assumes that there is exactly one level of prefixing
-                        # that we need to undo. This is appropriate for the :condition3
-                        # test case above, but is not generally correct.
-                        AbstractPPL.unprefix(vn, VarName{getsym(vn)}())
+                # Extract all conditioned variables. We also use varname_leaves
+                # here to split up arrays which could potentially have some,
+                # but not all, elements being `missing`.
+                conditioned_vns = mapreduce(
+                    p -> DynamicPPL.TestUtils.varname_leaves(p.first, p.second),
+                    vcat,
+                    pairs(conditioned_values),
+                )
+                @show conditioned_vns
+
+                # We can now loop over them to check which ones are missing. We use
+                # `getvalue` to handle the awkward case where sometimes
+                # `conditioned_values` contains the full Varname (e.g. `a.x`) and
+                # sometimes only the main symbol (e.g. it contains `x` when
+                # `vn` is `x[1]`)
+                for vn in conditioned_vns
+                    val = DynamicPPL.getvalue(conditioned_values, vn)
+                    # These VarNames are present in the conditioning values, so
+                    # we should always be able to extract the value.
+                    @test hasconditioned_nested(context, vn)
+                    @test getconditioned_nested(context, vn) === val
+                    # However, the return value of contextual_isassumption depends on
+                    # whether the value is missing or not.
+                    if ismissing(val)
+                        @test contextual_isassumption(context, vn)
                     else
-                        vn
-                    end
-
-                    @show DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                    # Let's check elementwise.
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                        if getoptic(vn_child)(val) === missing
-                            @test contextual_isassumption(context, vn_child)
-                        else
-                            @test !contextual_isassumption(context, vn_child)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    @testset "getconditioned_nested & hasconditioned_nested" begin
-        @testset "$name" for (name, context) in contexts
-            fake_vn = VarName{gensym(:x)}()
-            @test !hasconditioned_nested(context, fake_vn)
-            @test_throws ErrorException getconditioned_nested(context, fake_vn)
-
-            if any(Base.Fix2(isa, ConditionContext), context)
-                # `ConditionContext` specific.
-
-                # Let's first extract the conditioned variables.
-                conditioned_values = DynamicPPL.conditioned(context)
-                # The conditioned values might be a NamedTuple, or a Dict.
-                # We convert to a Dict for consistency
-                if conditioned_values isa NamedTuple
-                    conditioned_values = Dict(
-                        VarName{sym}() => val for (sym, val) in pairs(conditioned_values)
-                    )
-                end
-
-                for (vn, val) in pairs(conditioned_values)
-                    # We need to drop the prefix of `var` since in `contextual_isassumption`
-                    # it will be threaded through the `PrefixContext` before it reaches
-                    # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = if getoptic(vn) isa PropertyLens
-                        # Hacky: This assumes that there is exactly one level of prefixing
-                        # that we need to undo. This is appropriate for the :condition3
-                        # test case above, but is not generally correct.
-                        AbstractPPL.unprefix(vn, VarName{getsym(vn)}())
-                    else
-                        vn
-                    end
-
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                        # `vn_child` should be in `context`.
-                        @test hasconditioned_nested(context, vn_child)
-                        # Value should be the same as extracted above.
-                        @test getconditioned_nested(context, vn_child) ===
-                            getoptic(vn_child)(val)
+                        @test !contextual_isassumption(context, vn)
                     end
                 end
             end

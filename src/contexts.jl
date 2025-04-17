@@ -519,6 +519,11 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return _merge(context.values, conditioned(childcontext(context)))
 end
+function conditioned(context::PrefixContext{Prefix}) where {Prefix}
+    return conditioned(
+        prefix_conditioned_variables(childcontext(context), VarName{Prefix}())
+    )
+end
 
 struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
