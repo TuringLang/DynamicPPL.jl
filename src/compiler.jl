@@ -89,35 +89,19 @@ isassumption(expr) = :(false)
     contextual_isassumption(context, vn)
 
 Return `true` if `vn` is considered an assumption by `context`.
-
-The default implementation for `AbstractContext` always returns `true`.
 """
-contextual_isassumption(::IsLeaf, context, vn) = true
-function contextual_isassumption(::IsParent, context, vn)
-    return contextual_isassumption(childcontext(context), vn)
-end
 function contextual_isassumption(context::AbstractContext, vn)
-    return contextual_isassumption(NodeTrait(context), context, vn)
-end
-function contextual_isassumption(context::ConditionContext, vn)
-    if hasconditioned(context, vn)
-        val = getconditioned(context, vn)
+    if hasconditioned_nested(context, vn)
+        val = getconditioned_nested(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
         else
             return false
         end
+    else
+        return true
     end
-
-    # We might have nested contexts, e.g. `ConditionContext{.., <:PrefixContext{..., <:ConditionContext}}`
-    # so we defer to `childcontext` if we haven't concluded that anything yet.
-    return contextual_isassumption(childcontext(context), vn)
-end
-function contextual_isassumption(context::PrefixContext{Prefix}, vn) where {Prefix}
-    return contextual_isassumption(
-        prefix_conditioned_variables(childcontext(context), VarName{Prefix}()), vn
-    )
 end
 
 isfixed(expr, vn) = false
@@ -128,30 +112,18 @@ isfixed(::Union{Symbol,Expr}, vn) = :($(DynamicPPL.contextual_isfixed)(__context
 
 Return `true` if `vn` is considered fixed by `context`.
 """
-contextual_isfixed(::IsLeaf, context, vn) = false
-function contextual_isfixed(::IsParent, context, vn)
-    return contextual_isfixed(childcontext(context), vn)
-end
 function contextual_isfixed(context::AbstractContext, vn)
-    return contextual_isfixed(NodeTrait(context), context, vn)
-end
-function contextual_isfixed(context::PrefixContext, vn)
-    return contextual_isfixed(childcontext(context), prefix(context, vn))
-end
-function contextual_isfixed(context::FixedContext, vn)
-    if hasfixed(context, vn)
-        val = getfixed(context, vn)
+    if hasfixed_nested(context, vn)
+        val = getfixed_nested(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return false
         else
             return true
         end
+    else
+        return false
     end
-
-    # We might have nested contexts, e.g. `FixedContext{.., <:PrefixContext{..., <:FixedContext}}`
-    # so we defer to `childcontext` if we haven't concluded that anything yet.
-    return contextual_isfixed(childcontext(context), vn)
 end
 
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
