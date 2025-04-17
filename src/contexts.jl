@@ -502,7 +502,7 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return _merge(context.values, conditioned(childcontext(context)))
 end
-function conditioned(context::PrefixContext{Prefix}) where {Prefix}
+function conditioned(context::PrefixContext)
     return conditioned(collapse_prefix_stack(context))
 end
 
@@ -681,6 +681,9 @@ function fixed(context::FixedContext)
     # precedence over decendants of `context`.
     return _merge(context.values, fixed(childcontext(context)))
 end
+function fixed(context::PrefixContext)
+    return fixed(collapse_prefix_stack(context))
+end
 
 """
     collapse_prefix_stack(context::AbstractContext)
@@ -691,7 +694,22 @@ the `PrefixContext`s from the context stack.
 ```jldoctest
 julia> using DynamicPPL: collapse_prefix_stack
 
-julia> c1 = PrefixContext({:a}(ConditionContext((x=1, )))
+julia> c1 = PrefixContext{:a}(ConditionContext((x=1, )));
+
+julia> collapse_prefix_stack(c1)
+ConditionContext(Dict(a.x => 1), DefaultContext())
+
+julia> # Here, `x` gets prefixed only with `a`, whereas `y` is prefixed with both.
+       c2 = PrefixContext{:a}(ConditionContext((x=1, ), PrefixContext{:b}(ConditionContext((y=2,)))));
+
+julia> collapsed = collapse_prefix_stack(c2);
+
+julia> # `collapsed` really looks something like this:
+       # ConditionContext(Dict{VarName{:a}, Int64}(a.b.y => 2, a.x => 1), DefaultContext())
+       # To avoid fragility arising from the order of the keys in the doctest, we test
+       # this indirectly:
+       collapsed.values[@varname(a.x)], collapsed.values[@varname(a.b.y)]
+(1, 2)
 ```
 """
 function collapse_prefix_stack(context::PrefixContext{Prefix}) where {Prefix}
@@ -703,7 +721,14 @@ function collapse_prefix_stack(context::PrefixContext{Prefix}) where {Prefix}
     # depth of the context stack.
     return prefix_cond_and_fixed_variables(collapsed, VarName{Prefix}())
 end
-collapse_prefix_stack(context::AbstractContext) = context
+function collapse_prefix_stack(context::AbstractContext)
+    return collapse_prefix_stack(NodeTrait(collapse_prefix_stack, context), context)
+end
+collapse_prefix_stack(::IsLeaf, context) = context
+function collapse_prefix_stack(::IsParent, context)
+    new_child_context = collapse_prefix_stack(childcontext(context))
+    return setchildcontext(context, new_child_context)
+end
 
 """
     prefix_cond_and_fixed_variables(context::AbstractContext, prefix::VarName)
