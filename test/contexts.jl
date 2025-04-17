@@ -11,12 +11,18 @@ using DynamicPPL:
     IsParent,
     PointwiseLogdensityContext,
     contextual_isassumption,
+    FixedContext,
     ConditionContext,
     decondition_context,
     hasconditioned,
     getconditioned,
+    conditioned,
+    fixed,
     hasconditioned_nested,
-    getconditioned_nested
+    getconditioned_nested,
+    collapse_prefix_stack,
+    prefix_cond_and_fixed_variables,
+    getvalue
 
 using EnzymeCore
 
@@ -154,6 +160,29 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
             ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
+        end
+
+        @testset "prefix_and_strip_contexts" begin
+            vn = @varname(x[1])
+            ctx1 = PrefixContext{:a}(DefaultContext())
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx1, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == DefaultContext()
+
+            ctx2 = SamplingContext(PrefixContext{:a}(DefaultContext()))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == SamplingContext()
+
+            ctx3 = PrefixContext{:a}(ConditionContext((a=1,)))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == ConditionContext((a=1,))
+
+            ctx4 = SamplingContext(PrefixContext{:a}(ConditionContext((a=1,))))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == SamplingContext(ConditionContext((a=1,)))
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -304,6 +333,101 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
+        end
+    end
+
+    @testset "PrefixContext + Condition/FixedContext interactions" begin
+        @testset "prefix_cond_and_fixed_variables" begin
+            c1 = ConditionContext((c=1, d=2))
+            c1_prefixed = prefix_cond_and_fixed_variables(c1, @varname(a))
+            @test c1_prefixed isa ConditionContext
+            @test childcontext(c1_prefixed) isa DefaultContext
+            @test c1_prefixed.values[@varname(a.c)] == 1
+            @test c1_prefixed.values[@varname(a.d)] == 2
+
+            c2 = FixedContext((f=1, g=2))
+            c2_prefixed = prefix_cond_and_fixed_variables(c2, @varname(a))
+            @test c2_prefixed isa FixedContext
+            @test childcontext(c2_prefixed) isa DefaultContext
+            @test c2_prefixed.values[@varname(a.f)] == 1
+            @test c2_prefixed.values[@varname(a.g)] == 2
+
+            c3 = ConditionContext((c=1, d=2), FixedContext((f=1, g=2)))
+            c3_prefixed = prefix_cond_and_fixed_variables(c3, @varname(a))
+            c3_prefixed_child = childcontext(c3_prefixed)
+            @test c3_prefixed isa ConditionContext
+            @test c3_prefixed.values[@varname(a.c)] == 1
+            @test c3_prefixed.values[@varname(a.d)] == 2
+            @test c3_prefixed_child isa FixedContext
+            @test c3_prefixed_child.values[@varname(a.f)] == 1
+            @test c3_prefixed_child.values[@varname(a.g)] == 2
+            @test childcontext(c3_prefixed_child) isa DefaultContext
+        end
+
+        @testset "collapse_prefix_stack" begin
+            # Utility function to make sure that there are no PrefixContexts in
+            # the context stack.
+            function has_no_prefixcontexts(ctx::AbstractContext)
+                return !(ctx isa PrefixContext) && (
+                    NodeTrait(ctx) isa IsLeaf || has_no_prefixcontexts(childcontext(ctx))
+                )
+            end
+
+            # Prefix -> Condition
+            c1 = PrefixContext{:a}(ConditionContext((c=1, d=2)))
+            c1 = collapse_prefix_stack(c1)
+            @test has_no_prefixcontexts(c1)
+            c1_vals = conditioned(c1)
+            @test length(c1_vals) == 2
+            @test getvalue(c1_vals, @varname(a.c)) == 1
+            @test getvalue(c1_vals, @varname(a.d)) == 2
+
+            # Condition -> Prefix
+            c2 = (ConditionContext((c=1, d=2), PrefixContext{:a}(DefaultContext())))
+            c2 = collapse_prefix_stack(c2)
+            @test has_no_prefixcontexts(c2)
+            c2_vals = conditioned(c2)
+            @test length(c2_vals) == 2
+            @test getvalue(c2_vals, @varname(c)) == 1
+            @test getvalue(c2_vals, @varname(d)) == 2
+
+            # Prefix -> Fixed
+            c3 = PrefixContext{:a}(FixedContext((f=1, g=2)))
+            c3 = collapse_prefix_stack(c3)
+            c3_vals = fixed(c3)
+            @test length(c3_vals) == 2
+            @test length(c3_vals) == 2
+            @test getvalue(c3_vals, @varname(a.f)) == 1
+            @test getvalue(c3_vals, @varname(a.g)) == 2
+
+            # Fixed -> Prefix
+            c4 = (FixedContext((f=1, g=2), PrefixContext{:a}(DefaultContext())))
+            c4 = collapse_prefix_stack(c4)
+            @test has_no_prefixcontexts(c4)
+            c4_vals = fixed(c4)
+            @test length(c4_vals) == 2
+            @test getvalue(c4_vals, @varname(f)) == 1
+            @test getvalue(c4_vals, @varname(g)) == 2
+
+            # Prefix -> Condition -> Prefix -> Condition
+            c5 = PrefixContext{:a}(
+                ConditionContext((c=1,), PrefixContext{:b}(ConditionContext((d=2,))))
+            )
+            c5 = collapse_prefix_stack(c5)
+            @test has_no_prefixcontexts(c5)
+            c5_vals = conditioned(c5)
+            @test length(c5_vals) == 2
+            @test getvalue(c5_vals, @varname(a.c)) == 1
+            @test getvalue(c5_vals, @varname(a.b.d)) == 2
+
+            # Prefix -> Condition -> Prefix -> Fixed
+            c6 = PrefixContext{:a}(
+                ConditionContext((c=1,), PrefixContext{:b}(FixedContext((d=2,))))
+            )
+            c6 = collapse_prefix_stack(c6)
+            @test has_no_prefixcontexts(c6)
+            @test conditioned(c6) == Dict(@varname(a.c) => 1)
+            @test fixed(c6) == Dict(@varname(a.b.d) => 2)
         end
     end
 end
