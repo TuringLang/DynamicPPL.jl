@@ -29,7 +29,8 @@ using Test
             @test Set(keys(VarInfo(outer()))) == Set([@varname(a.x), @varname(a.y)])
 
             # With conditioning/fixing
-            @testset "$model" for model in [with_inner_op, with_outer_op]
+            models = [("inner", with_inner_op), ("outer", with_outer_op)]
+            @testset "$name" for (name, model) in models
                 # Test that the value was correctly set
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
@@ -44,7 +45,7 @@ using Test
             @model function inner()
                 x ~ Normal()
                 y ~ Normal()
-                return x
+                return (x, y)
             end
             @model function outer()
                 return a ~ to_submodel(inner(), false)
@@ -60,7 +61,8 @@ using Test
             @test Set(keys(VarInfo(outer()))) == Set([@varname(x), @varname(y)])
 
             # With conditioning/fixing
-            @testset "$model" for model in [with_inner_op, with_outer_op]
+            models = [("inner", with_inner_op), ("outer", with_outer_op)]
+            @testset "$name" for (name, model) in models
                 # Test that the value was correctly set
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
@@ -75,7 +77,7 @@ using Test
             @model function inner()
                 x ~ Normal()
                 y ~ Normal()
-                return x
+                return (x, y)
             end
             @model function outer()
                 return a ~ to_submodel(prefix(inner(), :b), false)
@@ -91,7 +93,8 @@ using Test
             @test Set(keys(VarInfo(outer()))) == Set([@varname(b.x), @varname(b.y)])
 
             # With conditioning/fixing
-            @testset "$model" for model in [with_inner_op, with_outer_op]
+            models = [("inner", with_inner_op), ("outer", with_outer_op)]
+            @testset "$name" for (name, model) in models
                 # Test that the value was correctly set
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
@@ -115,18 +118,20 @@ using Test
             end
 
             # No conditioning
-            @test Set(keys(VarInfo(h()))) == Set([@varname(a.b.x), @varname(a.b.y)])
+            vi = VarInfo(h())
+            @test Set(keys(vi)) == Set([@varname(a.b.x), @varname(a.b.y)])
+            @test getlogp(vi) ==
+                logpdf(Normal(), vi[@varname(a.b.x)]) +
+                  logpdf(Normal(), vi[@varname(a.b.y)])
 
             # Conditioning/fixing at the top level
             op_h = op(h(), (@varname(a.b.x) => x_val))
-            @test Set(keys(VarInfo(op_h))) == Set([@varname(a.b.y)])
 
             # Conditioning/fixing at the second level
             op_g = op(g(), (@varname(b.x) => x_val))
             @model function h2()
                 return a ~ to_submodel(op_g)
             end
-            @test Set(keys(VarInfo(h2()))) == Set([@varname(a.b.y)])
 
             # Conditioning/fixing at the very bottom
             op_f = op(f(), (@varname(x) => x_val))
@@ -136,7 +141,13 @@ using Test
             @model function h3()
                 return a ~ to_submodel(g2())
             end
-            @test Set(keys(VarInfo(h3()))) == Set([@varname(a.b.y)])
+
+            models = [("top", op_h), ("middle", h2()), ("bottom", h3())]
+            @testset "$name" for (name, model) in models
+                vi = VarInfo(model)
+                @test Set(keys(vi)) == Set([@varname(a.b.y)])
+                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(a.b.y)])
+            end
         end
     end
 
