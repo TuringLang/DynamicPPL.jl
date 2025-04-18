@@ -5,7 +5,7 @@ using Distributions
 using Test
 
 @testset "submodels.jl" begin
-    @testset "$op" for op in [condition, fix]
+    @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
         x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
 
@@ -138,6 +138,22 @@ using Test
             end
             @test Set(keys(VarInfo(h3()))) == Set([@varname(a.b.y)])
         end
+    end
+
+    @testset "conditioning via model arguments" begin
+        @model function f(x)
+            x ~ Normal()
+            return y ~ Normal()
+        end
+        @model function g(inner_x)
+            return a ~ to_submodel(f(inner_x))
+        end
+
+        vi = VarInfo(g(1.0))
+        @test Set(keys(vi)) == Set([@varname(a.y)])
+
+        vi = VarInfo(g(missing))
+        @test Set(keys(vi)) == Set([@varname(a.x), @varname(a.y)])
     end
 end
 
