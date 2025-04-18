@@ -35,16 +35,9 @@ keys(vi)
     In this case, where `to_submodel` is called without any other arguments, the prefix to be used is automatically inferred from the name of the variable on the left-hand side of the tilde.
     We will return to the 'manual prefixing' case later.
 
-What does it really mean to 'become' a different variable?
-We can see this from [the definition of `tilde_assume`, for example](https://github.com/TuringLang/DynamicPPL.jl/blob/60ee68e2ce28a15c6062c243019e6208d16802a5/src/context_implementations.jl#L87-L89):
-
-```
-function tilde_assume(context::PrefixContext, right, vn, vi)
-    return tilde_assume(context.context, right, prefix(context, vn), vi)
-end
-```
-
-Functionally, this means that even though the _initial_ entry to the tilde-pipeline has `vn` as `x` and `y`, once the `PrefixContext` has been applied, the later functions will see `a.x` and `a.y` instead.
+The phrase 'becoming' a different variable is a little underspecified: it is useful to pinpoint the exact location where the prefixing occurs, which is `tilde_assume`.
+The method responsible for it is `tilde_assume(::PrefixContext, right, vn, vi)`: this attaches the prefix in the context to the `VarName` argument, before recursively calling `tilde_assume` with the new prefixed `VarName`.
+This means that even though a statement `x ~ dist` still enters the tilde pipeline at the top level as `x`, if the model evaluation context contains a `PrefixContext`, any function from `tilde_assume` onwards will see `a.x` instead.
 
 ## ConditionContext
 
@@ -205,29 +198,158 @@ DynamicPPL.hasconditioned_nested(inner_ctx_with_outer_cond, @varname(a.x))
 DynamicPPL.hasconditioned_nested(inner_ctx_with_inner_cond, @varname(a.x))
 ```
 
-Essentially, our job is threefold:
+This allows us to finally specify our task as follows:
 
-  - Firstly, given the correct arguments, we need to make sure that `hasconditioned_nested` and `getconditioned_nested` behave correctly.
+(1) Given the correct arguments, we need to make sure that `hasconditioned_nested` and `getconditioned_nested` behave correctly.
 
-  - Secondly, we need to make sure that both the correct arguments are supplied. In order to do so:
-    
-      + We need to make sure that when evaluating a submodel, the context stack is arranged such that prefixes are applied _inside_ the parent model's context, but _outside_ the submodel's own context.
-      + We also need to make sure that the `VarName` passed to it is prefixed correctly. This is, in fact, _not_ handled by `tilde_assume`, because `contextual_isassumption` is much higher in the call stack than `tilde_assume` is. So, we need to explicitly prefix it.
+(2) We need to make sure that both the correct arguments are supplied. In order to do so:
+
+  - (2a) We need to make sure that when evaluating a submodel, the context stack is arranged such that `PrefixContext` is applied _inside_ the parent model's context, but _outside_ the submodel's own context.
+
+  - (2b) We also need to make sure that the `VarName` passed to it is prefixed correctly.
 
 ## How do we do it?
 
-`hasconditioned_nested` accomplishes this by doing the following:
+(1) `hasconditioned_nested` and `getconditioned_nested` accomplish this by first 'collapsing' the context stack, i.e. they go through the context stack, remove all `PrefixContext`s, and apply those prefixes to any conditioned variables below it in the stack.
+Once the `PrefixContext`s have been removed, one can then iterate through the context stack and check if any of the `ConditionContext`s contain the variable, or get the value itself.
+For more details the reader is encouraged to read the source code.
 
-  - If the outermost layer is a `ConditionContext`, it checks whether the variable is contained in its values.
-  - If the outermost layer is a `PrefixContext`, it goes through the `PrefixContext`'s child context and prefixes any inner conditioned variables, before checking whether the variable is contained.
+(2a) We ensure that the context stack is correctly arranged by relying on the behaviour of `make_evaluate_args_and_kwargs`.
+This function is called whenever a model (which itself contains a context) is evaluated with a separate ('external') context, and makes sure to arrange both of these contexts such that _the model's context is nested inside the external context_.
+Thus, as long as prefixing is implemented by applying a `PrefixContext` on the outermost layer of the _inner_ model context, this will be correctly combined with an external context to give the behaviour seen above.
 
-We ensure that the context stack is correctly arranged by relying on the behaviour of `make_evaluate_args_and_kwargs`.
-This function is called whenever a model (which itself contains a context) is evaluated with a separate ('outer') context, and makes sure to arrange it such that the model's context is nested inside the outer context.
-Thus, as long as prefixing is implemented by applying a `PrefixContext` on the outermost layer of the _inner_ model context, this will be correctly combined with an outer context to give the behaviour seen above.
+(2b) At first glance, it seems like `tilde_assume` can take care of the `VarName` prefixing for us (as described in the first section).
+However, this is not actually the case: `contextual_isassumption`, which is the function that calls `hasconditioned_nested`, is much higher in the call stack than `tilde_assume` is.
+So, we need to explicitly prefix it before passing it to `contextual_isassumption`.
+This is done inside the `@model` macro, or technically, its subsidiary function `isassumption`.
 
-And finally, we ensure that the `VarName` is correctly prefixed by modifying the `@model` macro (or, technically, its subsidiary `isassumption`) to explicitly prefix the variable before passing it to `contextual_isassumption`.
+## Nested submodels
 
-## FixedContext
+Just in case the above wasn't complicated enough, we need to also be very careful when dealing with nested submodels, which have multiple layers of `PrefixContext`s which may be interspersed with `ConditionContext`s.
+For example, in this series of nested submodels,
+
+```@example
+@model function charlie()
+    x ~ Normal()
+    y ~ Normal()
+    return z ~ Normal()
+end
+@model function bravo()
+    return b ~ to_submodel(charlie() | (@varname(x) => 1.0))
+end
+@model function alpha()
+    return a ~ to_submodel(bravo() | (@varname(b.y) => 1.0))
+end
+```
+
+we expect that the only variable to be sampled should be `z` inside `charlie`, or rather, `a.b.z` once it has been through the prefixes.
+
+```@example
+keys(VarInfo(alpha()))
+```
+
+The general strategy that we adopt is similar to above.
+Following the principle that `PrefixContext` should be nested inside the outer context, but outside the inner submodel's context, we can infer that the correct context inside `charlie` should be:
+
+```@example
+big_ctx = PrefixContext{:a}(
+    ConditionContext(
+        Dict(@varname(b.y) => 1.0),
+        PrefixContext{:b}(ConditionContext(Dict(@varname(x) => 1.0))),
+    ),
+)
+```
+
+We need several things to work correctly here: we need the `VarName` prefixing to behave correctly, and then we need to implement `hasconditioned_nested` and `getconditioned_nested` on the resulting prefixed `VarName`.
+It turns out that the prefixing itself is enough to illustrate the most important point in this section, namely, the need to traverse the context stack in a _different direction_ to what most of DynamicPPL does.
+
+Let's work with a function called `myprefix(::AbstractContext, ::VarName)` (to avoid confusion with any existing DynamicPPL function).
+We should like `myprefix(big_ctx, @varname(x))` to return `@varname(a.b.x)`.
+Consider the following naive implementation, which mirrors a lot of code in the tilde-pipeline:
+
+```@example
+using DynamicPPL: NodeTrait, IsLeaf, IsParent, childcontext, AbstractContext
+using AbstractPPL: AbstractPPL
+
+function myprefix(ctx::DynamicPPL.AbstractContext, vn::VarName)
+    return myprefix(NodeTrait(ctx), ctx, vn)
+end
+function myprefix(::IsLeaf, ::AbstractContext, vn::VarName)
+    return vn
+end
+function myprefix(::IsParent, ctx::AbstractContext, vn::VarName)
+    return myprefix(childcontext(ctx), vn)
+end
+function myprefix(ctx::DynamicPPL.PrefixContext{Prefix}, vn::VarName) where {Prefix}
+    # The functionality to actually manipulate the VarNames is in AbstractPPL
+    new_vn = AbstractPPL.prefix(vn, VarName{Prefix}())
+    # Then pass to the child context
+    return myprefix(childcontext(ctx), new_vn)
+end
+
+myprefix(big_ctx, @varname(x))
+```
+
+This implementation clearly is not correct, because it applies the _inner_ `PrefixContext` before the outer one.
+
+The right way to implement `myprefix` is to, essentially, reverse the order of two lines above:
+
+```@example
+function myprefix(ctx::DynamicPPL.PrefixContext{Prefix}, vn::VarName) where {Prefix}
+    # Pass to the child context first
+    new_vn = myprefix(childcontext(ctx), vn)
+    # Then apply this context's prefix
+    return AbstractPPL.prefix(new_vn, VarName{Prefix}())
+end
+
+myprefix(big_ctx, @varname(x))
+```
+
+This is a much better result!
+The implementation of related functions such as `hasconditioned_nested` and `getconditioned_nested`, under the hood, use a similar recursion scheme, so you will find that this is a common pattern when reading the source code of various prefixing-related functions, you will find that this is a common pattern
+When editing this code, it is worth being mindful of this as a potential source of incorrectness.
+
+!!! info
+    
+    If you have encountered left and right folds, the above discussion illustrates the difference between them: the wrong implementation of `myprefix` uses a left fold (which collects prefixes in the opposite order from which they are encountered), while the correct implementation uses a right fold.
+
+## Loose ends 1: Manual prefixing
+
+Sometimes users may want to manually prefix a model, for example:
+
+```@example
+@model function inner_manual()
+    x ~ Normal()
+    return y ~ Normal()
+end
+
+@model function outer_manual()
+    return _unused ~ to_submodel(prefix(inner_manual(), :a), false)
+end
+```
+
+In this case, the `VarName` on the left-hand side of the tilde is not used, and the prefix is instead specified using the `prefix` function.
+
+The way to deal with this follows on from the previous discussion.
+Specifically, we said that:
+
+> [...] as long as prefixing is implemented by applying a `PrefixContext` on the outermost layer of the _inner_ model context, this will be correctly combined [...]
+
+When automatic prefixing is used, this application of `PrefixContext` occurs inside the `tilde_assume!!` method.
+In the manual prefixing case, we need to make sure that `prefix(submodel::Model, ::Symbol)` does the same thing, i.e. it inserts a `PrefixContext` at the outermost layer of `submodel`'s context.
+We can see that this is precisely what happens:
+
+```@example
+@model f() = x ~ Normal()
+
+model = f()
+prefixed_model = prefix(model, :a)
+
+(model.context, prefixed_model.context)
+```
+
+## Loose ends 2: FixedContext
 
 Finally, note that all of the above also applies to the interaction between `PrefixContext` and `FixedContext`, except that the functions have different names.
 (`FixedContext` behaves the same way as `ConditionContext`, except that unlike conditioned variables, fixed variables do not contribute to the log probability density.)
+This generally results in a large amount of code duplication, but the concepts that underlie both contexts are exactly the same.
