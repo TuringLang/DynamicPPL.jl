@@ -4,7 +4,7 @@
 
 **Breaking changes**
 
-### Submodels
+### Submodels: conditioning
 
 Variables in a submodel can now be conditioned and fixed in a correct way.
 See https://github.com/TuringLang/DynamicPPL.jl/issues/857 for a full illustration, but essentially it means you can now do this:
@@ -22,38 +22,7 @@ end
 and the `inner.x` variable will be correctly conditioned.
 (Previously, you would have to condition `inner()` with the variable `a.x`, meaning that you would need to know what prefix to use before you had actually prefixed it.)
 
-### AD testing utilities
-
-`DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.
-To disable this, pass the `linked=false` keyword argument.
-If the calculated value or gradient is incorrect, it also throws a `DynamicPPL.TestUtils.AD.ADIncorrectException` rather than a test failure.
-This exception contains the actual and expected gradient so you can inspect it if needed; see the documentation for more information.
-From a practical perspective, this means that if you need to add this to a test suite, you need to use `@test run_ad(...) isa Any` rather than just `run_ad(...)`.
-
-### SimpleVarInfo linking / invlinking
-
-Linking a linked SimpleVarInfo, or invlinking an unlinked SimpleVarInfo, now displays a warning instead of an error.
-
-### VarInfo constructors
-
-`VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
-
-The `metadata` argument to `VarInfo([rng, ]model[, sampler, context, metadata])` has been removed.
-If you were not using this argument (most likely), then there is no change needed.
-If you were using the `metadata` argument to specify a blank `VarNamedVector`, then you should replace calls to `VarInfo` with `DynamicPPL.typed_vector_varinfo` instead (see 'Other changes' below).
-
-The `UntypedVarInfo` constructor and type is no longer exported.
-If you needed to construct one, you should now use `DynamicPPL.untyped_varinfo` instead.
-
-The `TypedVarInfo` constructor and type is no longer exported.
-The _type_ has been replaced with `DynamicPPL.NTVarInfo`.
-The _constructor_ has been replaced with `DynamicPPL.typed_varinfo`.
-
-Note that the exact kind of VarInfo returned by `VarInfo(rng, model, ...)` is an implementation detail.
-Previously, it was guaranteed that this would always be a VarInfo whose metadata was a `NamedTuple` containing `Metadata` structs.
-Going forward, this is no longer the case, and you should only assume that the returned object obeys the `AbstractVarInfo` interface.
-
-### VarName prefixing behaviour
+### Submodel prefixing
 
 The way in which VarNames in submodels are prefixed has been changed.
 This is best explained through an example.
@@ -95,8 +64,61 @@ outer() | (@varname(var"a.x") => 1.0,)
 outer() | (a.x=1.0,)
 ```
 
-If you are sampling from a model with submodels, this doesn't affect the way you interact with the `MCMCChains.Chains` object, because VarNames are converted into Symbols when stored in the chain.
+In a similar way, if the variable on the left-hand side of your tilde statement is not just a single identifier, any fields or indices it accesses are now properly respected.
+Consider the following setup:
+
+```julia
+using DynamicPPL, Distributions
+@model inner() = x ~ Normal()
+@model function outer()
+    a = Vector{Float64}(undef, 1)
+    a[1] ~ to_submodel(inner())
+    return a
+end
+```
+
+In this case, the variable sampled is actually the `x` field of the first element of `a`:
+
+```julia
+julia> only(keys(VarInfo(outer()))) == @varname(a[1].x)
+true
+```
+
+Before this version, it used to be a single variable called `var"a[1].x"`.
+
+Note that if you are sampling from a model with submodels, this doesn't affect the way you interact with the `MCMCChains.Chains` object, because VarNames are converted into Symbols when stored in the chain.
 (This behaviour will likely be changed in the future, in that Chains should be indexable by VarNames and not just Symbols, but that has not been implemented yet.)
+
+### AD testing utilities
+
+`DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.
+To disable this, pass the `linked=false` keyword argument.
+If the calculated value or gradient is incorrect, it also throws a `DynamicPPL.TestUtils.AD.ADIncorrectException` rather than a test failure.
+This exception contains the actual and expected gradient so you can inspect it if needed; see the documentation for more information.
+From a practical perspective, this means that if you need to add this to a test suite, you need to use `@test run_ad(...) isa Any` rather than just `run_ad(...)`.
+
+### SimpleVarInfo linking / invlinking
+
+Linking a linked SimpleVarInfo, or invlinking an unlinked SimpleVarInfo, now displays a warning instead of an error.
+
+### VarInfo constructors
+
+`VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
+
+The `metadata` argument to `VarInfo([rng, ]model[, sampler, context, metadata])` has been removed.
+If you were not using this argument (most likely), then there is no change needed.
+If you were using the `metadata` argument to specify a blank `VarNamedVector`, then you should replace calls to `VarInfo` with `DynamicPPL.typed_vector_varinfo` instead (see 'Other changes' below).
+
+The `UntypedVarInfo` constructor and type is no longer exported.
+If you needed to construct one, you should now use `DynamicPPL.untyped_varinfo` instead.
+
+The `TypedVarInfo` constructor and type is no longer exported.
+The _type_ has been replaced with `DynamicPPL.NTVarInfo`.
+The _constructor_ has been replaced with `DynamicPPL.typed_varinfo`.
+
+Note that the exact kind of VarInfo returned by `VarInfo(rng, model, ...)` is an implementation detail.
+Previously, it was guaranteed that this would always be a VarInfo whose metadata was a `NamedTuple` containing `Metadata` structs.
+Going forward, this is no longer the case, and you should only assume that the returned object obeys the `AbstractVarInfo` interface.
 
 **Other changes**
 

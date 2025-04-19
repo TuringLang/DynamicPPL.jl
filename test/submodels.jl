@@ -122,9 +122,7 @@ using Test
                 p.b ~ Normal()
                 return (p.a, p.b)
             end
-            expected_vns = Set([
-                @varname(var"p.a".x[1]), @varname(var"p.a".y), @varname(p.b)
-            ])
+            expected_vns = Set([@varname(p.a.x[1]), @varname(p.a.y), @varname(p.b)])
             @test Set(keys(VarInfo(g()))) == expected_vns
 
             # Check that we can condition/fix on any of them from the outside
