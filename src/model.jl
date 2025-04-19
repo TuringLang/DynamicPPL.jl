@@ -429,7 +429,7 @@ julia> # Nested ones also work.
        # (Note that `PrefixContext` also prefixes the variables of any
        # ConditionContext that is _inside_ it; because of this, the type of the
        # container has to be broadened to a `Dict`.)
-       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((m=1.0,)))), x=100.0);
+       cm = condition(contextualize(m, PrefixContext(@varname(a), ConditionContext((m=1.0,)))), x=100.0);
 
 julia> Set(keys(conditioned(cm))) == Set([@varname(a.m), @varname(x)])
 true
@@ -441,7 +441,7 @@ julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = condition(contextualize(m, PrefixContext{:a}(DefaultContext())), (@varname(a.m) => 1.0));
+       cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> conditioned(cm)
 Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
@@ -769,7 +769,7 @@ julia> # Returns all the variables we have fixed on + their values.
 (x = 100.0, m = 1.0)
 
 julia> # The rest of this is the same as the `condition` example above.
-       cm = fix(contextualize(m, PrefixContext{:a}(fix(m=1.0))), x=100.0);
+       cm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
 
 julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
 true
@@ -779,7 +779,7 @@ julia> keys(VarInfo(cm))
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = fix(contextualize(m, PrefixContext{:a}(DefaultContext())), (@varname(a.m) => 1.0));
+       cm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> fixed(cm)
 Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:

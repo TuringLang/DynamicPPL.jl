@@ -131,7 +131,8 @@ function tilde_assume!!(context, right, vn, vi)
         # change in the future.
         if should_auto_prefix(right)
             dppl_model = right.model.model # This isa DynamicPPL.Model
-            prefixed_submodel_context = PrefixContext{getsym(vn)}(dppl_model.context)
+            # TODO: This does _not_ correctly prefix varnames with non-identity lenses
+            prefixed_submodel_context = PrefixContext(vn, dppl_model.context)
             new_dppl_model = contextualize(dppl_model, prefixed_submodel_context)
             right = to_submodel(new_dppl_model, true)
         end

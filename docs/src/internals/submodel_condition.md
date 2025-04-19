@@ -181,10 +181,10 @@ Putting all of the information so far together, what it means is that if we have
 using DynamicPPL: PrefixContext, ConditionContext, DefaultContext
 
 inner_ctx_with_outer_cond = ConditionContext(
-    Dict(@varname(a.x) => 1.0), PrefixContext{:a}(DefaultContext())
+    Dict(@varname(a.x) => 1.0), PrefixContext(@varname(a))
 )
-inner_ctx_with_inner_cond = PrefixContext{:a}(
-    ConditionContext(Dict(@varname(x) => 1.0), DefaultContext())
+inner_ctx_with_inner_cond = PrefixContext(
+    @varname(a), ConditionContext(Dict(@varname(x) => 1.0))
 )
 ```
 
@@ -252,10 +252,11 @@ The general strategy that we adopt is similar to above.
 Following the principle that `PrefixContext` should be nested inside the outer context, but outside the inner submodel's context, we can infer that the correct context inside `charlie` should be:
 
 ```@example
-big_ctx = PrefixContext{:a}(
+big_ctx = PrefixContext(
+    @varname(a),
     ConditionContext(
         Dict(@varname(b.y) => 1.0),
-        PrefixContext{:b}(ConditionContext(Dict(@varname(x) => 1.0))),
+        PrefixContext(@varname(b), ConditionContext(Dict(@varname(x) => 1.0))),
     ),
 )
 ```
@@ -280,9 +281,9 @@ end
 function myprefix(::IsParent, ctx::AbstractContext, vn::VarName)
     return myprefix(childcontext(ctx), vn)
 end
-function myprefix(ctx::DynamicPPL.PrefixContext{Prefix}, vn::VarName) where {Prefix}
+function myprefix(ctx::DynamicPPL.PrefixContext, vn::VarName)
     # The functionality to actually manipulate the VarNames is in AbstractPPL
-    new_vn = AbstractPPL.prefix(vn, VarName{Prefix}())
+    new_vn = AbstractPPL.prefix(vn, ctx.vn_prefix)
     # Then pass to the child context
     return myprefix(childcontext(ctx), new_vn)
 end
@@ -295,11 +296,11 @@ This implementation clearly is not correct, because it applies the _inner_ `Pref
 The right way to implement `myprefix` is to, essentially, reverse the order of two lines above:
 
 ```@example
-function myprefix(ctx::DynamicPPL.PrefixContext{Prefix}, vn::VarName) where {Prefix}
+function myprefix(ctx::DynamicPPL.PrefixContext, vn::VarName)
     # Pass to the child context first
     new_vn = myprefix(childcontext(ctx), vn)
     # Then apply this context's prefix
-    return AbstractPPL.prefix(new_vn, VarName{Prefix}())
+    return AbstractPPL.prefix(new_vn, ctx.vn_prefix)
 end
 
 myprefix(big_ctx, @varname(x))
