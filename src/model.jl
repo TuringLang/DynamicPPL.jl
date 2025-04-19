@@ -425,29 +425,32 @@ julia> # Returns all the variables we have conditioned on + their values.
        conditioned(condition(m, x=100.0, m=1.0))
 (x = 100.0, m = 1.0)
 
-julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
-       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext((m=1.0,)))), x=100.0);
+julia> # Nested ones also work.
+       # (Note that `PrefixContext` also prefixes the variables of any
+       # ConditionContext that is _inside_ it; because of this, the type of the
+       # container has to be broadened to a `Dict`.)
+       cm = condition(contextualize(m, PrefixContext(@varname(a), ConditionContext((m=1.0,)))), x=100.0);
+
+julia> Set(keys(conditioned(cm))) == Set([@varname(a.m), @varname(x)])
+true
+
+julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
+       # However, `a.x` will still be a random variable.
+       keys(VarInfo(cm))
+1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+ a.x
+
+julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
+       cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> conditioned(cm)
-(x = 100.0, m = 1.0)
+Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
+  a.m => 1.0
 
-julia> # Since we conditioned on `m`, not `a.m` as it will appear after prefixed,
-       # `a.m` is treated as a random variable.
+julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
- a.m
-
-julia> # If we instead condition on `a.m`, `m` in the model will be considered an observation.
-       cm = condition(contextualize(m, PrefixContext{:a}(ConditionContext(Dict(@varname(a.m) => 1.0)))), x=100.0);
-
-julia> conditioned(cm)[@varname(x)]
-100.0
-
-julia> conditioned(cm)[@varname(a.m)]
-1.0
-
-julia> keys(VarInfo(cm)) # No variables are sampled
-VarName[]
+1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+ a.x
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
@@ -765,29 +768,27 @@ julia> # Returns all the variables we have fixed on + their values.
        fixed(fix(m, x=100.0, m=1.0))
 (x = 100.0, m = 1.0)
 
-julia> # Nested ones also work (note that `PrefixContext` does nothing to the result).
-       cm = fix(contextualize(m, PrefixContext{:a}(fix(m=1.0))), x=100.0);
+julia> # The rest of this is the same as the `condition` example above.
+       cm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
+
+julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
+true
+
+julia> keys(VarInfo(cm))
+1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+ a.x
+
+julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
+       cm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> fixed(cm)
-(x = 100.0, m = 1.0)
+Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
+  a.m => 1.0
 
-julia> # Since we fixed on `m`, not `a.m` as it will appear after prefixed,
-       # `a.m` is treated as a random variable.
+julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:m}}}:
- a.m
-
-julia> # If we instead fix on `a.m`, `m` in the model will be considered an observation.
-       cm = fix(contextualize(m, PrefixContext{:a}(fix(@varname(a.m) => 1.0,))), x=100.0);
-
-julia> fixed(cm)[@varname(x)]
-100.0
-
-julia> fixed(cm)[@varname(a.m)]
-1.0
-
-julia> keys(VarInfo(cm)) # <= no variables are sampled
-VarName[]
+1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+ a.x
 ```
 """
 fixed(model::Model) = fixed(model.context)
