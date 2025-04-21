@@ -105,6 +105,36 @@ using Test
             end
         end
 
+        @testset "Complex prefixes" begin
+            mutable struct P
+                a::Float64
+                b::Float64
+            end
+            @model function f()
+                x = Vector{Float64}(undef, 1)
+                x[1] ~ Normal()
+                y ~ Normal()
+                return x[1]
+            end
+            @model function g()
+                p = P(1.0, 2.0)
+                p.a ~ to_submodel(f())
+                p.b ~ Normal()
+                return (p.a, p.b)
+            end
+            expected_vns = Set([
+                @varname(var"p.a".x[1]), @varname(var"p.a".y), @varname(p.b)
+            ])
+            @test Set(keys(VarInfo(g()))) == expected_vns
+
+            # Check that we can condition/fix on any of them from the outside
+            for vn in expected_vns
+                op_g = op(g(), (vn => 1.0))
+                vi = VarInfo(op_g)
+                @test Set(keys(vi)) == symdiff(expected_vns, Set([vn]))
+            end
+        end
+
         @testset "Nested submodels" begin
             @model function f()
                 x ~ Normal()
