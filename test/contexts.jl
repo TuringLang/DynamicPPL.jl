@@ -105,7 +105,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                     vcat,
                     pairs(conditioned_values),
                 )
-                @show conditioned_vns
 
                 # We can now loop over them to check which ones are missing. We use
                 # `getvalue` to handle the awkward case where sometimes

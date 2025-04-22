@@ -78,9 +78,9 @@ decondition
 
 ## Fixing and unfixing
 
-We can also _fix_ a collection of variables in a [`Model`](@ref) to certain using [`DynamicPPL.fix`](@ref).
+We can also _fix_ a collection of variables in a [`Model`](@ref) to certain values using [`DynamicPPL.fix`](@ref).
 
-This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
+This is quite similar to the aforementioned [`condition`](@ref) and its siblings,
 but they are indeed different operations:
 
   - `condition`ed variables are considered to be _observations_, and are thus

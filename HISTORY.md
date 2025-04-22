@@ -19,7 +19,7 @@ end
 end
 ```
 
-and the `inner.x` variable will be correctly conditioned.
+and the `a.x` variable will be correctly conditioned.
 (Previously, you would have to condition `inner()` with the variable `a.x`, meaning that you would need to know what prefix to use before you had actually prefixed it.)
 
 ### AD testing utilities
