@@ -174,8 +174,9 @@ end
 
 Evaluate the log density of the given `model` at the given parameter values `x`,
 using the given `varinfo` and `context`. Note that the `varinfo` argument is provided
-only for its structure, in the sense that the parameters from the vector `x` are inserted into
-it, and its own parameters are discarded.
+only for its structure, in the sense that the parameters from the vector `x` are inserted
+into it, and its own parameters are discarded. It does, however, determine whether the log
+prior, likelihood, or joint is returned, based on which accumulators are set in it.
 """
 function logdensity_at(
     x::AbstractVector, model::Model, varinfo::AbstractVarInfo, context::AbstractContext
