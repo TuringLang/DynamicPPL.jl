@@ -1,6 +1,25 @@
+"""
+    PointwiseLogProbAccumulator{whichlogprob,KeyType,D<:AbstractDict{KeyType}} <: AbstractAccumulator
+
+An accumulator that stores the log-probabilities of each variable in a model.
+
+Internally this context stores the log-probabilities in a dictionary, where the keys are
+the variable names and the values are vectors of log-probabilities. Each element in a vector
+corresponds to one execution of the model.
+
+`whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
+which log-probabilities to store in the accumulator. `KeyType` is the type by which variable
+names are stored, and should be `String` or `VarName`. `D` is the type of the dictionary
+used internally to store the log-probabilities, by default
+`OrderedDict{KeyType, Vector{LogProbType}}`.
+"""
 struct PointwiseLogProbAccumulator{whichlogprob,KeyType,D<:AbstractDict{KeyType}} <:
        AbstractAccumulator
     logps::D
+end
+
+function PointwiseLogProbAccumulator{whichlogprob}(logps) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob,keytype(logps),typeof(logps)}(logps)
 end
 
 function PointwiseLogProbAccumulator{whichlogprob}() where {whichlogprob}
@@ -32,10 +51,16 @@ function accumulator_name(
     return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
 end
 
-# TODO(mhauru) Implement these to make PointwiseLogProbAccumulator work with
-# ThreadSafeVarInfo.
-# split(::LogPrior{T}) where {T} = LogPrior(zero(T))
-# combine(acc::LogPrior, acc2::LogPrior) = LogPrior(acc.logp + acc2.logp)
+function split(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob}(empty(acc.logps))
+end
+
+function combine(
+    acc::PointwiseLogProbAccumulator{whichlogprob},
+    acc2::PointwiseLogProbAccumulator{whichlogprob},
+) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob}(mergewith(vcat, acc.logps, acc2.logps))
+end
 
 function accumulate_assume!!(
     acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right
