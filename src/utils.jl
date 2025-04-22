@@ -18,21 +18,7 @@ const LogProbType = float(Real)
 """
     @addlogprob!(ex)
 
-A deprecated alias for `@addloglikelihood!`.
-"""
-macro addlogprob!(ex)
-    return quote
-        depwarn(
-            "`@addlogprob!` is deprecated, use `@addloglikelihood!` instead.", :addlogprob!
-        )
-        $(esc(:(__varinfo__))) = acclogp!!($(esc(:(__varinfo__))), $(esc(ex)))
-    end
-end
-
-"""
-    @addloglikelihood!(ex)
-
-Add the result of the evaluation of `ex` to the joint log prior probability.
+Add the result of the evaluation of `ex` to the log likelihood.
 
 # Examples
 
@@ -43,7 +29,7 @@ julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
 
 julia> @model function demo(x)
            μ ~ Normal()
-           @addloglikelihood! myloglikelihood(x, μ)
+           @addlogprob! myloglikelihood(x, μ)
        end;
 
 julia> x = [1.3, -2.1];
@@ -58,7 +44,7 @@ and to [reject samples](https://github.com/TuringLang/Turing.jl/issues/1328):
 julia> @model function demo(x)
            m ~ MvNormal(zero(x), I)
            if dot(m, x) < 0
-               @addloglikelihood! -Inf
+               @addlogprob! -Inf
                # Exit the model evaluation early
                return
            end
@@ -70,7 +56,7 @@ julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
 true
 ```
 """
-macro addloglikelihood!(ex)
+macro addlogprob!(ex)
     return quote
         $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), $(esc(ex)))
     end

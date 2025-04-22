@@ -1,8 +1,8 @@
 @testset "utils.jl" begin
-    @testset "addloglikelihood!" begin
+    @testset "addlogprob!" begin
         @model function testmodel()
             global lp_before = getlogjoint(__varinfo__)
-            @addloglikelihood!(42)
+            @addlogprob!(42)
             return global lp_after = getlogjoint(__varinfo__)
         end
 
