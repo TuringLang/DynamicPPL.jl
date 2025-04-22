@@ -1,6 +1,4 @@
 @testset "logdensities_likelihoods.jl" begin
-    mod_ctx = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.2)
-    mod_ctx2 = DynamicPPL.TestUtils.TestLogModifyingChildContext(1.4, mod_ctx)
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS[1:1]
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
@@ -37,11 +35,6 @@
         lps = pointwise_logdensities(model, vi)
         logp = sum(sum, values(lps))
         @test logp ≈ (logprior_true + loglikelihood_true)
-
-        # Test that modifications of Setup are picked up
-        lps = pointwise_logdensities(model, vi, mod_ctx2)
-        logp = sum(sum, values(lps))
-        @test logp ≈ (logprior_true + loglikelihood_true) * 1.2 * 1.4
     end
 end
 

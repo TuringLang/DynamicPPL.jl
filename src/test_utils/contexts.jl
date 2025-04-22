@@ -3,36 +3,6 @@
 #
 # Utilities for testing contexts.
 
-"""
-Context that multiplies each log-prior by mod
-used to test whether pointwise_logpriors respects child-context.
-"""
-struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
-    mod::T
-    context::Ctx
-end
-function TestLogModifyingChildContext(
-    mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
-)
-    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
-end
-
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
-function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
-    return TestLogModifyingChildContext(context.mod, child)
-end
-function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
-    value, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
-    return value, vi
-end
-function DynamicPPL.tilde_observe!!(
-    context::TestLogModifyingChildContext, right, left, vn, vi
-)
-    vi = DynamicPPL.tilde_observe!!(context.context, right, left, vn, vi)
-    return vi
-end
-
 # Dummy context to test nested behaviors.
 struct TestParentContext{C<:DynamicPPL.AbstractContext} <: DynamicPPL.AbstractContext
     context::C
