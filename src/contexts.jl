@@ -426,7 +426,7 @@ hasconditioned_nested(::IsLeaf, context, vn) = hasconditioned(context, vn)
 function hasconditioned_nested(::IsParent, context, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
-function hasconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
+function hasconditioned_nested(context::PrefixContext, vn)
     return hasconditioned_nested(collapse_prefix_stack(context), vn)
 end
 
@@ -444,7 +444,7 @@ end
 function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
-function getconditioned_nested(context::PrefixContext{Prefix}, vn) where {Prefix}
+function getconditioned_nested(context::PrefixContext, vn)
     return getconditioned_nested(collapse_prefix_stack(context), vn)
 end
 function getconditioned_nested(::IsParent, context, vn)

@@ -306,7 +306,7 @@ myprefix(big_ctx, @varname(x))
 ```
 
 This is a much better result!
-The implementation of related functions such as `hasconditioned_nested` and `getconditioned_nested`, under the hood, use a similar recursion scheme, so you will find that this is a common pattern when reading the source code of various prefixing-related functions, you will find that this is a common pattern
+The implementation of related functions such as `hasconditioned_nested` and `getconditioned_nested`, under the hood, use a similar recursion scheme, so you will find that this is a common pattern when reading the source code of various prefixing-related functions.
 When editing this code, it is worth being mindful of this as a potential source of incorrectness.
 
 !!! info
