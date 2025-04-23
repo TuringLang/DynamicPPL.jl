@@ -242,6 +242,10 @@ function _has_missings(x::AbstractArray)
     return false
 end
 
+_has_nans(x::NamedTuple) = any(_has_nans, x)
+_has_nans(x::AbstractArray) = any(_has_nans, x)
+_has_nans(x) = isnan(x)
+
 # assume
 function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
     record_varname!(context, vn, dist)
@@ -291,7 +295,7 @@ function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
         )
     end
     # Check for NaN's as well
-    if any(isnan, left)
+    if _has_nans(left)
         error(
             "Encountered a NaN value on the left-hand side of an" *
             " observe statement; this may indicate that your data" *
