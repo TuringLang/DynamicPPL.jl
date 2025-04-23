@@ -237,27 +237,34 @@ function setchildcontext(parent::MiniBatchContext, child)
 end
 
 """
-    PrefixContext{Prefix}(context)
+    PrefixContext(vn::VarName[, context::AbstractContext])
+    PrefixContext(vn::Val{sym}[, context::AbstractContext]) where {sym}
 
 Create a context that allows you to use the wrapped `context` when running the model and
-adds the `Prefix` to all parameters.
+prefixes all parameters with the VarName `vn`.
+
+`PrefixContext(Val(:a), context)` is equivalent to `PrefixContext(@varname(a), context)`.
+If `context` is not provided, it defaults to `DefaultContext()`.
 
 This context is useful in nested models to ensure that the names of the parameters are
 unique.
 
 See also: [`to_submodel`](@ref)
 """
-struct PrefixContext{Prefix,C} <: AbstractContext
+struct PrefixContext{Tvn<:VarName,C<:AbstractContext} <: AbstractContext
+    vn_prefix::Tvn
     context::C
 end
-function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(context)}(context)
+PrefixContext(vn::VarName) = PrefixContext(vn, DefaultContext())
+function PrefixContext(::Val{sym}, context::AbstractContext) where {sym}
+    return PrefixContext(VarName{sym}(), context)
 end
+PrefixContext(::Val{sym}) where {sym} = PrefixContext(VarName{sym}())
 
 NodeTrait(::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
-function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
-    return PrefixContext{Prefix}(child)
+function setchildcontext(ctx::PrefixContext, child::AbstractContext)
+    return PrefixContext(ctx.vn_prefix, child)
 end
 
 """
@@ -265,8 +272,8 @@ end
 
 Apply the prefixes in the context `ctx` to the variable name `vn`.
 """
-function prefix(ctx::PrefixContext{Prefix}, vn::VarName) where {Prefix}
-    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Prefix}())
+function prefix(ctx::PrefixContext, vn::VarName)
+    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), ctx.vn_prefix)
 end
 function prefix(ctx::AbstractContext, vn::VarName)
     return prefix(NodeTrait(ctx), ctx, vn)
@@ -295,14 +302,13 @@ not_ need to modify any inner `ConditionContext`s and `FixedContext`s. If you
 _do_ need to modify them, then you may need to use
 `prefix_cond_and_fixed_variables` instead.
 """
-function prefix_and_strip_contexts(ctx::PrefixContext{Prefix}, vn::VarName) where {Prefix}
+function prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
     child_context = childcontext(ctx)
     # vn_prefixed contains the prefixes from all lower levels
     vn_prefixed, child_context_without_prefixes = prefix_and_strip_contexts(
         child_context, vn
     )
-    return AbstractPPL.prefix(vn_prefixed, VarName{Prefix}()),
-    child_context_without_prefixes
+    return AbstractPPL.prefix(vn_prefixed, ctx.vn_prefix), child_context_without_prefixes
 end
 function prefix_and_strip_contexts(ctx::AbstractContext, vn::VarName)
     return prefix_and_strip_contexts(NodeTrait(ctx), ctx, vn)
@@ -314,11 +320,16 @@ function prefix_and_strip_contexts(::IsParent, ctx::AbstractContext, vn::VarName
 end
 
 """
-    prefix(model::Model, x)
+    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::Val{sym})
+    prefix(model::Model, x::Any)
 
-Return `model` but with all random variables prefixed by `x`.
-
-If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+Return `model` but with all random variables prefixed by `x`, where `x` is either:
+- a `VarName` (e.g. `@varname(a)`),
+- a `Val{sym}` (e.g. `Val(:a)`), or
+- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
+  this will introduce runtime overheads so is not recommended unless absolutely
+  necessary.
 
 # Examples
 
@@ -328,17 +339,19 @@ julia> using DynamicPPL: prefix
 julia> @model demo() = x ~ Dirac(1)
 demo (generic function with 2 methods)
 
-julia> rand(prefix(demo(), :my_prefix))
+julia> rand(prefix(demo(), @varname(my_prefix)))
 (var"my_prefix.x" = 1,)
 
-julia> # One can also use `Val` to avoid runtime overheads.
-       rand(prefix(demo(), Val(:my_prefix)))
+julia> rand(prefix(demo(), Val(:my_prefix)))
 (var"my_prefix.x" = 1,)
 ```
 """
-prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
-function prefix(model::Model, ::Val{x}) where {x}
-    return contextualize(model, PrefixContext{Symbol(x)}(model.context))
+prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::Val{sym}) where {sym}
+    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+end
+function prefix(model::Model, x)
+    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
 end
 
 """
@@ -715,13 +728,13 @@ which explains this in much more detail.
 ```jldoctest
 julia> using DynamicPPL: collapse_prefix_stack
 
-julia> c1 = PrefixContext{:a}(ConditionContext((x=1, )));
+julia> c1 = PrefixContext(@varname(a), ConditionContext((x=1, )));
 
 julia> collapse_prefix_stack(c1)
 ConditionContext(Dict(a.x => 1), DefaultContext())
 
 julia> # Here, `x` gets prefixed only with `a`, whereas `y` is prefixed with both.
-       c2 = PrefixContext{:a}(ConditionContext((x=1, ), PrefixContext{:b}(ConditionContext((y=2,)))));
+       c2 = PrefixContext(@varname(a), ConditionContext((x=1, ), PrefixContext(@varname(b), ConditionContext((y=2,)))));
 
 julia> collapsed = collapse_prefix_stack(c2);
 
@@ -733,14 +746,14 @@ julia> # `collapsed` really looks something like this:
 (1, 2)
 ```
 """
-function collapse_prefix_stack(context::PrefixContext{Prefix}) where {Prefix}
+function collapse_prefix_stack(context::PrefixContext)
     # Collapse the child context (thus applying any inner prefixes first)
     collapsed = collapse_prefix_stack(childcontext(context))
     # Prefix any conditioned variables with the current prefix
     # Note: prefix_conditioned_variables is O(N) in the depth of the context stack.
     # So is this function. In the worst case scenario, this is O(N^2) in the
     # depth of the context stack.
-    return prefix_cond_and_fixed_variables(collapsed, VarName{Prefix}())
+    return prefix_cond_and_fixed_variables(collapsed, context.vn_prefix)
 end
 function collapse_prefix_stack(context::AbstractContext)
     return collapse_prefix_stack(NodeTrait(collapse_prefix_stack, context), context)

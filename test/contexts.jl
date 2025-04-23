@@ -57,14 +57,15 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :sampling => SamplingContext(),
         :minibatch => MiniBatchContext(DefaultContext(), 0.0),
-        :prefix => PrefixContext{:x}(DefaultContext()),
+        :prefix => PrefixContext(@varname(x)),
         :pointwiselogdensity => PointwiseLogdensityContext(),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
         ),
         :condition3 => ConditionContext(
-            (x=1.0,), PrefixContext{:a}(ConditionContext(Dict(@varname(y) => 2.0)))
+            (x=1.0,),
+            PrefixContext(@varname(a), ConditionContext(Dict(@varname(y) => 2.0))),
         ),
         :condition4 => ConditionContext((x=[1.0, missing],)),
     )
@@ -131,31 +132,37 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
     @testset "PrefixContext" begin
         @testset "prefixing" begin
-            ctx = @inferred PrefixContext{:a}(
-                PrefixContext{:b}(
-                    PrefixContext{:c}(
-                        PrefixContext{:d}(
-                            PrefixContext{:e}(PrefixContext{:f}(DefaultContext()))
+            ctx = @inferred PrefixContext(
+                @varname(a),
+                PrefixContext(
+                    @varname(b),
+                    PrefixContext(
+                        @varname(c),
+                        PrefixContext(
+                            @varname(d),
+                            PrefixContext(
+                                @varname(e), PrefixContext(@varname(f), DefaultContext())
+                            ),
                         ),
                     ),
                 ),
             )
-            vn = VarName{:x}()
+            vn = @varname(x)
             vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
             @test vn_prefixed == @varname(a.b.c.d.e.f.x)
 
-            vn = VarName{:x}(((1,),))
+            vn = @varname(x[1])
             vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
             @test vn_prefixed == @varname(a.b.c.d.e.f.x[1])
         end
 
         @testset "nested within arbitrary context stacks" begin
             vn = @varname(x[1])
-            ctx1 = PrefixContext{:a}(DefaultContext())
+            ctx1 = PrefixContext(@varname(a))
             @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
             ctx2 = SamplingContext(ctx1)
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
-            ctx3 = PrefixContext{:b}(ctx2)
+            ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
             ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
@@ -163,30 +170,30 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
         @testset "prefix_and_strip_contexts" begin
             vn = @varname(x[1])
-            ctx1 = PrefixContext{:a}(DefaultContext())
+            ctx1 = PrefixContext(@varname(a))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx1, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == DefaultContext()
 
-            ctx2 = SamplingContext(PrefixContext{:a}(DefaultContext()))
+            ctx2 = SamplingContext(PrefixContext(@varname(a)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == SamplingContext()
 
-            ctx3 = PrefixContext{:a}(ConditionContext((a=1,)))
+            ctx3 = PrefixContext(@varname(a), ConditionContext((a=1,)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == ConditionContext((a=1,))
 
-            ctx4 = SamplingContext(PrefixContext{:a}(ConditionContext((a=1,))))
+            ctx4 = SamplingContext(PrefixContext(@varname(a), ConditionContext((a=1,))))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == SamplingContext(ConditionContext((a=1,)))
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            prefix = :my_prefix
-            context = DynamicPPL.PrefixContext{prefix}(SamplingContext())
+            prefix_vn = @varname(my_prefix)
+            context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
             # Sample with the context.
             varinfo = DynamicPPL.VarInfo()
             DynamicPPL.evaluate!!(model, varinfo, context)
@@ -195,7 +202,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
             # Extract the ground truth varnames
             vns_expected = Set([
-                AbstractPPL.prefix(vn, VarName{prefix}()) for
+                AbstractPPL.prefix(vn, prefix_vn) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             ])
 
@@ -373,7 +380,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             end
 
             # Prefix -> Condition
-            c1 = PrefixContext{:a}(ConditionContext((c=1, d=2)))
+            c1 = PrefixContext(@varname(a), ConditionContext((c=1, d=2)))
             c1 = collapse_prefix_stack(c1)
             @test has_no_prefixcontexts(c1)
             c1_vals = conditioned(c1)
@@ -382,7 +389,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test getvalue(c1_vals, @varname(a.d)) == 2
 
             # Condition -> Prefix
-            c2 = (ConditionContext((c=1, d=2), PrefixContext{:a}(DefaultContext())))
+            c2 = ConditionContext((c=1, d=2), PrefixContext(@varname(a)))
             c2 = collapse_prefix_stack(c2)
             @test has_no_prefixcontexts(c2)
             c2_vals = conditioned(c2)
@@ -391,7 +398,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test getvalue(c2_vals, @varname(d)) == 2
 
             # Prefix -> Fixed
-            c3 = PrefixContext{:a}(FixedContext((f=1, g=2)))
+            c3 = PrefixContext(@varname(a), FixedContext((f=1, g=2)))
             c3 = collapse_prefix_stack(c3)
             c3_vals = fixed(c3)
             @test length(c3_vals) == 2
@@ -400,7 +407,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test getvalue(c3_vals, @varname(a.g)) == 2
 
             # Fixed -> Prefix
-            c4 = (FixedContext((f=1, g=2), PrefixContext{:a}(DefaultContext())))
+            c4 = FixedContext((f=1, g=2), PrefixContext(@varname(a)))
             c4 = collapse_prefix_stack(c4)
             @test has_no_prefixcontexts(c4)
             c4_vals = fixed(c4)
@@ -409,8 +416,11 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test getvalue(c4_vals, @varname(g)) == 2
 
             # Prefix -> Condition -> Prefix -> Condition
-            c5 = PrefixContext{:a}(
-                ConditionContext((c=1,), PrefixContext{:b}(ConditionContext((d=2,))))
+            c5 = PrefixContext(
+                @varname(a),
+                ConditionContext(
+                    (c=1,), PrefixContext(@varname(b), ConditionContext((d=2,)))
+                ),
             )
             c5 = collapse_prefix_stack(c5)
             @test has_no_prefixcontexts(c5)
@@ -420,8 +430,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test getvalue(c5_vals, @varname(a.b.d)) == 2
 
             # Prefix -> Condition -> Prefix -> Fixed
-            c6 = PrefixContext{:a}(
-                ConditionContext((c=1,), PrefixContext{:b}(FixedContext((d=2,))))
+            c6 = PrefixContext(
+                @varname(a),
+                ConditionContext((c=1,), PrefixContext(@varname(b), FixedContext((d=2,)))),
             )
             c6 = collapse_prefix_stack(c6)
             @test has_no_prefixcontexts(c6)
