@@ -134,6 +134,10 @@ The reason for this change is that there were several flavours of VarInfo.
 Some, like `typed_varinfo`, were easy to construct because we had convenience methods for them; however, the others were more difficult.
 This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
+## 0.35.9
+
+Fixed the `isnan` check introduced in 0.35.7 for distributions which returned NamedTuple.
+
 ## 0.35.8
 
 Added the `DynamicPPL.TestUtils.AD.run_ad` function to test the correctness and/or benchmark the performance of an automatic differentiation backend on DynamicPPL models.
