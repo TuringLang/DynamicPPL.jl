@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.35.9
+
+Fixed the `isnan` check introduced in 0.35.7 for distributions which returned NamedTuple.
+
 ## 0.35.8
 
 Added the `DynamicPPL.TestUtils.AD.run_ad` function to test the correctness and/or benchmark the performance of an automatic differentiation backend on DynamicPPL models.
