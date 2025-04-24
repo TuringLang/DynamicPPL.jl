@@ -1,5 +1,5 @@
 @testset "logdensities_likelihoods.jl" begin
-    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS[1:1]
+    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.

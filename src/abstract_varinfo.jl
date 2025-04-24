@@ -105,15 +105,13 @@ end
 
 """
     setaccs!!(vi::AbstractVarInfo, accs::AccumulatorTuple)
-    setaccs!!(vi::AbstractVarInfo, accs::AbstractAccumulator...)
+    setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator} where {N})
 
 Update the `AccumulatorTuple` of `vi` to `accs`, mutating if it makes sense.
 
 `setaccs!!(vi:AbstractVarInfo, accs::AccumulatorTuple) should be implemented by each subtype
 of `AbstractVarInfo`.
 """
-function setaccs!! end
-
 function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator}) where {N}
     return setaccs!!(vi, AccumulatorTuple(accs))
 end

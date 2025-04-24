@@ -46,9 +46,8 @@ Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
 @testset "contexts.jl" begin
-    child_contexts = Dict(:default => DefaultContext())
-
-    parent_contexts = Dict(
+    contexts = Dict(
+        :default => DefaultContext(),
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :sampling => SamplingContext(),
         :prefix => PrefixContext(@varname(x)),
@@ -62,8 +61,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         ),
         :condition4 => ConditionContext((x=[1.0, missing],)),
     )
-
-    contexts = merge(child_contexts, parent_contexts)
 
     @testset "$(name)" for (name, context) in contexts
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS

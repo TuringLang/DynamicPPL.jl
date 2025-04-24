@@ -292,7 +292,7 @@ function typed_varinfo(vi::UntypedVarInfo)
         )
     end
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, vi.accs)
+    return VarInfo(nt, deepcopy(vi.accs))
 end
 function typed_varinfo(vi::NTVarInfo)
     # This function preserves the behaviour of typed_varinfo(vi) where vi is
@@ -353,7 +353,7 @@ single `VarNamedVector` as its metadata field.
 """
 function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
-    return VarInfo(md, vi.accs)
+    return VarInfo(md, deepcopy(vi.accs))
 end
 function untyped_vector_varinfo(
     rng::Random.AbstractRNG,
@@ -396,12 +396,12 @@ NamedTuple of `VarNamedVector`s as its metadata field.
 """
 function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
-    return VarInfo(md, vi.accs)
+    return VarInfo(md, deepcopy(vi.accs))
 end
 function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
     nt = NamedTuple(new_metas)
-    return VarInfo(nt, vi.accs)
+    return VarInfo(nt, deepcopy(vi.accs))
 end
 function typed_vector_varinfo(
     rng::Random.AbstractRNG,
@@ -450,7 +450,7 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
     # plain ugly and hacky.
     et = float_type_with_fallback(eltype(x))
-    accs = map_accumulator!!(vi.accs, convert_eltype, et)
+    accs = map_accumulator!!(deepcopy(vi.accs), convert_eltype, et)
     return VarInfo(md, accs)
 end
 
@@ -533,7 +533,7 @@ end
 
 function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, varinfo.accs)
+    return VarInfo(metadata, deepcopy(varinfo.accs))
 end
 
 function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
@@ -622,7 +622,7 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    return VarInfo(metadata, varinfo_right.accs)
+    return VarInfo(metadata, deepcopy(varinfo_right.accs))
 end
 
 function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
