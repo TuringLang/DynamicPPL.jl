@@ -182,10 +182,16 @@ end
 function resetlogp!!(vi::ThreadSafeVarInfo)
     vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
     for i in eachindex(vi.accs_by_thread)
-        vi.accs_by_thread[i] = map_accumulator(zero, vi.accs_by_thread[i], Val(:LogPrior))
-        vi.accs_by_thread[i] = map_accumulator(
-            zero, vi.accs_by_thread[i], Val(:LogLikelihood)
-        )
+        if hasacc(vi, Val(:LogPrior))
+            vi.accs_by_thread[i] = map_accumulator(
+                zero, vi.accs_by_thread[i], Val(:LogPrior)
+            )
+        end
+        if hasacc(vi, Val(:LogLikelihood))
+            vi.accs_by_thread[i] = map_accumulator(
+                zero, vi.accs_by_thread[i], Val(:LogLikelihood)
+            )
+        end
     end
     return vi
 end
