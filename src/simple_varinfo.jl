@@ -231,7 +231,7 @@ function SimpleVarInfo{T}(
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::VarInfo{<:NamedTuple{names}}, ::Type{D}) where {names,D}
+function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {names,D}
     values = values_as(vi, D)
     return SimpleVarInfo(values, vi.accs)
 end

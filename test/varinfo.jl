@@ -467,6 +467,18 @@ end
 
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
+
+        ## `untyped_varinfo`
+        vi = DynamicPPL.untyped_varinfo(model)
+        vi = DynamicPPL.settrans!!(vi, true, vn)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+        x = f(DynamicPPL.getindex_internal(vi, vn))
+        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+
+        ## `typed_varinfo`
+        vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
         vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
