@@ -46,19 +46,17 @@ function getaccs(vi::ThreadSafeVarInfo)
     return AccumulatorTuple(map(anv -> getacc(vi, anv), accname_vals))
 end
 
-# Calls to map_accumulator!! are thread-specific by default. For any use of them that should
-# _not_ be thread-specific a specific method has to be written.
-function map_accumulator!!(vi::ThreadSafeVarInfo, accname::Val, func::Function, args...)
+# Calls to map_accumulator(s)!! are thread-specific by default. For any use of them that
+# should _not_ be thread-specific a specific method has to be written.
+function map_accumulator!!(func::Function, vi::ThreadSafeVarInfo, accname::Val)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = map_accumulator!!(
-        vi.accs_by_thread[tid], accname, func, args...
-    )
+    vi.accs_by_thread[tid] = map_accumulator(func, vi.accs_by_thread[tid], accname)
     return vi
 end
 
-function map_accumulator!!(vi::ThreadSafeVarInfo, func::Function, args...)
+function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
     tid = Threads.threadid()
-    vi.accs_by_thread[tid] = map_accumulator!!(vi.accs_by_thread[tid], func, args...)
+    vi.accs_by_thread[tid] = map(func, vi.accs_by_thread[tid])
     return vi
 end
 
@@ -186,9 +184,9 @@ end
 function resetlogp!!(vi::ThreadSafeVarInfo)
     vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
     for i in eachindex(vi.accs_by_thread)
-        vi.accs_by_thread[i] = map_accumulator!!(vi.accs_by_thread[i], Val(:LogPrior), zero)
-        vi.accs_by_thread[i] = map_accumulator!!(
-            vi.accs_by_thread[i], Val(:LogLikelihood), zero
+        vi.accs_by_thread[i] = map_accumulator(zero, vi.accs_by_thread[i], Val(:LogPrior))
+        vi.accs_by_thread[i] = map_accumulator(
+            zero, vi.accs_by_thread[i], Val(:LogLikelihood)
         )
     end
     return vi

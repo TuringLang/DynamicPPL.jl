@@ -251,7 +251,7 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     # TODO(mhauru) See comment in unflatten in src/varinfo.jl for why this conversion is
     # required but undesireable.
     et = float_type_with_fallback(eltype(x))
-    accs = map_accumulator!!(svi.accs, convert_eltype, et)
+    accs = map(acc -> convert_eltype(et, acc), svi.accs)
     return SimpleVarInfo(vals, accs, svi.transformation)
 end
 

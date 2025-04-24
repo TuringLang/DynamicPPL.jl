@@ -45,7 +45,7 @@ function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     return _transform!!(NoTransformation(), DynamicTransformationContext{true}(), vi, model)
 end
 
-function _transform(
+function _transform!!(
     t::AbstractTransformation,
     ctx::DynamicTransformationContext,
     vi::AbstractVarInfo,
@@ -54,8 +54,8 @@ function _transform(
     # To transform using DynamicTransformationContext, we evaluate the model, but we do not
     # need to use any accumulators other than LogPrior (which is affected by the Jacobian of
     # the transformation).
-    accs = getaccs(vi.accs)
-    has_logprior = hasacc(accs, Val(:LogPrior))
+    accs = getaccs(vi)
+    has_logprior = haskey(accs, Val(:LogPrior))
     if has_logprior
         old_logprior = getacc(accs, Val(:LogPrior))
         vi = setaccs!!(vi, (old_logprior,))

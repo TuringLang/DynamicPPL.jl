@@ -89,7 +89,7 @@ function combine end
 # TODO(mhauru) The existence of this function makes me sad. See comment in unflatten in
 # src/varinfo.jl.
 """
-    convert_eltype(acc::AbstractAccumulator, ::Type{T})
+    convert_eltype(::Type{T}, acc::AbstractAccumulator)
 
 Convert `acc` to use element type `T`.
 
@@ -97,7 +97,7 @@ What "element type" means depends on the type of `acc`. By default this function
 nothing. Accumulator types that need to hold differentiable values, such as dual numbers
 used by various AD backends, should implement a method for this function.
 """
-convert_eltype(acc::AbstractAccumulator, ::Type) = acc
+convert_eltype(::Type, acc::AbstractAccumulator) = acc
 
 # END ABSTRACT ACCUMULATOR, BEGIN ACCUMULATOR TUPLE
 
@@ -167,36 +167,25 @@ function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
     return at[accname]
 end
 
-"""
-    map_accumulator!!(at::AccumulatorTuple, func::Function, args...)
-
-Update the accumulators in `at` by calling `func(acc, args...)` on them and replacing them
-with the return values.
-
-Returns a new `AccumulatorTuple`. The `!!` in the name is for consistency with the
-corresponding function for `AbstractVarInfo`.
-"""
-function map_accumulator!!(at::AccumulatorTuple, func::Function, args...)
-    return AccumulatorTuple(map(acc -> func(acc, args...), at.nt))
+function Base.map(func::Function, at::AccumulatorTuple)
+    return AccumulatorTuple(map(func, at.nt))
 end
 
 """
-    map_accumulator!!(at::AccumulatorTuple, ::Val{accname}, func::Function, args...)
+    map_accumulator(func::Function, at::AccumulatorTuple, ::Val{accname})
 
-Update the accumulator with name `accname` in `at` by calling `func(acc, args...)` on it
-and replacing it with the return value.
+Update the accumulator with name `accname` in `at` by calling `func` on it.
 
-Returns a new `AccumulatorTuple`. The `!!` in the name is for consistency with the
-corresponding function for `AbstractVarInfo`.
+Returns a new `AccumulatorTuple`.
 """
-function map_accumulator!!(
-    at::AccumulatorTuple, ::Val{accname}, func::Function, args...
+function map_accumulator(
+    func::Function, at::AccumulatorTuple, ::Val{accname}
 ) where {accname}
     # Would like to write this as
     # return Accessors.@set at.nt[accname] = func(at[accname], args...)
     # for readability, but that one isn't type stable due to
     # https://github.com/JuliaObjects/Accessors.jl/issues/198
-    new_val = func(at[accname], args...)
+    new_val = func(at[accname])
     new_nt = merge(at.nt, NamedTuple{(accname,)}((new_val,)))
     return AccumulatorTuple(new_nt)
 end
@@ -318,7 +307,7 @@ end
 # convert_eltype(::AbstractAccumulator, ::Type). This is because they are only used to
 # deal with dual number types of AD backends, which shouldn't concern NumProduce. This is
 # horribly hacky and should be fixed. See also comment in `unflatten` in `src/varinfo.jl`.
-convert_eltype(acc::LogPrior, ::Type{T}) where {T} = LogPrior(convert(T, acc.logp))
-function convert_eltype(acc::LogLikelihood, ::Type{T}) where {T}
+convert_eltype(::Type{T}, acc::LogPrior) where {T} = LogPrior(convert(T, acc.logp))
+function convert_eltype(::Type{T}, acc::LogLikelihood) where {T}
     return LogLikelihood(convert(T, acc.logp))
 end

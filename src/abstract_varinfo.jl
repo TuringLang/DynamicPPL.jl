@@ -239,7 +239,7 @@ end
 Update all the accumulators of `vi` by calling `accumulate_assume!!` on them.
 """
 function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
-    return map_accumulator!!(vi, accumulate_assume!!, val, logjac, vn, right)
+    return map_accumulators!!(acc -> accumulate_assume!!(acc, val, logjac, vn, right), vi)
 end
 
 """
@@ -248,37 +248,35 @@ end
 Update all the accumulators of `vi` by calling `accumulate_observe!!` on them.
 """
 function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
-    return map_accumulator!!(vi, accumulate_observe!!, right, left, vn)
+    return map_accumulators!!(acc -> accumulate_observe!!(acc, right, left, vn), vi)
 end
 
 """
-    map_accumulator!!(vi::AbstractVarInfo, func::Function, args...) where {accname}
+    map_accumulators(vi::AbstractVarInfo, func::Function)
 
-Update all accumulators of `vi` by calling `func(acc, args...)` on them and replacing
-them with the return values.
+Update all accumulators of `vi` by calling `func` on them and replacing them with the return
+values.
 """
-function map_accumulator!!(vi::AbstractVarInfo, func::Function, args...)
-    return setaccs!!(vi, map_accumulator!!(getaccs(vi), func, args...))
+function map_accumulators!!(func::Function, vi::AbstractVarInfo)
+    return setaccs!!(vi, map(func, getaccs(vi)))
 end
 
 """
-    map_accumulator!!(vi::AbstractVarInfo, ::Val{accname}, func::Function, args...) where {accname}
+    map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) where {accname}
 
-Update the accumulator `accname` of `vi` by calling `func(acc, args...)` on and replacing
-it with the return value.
+Update the accumulator `accname` of `vi` by calling `func` on it and replacing it with the
+return value.
 """
-function map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
-    return setaccs!!(vi, map_accumulator!!(getaccs(vi), accname, func, args...))
+function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Val)
+    return setaccs!!(vi, map_accumulator(func, getaccs(vi), accname))
 end
 
-function map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
     return error(
         """
-        The method
-        map_accumulator!!(vi::AbstractVarInfo, accname::Symbol, func::Function, args...)
+        The method map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
         does not exist. For type stability reasons use
-        map_accumulator!!(vi::AbstractVarInfo, accname::Val, func::Function, args...)
-        instead.
+        map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) instead.
         """
     )
 end
@@ -291,7 +289,7 @@ Add `logp` to the value of the log of the prior probability in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
 function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(vi, Val(:LogPrior), +, LogPrior(logp))
+    return map_accumulator!!(acc -> acc + LogPrior(logp), vi, Val(:LogPrior))
 end
 
 """
@@ -302,7 +300,7 @@ Add `logp` to the value of the log of the likelihood in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
 """
 function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(vi, Val(:LogLikelihood), +, LogLikelihood(logp))
+    return map_accumulator!!(acc -> acc + LogLikelihood(logp), vi, Val(:LogLikelihood))
 end
 
 """
@@ -326,10 +324,10 @@ Reset the values of the log probabilities (prior and likelihood) in `vi`
 """
 function resetlogp!!(vi::AbstractVarInfo)
     if hasacc(vi, Val(:LogPrior))
-        vi = map_accumulator!!(vi, Val(:LogPrior), zero)
+        vi = map_accumulator!!(zero, vi, Val(:LogPrior))
     end
     if hasacc(vi, Val(:LogLikelihood))
-        vi = map_accumulator!!(vi, Val(:LogLikelihood), zero)
+        vi = map_accumulator!!(zero, vi, Val(:LogLikelihood))
     end
     return vi
 end

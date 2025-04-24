@@ -450,7 +450,7 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
     # plain ugly and hacky.
     et = float_type_with_fallback(eltype(x))
-    accs = map_accumulator!!(deepcopy(vi.accs), convert_eltype, et)
+    accs = map(acc -> convert_eltype(et, acc), deepcopy(getaccs(vi)))
     return VarInfo(md, accs)
 end
 
@@ -1032,7 +1032,7 @@ set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduce(n))
 
 Add 1 to `num_produce` in `vi`.
 """
-increment_num_produce!!(vi::VarInfo) = map_accumulator!!(vi, Val(:NumProduce), increment)
+increment_num_produce!!(vi::VarInfo) = map_accumulator!!(increment, vi, Val(:NumProduce))
 
 """
     reset_num_produce!!(vi::VarInfo)
@@ -1040,7 +1040,7 @@ increment_num_produce!!(vi::VarInfo) = map_accumulator!!(vi, Val(:NumProduce), i
 Reset the value of `num_produce` the log of the joint probability of the observed data
 and parameters sampled in `vi` to 0.
 """
-reset_num_produce!!(vi::VarInfo) = map_accumulator!!(vi, Val(:NumProduce), zero)
+reset_num_produce!!(vi::VarInfo) = map_accumulator!!(zero, vi, Val(:NumProduce))
 
 # Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
 isempty(vi::VarInfo) = _isempty(vi.metadata)

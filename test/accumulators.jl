@@ -14,7 +14,7 @@ using DynamicPPL:
     convert_eltype,
     getacc,
     increment,
-    map_accumulator!!,
+    map_accumulator,
     setacc!!,
     split
 
@@ -66,8 +66,8 @@ using DynamicPPL:
                 LogLikelihood{Float32}(1.0f0)
             @test convert(NumProduce{UInt8}, NumProduce(1)) == NumProduce{UInt8}(1)
 
-            @test convert_eltype(LogPrior(1.0), Float32) == LogPrior{Float32}(1.0f0)
-            @test convert_eltype(LogLikelihood(1.0), Float32) ==
+            @test convert_eltype(Float32, LogPrior(1.0)) == LogPrior{Float32}(1.0f0)
+            @test convert_eltype(Float32, LogLikelihood(1.0)) ==
                 LogLikelihood{Float32}(1.0f0)
         end
 
@@ -137,23 +137,23 @@ using DynamicPPL:
             @test getacc(at_all64, Val(:LogPrior)) == lp_f64
         end
 
-        @testset "map_accumulator!!" begin
+        @testset "map_accumulator(s)!!" begin
             # map over all accumulators
             accs = AccumulatorTuple(lp_f32, ll_f32)
-            @test map_accumulator!!(accs, zero) ==
-                AccumulatorTuple(LogPrior(0.0f0), LogLikelihood(0.0f0))
+            @test map(zero, accs) == AccumulatorTuple(LogPrior(0.0f0), LogLikelihood(0.0f0))
             # Test that the original wasn't modified.
             @test accs == AccumulatorTuple(lp_f32, ll_f32)
 
-            # A map with extra arguments that changes the types of the accumulators.
-            @test map_accumulator!!(accs, convert_eltype, Float64) ==
+            # A map with a closure that changes the types of the accumulators.
+            @test map(acc -> convert_eltype(Float64, acc), accs) ==
                 AccumulatorTuple(LogPrior(1.0), LogLikelihood(1.0))
 
             # only apply to a particular accumulator
-            @test map_accumulator!!(accs, Val(:LogLikelihood), zero) ==
+            @test map_accumulator(zero, accs, Val(:LogLikelihood)) ==
                 AccumulatorTuple(lp_f32, LogLikelihood(0.0f0))
-            @test map_accumulator!!(accs, Val(:LogLikelihood), convert_eltype, Float64) ==
-                AccumulatorTuple(lp_f32, LogLikelihood(1.0))
+            @test map_accumulator(
+                acc -> convert_eltype(Float64, acc), accs, Val(:LogLikelihood)
+            ) == AccumulatorTuple(lp_f32, LogLikelihood(1.0))
         end
     end
 end
