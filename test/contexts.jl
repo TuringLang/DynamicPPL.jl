@@ -1,4 +1,5 @@
 using Test, DynamicPPL, Accessors
+using AbstractPPL: getoptic
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -10,12 +11,18 @@ using DynamicPPL:
     IsParent,
     PointwiseLogdensityContext,
     contextual_isassumption,
+    FixedContext,
     ConditionContext,
     decondition_context,
     hasconditioned,
     getconditioned,
+    conditioned,
+    fixed,
     hasconditioned_nested,
-    getconditioned_nested
+    getconditioned_nested,
+    collapse_prefix_stack,
+    prefix_cond_and_fixed_variables,
+    getvalue
 
 using EnzymeCore
 
@@ -39,101 +46,84 @@ end
 Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
-"""
-    remove_prefix(vn::VarName)
-
-Return `vn` but now with the prefix removed.
-"""
-function remove_prefix(vn::VarName)
-    return VarName{Symbol(split(string(vn), string(DynamicPPL.PREFIX_SEPARATOR))[end])}(
-        getoptic(vn)
-    )
-end
-
 @testset "contexts.jl" begin
-    child_contexts = [DefaultContext(), PriorContext(), LikelihoodContext()]
+    child_contexts = Dict(
+        :default => DefaultContext(),
+        :prior => PriorContext(),
+        :likelihood => LikelihoodContext(),
+    )
 
-    parent_contexts = [
-        DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
-        SamplingContext(),
-        MiniBatchContext(DefaultContext(), 0.0),
-        PrefixContext{:x}(DefaultContext()),
-        PointwiseLogdensityContext(),
-        ConditionContext((x=1.0,)),
-        ConditionContext(
+    parent_contexts = Dict(
+        :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
+        :sampling => SamplingContext(),
+        :minibatch => MiniBatchContext(DefaultContext(), 0.0),
+        :prefix => PrefixContext(@varname(x)),
+        :pointwiselogdensity => PointwiseLogdensityContext(),
+        :condition1 => ConditionContext((x=1.0,)),
+        :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
         ),
-        ConditionContext((x=1.0,), PrefixContext{:a}(ConditionContext((var"a.y"=2.0,)))),
-        ConditionContext((x=[1.0, missing],)),
-    ]
+        :condition3 => ConditionContext(
+            (x=1.0,),
+            PrefixContext(@varname(a), ConditionContext(Dict(@varname(y) => 2.0))),
+        ),
+        :condition4 => ConditionContext((x=[1.0, missing],)),
+    )
 
-    contexts = vcat(child_contexts, parent_contexts)
+    contexts = merge(child_contexts, parent_contexts)
 
-    @testset "$(context)" for context in contexts
+    @testset "$(name)" for (name, context) in contexts
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             DynamicPPL.TestUtils.test_context(context, model)
         end
     end
 
-    @testset "contextual_isassumption" begin
-        @testset "$context" for context in contexts
-            # Any `context` should return `true` by default.
-            @test contextual_isassumption(context, VarName{gensym(:x)}())
+    @testset "extracting conditioned values" begin
+        # This testset tests `contextual_isassumption`, `getconditioned_nested`, and
+        # `hasconditioned_nested`.
+
+        @testset "$(name)" for (name, context) in contexts
+            # If the varname doesn't exist, it should always be an assumption.
+            fake_vn = VarName{gensym(:x)}()
+            @test contextual_isassumption(context, fake_vn)
+            @test !hasconditioned_nested(context, fake_vn)
+            @test_throws ErrorException getconditioned_nested(context, fake_vn)
 
             if any(Base.Fix2(isa, ConditionContext), context)
                 # We have a `ConditionContext` among us.
                 # Let's first extract the conditioned variables.
                 conditioned_values = DynamicPPL.conditioned(context)
 
-                for (sym, val) in pairs(conditioned_values)
-                    vn = VarName{sym}()
+                # The conditioned values might be a NamedTuple, or a Dict.
+                # We convert to a Dict for consistency
+                conditioned_values = DynamicPPL.to_varname_dict(conditioned_values)
 
-                    # We need to drop the prefix of `var` since in `contextual_isassumption`
-                    # it will be threaded through the `PrefixContext` before it reaches
-                    # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = remove_prefix(vn)
+                # Extract all conditioned variables. We also use varname_leaves
+                # here to split up arrays which could potentially have some,
+                # but not all, elements being `missing`.
+                conditioned_vns = mapreduce(
+                    p -> DynamicPPL.TestUtils.varname_leaves(p.first, p.second),
+                    vcat,
+                    pairs(conditioned_values),
+                )
 
-                    # Let's check elementwise.
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                        if getoptic(vn_child)(val) === missing
-                            @test contextual_isassumption(context, vn_child)
-                        else
-                            @test !contextual_isassumption(context, vn_child)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    @testset "getconditioned_nested & hasconditioned_nested" begin
-        @testset "$context" for context in contexts
-            fake_vn = VarName{gensym(:x)}()
-            @test !hasconditioned_nested(context, fake_vn)
-            @test_throws ErrorException getconditioned_nested(context, fake_vn)
-
-            if any(Base.Fix2(isa, ConditionContext), context)
-                # `ConditionContext` specific.
-
-                # Let's first extract the conditioned variables.
-                conditioned_values = DynamicPPL.conditioned(context)
-
-                for (sym, val) in pairs(conditioned_values)
-                    vn = VarName{sym}()
-
-                    # We need to drop the prefix of `var` since in `contextual_isassumption`
-                    # it will be threaded through the `PrefixContext` before it reaches
-                    # `ConditionContext` with the conditioned variable.
-                    vn_without_prefix = remove_prefix(vn)
-
-                    for vn_child in
-                        DynamicPPL.TestUtils.varname_leaves(vn_without_prefix, val)
-                        # `vn_child` should be in `context`.
-                        @test hasconditioned_nested(context, vn_child)
-                        # Value should be the same as extracted above.
-                        @test getconditioned_nested(context, vn_child) ===
-                            getoptic(vn_child)(val)
+                # We can now loop over them to check which ones are missing. We use
+                # `getvalue` to handle the awkward case where sometimes
+                # `conditioned_values` contains the full Varname (e.g. `a.x`) and
+                # sometimes only the main symbol (e.g. it contains `x` when
+                # `vn` is `x[1]`)
+                for vn in conditioned_vns
+                    val = DynamicPPL.getvalue(conditioned_values, vn)
+                    # These VarNames are present in the conditioning values, so
+                    # we should always be able to extract the value.
+                    @test hasconditioned_nested(context, vn)
+                    @test getconditioned_nested(context, vn) === val
+                    # However, the return value of contextual_isassumption depends on
+                    # whether the value is missing or not.
+                    if ismissing(val)
+                        @test contextual_isassumption(context, vn)
+                    else
+                        @test !contextual_isassumption(context, vn)
                     end
                 end
             end
@@ -142,62 +132,82 @@ end
 
     @testset "PrefixContext" begin
         @testset "prefixing" begin
-            ctx = @inferred PrefixContext{:a}(
-                PrefixContext{:b}(
-                    PrefixContext{:c}(
-                        PrefixContext{:d}(
-                            PrefixContext{:e}(PrefixContext{:f}(DefaultContext()))
+            ctx = @inferred PrefixContext(
+                @varname(a),
+                PrefixContext(
+                    @varname(b),
+                    PrefixContext(
+                        @varname(c),
+                        PrefixContext(
+                            @varname(d),
+                            PrefixContext(
+                                @varname(e), PrefixContext(@varname(f), DefaultContext())
+                            ),
                         ),
                     ),
                 ),
             )
-            vn = VarName{:x}()
+            vn = @varname(x)
             vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-            @test getoptic(vn_prefixed) === getoptic(vn)
+            @test vn_prefixed == @varname(a.b.c.d.e.f.x)
 
-            vn = VarName{:x}(((1,),))
+            vn = @varname(x[1])
             vn_prefixed = @inferred DynamicPPL.prefix(ctx, vn)
-            @test DynamicPPL.getsym(vn_prefixed) == Symbol("a.b.c.d.e.f.x")
-            @test getoptic(vn_prefixed) === getoptic(vn)
+            @test vn_prefixed == @varname(a.b.c.d.e.f.x[1])
         end
 
         @testset "nested within arbitrary context stacks" begin
             vn = @varname(x[1])
-            ctx1 = PrefixContext{:a}(DefaultContext())
+            ctx1 = PrefixContext(@varname(a))
+            @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
             ctx2 = SamplingContext(ctx1)
-            ctx3 = PrefixContext{:b}(ctx2)
+            @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
+            ctx3 = PrefixContext(@varname(b), ctx2)
+            @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
             ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
-            vn_prefixed1 = prefix(ctx1, vn)
-            vn_prefixed2 = prefix(ctx2, vn)
-            vn_prefixed3 = prefix(ctx3, vn)
-            vn_prefixed4 = prefix(ctx4, vn)
-            @test DynamicPPL.getsym(vn_prefixed1) == Symbol("a.x")
-            @test DynamicPPL.getsym(vn_prefixed2) == Symbol("a.x")
-            @test DynamicPPL.getsym(vn_prefixed3) == Symbol("b.a.x")
-            @test DynamicPPL.getsym(vn_prefixed4) == Symbol("b.a.x")
-            @test DynamicPPL.getoptic(vn_prefixed1) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed2) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed3) === DynamicPPL.getoptic(vn)
-            @test DynamicPPL.getoptic(vn_prefixed4) === DynamicPPL.getoptic(vn)
+            @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
-        context = DynamicPPL.PrefixContext{:prefix}(SamplingContext())
+        @testset "prefix_and_strip_contexts" begin
+            vn = @varname(x[1])
+            ctx1 = PrefixContext(@varname(a))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx1, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == DefaultContext()
+
+            ctx2 = SamplingContext(PrefixContext(@varname(a)))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == SamplingContext()
+
+            ctx3 = PrefixContext(@varname(a), ConditionContext((a=1,)))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == ConditionContext((a=1,))
+
+            ctx4 = SamplingContext(PrefixContext(@varname(a), ConditionContext((a=1,))))
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
+            @test new_vn == @varname(a.x[1])
+            @test new_ctx == SamplingContext(ConditionContext((a=1,)))
+        end
+
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            prefix_vn = @varname(my_prefix)
+            context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
             # Sample with the context.
             varinfo = DynamicPPL.VarInfo()
             DynamicPPL.evaluate!!(model, varinfo, context)
-            # Extract the resulting symbols.
-            vns_varinfo_syms = Set(map(DynamicPPL.getsym, keys(varinfo)))
+            # Extract the resulting varnames
+            vns_actual = Set(keys(varinfo))
 
-            # Extract the ground truth symbols.
-            vns_syms = Set([
-                Symbol("prefix", DynamicPPL.PREFIX_SEPARATOR, DynamicPPL.getsym(vn)) for
+            # Extract the ground truth varnames
+            vns_expected = Set([
+                AbstractPPL.prefix(vn, prefix_vn) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             ])
 
             # Check that all variables are prefixed correctly.
-            @test vns_syms == vns_varinfo_syms
+            @test vns_actual == vns_expected
         end
     end
 
@@ -329,6 +339,105 @@ end
             @test model_fixed().s == s
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
+        end
+    end
+
+    @testset "PrefixContext + Condition/FixedContext interactions" begin
+        @testset "prefix_cond_and_fixed_variables" begin
+            c1 = ConditionContext((c=1, d=2))
+            c1_prefixed = prefix_cond_and_fixed_variables(c1, @varname(a))
+            @test c1_prefixed isa ConditionContext
+            @test childcontext(c1_prefixed) isa DefaultContext
+            @test c1_prefixed.values[@varname(a.c)] == 1
+            @test c1_prefixed.values[@varname(a.d)] == 2
+
+            c2 = FixedContext((f=1, g=2))
+            c2_prefixed = prefix_cond_and_fixed_variables(c2, @varname(a))
+            @test c2_prefixed isa FixedContext
+            @test childcontext(c2_prefixed) isa DefaultContext
+            @test c2_prefixed.values[@varname(a.f)] == 1
+            @test c2_prefixed.values[@varname(a.g)] == 2
+
+            c3 = ConditionContext((c=1, d=2), FixedContext((f=1, g=2)))
+            c3_prefixed = prefix_cond_and_fixed_variables(c3, @varname(a))
+            c3_prefixed_child = childcontext(c3_prefixed)
+            @test c3_prefixed isa ConditionContext
+            @test c3_prefixed.values[@varname(a.c)] == 1
+            @test c3_prefixed.values[@varname(a.d)] == 2
+            @test c3_prefixed_child isa FixedContext
+            @test c3_prefixed_child.values[@varname(a.f)] == 1
+            @test c3_prefixed_child.values[@varname(a.g)] == 2
+            @test childcontext(c3_prefixed_child) isa DefaultContext
+        end
+
+        @testset "collapse_prefix_stack" begin
+            # Utility function to make sure that there are no PrefixContexts in
+            # the context stack.
+            function has_no_prefixcontexts(ctx::AbstractContext)
+                return !(ctx isa PrefixContext) && (
+                    NodeTrait(ctx) isa IsLeaf || has_no_prefixcontexts(childcontext(ctx))
+                )
+            end
+
+            # Prefix -> Condition
+            c1 = PrefixContext(@varname(a), ConditionContext((c=1, d=2)))
+            c1 = collapse_prefix_stack(c1)
+            @test has_no_prefixcontexts(c1)
+            c1_vals = conditioned(c1)
+            @test length(c1_vals) == 2
+            @test getvalue(c1_vals, @varname(a.c)) == 1
+            @test getvalue(c1_vals, @varname(a.d)) == 2
+
+            # Condition -> Prefix
+            c2 = ConditionContext((c=1, d=2), PrefixContext(@varname(a)))
+            c2 = collapse_prefix_stack(c2)
+            @test has_no_prefixcontexts(c2)
+            c2_vals = conditioned(c2)
+            @test length(c2_vals) == 2
+            @test getvalue(c2_vals, @varname(c)) == 1
+            @test getvalue(c2_vals, @varname(d)) == 2
+
+            # Prefix -> Fixed
+            c3 = PrefixContext(@varname(a), FixedContext((f=1, g=2)))
+            c3 = collapse_prefix_stack(c3)
+            c3_vals = fixed(c3)
+            @test length(c3_vals) == 2
+            @test length(c3_vals) == 2
+            @test getvalue(c3_vals, @varname(a.f)) == 1
+            @test getvalue(c3_vals, @varname(a.g)) == 2
+
+            # Fixed -> Prefix
+            c4 = FixedContext((f=1, g=2), PrefixContext(@varname(a)))
+            c4 = collapse_prefix_stack(c4)
+            @test has_no_prefixcontexts(c4)
+            c4_vals = fixed(c4)
+            @test length(c4_vals) == 2
+            @test getvalue(c4_vals, @varname(f)) == 1
+            @test getvalue(c4_vals, @varname(g)) == 2
+
+            # Prefix -> Condition -> Prefix -> Condition
+            c5 = PrefixContext(
+                @varname(a),
+                ConditionContext(
+                    (c=1,), PrefixContext(@varname(b), ConditionContext((d=2,)))
+                ),
+            )
+            c5 = collapse_prefix_stack(c5)
+            @test has_no_prefixcontexts(c5)
+            c5_vals = conditioned(c5)
+            @test length(c5_vals) == 2
+            @test getvalue(c5_vals, @varname(a.c)) == 1
+            @test getvalue(c5_vals, @varname(a.b.d)) == 2
+
+            # Prefix -> Condition -> Prefix -> Fixed
+            c6 = PrefixContext(
+                @varname(a),
+                ConditionContext((c=1,), PrefixContext(@varname(b), FixedContext((d=2,)))),
+            )
+            c6 = collapse_prefix_stack(c6)
+            @test has_no_prefixcontexts(c6)
+            @test conditioned(c6) == Dict(@varname(a.c) => 1)
+            @test fixed(c6) == Dict(@varname(a.b.d) => 2)
         end
     end
 end

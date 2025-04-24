@@ -63,8 +63,8 @@
 
             # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
             @model function ModelOuterWorking2()
-                x1 ~ to_submodel(prefix(ModelInner(), :a), false)
-                x2 ~ to_submodel(prefix(ModelInner(), :b), false)
+                x1 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :a), false)
+                x2 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :b), false)
                 return (x1, x2)
             end
             model = ModelOuterWorking2()

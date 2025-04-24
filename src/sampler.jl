@@ -86,7 +86,7 @@ function default_varinfo(
     context::AbstractContext,
 )
     init_sampler = initialsampler(sampler)
-    return VarInfo(rng, model, init_sampler, context)
+    return typed_varinfo(rng, model, init_sampler, context)
 end
 
 function AbstractMCMC.sample(

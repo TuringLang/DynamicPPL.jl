@@ -92,7 +92,7 @@
             SimpleVarInfo(Dict()),
             SimpleVarInfo(values_constrained),
             SimpleVarInfo(DynamicPPL.VarNamedVector()),
-            VarInfo(model),
+            DynamicPPL.typed_varinfo(model),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
@@ -110,12 +110,6 @@
             @test lp_linked ≈ lp_linked_true
             # Should be approx. the same as the "lazy" transformation.
             @test logjoint(model, vi_linked) ≈ lp_linked
-
-            # TODO: Should not `VarInfo` also error here? The current implementation
-            # only warns and acts as a no-op.
-            if vi isa SimpleVarInfo
-                @test_throws AssertionError link!!(vi_linked, model)
-            end
 
             # `invlink!!`
             vi_invlinked = invlink!!(deepcopy(vi_linked), model)
