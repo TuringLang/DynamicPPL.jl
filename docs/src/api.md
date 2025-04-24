@@ -78,9 +78,9 @@ decondition
 
 ## Fixing and unfixing
 
-We can also _fix_ a collection of variables in a [`Model`](@ref) to certain using [`fix`](@ref).
+We can also _fix_ a collection of variables in a [`Model`](@ref) to certain values using [`DynamicPPL.fix`](@ref).
 
-This might seem quite similar to the aforementioned [`condition`](@ref) and its siblings,
+This is quite similar to the aforementioned [`condition`](@ref) and its siblings,
 but they are indeed different operations:
 
   - `condition`ed variables are considered to be _observations_, and are thus
@@ -89,19 +89,19 @@ but they are indeed different operations:
   - `fix`ed variables are considered to be _constant_, and are thus not included
     in any log-probability computations.
 
-The differences are more clearly spelled out in the docstring of [`fix`](@ref) below.
+The differences are more clearly spelled out in the docstring of [`DynamicPPL.fix`](@ref) below.
 
 ```@docs
-fix
+DynamicPPL.fix
 DynamicPPL.fixed
 ```
 
-The difference between [`fix`](@ref) and [`condition`](@ref) is described in the docstring of [`fix`](@ref) above.
+The difference between [`DynamicPPL.fix`](@ref) and [`DynamicPPL.condition`](@ref) is described in the docstring of [`DynamicPPL.fix`](@ref) above.
 
-Similarly, we can [`unfix`](@ref) variables, i.e. return them to their original meaning:
+Similarly, we can revert this with [`DynamicPPL.unfix`](@ref), i.e. return the variables to their original meaning:
 
 ```@docs
-unfix
+DynamicPPL.unfix
 ```
 
 ## Predicting
@@ -205,7 +205,17 @@ values_as_in_model
 NamedDist
 ```
 
-## Testing Utilities
+## AD testing and benchmarking utilities
+
+To test and/or benchmark the performance of an AD backend on a model, DynamicPPL provides the following utilities:
+
+```@docs
+DynamicPPL.TestUtils.AD.run_ad
+DynamicPPL.TestUtils.AD.ADResult
+DynamicPPL.TestUtils.AD.ADIncorrectException
+```
+
+## Demo models
 
 DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
 

@@ -123,6 +123,24 @@
         end
     end
 
+    @testset "NaN in data" begin
+        @model function demo_nan_in_data(x)
+            a ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(a)
+            end
+        end
+        m = demo_nan_in_data([1.0, NaN])
+        @test_throws ErrorException check_model(m; error_on_failure=true)
+        # Test NamedTuples with nested arrays, see #898
+        @model function demo_nan_complicated(nt)
+            nt ~ product_distribution((x=Normal(), y=Dirichlet([2, 4])))
+            return x ~ Normal()
+        end
+        m = demo_nan_complicated((x=1.0, y=[NaN, 0.5]))
+        @test_throws ErrorException check_model(m; error_on_failure=true)
+    end
+
     @testset "incorrect use of condition" begin
         @testset "missing in multivariate" begin
             @model function demo_missing_in_multivariate(x)

@@ -223,25 +223,20 @@ function record_varname!(context::DebugContext, varname::VarName, dist)
     end
 end
 
-# tilde
-_isassigned(x::AbstractArray, i) = isassigned(x, i)
-# HACK(torfjelde): Julia v1.7 only supports `isassigned(::AbstractArray, ::Int...)`.
-# TODO(torfjelde): Determine exactly in which version this change was introduced.
-if VERSION < v"v1.9.0-alpha1"
-    _isassigned(x::AbstractArray, inds::Tuple) = isassigned(x, inds...)
-    _isassigned(x::AbstractArray, idx::CartesianIndex) = _isassigned(x, Tuple(idx))
-end
-
 _has_missings(x) = ismissing(x)
 function _has_missings(x::AbstractArray)
     # Can't just use `any` because `x` might contain `undef`.
     for i in eachindex(x)
-        if _isassigned(x, i) && _has_missings(x[i])
+        if isassigned(x, i) && _has_missings(x[i])
             return true
         end
     end
     return false
 end
+
+_has_nans(x::NamedTuple) = any(_has_nans, x)
+_has_nans(x::AbstractArray) = any(_has_nans, x)
+_has_nans(x) = isnan(x)
 
 # assume
 function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
@@ -282,9 +277,18 @@ function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
     # Check for `missing`s; these should not end up here.
     if _has_missings(left)
         error(
-            "Encountered missing value(s) in observe!\n" *
-            "Remember that using `missing` to de-condition a variable is only " *
-            "supported for univariate distributions, not for $dist",
+            "Encountered `missing` value(s) on the left-hand side" *
+            " of an observe statement. Using `missing` to de-condition" *
+            " a variable is only supported for univariate distributions," *
+            " not for $dist.",
+        )
+    end
+    # Check for NaN's as well
+    if _has_nans(left)
+        error(
+            "Encountered a NaN value on the left-hand side of an" *
+            " observe statement; this may indicate that your data" *
+            " contain NaN values.",
         )
     end
 end
@@ -460,7 +464,7 @@ end
 
 Check that `model` is valid, warning about any potential issues.
 
-See [`check_model_and_trace`](@ref) for more details on supported keword arguments
+See [`check_model_and_trace`](@ref) for more details on supported keyword arguments
 and details of which types of checks are performed.
 
 # Returns

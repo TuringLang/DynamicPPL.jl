@@ -181,7 +181,6 @@ include("context_implementations.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
 include("submodel_macro.jl")
-include("test_utils.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
@@ -190,6 +189,7 @@ include("values_as_in_model.jl")
 
 include("debug_utils.jl")
 using .DebugUtils
+include("test_utils.jl")
 
 include("experimental.jl")
 include("deprecated.jl")

@@ -66,6 +66,7 @@ include("test_util.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
         include("deprecated.jl")
+        include("submodels.jl")
     end
 
     if GROUP == "All" || GROUP == "Group2"

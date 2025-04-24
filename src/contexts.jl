@@ -199,27 +199,34 @@ struct DefaultContext <: AbstractContext end
 NodeTrait(::DefaultContext) = IsLeaf()
 
 """
-    PrefixContext{Prefix}(context)
+    PrefixContext(vn::VarName[, context::AbstractContext])
+    PrefixContext(vn::Val{sym}[, context::AbstractContext]) where {sym}
 
 Create a context that allows you to use the wrapped `context` when running the model and
-adds the `Prefix` to all parameters.
+prefixes all parameters with the VarName `vn`.
+
+`PrefixContext(Val(:a), context)` is equivalent to `PrefixContext(@varname(a), context)`.
+If `context` is not provided, it defaults to `DefaultContext()`.
 
 This context is useful in nested models to ensure that the names of the parameters are
 unique.
 
 See also: [`to_submodel`](@ref)
 """
-struct PrefixContext{Prefix,C} <: AbstractContext
+struct PrefixContext{Tvn<:VarName,C<:AbstractContext} <: AbstractContext
+    vn_prefix::Tvn
     context::C
 end
-function PrefixContext{Prefix}(context::AbstractContext) where {Prefix}
-    return PrefixContext{Prefix,typeof(context)}(context)
+PrefixContext(vn::VarName) = PrefixContext(vn, DefaultContext())
+function PrefixContext(::Val{sym}, context::AbstractContext) where {sym}
+    return PrefixContext(VarName{sym}(), context)
 end
+PrefixContext(::Val{sym}) where {sym} = PrefixContext(VarName{sym}())
 
 NodeTrait(::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
-function setchildcontext(::PrefixContext{Prefix}, child) where {Prefix}
-    return PrefixContext{Prefix}(child)
+function setchildcontext(ctx::PrefixContext, child::AbstractContext)
+    return PrefixContext(ctx.vn_prefix, child)
 end
 
 """
@@ -227,8 +234,8 @@ end
 
 Apply the prefixes in the context `ctx` to the variable name `vn`.
 """
-function prefix(ctx::PrefixContext{Prefix}, vn::VarName{Sym}) where {Prefix,Sym}
-    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), VarName{Symbol(Prefix)}())
+function prefix(ctx::PrefixContext, vn::VarName)
+    return AbstractPPL.prefix(prefix(childcontext(ctx), vn), ctx.vn_prefix)
 end
 function prefix(ctx::AbstractContext, vn::VarName)
     return prefix(NodeTrait(ctx), ctx, vn)
@@ -239,11 +246,52 @@ function prefix(::IsParent, ctx::AbstractContext, vn::VarName)
 end
 
 """
-    prefix(model::Model, x)
+    prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
 
-Return `model` but with all random variables prefixed by `x`.
+Same as `prefix`, but additionally returns a new context stack that has all the
+PrefixContexts removed.
 
-If `x` is known at compile-time, use `Val{x}()` to avoid runtime overheads for prefixing.
+NOTE: This does _not_ modify any variables in any `ConditionContext` and
+`FixedContext` that may be present in the context stack. This is because this
+function is only used in `tilde_assume`, which is lower in the tilde-pipeline
+than `contextual_isassumption` and `contextual_isfixed` (the functions which
+actually use the `ConditionContext` and `FixedContext` values). Thus, by this
+time, any `ConditionContext`s and `FixedContext`s present have already served
+their purpose.
+
+If you call this function, you must therefore be careful to ensure that you _do
+not_ need to modify any inner `ConditionContext`s and `FixedContext`s. If you
+_do_ need to modify them, then you may need to use
+`prefix_cond_and_fixed_variables` instead.
+"""
+function prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
+    child_context = childcontext(ctx)
+    # vn_prefixed contains the prefixes from all lower levels
+    vn_prefixed, child_context_without_prefixes = prefix_and_strip_contexts(
+        child_context, vn
+    )
+    return AbstractPPL.prefix(vn_prefixed, ctx.vn_prefix), child_context_without_prefixes
+end
+function prefix_and_strip_contexts(ctx::AbstractContext, vn::VarName)
+    return prefix_and_strip_contexts(NodeTrait(ctx), ctx, vn)
+end
+prefix_and_strip_contexts(::IsLeaf, ctx::AbstractContext, vn::VarName) = (vn, ctx)
+function prefix_and_strip_contexts(::IsParent, ctx::AbstractContext, vn::VarName)
+    vn, new_ctx = prefix_and_strip_contexts(childcontext(ctx), vn)
+    return vn, setchildcontext(ctx, new_ctx)
+end
+
+"""
+    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::Val{sym})
+    prefix(model::Model, x::Any)
+
+Return `model` but with all random variables prefixed by `x`, where `x` is either:
+- a `VarName` (e.g. `@varname(a)`),
+- a `Val{sym}` (e.g. `Val(:a)`), or
+- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
+  this will introduce runtime overheads so is not recommended unless absolutely
+  necessary.
 
 # Examples
 
@@ -253,17 +301,19 @@ julia> using DynamicPPL: prefix
 julia> @model demo() = x ~ Dirac(1)
 demo (generic function with 2 methods)
 
-julia> rand(prefix(demo(), :my_prefix))
+julia> rand(prefix(demo(), @varname(my_prefix)))
 (var"my_prefix.x" = 1,)
 
-julia> # One can also use `Val` to avoid runtime overheads.
-       rand(prefix(demo(), Val(:my_prefix)))
+julia> rand(prefix(demo(), Val(:my_prefix)))
 (var"my_prefix.x" = 1,)
 ```
 """
-prefix(model::Model, x) = contextualize(model, PrefixContext{Symbol(x)}(model.context))
-function prefix(model::Model, ::Val{x}) where {x}
-    return contextualize(model, PrefixContext{Symbol(x)}(model.context))
+prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::Val{sym}) where {sym}
+    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+end
+function prefix(model::Model, x)
+    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
 end
 
 """
@@ -332,7 +382,9 @@ Return value of `vn` in `context`.
 function getconditioned(context::AbstractContext, vn::VarName)
     return error("context $(context) does not contain value for $vn")
 end
-getconditioned(context::ConditionContext, vn::VarName) = getvalue(context.values, vn)
+function getconditioned(context::ConditionContext, vn::VarName)
+    return getvalue(context.values, vn)
+end
 
 """
     hasconditioned_nested(context, vn)
@@ -350,7 +402,7 @@ function hasconditioned_nested(::IsParent, context, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
 function hasconditioned_nested(context::PrefixContext, vn)
-    return hasconditioned_nested(childcontext(context), prefix(context, vn))
+    return hasconditioned_nested(collapse_prefix_stack(context), vn)
 end
 
 """
@@ -368,7 +420,7 @@ function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getconditioned_nested(context::PrefixContext, vn)
-    return getconditioned_nested(childcontext(context), prefix(context, vn))
+    return getconditioned_nested(collapse_prefix_stack(context), vn)
 end
 function getconditioned_nested(::IsParent, context, vn)
     return if hasconditioned(context, vn)
@@ -438,6 +490,9 @@ function conditioned(context::ConditionContext)
     # precedence over decendants of `context`.
     return _merge(context.values, conditioned(childcontext(context)))
 end
+function conditioned(context::PrefixContext)
+    return conditioned(collapse_prefix_stack(context))
+end
 
 struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
     values::Values
@@ -501,7 +556,7 @@ function hasfixed_nested(::IsParent, context, vn)
     return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
 end
 function hasfixed_nested(context::PrefixContext, vn)
-    return hasfixed_nested(childcontext(context), prefix(context, vn))
+    return hasfixed_nested(collapse_prefix_stack(context), vn)
 end
 
 """
@@ -519,7 +574,7 @@ function getfixed_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getfixed_nested(context::PrefixContext, vn)
-    return getfixed_nested(childcontext(context), prefix(context, vn))
+    return getfixed_nested(collapse_prefix_stack(context), vn)
 end
 function getfixed_nested(::IsParent, context, vn)
     return if hasfixed(context, vn)
@@ -613,4 +668,114 @@ function fixed(context::FixedContext)
     # the `fixed` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
     return _merge(context.values, fixed(childcontext(context)))
+end
+function fixed(context::PrefixContext)
+    return fixed(collapse_prefix_stack(context))
+end
+
+"""
+    collapse_prefix_stack(context::AbstractContext)
+
+Apply `PrefixContext`s to any conditioned or fixed values inside them, and remove
+the `PrefixContext`s from the context stack.
+
+!!! note
+    If you are reading this docstring, you might probably be interested in a more
+thorough explanation of how PrefixContext and ConditionContext / FixedContext
+interact with one another, especially in the context of submodels.
+    The DynamicPPL documentation contains [a separate page on this
+topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_condition/)
+which explains this in much more detail.
+
+```jldoctest
+julia> using DynamicPPL: collapse_prefix_stack
+
+julia> c1 = PrefixContext(@varname(a), ConditionContext((x=1, )));
+
+julia> collapse_prefix_stack(c1)
+ConditionContext(Dict(a.x => 1), DefaultContext())
+
+julia> # Here, `x` gets prefixed only with `a`, whereas `y` is prefixed with both.
+       c2 = PrefixContext(@varname(a), ConditionContext((x=1, ), PrefixContext(@varname(b), ConditionContext((y=2,)))));
+
+julia> collapsed = collapse_prefix_stack(c2);
+
+julia> # `collapsed` really looks something like this:
+       # ConditionContext(Dict{VarName{:a}, Int64}(a.b.y => 2, a.x => 1), DefaultContext())
+       # To avoid fragility arising from the order of the keys in the doctest, we test
+       # this indirectly:
+       collapsed.values[@varname(a.x)], collapsed.values[@varname(a.b.y)]
+(1, 2)
+```
+"""
+function collapse_prefix_stack(context::PrefixContext)
+    # Collapse the child context (thus applying any inner prefixes first)
+    collapsed = collapse_prefix_stack(childcontext(context))
+    # Prefix any conditioned variables with the current prefix
+    # Note: prefix_conditioned_variables is O(N) in the depth of the context stack.
+    # So is this function. In the worst case scenario, this is O(N^2) in the
+    # depth of the context stack.
+    return prefix_cond_and_fixed_variables(collapsed, context.vn_prefix)
+end
+function collapse_prefix_stack(context::AbstractContext)
+    return collapse_prefix_stack(NodeTrait(collapse_prefix_stack, context), context)
+end
+collapse_prefix_stack(::IsLeaf, context) = context
+function collapse_prefix_stack(::IsParent, context)
+    new_child_context = collapse_prefix_stack(childcontext(context))
+    return setchildcontext(context, new_child_context)
+end
+
+"""
+    prefix_cond_and_fixed_variables(context::AbstractContext, prefix::VarName)
+
+Prefix all the conditioned and fixed variables in a given context with a single
+`prefix`.
+
+```jldoctest
+julia> using DynamicPPL: prefix_cond_and_fixed_variables, ConditionContext
+
+julia> c1 = ConditionContext((a=1, ))
+ConditionContext((a = 1,), DefaultContext())
+
+julia> prefix_cond_and_fixed_variables(c1, @varname(y))
+ConditionContext(Dict(y.a => 1), DefaultContext())
+```
+"""
+function prefix_cond_and_fixed_variables(ctx::ConditionContext, prefix::VarName)
+    # Replace the prefix of the conditioned variables
+    vn_dict = to_varname_dict(ctx.values)
+    prefixed_vn_dict = Dict(
+        AbstractPPL.prefix(vn, prefix) => value for (vn, value) in vn_dict
+    )
+    # Prefix the child context as well
+    prefixed_child_ctx = prefix_cond_and_fixed_variables(childcontext(ctx), prefix)
+    return ConditionContext(prefixed_vn_dict, prefixed_child_ctx)
+end
+function prefix_cond_and_fixed_variables(ctx::FixedContext, prefix::VarName)
+    # Replace the prefix of the conditioned variables
+    vn_dict = to_varname_dict(ctx.values)
+    prefixed_vn_dict = Dict(
+        AbstractPPL.prefix(vn, prefix) => value for (vn, value) in vn_dict
+    )
+    # Prefix the child context as well
+    prefixed_child_ctx = prefix_cond_and_fixed_variables(childcontext(ctx), prefix)
+    return FixedContext(prefixed_vn_dict, prefixed_child_ctx)
+end
+function prefix_cond_and_fixed_variables(c::AbstractContext, prefix::VarName)
+    return prefix_cond_and_fixed_variables(
+        NodeTrait(prefix_cond_and_fixed_variables, c), c, prefix
+    )
+end
+function prefix_cond_and_fixed_variables(
+    ::IsLeaf, context::AbstractContext, prefix::VarName
+)
+    return context
+end
+function prefix_cond_and_fixed_variables(
+    ::IsParent, context::AbstractContext, prefix::VarName
+)
+    return setchildcontext(
+        context, prefix_cond_and_fixed_variables(childcontext(context), prefix)
+    )
 end

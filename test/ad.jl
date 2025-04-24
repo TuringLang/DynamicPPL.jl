@@ -23,21 +23,23 @@ using DynamicPPL: LogDensityFunction
             varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                f = LogDensityFunction(m, varinfo)
+                linked_varinfo = DynamicPPL.link(varinfo, m)
+                f = LogDensityFunction(m, linked_varinfo)
                 x = DynamicPPL.getparams(f)
                 # Calculate reference logp + gradient of logp using ForwardDiff
-                ref_ldf = LogDensityFunction(m, varinfo; adtype=ref_adtype)
+                ref_ldf = LogDensityFunction(m, linked_varinfo; adtype=ref_adtype)
                 ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
 
                 @testset "$adtype" for adtype in test_adtypes
-                    @info "Testing AD on: $(m.f) - $(short_varinfo_name(varinfo)) - $adtype"
+                    @info "Testing AD on: $(m.f) - $(short_varinfo_name(linked_varinfo)) - $adtype"
 
                     # Put predicates here to avoid long lines
                     is_mooncake = adtype isa AutoMooncake
                     is_1_10 = v"1.10" <= VERSION < v"1.11"
                     is_1_11 = v"1.11" <= VERSION < v"1.12"
-                    is_svi_vnv = varinfo isa SimpleVarInfo{<:DynamicPPL.VarNamedVector}
-                    is_svi_od = varinfo isa SimpleVarInfo{<:OrderedDict}
+                    is_svi_vnv =
+                        linked_varinfo isa SimpleVarInfo{<:DynamicPPL.VarNamedVector}
+                    is_svi_od = linked_varinfo isa SimpleVarInfo{<:OrderedDict}
 
                     # Mooncake doesn't work with several combinations of SimpleVarInfo.
                     if is_mooncake && is_1_11 && is_svi_vnv
@@ -56,10 +58,12 @@ using DynamicPPL: LogDensityFunction
                             ref_ldf, adtype
                         )
                     else
-                        ldf = DynamicPPL.LogDensityFunction(ref_ldf, adtype)
-                        logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
-                        @test grad ≈ ref_grad
-                        @test logp ≈ ref_logp
+                        @test DynamicPPL.TestUtils.AD.run_ad(
+                            m,
+                            adtype;
+                            varinfo=linked_varinfo,
+                            expected_value_and_grad=(ref_logp, ref_grad),
+                        ) isa Any
                     end
                 end
             end
