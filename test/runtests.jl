@@ -49,6 +49,7 @@ include("test_util.jl")
             include("Aqua.jl")
         end
         include("utils.jl")
+        include("accumulators.jl")
         include("compiler.jl")
         include("varnamedvector.jl")
         include("varinfo.jl")
