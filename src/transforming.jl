@@ -27,7 +27,9 @@ function tilde_assume(
     # Only transform if `!isinverse` since `vi[vn, right]`
     # already performs the inverse transformation if it's transformed.
     r_transformed = isinverse ? r : link_transform(right)(r)
-    vi = acclogprior!!(vi, lp)
+    if hasacc(vi, Val(:LogPrior))
+        vi = acclogprior!!(vi, lp)
+    end
     return r, setindex!!(vi, r_transformed, vn)
 end
 
@@ -36,14 +38,36 @@ function tilde_observe!!(::DynamicTransformationContext, right, left, vn, vi)
 end
 
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
+    return _transform!!(t, DynamicTransformationContext{false}(), vi, model)
 end
 
 function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    return settrans!!(
-        last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
-        NoTransformation(),
-    )
+    return _transform!!(NoTransformation(), DynamicTransformationContext{true}(), vi, model)
+end
+
+function _transform(
+    t::AbstractTransformation,
+    ctx::DynamicTransformationContext,
+    vi::AbstractVarInfo,
+    model::Model,
+)
+    # To transform using DynamicTransformationContext, we evaluate the model, but we do not
+    # need to use any accumulators other than LogPrior (which is affected by the Jacobian of
+    # the transformation).
+    accs = getaccs(vi.accs)
+    has_logprior = hasacc(accs, Val(:LogPrior))
+    if has_logprior
+        old_logprior = getacc(accs, Val(:LogPrior))
+        vi = setaccs!!(vi, (old_logprior,))
+    end
+    vi = settrans!!(last(evaluate!!(model, vi, ctx)), t)
+    # Restore the accumulators.
+    if has_logprior
+        new_logprior = getacc(vi, Val(:LogPrior))
+        accs = setacc!!(accs, new_logprior)
+    end
+    vi = setaccs!!(vi, accs)
+    return vi
 end
 
 function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
