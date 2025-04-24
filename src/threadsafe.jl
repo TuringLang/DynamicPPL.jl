@@ -9,9 +9,7 @@ struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:AccumulatorTuple} <: AbstractVarI
     accs_by_thread::Vector{L}
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    accs_by_thread = [
-        AccumulatorTuple(map(split, vi.accs.nt)) for _ in 1:Threads.nthreads()
-    ]
+    accs_by_thread = [map(split, getaccs(vi)) for _ in 1:Threads.nthreads()]
     return ThreadSafeVarInfo(vi, accs_by_thread)
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
