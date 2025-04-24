@@ -22,8 +22,6 @@ See the documentation for each of these functions for more details.
 """
 abstract type AbstractAccumulator end
 
-# TODO(mhauru) Add to the above docstring stuff about resets.
-
 """
     accumulator_name(acc::AbstractAccumulator)
 
@@ -88,17 +86,18 @@ See also: [`split`](@ref)
 """
 function combine end
 
+# TODO(mhauru) The existence of this function makes me sad. See comment in unflatten in
+# src/varinfo.jl.
 """
-    acc!!(acc::AbstractAccumulator, args...)
+    convert_eltype(acc::AbstractAccumulator, ::Type{T})
 
-Update `acc` with the values in `args`. Returns the updated `acc`.
+Convert `acc` to use element type `T`.
 
-What this means depends greatly on the type of `acc`. For example, for `LogPrior` `args`
-would be just `logp`. The utility of this function is that one can call
-`acc!!(varinfo::AbstractVarinfo, Val(accname), args...)`, and this call will be propagated
-to a call on the particular accumulator.
+What "element type" means depends on the type of `acc`. By default this function does
+nothing. Accumulator types that need to hold differentiable values, such as dual numbers
+used by various AD backends, should implement a method for this function.
 """
-function acc!! end
+convert_eltype(acc::AbstractAccumulator, ::Type) = acc
 
 # END ABSTRACT ACCUMULATOR, BEGIN ACCUMULATOR TUPLE
 
@@ -314,12 +313,12 @@ function Base.convert(::Type{NumProduce{T}}, acc::NumProduce) where {T}
     return NumProduce(convert(T, acc.num))
 end
 
+# TODO(mhauru)
+# We ignore the convert_eltype calls for NumProduce, by letting them fallback on
+# convert_eltype(::AbstractAccumulator, ::Type). This is because they are only used to
+# deal with dual number types of AD backends, which shouldn't concern NumProduce. This is
+# horribly hacky and should be fixed. See also comment in `unflatten` in `src/varinfo.jl`.
 convert_eltype(acc::LogPrior, ::Type{T}) where {T} = LogPrior(convert(T, acc.logp))
 function convert_eltype(acc::LogLikelihood, ::Type{T}) where {T}
     return LogLikelihood(convert(T, acc.logp))
 end
-# TODO(mhauru)
-# We ignore the convert_eltype calls for NumProduce. This is because they are only used to
-# deal with dual number types of AD backends, which shouldn't concern NumProduce. This is
-# horribly hacky and should be fixed. See also comment in `unflatten` in `src/varinfo.jl`.
-convert_eltype(acc::NumProduce, ::Type) = NumProduce(acc.num)
