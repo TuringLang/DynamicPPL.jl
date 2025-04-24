@@ -140,6 +140,10 @@ Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
 Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname} = haskey(at.nt, accname)
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
 
+function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
+    return AccumulatorTuple(convert(T, accs.nt))
+end
+
 """
     setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
 
@@ -301,3 +305,21 @@ end
 
 accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc
 accumulate_observe!!(acc::NumProduce, right, left, vn) = increment(acc)
+
+Base.convert(::Type{LogPrior{T}}, acc::LogPrior) where {T} = LogPrior(convert(T, acc.logp))
+function Base.convert(::Type{LogLikelihood{T}}, acc::LogLikelihood) where {T}
+    return LogLikelihood(convert(T, acc.logp))
+end
+function Base.convert(::Type{NumProduce{T}}, acc::NumProduce) where {T}
+    return NumProduce(convert(T, acc.num))
+end
+
+convert_eltype(acc::LogPrior, ::Type{T}) where {T} = LogPrior(convert(T, acc.logp))
+function convert_eltype(acc::LogLikelihood, ::Type{T}) where {T}
+    return LogLikelihood(convert(T, acc.logp))
+end
+# TODO(mhauru)
+# We ignore the convert_eltype calls for NumProduce. This is because they are only used to
+# deal with dual number types of AD backends, which shouldn't concern NumProduce. This is
+# horribly hacky and should be fixed. See also comment in `unflatten` in `src/varinfo.jl`.
+convert_eltype(acc::NumProduce, ::Type) = NumProduce(acc.num)

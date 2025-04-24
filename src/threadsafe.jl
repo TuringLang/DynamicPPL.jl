@@ -4,15 +4,14 @@
 A `ThreadSafeVarInfo` object wraps an [`AbstractVarInfo`](@ref) object and an
 array of accumulators for thread-safe execution of a probabilistic model.
 """
-struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:NTuple{N,AccumulatorTuple} where {N}} <:
-       AbstractVarInfo
+struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:AccumulatorTuple} <: AbstractVarInfo
     varinfo::V
-    accs_by_thread::L
+    accs_by_thread::Vector{L}
 end
-
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    split_accs = AccumulatorTuple(map(split, vi.accs.nt))
-    accs_by_thread = ntuple(_ -> deepcopy(split_accs), Val(Threads.nthreads()))
+    accs_by_thread = [
+        AccumulatorTuple(map(split, vi.accs.nt)) for _ in 1:Threads.nthreads()
+    ]
     return ThreadSafeVarInfo(vi, accs_by_thread)
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
@@ -51,17 +50,16 @@ end
 # _not_ be thread-specific a specific method has to be written.
 function map_accumulator!!(vi::ThreadSafeVarInfo, accname::Val, func::Function, args...)
     tid = Threads.threadid()
-    new_accs = map_accumulator!!(vi.accs_by_thread[tid], accname, func, args...)
-    accs_by_thread = BangBang.setindex!!(vi.accs_by_thread, new_accs, tid)
-    return ThreadSafeVarInfo(vi.varinfo, accs_by_thread)
+    vi.accs_by_thread[tid] = map_accumulator!!(
+        vi.accs_by_thread[tid], accname, func, args...
+    )
+    return vi
 end
 
 function map_accumulator!!(vi::ThreadSafeVarInfo, func::Function, args...)
     tid = Threads.threadid()
-    new_accs = map_accumulator!!(vi.accs_by_thread[tid], func, args...)
-    # We need to use setindex!! in case new_accs has a different type than the original.
-    accs_by_thread = BangBang.setindex!!(vi.accs_by_thread, new_accs, tid)
-    return ThreadSafeVarInfo(vi.varinfo, accs_by_thread)
+    vi.accs_by_thread[tid] = map_accumulator!!(vi.accs_by_thread[tid], func, args...)
+    return vi
 end
 
 has_varnamedvector(vi::ThreadSafeVarInfo) = has_varnamedvector(vi.varinfo)
@@ -187,12 +185,13 @@ end
 
 function resetlogp!!(vi::ThreadSafeVarInfo)
     vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
-    accs_by_thread = map(vi.accs_by_thread) do accs
-        new_accs = map_accumulator!!(accs, Val(:LogPrior), zero)
-        new_accs = map_accumulator!!(new_accs, Val(:LogLikelihood), zero)
-        new_accs
+    for i in eachindex(vi.accs_by_thread)
+        vi.accs_by_thread[i] = map_accumulator!!(vi.accs_by_thread[i], Val(:LogPrior), zero)
+        vi.accs_by_thread[i] = map_accumulator!!(
+            vi.accs_by_thread[i], Val(:LogLikelihood), zero
+        )
     end
-    return ThreadSafeVarInfo(vi.varinfo, accs_by_thread)
+    return vi
 end
 
 values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
