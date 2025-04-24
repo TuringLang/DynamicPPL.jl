@@ -476,7 +476,7 @@ end
     # Submodel likelihood
     # With to_submodel, we have to have a left-hand side variable to
     # capture the result, so we just use a dummy variable
-    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x))
+    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x), false)
 
     return (; s=s, m=m, x=x)
 end
