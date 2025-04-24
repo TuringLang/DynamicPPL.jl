@@ -328,9 +328,9 @@ The following functions were used for sequential Monte Carlo methods.
 
 ```@docs
 get_num_produce
-set_num_produce!
-increment_num_produce!
-reset_num_produce!
+set_num_produce!!
+increment_num_produce!!
+reset_num_produce!!
 setorder!
 set_retained_vns_del!
 ```
@@ -431,8 +431,6 @@ Contexts are subtypes of `AbstractPPL.AbstractContext`.
 ```@docs
 SamplingContext
 DefaultContext
-LikelihoodContext
-PriorContext
 PrefixContext
 ConditionContext
 ```
@@ -477,9 +475,10 @@ DynamicPPL.Experimental.is_suitable_varinfo
 ### [Model-Internal Functions](@id model_internal)
 
 ```@docs
+tilde_assume!!
 tilde_assume
 ```
 
 ```@docs
-tilde_observe
+tilde_observe!!
 ```

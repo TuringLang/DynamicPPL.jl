@@ -192,8 +192,8 @@ getsampler(::IsLeaf, ::AbstractContext) = error("No sampler found in context")
 """
     struct DefaultContext <: AbstractContext end
 
-The `DefaultContext` is used by default to compute the log joint probability of the data
-and parameters when running the model.
+The `DefaultContext` is used by default to accumulate values like the log joint probability
+when running the model.
 """
 struct DefaultContext <: AbstractContext end
 NodeTrait(::DefaultContext) = IsLeaf()
