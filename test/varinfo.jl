@@ -152,6 +152,56 @@ end
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
+    @testset "accumulators" begin
+        @model function demo()
+            a ~ Normal()
+            b ~ Normal()
+            c ~ Normal()
+            d ~ Normal()
+            return nothing
+        end
+
+        values = (; a=1.0, b=2.0, c=3.0, d=4.0)
+        lp_a = logpdf(Normal(), values.a)
+        lp_b = logpdf(Normal(), values.b)
+        lp_c = logpdf(Normal(), values.c)
+        lp_d = logpdf(Normal(), values.d)
+        m = demo() | (; c=values.c, d=values.d)
+
+        vi = DynamicPPL.reset_num_produce!!(
+            DynamicPPL.unflatten(VarInfo(m), collect(values))
+        )
+
+        vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
+        @test getlogprior(vi) == lp_a + lp_b
+        @test getloglikelihood(vi) == lp_c + lp_d
+        @test get_num_produce(vi) == 2
+
+        vi = last(
+            DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPrior(),)))
+        )
+        @test getlogprior(vi) == lp_a + lp_b
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogLikelihood" getlogjoint(vi)
+        @test_throws "has no field NumProduce" get_num_produce(vi)
+
+        vi = last(
+            DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduce(),)))
+        )
+        @test_throws "has no field LogPrior" getlogprior(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test get_num_produce(vi) == 2
+
+        # Test evaluating without any accumulators.
+        vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
+        @test_throws "has no field LogPrior" getlogprior(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field NumProduce" get_num_produce(vi)
+        @test_throws "has no field NumProduce" reset_num_produce!!(vi)
+    end
+
     @testset "flags" begin
         # Test flag setting:
         #    is_flagged, set_flag!, unset_flag!
