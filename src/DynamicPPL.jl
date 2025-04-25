@@ -47,6 +47,7 @@ import Base:
 export AbstractVarInfo,
     VarInfo,
     SimpleVarInfo,
+    AbstractAccumulator,
     LogLikelihood,
     LogPrior,
     NumProduce,

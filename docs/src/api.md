@@ -350,7 +350,7 @@ SimpleVarInfo
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
 
 ```@docs
-AbstractAccumulators
+AbstractAccumulator
 ```
 
 DynamicPPL provides the following default accumulators.
