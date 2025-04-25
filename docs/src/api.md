@@ -160,7 +160,7 @@ returned(::Model)
 
 ## Utilities
 
-It is possible to manually increase (or decrease) the accumulated log density from within a model function.
+It is possible to manually increase (or decrease) the accumulated log likelihood from within a model function.
 
 ```@docs
 @addlogprob!
@@ -343,6 +343,22 @@ Base.empty!
 
 ```@docs
 SimpleVarInfo
+```
+
+### Accumulators
+
+The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
+
+```@docs
+AbstractAccumulators
+```
+
+DynamicPPL provides the following default accumulators.
+
+```@docs
+LogPrior
+LogLikelihood
+NumProduce
 ```
 
 ### Common API
