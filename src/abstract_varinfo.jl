@@ -121,8 +121,7 @@ end
 
 Return the `AccumulatorTuple` of `vi`.
 
-This should be implemented by each subtype of `AbstractVarInfo`. `getaccs` is not
-user-facing, but used in the implementation of many other functions.
+This should be implemented by each subtype of `AbstractVarInfo`.
 """
 function getaccs end
 
@@ -217,7 +216,7 @@ function setlogp!!(vi::AbstractVarInfo, logp)
 end
 
 """
-    getacc(vi::AbstractVarInfo, accname)
+    getacc(vi::AbstractVarInfo, ::Val{accname})
 
 Return the `AbstractAccumulator` of `vi` with name `accname`.
 """
@@ -252,7 +251,7 @@ function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
 end
 
 """
-    map_accumulators(vi::AbstractVarInfo, func::Function)
+    map_accumulators!!(func::Function, vi::AbstractVarInfo)
 
 Update all accumulators of `vi` by calling `func` on them and replacing them with the return
 values.
@@ -320,7 +319,7 @@ end
 """
     resetlogp!!(vi::AbstractVarInfo)
 
-Reset the values of the log probabilities (prior and likelihood) in `vi`
+Reset the values of the log probabilities (prior and likelihood) in `vi` to zero.
 """
 function resetlogp!!(vi::AbstractVarInfo)
     if hasacc(vi, Val(:LogPrior))

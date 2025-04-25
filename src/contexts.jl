@@ -37,7 +37,6 @@ Return the descendant context of `context`.
 """
 childcontext
 
-# TODO(mhauru) Rework the below docstring to not use PriorContext.
 """
     setchildcontext(parent::AbstractContext, child::AbstractContext)
 
