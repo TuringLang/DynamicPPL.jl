@@ -1,4 +1,4 @@
-module AccumulatoTests
+module AccumulatorTests
 
 using Test
 using Distributions
