@@ -366,12 +366,15 @@ NumProduce
 #### Accumulation of log-probabilities
 
 ```@docs
-getlogprior
-getloglikelihood
+getlogp
+setlogp!!
+acclogp!!
 getlogjoint
+getlogprior
 setlogprior!!
-setloglikelihood!!
 acclogprior!!
+getloglikelihood
+setloglikelihood!!
 accloglikelihood!!
 resetlogp!!
 ```

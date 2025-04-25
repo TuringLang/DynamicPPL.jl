@@ -175,29 +175,68 @@ end
         vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
         @test getloglikelihood(vi) == lp_c + lp_d
+        @test getlogp(vi) == (; logprior=lp_a + lp_b, loglikelihood=lp_c + lp_d)
+        @test getlogjoint(vi) == lp_a + lp_b + lp_c + lp_d
         @test get_num_produce(vi) == 2
+        @test begin
+            vi = acclogprior!!(vi, 1.0)
+            getlogprior(vi) == lp_a + lp_b + 1.0
+        end
+        @test begin
+            vi = accloglikelihood!!(vi, 1.0)
+            getloglikelihood(vi) == lp_c + lp_d + 1.0
+        end
+        @test begin
+            vi = setlogprior!!(vi, -1.0)
+            getlogprior(vi) == -1.0
+        end
+        @test begin
+            vi = setloglikelihood!!(vi, -1.0)
+            getloglikelihood(vi) == -1.0
+        end
+        @test begin
+            vi = setlogp!!(vi, (logprior=-3.0, loglikelihood=-3.0))
+            getlogp(vi) == (; logprior=-3.0, loglikelihood=-3.0)
+        end
+        @test begin
+            vi = acclogp!!(vi, (logprior=1.0, loglikelihood=1.0))
+            getlogp(vi) == (; logprior=-2.0, loglikelihood=-2.0)
+        end
+        @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
 
         vi = last(
             DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPrior(),)))
         )
         @test getlogprior(vi) == lp_a + lp_b
         @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogLikelihood" getlogp(vi)
         @test_throws "has no field LogLikelihood" getlogjoint(vi)
         @test_throws "has no field NumProduce" get_num_produce(vi)
+        @test begin
+            vi = acclogprior!!(vi, 1.0)
+            getlogprior(vi) == lp_a + lp_b + 1.0
+        end
+        @test begin
+            vi = setlogprior!!(vi, -1.0)
+            getlogprior(vi) == -1.0
+        end
+        @test_throws "has no field LogLikelihood" setlogp!!(getlogp(vi))
 
         vi = last(
             DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduce(),)))
         )
         @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
         @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogPrior" getlogp(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
         @test get_num_produce(vi) == 2
 
         # Test evaluating without any accumulators.
         vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
         @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
         @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogPrior" getlogp(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
         @test_throws "has no field NumProduce" get_num_produce(vi)
         @test_throws "has no field NumProduce" reset_num_produce!!(vi)
     end

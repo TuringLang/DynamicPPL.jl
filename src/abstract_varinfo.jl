@@ -98,9 +98,17 @@ Return the log of the joint probability of the observed data and parameters in `
 See also: [`getlogprior`](@ref), [`getloglikelihood`](@ref).
 """
 getlogjoint(vi::AbstractVarInfo) = getlogprior(vi) + getloglikelihood(vi)
+
+"""
+    getlogp(vi::AbstractVarInfo)
+
+Return a NamedTuple of the log prior and log likelihood probabilities.
+
+The keys are called `logprior` and `loglikelihood`. If either one is not present in `vi` an
+error will be thrown.
+"""
 function getlogp(vi::AbstractVarInfo)
-    Base.depwarn("getlogp is deprecated, use getlogjoint instead", :getlogp)
-    return getlogjoint(vi)
+    return (; logprior=getlogprior(vi), loglikelihood=getloglikelihood(vi))
 end
 
 """
@@ -198,21 +206,29 @@ See also: [`setlogprior!!`](@ref), [`setlogp!!`](@ref), [`getloglikelihood`](@re
 setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihood(logp))
 
 """
-    setlogp!!(vi::AbstractVarInfo, logp)
+    setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)
 
-Set the log of the joint probability of the observed data and parameters sampled in
-`vi` to `logp`, mutating if it makes sense.
+Set both the log prior and the log likelihood probabilities in `vi`.
+
+`logp` should have fields `logprior` and `loglikelihood` and no other fields.
 
 See also: [`setlogprior!!`](@ref), [`setloglikelihood!!`](@ref), [`getlogp`](@ref).
 """
-function setlogp!!(vi::AbstractVarInfo, logp)
-    Base.depwarn(
-        "setlogp!! is deprecated, use setlogprior!! or setloglikelihood!! instead",
-        :setlogp!!,
-    )
-    vi = setlogprior!!(vi, zero(logp))
-    vi = setloglikelihood!!(vi, logp)
+function setlogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
+    if !(names == (:logprior, :loglikelihood) || names == (:loglikelihood, :logprior))
+        error("logp must have the fields logprior and loglikelihood and no other fields.")
+    end
+    vi = setlogprior!!(vi, logp.logprior)
+    vi = setloglikelihood!!(vi, logp.loglikelihood)
     return vi
+end
+
+function setlogp!!(vi::AbstractVarInfo, logp::Number)
+    depwarn(
+        "`setlogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `setloglikelihood!!(vi, logp)` instead.",
+        :setlogp,
+    )
+    return setloglikelihood!!(vi, logp)
 end
 
 """
@@ -303,15 +319,34 @@ function accloglikelihood!!(vi::AbstractVarInfo, logp)
 end
 
 """
-    acclogp!!(vi::AbstractVarInfo, logp)
+    acclogp!!(vi::AbstractVarInfo, logp::NamedTuple)
 
-Add `logp` to the value of the log of the joint probability of the observed data and
-parameters sampled in `vi`, mutating if it makes sense.
+Add to both the log prior and the log likelihood probabilities in `vi`.
+
+`logp` should have fields `logprior` and/or `loglikelihood`, and no other fields.
 """
-function acclogp!!(vi::AbstractVarInfo, logp)
-    Base.depwarn(
-        "acclogp!! is deprecated, use acclogprior!! or accloglikelihood!! instead",
-        :acclogp!!,
+function acclogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
+    if !(
+        names == (:logprior, :loglikelihood) ||
+        names == (:loglikelihood, :logprior) ||
+        names == (:logprior,) ||
+        names == (:loglikelihood,)
+    )
+        error("logp must have fields logprior and/or loglikelihood and no other fields.")
+    end
+    if haskey(logp, :logprior)
+        vi = acclogprior!!(vi, logp.logprior)
+    end
+    if haskey(logp, :loglikelihood)
+        vi = accloglikelihood!!(vi, logp.loglikelihood)
+    end
+    return vi
+end
+
+function acclogp!!(vi::AbstractVarInfo, logp::Number)
+    depwarn(
+        "`acclogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `accloglikelihood!!(vi, logp)` instead.",
+        :acclogp,
     )
     return accloglikelihood!!(vi, logp)
 end
