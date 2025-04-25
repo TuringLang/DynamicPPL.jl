@@ -3,14 +3,14 @@
 
 An abstract type for accumulators.
 
-An accumulator is an object that may change its value at every tilde_assume or tilde_observe
-call based on the value of the random variable in question. The obvious examples of
+An accumulator is an object that may change its value at every tilde_assume!! or
+tilde_observe!! call based on the random variable in question. The obvious examples of
 accumulators are the log prior and log likelihood. Others examples might be a variable that
 counts the number of observations in a trace, or a list of the names of random variables
 seen so far.
 
-An accumulator type `T` must implement the following methods:
-- `accumulator_name(acc::T)`
+An accumulator type `T <: AbstractAccumulator` must implement the following methods:
+- `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
 - `accumulate_observe!!(acc::T, right, left, vn)`
 - `accumulate_assume!!(acc::T, val, logjac, vn, right)`
 
@@ -36,7 +36,7 @@ accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
 """
     accumulate_observe!!(acc::AbstractAccumulator, right, left, vn)
 
-Update `acc` in a `tilde_observe` call. Returns the updated `acc`.
+Update `acc` in a `tilde_observe!!` call. Returns the updated `acc`.
 
 `vn` is the name of the variable being observed, `left` is the value of the variable, and
 `right` is the distribution on the RHS of the tilde statement. `vn` is `nothing` in the case
@@ -51,7 +51,7 @@ function accumulate_observe!! end
 """
     accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, right)
 
-Update `acc` in a `tilde_assume` call. Returns the updated `acc`.
+Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 
 `vn` is the name of the variable being assumed, `val` is the value of the variable, and
 `right` is the distribution on the RHS of the tilde statement. `logjac` is the log
@@ -114,9 +114,6 @@ constraint that the name in the tuple for each accumulator `acc` must be
 The constructor can be called with a tuple or a `VarArgs` of `AbstractAccumulators`. The
 names will be generated automatically. One can also call the constructor with a `NamedTuple`
 but the names in the argument will be discarded in favour of the generated ones.
-
-# Fields
-$(TYPEDFIELDS)
 """
 struct AccumulatorTuple{N,T<:NamedTuple}
     nt::T
@@ -136,7 +133,10 @@ Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime,
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
-Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname} = haskey(at.nt, accname)
+function Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname}
+    # @inline to ensure constant propagation can resolve this to a compile-time constant.
+    @inline return haskey(at.nt, accname)
+end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
 
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
@@ -201,11 +201,12 @@ An accumulator that tracks the cumulative log prior during model execution.
 $(TYPEDFIELDS)
 """
 struct LogPrior{T} <: AbstractAccumulator
+    "the scalar log prior value"
     logp::T
 end
 
 """
-    LogPrior{T}() where {T}
+    LogPrior{T}()
 
 Create a new `LogPrior` accumulator with the log prior initialized to zero.
 """
@@ -221,11 +222,12 @@ An accumulator that tracks the cumulative log likelihood during model execution.
 $(TYPEDFIELDS)
 """
 struct LogLikelihood{T} <: AbstractAccumulator
+    "the scalar log likelihood value"
     logp::T
 end
 
 """
-    LogLikelihood{T}() where {T}
+    LogLikelihood{T}()
 
 Create a new `LogLikelihood` accumulator with the log likelihood initialized to zero.
 """
@@ -241,11 +243,12 @@ An accumulator that tracks the number of observations during model execution.
 $(TYPEDFIELDS)
 """
 struct NumProduce{T<:Integer} <: AbstractAccumulator
+    "the number of observations"
     num::T
 end
 
 """
-    NumProduce{T}() where {T<:Integer}
+    NumProduce{T<:Integer}()
 
 Create a new `NumProduce` accumulator with the number of observations initialized to zero.
 """
