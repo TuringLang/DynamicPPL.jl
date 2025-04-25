@@ -66,7 +66,10 @@ function accumulate_assume!!(
     acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right
 ) where {whichlogprob}
     if whichlogprob == :both || whichlogprob == :prior
-        subacc = accumulate_assume!!(LogPrior{LogProbType}(), val, logjac, vn, right)
+        # T is the element type of the vectors that are the values of `acc.logps`. Usually
+        # it's LogProbType.
+        T = eltype(last(fieldtypes(eltype(acc.logps))))
+        subacc = accumulate_assume!!(LogPrior{T}(), val, logjac, vn, right)
         push!(acc, vn, subacc.logp)
     end
     return acc
@@ -81,21 +84,34 @@ function accumulate_observe!!(
         return acc
     end
     if whichlogprob == :both || whichlogprob == :likelihood
-        subacc = accumulate_observe!!(LogLikelihood{LogProbType}(), right, left, vn)
+        # T is the element type of the vectors that are the values of `acc.logps`. Usually
+        # it's LogProbType.
+        T = eltype(last(fieldtypes(eltype(acc.logps))))
+        subacc = accumulate_observe!!(LogLikelihood{T}(), right, left, vn)
         push!(acc, vn, subacc.logp)
     end
     return acc
 end
 
 """
-    pointwise_logdensities(model::Model, chain::Chains, keytype = String)
+    pointwise_logdensities(
+        model::Model,
+        chain::Chains,
+        keytype=String,
+        context=DefaultContext(),
+        ::Val{whichlogprob}=Val(:both),
+    )
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
 with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-Currently, only `String` and `VarName` are supported.
+Currently, only `String` and `VarName` are supported. `context` is the evaluation context,
+and `whichlogprob` specifies which log-probabilities to compute. It can be `:both`,
+`:prior`, or `:likelihood`.
+
+See also: [`pointwise_loglikelihoods`](@ref), [`pointwise_loglikelihoods`](@ref).
 
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
@@ -204,8 +220,8 @@ function pointwise_logdensities(
     # Get the data by executing the model once
     vi = VarInfo(model)
 
-    acctype = PointwiseLogProbAccumulator{whichlogprob,KeyType}
-    vi = setaccs!!(vi, AccumulatorTuple(acctype()))
+    AccType = PointwiseLogProbAccumulator{whichlogprob,KeyType}
+    vi = setaccs!!(vi, (AccType(),))
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -216,7 +232,7 @@ function pointwise_logdensities(
         vi = last(evaluate!!(model, vi, context))
     end
 
-    logps = getacc(vi, Val(accumulator_name(acctype))).logps
+    logps = getacc(vi, Val(accumulator_name(AccType))).logps
     niters = size(chain, 1)
     nchains = size(chain, 3)
     logdensities = OrderedDict(
@@ -231,11 +247,10 @@ function pointwise_logdensities(
     context::AbstractContext=DefaultContext(),
     ::Val{whichlogprob}=Val(:both),
 ) where {whichlogprob}
-    acctype = PointwiseLogProbAccumulator{whichlogprob}
-    # TODO(mhauru) Don't needlessly evaluate the model twice.
-    varinfo = setaccs!!(varinfo, AccumulatorTuple(acctype()))
+    AccType = PointwiseLogProbAccumulator{whichlogprob}
+    varinfo = setaccs!!(varinfo, (AccType(),))
     varinfo = last(evaluate!!(model, varinfo, context))
-    return getacc(varinfo, Val(accumulator_name(acctype))).logps
+    return getacc(varinfo, Val(accumulator_name(AccType))).logps
 end
 
 """
@@ -244,7 +259,8 @@ end
 Compute the pointwise log-likelihoods of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the likelihood terms.
-See also: [`pointwise_logdensities`](@ref).
+
+See also: [`pointwise_logdensities`](@ref), [`pointwise_prior_logdensities`](@ref).
 """
 function pointwise_loglikelihoods(
     model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
@@ -264,7 +280,8 @@ end
 Compute the pointwise log-prior-densities of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the prior terms.
-See also: [`pointwise_logdensities`](@ref).
+
+See also: [`pointwise_logdensities`](@ref), [`pointwise_loglikelihoods`](@ref).
 """
 function pointwise_prior_logdensities(
     model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()

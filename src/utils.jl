@@ -58,7 +58,9 @@ true
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), $(esc(ex)))
+        if $hasacc($(esc(:(__varinfo__))), Val(:LogLikelihood))
+            $(esc(:(__varinfo__))) = $accloglikelihood!!($(esc(:(__varinfo__))), $(esc(ex)))
+        end
     end
 end
 

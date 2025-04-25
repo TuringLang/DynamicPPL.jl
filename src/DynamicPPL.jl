@@ -152,6 +152,9 @@ macro prob_str(str)
     ))
 end
 
+# TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
+# has to implement. Not sure what the full list is for parameters values, but for
+# accumulators we only need `getaccs` and `setaccs!!`.
 """
     AbstractVarInfo
 

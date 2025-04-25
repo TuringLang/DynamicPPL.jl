@@ -1057,6 +1057,10 @@ Return the log prior probability of variables `varinfo` for the probabilistic `m
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
+    # Remove other accumulators from varinfo, since they are unnecessary.
+    logprior =
+        hasacc(varinfo, Val(:LogPrior)) ? getacc(varinfo, Val(:LogPrior)) : LogPrior()
+    varinfo = setaccs!!(deepcopy(varinfo), (logprior,))
     return getlogprior(last(evaluate!!(model, varinfo, DefaultContext())))
 end
 
@@ -1104,6 +1108,13 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
+    # Remove other accumulators from varinfo, since they are unnecessary.
+    loglikelihood = if hasacc(varinfo, Val(:LogLikelihood))
+        getacc(varinfo, Val(:LogLikelihood))
+    else
+        LogLikelihood()
+    end
+    varinfo = setaccs!!(deepcopy(varinfo), (loglikelihood,))
     return getloglikelihood(last(evaluate!!(model, varinfo, DefaultContext())))
 end
 

@@ -209,6 +209,15 @@ end
 function SimpleVarInfo(values)
     return SimpleVarInfo{LogProbType}(values)
 end
+function SimpleVarInfo(values::Union{<:NamedTuple,<:AbstractDict})
+    return if isempty(values)
+        # Can't infer from values, so we just use default.
+        SimpleVarInfo{LogProbType}(values)
+    else
+        # Infer from `values`.
+        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(typeof(values)))}(values)
+    end
+end
 
 # Using `kwargs` to specify the values.
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
@@ -233,7 +242,12 @@ end
 # Constructor from `VarInfo`.
 function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
     values = values_as(vi, D)
-    return SimpleVarInfo(values, vi.accs)
+    return SimpleVarInfo(values, deepcopy(getaccs(vi)))
+end
+function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
+    values = values_as(vi, D)
+    accs = map(acc -> convert_eltype(T, acc), getaccs(vi))
+    return SimpleVarInfo(values, accs)
 end
 
 function untyped_simple_varinfo(model::Model)
@@ -250,8 +264,8 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     vals = unflatten(svi.values, x)
     # TODO(mhauru) See comment in unflatten in src/varinfo.jl for why this conversion is
     # required but undesireable.
-    et = float_type_with_fallback(eltype(x))
-    accs = map(acc -> convert_eltype(et, acc), svi.accs)
+    T = float_type_with_fallback(eltype(x))
+    accs = map(acc -> convert_eltype(T, acc), getaccs(svi))
     return SimpleVarInfo(vals, accs, svi.transformation)
 end
 
@@ -423,7 +437,7 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    accs = getaccs(varinfo_right)
+    accs = deepcopy(getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )
