@@ -491,10 +491,5 @@ DynamicPPL.Experimental.is_suitable_varinfo
 ### [Model-Internal Functions](@id model_internal)
 
 ```@docs
-tilde_assume!!
 tilde_assume
-```
-
-```@docs
-tilde_observe!!
 ```
