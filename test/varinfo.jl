@@ -220,7 +220,6 @@ end
             vi = setlogprior!!(vi, -1.0)
             getlogprior(vi) == -1.0
         end
-        @test_throws "has no field LogLikelihood" setlogp!!(getlogp(vi))
 
         vi = last(
             DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduce(),)))

@@ -224,11 +224,10 @@ function setlogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
 end
 
 function setlogp!!(vi::AbstractVarInfo, logp::Number)
-    depwarn(
-        "`setlogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `setloglikelihood!!(vi, logp)` instead.",
-        :setlogp,
-    )
-    return setloglikelihood!!(vi, logp)
+    return error("""
+                 `setlogp!!(vi::AbstractVarInfo, logp::Number)` is no longer supported. Use
+                 `setloglikelihood!!`  and/or `setlogprior!!` instead.
+                 """)
 end
 
 """
