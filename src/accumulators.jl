@@ -193,14 +193,14 @@ end
 # END ACCUMULATOR TUPLE, BEGIN LOG PROB AND NUM PRODUCE ACCUMULATORS
 
 """
-    LogPriorAccumulator{T} <: AbstractAccumulator
+    LogPriorAccumulator{T<:Real} <: AbstractAccumulator
 
 An accumulator that tracks the cumulative log prior during model execution.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct LogPriorAccumulator{T} <: AbstractAccumulator
+struct LogPriorAccumulator{T<:Real} <: AbstractAccumulator
     "the scalar log prior value"
     logp::T
 end
@@ -210,18 +210,18 @@ end
 
 Create a new `LogPriorAccumulator` accumulator with the log prior initialized to zero.
 """
-LogPriorAccumulator{T}() where {T} = LogPriorAccumulator(zero(T))
+LogPriorAccumulator{T}() where {T<:Real} = LogPriorAccumulator(zero(T))
 LogPriorAccumulator() = LogPriorAccumulator{LogProbType}()
 
 """
-    LogLikelihoodAccumulator{T} <: AbstractAccumulator
+    LogLikelihoodAccumulator{T<:Real} <: AbstractAccumulator
 
 An accumulator that tracks the cumulative log likelihood during model execution.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct LogLikelihoodAccumulator{T} <: AbstractAccumulator
+struct LogLikelihoodAccumulator{T<:Real} <: AbstractAccumulator
     "the scalar log likelihood value"
     logp::T
 end
@@ -231,7 +231,7 @@ end
 
 Create a new `LogLikelihoodAccumulator` accumulator with the log likelihood initialized to zero.
 """
-LogLikelihoodAccumulator{T}() where {T} = LogLikelihoodAccumulator(zero(T))
+LogLikelihoodAccumulator{T}() where {T<:Real} = LogLikelihoodAccumulator(zero(T))
 LogLikelihoodAccumulator() = LogLikelihoodAccumulator{LogProbType}()
 
 """
@@ -252,7 +252,7 @@ end
 
 Create a new `NumProduceAccumulator` accumulator with the number of observations initialized to zero.
 """
-NumProduceAccumulator{T}() where {T} = NumProduceAccumulator(zero(T))
+NumProduceAccumulator{T}() where {T<:Integer} = NumProduceAccumulator(zero(T))
 NumProduceAccumulator() = NumProduceAccumulator{Int}()
 
 function Base.show(io::IO, acc::LogPriorAccumulator)
