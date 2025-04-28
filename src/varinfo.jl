@@ -105,7 +105,9 @@ function VarInfo(meta=Metadata())
     return VarInfo(
         meta,
         AccumulatorTuple(
-            LogPrior{LogProbType}(), LogLikelihood{LogProbType}(), NumProduce{Int}()
+            LogPriorAccumulator{LogProbType}(),
+            LogLikelihoodAccumulator{LogProbType}(),
+            NumProduceAccumulator{Int}(),
         ),
     )
 end
@@ -1025,7 +1027,7 @@ get_num_produce(vi::VarInfo) = getacc(vi, Val(:NumProduce)).num
 
 Set the `num_produce` field of `vi` to `n`.
 """
-set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduce(n))
+set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduceAccumulator(n))
 
 """
     increment_num_produce!!(vi::VarInfo)

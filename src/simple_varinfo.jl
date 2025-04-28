@@ -125,7 +125,7 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihood(0.0), LogPrior = LogPrior(0.0)))
+Transformed SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihoodAccumulator(0.0), LogPrior = LogPriorAccumulator(0.0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
@@ -133,7 +133,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihood(0.0), LogPrior = LogPrior(0.0)))
+SimpleVarInfo((x = -1.0,), (LogLikelihood = LogLikelihoodAccumulator(0.0), LogPrior = LogPriorAccumulator(0.0)))
 
 julia> # (✓) No probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
@@ -204,7 +204,9 @@ function SimpleVarInfo(values, accs)
     return SimpleVarInfo(values, accs, NoTransformation())
 end
 function SimpleVarInfo{T}(values) where {T<:Real}
-    return SimpleVarInfo(values, AccumulatorTuple(LogLikelihood{T}(), LogPrior{T}()))
+    return SimpleVarInfo(
+        values, AccumulatorTuple(LogLikelihoodAccumulator{T}(), LogPriorAccumulator{T}())
+    )
 end
 function SimpleVarInfo(values)
     return SimpleVarInfo{LogProbType}(values)

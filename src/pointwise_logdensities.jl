@@ -69,7 +69,7 @@ function accumulate_assume!!(
         # T is the element type of the vectors that are the values of `acc.logps`. Usually
         # it's LogProbType.
         T = eltype(last(fieldtypes(eltype(acc.logps))))
-        subacc = accumulate_assume!!(LogPrior{T}(), val, logjac, vn, right)
+        subacc = accumulate_assume!!(LogPriorAccumulator{T}(), val, logjac, vn, right)
         push!(acc, vn, subacc.logp)
     end
     return acc
@@ -87,7 +87,7 @@ function accumulate_observe!!(
         # T is the element type of the vectors that are the values of `acc.logps`. Usually
         # it's LogProbType.
         T = eltype(last(fieldtypes(eltype(acc.logps))))
-        subacc = accumulate_observe!!(LogLikelihood{T}(), right, left, vn)
+        subacc = accumulate_observe!!(LogLikelihoodAccumulator{T}(), right, left, vn)
         push!(acc, vn, subacc.logp)
     end
     return acc

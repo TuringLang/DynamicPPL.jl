@@ -356,9 +356,9 @@ AbstractAccumulator
 DynamicPPL provides the following default accumulators.
 
 ```@docs
-LogPrior
-LogLikelihood
-NumProduce
+LogPriorAccumulator
+LogLikelihoodAccumulator
+NumProduceAccumulator
 ```
 
 ### Common API

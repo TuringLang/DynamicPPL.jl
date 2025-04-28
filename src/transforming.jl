@@ -52,7 +52,7 @@ function _transform!!(
     model::Model,
 )
     # To transform using DynamicTransformationContext, we evaluate the model, but we do not
-    # need to use any accumulators other than LogPrior (which is affected by the Jacobian of
+    # need to use any accumulators other than LogPriorAccumulator (which is affected by the Jacobian of
     # the transformation).
     accs = getaccs(vi)
     has_logprior = haskey(accs, Val(:LogPrior))

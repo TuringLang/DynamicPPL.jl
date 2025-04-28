@@ -193,124 +193,146 @@ end
 # END ACCUMULATOR TUPLE, BEGIN LOG PROB AND NUM PRODUCE ACCUMULATORS
 
 """
-    LogPrior{T} <: AbstractAccumulator
+    LogPriorAccumulator{T} <: AbstractAccumulator
 
 An accumulator that tracks the cumulative log prior during model execution.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct LogPrior{T} <: AbstractAccumulator
+struct LogPriorAccumulator{T} <: AbstractAccumulator
     "the scalar log prior value"
     logp::T
 end
 
 """
-    LogPrior{T}()
+    LogPriorAccumulator{T}()
 
-Create a new `LogPrior` accumulator with the log prior initialized to zero.
+Create a new `LogPriorAccumulator` accumulator with the log prior initialized to zero.
 """
-LogPrior{T}() where {T} = LogPrior(zero(T))
-LogPrior() = LogPrior{LogProbType}()
+LogPriorAccumulator{T}() where {T} = LogPriorAccumulator(zero(T))
+LogPriorAccumulator() = LogPriorAccumulator{LogProbType}()
 
 """
-    LogLikelihood{T} <: AbstractAccumulator
+    LogLikelihoodAccumulator{T} <: AbstractAccumulator
 
 An accumulator that tracks the cumulative log likelihood during model execution.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct LogLikelihood{T} <: AbstractAccumulator
+struct LogLikelihoodAccumulator{T} <: AbstractAccumulator
     "the scalar log likelihood value"
     logp::T
 end
 
 """
-    LogLikelihood{T}()
+    LogLikelihoodAccumulator{T}()
 
-Create a new `LogLikelihood` accumulator with the log likelihood initialized to zero.
+Create a new `LogLikelihoodAccumulator` accumulator with the log likelihood initialized to zero.
 """
-LogLikelihood{T}() where {T} = LogLikelihood(zero(T))
-LogLikelihood() = LogLikelihood{LogProbType}()
+LogLikelihoodAccumulator{T}() where {T} = LogLikelihoodAccumulator(zero(T))
+LogLikelihoodAccumulator() = LogLikelihoodAccumulator{LogProbType}()
 
 """
-    NumProduce{T} <: AbstractAccumulator
+    NumProduceAccumulator{T} <: AbstractAccumulator
 
 An accumulator that tracks the number of observations during model execution.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct NumProduce{T<:Integer} <: AbstractAccumulator
+struct NumProduceAccumulator{T<:Integer} <: AbstractAccumulator
     "the number of observations"
     num::T
 end
 
 """
-    NumProduce{T<:Integer}()
+    NumProduceAccumulator{T<:Integer}()
 
-Create a new `NumProduce` accumulator with the number of observations initialized to zero.
+Create a new `NumProduceAccumulator` accumulator with the number of observations initialized to zero.
 """
-NumProduce{T}() where {T} = NumProduce(zero(T))
-NumProduce() = NumProduce{Int}()
+NumProduceAccumulator{T}() where {T} = NumProduceAccumulator(zero(T))
+NumProduceAccumulator() = NumProduceAccumulator{Int}()
 
-Base.show(io::IO, acc::LogPrior) = print(io, "LogPrior($(repr(acc.logp)))")
-Base.show(io::IO, acc::LogLikelihood) = print(io, "LogLikelihood($(repr(acc.logp)))")
-Base.show(io::IO, acc::NumProduce) = print(io, "NumProduce($(repr(acc.num)))")
-
-accumulator_name(::Type{<:LogPrior}) = :LogPrior
-accumulator_name(::Type{<:LogLikelihood}) = :LogLikelihood
-accumulator_name(::Type{<:NumProduce}) = :NumProduce
-
-split(::LogPrior{T}) where {T} = LogPrior(zero(T))
-split(::LogLikelihood{T}) where {T} = LogLikelihood(zero(T))
-split(acc::NumProduce) = acc
-
-combine(acc::LogPrior, acc2::LogPrior) = LogPrior(acc.logp + acc2.logp)
-combine(acc::LogLikelihood, acc2::LogLikelihood) = LogLikelihood(acc.logp + acc2.logp)
-function combine(acc::NumProduce, acc2::NumProduce)
-    return NumProduce(max(acc.num, acc2.num))
+function Base.show(io::IO, acc::LogPriorAccumulator)
+    return print(io, "LogPriorAccumulator($(repr(acc.logp)))")
+end
+function Base.show(io::IO, acc::LogLikelihoodAccumulator)
+    return print(io, "LogLikelihoodAccumulator($(repr(acc.logp)))")
+end
+function Base.show(io::IO, acc::NumProduceAccumulator)
+    return print(io, "NumProduceAccumulator($(repr(acc.num)))")
 end
 
-Base.:+(acc1::LogPrior, acc2::LogPrior) = LogPrior(acc1.logp + acc2.logp)
-Base.:+(acc1::LogLikelihood, acc2::LogLikelihood) = LogLikelihood(acc1.logp + acc2.logp)
-increment(acc::NumProduce) = NumProduce(acc.num + oneunit(acc.num))
+accumulator_name(::Type{<:LogPriorAccumulator}) = :LogPrior
+accumulator_name(::Type{<:LogLikelihoodAccumulator}) = :LogLikelihood
+accumulator_name(::Type{<:NumProduceAccumulator}) = :NumProduce
 
-Base.zero(acc::LogPrior) = LogPrior(zero(acc.logp))
-Base.zero(acc::LogLikelihood) = LogLikelihood(zero(acc.logp))
-Base.zero(acc::NumProduce) = NumProduce(zero(acc.num))
+split(::LogPriorAccumulator{T}) where {T} = LogPriorAccumulator(zero(T))
+split(::LogLikelihoodAccumulator{T}) where {T} = LogLikelihoodAccumulator(zero(T))
+split(acc::NumProduceAccumulator) = acc
 
-function accumulate_assume!!(acc::LogPrior, val, logjac, vn, right)
-    return acc + LogPrior(logpdf(right, val) + logjac)
+function combine(acc::LogPriorAccumulator, acc2::LogPriorAccumulator)
+    return LogPriorAccumulator(acc.logp + acc2.logp)
 end
-accumulate_observe!!(acc::LogPrior, right, left, vn) = acc
+function combine(acc::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
+    return LogLikelihoodAccumulator(acc.logp + acc2.logp)
+end
+function combine(acc::NumProduceAccumulator, acc2::NumProduceAccumulator)
+    return NumProduceAccumulator(max(acc.num, acc2.num))
+end
 
-accumulate_assume!!(acc::LogLikelihood, val, logjac, vn, right) = acc
-function accumulate_observe!!(acc::LogLikelihood, right, left, vn)
+function Base.:+(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator)
+    return LogPriorAccumulator(acc1.logp + acc2.logp)
+end
+function Base.:+(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
+    return LogLikelihoodAccumulator(acc1.logp + acc2.logp)
+end
+increment(acc::NumProduceAccumulator) = NumProduceAccumulator(acc.num + oneunit(acc.num))
+
+Base.zero(acc::LogPriorAccumulator) = LogPriorAccumulator(zero(acc.logp))
+Base.zero(acc::LogLikelihoodAccumulator) = LogLikelihoodAccumulator(zero(acc.logp))
+Base.zero(acc::NumProduceAccumulator) = NumProduceAccumulator(zero(acc.num))
+
+function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right)
+    return acc + LogPriorAccumulator(logpdf(right, val) + logjac)
+end
+accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn) = acc
+
+accumulate_assume!!(acc::LogLikelihoodAccumulator, val, logjac, vn, right) = acc
+function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
     # Note that it's important to use the loglikelihood function here, not logpdf, because
     # they handle vectors differently:
     # https://github.com/JuliaStats/Distributions.jl/issues/1972
-    return acc + LogLikelihood(Distributions.loglikelihood(right, left))
+    return acc + LogLikelihoodAccumulator(Distributions.loglikelihood(right, left))
 end
 
-accumulate_assume!!(acc::NumProduce, val, logjac, vn, right) = acc
-accumulate_observe!!(acc::NumProduce, right, left, vn) = increment(acc)
+accumulate_assume!!(acc::NumProduceAccumulator, val, logjac, vn, right) = acc
+accumulate_observe!!(acc::NumProduceAccumulator, right, left, vn) = increment(acc)
 
-Base.convert(::Type{LogPrior{T}}, acc::LogPrior) where {T} = LogPrior(convert(T, acc.logp))
-function Base.convert(::Type{LogLikelihood{T}}, acc::LogLikelihood) where {T}
-    return LogLikelihood(convert(T, acc.logp))
+function Base.convert(::Type{LogPriorAccumulator{T}}, acc::LogPriorAccumulator) where {T}
+    return LogPriorAccumulator(convert(T, acc.logp))
 end
-function Base.convert(::Type{NumProduce{T}}, acc::NumProduce) where {T}
-    return NumProduce(convert(T, acc.num))
+function Base.convert(
+    ::Type{LogLikelihoodAccumulator{T}}, acc::LogLikelihoodAccumulator
+) where {T}
+    return LogLikelihoodAccumulator(convert(T, acc.logp))
+end
+function Base.convert(
+    ::Type{NumProduceAccumulator{T}}, acc::NumProduceAccumulator
+) where {T}
+    return NumProduceAccumulator(convert(T, acc.num))
 end
 
 # TODO(mhauru)
-# We ignore the convert_eltype calls for NumProduce, by letting them fallback on
+# We ignore the convert_eltype calls for NumProduceAccumulator, by letting them fallback on
 # convert_eltype(::AbstractAccumulator, ::Type). This is because they are only used to
-# deal with dual number types of AD backends, which shouldn't concern NumProduce. This is
+# deal with dual number types of AD backends, which shouldn't concern NumProduceAccumulator. This is
 # horribly hacky and should be fixed. See also comment in `unflatten` in `src/varinfo.jl`.
-convert_eltype(::Type{T}, acc::LogPrior) where {T} = LogPrior(convert(T, acc.logp))
-function convert_eltype(::Type{T}, acc::LogLikelihood) where {T}
-    return LogLikelihood(convert(T, acc.logp))
+function convert_eltype(::Type{T}, acc::LogPriorAccumulator) where {T}
+    return LogPriorAccumulator(convert(T, acc.logp))
+end
+function convert_eltype(::Type{T}, acc::LogLikelihoodAccumulator) where {T}
+    return LogLikelihoodAccumulator(convert(T, acc.logp))
 end

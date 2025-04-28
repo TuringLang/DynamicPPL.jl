@@ -1058,8 +1058,11 @@ See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
     # Remove other accumulators from varinfo, since they are unnecessary.
-    logprior =
-        hasacc(varinfo, Val(:LogPrior)) ? getacc(varinfo, Val(:LogPrior)) : LogPrior()
+    logprior = if hasacc(varinfo, Val(:LogPrior))
+        getacc(varinfo, Val(:LogPrior))
+    else
+        LogPriorAccumulator()
+    end
     varinfo = setaccs!!(deepcopy(varinfo), (logprior,))
     return getlogprior(last(evaluate!!(model, varinfo, DefaultContext())))
 end
@@ -1112,7 +1115,7 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     loglikelihood = if hasacc(varinfo, Val(:LogLikelihood))
         getacc(varinfo, Val(:LogLikelihood))
     else
-        LogLikelihood()
+        LogLikelihoodAccumulator()
     end
     varinfo = setaccs!!(deepcopy(varinfo), (loglikelihood,))
     return getloglikelihood(last(evaluate!!(model, varinfo, DefaultContext())))

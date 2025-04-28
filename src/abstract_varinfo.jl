@@ -194,7 +194,7 @@ Set the log of the prior probability of the parameters sampled in `vi` to `logp`
 
 See also: [`setloglikelihood!!`](@ref), [`setlogp!!`](@ref), [`getlogprior`](@ref).
 """
-setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPrior(logp))
+setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPriorAccumulator(logp))
 
 """
     setloglikelihood!!(vi::AbstractVarInfo, logp)
@@ -203,7 +203,7 @@ Set the log of the likelihood probability of the observed data sampled in `vi` t
 
 See also: [`setlogprior!!`](@ref), [`setlogp!!`](@ref), [`getloglikelihood`](@ref).
 """
-setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihood(logp))
+setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihoodAccumulator(logp))
 
 """
     setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)
@@ -303,7 +303,7 @@ Add `logp` to the value of the log of the prior probability in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
 function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acc + LogPrior(logp), vi, Val(:LogPrior))
+    return map_accumulator!!(acc -> acc + LogPriorAccumulator(logp), vi, Val(:LogPrior))
 end
 
 """
@@ -314,7 +314,9 @@ Add `logp` to the value of the log of the likelihood in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
 """
 function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acc + LogLikelihood(logp), vi, Val(:LogLikelihood))
+    return map_accumulator!!(
+        acc -> acc + LogLikelihoodAccumulator(logp), vi, Val(:LogLikelihood)
+    )
 end
 
 """

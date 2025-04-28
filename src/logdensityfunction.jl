@@ -79,7 +79,7 @@ julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
 
 julia> # LogDensityFunction respects the accumulators in VarInfo:
-       f_prior = LogDensityFunction(model, setaccs!!(VarInfo(model), (LogPrior(),)));
+       f_prior = LogDensityFunction(model, setaccs!!(VarInfo(model), (LogPriorAccumulator(),)));
 
 julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
 true
