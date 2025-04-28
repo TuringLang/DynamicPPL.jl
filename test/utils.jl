@@ -6,10 +6,56 @@
             return global lp_after = getlogjoint(__varinfo__)
         end
 
-        model = testmodel()
-        varinfo = VarInfo(model)
+        varinfo = VarInfo(testmodel())
         @test iszero(lp_before)
         @test getlogjoint(varinfo) == lp_after == 42
+        @test getloglikelihood(varinfo) == 42
+
+        @model function testmodel_nt()
+            global lp_before = getlogjoint(__varinfo__)
+            @addlogprob! (; logprior=(pi + 1), loglikelihood=42)
+            return global lp_after = getlogjoint(__varinfo__)
+        end
+
+        varinfo = VarInfo(testmodel_nt())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42 + 1 + pi
+        @test getloglikelihood(varinfo) == 42
+        @test getlogprior(varinfo) == pi + 1
+
+        @model function testmodel_nt2()
+            global lp_before = getlogjoint(__varinfo__)
+            llh_nt = (; loglikelihood=42)
+            @addlogprob! llh_nt
+            return global lp_after = getlogjoint(__varinfo__)
+        end
+
+        varinfo = VarInfo(testmodel_nt2())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42
+        @test getloglikelihood(varinfo) == 42
+
+        @model function testmodel_likelihood()
+            global lp_before = getlogjoint(__varinfo__)
+            @addloglikelihood! 42
+            return global lp_after = getlogjoint(__varinfo__)
+        end
+
+        varinfo = VarInfo(testmodel_likelihood())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42
+        @test getloglikelihood(varinfo) == 42
+
+        @model function testmodel_prior()
+            global lp_before = getlogjoint(__varinfo__)
+            @addlogprior! 42
+            return global lp_after = getlogjoint(__varinfo__)
+        end
+
+        varinfo = VarInfo(testmodel_prior())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42
+        @test getlogprior(varinfo) == 42
     end
 
     @testset "getargs_dottilde" begin

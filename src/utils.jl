@@ -18,7 +18,85 @@ const LogProbType = float(Real)
 """
     @addlogprob!(ex)
 
+Add a term to the log joint.
+
+If `ex` evaluates to a `NamedTuple` with keys `:loglikelihood` and/or `:logprior`, the
+values are added to the log likelihood and log prior respectively.
+
+If `ex` evaluates to a number it is added to the log likelihood. This use is deprecated
+and should be replaced with either the `NamedTuple` version or calls to
+[`@addloglikelihood!`](@ref).
+
+See also [`@addloglikelihood!`](@ref), [`@addlogprior!`](@ref).
+
+# Examples
+
+```jldoctest; setup = :(using Distributions)
+julia> mylogjoint(x, μ) = (; loglikelihood=loglikelihood(Normal(μ, 1), x), logprior=1.0);
+
+julia> @model function demo(x)
+           μ ~ Normal()
+           @addlogprob! mylogjoint(x, μ)
+       end;
+
+julia> x = [1.3, -2.1];
+
+julia> loglikelihood(demo(x), (μ=0.2,)) ≈ mylogjoint(x, 0.2).loglikelihood
+true
+
+julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2) + mylogjoint(x, 0.2).logprior
+true
+```
+
+and to [reject samples](https://github.com/TuringLang/Turing.jl/issues/1328):
+
+```jldoctest; setup = :(using Distributions, LinearAlgebra)
+julia> @model function demo(x)
+           m ~ MvNormal(zero(x), I)
+           if dot(m, x) < 0
+               @addlogprob! (; loglikelihood=-Inf)
+               # Exit the model evaluation early
+               return
+           end
+           x ~ MvNormal(m, I)
+           return
+       end;
+
+julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
+true
+```
+"""
+macro addlogprob!(ex)
+    return quote
+        val = $(esc(ex))
+        vi = $(esc(:(__varinfo__)))
+        if val isa Number
+            Base.depwarn(
+                """
+       @addlogprob! with a single number argument is deprecated. Please use
+       @addlogprob! (; loglikelihood=x) or @addloglikelihood! instead.
+       """,
+                :addlogprob!,
+            )
+            if hasacc(vi, Val(:LogLikelihood))
+                $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), val)
+            end
+        elseif !isa(val, NamedTuple)
+            error("logp must be a NamedTuple.")
+        else
+            $(esc(:(__varinfo__))) = acclogp!!(
+                $(esc(:(__varinfo__))), val; ignore_missing_accumulator=true
+            )
+        end
+    end
+end
+
+"""
+    @addloglikelihood!(ex)
+
 Add the result of the evaluation of `ex` to the log likelihood.
+
+See also [`@addlogprob!`](@ref), [`@addlogprior!`](@ref).
 
 # Examples
 
@@ -29,7 +107,7 @@ julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
 
 julia> @model function demo(x)
            μ ~ Normal()
-           @addlogprob! myloglikelihood(x, μ)
+           @addloglikelihood! myloglikelihood(x, μ)
        end;
 
 julia> x = [1.3, -2.1];
@@ -44,7 +122,7 @@ and to [reject samples](https://github.com/TuringLang/Turing.jl/issues/1328):
 julia> @model function demo(x)
            m ~ MvNormal(zero(x), I)
            if dot(m, x) < 0
-               @addlogprob! -Inf
+               @addloglikelihood! -Inf
                # Exit the model evaluation early
                return
            end
@@ -56,10 +134,43 @@ julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
 true
 ```
 """
-macro addlogprob!(ex)
+macro addloglikelihood!(ex)
     return quote
-        if $hasacc($(esc(:(__varinfo__))), Val(:LogLikelihood))
-            $(esc(:(__varinfo__))) = $accloglikelihood!!($(esc(:(__varinfo__))), $(esc(ex)))
+        if hasacc($(esc(:(__varinfo__))), Val(:LogLikelihood))
+            $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), $(esc(ex)))
+        end
+    end
+end
+
+"""
+    @addlogprior!(ex)
+
+Add the result of the evaluation of `ex` to the log prior.
+
+See also [`@addloglikelihood!`](@ref), [`@addlogprob!`](@ref).
+
+# Examples
+
+This macro allows you to include arbitrary terms in the prior.
+
+```jldoctest; setup = :(using Distributions)
+julia> mylogpriorextraterm(μ) = μ > 0 ? -1.0 : 0.0;
+
+julia> @model function demo(x)
+           μ ~ Normal()
+           @addlogprior! mylogpriorextraterm(μ)
+       end;
+
+julia> x = [1.3, -2.1];
+
+julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2) + mylogpriorextraterm(0.2)
+true
+```
+"""
+macro addlogprior!(ex)
+    return quote
+        if hasacc($(esc(:(__varinfo__))), Val(:LogPrior))
+            $(esc(:(__varinfo__))) = acclogprior!!($(esc(:(__varinfo__))), $(esc(ex)))
         end
     end
 end

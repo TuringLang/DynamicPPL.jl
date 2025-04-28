@@ -160,10 +160,12 @@ returned(::Model)
 
 ## Utilities
 
-It is possible to manually increase (or decrease) the accumulated log likelihood from within a model function.
+It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
 
 ```@docs
 @addlogprob!
+@addloglikelihood!
+@addlogprior!
 ```
 
 Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).

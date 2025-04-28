@@ -320,13 +320,18 @@ function accloglikelihood!!(vi::AbstractVarInfo, logp)
 end
 
 """
-    acclogp!!(vi::AbstractVarInfo, logp::NamedTuple)
+    acclogp!!(vi::AbstractVarInfo, logp::NamedTuple; ignore_missing_accumulator::Bool=false)
 
 Add to both the log prior and the log likelihood probabilities in `vi`.
 
 `logp` should have fields `logprior` and/or `loglikelihood`, and no other fields.
+
+By default if the necessary accumulators are not in `vi` an error is thrown. If
+`ignore_missing_accumulator` is set to `true` then this is silently ignored instead.
 """
-function acclogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
+function acclogp!!(
+    vi::AbstractVarInfo, logp::NamedTuple{names}; ignore_missing_accumulator=false
+) where {names}
     if !(
         names == (:logprior, :loglikelihood) ||
         names == (:loglikelihood, :logprior) ||
@@ -335,17 +340,19 @@ function acclogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
     )
         error("logp must have fields logprior and/or loglikelihood and no other fields.")
     end
-    if haskey(logp, :logprior)
+    if haskey(logp, :logprior) &&
+        (!ignore_missing_accumulator || hasacc(vi, Val(:LogPrior)))
         vi = acclogprior!!(vi, logp.logprior)
     end
-    if haskey(logp, :loglikelihood)
+    if haskey(logp, :loglikelihood) &&
+        (!ignore_missing_accumulator || hasacc(vi, Val(:LogLikelihood)))
         vi = accloglikelihood!!(vi, logp.loglikelihood)
     end
     return vi
 end
 
 function acclogp!!(vi::AbstractVarInfo, logp::Number)
-    depwarn(
+    Base.depwarn(
         "`acclogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `accloglikelihood!!(vi, logp)` instead.",
         :acclogp,
     )

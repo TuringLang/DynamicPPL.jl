@@ -127,6 +127,8 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
+    @addlogprior!,
+    @addloglikelihood!,
     @submodel,
     value_iterator_from_chain,
     check_model,
