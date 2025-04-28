@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.1
+
+Fixed a missing method for `tilde_assume`.
+
 ## 0.36.0
 
 **Breaking changes**
