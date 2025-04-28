@@ -139,7 +139,7 @@ function getaccs end
 Return a boolean for whether `vi` has an accumulator with name `accname`.
 """
 hasacc(vi::AbstractVarInfo, accname::Val) = haskey(getaccs(vi), accname)
-function hassacc(vi::AbstractVarInfo, accname::Symbol)
+function hasacc(vi::AbstractVarInfo, accname::Symbol)
     return error(
         """
         The method hasacc(vi::AbstractVarInfo, accname::Symbol) does not exist. For type

@@ -5,7 +5,7 @@ An abstract type for accumulators.
 
 An accumulator is an object that may change its value at every tilde_assume!! or
 tilde_observe!! call based on the random variable in question. The obvious examples of
-accumulators are the log prior and log likelihood. Others examples might be a variable that
+accumulators are the log prior and log likelihood. Other examples might be a variable that
 counts the number of observations in a trace, or a list of the names of random variables
 seen so far.
 
