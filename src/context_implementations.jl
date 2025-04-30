@@ -122,9 +122,14 @@ end
 # `PrefixContext`
 function tilde_observe!!(context::PrefixContext, right, left, vn, vi)
     # In the observe case, unlike assume, `vn` may be `nothing` if the LHS is a literal
-    # value.
-    prefixed_varname = vn !== nothing ? prefix(context, vn) : vn
-    return tilde_observe!!(context.context, right, left, prefixed_varname, vi)
+    # value. For the need for prefix_and_strip_contexts rather than just prefix, see the
+    # comment in `tilde_assume!!`.
+    new_vn, new_context = if vn !== nothing
+        prefix_and_strip_contexts(context, vn)
+    else
+        vn, childcontext(context)
+    end
+    return tilde_observe!!(new_context, right, left, new_vn, vi)
 end
 
 """
