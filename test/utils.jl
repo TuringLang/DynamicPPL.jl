@@ -29,33 +29,6 @@
             @addlogprob! llh_nt
             return global lp_after = getlogjoint(__varinfo__)
         end
-
-        varinfo = VarInfo(testmodel_nt2())
-        @test iszero(lp_before)
-        @test getlogjoint(varinfo) == lp_after == 42
-        @test getloglikelihood(varinfo) == 42
-
-        @model function testmodel_likelihood()
-            global lp_before = getlogjoint(__varinfo__)
-            @addloglikelihood! 42
-            return global lp_after = getlogjoint(__varinfo__)
-        end
-
-        varinfo = VarInfo(testmodel_likelihood())
-        @test iszero(lp_before)
-        @test getlogjoint(varinfo) == lp_after == 42
-        @test getloglikelihood(varinfo) == 42
-
-        @model function testmodel_prior()
-            global lp_before = getlogjoint(__varinfo__)
-            @addlogprior! 42
-            return global lp_after = getlogjoint(__varinfo__)
-        end
-
-        varinfo = VarInfo(testmodel_prior())
-        @test iszero(lp_before)
-        @test getlogjoint(varinfo) == lp_after == 42
-        @test getlogprior(varinfo) == 42
     end
 
     @testset "getargs_dottilde" begin

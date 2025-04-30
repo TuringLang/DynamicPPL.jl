@@ -164,8 +164,6 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 
 ```@docs
 @addlogprob!
-@addloglikelihood!
-@addlogprior!
 ```
 
 Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
