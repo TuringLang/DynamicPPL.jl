@@ -204,7 +204,7 @@ function SimpleVarInfo(values, accs)
     return SimpleVarInfo(values, accs, NoTransformation())
 end
 function SimpleVarInfo{T}(values) where {T<:Real}
-    return SimpleVarInfo(values, default_accumulators())
+    return SimpleVarInfo(values, default_accumulators(T))
 end
 function SimpleVarInfo(values)
     return SimpleVarInfo{LogProbType}(values)
