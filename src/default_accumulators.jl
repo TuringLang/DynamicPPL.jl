@@ -142,3 +142,11 @@ end
 function convert_eltype(::Type{T}, acc::LogLikelihoodAccumulator) where {T}
     return LogLikelihoodAccumulator(convert(T, acc.logp))
 end
+
+function default_accumulators()
+    return AccumulatorTuple(
+        LogPriorAccumulator{LogProbType}(),
+        LogLikelihoodAccumulator{LogProbType}(),
+        NumProduceAccumulator{Int}(),
+    )
+end

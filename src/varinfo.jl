@@ -102,14 +102,7 @@ struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
 end
 function VarInfo(meta=Metadata())
-    return VarInfo(
-        meta,
-        AccumulatorTuple(
-            LogPriorAccumulator{LogProbType}(),
-            LogLikelihoodAccumulator{LogProbType}(),
-            NumProduceAccumulator{Int}(),
-        ),
-    )
+    return VarInfo(meta, default_accumulators())
 end
 
 """
