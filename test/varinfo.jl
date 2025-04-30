@@ -210,10 +210,10 @@ end
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
-        @test_throws "has no field LogLikelihoodAccumulator" getloglikelihood(vi)
-        @test_throws "has no field LogLikelihoodAccumulator" getlogp(vi)
-        @test_throws "has no field LogLikelihoodAccumulator" getlogjoint(vi)
-        @test_throws "has no field NumProduceAccumulator" get_num_produce(vi)
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogLikelihood" getlogp(vi)
+        @test_throws "has no field LogLikelihood" getlogjoint(vi)
+        @test_throws "has no field NumProduce" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -228,20 +228,20 @@ end
                 m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduceAccumulator(),))
             ),
         )
-        @test_throws "has no field LogPriorAccumulator" getlogprior(vi)
-        @test_throws "has no field LogLikelihoodAccumulator" getloglikelihood(vi)
-        @test_throws "has no field LogPriorAccumulator" getlogp(vi)
-        @test_throws "has no field LogPriorAccumulator" getlogjoint(vi)
+        @test_throws "has no field LogPrior" getlogprior(vi)
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogPrior" getlogp(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
         @test get_num_produce(vi) == 2
 
         # Test evaluating without any accumulators.
         vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
-        @test_throws "has no field LogPriorAccumulator" getlogprior(vi)
-        @test_throws "has no field LogLikelihoodAccumulator" getloglikelihood(vi)
-        @test_throws "has no field LogPriorAccumulator" getlogp(vi)
-        @test_throws "has no field LogPriorAccumulator" getlogjoint(vi)
-        @test_throws "has no field NumProduceAccumulator" get_num_produce(vi)
-        @test_throws "has no field NumProduceAccumulator" reset_num_produce!!(vi)
+        @test_throws "has no field LogPrior" getlogprior(vi)
+        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
+        @test_throws "has no field LogPrior" getlogp(vi)
+        @test_throws "has no field LogPrior" getlogjoint(vi)
+        @test_throws "has no field NumProduce" get_num_produce(vi)
+        @test_throws "has no field NumProduce" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
