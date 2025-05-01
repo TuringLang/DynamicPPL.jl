@@ -264,8 +264,12 @@ function unflatten(svi::SimpleVarInfo, x::AbstractVector)
     vals = unflatten(svi.values, x)
     # TODO(mhauru) See comment in unflatten in src/varinfo.jl for why this conversion is
     # required but undesireable.
-    T = float_type_with_fallback(eltype(x))
-    accs = map(acc -> convert_eltype(T, acc), getaccs(svi))
+    # The below line is finicky for type stability. For instance, assigning the eltype to
+    # convert to into an intermediate variable makes this unstable (constant propagation)
+    # fails. Take care when editing.
+    accs = map(
+        acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc), getaccs(svi)
+    )
     return SimpleVarInfo(vals, accs, svi.transformation)
 end
 

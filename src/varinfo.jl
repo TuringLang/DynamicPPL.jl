@@ -444,8 +444,13 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
     # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
     # plain ugly and hacky.
-    T = float_type_with_fallback(eltype(x))
-    accs = map(acc -> convert_eltype(T, acc), deepcopy(getaccs(vi)))
+    # The below line is finicky for type stability. For instance, assigning the eltype to
+    # convert to into an intermediate variable makes this unstable (constant propagation)
+    # fails. Take care when editing.
+    accs = map(
+        acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc),
+        deepcopy(getaccs(vi)),
+    )
     return VarInfo(md, accs)
 end
 

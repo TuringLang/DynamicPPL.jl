@@ -732,6 +732,29 @@ end
         end
     end
 
+    @testset "unflatten type stability" begin
+        @model function demo(y)
+            x ~ Normal()
+            y ~ Normal(x, 1)
+            return nothing
+        end
+
+        model = demo(0.0)
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
+            model, (; x=1.0), (@varname(x),); include_threadsafe=true
+        )
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            # Skip the severely inconcrete `SimpleVarInfo` types, since checking for type
+            # stability for them doesn't make much sense anyway.
+            if varinfo isa SimpleVarInfo{OrderedDict{Any,Any}} ||
+                varinfo isa
+               DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{OrderedDict{Any,Any}}}
+                continue
+            end
+            @inferred DynamicPPL.unflatten(varinfo, varinfo[:])
+        end
+    end
+
     @testset "subset" begin
         @model function demo_subsetting_varinfo(::Type{TV}=Vector{Float64}) where {TV}
             s ~ InverseGamma(2, 3)
