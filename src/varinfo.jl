@@ -1013,35 +1013,6 @@ istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
 getaccs(vi::VarInfo) = vi.accs
 setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
 
-"""
-    get_num_produce(vi::VarInfo)
-
-Return the `num_produce` of `vi`.
-"""
-get_num_produce(vi::VarInfo) = getacc(vi, Val(:NumProduce)).num
-
-"""
-    set_num_produce!!(vi::VarInfo, n::Int)
-
-Set the `num_produce` field of `vi` to `n`.
-"""
-set_num_produce!!(vi::VarInfo, n::Int) = setacc!!(vi, NumProduceAccumulator(n))
-
-"""
-    increment_num_produce!!(vi::VarInfo)
-
-Add 1 to `num_produce` in `vi`.
-"""
-increment_num_produce!!(vi::VarInfo) = map_accumulator!!(increment, vi, Val(:NumProduce))
-
-"""
-    reset_num_produce!!(vi::VarInfo)
-
-Reset the value of `num_produce` the log of the joint probability of the observed data
-and parameters sampled in `vi` to 0.
-"""
-reset_num_produce!!(vi::VarInfo) = map_accumulator!!(zero, vi, Val(:NumProduce))
-
 # Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
 isempty(vi::VarInfo) = _isempty(vi.metadata)
 _isempty(metadata::Metadata) = isempty(metadata.idcs)

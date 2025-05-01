@@ -967,9 +967,34 @@ function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     return x, logpdf(dist, x) + logjac
 end
 
-# Legacy code that is currently overloaded for the sake of simplicity.
-# TODO: Remove when possible.
-increment_num_produce!!(::AbstractVarInfo) = nothing
+"""
+    get_num_produce(vi::AbstractVarInfo)
+
+Return the `num_produce` of `vi`.
+"""
+get_num_produce(vi::AbstractVarInfo) = getacc(vi, Val(:NumProduce)).num
+
+"""
+    set_num_produce!!(vi::AbstractVarInfo, n::Int)
+
+Set the `num_produce` field of `vi` to `n`.
+"""
+set_num_produce!!(vi::AbstractVarInfo, n::Int) = setacc!!(vi, NumProduceAccumulator(n))
+
+"""
+    increment_num_produce!!(vi::AbstractVarInfo)
+
+Add 1 to `num_produce` in `vi`.
+"""
+increment_num_produce!!(vi::AbstractVarInfo) =
+    map_accumulator!!(increment, vi, Val(:NumProduce))
+
+"""
+    reset_num_produce!!(vi::AbstractVarInfo)
+
+Reset the value of `num_produce` in `vi` to 0.
+"""
+reset_num_produce!!(vi::AbstractVarInfo) = map_accumulator!!(zero, vi, Val(:NumProduce))
 
 """
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
