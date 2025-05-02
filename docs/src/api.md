@@ -160,7 +160,7 @@ returned(::Model)
 
 ## Utilities
 
-It is possible to manually increase (or decrease) the accumulated log density from within a model function.
+It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
 
 ```@docs
 @addlogprob!
@@ -328,9 +328,9 @@ The following functions were used for sequential Monte Carlo methods.
 
 ```@docs
 get_num_produce
-set_num_produce!
-increment_num_produce!
-reset_num_produce!
+set_num_produce!!
+increment_num_produce!!
+reset_num_produce!!
 setorder!
 set_retained_vns_del!
 ```
@@ -345,6 +345,22 @@ Base.empty!
 SimpleVarInfo
 ```
 
+### Accumulators
+
+The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
+
+```@docs
+AbstractAccumulator
+```
+
+DynamicPPL provides the following default accumulators.
+
+```@docs
+LogPriorAccumulator
+LogLikelihoodAccumulator
+NumProduceAccumulator
+```
+
 ### Common API
 
 #### Accumulation of log-probabilities
@@ -353,6 +369,13 @@ SimpleVarInfo
 getlogp
 setlogp!!
 acclogp!!
+getlogjoint
+getlogprior
+setlogprior!!
+acclogprior!!
+getloglikelihood
+setloglikelihood!!
+accloglikelihood!!
 resetlogp!!
 ```
 
@@ -427,9 +450,6 @@ Contexts are subtypes of `AbstractPPL.AbstractContext`.
 ```@docs
 SamplingContext
 DefaultContext
-LikelihoodContext
-PriorContext
-MiniBatchContext
 PrefixContext
 ConditionContext
 ```
@@ -475,8 +495,4 @@ DynamicPPL.Experimental.is_suitable_varinfo
 
 ```@docs
 tilde_assume
-```
-
-```@docs
-tilde_observe
 ```

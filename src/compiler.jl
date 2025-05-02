@@ -418,7 +418,7 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, nothing, __varinfo__
         )
         $value
     end

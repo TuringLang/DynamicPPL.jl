@@ -65,29 +65,24 @@ end
 function tilde_assume(context::ValuesAsInModelContext, right, vn, vi)
     if is_tracked_value(right)
         value = right.value
-        logp = zero(getlogp(vi))
     else
-        value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
+        value, vi = tilde_assume(childcontext(context), right, vn, vi)
     end
-    # Save the value.
     push!(context, vn, value)
-    # Save the value.
-    # Pass on.
-    return value, logp, vi
+    return value, vi
 end
 function tilde_assume(
     rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, vn, vi
 )
     if is_tracked_value(right)
         value = right.value
-        logp = zero(getlogp(vi))
     else
-        value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+        value, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
     end
     # Save the value.
     push!(context, vn, value)
     # Pass on.
-    return value, logp, vi
+    return value, vi
 end
 
 """

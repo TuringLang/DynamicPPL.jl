@@ -6,6 +6,7 @@ using Bijectors
 using Compat
 using Distributions
 using OrderedCollections: OrderedCollections, OrderedDict
+using Printf: Printf
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
@@ -46,17 +47,28 @@ import Base:
 export AbstractVarInfo,
     VarInfo,
     SimpleVarInfo,
+    AbstractAccumulator,
+    LogLikelihoodAccumulator,
+    LogPriorAccumulator,
+    NumProduceAccumulator,
     push!!,
     empty!!,
     subset,
     getlogp,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
     setlogp!!,
+    setlogprior!!,
+    setloglikelihood!!,
     acclogp!!,
+    acclogprior!!,
+    accloglikelihood!!,
     resetlogp!!,
     get_num_produce,
-    set_num_produce!,
-    reset_num_produce!,
-    increment_num_produce!,
+    set_num_produce!!,
+    reset_num_produce!!,
+    increment_num_produce!!,
     set_retained_vns_del!,
     is_flagged,
     set_flag!,
@@ -92,15 +104,10 @@ export AbstractVarInfo,
     # Contexts
     SamplingContext,
     DefaultContext,
-    LikelihoodContext,
-    PriorContext,
-    MiniBatchContext,
     PrefixContext,
     ConditionContext,
     assume,
-    observe,
     tilde_assume,
-    tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -146,6 +153,9 @@ macro prob_str(str)
     ))
 end
 
+# TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
+# has to implement. Not sure what the full list is for parameters values, but for
+# accumulators we only need `getaccs` and `setaccs!!`.
 """
     AbstractVarInfo
 
@@ -166,6 +176,8 @@ include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
 include("varnamedvector.jl")
+include("accumulators.jl")
+include("default_accumulators.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")

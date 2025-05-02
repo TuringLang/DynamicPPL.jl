@@ -4,9 +4,12 @@
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
         @test threadsafe_vi.varinfo === vi
-        @test threadsafe_vi.logps isa Vector{typeof(Ref(getlogp(vi)))}
-        @test length(threadsafe_vi.logps) == Threads.nthreads()
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        @test threadsafe_vi.accs_by_thread isa Vector{<:DynamicPPL.AccumulatorTuple}
+        @test length(threadsafe_vi.accs_by_thread) == Threads.nthreads()
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(vi))...
+        )
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
     # TODO: Add more tests of the public API
@@ -14,23 +17,27 @@
         vi = VarInfo(gdemo_default)
         threadsafe_vi = DynamicPPL.ThreadSafeVarInfo(vi)
 
-        lp = getlogp(vi)
-        @test getlogp(threadsafe_vi) == lp
+        lp = getlogjoint(vi)
+        @test getlogjoint(threadsafe_vi) == lp
 
-        acclogp!!(threadsafe_vi, 42)
-        @test threadsafe_vi.logps[Threads.threadid()][] == 42
-        @test getlogp(vi) == lp
-        @test getlogp(threadsafe_vi) == lp + 42
+        threadsafe_vi = DynamicPPL.acclogprior!!(threadsafe_vi, 42)
+        @test threadsafe_vi.accs_by_thread[Threads.threadid()][:LogPrior].logp == 42
+        @test getlogjoint(vi) == lp
+        @test getlogjoint(threadsafe_vi) == lp + 42
 
-        resetlogp!!(threadsafe_vi)
-        @test iszero(getlogp(vi))
-        @test iszero(getlogp(threadsafe_vi))
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        threadsafe_vi = resetlogp!!(threadsafe_vi)
+        @test iszero(getlogjoint(threadsafe_vi))
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(threadsafe_vi.varinfo))...
+        )
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
 
-        setlogp!!(threadsafe_vi, 42)
-        @test getlogp(vi) == 42
-        @test getlogp(threadsafe_vi) == 42
-        @test all(iszero(x[]) for x in threadsafe_vi.logps)
+        threadsafe_vi = setlogprior!!(threadsafe_vi, 42)
+        @test getlogjoint(threadsafe_vi) == 42
+        expected_accs = DynamicPPL.AccumulatorTuple(
+            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(threadsafe_vi.varinfo))...
+        )
+        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
     @testset "model" begin
@@ -48,7 +55,7 @@
 
         vi = VarInfo()
         wthreads(x)(vi)
-        lp_w_threads = getlogp(vi)
+        lp_w_threads = getlogjoint(vi)
         if Threads.nthreads() == 1
             @test vi_ isa VarInfo
         else
@@ -65,7 +72,7 @@
             vi,
             SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
-        @test getlogp(vi) ≈ lp_w_threads
+        @test getlogjoint(vi) ≈ lp_w_threads
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
 
         println("  evaluate_threadsafe!!:")
@@ -85,7 +92,7 @@
 
         vi = VarInfo()
         wothreads(x)(vi)
-        lp_wo_threads = getlogp(vi)
+        lp_wo_threads = getlogjoint(vi)
         if Threads.nthreads() == 1
             @test vi_ isa VarInfo
         else
@@ -104,7 +111,7 @@
             vi,
             SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
         )
-        @test getlogp(vi) ≈ lp_w_threads
+        @test getlogjoint(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
 
         println("  evaluate_threadunsafe!!:")

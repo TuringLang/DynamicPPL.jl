@@ -41,7 +41,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         m = vi[@varname(m)]
 
         # extract log pdf of variable object
-        lp = getlogp(vi)
+        lp = getlogjoint(vi)
 
         # log prior probability
         lprior = logprior(model, vi)
@@ -494,7 +494,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             varinfo_linked_result = last(
                 DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())
             )
-            @test getlogp(varinfo_linked) ≈ getlogp(varinfo_linked_result)
+            @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
         end
     end
 

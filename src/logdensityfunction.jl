@@ -51,7 +51,7 @@ $(FIELDS)
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: LogDensityFunction, contextualize
+julia> using DynamicPPL: LogDensityFunction, setaccs!!
 
 julia> @model function demo(x)
            m ~ Normal()
@@ -78,8 +78,8 @@ julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
 julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
 
-julia> # This also respects the context in `model`.
-       f_prior = LogDensityFunction(contextualize(model, DynamicPPL.PriorContext()), VarInfo(model));
+julia> # LogDensityFunction respects the accumulators in VarInfo:
+       f_prior = LogDensityFunction(model, setaccs!!(VarInfo(model), (LogPriorAccumulator(),)));
 
 julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
 true
@@ -174,14 +174,26 @@ end
 
 Evaluate the log density of the given `model` at the given parameter values `x`,
 using the given `varinfo` and `context`. Note that the `varinfo` argument is provided
-only for its structure, in the sense that the parameters from the vector `x` are inserted into
-it, and its own parameters are discarded. 
+only for its structure, in the sense that the parameters from the vector `x` are inserted
+into it, and its own parameters are discarded. It does, however, determine whether the log
+prior, likelihood, or joint is returned, based on which accumulators are set in it.
 """
 function logdensity_at(
     x::AbstractVector, model::Model, varinfo::AbstractVarInfo, context::AbstractContext
 )
     varinfo_new = unflatten(varinfo, x)
-    return getlogp(last(evaluate!!(model, varinfo_new, context)))
+    varinfo_eval = last(evaluate!!(model, varinfo_new, context))
+    has_prior = hasacc(varinfo_eval, Val(:LogPrior))
+    has_likelihood = hasacc(varinfo_eval, Val(:LogLikelihood))
+    if has_prior && has_likelihood
+        return getlogjoint(varinfo_eval)
+    elseif has_prior
+        return getlogprior(varinfo_eval)
+    elseif has_likelihood
+        return getloglikelihood(varinfo_eval)
+    else
+        error("LogDensityFunction: varinfo tracks neither log prior nor log likelihood")
+    end
 end
 
 ### LogDensityProblems interface

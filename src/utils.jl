@@ -18,23 +18,29 @@ const LogProbType = float(Real)
 """
     @addlogprob!(ex)
 
-Add the result of the evaluation of `ex` to the joint log probability.
+Add a term to the log joint.
+
+If `ex` evaluates to a `NamedTuple` with keys `:loglikelihood` and/or `:logprior`, the
+values are added to the log likelihood and log prior respectively.
+
+If `ex` evaluates to a number it is added to the log likelihood.
 
 # Examples
 
-This macro allows you to [include arbitrary terms in the likelihood](https://github.com/TuringLang/Turing.jl/issues/1332)
-
 ```jldoctest; setup = :(using Distributions)
-julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
+julia> mylogjoint(x, μ) = (; loglikelihood=loglikelihood(Normal(μ, 1), x), logprior=1.0);
 
 julia> @model function demo(x)
            μ ~ Normal()
-           @addlogprob! myloglikelihood(x, μ)
+           @addlogprob! mylogjoint(x, μ)
        end;
 
 julia> x = [1.3, -2.1];
 
-julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
+julia> loglikelihood(demo(x), (μ=0.2,)) ≈ mylogjoint(x, 0.2).loglikelihood
+true
+
+julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2) + mylogjoint(x, 0.2).logprior
 true
 ```
 
@@ -44,7 +50,7 @@ and to [reject samples](https://github.com/TuringLang/Turing.jl/issues/1328):
 julia> @model function demo(x)
            m ~ MvNormal(zero(x), I)
            if dot(m, x) < 0
-               @addlogprob! -Inf
+               @addlogprob! (; loglikelihood=-Inf)
                # Exit the model evaluation early
                return
            end
@@ -55,37 +61,22 @@ julia> @model function demo(x)
 julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
 true
 ```
-
-!!! note
-    The `@addlogprob!` macro increases the accumulated log probability regardless of the evaluation context,
-    i.e., regardless of whether you evaluate the log prior, the log likelihood or the log joint density.
-    If you would like to avoid this behaviour you should check the evaluation context.
-    It can be accessed with the internal variable `__context__`.
-    For instance, in the following example the log density is not accumulated when only the log prior is computed:
-    ```jldoctest; setup = :(using Distributions)
-    julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
-
-    julia> @model function demo(x)
-               μ ~ Normal()
-               if DynamicPPL.leafcontext(__context__) !== PriorContext()
-                   @addlogprob! myloglikelihood(x, μ)
-               end
-           end;
-
-    julia> x = [1.3, -2.1];
-
-    julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2)
-    true
-
-    julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
-    true
-    ```
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = acclogp!!(
-            $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
-        )
+        val = $(esc(ex))
+        vi = $(esc(:(__varinfo__)))
+        if val isa Number
+            if hasacc(vi, Val(:LogLikelihood))
+                $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), val)
+            end
+        elseif val isa NamedTuple
+            $(esc(:(__varinfo__))) = acclogp!!(
+                $(esc(:(__varinfo__))), val; ignore_missing_accumulator=true
+            )
+        else
+            error("logp must be a Number or a NamedTuple.")
+        end
     end
 end
 

@@ -100,4 +100,5 @@ PrettyTables.pretty_table(
     header=header,
     tf=PrettyTables.tf_markdown,
     formatters=ft_printf("%.1f", [6, 7]),
+    crop=:none,  # Always print the whole table, even if it doesn't fit in the terminal.
 )
