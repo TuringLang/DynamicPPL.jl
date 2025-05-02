@@ -402,14 +402,21 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
 end
 
 function generate_assign(left, right)
-    right_expr = :($(TrackedValue)($right))
-    tilde_expr = generate_tilde(left, right_expr)
+    # A statement `x := y` reduces to `x = y`, but if __varinfo__ has an accumulator for
+    # ValuesAsInModel then in addition we push! the pair of `x` and `y` to the accumulator.
+    @gensym acc right_val vn
     return quote
-        if $(is_extracting_values)(__context__)
-            $tilde_expr
-        else
-            $left = $right
+        $right_val = $right
+        if $(DynamicPPL.is_extracting_values)(__varinfo__)
+            $vn = $(DynamicPPL.prefix)(
+                __context__,
+                $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
+            )
+            __varinfo__ = $(map_accumulator!!)(
+                $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
+            )
         end
+        $left = $right_val
     end
 end
 
