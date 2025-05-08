@@ -732,10 +732,10 @@ module Issue537 end
             y := 100 + x
             return (; x, y)
         end
-        @model function demo_tracked_submodel()
+        @model function demo_tracked_submodel_no_prefix()
             return vals ~ to_submodel(demo_tracked(), false)
         end
-        for model in [demo_tracked(), demo_tracked_submodel()]
+        for model in [demo_tracked(), demo_tracked_submodel_no_prefix()]
             # Make sure it's runnable and `y` is present in the return-value.
             @test model() isa NamedTuple{(:x, :y)}
 
@@ -756,6 +756,33 @@ module Issue537 end
             @test haskey(values, @varname(x))
             @test !haskey(values, @varname(y))
         end
+
+        @model function demo_tracked_return_x()
+            x ~ Normal()
+            y := 100 + x
+            return x
+        end
+        @model function demo_tracked_submodel_prefix()
+            return a ~ to_submodel(demo_tracked_return_x())
+        end
+        @model function demo_tracked_subsubmodel_prefix()
+            return b ~ to_submodel(demo_tracked_submodel_prefix())
+        end
+        # As above, but the variables should now have their names prefixed with `b.a`.
+        model = demo_tracked_subsubmodel_prefix()
+        varinfo = VarInfo(model)
+        @test haskey(varinfo, @varname(b.a.x))
+        @test length(keys(varinfo)) == 1
+
+        values = values_as_in_model(model, true, deepcopy(varinfo))
+        @test haskey(values, @varname(b.a.x))
+        @test haskey(values, @varname(b.a.y))
+
+        # And if include_colon_eq is set to `false`, then `values` should
+        # only contain `x`.
+        values = values_as_in_model(model, false, deepcopy(varinfo))
+        @test haskey(values, @varname(b.a.x))
+        @test length(keys(varinfo)) == 1
     end
 
     @testset "signature parsing + TypeWrap" begin
