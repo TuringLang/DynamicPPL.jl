@@ -21,12 +21,13 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
     if !haskey(vi, vn)
         r = rand(dist)
         push!!(vi, vn, r, dist)
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     elseif DynamicPPL.is_flagged(vi, vn, "del")
         DynamicPPL.unset_flag!(vi, vn, "del")
         r = rand(dist)
         vi[vn] = DynamicPPL.tovec(r)
-        DynamicPPL.setorder!(vi, vn, DynamicPPL.get_num_produce(vi))
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     else
         vi[vn]
@@ -54,7 +55,6 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                @test meta.orders[ind] == fmeta.orders[tind]
                 for flag in keys(meta.flags)
                     @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
                 end
@@ -213,7 +213,7 @@ end
         @test_throws "has no field LogLikelihood" getloglikelihood(vi)
         @test_throws "has no field LogLikelihood" getlogp(vi)
         @test_throws "has no field LogLikelihood" getlogjoint(vi)
-        @test_throws "has no field NumProduce" get_num_produce(vi)
+        @test_throws "has no field VariableOrder" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -225,7 +225,7 @@ end
 
         vi = last(
             DynamicPPL.evaluate!!(
-                m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduceAccumulator(),))
+                m, DynamicPPL.setaccs!!(deepcopy(vi), (VariableOrderAccumulator(),))
             ),
         )
         @test_throws "has no field LogPrior" getlogprior(vi)
@@ -240,8 +240,8 @@ end
         @test_throws "has no field LogLikelihood" getloglikelihood(vi)
         @test_throws "has no field LogPrior" getlogp(vi)
         @test_throws "has no field LogPrior" getlogjoint(vi)
-        @test_throws "has no field NumProduce" get_num_produce(vi)
-        @test_throws "has no field NumProduce" reset_num_produce!!(vi)
+        @test_throws "has no field VariableOrder" get_num_produce(vi)
+        @test_throws "has no field VariableOrder" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
@@ -1089,7 +1089,12 @@ end
         randr(vi, vn_a2, dists[2])
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = DynamicPPL.reset_num_produce!!(vi)
@@ -1108,7 +1113,12 @@ end
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = empty!!(DynamicPPL.typed_varinfo(vi))
@@ -1123,9 +1133,12 @@ end
         randr(vi, vn_a2, dists[2])
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 2]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = DynamicPPL.reset_num_produce!!(vi)
@@ -1144,9 +1157,12 @@ end
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 3]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
     end
 

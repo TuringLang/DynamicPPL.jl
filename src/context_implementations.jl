@@ -184,7 +184,6 @@ function assume(
             f = to_maybe_linked_internal_transform(vi, vn, dist)
             # TODO(mhauru) This should probably be call a function called setindex_internal!
             vi = BangBang.setindex!!(vi, f(r), vn)
-            setorder!(vi, vn, get_num_produce(vi))
         else
             # Otherwise we just extract it.
             r = vi[vn, dist]

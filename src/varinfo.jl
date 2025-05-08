@@ -15,10 +15,9 @@ not.
 Let `md` be an instance of `Metadata`:
 - `md.vns` is the vector of all `VarName` instances.
 - `md.idcs` is the dictionary that maps each `VarName` instance to its index in
- `md.vns`, `md.ranges` `md.dists`, `md.orders` and `md.flags`.
+ `md.vns`, `md.ranges` `md.dists`, and `md.flags`.
 - `md.vns[md.idcs[vn]] == vn`.
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
-- `md.orders[md.idcs[vn]]` is the number of `observe` statements before `vn` is sampled.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
 - `md.flags` is a dictionary of true/false flags. `md.flags[flag][md.idcs[vn]]` is the
@@ -56,9 +55,6 @@ struct Metadata{
 
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
-
-    # Number of `observe` statements before each random variable is sampled
-    orders::Vector{Int}
 
     # Each `flag` has a `BitVector` `flags[flag]`, where `flags[flag][i]` is the true/false flag value corresonding to `vns[i]`
     flags::Dict{String,BitVector}
@@ -262,8 +258,6 @@ function typed_varinfo(vi::UntypedVarInfo)
         sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
         # New dists
         sym_dists = getindex.((meta.dists,), inds)
-        # New orders
-        sym_orders = getindex.((meta.orders,), inds)
         # New flags
         sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
 
@@ -282,7 +276,7 @@ function typed_varinfo(vi::UntypedVarInfo)
         push!(
             new_metas,
             Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_flags
             ),
         )
     end
@@ -472,7 +466,7 @@ end
 end
 
 function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.orders, md.flags)
+    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.flags)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
@@ -498,7 +492,6 @@ function Metadata()
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
-        Vector{Int}(),
         flags,
     )
 end
@@ -516,7 +509,6 @@ function empty!(meta::Metadata)
     empty!(meta.ranges)
     empty!(meta.vals)
     empty!(meta.dists)
-    empty!(meta.orders)
     for k in keys(meta.flags)
         empty!(meta.flags[k])
     end
@@ -611,7 +603,6 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
         ranges,
         vals,
         metadata.dists[indices_for_vns],
-        metadata.orders[indices_for_vns],
         flags,
     )
 end
@@ -683,7 +674,6 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    orders = Int[]
     flags = Dict{String,BitVector}()
     # Initialize the `flags`.
     for k in union(keys(metadata_left.flags), keys(metadata_right.flags))
@@ -705,13 +695,12 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        push!(orders, getorder(metadata_for_vn, vn))
         for k in keys(flags)
             push!(flags[k], is_flagged(metadata_for_vn, vn, k))
         end
     end
 
-    return Metadata(idcs, vns, ranges, vals, dists, orders, flags)
+    return Metadata(idcs, vns, ranges, vals, dists, flags)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -1375,7 +1364,6 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.orders,
         metadata.flags,
     ),
     cumulative_logjac
@@ -1541,7 +1529,6 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.orders,
         metadata.flags,
     ),
     cumulative_logjac
@@ -1723,7 +1710,6 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
         ("VarNames", vi.metadata.vns),
         ("Range", vi.metadata.ranges),
         ("Vals", vi.metadata.vals),
-        ("Orders", vi.metadata.orders),
     ]
     for accname in acckeys(vi)
         push!(lines, (string(accname), getacc(vi, Val(accname))))
@@ -1808,13 +1794,12 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
             [1:length(val)],
             val,
             [dist],
-            [get_num_produce(vi)],
             Dict{String,BitVector}("trans" => [false], "del" => [false]),
         )
         vi = Accessors.@set vi.metadata[sym] = md
     else
         meta = getmetadata(vi, vn)
-        push!(meta, vn, r, dist, get_num_produce(vi))
+        push!(meta, vn, r, dist)
     end
 
     return vi
@@ -1834,7 +1819,7 @@ end
 # exist in the NTVarInfo already. We could implement it in the cases where it it does
 # exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
 
-function Base.push!(meta::Metadata, vn, r, dist, num_produce)
+function Base.push!(meta::Metadata, vn, r, dist)
     val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
@@ -1843,7 +1828,6 @@ function Base.push!(meta::Metadata, vn, r, dist, num_produce)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
     return meta
@@ -1853,31 +1837,6 @@ function Base.delete!(vi::VarInfo, vn::VarName)
     delete!(getmetadata(vi, vn), vn)
     return vi
 end
-
-"""
-    setorder!(vi::VarInfo, vn::VarName, index::Int)
-
-Set the `order` of `vn` in `vi` to `index`, where `order` is the number of `observe
-statements run before sampling `vn`.
-"""
-function setorder!(vi::VarInfo, vn::VarName, index::Int)
-    setorder!(getmetadata(vi, vn), vn, index)
-    return vi
-end
-function setorder!(metadata::Metadata, vn::VarName, index::Int)
-    metadata.orders[metadata.idcs[vn]] = index
-    return metadata
-end
-setorder!(vnv::VarNamedVector, ::VarName, ::Int) = vnv
-
-"""
-    getorder(vi::VarInfo, vn::VarName)
-
-Get the `order` of `vn` in `vi`, where `order` is the number of `observe` statements
-run before sampling `vn`.
-"""
-getorder(vi::VarInfo, vn::VarName) = getorder(getmetadata(vi, vn), vn)
-getorder(metadata::Metadata, vn::VarName) = metadata.orders[getidx(metadata, vn)]
 
 #######################################
 # Rand & replaying method for VarInfo #

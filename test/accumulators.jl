@@ -7,7 +7,7 @@ using DynamicPPL:
     AccumulatorTuple,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
-    NumProduceAccumulator,
+    VariableOrderAccumulator,
     accumulate_assume!!,
     accumulate_observe!!,
     combine,
@@ -31,11 +31,11 @@ using DynamicPPL:
                 LogLikelihoodAccumulator{Float64}() ==
                 LogLikelihoodAccumulator{Float64}(0.0) ==
                 zero(LogLikelihoodAccumulator(1.0))
-            @test NumProduceAccumulator(0) ==
-                NumProduceAccumulator() ==
-                NumProduceAccumulator{Int}() ==
-                NumProduceAccumulator{Int}(0) ==
-                zero(NumProduceAccumulator(1))
+            @test VariableOrderAccumulator(0) ==
+                VariableOrderAccumulator() ==
+                VariableOrderAccumulator{Int}() ==
+                VariableOrderAccumulator{Int}(0) ==
+                VariableOrderAccumulator(0, OrderedDict{VarName,Int}())
         end
 
         @testset "addition and incrementation" begin
@@ -47,19 +47,19 @@ using DynamicPPL:
                 LogLikelihoodAccumulator(2.0f0)
             @test LogLikelihoodAccumulator(1.0) + LogLikelihoodAccumulator(1.0f0) ==
                 LogLikelihoodAccumulator(2.0)
-            @test increment(NumProduceAccumulator()) == NumProduceAccumulator(1)
-            @test increment(NumProduceAccumulator{UInt8}()) ==
-                NumProduceAccumulator{UInt8}(1)
+            @test increment(VariableOrderAccumulator()) == VariableOrderAccumulator(1)
+            @test increment(VariableOrderAccumulator{UInt8}()) ==
+                VariableOrderAccumulator{UInt8}(1)
         end
 
         @testset "split and combine" begin
             for acc in [
                 LogPriorAccumulator(1.0),
                 LogLikelihoodAccumulator(1.0),
-                NumProduceAccumulator(1),
+                VariableOrderAccumulator(1),
                 LogPriorAccumulator(1.0f0),
                 LogLikelihoodAccumulator(1.0f0),
-                NumProduceAccumulator(UInt8(1)),
+                VariableOrderAccumulator(UInt8(1)),
             ]
                 @test combine(acc, split(acc)) == acc
             end
@@ -71,8 +71,8 @@ using DynamicPPL:
             @test convert(
                 LogLikelihoodAccumulator{Float32}, LogLikelihoodAccumulator(1.0)
             ) == LogLikelihoodAccumulator{Float32}(1.0f0)
-            @test convert(NumProduceAccumulator{UInt8}, NumProduceAccumulator(1)) ==
-                NumProduceAccumulator{UInt8}(1)
+            @test convert(VariableOrderAccumulator{UInt8,VarName}, VariableOrderAccumulator(1)) ==
+                VariableOrderAccumulator{UInt8}(1)
 
             @test convert_eltype(Float32, LogPriorAccumulator(1.0)) ==
                 LogPriorAccumulator{Float32}(1.0f0)
@@ -90,8 +90,8 @@ using DynamicPPL:
             @test accumulate_assume!!(
                 LogLikelihoodAccumulator(1.0), val, logjac, vn, dist
             ) == LogLikelihoodAccumulator(1.0)
-            @test accumulate_assume!!(NumProduceAccumulator(1), val, logjac, vn, dist) ==
-                NumProduceAccumulator(1)
+            @test accumulate_assume!!(VariableOrderAccumulator(1), val, logjac, vn, dist) ==
+                VariableOrderAccumulator(1, OrderedDict{VarName,Int}((vn => 1)))
         end
 
         @testset "accumulate_observe" begin
@@ -102,8 +102,8 @@ using DynamicPPL:
                 LogPriorAccumulator(1.0)
             @test accumulate_observe!!(LogLikelihoodAccumulator(1.0), right, left, vn) ==
                 LogLikelihoodAccumulator(1.0 + logpdf(right, left))
-            @test accumulate_observe!!(NumProduceAccumulator(1), right, left, vn) ==
-                NumProduceAccumulator(2)
+            @test accumulate_observe!!(VariableOrderAccumulator(1), right, left, vn) ==
+                VariableOrderAccumulator(2)
         end
     end
 
@@ -113,7 +113,7 @@ using DynamicPPL:
         lp_f32 = LogPriorAccumulator(1.0f0)
         ll_f64 = LogLikelihoodAccumulator(1.0)
         ll_f32 = LogLikelihoodAccumulator(1.0f0)
-        np_i64 = NumProduceAccumulator(1)
+        np_i64 = VariableOrderAccumulator(1)
 
         @testset "constructors" begin
             @test AccumulatorTuple(lp_f64, ll_f64) == AccumulatorTuple((lp_f64, ll_f64))
@@ -131,12 +131,12 @@ using DynamicPPL:
 
             @test at_all64[:LogPrior] == lp_f64
             @test at_all64[:LogLikelihood] == ll_f64
-            @test at_all64[:NumProduce] == np_i64
+            @test at_all64[:VariableOrder] == np_i64
 
-            @test haskey(AccumulatorTuple(np_i64), Val(:NumProduce))
+            @test haskey(AccumulatorTuple(np_i64), Val(:VariableOrder))
             @test ~haskey(AccumulatorTuple(np_i64), Val(:LogPrior))
             @test length(AccumulatorTuple(lp_f64, ll_f64, np_i64)) == 3
-            @test keys(at_all64) == (:LogPrior, :LogLikelihood, :NumProduce)
+            @test keys(at_all64) == (:LogPrior, :LogLikelihood, :VariableOrder)
             @test collect(at_all64) == [lp_f64, ll_f64, np_i64]
 
             # Replace the existing LogPriorAccumulator
