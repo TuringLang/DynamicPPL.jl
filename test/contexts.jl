@@ -154,7 +154,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
-            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
+            ctx4 = DynamicPPL.SamplingContext(ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
