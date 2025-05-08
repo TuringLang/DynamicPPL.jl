@@ -30,6 +30,18 @@ function need_concretize(expr)
 end
 
 """
+    make_varname_expression(expr)
+
+Return a `VarName` based on `expr`, concretizing it if necessary.
+"""
+function make_varname_expression(expr)
+    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
+    # that in DynamicPPL we the entire function body. Instead we should be
+    # more selective with our escape. Until that's the case, we remove them all.
+    return AbstractPPL.drop_escape(varname(expr, need_concretize(expr)))
+end
+
+"""
     isassumption(expr[, vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
@@ -48,10 +60,7 @@ evaluates to a `VarName`, and this will be used in the subsequent checks.
 If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(
-    expr::Union{Expr,Symbol},
-    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
-)
+function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
     return quote
         if $(DynamicPPL.contextual_isassumption)(
             __context__, $(DynamicPPL.prefix)(__context__, $vn)
@@ -408,10 +417,7 @@ function generate_assign(left, right)
     return quote
         $right_val = $right
         if $(DynamicPPL.is_extracting_values)(__varinfo__)
-            $vn = $(DynamicPPL.prefix)(
-                __context__,
-                $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))),
-            )
+            $vn = $(DynamicPPL.prefix)(__context__, $(make_varname_expression(left)))
             __varinfo__ = $(map_accumulator!!)(
                 $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
             )
@@ -444,14 +450,9 @@ function generate_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption value dist
 
-    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
-    # that in DynamicPPL we the entire function body. Instead we should be
-    # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
-        )
+        $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
             $left = $(DynamicPPL.getfixed_nested)(
