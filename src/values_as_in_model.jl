@@ -26,6 +26,10 @@ function split(acc::ValuesAsInModelAccumulator)
     return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
 end
 function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
+    if acc1.include_colon_eq != acc2.include_colon_eq
+        msg = "Cannot combine accumulators with different include_colon_eq values."
+        throw(ArgumentError(msg))
+    end
     return ValuesAsInModelAccumulator(
         merge(acc1.values, acc2.values), acc1.include_colon_eq
     )
