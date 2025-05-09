@@ -26,6 +26,9 @@ const REFERENCE_ADTYPE = AutoForwardDiff()
 Exception thrown when an AD backend returns an incorrect value or gradient.
 
 The type parameter `T` is the numeric type of the value and gradient.
+
+# Fields
+$(TYPEDFIELDS)
 """
 struct ADIncorrectException{T<:AbstractFloat} <: Exception
     value_expected::T
@@ -41,6 +44,9 @@ Data structure to store the results of the AD correctness test.
 
 The type parameter `Tparams` is the numeric type of the parameters passed in;
 `Tresult` is the type of the value and the gradient.
+
+# Fields
+$(TYPEDFIELDS)
 """
 struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
     "The DynamicPPL model that was tested"
