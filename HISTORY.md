@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.2
+
+Improved docstrings for AD testing utilities.
+
 ## 0.36.1
 
 Fixed a missing method for `tilde_assume`.
