@@ -33,22 +33,18 @@ using OrderedCollections: OrderedSet
 
 using DynamicPPL: getargs_dottilde, getargs_tilde
 
+# These flags are set in CI
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
-Random.seed!(100)
-
-include("test_util.jl")
-
-# Don't attempt to import Mooncake on 1.12
-# https://github.com/chalk-lab/Mooncake.jl/pull/545
-# the check against v"1.12-" includes prerelease versions,
-# whereas >=v"1.12" would only catch 1.12.0 onwards
-IS_PRERELEASE = VERSION >= v"1.12-"
+const IS_PRERELEASE = get(ENV, "IS_PRERELEASE", "false") == "true"
 
 if !IS_PRERELEASE
     Pkg.add("Mooncake")
     using Mooncake: Mooncake
 end
+
+Random.seed!(100)
+include("test_util.jl")
 
 @testset verbose = true "DynamicPPL.jl" begin
     # The tests are split into two groups so that CI can run in parallel. The
