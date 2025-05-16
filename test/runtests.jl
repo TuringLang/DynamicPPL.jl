@@ -41,7 +41,9 @@ include("test_util.jl")
 
 # Don't attempt to import Mooncake on 1.12
 # https://github.com/chalk-lab/Mooncake.jl/pull/545
-IS_PRERELEASE = VERSION >= v"1.12"
+# the check against v"1.12-" includes prerelease versions,
+# whereas >=v"1.12" would only catch 1.12.0 onwards
+IS_PRERELEASE = VERSION >= v"1.12-"
 
 if !IS_PRERELEASE
     Pkg.add("Mooncake")
