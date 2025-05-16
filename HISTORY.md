@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.36.3
+
+Added a compatibility entry for JET.jl 0.10.
+This should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
+
 ## 0.36.2
 
 Improved docstrings for AD testing utilities.
