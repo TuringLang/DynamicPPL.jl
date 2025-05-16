@@ -23,7 +23,7 @@ Return the dimension of `model`, accounting for linking, if any.
 """
 function model_dimension(model, islinked)
     vi = VarInfo()
-    model(vi)
+    model(StableRNG(23), vi)
     if islinked
         vi = DynamicPPL.link(vi, model)
     end
