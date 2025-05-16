@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.36.4
+
+Added a compatibility entry for JET.jl 0.10.
+This should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
+
 ## 0.36.3
 
 Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
