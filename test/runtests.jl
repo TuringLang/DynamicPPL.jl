@@ -12,7 +12,6 @@ using ForwardDiff
 using LogDensityProblems
 using MacroTools
 using MCMCChains
-using Mooncake: Mooncake
 using StableRNGs
 using ReverseDiff
 using Zygote
@@ -39,6 +38,15 @@ const AQUA = get(ENV, "AQUA", "true") == "true"
 Random.seed!(100)
 
 include("test_util.jl")
+
+# Don't attempt to import Mooncake on 1.12
+# https://github.com/chalk-lab/Mooncake.jl/pull/545
+IS_PRERELEASE = VERSION >= v"1.12"
+
+if !IS_PRERELEASE
+    Pkg.add("Mooncake")
+    using Mooncake: Mooncake
+end
 
 @testset verbose = true "DynamicPPL.jl" begin
     # The tests are split into two groups so that CI can run in parallel. The
@@ -81,7 +89,9 @@ include("test_util.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
-            include("ext/DynamicPPLMooncakeExt.jl")
+            if !IS_PRERELEASE
+                include("ext/DynamicPPLMooncakeExt.jl")
+            end
             include("ad.jl")
         end
         @testset "prob and logprob macro" begin
