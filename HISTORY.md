@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.4
+
+Added compatibility with DifferentiationInterface.jl 0.7.
+
 ## 0.36.3
 
 Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
