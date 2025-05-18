@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.3
+
+Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
+
 ## 0.36.2
 
 Improved docstrings for AD testing utilities.
