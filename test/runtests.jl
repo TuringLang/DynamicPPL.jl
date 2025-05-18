@@ -36,8 +36,9 @@ using DynamicPPL: getargs_dottilde, getargs_tilde
 # These flags are set in CI
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
-const IS_PRERELEASE = get(ENV, "IS_PRERELEASE", "false") == "true"
 
+# Detect if prerelease version, if so, we skip some tests
+const IS_PRERELEASE = !isempty(VERSION.prerelease)
 if !IS_PRERELEASE
     Pkg.add("Mooncake")
     using Mooncake: Mooncake

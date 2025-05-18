@@ -32,4 +32,3 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         env:
           GROUP: ${{ matrix.test_group }}
-          IS_PRERELEASE: "true"
