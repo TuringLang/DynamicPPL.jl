@@ -183,20 +183,19 @@ function logdensity_at(
 end
 
 """
-    LogDensityAt(
-        x::AbstractVector,
-        model::Model,
-        varinfo::AbstractVarInfo,
-        context::AbstractContext
+    LogDensityAt{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}(
+        model::M
+        varinfo::V
+        context::C
     )
 
 A callable struct that serves the same purpose as `x -> logdensity_at(x, model,
 varinfo, context)`.
 """
-struct LogDensityAt
-    model::Model
-    varinfo::AbstractVarInfo
-    context::AbstractContext
+struct LogDensityAt{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}
+    model::M
+    varinfo::V
+    context::C
 end
 function (ld::LogDensityAt)(x::AbstractVector)
     varinfo_new = unflatten(ld.varinfo, x)
