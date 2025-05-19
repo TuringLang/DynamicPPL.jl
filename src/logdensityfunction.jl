@@ -106,8 +106,6 @@ struct LogDensityFunction{
     adtype::AD
     "(internal use only) gradient preparation object for the model"
     prep::Union{Nothing,DI.GradientPrep}
-    "(internal use only) the closure used for the gradient preparation"
-    closure::Union{Nothing,Function}
 
     function LogDensityFunction(
         model::Model,
@@ -116,7 +114,6 @@ struct LogDensityFunction{
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
         if adtype === nothing
-            closure = nothing
             prep = nothing
         else
             # Make backend-specific tweaks to the adtype
@@ -127,16 +124,8 @@ struct LogDensityFunction{
             # Get a set of dummy params to use for prep
             x = map(identity, varinfo[:])
             if use_closure(adtype)
-                # The closure itself has to be stored inside the
-                # LogDensityFunction to ensure that the signature of the
-                # function being differentiated is the same as that used for
-                # preparation. See
-                # https://github.com/TuringLang/DynamicPPL.jl/pull/922 for an
-                # explanation.
-                closure = x -> logdensity_at(x, model, varinfo, context)
-                prep = DI.prepare_gradient(closure, adtype, x)
+                prep = DI.prepare_gradient(LogDensityAt(model, varinfo, context), adtype, x)
             else
-                closure = nothing
                 prep = DI.prepare_gradient(
                     logdensity_at,
                     adtype,
@@ -148,7 +137,7 @@ struct LogDensityFunction{
             end
         end
         return new{typeof(model),typeof(varinfo),typeof(context),typeof(adtype)}(
-            model, varinfo, context, adtype, prep, closure
+            model, varinfo, context, adtype, prep
         )
     end
 end
@@ -193,6 +182,27 @@ function logdensity_at(
     return getlogp(last(evaluate!!(model, varinfo_new, context)))
 end
 
+"""
+    LogDensityAt(
+        x::AbstractVector,
+        model::Model,
+        varinfo::AbstractVarInfo,
+        context::AbstractContext
+    )
+
+A callable struct that serves the same purpose as `x -> logdensity_at(x, model,
+varinfo, context)`.
+"""
+struct LogDensityAt
+    model::Model
+    varinfo::AbstractVarInfo
+    context::AbstractContext
+end
+function (ld::LogDensityAt)(x::AbstractVector)
+    varinfo_new = unflatten(ld.varinfo, x)
+    return getlogp(last(evaluate!!(ld.model, varinfo_new, ld.context)))
+end
+
 ### LogDensityProblems interface
 
 function LogDensityProblems.capabilities(
@@ -217,8 +227,9 @@ function LogDensityProblems.logdensity_and_gradient(
     # Make branching statically inferrable, i.e. type-stable (even if the two
     # branches happen to return different types)
     return if use_closure(f.adtype)
-        f.closure === nothing && error("Closure not available; this should not happen")
-        DI.value_and_gradient(f.closure, f.prep, f.adtype, x)
+        DI.value_and_gradient(
+            LogDensityAt(f.model, f.varinfo, f.context), f.prep, f.adtype, x
+        )
     else
         DI.value_and_gradient(
             logdensity_at,
