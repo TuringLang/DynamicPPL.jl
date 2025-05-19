@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.36.3"
+version = "0.36.4"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -54,7 +54,7 @@ ChainRulesCore = "1"
 Chairmarks = "1.3.1"
 Compat = "4"
 ConstructionBase = "1.5.4"
-DifferentiationInterface = "0.6.41"
+DifferentiationInterface = "0.6.41, 0.7"
 Distributions = "0.25"
 DocStringExtensions = "0.9"
 EnzymeCore = "0.6 - 0.8"
