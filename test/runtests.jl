@@ -7,7 +7,6 @@ using Bijectors
 using DifferentiationInterface
 using Distributions
 using DistributionsAD
-using Documenter
 using ForwardDiff
 using LogDensityProblems
 using MacroTools
@@ -96,23 +95,6 @@ include("test_util.jl")
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."
             @test_throws ErrorException logprob"..."
-        end
-        if !IS_PRERELEASE
-            # Don't run doctests on prerelease as error messages etc. may vary
-            @testset "doctests" begin
-                DocMeta.setdocmeta!(
-                    DynamicPPL,
-                    :DocTestSetup,
-                    :(using DynamicPPL, Distributions);
-                    recursive=true,
-                )
-                doctestfilters = [
-                    # Ignore the source of a warning in the doctest output, since this is dependent on host.
-                    # This is a line that starts with "└ @ " and ends with the line number.
-                    r"└ @ .+:[0-9]+",
-                ]
-                doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
-            end
         end
     end
 end

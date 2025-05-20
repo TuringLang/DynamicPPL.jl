@@ -1,0 +1,59 @@
+# We want to only run doctests on a single version of Julia, because
+# things like error messages / output can change between versions and
+# is fragile to test against.
+name: Doctests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
+# Cancel existing tests on the same PR if a new commit is added to a pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - uses: julia-actions/cache@v2
+
+      - uses: julia-actions/julia-buildpkg@v1
+
+      - name: Run doctests
+        shell: julia --color=yes --project=docs {0}
+        run: |
+          # Develop currently checked out version of DynamicPPL
+          using Pkg
+          Pkg.develop(path=pwd())
+
+          using Documenter
+          DocMeta.setdocmeta!(
+              DynamicPPL,
+              :DocTestSetup,
+              :(using DynamicPPL, Distributions);
+              recursive=true,
+          )
+          doctestfilters = [
+              # Ignore the source of a warning in the doctest output, since this is dependent on host.
+              # This is a line that starts with "└ @ " and ends with the line number.
+              r"└ @ .+:[0-9]+",
+          ]
+
+          doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
