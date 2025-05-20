@@ -22,7 +22,8 @@ end
         ldf_prior = DynamicPPL.LogDensityFunction(model, getlogprior)
         @test LogDensityProblems.logdensity(ldf_prior, theta) ≈ logprior(model, vi)
         ldf_likelihood = DynamicPPL.LogDensityFunction(model, getloglikelihood)
-        @test LogDensityProblems.logdensity(ldf_likelihood, theta) ≈ loglikelihood(model, vi)
+        @test LogDensityProblems.logdensity(ldf_likelihood, theta) ≈
+            loglikelihood(model, vi)
 
         @testset "$(varinfo)" for varinfo in varinfos
             logdensity = DynamicPPL.LogDensityFunction(model, getlogjoint, varinfo)

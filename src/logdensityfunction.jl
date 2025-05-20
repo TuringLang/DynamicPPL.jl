@@ -95,7 +95,11 @@ julia> LogDensityProblems.logdensity_and_gradient(f, [0.0])
 ```
 """
 struct LogDensityFunction{
-    M<:Model,F<:Function,V<:AbstractVarInfo,C<:AbstractContext,AD<:Union{Nothing,ADTypes.AbstractADType}
+    M<:Model,
+    F<:Function,
+    V<:AbstractVarInfo,
+    C<:AbstractContext,
+    AD<:Union{Nothing,ADTypes.AbstractADType},
 }
     "model used for evaluation"
     model::M
@@ -143,7 +147,13 @@ struct LogDensityFunction{
                 )
             end
         end
-        return new{typeof(model),typeof(getlogdensity),typeof(varinfo),typeof(context),typeof(adtype)}(
+        return new{
+            typeof(model),
+            typeof(getlogdensity),
+            typeof(varinfo),
+            typeof(context),
+            typeof(adtype),
+        }(
             model, getlogdensity, varinfo, context, adtype, prep
         )
     end
@@ -177,12 +187,12 @@ Create the default AbstractVarInfo that should be used for evaluating the log de
 Only the accumulators necesessary for `getlogdensity` will be used.
 """
 function ldf_default_varinfo(::Model, getlogdensity::Function)
-        msg = """
-        LogDensityFunction does not know what sort of VarInfo should be used when \
-        `getlogdensity` is $getlogdensity. Please specify a VarInfo explicitly.
-        """
-        error(msg)
-    end
+    msg = """
+    LogDensityFunction does not know what sort of VarInfo should be used when \
+    `getlogdensity` is $getlogdensity. Please specify a VarInfo explicitly.
+    """
+    return error(msg)
+end
 
 ldf_default_varinfo(model::Model, ::typeof(getlogjoint)) = VarInfo(model)
 
@@ -210,7 +220,11 @@ into it, and its own parameters are discarded. `getlogdensity` is the function t
 the log density from the evaluated varinfo.
 """
 function logdensity_at(
-    x::AbstractVector, model::Model, getlogdensity::Function, varinfo::AbstractVarInfo, context::AbstractContext
+    x::AbstractVector,
+    model::Model,
+    getlogdensity::Function,
+    varinfo::AbstractVarInfo,
+    context::AbstractContext,
 )
     varinfo_new = unflatten(varinfo, x)
     varinfo_eval = last(evaluate!!(model, varinfo_new, context))
@@ -242,7 +256,10 @@ function LogDensityProblems.logdensity_and_gradient(
     # branches happen to return different types)
     return if use_closure(f.adtype)
         DI.value_and_gradient(
-            x -> logdensity_at(x, f.model, f.getlogdensity, f.varinfo, f.context), f.prep, f.adtype, x
+            x -> logdensity_at(x, f.model, f.getlogdensity, f.varinfo, f.context),
+            f.prep,
+            f.adtype,
+            x,
         )
     else
         DI.value_and_gradient(

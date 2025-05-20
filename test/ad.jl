@@ -27,7 +27,9 @@ using DynamicPPL: LogDensityFunction
                 f = LogDensityFunction(m, getlogjoint, linked_varinfo)
                 x = DynamicPPL.getparams(f)
                 # Calculate reference logp + gradient of logp using ForwardDiff
-                ref_ldf = LogDensityFunction(m, getlogjoint, linked_varinfo; adtype=ref_adtype)
+                ref_ldf = LogDensityFunction(
+                    m, getlogjoint, linked_varinfo; adtype=ref_adtype
+                )
                 ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
 
                 @testset "$adtype" for adtype in test_adtypes
@@ -106,7 +108,11 @@ using DynamicPPL: LogDensityFunction
         spl = Sampler(MyEmptyAlg())
         vi = VarInfo(model)
         ldf = LogDensityFunction(
-            model, getlogjoint, vi, SamplingContext(spl); adtype=AutoReverseDiff(; compile=true)
+            model,
+            getlogjoint,
+            vi,
+            SamplingContext(spl);
+            adtype=AutoReverseDiff(; compile=true),
         )
         @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end
