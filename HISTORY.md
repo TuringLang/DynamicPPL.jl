@@ -6,6 +6,8 @@ Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0
 
 The JET compatibility entry should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
 
+The array of log probabilities stored in `ThreadSafeVarInfo` is now of length `Threads.maxthreadid()`, rather than `Threads.nthreads()`.
+
 ## 0.36.3
 
 Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
