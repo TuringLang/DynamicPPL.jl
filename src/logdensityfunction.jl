@@ -124,9 +124,7 @@ struct LogDensityFunction{
             # Get a set of dummy params to use for prep
             x = map(identity, varinfo[:])
             if use_closure(adtype)
-                prep = DI.prepare_gradient(
-                    x -> logdensity_at(x, model, varinfo, context), adtype, x
-                )
+                prep = DI.prepare_gradient(LogDensityAt(model, varinfo, context), adtype, x)
             else
                 prep = DI.prepare_gradient(
                     logdensity_at,
@@ -184,6 +182,26 @@ function logdensity_at(
     return getlogp(last(evaluate!!(model, varinfo_new, context)))
 end
 
+"""
+    LogDensityAt{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}(
+        model::M
+        varinfo::V
+        context::C
+    )
+
+A callable struct that serves the same purpose as `x -> logdensity_at(x, model,
+varinfo, context)`.
+"""
+struct LogDensityAt{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}
+    model::M
+    varinfo::V
+    context::C
+end
+function (ld::LogDensityAt)(x::AbstractVector)
+    varinfo_new = unflatten(ld.varinfo, x)
+    return getlogp(last(evaluate!!(ld.model, varinfo_new, ld.context)))
+end
+
 ### LogDensityProblems interface
 
 function LogDensityProblems.capabilities(
@@ -209,7 +227,7 @@ function LogDensityProblems.logdensity_and_gradient(
     # branches happen to return different types)
     return if use_closure(f.adtype)
         DI.value_and_gradient(
-            x -> logdensity_at(x, f.model, f.varinfo, f.context), f.prep, f.adtype, x
+            LogDensityAt(f.model, f.varinfo, f.context), f.prep, f.adtype, x
         )
     else
         DI.value_and_gradient(

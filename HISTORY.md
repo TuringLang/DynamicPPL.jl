@@ -2,8 +2,9 @@
 
 ## 0.36.4
 
-Added a compatibility entry for JET.jl 0.10.
-This should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
+Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
+
+The JET compatibility entry should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
 
 ## 0.36.3
 
