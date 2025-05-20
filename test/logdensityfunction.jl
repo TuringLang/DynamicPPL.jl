@@ -15,8 +15,17 @@ end
         vns = DynamicPPL.TestUtils.varnames(model)
         varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
 
+        vi = first(varinfos)
+        theta = vi[:]
+        ldf_joint = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.logdensity(ldf_joint, theta) ≈ logjoint(model, vi)
+        ldf_prior = DynamicPPL.LogDensityFunction(model, getlogprior)
+        @test LogDensityProblems.logdensity(ldf_prior, theta) ≈ logprior(model, vi)
+        ldf_likelihood = DynamicPPL.LogDensityFunction(model, getloglikelihood)
+        @test LogDensityProblems.logdensity(ldf_likelihood, theta) ≈ loglikelihood(model, vi)
+
         @testset "$(varinfo)" for varinfo in varinfos
-            logdensity = DynamicPPL.LogDensityFunction(model, varinfo)
+            logdensity = DynamicPPL.LogDensityFunction(model, getlogjoint, varinfo)
             θ = varinfo[:]
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
