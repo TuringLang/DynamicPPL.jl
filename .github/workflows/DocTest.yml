@@ -37,7 +37,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
 
       - name: Run doctests
-        shell: julia --color=yes --project=docs {0}
+        shell: julia --color=yes --depwarn=yes --project=docs {0}
         run: |
           # Develop currently checked out version of DynamicPPL
           using Pkg
