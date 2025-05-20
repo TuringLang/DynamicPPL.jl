@@ -42,8 +42,10 @@ jobs:
           # Develop currently checked out version of DynamicPPL
           using Pkg
           Pkg.develop(path=pwd())
+          Pkg.instantiate()
 
-          using Documenter
+          using Documenter, DynamicPPL, Distributions
+
           DocMeta.setdocmeta!(
               DynamicPPL,
               :DocTestSetup,
