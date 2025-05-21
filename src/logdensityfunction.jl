@@ -80,7 +80,7 @@ julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
 
 julia> # One can also specify evaluating e.g. the log prior only:
-       f_prior = LogDensityFunction(model, getprior);
+       f_prior = LogDensityFunction(model, getlogprior);
 
 julia> LogDensityProblems.logdensity(f_prior, [0.0]) == logpdf(Normal(), 0.0)
 true
