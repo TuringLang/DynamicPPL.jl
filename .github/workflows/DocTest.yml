@@ -36,26 +36,6 @@ jobs:
 
       - uses: julia-actions/julia-buildpkg@v1
 
-      - name: Run doctests
-        shell: julia --color=yes --depwarn=yes --project=docs {0}
-        run: |
-          # Develop currently checked out version of DynamicPPL
-          using Pkg
-          Pkg.develop(path=pwd())
-          Pkg.instantiate()
-
-          using Documenter, DynamicPPL, Distributions
-
-          DocMeta.setdocmeta!(
-              DynamicPPL,
-              :DocTestSetup,
-              :(using DynamicPPL, Distributions);
-              recursive=true,
-          )
-          doctestfilters = [
-              # Ignore the source of a warning in the doctest output, since this is dependent on host.
-              # This is a line that starts with "└ @ " and ends with the line number.
-              r"└ @ .+:[0-9]+",
-          ]
-
-          doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
+      - uses: julia-actions/julia-runtest@v1
+        env:
+          GROUP: Doctests
