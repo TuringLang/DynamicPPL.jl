@@ -12,7 +12,6 @@ using ForwardDiff
 using LogDensityProblems
 using MacroTools
 using MCMCChains
-using Mooncake: Mooncake
 using StableRNGs
 using ReverseDiff
 using Zygote
@@ -34,10 +33,18 @@ using OrderedCollections: OrderedSet
 
 using DynamicPPL: getargs_dottilde, getargs_tilde
 
+# These flags are set in CI
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
-Random.seed!(100)
 
+# Detect if prerelease version, if so, we skip some tests
+const IS_PRERELEASE = !isempty(VERSION.prerelease)
+if !IS_PRERELEASE
+    Pkg.add("Mooncake")
+    using Mooncake: Mooncake
+end
+
+Random.seed!(100)
 include("test_util.jl")
 
 @testset verbose = true "DynamicPPL.jl" begin
@@ -81,26 +88,27 @@ include("test_util.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
-            include("ext/DynamicPPLMooncakeExt.jl")
+            if !IS_PRERELEASE
+                include("ext/DynamicPPLMooncakeExt.jl")
+            end
             include("ad.jl")
         end
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."
             @test_throws ErrorException logprob"..."
         end
-        @testset "doctests" begin
-            DocMeta.setdocmeta!(
-                DynamicPPL,
-                :DocTestSetup,
-                :(using DynamicPPL, Distributions);
-                recursive=true,
-            )
-            doctestfilters = [
-                # Ignore the source of a warning in the doctest output, since this is dependent on host.
-                # This is a line that starts with "└ @ " and ends with the line number.
-                r"└ @ .+:[0-9]+",
-            ]
-            doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
-        end
+    end
+
+    if GROUP == "All" || GROUP == "Doctests"
+        DocMeta.setdocmeta!(
+            DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
+        )
+        doctestfilters = [
+            # Ignore the source of a warning in the doctest output, since this is dependent on host.
+            # This is a line that starts with "└ @ " and ends with the line number.
+            r"└ @ .+:[0-9]+",
+        ]
+
+        doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 end
