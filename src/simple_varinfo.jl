@@ -606,7 +606,9 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     vi_new = Accessors.@set(vi.values = y)
-    vi_new = acclogprior!!(vi_new, -logjac)
+    if hasacc(vi_new, Val(:LogPrior))
+        vi_new = acclogprior!!(vi_new, -logjac)
+    end
     return settrans!!(vi_new, t)
 end
 
@@ -619,7 +621,9 @@ function invlink!!(
     y = vi.values
     x, logjac = with_logabsdet_jacobian(b, y)
     vi_new = Accessors.@set(vi.values = x)
-    vi_new = acclogprior!!(vi_new, logjac)
+    if hasacc(vi_new, Val(:LogPrior))
+        vi_new = acclogprior!!(vi_new, logjac)
+    end
     return settrans!!(vi_new, NoTransformation())
 end
 

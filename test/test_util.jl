@@ -14,7 +14,7 @@ function test_model_ad(model, logp_manual)
     x = vi[:]
 
     # Log probabilities using the model.
-    ℓ = DynamicPPL.LogDensityFunction(model, vi)
+    ℓ = DynamicPPL.LogDensityFunction(model, getlogjoint, vi)
     logp_model = Base.Fix1(LogDensityProblems.logdensity, ℓ)
 
     # Check that both functions return the same values.

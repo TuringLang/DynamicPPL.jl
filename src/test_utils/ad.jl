@@ -4,7 +4,7 @@ using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
-using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, link
+using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, getlogjoint, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: Random, Xoshiro
 using Statistics: median
@@ -184,7 +184,7 @@ function run_ad(
 
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model, varinfo; adtype=adtype)
+    ldf = LogDensityFunction(model, getlogjoint, varinfo; adtype=adtype)
 
     value, grad = logdensity_and_gradient(ldf, params)
     grad = collect(grad)
@@ -193,7 +193,9 @@ function run_ad(
     if test
         # Calculate ground truth to compare against
         value_true, grad_true = if expected_value_and_grad === nothing
-            ldf_reference = LogDensityFunction(model, varinfo; adtype=reference_adtype)
+            ldf_reference = LogDensityFunction(
+                model, getlogjoint, varinfo; adtype=reference_adtype
+            )
             logdensity_and_gradient(ldf_reference, params)
         else
             expected_value_and_grad
