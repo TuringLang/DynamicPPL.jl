@@ -78,7 +78,7 @@ end
         @test vn2 == vn1
         @test hash(vn2) == hash(vn1)
 
-        function test_base!!(vi_original)
+        function test_base(vi_original)
             vi = empty!!(deepcopy(vi_original))
             @test getlogp(vi) == 0
             @test isempty(vi[:])
@@ -116,11 +116,11 @@ end
         end
 
         vi = VarInfo()
-        test_base!!(vi)
-        test_base!!(DynamicPPL.typed_varinfo(vi))
-        test_base!!(SimpleVarInfo())
-        test_base!!(SimpleVarInfo(Dict()))
-        test_base!!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
+        test_base(vi)
+        test_base(DynamicPPL.typed_varinfo(vi))
+        test_base(SimpleVarInfo())
+        test_base(SimpleVarInfo(Dict()))
+        test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
     @testset "get/set/acc/resetlogp" begin
