@@ -79,7 +79,7 @@ end
         @test hash(vn2) == hash(vn1)
 
         function test_base!!(vi_original)
-            vi = empty!!(vi_original)
+            vi = empty!!(deepcopy(vi_original))
             @test getlogp(vi) == 0
             @test isempty(vi[:])
 
@@ -97,8 +97,10 @@ end
 
             @test length(vi[vn]) == 1
             @test vi[vn] == r
+            @test vi[:] == [r]
             vi = DynamicPPL.setindex!!(vi, 2 * r, vn)
             @test vi[vn] == 2 * r
+            @test vi[:] == [2 * r]
 
             # TODO(mhauru) Implement these functions for other VarInfo types too.
             if vi isa DynamicPPL.UntypedVectorVarInfo
