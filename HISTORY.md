@@ -1,5 +1,7 @@
 # DynamicPPL Changelog
 
+test
+
 ## 0.36.4
 
 Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
