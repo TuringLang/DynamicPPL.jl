@@ -854,6 +854,9 @@ getindex_internal(vi::VarInfo, ::Colon) = getindex_internal(vi.metadata, Colon()
 function getindex_internal(vi::NTVarInfo, ::Colon)
     return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
 end
+function getindex_internal(vi::VarInfo{NamedTuple{(),Tuple{}}}, ::Colon)
+    return float(Real)[]
+end
 function getindex_internal(md::Metadata, ::Colon)
     return mapreduce(
         Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
