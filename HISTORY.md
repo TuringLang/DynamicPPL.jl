@@ -4,6 +4,8 @@
 
 `varinfo[:]` now returns an empty vector if `varinfo::DynamicPPL.NTVarInfo` is empty, rather than erroring.
 
+In its place, `check_model` now issues a warning if the model is empty.
+
 ## 0.36.4
 
 Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
