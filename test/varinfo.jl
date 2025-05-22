@@ -115,9 +115,8 @@ end
             @test ~isempty(vi)
         end
 
-        vi = VarInfo()
-        test_base(vi)
-        test_base(DynamicPPL.typed_varinfo(vi))
+        test_base(VarInfo())
+        test_base(DynamicPPL.typed_varinfo(VarInfo()))
         test_base(SimpleVarInfo())
         test_base(SimpleVarInfo(Dict()))
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
