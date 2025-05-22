@@ -79,7 +79,7 @@ end
         @test hash(vn2) == hash(vn1)
 
         function test_base(vi_original)
-            vi = empty!!(deepcopy(vi_original))
+            vi = deepcopy(vi_original)
             @test getlogp(vi) == 0
             @test isempty(vi[:])
 
