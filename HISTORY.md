@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.5
+
+`varinfo[:]` now returns an empty vector if `varinfo::DynamicPPL.NTVarInfo` is empty, rather than erroring.
+
 ## 0.36.4
 
 Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
