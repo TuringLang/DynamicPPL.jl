@@ -245,6 +245,7 @@ function run_ad(
     return ADResult(
         model,
         varinfo,
+        context,
         params,
         adtype,
         value_atol,
