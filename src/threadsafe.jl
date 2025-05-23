@@ -9,7 +9,9 @@ struct ThreadSafeVarInfo{V<:AbstractVarInfo,L} <: AbstractVarInfo
     logps::L
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    return ThreadSafeVarInfo(vi, [Ref(zero(getlogp(vi))) for _ in 1:Threads.nthreads()])
+    return ThreadSafeVarInfo(
+        vi, [Ref(zero(getlogp(vi))) for _ in 1:(Threads.nthreads() * 2)]
+    )
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
