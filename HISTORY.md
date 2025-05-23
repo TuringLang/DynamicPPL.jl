@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.7
+
+Added compatibility with MCMCChains 7.0.
+
 ## 0.36.6
 
 `DynamicPPL.TestUtils.run_ad` now takes an extra `context` keyword argument, which is passed to the `LogDensityFunction` constructor.
