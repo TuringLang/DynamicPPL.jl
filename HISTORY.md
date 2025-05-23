@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.6
+
+`DynamicPPL.TestUtils.run_ad` now takes an extra `context` keyword argument, which is passed to the `LogDensityFunction` constructor.
+
 ## 0.36.5
 
 `varinfo[:]` now returns an empty vector if `varinfo::DynamicPPL.NTVarInfo` is empty, rather than erroring.
