@@ -1,5 +1,11 @@
 # DynamicPPL Changelog
 
+## 0.36.9
+
+Removed the `DynamicPPL.initialstep` method. This method was unexported. If you were relying on this, you should directly use `AbstractMCMC.step`.
+
+`DynamicPPL.default_varinfo` now takes two additional optional arguments, `initial_params` (an AbstractVector or nothing) and `link` (a Bool). These are used to generate the initial varinfo.
+
 ## 0.36.8
 
 Made `LogDensityFunction` a subtype of `AbstractMCMC.AbstractModel`.

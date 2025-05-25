@@ -71,45 +71,25 @@ Return a default varinfo object for the given `model` and `sampler`.
 - `rng::Random.AbstractRNG`: Random number generator.
 - `model::Model`: Model for which we want to create a varinfo object.
 - `sampler::AbstractSampler`: Sampler which will make use of the varinfo object.
-- `context::AbstractContext`: Context in which the model is evaluated.
+- `initial_params::Union{AbstractVector,Nothing}`: Initial parameter values to
+be set in the varinfo object.
+- `link::Bool`: Whether to link the varinfo.
+- `context::AbstractContext`: Context in which the model is evaluated. Defaults
+to `DefaultContext()`.
 
 # Returns
 - `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
 """
-function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
-    return default_varinfo(rng, model, sampler, DefaultContext())
-end
 function default_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::AbstractSampler,
-    context::AbstractContext,
+    initial_params::Union{AbstractVector,Nothing}=nothing,
+    link::Bool=false,
+    context::AbstractContext=DefaultContext(),
 )
     init_sampler = initialsampler(sampler)
-    return typed_varinfo(rng, model, init_sampler, context)
-end
-
-function AbstractMCMC.sample(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Sampler,
-    N::Integer;
-    chain_type=default_chain_type(sampler),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
-    kwargs...,
-)
-    return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_state, kwargs...
-    )
-end
-
-# initial step: general interface for resuming and
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
-)
-    # Sample initial values.
-    vi = default_varinfo(rng, model, spl)
+    vi = typed_varinfo(rng, model, init_sampler, context)
 
     # Update the parameters if provided.
     if initial_params !== nothing
@@ -122,7 +102,7 @@ function AbstractMCMC.step(
         vi = last(evaluate!!(model, vi, DefaultContext()))
     end
 
-    return initialstep(rng, model, spl, vi; initial_params, kwargs...)
+    return vi
 end
 
 """
