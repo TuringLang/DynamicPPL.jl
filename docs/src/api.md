@@ -458,7 +458,10 @@ DynamicPPL.loadstate
 DynamicPPL.initialsampler
 ```
 
-Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
+Finally, [`DynamicPPL.default_varinfo`](@ref) specifies how an initial varinfo should be generated when sampling from a given model with a given sampler.
+The default behaviour creates a typed varinfo, inserts the initial parameters (if specified), and links the varinfo if requested.
+
+Overriding this can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
 
 ```@docs
 DynamicPPL.default_varinfo
