@@ -1,3 +1,4 @@
+using AbstractMCMC: AbstractModel
 import DifferentiationInterface as DI
 
 """
@@ -95,7 +96,7 @@ julia> LogDensityProblems.logdensity_and_gradient(f, [0.0])
 """
 struct LogDensityFunction{
     M<:Model,V<:AbstractVarInfo,C<:AbstractContext,AD<:Union{Nothing,ADTypes.AbstractADType}
-}
+} <: AbstractModel
     "model used for evaluation"
     model::M
     "varinfo used for evaluation"

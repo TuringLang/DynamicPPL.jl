@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.8
+
+Made `LogDensityFunction` a subtype of `AbstractMCMC.AbstractModel`.
+
 ## 0.36.7
 
 Added compatibility with MCMCChains 7.0.
