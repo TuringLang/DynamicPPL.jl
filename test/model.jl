@@ -617,4 +617,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             ]) ≈ 1.0 * xs_test[2] rtol = 0.1
         end
     end
+
+    @testset "ProductNamedTupleDistribution sampling" begin
+        priors = (a = Normal(), b = Normal())
+        d = product_distribution(priors)
+        @model function sample_nt(priors_dist)
+            x ~ priors_dist
+            return x
+        end
+        model = sample_nt(d)
+        @test model() isa NamedTuple
+    end
 end

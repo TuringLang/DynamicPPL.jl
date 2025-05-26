@@ -47,6 +47,9 @@
         dist = LKJCholesky(2, 1)
         x = rand(dist)
         @test DynamicPPL.tovec(x) == vec(x.UL)
+
+        nt = (a = [1, 2], b = 3.0)
+        @test DynamicPPL.tovec(nt) == [1, 2, 3.0]
     end
 
     @testset "unique_syms" begin
