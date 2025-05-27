@@ -38,12 +38,12 @@ Generic sampler type for inference algorithms of type `T` in DynamicPPL.
 
 `Sampler` should implement the AbstractMCMC interface, and in particular
 `AbstractMCMC.step`. A default implementation of the initial sampling step is
-provided that supports resuming sampling from a previous state and setting initial
-parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
-for loading previous states and actually performing the initial sampling step,
-respectively. Additionally, sometimes one might want to implement [`initialsampler`](@ref)
-that specifies how the initial parameter values are sampled if they are not provided.
-By default, values are sampled from the prior.
+provided that supports resuming sampling from a previous state and setting
+initial parameter values. It requires you to to overload [`loadstate`](@ref)
+for loading previous states. Additionally, sometimes one might want to
+implement [`initialsampler`](@ref) that specifies how the initial parameter
+values are sampled if they are not provided. By default, values are sampled
+from the prior.
 """
 struct Sampler{T} <: AbstractSampler
     alg::T
@@ -52,13 +52,13 @@ end
 # AbstractMCMC interface for SampleFromUniform and SampleFromPrior
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
-    model::Model,
+    ldf::LogDensityFunction,
     sampler::Union{SampleFromUniform,SampleFromPrior},
     state=nothing;
     kwargs...,
 )
-    vi = VarInfo()
-    model(rng, vi, sampler)
+    ctx = SamplingContext(rng, sampler)
+    _, vi = DynamicPPL.evaluate!!(ldf.model, ldf.varinfo, ctx)
     return vi, nothing
 end
 
@@ -223,13 +223,3 @@ function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Mod
 
     return vi
 end
-
-"""
-    initialstep(rng, model, sampler, varinfo; kwargs...)
-
-Perform the initial sampling step of the `sampler` for the `model`.
-
-The `varinfo` contains the initial samples, which can be provided by the user or
-sampled randomly.
-"""
-function initialstep end

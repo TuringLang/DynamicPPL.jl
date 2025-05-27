@@ -58,14 +58,15 @@
         abstract type OnlyInitAlg end
         struct OnlyInitAlgDefault <: OnlyInitAlg end
         struct OnlyInitAlgUniform <: OnlyInitAlg end
-        function DynamicPPL.initialstep(
+
+        function AbstractMCMC.step(
             rng::Random.AbstractRNG,
-            model::Model,
+            ldf::DynamicPPL.LogDensityFunction,
             ::Sampler{<:OnlyInitAlg},
-            vi::AbstractVarInfo;
+            state=nothing;
             kwargs...,
         )
-            return vi, nothing
+            return ldf.vi, nothing
         end
 
         # initial samplers

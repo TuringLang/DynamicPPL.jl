@@ -453,7 +453,6 @@ Sampler
 The default implementation of [`Sampler`](@ref) uses the following unexported functions.
 
 ```@docs
-DynamicPPL.initialstep
 DynamicPPL.loadstate
 DynamicPPL.initialsampler
 ```
