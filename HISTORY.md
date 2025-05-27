@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.36.9
+
+Fixed a failure when sampling from `ProductNamedTupleDistribution` due to
+missing `tovec` methods for `NamedTuple` and `Tuple`.
+
 ## 0.36.8
 
 Made `LogDensityFunction` a subtype of `AbstractMCMC.AbstractModel`.
