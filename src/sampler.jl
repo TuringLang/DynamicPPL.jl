@@ -223,3 +223,8 @@ function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Mod
 
     return vi
 end
+
+# TODO: Get rid of this
+function initialstep(args...; kwargs...)
+    return error("no initialstep")
+end
