@@ -15,7 +15,6 @@ using MCMCChains
 using StableRNGs
 using ReverseDiff
 using Zygote
-using Compat
 
 using Distributed
 using LinearAlgebra
@@ -79,9 +78,6 @@ include("test_util.jl")
     end
 
     if GROUP == "All" || GROUP == "Group2"
-        @testset "compat" begin
-            include(joinpath("compat", "ad.jl"))
-        end
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLJETExt.jl")
