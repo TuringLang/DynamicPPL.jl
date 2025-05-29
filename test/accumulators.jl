@@ -71,8 +71,9 @@ using DynamicPPL:
             @test convert(
                 LogLikelihoodAccumulator{Float32}, LogLikelihoodAccumulator(1.0)
             ) == LogLikelihoodAccumulator{Float32}(1.0f0)
-            @test convert(VariableOrderAccumulator{UInt8,VarName}, VariableOrderAccumulator(1)) ==
-                VariableOrderAccumulator{UInt8}(1)
+            @test convert(
+                VariableOrderAccumulator{UInt8,VarName}, VariableOrderAccumulator(1)
+            ) == VariableOrderAccumulator{UInt8}(1)
 
             @test convert_eltype(Float32, LogPriorAccumulator(1.0)) ==
                 LogPriorAccumulator{Float32}(1.0f0)

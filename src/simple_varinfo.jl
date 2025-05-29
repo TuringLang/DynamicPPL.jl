@@ -198,6 +198,12 @@ struct SimpleVarInfo{NT,Accs<:AccumulatorTuple where {N},C<:AbstractTransformati
     transformation::C
 end
 
+function Base.:(==)(vi1::SimpleVarInfo, vi2::SimpleVarInfo)
+    return vi1.values == vi2.values &&
+           vi1.accs == vi2.accs &&
+           vi1.transformation == vi2.transformation
+end
+
 transformation(vi::SimpleVarInfo) = vi.transformation
 
 function SimpleVarInfo(values, accs)

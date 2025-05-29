@@ -60,6 +60,17 @@ struct Metadata{
     flags::Dict{String,BitVector}
 end
 
+function Base.:(==)(md1::Metadata, md2::Metadata)
+    return (
+        md1.idcs == md2.idcs &&
+        md1.vns == md2.vns &&
+        md1.ranges == md2.ranges &&
+        md1.vals == md2.vals &&
+        md1.dists == md2.dists &&
+        md1.flags == md2.flags
+    )
+end
+
 ###########
 # VarInfo #
 ###########
@@ -154,6 +165,10 @@ const NTVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
+
+function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
+    return (vi1.metadata == vi2.metadata && vi1.accs == vi2.accs)
+end
 
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
@@ -275,9 +290,7 @@ function typed_varinfo(vi::UntypedVarInfo)
 
         push!(
             new_metas,
-            Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_flags
-            ),
+            Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_flags),
         )
     end
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
@@ -597,14 +610,7 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
     end
 
     flags = Dict(k => v[indices_for_vns] for (k, v) in metadata.flags)
-    return Metadata(
-        indices,
-        vns,
-        ranges,
-        vals,
-        metadata.dists[indices_for_vns],
-        flags,
-    )
+    return Metadata(indices, vns, ranges, vals, metadata.dists[indices_for_vns], flags)
 end
 
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)

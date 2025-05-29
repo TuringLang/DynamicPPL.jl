@@ -57,7 +57,7 @@ struct VariableOrderAccumulator{Eltype<:Integer,VNType<:VarName} <: AbstractAccu
     "the number of observations"
     num_produce::Eltype
     "mapping of variable names to their order in the model"
-    order::OrderedDict{VNType, Eltype}
+    order::OrderedDict{VNType,Eltype}
 end
 
 """
@@ -65,7 +65,8 @@ end
 
 Create a new `VariableOrderAccumulator` accumulator with the number of observations set to n
 """
-VariableOrderAccumulator{T}(n=zero(T)) where {T<:Integer} = VariableOrderAccumulator(convert(T, n), OrderedDict{VarName, T}())
+VariableOrderAccumulator{T}(n=zero(T)) where {T<:Integer} =
+    VariableOrderAccumulator(convert(T, n), OrderedDict{VarName,T}())
 VariableOrderAccumulator(n) = VariableOrderAccumulator{typeof(n)}(n)
 VariableOrderAccumulator() = VariableOrderAccumulator{Int}()
 
@@ -76,7 +77,38 @@ function Base.show(io::IO, acc::LogLikelihoodAccumulator)
     return print(io, "LogLikelihoodAccumulator($(repr(acc.logp)))")
 end
 function Base.show(io::IO, acc::VariableOrderAccumulator)
-    return print(io, "VariableOrderAccumulator($(repr(acc.num_produce)), $(repr(acc.order)))")
+    return print(
+        io, "VariableOrderAccumulator($(repr(acc.num_produce)), $(repr(acc.order)))"
+    )
+end
+
+# Note that == and isequal are different, and equality under the latter should imply
+# equality of hashes. Both of the below implementations are also different from the default
+# implementation for structs.
+Base.:(==)(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator) = acc1.logp == acc2.logp
+function Base.:(==)(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
+    return acc1.logp == acc2.logp
+end
+function Base.:(==)(acc1::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
+    return acc1.num_produce == acc2.num_produce && acc1.order == acc2.order
+end
+
+function Base.isequal(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator)
+    return isequal(acc1.logp, acc2.logp)
+end
+function Base.isequal(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
+    return isequal(acc1.logp, acc2.logp)
+end
+function Base.isequal(acc1::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
+    return isequal(acc1.num_produce, acc2.num_produce) && isequal(acc1.order, acc2.order)
+end
+
+Base.hash(acc::LogPriorAccumulator, h::UInt) = hash((LogPriorAccumulator, acc.logp), h)
+function Base.hash(acc::LogLikelihoodAccumulator, h::UInt)
+    return hash((LogLikelihoodAccumulator, acc.logp), h)
+end
+function Base.hash(acc::VariableOrderAccumulator, h::UInt)
+    return hash((VariableOrderAccumulator, acc.num_produce, acc.order), h)
 end
 
 accumulator_name(::Type{<:LogPriorAccumulator}) = :LogPrior
@@ -96,7 +128,9 @@ end
 function combine(acc::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
     # Note that assumptions are not allowed within in parallelised blocks, and thus the
     # dictionaries should be identical.
-    return VariableOrderAccumulator(max(acc.num_produce, acc2.num_produce), merge(acc.order, acc2.order))
+    return VariableOrderAccumulator(
+        max(acc.num_produce, acc2.num_produce), merge(acc.order, acc2.order)
+    )
 end
 
 function Base.:+(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator)
@@ -105,7 +139,9 @@ end
 function Base.:+(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return LogLikelihoodAccumulator(acc1.logp + acc2.logp)
 end
-increment(acc::VariableOrderAccumulator) = VariableOrderAccumulator(acc.num_produce + oneunit(acc.num_produce), acc.order)
+function increment(acc::VariableOrderAccumulator)
+    return VariableOrderAccumulator(acc.num_produce + oneunit(acc.num_produce), acc.order)
+end
 
 Base.zero(acc::LogPriorAccumulator) = LogPriorAccumulator(zero(acc.logp))
 Base.zero(acc::LogLikelihoodAccumulator) = LogLikelihoodAccumulator(zero(acc.logp))
@@ -138,9 +174,9 @@ function Base.convert(
     return LogLikelihoodAccumulator(convert(T, acc.logp))
 end
 function Base.convert(
-    ::Type{VariableOrderAccumulator{ElType, VnType}}, acc::VariableOrderAccumulator
-) where {ElType, VnType}
-    order = OrderedDict{VnType, ElType}()
+    ::Type{VariableOrderAccumulator{ElType,VnType}}, acc::VariableOrderAccumulator
+) where {ElType,VnType}
+    order = OrderedDict{VnType,ElType}()
     for (k, v) in acc.order
         order[convert(VnType, k)] = convert(ElType, v)
     end

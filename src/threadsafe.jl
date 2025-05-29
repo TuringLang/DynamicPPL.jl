@@ -78,7 +78,9 @@ end
 
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
-setorder!!(vi::ThreadSafeVarInfo, vn::VarName, index::Int) = ThreadSafeVarInfo(setorder!!(vi.varinfo, vn, index), vi.accs_by_thread)
+function setorder!!(vi::ThreadSafeVarInfo, vn::VarName, index::Int)
+    return ThreadSafeVarInfo(setorder!!(vi.varinfo, vn, index), vi.accs_by_thread)
+end
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)

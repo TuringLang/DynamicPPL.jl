@@ -136,6 +136,8 @@ function Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname}
     @inline return haskey(at.nt, accname)
 end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
+Base.:(==)(at1::AccumulatorTuple, at2::AccumulatorTuple) = at1.nt == at2.nt
+Base.hash(at::AccumulatorTuple, h::UInt) = Base.hash((AccumulatorTuple, at.nt), h)
 
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
     return AccumulatorTuple(convert(T, accs.nt))
