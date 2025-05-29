@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.10
+
+Added compatibility with ForwardDiff 1.0.
+
 ## 0.36.9
 
 Fixed a failure when sampling from `ProductNamedTupleDistribution` due to
