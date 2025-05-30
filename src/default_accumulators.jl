@@ -66,9 +66,15 @@ end
 Create a new `VariableOrderAccumulator` accumulator with the number of observations set to n
 """
 VariableOrderAccumulator{T}(n=zero(T)) where {T<:Integer} =
-    VariableOrderAccumulator(convert(T, n), OrderedDict{VarName,T}())
+    VariableOrderAccumulator(convert(T, n), Dict{VarName,T}())
 VariableOrderAccumulator(n) = VariableOrderAccumulator{typeof(n)}(n)
 VariableOrderAccumulator() = VariableOrderAccumulator{Int}()
+
+Base.copy(acc::LogPriorAccumulator) = acc
+Base.copy(acc::LogLikelihoodAccumulator) = acc
+function Base.copy(acc::VariableOrderAccumulator)
+    return VariableOrderAccumulator(acc.num_produce, copy(acc.order))
+end
 
 function Base.show(io::IO, acc::LogPriorAccumulator)
     return print(io, "LogPriorAccumulator($(repr(acc.logp)))")

@@ -248,7 +248,7 @@ end
 # Constructor from `VarInfo`.
 function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
     values = values_as(vi, D)
-    return SimpleVarInfo(values, deepcopy(getaccs(vi)))
+    return SimpleVarInfo(values, copy(getaccs(vi)))
 end
 function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
     values = values_as(vi, D)
@@ -447,7 +447,7 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    accs = deepcopy(getaccs(varinfo_right))
+    accs = copy(getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )

@@ -4,6 +4,10 @@ end
 
 PriorDistributionAccumulator() = PriorDistributionAccumulator(OrderedDict{VarName,Any}())
 
+function Base.copy(acc::PriorDistributionAccumulator)
+    return PriorDistributionAccumulator(copy(acc.priors))
+end
+
 accumulator_name(::PriorDistributionAccumulator) = :PriorDistributionAccumulator
 
 split(acc::PriorDistributionAccumulator) = PriorDistributionAccumulator(empty(acc.priors))

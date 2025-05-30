@@ -13,6 +13,7 @@ An accumulator type `T <: AbstractAccumulator` must implement the following meth
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
 - `accumulate_observe!!(acc::T, right, left, vn)`
 - `accumulate_assume!!(acc::T, val, logjac, vn, right)`
+- `Base.copy(acc::T)`
 
 To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
@@ -138,6 +139,7 @@ end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
 Base.:(==)(at1::AccumulatorTuple, at2::AccumulatorTuple) = at1.nt == at2.nt
 Base.hash(at::AccumulatorTuple, h::UInt) = Base.hash((AccumulatorTuple, at.nt), h)
+Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
     return AccumulatorTuple(convert(T, accs.nt))
