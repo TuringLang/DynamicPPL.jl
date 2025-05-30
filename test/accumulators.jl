@@ -35,7 +35,7 @@ using DynamicPPL:
                 VariableOrderAccumulator() ==
                 VariableOrderAccumulator{Int}() ==
                 VariableOrderAccumulator{Int}(0) ==
-                VariableOrderAccumulator(0, OrderedDict{VarName,Int}())
+                VariableOrderAccumulator(0, Dict{VarName,Int}())
         end
 
         @testset "addition and incrementation" begin
@@ -92,7 +92,7 @@ using DynamicPPL:
                 LogLikelihoodAccumulator(1.0), val, logjac, vn, dist
             ) == LogLikelihoodAccumulator(1.0)
             @test accumulate_assume!!(VariableOrderAccumulator(1), val, logjac, vn, dist) ==
-                VariableOrderAccumulator(1, OrderedDict{VarName,Int}((vn => 1)))
+                VariableOrderAccumulator(1, Dict{VarName,Int}((vn => 1)))
         end
 
         @testset "accumulate_observe" begin

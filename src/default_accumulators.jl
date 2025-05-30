@@ -57,7 +57,7 @@ struct VariableOrderAccumulator{Eltype<:Integer,VNType<:VarName} <: AbstractAccu
     "the number of observations"
     num_produce::Eltype
     "mapping of variable names to their order in the model"
-    order::OrderedDict{VNType,Eltype}
+    order::Dict{VNType,Eltype}
 end
 
 """
@@ -176,7 +176,7 @@ end
 function Base.convert(
     ::Type{VariableOrderAccumulator{ElType,VnType}}, acc::VariableOrderAccumulator
 ) where {ElType,VnType}
-    order = OrderedDict{VnType,ElType}()
+    order = Dict{VnType,ElType}()
     for (k, v) in acc.order
         order[convert(VnType, k)] = convert(ElType, v)
     end
