@@ -305,6 +305,7 @@ closure approach will be used. By default, this function returns `false`, i.e.
 the constant approach will be used.
 """
 use_closure(::ADTypes.AbstractADType) = true
+use_closure(::ADTypes.AutoEnzyme) = false
 
 """
     getmodel(f)
