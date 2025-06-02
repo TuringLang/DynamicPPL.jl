@@ -44,6 +44,10 @@ end
 function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, vi)
     return assume(rng, sampler, right, vn, vi)
 end
+function tilde_assume(::DefaultContext, sampler, right, vn, vi)
+    # same as above but no rng
+    return assume(Random.default_rng(), sampler, right, vn, vi)
+end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)
     # Note that we can't use something like this here:

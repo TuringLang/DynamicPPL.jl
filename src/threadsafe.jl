@@ -9,7 +9,16 @@ struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:AccumulatorTuple} <: AbstractVarI
     accs_by_thread::Vector{L}
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    accs_by_thread = [map(split, getaccs(vi)) for _ in 1:Threads.nthreads()]
+    # In ThreadSafeVarInfo we use threadid() to index into the array of logp
+    # fields. This is not good practice --- see
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/924 for a full
+    # explanation --- but it has worked okay so far.
+    # The use of nthreads()*2 here ensures that threadid() doesn't exceed
+    # the length of the logps array. Ideally, we would use maxthreadid(),
+    # but Mooncake can't differentiate through that. Empirically, nthreads()*2
+    # seems to provide an upper bound to maxthreadid(), so we use that here.
+    # See https://github.com/TuringLang/DynamicPPL.jl/pull/936
+    accs_by_thread = [map(split, getaccs(vi)) for _ in 1:(Threads.nthreads() * 2)]
     return ThreadSafeVarInfo(vi, accs_by_thread)
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi

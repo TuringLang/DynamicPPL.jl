@@ -434,6 +434,8 @@ to_linked_vec_transform(x) = inverse(from_linked_vec_transform(x))
 # or fix `tovec` to flatten the full matrix instead of using `Bijectors.triu_to_vec`.
 tovec(x::Real) = [x]
 tovec(x::AbstractArray) = vec(x)
+tovec(t::Tuple) = mapreduce(tovec, vcat, t)
+tovec(nt::NamedTuple) = mapreduce(tovec, vcat, values(nt))
 tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
 """

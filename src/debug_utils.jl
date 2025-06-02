@@ -324,6 +324,11 @@ function conditioned_varnames(context)
 end
 
 function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
+    if isempty(varnames_seen)
+        @warn "The model does not contain any parameters."
+        return true
+    end
+
     issuccess = true
     for (varname, count) in varnames_seen
         if count == 0
@@ -402,6 +407,8 @@ julia> print(trace)
  assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252
 
 julia> issuccess, trace = check_model_and_trace(rng, demo_correct() | (x = 1.0,));
+┌ Warning: The model does not contain any parameters.
+└ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:342
 
 julia> issuccess
 true

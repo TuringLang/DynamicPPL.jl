@@ -632,4 +632,15 @@ function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
     return invlink_transform(dist)
 end
 
+# Threadsafe stuff.
+# For `SimpleVarInfo` we don't really need `Ref` so let's not use it.
+function ThreadSafeVarInfo(vi::SimpleVarInfo)
+    return ThreadSafeVarInfo(vi, zeros(typeof(getlogp(vi)), Threads.nthreads() * 2))
+end
+function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
+    return ThreadSafeVarInfo(
+        vi, [Ref(zero(getlogp(vi))) for _ in 1:(Threads.nthreads() * 2)]
+    )
+end
+
 has_varnamedvector(vi::SimpleVarInfo) = vi.values isa VarNamedVector

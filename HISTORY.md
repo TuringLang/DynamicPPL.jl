@@ -18,6 +18,56 @@ This release overhauls how VarInfo objects track variables such as the log joint
   - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
   - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
 
+## 0.36.11
+
+Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.
+This fix helps to paper over the cracks in using `threadid()` to index into the `ThreadSafeVarInfo` object.
+
+## 0.36.10
+
+Added compatibility with ForwardDiff 1.0.
+
+## 0.36.9
+
+Fixed a failure when sampling from `ProductNamedTupleDistribution` due to
+missing `tovec` methods for `NamedTuple` and `Tuple`.
+
+## 0.36.8
+
+Made `LogDensityFunction` a subtype of `AbstractMCMC.AbstractModel`.
+
+## 0.36.7
+
+Added compatibility with MCMCChains 7.0.
+
+## 0.36.6
+
+`DynamicPPL.TestUtils.run_ad` now takes an extra `context` keyword argument, which is passed to the `LogDensityFunction` constructor.
+
+## 0.36.5
+
+`varinfo[:]` now returns an empty vector if `varinfo::DynamicPPL.NTVarInfo` is empty, rather than erroring.
+
+In its place, `check_model` now issues a warning if the model is empty.
+
+## 0.36.4
+
+Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
+
+The JET compatibility entry should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
+
+## 0.36.3
+
+Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
+
+## 0.36.2
+
+Improved docstrings for AD testing utilities.
+
+## 0.36.1
+
+Fixed a missing method for `tilde_assume`.
+
 ## 0.36.0
 
 **Breaking changes**

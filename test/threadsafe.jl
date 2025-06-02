@@ -5,7 +5,7 @@
 
         @test threadsafe_vi.varinfo === vi
         @test threadsafe_vi.accs_by_thread isa Vector{<:DynamicPPL.AccumulatorTuple}
-        @test length(threadsafe_vi.accs_by_thread) == Threads.nthreads()
+        @test length(threadsafe_vi.accs_by_thread) == Threads.nthreads() * 2
         expected_accs = DynamicPPL.AccumulatorTuple(
             (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(vi))...
         )
