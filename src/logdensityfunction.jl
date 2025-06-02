@@ -297,17 +297,14 @@ There are two ways of dealing with this:
 
 The relative performance of the two approaches, however, depends on the AD
 backend used. Some benchmarks are provided here:
-https://github.com/TuringLang/DynamicPPL.jl/pull/806#issuecomment-2658061480
+https://github.com/TuringLang/DynamicPPL.jl/issues/946#issuecomment-2931604829
 
 This function is used to determine whether a given AD backend should use a
 closure or a constant. If `use_closure(adtype)` returns `true`, then the
 closure approach will be used. By default, this function returns `false`, i.e.
 the constant approach will be used.
 """
-use_closure(::ADTypes.AbstractADType) = false
-use_closure(::ADTypes.AutoForwardDiff) = false
-use_closure(::ADTypes.AutoMooncake) = false
-use_closure(::ADTypes.AutoReverseDiff) = true
+use_closure(::ADTypes.AbstractADType) = true
 
 """
     getmodel(f)
