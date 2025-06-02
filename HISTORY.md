@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.36.11
+
+Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.
+This fix helps to paper over the cracks in using `threadid()` to index into the `ThreadSafeVarInfo` object.
+
 ## 0.36.10
 
 Added compatibility with ForwardDiff 1.0.
