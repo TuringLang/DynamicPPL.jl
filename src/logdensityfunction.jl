@@ -308,7 +308,7 @@ the constant approach will be used.
 use_closure(::ADTypes.AbstractADType) = false
 use_closure(::ADTypes.AutoForwardDiff) = false
 use_closure(::ADTypes.AutoMooncake) = false
-use_closure(::ADTypes.AutoReverseDiff) = false
+use_closure(::ADTypes.AutoReverseDiff) = true
 
 """
     getmodel(f)
