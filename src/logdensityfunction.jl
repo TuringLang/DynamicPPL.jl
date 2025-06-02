@@ -211,19 +211,7 @@ struct LogDensityAt{M<:Model,V<:AbstractVarInfo,C<:AbstractContext}
     context::C
 end
 function (ld::LogDensityAt)(x::AbstractVector)
-    varinfo_new = unflatten(ld.varinfo, x)
-    varinfo_eval = last(evaluate!!(ld.model, varinfo_new, ld.context))
-    has_prior = hasacc(varinfo_eval, Val(:LogPrior))
-    has_likelihood = hasacc(varinfo_eval, Val(:LogLikelihood))
-    if has_prior && has_likelihood
-        return getlogjoint(varinfo_eval)
-    elseif has_prior
-        return getlogprior(varinfo_eval)
-    elseif has_likelihood
-        return getloglikelihood(varinfo_eval)
-    else
-        error("LogDensityFunction: varinfo tracks neither log prior nor log likelihood")
-    end
+    return logdensity_at(x, ld.model, ld.varinfo, ld.context)
 end
 
 ### LogDensityProblems interface
