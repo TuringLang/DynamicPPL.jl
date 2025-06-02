@@ -331,7 +331,7 @@ get_num_produce
 set_num_produce!!
 increment_num_produce!!
 reset_num_produce!!
-setorder!
+setorder!!
 set_retained_vns_del!
 ```
 
@@ -358,7 +358,7 @@ DynamicPPL provides the following default accumulators.
 ```@docs
 LogPriorAccumulator
 LogLikelihoodAccumulator
-NumProduceAccumulator
+VariableOrderAccumulator
 ```
 
 ### Common API
