@@ -5,7 +5,7 @@
 
         @test threadsafe_vi.varinfo === vi
         @test threadsafe_vi.logps isa Vector{typeof(Ref(getlogp(vi)))}
-        @test length(threadsafe_vi.logps) == Threads.nthreads()
+        @test length(threadsafe_vi.logps) == Threads.nthreads() * 2
         @test all(iszero(x[]) for x in threadsafe_vi.logps)
     end
 
