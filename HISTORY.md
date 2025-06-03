@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.12
+
+Added an unexported method, `DynamicPPL.show_context_stack`, for minimalistic printing of context stacks (which is useful when debugging e.g. submodels).
+
 ## 0.36.11
 
 Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.

@@ -817,3 +817,17 @@ function prefix_cond_and_fixed_variables(
         context, prefix_cond_and_fixed_variables(childcontext(context), prefix)
     )
 end
+
+_pretty(ctx::AbstractContext) = split(string(ctx), "Context")[1]
+"""
+    show_stack(ctx::AbstractContext)
+
+Return a minimalistic string representation of the context stack `ctx`. Useful
+for debugging complicated context problems, e.g. with submodels.
+
+For example, `SamplingContext(ConditionContext(..., DefaultContext())` will
+print as `Sampling->Condition->Default`.
+"""
+show_stack(ctx::AbstractContext) = show_stack(NodeTrait(ctx), ctx)
+show_stack(::IsLeaf, ctx) = _pretty(ctx)
+show_stack(::IsParent, ctx) = _pretty(ctx) * "->" * show_stack(childcontext(ctx))
