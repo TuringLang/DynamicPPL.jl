@@ -32,4 +32,4 @@ jobs:
         working-directory: test/enzyme
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
-          julia --project=. --color=yes runtests.jl
+          julia --project=. --color=yes main.jl
