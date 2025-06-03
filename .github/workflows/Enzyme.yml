@@ -29,7 +29,7 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - name: Run AD with Enzyme on demo models
-        working-directory: test/enzyme
+        working-directory: test/integration/enzyme
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
           julia --project=. --color=yes main.jl
