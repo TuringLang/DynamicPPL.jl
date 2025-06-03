@@ -818,16 +818,32 @@ function prefix_cond_and_fixed_variables(
     )
 end
 
-_pretty(ctx::AbstractContext) = split(string(ctx), "Context")[1]
+## Pretty-printing context stacks
+
+# splitting on the dot gets rid of module prefixes
+_pretty_context(ctx::AbstractContext) = split(split(string(ctx), "Context")[1], ".")[end]
+
 """
-    show_stack(ctx::AbstractContext)
+    show_context_stack(ctx::AbstractContext)
 
 Return a minimalistic string representation of the context stack `ctx`. Useful
 for debugging complicated context problems, e.g. with submodels.
 
 For example, `SamplingContext(ConditionContext(..., DefaultContext())` will
 print as `Sampling->Condition->Default`.
+
+```jldoctest
+julia> using DynamicPPL: @varname, show_context_stack, ConditionContext, PrefixContext
+
+julia> c1 = ConditionContext((a=1, )); show_context_stack(c1)
+"Condition->Default"
+
+julia> p1 = PrefixContext(@varname(y), c1); show_context_stack(p1)
+"Prefix->Condition->Default"
+```
 """
-show_stack(ctx::AbstractContext) = show_stack(NodeTrait(ctx), ctx)
-show_stack(::IsLeaf, ctx) = _pretty(ctx)
-show_stack(::IsParent, ctx) = _pretty(ctx) * "->" * show_stack(childcontext(ctx))
+show_context_stack(ctx::AbstractContext) = show_context_stack(NodeTrait(ctx), ctx)
+show_context_stack(::IsLeaf, ctx) = _pretty_context(ctx)
+function show_context_stack(::IsParent, ctx)
+    return _pretty_context(ctx) * "->" * show_context_stack(childcontext(ctx))
+end
