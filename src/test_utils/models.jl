@@ -148,7 +148,7 @@ Simple model for which [`default_transformation`](@ref) returns a [`StaticTransf
     1.5 ~ Normal(m, sqrt(s))
     2.0 ~ Normal(m, sqrt(s))
 
-    return (; s, m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s, m, x=[1.5, 2.0])
 end
 
 function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
@@ -194,7 +194,7 @@ end
     m ~ product_distribution(Normal.(0, sqrt.(s)))
 
     x ~ MvNormal(m, Diagonal(s))
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -225,7 +225,7 @@ end
     end
     x ~ MvNormal(m, Diagonal(s))
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_assume_index_observe)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -248,7 +248,7 @@ end
     m ~ MvNormal(zero(x), Diagonal(s))
     x ~ MvNormal(m, Diagonal(s))
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_assume_multivariate_observe)}, s, m)
     s_dist = product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)])
@@ -279,7 +279,7 @@ end
         x[i] ~ Normal(m[i], sqrt(s[i]))
     end
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe_index)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -304,7 +304,7 @@ end
     m ~ Normal(0, sqrt(s))
     x .~ Normal(m, sqrt(s))
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_assume_dot_observe)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
@@ -327,7 +327,7 @@ end
     m ~ MvNormal(zeros(2), Diagonal(s))
     [1.5, 2.0] ~ MvNormal(m, Diagonal(s))
 
-    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0])
 end
 function logprior_true(model::Model{typeof(demo_assume_multivariate_observe_literal)}, s, m)
     s_dist = product_distribution([InverseGamma(2, 3), InverseGamma(2, 3)])
@@ -358,7 +358,7 @@ end
     1.5 ~ Normal(m[1], sqrt(s[1]))
     2.0 ~ Normal(m[2], sqrt(s[2]))
 
-    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0])
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe_index_literal)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -384,7 +384,7 @@ end
     1.5 ~ Normal(m, sqrt(s))
     2.0 ~ Normal(m, sqrt(s))
 
-    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0])
 end
 function logprior_true(model::Model{typeof(demo_assume_observe_literal)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
@@ -407,7 +407,7 @@ end
     m ~ Normal(0, sqrt(s))
     [1.5, 2.0] .~ Normal(m, sqrt(s))
 
-    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0])
 end
 function logprior_true(model::Model{typeof(demo_assume_dot_observe_literal)}, s, m)
     return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
@@ -440,7 +440,7 @@ end
     1.5 ~ Normal(m[1], sqrt(s[1]))
     2.0 ~ Normal(m[2], sqrt(s[2]))
 
-    return (; s=s, m=m, x=[1.5, 2.0], logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=[1.5, 2.0])
 end
 function logprior_true(
     model::Model{typeof(demo_assume_submodel_observe_index_literal)}, s, m
@@ -476,9 +476,9 @@ end
     # Submodel likelihood
     # With to_submodel, we have to have a left-hand side variable to
     # capture the result, so we just use a dummy variable
-    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x))
+    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x), false)
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe_submodel)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -505,7 +505,7 @@ end
 
     x[:, 1] ~ MvNormal(m, Diagonal(s))
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_dot_assume_observe_matrix_index)}, s, m)
     return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
@@ -535,7 +535,7 @@ end
 
     x[:, 1] ~ MvNormal(m, Diagonal(s_vec))
 
-    return (; s=s, m=m, x=x, logp=getlogp(__varinfo__))
+    return (; s=s, m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_assume_matrix_observe_matrix_index)}, s, m)
     n = length(model.args.x)

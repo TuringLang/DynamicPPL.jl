@@ -37,12 +37,6 @@ function setup_varinfos(
     svi_untyped = SimpleVarInfo(OrderedDict())
     svi_vnv = SimpleVarInfo(DynamicPPL.VarNamedVector())
 
-    # SimpleVarInfo{<:Any,<:Ref}
-    svi_typed_ref = SimpleVarInfo(example_values, Ref(getlogp(svi_typed)))
-    svi_untyped_ref = SimpleVarInfo(OrderedDict(), Ref(getlogp(svi_untyped)))
-    svi_vnv_ref = SimpleVarInfo(DynamicPPL.VarNamedVector(), Ref(getlogp(svi_vnv)))
-
-    lp = getlogp(vi_typed_metadata)
     varinfos = map((
         vi_untyped_metadata,
         vi_untyped_vnv,
@@ -51,12 +45,10 @@ function setup_varinfos(
         svi_typed,
         svi_untyped,
         svi_vnv,
-        svi_typed_ref,
-        svi_untyped_ref,
-        svi_vnv_ref,
     )) do vi
-        # Set them all to the same values.
-        DynamicPPL.setlogp!!(update_values!!(vi, example_values, varnames), lp)
+        # Set them all to the same values and evaluate logp.
+        vi = update_values!!(vi, example_values, varnames)
+        last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
     end
 
     if include_threadsafe

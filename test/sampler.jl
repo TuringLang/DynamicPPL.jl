@@ -84,7 +84,7 @@
             let inits = (; p=0.2)
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.p.vals == [0.2]
-                @test getlogp(chain[1]) == lptrue
+                @test getlogjoint(chain[1]) == lptrue
 
                 # parallel sampling
                 chains = sample(
@@ -98,7 +98,7 @@
                 )
                 for c in chains
                     @test c[1].metadata.p.vals == [0.2]
-                    @test getlogp(c[1]) == lptrue
+                    @test getlogjoint(c[1]) == lptrue
                 end
             end
 
@@ -113,7 +113,7 @@
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
-                @test getlogp(chain[1]) == lptrue
+                @test getlogjoint(chain[1]) == lptrue
 
                 # parallel sampling
                 chains = sample(
@@ -128,7 +128,7 @@
                 for c in chains
                     @test c[1].metadata.s.vals == [4]
                     @test c[1].metadata.m.vals == [-1]
-                    @test getlogp(c[1]) == lptrue
+                    @test getlogjoint(c[1]) == lptrue
                 end
             end
 

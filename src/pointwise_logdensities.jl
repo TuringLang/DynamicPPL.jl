@@ -1,142 +1,117 @@
-# Context version
-struct PointwiseLogdensityContext{A,Ctx} <: AbstractContext
-    logdensities::A
-    context::Ctx
+"""
+    PointwiseLogProbAccumulator{whichlogprob,KeyType,D<:AbstractDict{KeyType}} <: AbstractAccumulator
+
+An accumulator that stores the log-probabilities of each variable in a model.
+
+Internally this context stores the log-probabilities in a dictionary, where the keys are
+the variable names and the values are vectors of log-probabilities. Each element in a vector
+corresponds to one execution of the model.
+
+`whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
+which log-probabilities to store in the accumulator. `KeyType` is the type by which variable
+names are stored, and should be `String` or `VarName`. `D` is the type of the dictionary
+used internally to store the log-probabilities, by default
+`OrderedDict{KeyType, Vector{LogProbType}}`.
+"""
+struct PointwiseLogProbAccumulator{whichlogprob,KeyType,D<:AbstractDict{KeyType}} <:
+       AbstractAccumulator
+    logps::D
 end
 
-function PointwiseLogdensityContext(
-    likelihoods=OrderedDict{VarName,Vector{Float64}}(),
-    context::AbstractContext=DefaultContext(),
-)
-    return PointwiseLogdensityContext{typeof(likelihoods),typeof(context)}(
-        likelihoods, context
-    )
+function PointwiseLogProbAccumulator{whichlogprob}(logps) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob,keytype(logps),typeof(logps)}(logps)
 end
 
-NodeTrait(::PointwiseLogdensityContext) = IsParent()
-childcontext(context::PointwiseLogdensityContext) = context.context
-function setchildcontext(context::PointwiseLogdensityContext, child)
-    return PointwiseLogdensityContext(context.logdensities, child)
+function PointwiseLogProbAccumulator{whichlogprob}() where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob,VarName}()
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
+function PointwiseLogProbAccumulator{whichlogprob,KeyType}() where {whichlogprob,KeyType}
+    logps = OrderedDict{KeyType,Vector{LogProbType}}()
+    return PointwiseLogProbAccumulator{whichlogprob,KeyType,typeof(logps)}(logps)
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{VarName,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logdensities[vn] = logp
-end
-
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::VarName,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, string(vn), Float64[])
-    return push!(ℓ, logp)
+function Base.push!(acc::PointwiseLogProbAccumulator, vn, logp)
+    logps = acc.logps
+    # The last(fieldtypes(eltype(...))) gets the type of the values, rather than the keys.
+    T = last(fieldtypes(eltype(logps)))
+    logpvec = get!(logps, vn, T())
+    return push!(logpvec, logp)
 end
 
 function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
-    vn::VarName,
-    logp::Real,
-)
-    return context.logdensities[string(vn)] = logp
+    acc::PointwiseLogProbAccumulator{whichlogprob,String}, vn::VarName, logp
+) where {whichlogprob}
+    return push!(acc, string(vn), logp)
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Vector{Float64}}},
-    vn::String,
-    logp::Real,
-)
-    lookup = context.logdensities
-    ℓ = get!(lookup, vn, Float64[])
-    return push!(ℓ, logp)
+function accumulator_name(
+    ::Type{<:PointwiseLogProbAccumulator{whichlogprob}}
+) where {whichlogprob}
+    return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
 end
 
-function Base.push!(
-    context::PointwiseLogdensityContext{<:AbstractDict{String,Float64}},
-    vn::String,
-    logp::Real,
-)
-    return context.logdensities[vn] = logp
+function split(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob}(empty(acc.logps))
 end
 
-function _include_prior(context::PointwiseLogdensityContext)
-    return leafcontext(context) isa Union{PriorContext,DefaultContext}
-end
-function _include_likelihood(context::PointwiseLogdensityContext)
-    return leafcontext(context) isa Union{LikelihoodContext,DefaultContext}
+function combine(
+    acc::PointwiseLogProbAccumulator{whichlogprob},
+    acc2::PointwiseLogProbAccumulator{whichlogprob},
+) where {whichlogprob}
+    return PointwiseLogProbAccumulator{whichlogprob}(mergewith(vcat, acc.logps, acc2.logps))
 end
 
-function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vi)
-    # Defer literal `observe` to child-context.
-    return tilde_observe!!(context.context, right, left, vi)
-end
-function tilde_observe!!(context::PointwiseLogdensityContext, right, left, vn, vi)
-    # Completely defer to child context if we are not tracking likelihoods.
-    if !(_include_likelihood(context))
-        return tilde_observe!!(context.context, right, left, vn, vi)
+function accumulate_assume!!(
+    acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right
+) where {whichlogprob}
+    if whichlogprob == :both || whichlogprob == :prior
+        # T is the element type of the vectors that are the values of `acc.logps`. Usually
+        # it's LogProbType.
+        T = eltype(last(fieldtypes(eltype(acc.logps))))
+        subacc = accumulate_assume!!(LogPriorAccumulator{T}(), val, logjac, vn, right)
+        push!(acc, vn, subacc.logp)
     end
-
-    # Need the `logp` value, so we cannot defer `acclogp!` to child-context, i.e.
-    # we have to intercept the call to `tilde_observe!`.
-    logp, vi = tilde_observe(context.context, right, left, vi)
-
-    # Track loglikelihood value.
-    push!(context, vn, logp)
-
-    return left, acclogp!!(vi, logp)
+    return acc
 end
 
-# Note on submodels (penelopeysm)
-#
-# We don't need to overload tilde_observe!! for Sampleables (yet), because it
-# is currently not possible to evaluate a model with a Sampleable on the RHS
-# of an observe statement.
-#
-# Note that calling tilde_assume!! on a Sampleable does not necessarily imply
-# that there are no observe statements inside the Sampleable. There could well
-# be likelihood terms in there, which must be included in the returned logp.
-# See e.g. the `demo_dot_assume_observe_submodel` demo model.
-#
-# This is handled by passing the same context to rand_like!!, which figures out
-# which terms to include using the context, and also mutates the context and vi
-# appropriately. Thus, we don't need to check against _include_prior(context)
-# here.
-function tilde_assume!!(context::PointwiseLogdensityContext, right::Sampleable, vn, vi)
-    value, vi = DynamicPPL.rand_like!!(right, context, vi)
-    return value, vi
-end
-
-function tilde_assume!!(context::PointwiseLogdensityContext, right, vn, vi)
-    !_include_prior(context) && return (tilde_assume!!(context.context, right, vn, vi))
-    value, logp, vi = tilde_assume(context.context, right, vn, vi)
-    # Track loglikelihood value.
-    push!(context, vn, logp)
-    return value, acclogp!!(vi, logp)
+function accumulate_observe!!(
+    acc::PointwiseLogProbAccumulator{whichlogprob}, right, left, vn
+) where {whichlogprob}
+    # If `vn` is nothing the LHS of ~ is a literal and we don't have a name to attach this
+    # acc to, and thus do nothing.
+    if vn === nothing
+        return acc
+    end
+    if whichlogprob == :both || whichlogprob == :likelihood
+        # T is the element type of the vectors that are the values of `acc.logps`. Usually
+        # it's LogProbType.
+        T = eltype(last(fieldtypes(eltype(acc.logps))))
+        subacc = accumulate_observe!!(LogLikelihoodAccumulator{T}(), right, left, vn)
+        push!(acc, vn, subacc.logp)
+    end
+    return acc
 end
 
 """
-    pointwise_logdensities(model::Model, chain::Chains, keytype = String)
+    pointwise_logdensities(
+        model::Model,
+        chain::Chains,
+        keytype=String,
+        context=DefaultContext(),
+        ::Val{whichlogprob}=Val(:both),
+    )
 
 Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
 with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-Currently, only `String` and `VarName` are supported.
+Currently, only `String` and `VarName` are supported. `context` is the evaluation context,
+and `whichlogprob` specifies which log-probabilities to compute. It can be `:both`,
+`:prior`, or `:likelihood`.
+
+See also: [`pointwise_loglikelihoods`](@ref), [`pointwise_loglikelihoods`](@ref).
 
 # Notes
 Say `y` is a `Vector` of `n` i.i.d. `Normal(μ, σ)` variables, with `μ` and `σ`
@@ -234,14 +209,19 @@ julia> m = demo([1.0; 1.0]);
 julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])], ℓ[@varname(x[2])]))
 (-1.4189385332046727, -1.4189385332046727)
 ```
-
 """
 function pointwise_logdensities(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
-) where {T}
+    model::Model,
+    chain,
+    ::Type{KeyType}=String,
+    context::AbstractContext=DefaultContext(),
+    ::Val{whichlogprob}=Val(:both),
+) where {KeyType,whichlogprob}
     # Get the data by executing the model once
     vi = VarInfo(model)
-    point_context = PointwiseLogdensityContext(OrderedDict{T,Vector{Float64}}(), context)
+
+    AccType = PointwiseLogProbAccumulator{whichlogprob,KeyType}
+    vi = setaccs!!(vi, (AccType(),))
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     for (sample_idx, chain_idx) in iters
@@ -249,26 +229,28 @@ function pointwise_logdensities(
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        model(vi, point_context)
+        vi = last(evaluate!!(model, vi, context))
     end
 
+    logps = getacc(vi, Val(accumulator_name(AccType))).logps
     niters = size(chain, 1)
     nchains = size(chain, 3)
     logdensities = OrderedDict(
-        varname => reshape(logliks, niters, nchains) for
-        (varname, logliks) in point_context.logdensities
+        varname => reshape(vals, niters, nchains) for (varname, vals) in logps
     )
     return logdensities
 end
 
 function pointwise_logdensities(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
-)
-    point_context = PointwiseLogdensityContext(
-        OrderedDict{VarName,Vector{Float64}}(), context
-    )
-    model(varinfo, point_context)
-    return point_context.logdensities
+    model::Model,
+    varinfo::AbstractVarInfo,
+    context::AbstractContext=DefaultContext(),
+    ::Val{whichlogprob}=Val(:both),
+) where {whichlogprob}
+    AccType = PointwiseLogProbAccumulator{whichlogprob}
+    varinfo = setaccs!!(varinfo, (AccType(),))
+    varinfo = last(evaluate!!(model, varinfo, context))
+    return getacc(varinfo, Val(accumulator_name(AccType))).logps
 end
 
 """
@@ -277,29 +259,19 @@ end
 Compute the pointwise log-likelihoods of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the likelihood terms.
-See also: [`pointwise_logdensities`](@ref).
+
+See also: [`pointwise_logdensities`](@ref), [`pointwise_prior_logdensities`](@ref).
 """
 function pointwise_loglikelihoods(
-    model::Model,
-    chain,
-    keytype::Type{T}=String,
-    context::AbstractContext=LikelihoodContext(),
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
-    if !(leafcontext(context) isa LikelihoodContext)
-        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
-    end
-
-    return pointwise_logdensities(model, chain, T, context)
+    return pointwise_logdensities(model, chain, T, context, Val(:likelihood))
 end
 
 function pointwise_loglikelihoods(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=LikelihoodContext()
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
 )
-    if !(leafcontext(context) isa LikelihoodContext)
-        throw(ArgumentError("Leaf context should be a LikelihoodContext"))
-    end
-
-    return pointwise_logdensities(model, varinfo, context)
+    return pointwise_logdensities(model, varinfo, context, Val(:likelihood))
 end
 
 """
@@ -308,24 +280,17 @@ end
 Compute the pointwise log-prior-densities of the model given the chain.
 This is the same as `pointwise_logdensities(model, chain, context)`, but only
 including the prior terms.
-See also: [`pointwise_logdensities`](@ref).
+
+See also: [`pointwise_logdensities`](@ref), [`pointwise_loglikelihoods`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=PriorContext()
+    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
 ) where {T}
-    if !(leafcontext(context) isa PriorContext)
-        throw(ArgumentError("Leaf context should be a PriorContext"))
-    end
-
-    return pointwise_logdensities(model, chain, T, context)
+    return pointwise_logdensities(model, chain, T, context, Val(:prior))
 end
 
 function pointwise_prior_logdensities(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=PriorContext()
+    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
 )
-    if !(leafcontext(context) isa PriorContext)
-        throw(ArgumentError("Leaf context should be a PriorContext"))
-    end
-
-    return pointwise_logdensities(model, varinfo, context)
+    return pointwise_logdensities(model, varinfo, context, Val(:prior))
 end
