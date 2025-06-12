@@ -1,4 +1,4 @@
-const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
+const INTERNALNAMES = (:__model__, :__varinfo__)
 
 """
     need_concretize(expr)
@@ -63,9 +63,9 @@ used in its place.
 function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
     return quote
         if $(DynamicPPL.contextual_isassumption)(
-            __context__, $(DynamicPPL.prefix)(__context__, $vn)
+            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
         )
-            # Considered an assumption by `__context__` which means either:
+            # Considered an assumption by `__model__.context` which means either:
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
             #    the model arguments, hence we need to check this.
@@ -116,7 +116,7 @@ end
 isfixed(expr, vn) = false
 function isfixed(::Union{Symbol,Expr}, vn)
     return :($(DynamicPPL.contextual_isfixed)(
-        __context__, $(DynamicPPL.prefix)(__context__, $vn)
+        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
     ))
 end
 
@@ -417,7 +417,7 @@ function generate_assign(left, right)
     return quote
         $right_val = $right
         if $(DynamicPPL.is_extracting_values)(__varinfo__)
-            $vn = $(DynamicPPL.prefix)(__context__, $(make_varname_expression(left)))
+            $vn = $(DynamicPPL.prefix)(__model__.context, $(make_varname_expression(left)))
             __varinfo__ = $(map_accumulator!!)(
                 $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
             )
@@ -431,7 +431,11 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, nothing, __varinfo__
+            __model__.context,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $left,
+            nothing,
+            __varinfo__,
         )
         $value
     end
@@ -456,7 +460,7 @@ function generate_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
             $left = $(DynamicPPL.getfixed_nested)(
-                __context__, $(DynamicPPL.prefix)(__context__, $vn)
+                __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
             )
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
@@ -464,12 +468,12 @@ function generate_tilde(left, right)
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
                 $left = $(DynamicPPL.getconditioned_nested)(
-                    __context__, $(DynamicPPL.prefix)(__context__, $vn)
+                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __context__,
+                __model__.context,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $(maybe_view(left)),
                 $vn,
@@ -494,7 +498,7 @@ function generate_tilde_assume(left, right, vn)
 
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
-            __context__,
+            __model__.context,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
@@ -652,11 +656,7 @@ function build_output(modeldef, linenumbernode)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [
-            :(__model__::$(DynamicPPL.Model)),
-            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
-            :(__context__::$(DynamicPPL.AbstractContext)),
-        ],
+        [:(__model__::$(DynamicPPL.Model)), :(__varinfo__::$(DynamicPPL.AbstractVarInfo))],
         args,
     )
 

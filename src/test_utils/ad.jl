@@ -60,8 +60,6 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
     model::Model
     "The VarInfo that was used"
     varinfo::AbstractVarInfo
-    "The evaluation context that was used"
-    context::AbstractContext
     "The values at which the model was evaluated"
     params::Vector{Tparams}
     "The AD backend that was tested"
@@ -92,7 +90,6 @@ end
         grad_atol=1e-6,
         varinfo::AbstractVarInfo=link(VarInfo(model), model),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
-        context::AbstractContext=DefaultContext(),
         reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
         expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
         verbose=true,
@@ -146,13 +143,7 @@ Everything else is optional, and can be categorised into several groups:
    prep_params)`. You could then evaluate the gradient at a different set of
    parameters using the `params` keyword argument.
 
-3. _How to specify the evaluation context._
-
-   A `DynamicPPL.AbstractContext` can be passed as the `context` keyword
-   argument to control the evaluation context. This defaults to
-   `DefaultContext()`.
-
-4. _How to specify the results to compare against._ (Only if `test=true`.)
+3. _How to specify the results to compare against._ (Only if `test=true`.)
 
    Once logp and its gradient has been calculated with the specified `adtype`,
    it must be tested for correctness.
@@ -167,12 +158,12 @@ Everything else is optional, and can be categorised into several groups:
    The default reference backend is ForwardDiff. If none of these parameters are
    specified, ForwardDiff will be used to calculate the ground truth.
 
-5. _How to specify the tolerances._ (Only if `test=true`.)
+4. _How to specify the tolerances._ (Only if `test=true`.)
 
    The tolerances for the value and gradient can be set using `value_atol` and
    `grad_atol`. These default to 1e-6.
 
-6. _Whether to output extra logging information._
+5. _Whether to output extra logging information._
 
    By default, this function prints messages when it runs. To silence it, set
    `verbose=false`.
@@ -195,7 +186,6 @@ function run_ad(
     grad_atol::AbstractFloat=1e-6,
     varinfo::AbstractVarInfo=link(VarInfo(model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
-    context::AbstractContext=DefaultContext(),
     reference_adtype::AbstractADType=REFERENCE_ADTYPE,
     expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
     verbose=true,
@@ -207,7 +197,7 @@ function run_ad(
 
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model, varinfo, context; adtype=adtype)
+    ldf = LogDensityFunction(model, varinfo; adtype=adtype)
 
     value, grad = logdensity_and_gradient(ldf, params)
     grad = collect(grad)
@@ -216,7 +206,7 @@ function run_ad(
     if test
         # Calculate ground truth to compare against
         value_true, grad_true = if expected_value_and_grad === nothing
-            ldf_reference = LogDensityFunction(model, varinfo, context; adtype=reference_adtype)
+            ldf_reference = LogDensityFunction(model, varinfo; adtype=reference_adtype)
             logdensity_and_gradient(ldf_reference, params)
         else
             expected_value_and_grad
@@ -245,7 +235,6 @@ function run_ad(
     return ADResult(
         model,
         varinfo,
-        context,
         params,
         adtype,
         value_atol,

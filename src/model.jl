@@ -85,6 +85,12 @@ function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); k
     return Model(f, args, NamedTuple(kwargs), context)
 end
 
+"""
+    contextualize(model::Model, context::AbstractContext)
+
+Return a new `Model` with the same evaluation function and other arguments, but
+with its underlying context set to `context`.
+"""
 function contextualize(model::Model, context::AbstractContext)
     return Model(model.f, model.args, model.defaults, context)
 end
@@ -794,25 +800,22 @@ julia> # Now `a.x` will be sampled.
 fixed(model::Model) = fixed(model.context)
 
 """
-    (model::Model)()
-    (model::Model)(rng[, varinfo, sampler, context])
+    (model::Model)([rng, varinfo])
 
-Sample from the `model` using the `sampler` with random number generator `rng`
-and the `context`, and store the sample and log joint probability in `varinfo`.
+Sample from the prior of the `model` with random number generator `rng`.
 
 Returns the model's return value.
 
-If no arguments are provided, uses the default random number generator and
-samples from the prior.
+Note that calling this with an existing `varinfo` object will mutate it.
 """
-(model::Model)() = model(Random.default_rng())
-function (model::Model)(
-    rng::AbstractRNG,
-    varinfo::AbstractVarInfo=VarInfo(),
-    sampler::AbstractSampler=SampleFromPrior(),
-)
-    spl_ctx = SamplingContext(rng, sampler, DefaultContext())
-    return evaluate!!(model, varinfo, spl_ctx)
+(model::Model)() = model(Random.default_rng(), VarInfo())
+function (model::Model)(varinfo::AbstractVarInfo)
+    return model(Random.default_rng(), varinfo)
+end
+# ^ Weird Documenter.jl bug means that we have to write the two above separately
+# as it can only detect the `function`-less syntax.
+function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
+    return first(sample!!(rng, model, varinfo))
 end
 
 """
@@ -826,18 +829,29 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo)
+    sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
 
 Evaluate the `model` with the given `varinfo`, but perform sampling during the
-evaluation by wrapping the model's context in a `SamplingContext`.
+evaluation using the given `sampler` by wrapping the model's context in a
+`SamplingContext`.
+
+If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function sample!!(rng::AbstractRNG, model::Model, varinfo::AbstractVarInfo)
-    sampling_model = contextualize(
-        model, SamplingContext(rng, SampleFromPrior(), model.context)
-    )
+function sample!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfo::AbstractVarInfo,
+    sampler::AbstractSampler=SampleFromPrior(),
+)
+    sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
     return evaluate!!(sampling_model, varinfo)
+end
+function sample!!(
+    model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
+)
+    return sample!!(Random.default_rng(), model, varinfo, sampler)
 end
 
 """
@@ -846,10 +860,10 @@ end
 
 Evaluate the `model` with the given `varinfo`. If an extra context stack is
 provided, the model's context is inserted into that context stack. See
-[`combine_model_and_external_contexts`](@ref).
+`combine_model_and_external_contexts`.
 
 If multiple threads are available, the varinfo provided will be wrapped in a
-[`DynamicPPL.ThreadSafeVarInfo`](@ref) before evaluation.
+`ThreadSafeVarInfo` before evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
@@ -864,6 +878,10 @@ end
 function AbstractPPL.evaluate!!(
     model::Model, varinfo::AbstractVarInfo, context::AbstractContext
 )
+    Base.depwarn(
+        "The `context` argument to evaluate!!(model, varinfo, context) is deprecated.",
+        :dynamicppl_evaluate_context,
+    )
     new_ctx = combine_model_and_external_contexts(model.context, context)
     model = contextualize(model, new_ctx)
     return evaluate!!(model, varinfo)
@@ -911,7 +929,8 @@ end
 Evaluate the `model` with the given `varinfo`. If an additional `context` is provided,
 the model's context is combined with that context.
 
-This function does not wrap the varinfo in a `ThreadSafeVarInfo`.
+This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
+reset the log probability of the `varinfo` before running.
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
@@ -978,7 +997,6 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             # speeding up computation. See docs for `maybe_invlink_before_eval!!`
             # for more information.
             maybe_invlink_before_eval!!(varinfo, model),
-            context_new,
             $(unwrap_args...),
         )
         kwargs = model.defaults
@@ -1014,15 +1032,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(
-        evaluate!!(
-            model,
-            SimpleVarInfo{Float64}(OrderedDict()),
-            # NOTE: Use `leafcontext` here so we a) avoid overriding the leaf context of `model`,
-            # and b) avoid double-stacking the parent contexts.
-            SamplingContext(rng, SampleFromPrior(), leafcontext(model.context)),
-        ),
-    )
+    x = last(sample!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
     return values_as(x, T)
 end
 
@@ -1039,7 +1049,7 @@ Return the log joint probability of variables `varinfo` for the probabilistic `m
 See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    return getlogjoint(last(evaluate!!(model, varinfo, DefaultContext())))
+    return getlogjoint(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1093,7 +1103,7 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
         LogPriorAccumulator()
     end
     varinfo = setaccs!!(deepcopy(varinfo), (logprioracc,))
-    return getlogprior(last(evaluate!!(model, varinfo, DefaultContext())))
+    return getlogprior(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1147,7 +1157,7 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
         LogLikelihoodAccumulator()
     end
     varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
-    return getloglikelihood(last(evaluate!!(model, varinfo, DefaultContext())))
+    return getloglikelihood(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1187,7 +1197,7 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
+    predict([rng::Random.AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
 
 Generate samples from the posterior predictive distribution by evaluating `model` at each set
 of parameter values provided in `chain`. The number of posterior predictive samples matches
@@ -1201,7 +1211,7 @@ function predict(
     return map(chain) do params_varinfo
         vi = deepcopy(varinfo)
         DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
-        model(rng, vi, SampleFromPrior())
+        model(rng, vi)
         return vi
     end
 end
