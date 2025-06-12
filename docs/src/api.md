@@ -36,6 +36,12 @@ getargnames
 getmissings
 ```
 
+The context of a model can be set using [`contextualize`](@ref):
+
+```@docs
+contextualize
+```
+
 ## Evaluation
 
 With [`rand`](@ref) one can draw samples from the prior distribution of a [`Model`](@ref).
@@ -438,13 +444,21 @@ DynamicPPL.varname_and_value_leaves
 
 ### Evaluation Contexts
 
-Internally, both sampling and evaluation of log densities are performed with [`AbstractPPL.evaluate!!`](@ref).
+Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
 ```@docs
 AbstractPPL.evaluate!!
 ```
 
-The behaviour of a model execution can be changed with evaluation contexts that are passed as additional argument to the model function.
+This method mutates the `varinfo` used for execution.
+By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
+To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
+
+```@docs
+DynamicPPL.sample!!
+```
+
+The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs

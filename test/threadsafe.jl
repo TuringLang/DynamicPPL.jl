@@ -52,9 +52,10 @@
                 x[i] ~ Normal(x[i - 1], 1)
             end
         end
+        model = wthreads(x)
 
         vi = VarInfo()
-        wthreads(x)(vi)
+        model(vi)
         lp_w_threads = getlogjoint(vi)
         if Threads.nthreads() == 1
             @test vi_ isa VarInfo
@@ -64,23 +65,19 @@
 
         println("With `@threads`:")
         println("  default:")
-        @time wthreads(x)(vi)
+        @time model(vi)
 
         # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
-        DynamicPPL.evaluate_threadsafe!!(
-            wthreads(x),
-            vi,
-            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
-        )
+        sampling_model = contextualize(model, SamplingContext(model.context))
+        DynamicPPL.evaluate_threadsafe!!(sampling_model, vi)
         @test getlogjoint(vi) ≈ lp_w_threads
+        # check that it's wrapped during the model evaluation
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        # ensure that it's unwrapped after evaluation finishes
+        @test vi isa VarInfo
 
         println("  evaluate_threadsafe!!:")
-        @time DynamicPPL.evaluate_threadsafe!!(
-            wthreads(x),
-            vi,
-            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
-        )
+        @time DynamicPPL.evaluate_threadsafe!!(sampling_model, vi)
 
         @model function wothreads(x)
             global vi_ = __varinfo__
@@ -89,9 +86,10 @@
                 x[i] ~ Normal(x[i - 1], 1)
             end
         end
+        model = wothreads(x)
 
         vi = VarInfo()
-        wothreads(x)(vi)
+        model(vi)
         lp_wo_threads = getlogjoint(vi)
         if Threads.nthreads() == 1
             @test vi_ isa VarInfo
@@ -101,24 +99,18 @@
 
         println("Without `@threads`:")
         println("  default:")
-        @time wothreads(x)(vi)
+        @time model(vi)
 
         @test lp_w_threads ≈ lp_wo_threads
 
         # Ensure that we use `VarInfo`.
-        DynamicPPL.evaluate_threadunsafe!!(
-            wothreads(x),
-            vi,
-            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
-        )
+        sampling_model = contextualize(model, SamplingContext(model.context))
+        DynamicPPL.evaluate_threadunsafe!!(sampling_model, vi)
         @test getlogjoint(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
+        @test vi isa VarInfo
 
         println("  evaluate_threadunsafe!!:")
-        @time DynamicPPL.evaluate_threadunsafe!!(
-            wothreads(x),
-            vi,
-            SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext()),
-        )
+        @time DynamicPPL.evaluate_threadunsafe!!(sampling_model, vi)
     end
 end

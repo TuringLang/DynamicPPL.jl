@@ -102,6 +102,7 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
+    contextualize,
     SamplingContext,
     DefaultContext,
     PrefixContext,

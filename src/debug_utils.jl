@@ -131,9 +131,7 @@ A context used for checking validity of a model.
 # Fields
 $(FIELDS)
 """
-struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
-    "model that is being run"
-    model::M
+struct DebugContext{C<:AbstractContext} <: AbstractContext
     "context used for running the model"
     context::C
     "mapping from varnames to the number of times they have been seen"
@@ -149,7 +147,6 @@ struct DebugContext{M<:Model,C<:AbstractContext} <: AbstractContext
 end
 
 function DebugContext(
-    model::Model,
     context::AbstractContext=DefaultContext();
     varnames_seen=OrderedDict{VarName,Int}(),
     statements=Vector{Stmt}(),
@@ -158,7 +155,6 @@ function DebugContext(
     record_varinfo=false,
 )
     return DebugContext(
-        model,
         context,
         varnames_seen,
         statements,
@@ -344,7 +340,7 @@ function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
 end
 
 # A check we run on the model before evaluating it.
-function check_model_pre_evaluation(context::DebugContext, model::Model)
+function check_model_pre_evaluation(model::Model)
     issuccess = true
     # If something is in the model arguments, then it should NOT be in `condition`,
     # nor should there be any symbol present in `condition` that has the same symbol.
@@ -361,8 +357,8 @@ function check_model_pre_evaluation(context::DebugContext, model::Model)
     return issuccess
 end
 
-function check_model_post_evaluation(context::DebugContext, model::Model)
-    return check_varnames_seen(context.varnames_seen)
+function check_model_post_evaluation(model::Model)
+    return check_varnames_seen(model.context.varnames_seen)
 end
 
 """
@@ -438,25 +434,23 @@ function check_model_and_trace(
     rng::Random.AbstractRNG,
     model::Model;
     varinfo=VarInfo(),
-    context=SamplingContext(rng),
     error_on_failure=false,
     kwargs...,
 )
     # Execute the model with the debug context.
     debug_context = DebugContext(
-        model, context; error_on_failure=error_on_failure, kwargs...
+        SamplingContext(rng, model.context); error_on_failure=error_on_failure, kwargs...
     )
+    debug_model = DynamicPPL.contextualize(model, debug_context)
 
     # Perform checks before evaluating the model.
-    issuccess = check_model_pre_evaluation(debug_context, model)
+    issuccess = check_model_pre_evaluation(debug_model)
 
     # Force single-threaded execution.
-    retval, varinfo_result = DynamicPPL.evaluate_threadunsafe!!(
-        model, varinfo, debug_context
-    )
+    DynamicPPL.evaluate_threadunsafe!!(debug_model, varinfo)
 
     # Perform checks after evaluating the model.
-    issuccess &= check_model_post_evaluation(debug_context, model)
+    issuccess &= check_model_post_evaluation(debug_model)
 
     if !issuccess && error_on_failure
         error("model check failed")
@@ -535,14 +529,13 @@ function has_static_constraints(
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo, context])
+    gen_evaluator_call_with_types(model[, varinfo])
 
 Generate the evaluator call and the types of the arguments.
 
 # Arguments
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
 
 # Returns
 A 2-tuple with the following elements:
@@ -551,11 +544,9 @@ A 2-tuple with the following elements:
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
-    model::Model,
-    varinfo::AbstractVarInfo=VarInfo(model),
-    context::AbstractContext=DefaultContext(),
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model)
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo, context)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo)
     return if isempty(kwargs)
         (model.f, Base.typesof(args...))
     else
@@ -564,7 +555,7 @@ function gen_evaluator_call_with_types(
 end
 
 """
-    model_warntype(model[, varinfo, context]; optimize=true)
+    model_warntype(model[, varinfo]; optimize=true)
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -573,23 +564,19 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
 
 # Keyword Arguments
 - `optimize::Bool`: Whether to generate optimized code. Default: `false`.
 """
 function model_warntype(
-    model::Model,
-    varinfo::AbstractVarInfo=VarInfo(model),
-    context::AbstractContext=DefaultContext();
-    optimize::Bool=false,
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
-    model_typed(model[, varinfo, context]; optimize=true)
+    model_typed(model[, varinfo]; optimize=true)
 
 Return the type inference for the model's evaluator.
 
@@ -598,18 +585,14 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
 
 # Keyword Arguments
 - `optimize::Bool`: Whether to generate optimized code. Default: `true`.
 """
 function model_typed(
-    model::Model,
-    varinfo::AbstractVarInfo=VarInfo(model),
-    context::AbstractContext=DefaultContext();
-    optimize::Bool=true,
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo, context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 

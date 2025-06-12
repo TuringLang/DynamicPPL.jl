@@ -5,12 +5,12 @@
             μ ~ MvNormal(zeros(2), 4 * I)
             z = Vector{Int}(undef, length(x))
             z ~ product_distribution(Categorical.(fill([0.5, 0.5], length(x))))
-            for i in 1:length(x)
+            for i in eachindex(x)
                 x[i] ~ Normal(μ[z[i]], 0.1)
             end
         end
 
-        test([1, 1, -1])(VarInfo(), SampleFromPrior(), DefaultContext())
+        test([1, 1, -1])(VarInfo())
     end
 
     @testset "dot tilde with varying sizes" begin
