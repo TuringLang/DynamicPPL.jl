@@ -11,7 +11,6 @@ function DynamicPPL.tweak_adtype(
     ad::ADTypes.AutoForwardDiff{chunk_size},
     ::DynamicPPL.Model,
     vi::DynamicPPL.AbstractVarInfo,
-    ::DynamicPPL.AbstractContext,
 ) where {chunk_size}
     params = vi[:]
 
