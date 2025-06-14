@@ -18,6 +18,41 @@ This release overhauls how VarInfo objects track variables such as the log joint
   - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
   - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
 
+### Evaluation contexts
+
+Historically, evaluating a DynamicPPL model has required three arguments: a model, some kind of VarInfo, and a context.
+It's less known, though, that since DynamicPPL 0.14.0 the _model_ itself actually contains a context as well.
+This version therefore excises the context argument, and instead uses `model.context` as the evaluation context.
+
+The upshot of this is that many functions that previously took a context argument now no longer do.
+There were very few such functions where the context argument was actually used (most of them simply took `DefaultContext()` as the default value).
+
+`evaluate!!(model, varinfo, ext_context)` is deprecated, and broadly speaking you should replace calls to that with `new_model = contextualize(model, ext_context); evaluate!!(new_model, varinfo)`.
+If the 'external context' `ext_context` is a parent context, then you should wrap `model.context` appropriately to ensure that its information content is not lost.
+If, on the other hand, `ext_context` is a `DefaultContext`, then you can just drop the argument entirely.
+
+To aid with this process, `contextualize` is now exported from DynamicPPL.
+
+The main situation where one _did_ want to specify an additional evaluation context was when that context was a `SamplingContext`.
+Doing this would allow you to run the model and sample fresh values, instead of just using the values that existed in the VarInfo object.
+Thus, this release also introduces the unexported function `sample!!`.
+Essentially, `sample!!(rng, model, varinfo, sampler)` is a drop-in replacement for `evaluate!!(model, varinfo, SamplingContext(rng, sampler))`.
+
+There are many methods that no longer take a context argument, and listing them all would be too much.
+However, here are the more user-facing ones:
+
+  - `LogDensityFunction` no longer has a context field (or type parameter)
+  - `DynamicPPL.TestUtils.AD.run_ad` no longer uses a context (and the returned `ADResult` object no longer has a context field)
+  - `VarInfo(rng, model, sampler)` and other VarInfo constructors / functions that made VarInfos (e.g. `typed_varinfo`) from a model
+  - `(::Model)(args...)`: specifically, this now only takes `rng` and `varinfo` arguments (with both being optional)
+  - If you are using the `__context__` special variable inside a model, you will now have to use `__model__.context` instead
+
+And a couple of more internal changes:
+
+  - `evaluate!!`, `evaluate_threadsafe!!`, and `evaluate_threadunsafe!!` no longer accept context arguments
+  - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `sample!!` instead, or construct your own `SamplingContext`)
+  - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
+
 ## 0.36.12
 
 Removed several unexported functions.
