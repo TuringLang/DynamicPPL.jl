@@ -856,17 +856,20 @@ end
 
 """
     evaluate!!(model::Model, varinfo)
-    evaluate!!(model::Model, varinfo, context)
 
-Evaluate the `model` with the given `varinfo`. If an extra context stack is
-provided, the model's context is inserted into that context stack. See
-`combine_model_and_external_contexts`.
+Evaluate the `model` with the given `varinfo`.
 
 If multiple threads are available, the varinfo provided will be wrapped in a
 `ThreadSafeVarInfo` before evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
+
+    evaluate!!(model::Model, varinfo, context)
+
+When an extra context stack is provided, the model's context is inserted into
+that context stack. See `combine_model_and_external_contexts`. This method is
+deprecated.
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return if use_threadsafe_eval(model.context, varinfo)
@@ -924,13 +927,16 @@ end
 
 """
     _evaluate!!(model::Model, varinfo)
-    _evaluate!!(model::Model, varinfo, context)
 
-Evaluate the `model` with the given `varinfo`. If an additional `context` is provided,
-the model's context is combined with that context.
+Evaluate the `model` with the given `varinfo`.
 
 This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
 reset the log probability of the `varinfo` before running.
+
+    _evaluate!!(model::Model, varinfo, context)
+
+If an additional `context` is provided, the model's context is combined with
+that context before evaluation.
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
@@ -975,7 +981,7 @@ function combine_model_and_external_contexts(
 end
 
 """
-    make_evaluate_args_and_kwargs(model, varinfo, context)
+    make_evaluate_args_and_kwargs(model, varinfo)
 
 Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
 """
