@@ -52,7 +52,7 @@ end
 accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc
 
 """
-    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo[, context::AbstractContext])
+    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
 
 Get the values of `varinfo` as they would be seen in the model.
 
@@ -69,8 +69,6 @@ space at the cost of additional model evaluations.
 - `model::Model`: model to extract realizations from.
 - `include_colon_eq::Bool`: whether to also include variables on the LHS of `:=`.
 - `varinfo::AbstractVarInfo`: variable information to use for the extraction.
-- `context::AbstractContext`: evaluation context to use in the extraction. Defaults
-   to `DynamicPPL.DefaultContext()`.
 
 # Examples
 
@@ -124,14 +122,8 @@ julia> # Approach 2: Extract realizations using `values_as_in_model`.
 true
 ```
 """
-function values_as_in_model(
-    model::Model,
-    include_colon_eq::Bool,
-    varinfo::AbstractVarInfo,
-    context::AbstractContext=DefaultContext(),
-)
-    accs = getaccs(varinfo)
+function values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
     varinfo = setaccs!!(deepcopy(varinfo), (ValuesAsInModelAccumulator(include_colon_eq),))
-    varinfo = last(evaluate!!(model, varinfo, context))
+    varinfo = last(evaluate!!(model, varinfo))
     return getacc(varinfo, Val(:ValuesAsInModel)).values
 end

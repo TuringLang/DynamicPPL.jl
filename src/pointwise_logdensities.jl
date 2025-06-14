@@ -3,9 +3,10 @@
 
 An accumulator that stores the log-probabilities of each variable in a model.
 
-Internally this context stores the log-probabilities in a dictionary, where the keys are
-the variable names and the values are vectors of log-probabilities. Each element in a vector
-corresponds to one execution of the model.
+Internally this accumulator stores the log-probabilities in a dictionary, where
+the keys are the variable names and the values are vectors of
+log-probabilities. Each element in a vector corresponds to one execution of the
+model.
 
 `whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
 which log-probabilities to store in the accumulator. `KeyType` is the type by which variable
@@ -98,7 +99,6 @@ end
         model::Model,
         chain::Chains,
         keytype=String,
-        context=DefaultContext(),
         ::Val{whichlogprob}=Val(:both),
     )
 
@@ -107,9 +107,9 @@ with keys corresponding to symbols of the variables, and values being matrices
 of shape `(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-Currently, only `String` and `VarName` are supported. `context` is the evaluation context,
-and `whichlogprob` specifies which log-probabilities to compute. It can be `:both`,
-`:prior`, or `:likelihood`.
+Currently, only `String` and `VarName` are supported. `whichlogprob` specifies
+which log-probabilities to compute. It can be `:both`, `:prior`, or
+`:likelihood`.
 
 See also: [`pointwise_loglikelihoods`](@ref), [`pointwise_loglikelihoods`](@ref).
 
@@ -211,11 +211,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 ```
 """
 function pointwise_logdensities(
-    model::Model,
-    chain,
-    ::Type{KeyType}=String,
-    context::AbstractContext=DefaultContext(),
-    ::Val{whichlogprob}=Val(:both),
+    model::Model, chain, ::Type{KeyType}=String, ::Val{whichlogprob}=Val(:both)
 ) where {KeyType,whichlogprob}
     # Get the data by executing the model once
     vi = VarInfo(model)
@@ -229,7 +225,7 @@ function pointwise_logdensities(
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        vi = last(evaluate!!(model, vi, context))
+        vi = last(evaluate!!(model, vi))
     end
 
     logps = getacc(vi, Val(accumulator_name(AccType))).logps
@@ -242,55 +238,46 @@ function pointwise_logdensities(
 end
 
 function pointwise_logdensities(
-    model::Model,
-    varinfo::AbstractVarInfo,
-    context::AbstractContext=DefaultContext(),
-    ::Val{whichlogprob}=Val(:both),
+    model::Model, varinfo::AbstractVarInfo, ::Val{whichlogprob}=Val(:both)
 ) where {whichlogprob}
     AccType = PointwiseLogProbAccumulator{whichlogprob}
     varinfo = setaccs!!(varinfo, (AccType(),))
-    varinfo = last(evaluate!!(model, varinfo, context))
+    varinfo = last(evaluate!!(model, varinfo))
     return getacc(varinfo, Val(accumulator_name(AccType))).logps
 end
 
 """
-    pointwise_loglikelihoods(model, chain[, keytype, context])
+    pointwise_loglikelihoods(model, chain[, keytype])
 
 Compute the pointwise log-likelihoods of the model given the chain.
-This is the same as `pointwise_logdensities(model, chain, context)`, but only
+This is the same as `pointwise_logdensities(model, chain)`, but only
 including the likelihood terms.
 
 See also: [`pointwise_logdensities`](@ref), [`pointwise_prior_logdensities`](@ref).
 """
-function pointwise_loglikelihoods(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
-) where {T}
-    return pointwise_logdensities(model, chain, T, context, Val(:likelihood))
+function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
+    return pointwise_logdensities(model, chain, T, Val(:likelihood))
 end
 
-function pointwise_loglikelihoods(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
-)
-    return pointwise_logdensities(model, varinfo, context, Val(:likelihood))
+function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
+    return pointwise_logdensities(model, varinfo, Val(:likelihood))
 end
 
 """
-    pointwise_prior_logdensities(model, chain[, keytype, context])
+    pointwise_prior_logdensities(model, chain[, keytype])
 
 Compute the pointwise log-prior-densities of the model given the chain.
-This is the same as `pointwise_logdensities(model, chain, context)`, but only
+This is the same as `pointwise_logdensities(model, chain)`, but only
 including the prior terms.
 
 See also: [`pointwise_logdensities`](@ref), [`pointwise_loglikelihoods`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, keytype::Type{T}=String, context::AbstractContext=DefaultContext()
+    model::Model, chain, keytype::Type{T}=String
 ) where {T}
-    return pointwise_logdensities(model, chain, T, context, Val(:prior))
+    return pointwise_logdensities(model, chain, T, Val(:prior))
 end
 
-function pointwise_prior_logdensities(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext=DefaultContext()
-)
-    return pointwise_logdensities(model, varinfo, context, Val(:prior))
+function pointwise_prior_logdensities(model::Model, varinfo::AbstractVarInfo)
+    return pointwise_logdensities(model, varinfo, Val(:prior))
 end

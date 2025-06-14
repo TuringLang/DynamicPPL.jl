@@ -48,7 +48,7 @@ function setup_varinfos(
     )) do vi
         # Set them all to the same values and evaluate logp.
         vi = update_values!!(vi, example_values, varnames)
-        last(DynamicPPL.evaluate!!(model, vi, DefaultContext()))
+        last(DynamicPPL.evaluate!!(model, vi))
     end
 
     if include_threadsafe

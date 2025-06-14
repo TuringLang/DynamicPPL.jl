@@ -102,13 +102,13 @@ Take these models, for example:
 unwrap_sampling_context(ctx::DynamicPPL.SamplingContext) = ctx.context
 unwrap_sampling_context(ctx::DynamicPPL.AbstractContext) = ctx
 @model function inner()
-    println("inner context: $(unwrap_sampling_context(__context__))")
+    println("inner context: $(unwrap_sampling_context(__model__.context))")
     x ~ Normal()
     return y ~ Normal()
 end
 
 @model function outer()
-    println("outer context: $(unwrap_sampling_context(__context__))")
+    println("outer context: $(unwrap_sampling_context(__model__.context))")
     return a ~ to_submodel(inner())
 end
 
@@ -118,7 +118,7 @@ with_outer_cond = outer() | (@varname(a.x) => 1.0)
 # 'Inner conditioning'
 inner_cond = inner() | (@varname(x) => 1.0)
 @model function outer2()
-    println("outer context: $(unwrap_sampling_context(__context__))")
+    println("outer context: $(unwrap_sampling_context(__model__.context))")
     return a ~ to_submodel(inner_cond)
 end
 with_inner_cond = outer2()
