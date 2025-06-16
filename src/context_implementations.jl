@@ -1,7 +1,4 @@
-using Distributions:
-    UnivariateDistribution, MultivariateDistribution, MatrixDistribution, Distribution
-
-alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
+using Distributions: Distribution
 
 # Allows samplers, etc. to hook into the final logp accumulation in the tilde-pipeline.
 function acclogp_assume!!(context::AbstractContext, vi::AbstractVarInfo, logp)
