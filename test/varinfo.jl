@@ -488,10 +488,17 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model does not perform linking
+        # Check that instantiating the model using SampleFromUniform does not
+        # perform linking
+        # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
+        # specifically in this test is because SFU samples from the linked 
+        # distribution i.e. in unconstrained space. However, it does this not
+        # by linking the varinfo but by transforming the distributions on the
+        # fly. That's why it's worth specifically checking that it can do this
+        # without having to change the VarInfo object.
         vi = VarInfo()
         meta = vi.metadata
-        model(vi)
+        _, vi = DynamicPPL.sample!!(model, vi, SampleFromUniform())
         @test all(x -> !istrans(vi, x), meta.vns)
 
         # Check that linking and invlinking set the `trans` flag accordingly
