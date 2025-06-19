@@ -93,7 +93,7 @@ a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
 """
 function varnames(model::Model)
     return collect(
-        keys(last(DynamicPPL.evaluate!!(model, SimpleVarInfo(Dict()), SamplingContext())))
+        keys(last(DynamicPPL.evaluate_and_sample!!(model, SimpleVarInfo(Dict()))))
     )
 end
 

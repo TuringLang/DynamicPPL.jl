@@ -58,12 +58,12 @@ function AbstractMCMC.step(
     kwargs...,
 )
     vi = VarInfo()
-    model(rng, vi, sampler)
+    DynamicPPL.evaluate_and_sample!!(rng, model, vi, sampler)
     return vi, nothing
 end
 
 """
-    default_varinfo(rng, model, sampler[, context])
+    default_varinfo(rng, model, sampler)
 
 Return a default varinfo object for the given `model` and `sampler`.
 
@@ -71,22 +71,13 @@ Return a default varinfo object for the given `model` and `sampler`.
 - `rng::Random.AbstractRNG`: Random number generator.
 - `model::Model`: Model for which we want to create a varinfo object.
 - `sampler::AbstractSampler`: Sampler which will make use of the varinfo object.
-- `context::AbstractContext`: Context in which the model is evaluated.
 
 # Returns
 - `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
 """
 function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
-    return default_varinfo(rng, model, sampler, DefaultContext())
-end
-function default_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler,
-    context::AbstractContext,
-)
     init_sampler = initialsampler(sampler)
-    return typed_varinfo(rng, model, init_sampler, context)
+    return typed_varinfo(rng, model, init_sampler)
 end
 
 function AbstractMCMC.sample(
@@ -119,7 +110,7 @@ function AbstractMCMC.step(
         # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
         # and https://github.com/TuringLang/Turing.jl/issues/1563
         # to avoid that existing variables are resampled
-        vi = last(evaluate!!(model, vi, DefaultContext()))
+        vi = last(evaluate!!(model, vi))
     end
 
     return initialstep(rng, model, spl, vi; initial_params, kwargs...)
