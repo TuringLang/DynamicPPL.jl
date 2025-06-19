@@ -18,6 +18,11 @@ This release overhauls how VarInfo objects track variables such as the log joint
   - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
   - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
 
+## 0.36.12
+
+Removed several unexported functions.
+The only notable one is `DynamicPPL.alg_str`, which was used in old versions of AdvancedVI and the Turing test suite.
+
 ## 0.36.11
 
 Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.
