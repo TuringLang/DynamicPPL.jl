@@ -8,26 +8,6 @@
 end
 const gdemo_default = gdemo_d()
 
-# TODO(penelopeysm): Remove this (and also test/compat/ad.jl)
-function test_model_ad(model, logp_manual)
-    vi = VarInfo(model)
-    x = vi[:]
-
-    # Log probabilities using the model.
-    ℓ = DynamicPPL.LogDensityFunction(model, getlogjoint, vi)
-    logp_model = Base.Fix1(LogDensityProblems.logdensity, ℓ)
-
-    # Check that both functions return the same values.
-    lp = logp_manual(x)
-    @test logp_model(x) ≈ lp
-
-    # Gradients based on the manual implementation.
-    grad = ForwardDiff.gradient(logp_manual, x)
-
-    # Gradients based on the model.
-    @test ForwardDiff.gradient(logp_model, x) ≈ grad
-end
-
 """
     short_varinfo_name(vi::AbstractVarInfo)
 

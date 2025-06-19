@@ -23,7 +23,7 @@ Return the dimension of `model`, accounting for linking, if any.
 """
 function model_dimension(model, islinked)
     vi = VarInfo()
-    model(vi)
+    model(StableRNG(23), vi)
     if islinked
         vi = DynamicPPL.link(vi, model)
     end
@@ -81,15 +81,12 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     end
 
     adbackend = to_backend(adbackend)
-    context = DynamicPPL.DefaultContext()
 
     if islinked
         vi = DynamicPPL.link(vi, model)
     end
 
-    f = DynamicPPL.LogDensityFunction(
-        model, DynamicPPL.getlogjoint, vi, context; adtype=adbackend
-    )
+    f = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint, vi; adtype=adbackend)
     # The parameters at which we evaluate f.
     θ = vi[:]
 

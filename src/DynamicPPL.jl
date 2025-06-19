@@ -102,6 +102,7 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
+    contextualize,
     SamplingContext,
     DefaultContext,
     PrefixContext,
@@ -191,6 +192,7 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+include("bijector.jl")
 
 include("debug_utils.jl")
 using .DebugUtils

@@ -1,3 +1,4 @@
+using AbstractMCMC: AbstractModel
 import DifferentiationInterface as DI
 
 """
@@ -19,7 +20,6 @@ is_supported(::ADTypes.AutoReverseDiff) = true
         model::Model,
         getlogdensity::Function=getlogjoint,
         varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity),
-        context::AbstractContext=DefaultContext();
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing
     )
 
@@ -29,10 +29,10 @@ A struct which contains a model, along with all the information necessary to:
  - and if `adtype` is provided, calculate the gradient of the log density at
  that point.
 
-At its most basic level, a LogDensityFunction wraps the model together with
-the type of varinfo to be used, as well as the evaluation context and a function
-to extract the log density from the VarInfo. These must be known in order to
-calculate the log density (using [`DynamicPPL.evaluate!!`](@ref)).
+At its most basic level, a LogDensityFunction wraps the model together with a
+function that specifies how to extract the log density, and the type of 
+VarInfo to be used. These must be known in order to calculate the log density
+(using [`DynamicPPL.evaluate!!`](@ref)).
 
 If the `adtype` keyword argument is provided, then this struct will also store
 the adtype along with other information for efficient calculation of the
@@ -95,20 +95,14 @@ julia> LogDensityProblems.logdensity_and_gradient(f, [0.0])
 ```
 """
 struct LogDensityFunction{
-    M<:Model,
-    F<:Function,
-    V<:AbstractVarInfo,
-    C<:AbstractContext,
-    AD<:Union{Nothing,ADTypes.AbstractADType},
-}
+    M<:Model,F<:Function,V<:AbstractVarInfo,AD<:Union{Nothing,ADTypes.AbstractADType}
+} <: AbstractModel
     "model used for evaluation"
     model::M
     "function to be called on `varinfo` to extract the log density. By default `getlogjoint`."
     getlogdensity::F
     "varinfo used for evaluation. If not specified, generated with `ldf_default_varinfo`."
     varinfo::V
-    "context used for evaluation; if `nothing`, `leafcontext(model.context)` will be used when applicable"
-    context::C
     "AD type used for evaluation of log density gradient. If `nothing`, no gradient can be calculated"
     adtype::AD
     "(internal use only) gradient preparation object for the model"
@@ -118,14 +112,13 @@ struct LogDensityFunction{
         model::Model,
         getlogdensity::Function=getlogjoint,
         varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity),
-        context::AbstractContext=leafcontext(model.context);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
         if adtype === nothing
             prep = nothing
         else
             # Make backend-specific tweaks to the adtype
-            adtype = tweak_adtype(adtype, model, varinfo, context)
+            adtype = tweak_adtype(adtype, model, varinfo)
             # Check whether it is supported
             is_supported(adtype) ||
                 @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
@@ -133,7 +126,7 @@ struct LogDensityFunction{
             x = map(identity, varinfo[:])
             if use_closure(adtype)
                 prep = DI.prepare_gradient(
-                    x -> logdensity_at(x, model, getlogdensity, varinfo, context), adtype, x
+                    LogDensityAt(model, getlogdensity, varinfo), adtype, x
                 )
             else
                 prep = DI.prepare_gradient(
@@ -143,18 +136,11 @@ struct LogDensityFunction{
                     DI.Constant(model),
                     DI.Constant(getlogdensity),
                     DI.Constant(varinfo),
-                    DI.Constant(context),
                 )
             end
         end
-        return new{
-            typeof(model),
-            typeof(getlogdensity),
-            typeof(varinfo),
-            typeof(context),
-            typeof(adtype),
-        }(
-            model, getlogdensity, varinfo, context, adtype, prep
+        return new{typeof(model),typeof(getlogdensity),typeof(varinfo),typeof(adtype)}(
+            model, getlogdensity, varinfo, adtype, prep
         )
     end
 end
@@ -165,9 +151,9 @@ end
         adtype::Union{Nothing,ADTypes.AbstractADType}
     )
 
-Create a new LogDensityFunction using the model, varinfo, and context from the given
-`ldf` argument, but with the AD type set to `adtype`. To remove the AD type, pass
-`nothing` as the second argument.
+Create a new LogDensityFunction using the model and varinfo from the given
+`ldf` argument, but with the AD type set to `adtype`. To remove the AD type,
+pass `nothing` as the second argument.
 """
 function LogDensityFunction(
     f::LogDensityFunction, adtype::Union{Nothing,ADTypes.AbstractADType}
@@ -175,7 +161,7 @@ function LogDensityFunction(
     return if adtype === f.adtype
         f  # Avoid recomputing prep if not needed
     else
-        LogDensityFunction(f.model, f.varinfo, f.context; adtype=adtype)
+        LogDensityFunction(f.model, f.getlogdensity, f.varinfo; adtype=adtype)
     end
 end
 
@@ -210,45 +196,59 @@ end
         model::Model,
         getlogdensity::Function,
         varinfo::AbstractVarInfo,
-        context::AbstractContext
     )
 
-Evaluate the log density of the given `model` at the given parameter values `x`,
-using the given `varinfo` and `context`. Note that the `varinfo` argument is provided
-only for its structure, in the sense that the parameters from the vector `x` are inserted
-into it, and its own parameters are discarded. `getlogdensity` is the function that extracts
-the log density from the evaluated varinfo.
+Evaluate the log density of the given `model` at the given parameter values
+`x`, using the given `varinfo`. Note that the `varinfo` argument is provided
+only for its structure, in the sense that the parameters from the vector `x`
+are inserted into it, and its own parameters are discarded. `getlogdensity` is
+the function that extracts the log density from the evaluated varinfo.
 """
 function logdensity_at(
-    x::AbstractVector,
-    model::Model,
-    getlogdensity::Function,
-    varinfo::AbstractVarInfo,
-    context::AbstractContext,
+    x::AbstractVector, model::Model, getlogdensity::Function, varinfo::AbstractVarInfo
 )
     varinfo_new = unflatten(varinfo, x)
-    varinfo_eval = last(evaluate!!(model, varinfo_new, context))
+    varinfo_eval = last(evaluate!!(model, varinfo_new))
     return getlogdensity(varinfo_eval)
+end
+
+"""
+    LogDensityAt{M<:Model,F<:Function,V<:AbstractVarInfo}(
+        model::M
+        getlogdensity::F,
+        varinfo::V
+    )
+
+A callable struct that serves the same purpose as `x -> logdensity_at(x, model,
+getlogdensity, varinfo)`.
+"""
+struct LogDensityAt{M<:Model,F<:Function,V<:AbstractVarInfo}
+    model::M
+    getlogdensity::F
+    varinfo::V
+end
+function (ld::LogDensityAt)(x::AbstractVector)
+    return logdensity_at(x, ld.model, ld.getlogdensity, ld.varinfo)
 end
 
 ### LogDensityProblems interface
 
 function LogDensityProblems.capabilities(
-    ::Type{<:LogDensityFunction{M,F,V,C,Nothing}}
-) where {M,F,V,C}
+    ::Type{<:LogDensityFunction{M,F,V,Nothing}}
+) where {M,F,V}
     return LogDensityProblems.LogDensityOrder{0}()
 end
 function LogDensityProblems.capabilities(
-    ::Type{<:LogDensityFunction{M,F,V,C,AD}}
-) where {M,F,V,C,AD<:ADTypes.AbstractADType}
+    ::Type{<:LogDensityFunction{M,F,V,AD}}
+) where {M,F,V,AD<:ADTypes.AbstractADType}
     return LogDensityProblems.LogDensityOrder{1}()
 end
 function LogDensityProblems.logdensity(f::LogDensityFunction, x::AbstractVector)
-    return logdensity_at(x, f.model, f.getlogdensity, f.varinfo, f.context)
+    return logdensity_at(x, f.model, f.getlogdensity, f.varinfo)
 end
 function LogDensityProblems.logdensity_and_gradient(
-    f::LogDensityFunction{M,F,V,C,AD}, x::AbstractVector
-) where {M,F,V,C,AD<:ADTypes.AbstractADType}
+    f::LogDensityFunction{M,F,V,AD}, x::AbstractVector
+) where {M,F,V,AD<:ADTypes.AbstractADType}
     f.prep === nothing &&
         error("Gradient preparation not available; this should not happen")
     x = map(identity, x)  # Concretise type
@@ -256,10 +256,7 @@ function LogDensityProblems.logdensity_and_gradient(
     # branches happen to return different types)
     return if use_closure(f.adtype)
         DI.value_and_gradient(
-            x -> logdensity_at(x, f.model, f.getlogdensity, f.varinfo, f.context),
-            f.prep,
-            f.adtype,
-            x,
+            LogDensityAt(x, f.model, f.getlogdensity, f.varinfo), f.prep, f.adtype, x
         )
     else
         DI.value_and_gradient(
@@ -270,7 +267,6 @@ function LogDensityProblems.logdensity_and_gradient(
             DI.Constant(f.model),
             DI.Constant(f.getlogdensity),
             DI.Constant(f.varinfo),
-            DI.Constant(f.context),
         )
     end
 end
@@ -285,7 +281,6 @@ LogDensityProblems.dimension(f::LogDensityFunction) = length(getparams(f))
         adtype::ADTypes.AbstractADType,
         model::Model,
         varinfo::AbstractVarInfo,
-        context::AbstractContext
     )
 
 Return an 'optimised' form of the adtype. This is useful for doing
@@ -296,9 +291,7 @@ model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(
-    adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
-) = adtype
+tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtype
 
 """
     use_closure(adtype::ADTypes.AbstractADType)
@@ -312,23 +305,20 @@ There are two ways of dealing with this:
 
 1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
 
-2. Use a constant context. This lets us pass a two-argument function to
-   DifferentiationInterface, as long as we also give it the 'inactive argument'
-   (i.e. the model) wrapped in `DI.Constant`.
+2. Use a constant DI.Context. This lets us pass a two-argument function to DI,
+   as long as we also give it the 'inactive argument' (i.e. the model) wrapped
+   in `DI.Constant`.
 
 The relative performance of the two approaches, however, depends on the AD
 backend used. Some benchmarks are provided here:
-https://github.com/TuringLang/DynamicPPL.jl/pull/806#issuecomment-2658061480
+https://github.com/TuringLang/DynamicPPL.jl/issues/946#issuecomment-2931604829
 
 This function is used to determine whether a given AD backend should use a
 closure or a constant. If `use_closure(adtype)` returns `true`, then the
 closure approach will be used. By default, this function returns `false`, i.e.
 the constant approach will be used.
 """
-use_closure(::ADTypes.AbstractADType) = false
-use_closure(::ADTypes.AutoForwardDiff) = false
-use_closure(::ADTypes.AutoMooncake) = false
-use_closure(::ADTypes.AutoReverseDiff) = true
+use_closure(::ADTypes.AbstractADType) = true
 
 """
     getmodel(f)
@@ -343,7 +333,7 @@ getmodel(f::DynamicPPL.LogDensityFunction) = f.model
 Set the `DynamicPPL.Model` in the given log-density function `f` to `model`.
 """
 function setmodel(f::DynamicPPL.LogDensityFunction, model::DynamicPPL.Model)
-    return LogDensityFunction(model, f.getlogdensity, f.varinfo, f.context; adtype=f.adtype)
+    return LogDensityFunction(model, f.getlogdensity, f.varinfo; adtype=f.adtype)
 end
 
 """

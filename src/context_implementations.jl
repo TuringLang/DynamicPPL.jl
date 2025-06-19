@@ -1,19 +1,3 @@
-using Distributions:
-    UnivariateDistribution, MultivariateDistribution, MatrixDistribution, Distribution
-
-const AMBIGUITY_MSG =
-    "Ambiguous `LHS .~ RHS` or `@. LHS ~ RHS` syntax. The broadcasting " *
-    "can either be column-wise following the convention of Distributions.jl or " *
-    "element-wise following Julia's general broadcasting semantics. Please make sure " *
-    "that the element type of `LHS` is not a supertype of the support type of " *
-    "`AbstractVector` to eliminate ambiguity."
-
-alg_str(spl::Sampler) = string(nameof(typeof(spl.alg)))
-
-# utility funcs for querying sampler information
-require_gradient(spl::Sampler) = false
-require_particles(spl::Sampler) = false
-
 # assume
 """
     tilde_assume(context::SamplingContext, right, vn, vi)
@@ -43,6 +27,10 @@ function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...
 end
 function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, vi)
     return assume(rng, sampler, right, vn, vi)
+end
+function tilde_assume(::DefaultContext, sampler, right, vn, vi)
+    # same as above but no rng
+    return assume(Random.default_rng(), sampler, right, vn, vi)
 end
 
 function tilde_assume(context::PrefixContext, right, vn, vi)

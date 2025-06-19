@@ -3,11 +3,16 @@ using DynamicPPL: LogDensityFunction
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
-    test_adtypes = [
-        AutoReverseDiff(; compile=false),
-        AutoReverseDiff(; compile=true),
-        AutoMooncake(; config=nothing),
-    ]
+
+    test_adtypes = if IS_PRERELEASE
+        [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
+    else
+        [
+            AutoReverseDiff(; compile=false),
+            AutoReverseDiff(; compile=true),
+            AutoMooncake(; config=nothing),
+        ]
+    end
 
     @testset "Unsupported backends" begin
         @model demo() = x ~ Normal()
@@ -16,7 +21,7 @@ using DynamicPPL: LogDensityFunction
         )
     end
 
-    @testset "Correctness: ForwardDiff, ReverseDiff, and Mooncake" begin
+    @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
             rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
             vns = DynamicPPL.TestUtils.varnames(m)
@@ -106,13 +111,9 @@ using DynamicPPL: LogDensityFunction
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
-        vi = VarInfo(model)
+        sampling_model = contextualize(model, SamplingContext(model.context))
         ldf = LogDensityFunction(
-            model,
-            getlogjoint,
-            vi,
-            SamplingContext(spl);
-            adtype=AutoReverseDiff(; compile=true),
+            sampling_model, getlogjoint; adtype=AutoReverseDiff(; compile=true)
         )
         @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end

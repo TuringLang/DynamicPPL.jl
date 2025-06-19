@@ -24,9 +24,7 @@ makedocs(;
     format=Documenter.HTML(; size_threshold=2^10 * 400),
     modules=[DynamicPPL, Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt)],
     pages=[
-        "Home" => "index.md",
-        "API" => "api.md",
-        "Internals" => ["internals/varinfo.md", "internals/submodel_condition.md"],
+        "Home" => "index.md", "API" => "api.md", "Internals" => ["internals/varinfo.md"]
     ],
     checkdocs=:exports,
     doctest=false,

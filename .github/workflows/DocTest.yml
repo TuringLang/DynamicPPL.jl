@@ -1,0 +1,41 @@
+# We want to only run doctests on a single version of Julia, because
+# things like error messages / output can change between versions and
+# is fragile to test against.
+name: Doctests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
+# Cancel existing tests on the same PR if a new commit is added to a pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - uses: julia-actions/cache@v2
+
+      - uses: julia-actions/julia-buildpkg@v1
+
+      - uses: julia-actions/julia-runtest@v1
+        env:
+          GROUP: Doctests

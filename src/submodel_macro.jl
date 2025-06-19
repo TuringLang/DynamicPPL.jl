@@ -207,41 +207,41 @@ ERROR: LoadError: cannot automatically prefix with no left-hand side
   resolved at runtime.
 """
 macro submodel(prefix_expr, expr)
-    return submodel(prefix_expr, expr, esc(:__context__))
+    return submodel(prefix_expr, expr, esc(:__model__))
 end
 
 # Automatic prefixing.
-function prefix_submodel_context(prefix::Bool, left::Symbol, ctx)
-    return prefix ? prefix_submodel_context(left, ctx) : ctx
+function prefix_submodel_context(prefix::Bool, left::Symbol, model)
+    return prefix ? prefix_submodel_context(left, model) : :($model.context)
 end
 
-function prefix_submodel_context(prefix::Bool, left::Expr, ctx)
-    return prefix ? prefix_submodel_context(varname(left), ctx) : ctx
+function prefix_submodel_context(prefix::Bool, left::Expr, model)
+    return prefix ? prefix_submodel_context(varname(left), model) : :($model.context)
 end
 
 # Manual prefixing.
-prefix_submodel_context(prefix, left, ctx) = prefix_submodel_context(prefix, ctx)
-function prefix_submodel_context(prefix, ctx)
+prefix_submodel_context(prefix, left, model) = prefix_submodel_context(prefix, model)
+function prefix_submodel_context(prefix, model)
     # E.g. `prefix="asd[$i]"` or `prefix=asd` with `asd` to be evaluated.
-    return :($(PrefixContext)($(Val)($(Symbol)($(esc(prefix)))), $ctx))
+    return :($(PrefixContext)($(Val)($(Symbol)($(esc(prefix)))), $model.context))
 end
 
-function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, ctx)
+function prefix_submodel_context(prefix::Union{AbstractString,Symbol}, model)
     # E.g. `prefix="asd"`.
-    return :($(PrefixContext)($(esc(Meta.quot(Val(Symbol(prefix))))), $ctx))
+    return :($(PrefixContext)($(esc(Meta.quot(Val(Symbol(prefix))))), $model.context))
 end
 
-function prefix_submodel_context(prefix::Bool, ctx)
+function prefix_submodel_context(prefix::Bool, model)
     if prefix
         error("cannot automatically prefix with no left-hand side")
     end
 
-    return ctx
+    return :($model.context)
 end
 
 const SUBMODEL_DEPWARN_MSG = "`@submodel model` and `@submodel prefix=... model` are deprecated; see `to_submodel` for the up-to-date syntax."
 
-function submodel(prefix_expr, expr, ctx=esc(:__context__))
+function submodel(prefix_expr, expr, model=esc(:__model__))
     prefix_left, prefix = getargs_assignment(prefix_expr)
     if prefix_left !== :prefix
         error("$(prefix_left) is not a valid kwarg")
@@ -257,7 +257,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
     # `prefix=...` => use it.
     args_assign = getargs_assignment(expr)
     return if args_assign === nothing
-        ctx = prefix_submodel_context(prefix, ctx)
+        ctx = prefix_submodel_context(prefix, model)
         quote
             # Raise deprecation warning to let user know that we recommend using `left ~ to_submodel(model)`.
             $(Base.depwarn)(SUBMODEL_DEPWARN_MSG, Symbol("@submodel"))
@@ -271,7 +271,7 @@ function submodel(prefix_expr, expr, ctx=esc(:__context__))
         L, R = args_assign
         # Now that we have `L` and `R`, we can prefix automagically.
         try
-            ctx = prefix_submodel_context(prefix, L, ctx)
+            ctx = prefix_submodel_context(prefix, L, model)
         catch e
             error(
                 "failed to determine prefix from $(L); please specify prefix using the `@submodel prefix=\"your prefix\" ...` syntax",
