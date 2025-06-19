@@ -256,7 +256,7 @@ function LogDensityProblems.logdensity_and_gradient(
     # branches happen to return different types)
     return if use_closure(f.adtype)
         DI.value_and_gradient(
-            LogDensityAt(x, f.model, f.getlogdensity, f.varinfo), f.prep, f.adtype, x
+            LogDensityAt(f.model, f.getlogdensity, f.varinfo), f.prep, f.adtype, x
         )
     else
         DI.value_and_gradient(
