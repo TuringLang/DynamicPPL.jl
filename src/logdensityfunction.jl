@@ -28,9 +28,9 @@ A struct which contains a model, along with all the information necessary to:
  - and if `adtype` is provided, calculate the gradient of the log density at
  that point.
 
-At its most basic level, a LogDensityFunction wraps the model together with its
-the type of varinfo to be used. These must be known in order to calculate the
-log density (using [`DynamicPPL.evaluate!!`](@ref)).
+At its most basic level, a LogDensityFunction wraps the model together with the
+type of varinfo to be used. These must be known in order to calculate the log
+density (using [`DynamicPPL.evaluate!!`](@ref)).
 
 If the `adtype` keyword argument is provided, then this struct will also store
 the adtype along with other information for efficient calculation of the
@@ -139,7 +139,7 @@ end
         adtype::Union{Nothing,ADTypes.AbstractADType}
     )
 
-Create a new LogDensityFunction using the model, and varinfo from the given
+Create a new LogDensityFunction using the model and varinfo from the given
 `ldf` argument, but with the AD type set to `adtype`. To remove the AD type,
 pass `nothing` as the second argument.
 """
