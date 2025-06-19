@@ -19,7 +19,7 @@ is_supported(::ADTypes.AutoReverseDiff) = true
     LogDensityFunction(
         model::Model,
         getlogdensity::Function=getlogjoint,
-        varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity),
+        varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing
     )
 
@@ -111,7 +111,7 @@ struct LogDensityFunction{
     function LogDensityFunction(
         model::Model,
         getlogdensity::Function=getlogjoint,
-        varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity),
+        varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
         if adtype === nothing
