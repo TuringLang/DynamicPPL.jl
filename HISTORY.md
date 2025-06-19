@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.36.12
+
+Removed several unexported functions.
+The only notable one is `DynamicPPL.alg_str`, which was used in old versions of AdvancedVI and the Turing test suite.
+
 ## 0.36.11
 
 Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.
