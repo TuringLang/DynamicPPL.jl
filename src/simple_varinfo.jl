@@ -39,7 +39,7 @@ julia> rng = StableRNG(42);
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.sample!!(rng, m, SimpleVarInfo((x = ones(2), )));
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo((x = ones(2), )));
 
 julia> # (✓) Vroom, vroom! FAST!!!
        vi[@varname(x[1])]
@@ -57,12 +57,12 @@ julia> vi[@varname(x[1:2])]
  1.3736306979834252
 
 julia> # (×) If we don't provide the container...
-       _, vi = DynamicPPL.sample!!(rng, m, SimpleVarInfo()); vi
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo()); vi
 ERROR: type NamedTuple has no field x
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict()));
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict()));
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -91,28 +91,28 @@ demo_constrained (generic function with 2 methods)
 
 julia> m = demo_constrained();
 
-julia> _, vi = DynamicPPL.sample!!(rng, m, SimpleVarInfo());
+julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo());
 
 julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
 1.8632965762164932
 
-julia> _, vi = DynamicPPL.sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
+julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 -0.21080155351918753
 
-julia> xs = [last(DynamicPPL.sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true));
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
 
-julia> xs = [last(DynamicPPL.sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
@@ -259,12 +259,12 @@ end
 
 function untyped_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo(OrderedDict())
-    return last(sample!!(model, varinfo))
+    return last(evaluate_and_sample!!(model, varinfo))
 end
 
 function typed_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo{Float64}()
-    return last(sample!!(model, varinfo))
+    return last(evaluate_and_sample!!(model, varinfo))
 end
 
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)

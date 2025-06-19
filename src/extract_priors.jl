@@ -116,7 +116,7 @@ function extract_priors(rng::Random.AbstractRNG, model::Model)
     # workaround for the fact that `order` is still hardcoded in VarInfo, and hence you
     # can't push new variables without knowing the num_produce. Remove this when possible.
     varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(), NumProduceAccumulator()))
-    varinfo = last(sample!!(rng, model, varinfo))
+    varinfo = last(evaluate_and_sample!!(rng, model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end
 

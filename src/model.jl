@@ -815,7 +815,7 @@ end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
 function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
-    return first(sample!!(rng, model, varinfo))
+    return first(evaluate_and_sample!!(rng, model, varinfo))
 end
 
 """
@@ -829,7 +829,7 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
+    evaluate_and_sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
 
 Evaluate the `model` with the given `varinfo`, but perform sampling during the
 evaluation using the given `sampler` by wrapping the model's context in a
@@ -839,7 +839,7 @@ If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function sample!!(
+function evaluate_and_sample!!(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo::AbstractVarInfo,
@@ -848,10 +848,10 @@ function sample!!(
     sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
     return evaluate!!(sampling_model, varinfo)
 end
-function sample!!(
+function evaluate_and_sample!!(
     model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
 )
-    return sample!!(Random.default_rng(), model, varinfo, sampler)
+    return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
 end
 
 """
@@ -1038,7 +1038,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(sample!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
+    x = last(evaluate_and_sample!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
     return values_as(x, T)
 end
 

@@ -58,7 +58,7 @@ function AbstractMCMC.step(
     kwargs...,
 )
     vi = VarInfo()
-    DynamicPPL.sample!!(rng, model, vi, sampler)
+    DynamicPPL.evaluate_and_sample!!(rng, model, vi, sampler)
     return vi, nothing
 end
 

@@ -158,7 +158,7 @@
 
             ### Sampling ###
             # Sample a new varinfo!
-            _, svi_new = DynamicPPL.sample!!(model, svi)
+            _, svi_new = DynamicPPL.evaluate_and_sample!!(model, svi)
 
             # Realization for `m` should be different wp. 1.
             for vn in DynamicPPL.TestUtils.varnames(model)
@@ -226,9 +226,9 @@
 
         # Initialize.
         svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        svi_nt = last(DynamicPPL.sample!!(model, svi_nt))
+        svi_nt = last(DynamicPPL.evaluate_and_sample!!(model, svi_nt))
         svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        svi_vnv = last(DynamicPPL.sample!!(model, svi_vnv))
+        svi_vnv = last(DynamicPPL.evaluate_and_sample!!(model, svi_vnv))
 
         for svi in (svi_nt, svi_vnv)
             # Sample with large variations in unconstrained space.
@@ -273,7 +273,7 @@
             )
 
             # Resulting varinfo should no longer be transformed.
-            vi_result = last(DynamicPPL.sample!!(model, deepcopy(vi)))
+            vi_result = last(DynamicPPL.evaluate_and_sample!!(model, deepcopy(vi)))
             @test !DynamicPPL.istrans(vi_result)
 
             # Set the values to something that is out of domain if we're in constrained space.

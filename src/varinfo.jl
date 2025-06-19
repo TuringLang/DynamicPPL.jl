@@ -197,7 +197,7 @@ Construct a VarInfo object for the given `model`, which has just a single
 function untyped_varinfo(
     rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    return last(sample!!(rng, model, VarInfo(Metadata()), sampler))
+    return last(evaluate_and_sample!!(rng, model, VarInfo(Metadata()), sampler))
 end
 function untyped_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
     return untyped_varinfo(Random.default_rng(), model, sampler)

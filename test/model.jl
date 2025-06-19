@@ -162,12 +162,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             for i in 1:10
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                DynamicPPL.sample!!(Random.default_rng(), model, vi, sampler)
+                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
                 vals = vi[:]
 
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                DynamicPPL.sample!!(Random.default_rng(), model, vi, sampler)
+                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
                 @test vi[:] == vals
             end
         end
@@ -332,7 +332,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.sample!!(model, SimpleVarInfo(OrderedDict())))
+            vi = last(DynamicPPL.evaluate_and_sample!!(model, SimpleVarInfo(OrderedDict())))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -591,7 +591,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             xs_train = 1:0.1:10
             ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
             m_lin_reg = linear_reg(xs_train, ys_train)
-            chain = [last(DynamicPPL.sample!!(m_lin_reg, VarInfo())) for _ in 1:10000]
+            chain = [
+                last(DynamicPPL.evaluate_and_sample!!(m_lin_reg, VarInfo())) for
+                _ in 1:10000
+            ]
 
             # chain is generated from the prior
             @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1

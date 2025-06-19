@@ -35,8 +35,9 @@ To aid with this process, `contextualize` is now exported from DynamicPPL.
 
 The main situation where one _did_ want to specify an additional evaluation context was when that context was a `SamplingContext`.
 Doing this would allow you to run the model and sample fresh values, instead of just using the values that existed in the VarInfo object.
-Thus, this release also introduces the unexported function `sample!!`.
-Essentially, `sample!!(rng, model, varinfo, sampler)` is a drop-in replacement for `evaluate!!(model, varinfo, SamplingContext(rng, sampler))`.
+Thus, this release also introduces the **unexported** function `evaluate_and_sample!!`.
+Essentially, `evaluate_and_sample!!(rng, model, varinfo, sampler)` is a drop-in replacement for `evaluate!!(model, varinfo, SamplingContext(rng, sampler))`.
+**Do note that this is an internal method**, and its name or semantics are liable to change in the future without warning.
 
 There are many methods that no longer take a context argument, and listing them all would be too much.
 However, here are the more user-facing ones:
@@ -50,7 +51,7 @@ However, here are the more user-facing ones:
 And a couple of more internal changes:
 
   - `evaluate!!`, `evaluate_threadsafe!!`, and `evaluate_threadunsafe!!` no longer accept context arguments
-  - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `sample!!` instead, or construct your own `SamplingContext`)
+  - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `evaluate_and_sample!!` instead, or construct your own `SamplingContext`)
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
 
 ## 0.36.12
