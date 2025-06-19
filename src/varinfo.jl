@@ -186,8 +186,8 @@ end
 """
     untyped_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has just a
-single `Metadata` as its metadata field.
+Construct a VarInfo object for the given `model`, which has just a single
+`Metadata` as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
@@ -197,9 +197,7 @@ single `Metadata` as its metadata field.
 function untyped_varinfo(
     rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    varinfo = VarInfo(Metadata())
-    new_model = contextualize(model, SamplingContext(rng, sampler, model.context))
-    return last(evaluate!!(new_model, varinfo))
+    return last(sample!!(rng, model, VarInfo(Metadata()), sampler))
 end
 function untyped_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
     return untyped_varinfo(Random.default_rng(), model, sampler)
@@ -311,8 +309,8 @@ end
 """
     typed_vector_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has a
-NamedTuple of `VarNamedVector`s as its metadata field.
+Return a VarInfo object for the given `model`, which has a NamedTuple of
+`VarNamedVector`s as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation

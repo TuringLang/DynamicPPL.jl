@@ -92,8 +92,7 @@ Even though it is recommended to implement this by hand for a particular `Model`
 a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
 """
 function varnames(model::Model)
-    new_model = contextualize(model, SamplingContext(model.context))
-    return collect(keys(last(DynamicPPL.evaluate!!(new_model, SimpleVarInfo(Dict())))))
+    return collect(keys(last(DynamicPPL.sample!!(model, SimpleVarInfo(Dict())))))
 end
 
 """
