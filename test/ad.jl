@@ -115,7 +115,8 @@ using DynamicPPL: LogDensityFunction
         ldf = LogDensityFunction(
             sampling_model, getlogjoint; adtype=AutoReverseDiff(; compile=true)
         )
-        @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
+        x = ldf.varinfo[:]
+        @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Any
     end
 
     # Test that various different ways of specifying array types as arguments work with all
