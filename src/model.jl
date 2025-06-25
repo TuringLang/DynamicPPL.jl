@@ -932,24 +932,10 @@ Evaluate the `model` with the given `varinfo`.
 
 This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
 reset the log probability of the `varinfo` before running.
-
-    _evaluate!!(model::Model, varinfo, context)
-
-If an additional `context` is provided, the model's context is combined with
-that context before evaluation.
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
     return model.f(args...; kwargs...)
-end
-function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
-    # TODO(penelopeysm): We don't really need this, but it's a useful
-    # convenience method. We could remove it after we get rid of the
-    # evaluate_threadsafe!! stuff (in favour of making users call evaluate!!
-    # with a TSVI themselves).
-    new_ctx = combine_model_and_external_contexts(model.context, context)
-    model = contextualize(model, new_ctx)
-    return _evaluate!!(model, varinfo)
 end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
