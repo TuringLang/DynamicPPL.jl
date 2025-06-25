@@ -144,8 +144,8 @@ julia> @model illegal_likelihood() = a ~ to_submodel(inner())
 illegal_likelihood (generic function with 2 methods)
 
 julia> model = illegal_likelihood() | (a = 1.0,);
-julia> model()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+julia> model(a)
+ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
 """

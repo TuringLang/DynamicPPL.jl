@@ -258,7 +258,7 @@ julia> # However, it's not possible to condition `inner` directly.
        conditioned_model_fail = model | (inner = 1.0, );
 
 julia> conditioned_model_fail()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
 """

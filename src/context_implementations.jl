@@ -109,11 +109,8 @@ Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the informati
 and indices; if needed, these can be accessed through this function, though.
 """
 function tilde_observe!!(::DefaultContext, right, left, vn, vi)
-    right isa DynamicPPL.Submodel && throw(
-        ArgumentError(
-            "`~` with a submodel on the right-hand side of an observe statement is not supported",
-        ),
-    )
+    right isa DynamicPPL.Submodel &&
+        throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
     vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
 end
