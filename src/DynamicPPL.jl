@@ -172,6 +172,7 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 include("utils.jl")
 include("chains.jl")
 include("model.jl")
+include("submodel.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
