@@ -128,7 +128,6 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
-    @submodel,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
@@ -187,7 +186,6 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("submodel_macro.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")

@@ -4,6 +4,10 @@
 
 **Breaking changes**
 
+### Submodel macro
+
+The `@submodel` macro is fully removed; please use `to_submodel` instead.
+
 ### Accumulators
 
 This release overhauls how VarInfo objects track variables such as the log joint probability. The new approach is to use what we call accumulators: Objects that the VarInfo carries on it that may change their state at each `tilde_assume!!` and `tilde_observe!!` call based on the value of the variable in question. They replace both variables that were previously hard-coded in the `VarInfo` object (`logp` and `num_produce`) and some contexts. This brings with it a number of breaking changes:
