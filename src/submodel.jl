@@ -144,7 +144,8 @@ julia> @model illegal_likelihood() = a ~ to_submodel(inner())
 illegal_likelihood (generic function with 2 methods)
 
 julia> model = illegal_likelihood() | (a = 1.0,);
-julia> model(a)
+
+julia> model()
 ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
