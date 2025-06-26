@@ -211,10 +211,12 @@ end
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogLikelihood" getlogp(vi)
-        @test_throws "has no field LogLikelihood" getlogjoint(vi)
-        @test_throws "has no field NumProduce" get_num_produce(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogLikelihood" getlogp(vi)
+        @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
+        @test_throws r"has no field `?NumProduce" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -229,20 +231,24 @@ end
                 m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduceAccumulator(),))
             ),
         )
-        @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogPrior" getlogp(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
         @test get_num_produce(vi) == 2
 
         # Test evaluating without any accumulators.
         vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
-        @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogPrior" getlogp(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
-        @test_throws "has no field NumProduce" get_num_produce(vi)
-        @test_throws "has no field NumProduce" reset_num_produce!!(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        @test_throws r"has no field `?NumProduce" get_num_produce(vi)
+        @test_throws r"has no field `?NumProduce" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
