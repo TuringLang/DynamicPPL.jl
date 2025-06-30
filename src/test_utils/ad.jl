@@ -103,9 +103,9 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloa
     "The expected gradient of logp"
     grad_expected::Union{Nothing,Vector{Tresult}}
     "The value of logp (calculated using `adtype`)"
-    value_actual::Union{Nothing,Tresult}
+    value_actual::Tresult
     "The gradient of logp (calculated using `adtype`)"
-    grad_actual::Union{Nothing,Vector{Tresult}}
+    grad_actual::Vector{Tresult}
     "If benchmarking was requested, the time taken by the AD backend to calculate the gradient of logp, divided by the time taken to evaluate logp itself"
     time_vs_primal::Union{Nothing,Tresult}
 end
