@@ -1,4 +1,5 @@
 using DynamicPPL: LogDensityFunction
+using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
@@ -31,9 +32,10 @@ using DynamicPPL: LogDensityFunction
                 linked_varinfo = DynamicPPL.link(varinfo, m)
                 f = LogDensityFunction(m, linked_varinfo)
                 x = DynamicPPL.getparams(f)
+
                 # Calculate reference logp + gradient of logp using ForwardDiff
-                ref_ldf = LogDensityFunction(m, linked_varinfo; adtype=ref_adtype)
-                ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
+                ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
+                ref_logp, ref_grad = ref_ad_result.value_actual, ref_ad_result.grad_actual
 
                 @testset "$adtype" for adtype in test_adtypes
                     @info "Testing AD on: $(m.f) - $(short_varinfo_name(linked_varinfo)) - $adtype"
@@ -63,11 +65,11 @@ using DynamicPPL: LogDensityFunction
                             ref_ldf, adtype
                         )
                     else
-                        @test DynamicPPL.TestUtils.AD.run_ad(
+                        @test run_ad(
                             m,
                             adtype;
                             varinfo=linked_varinfo,
-                            expected_value_and_grad=(ref_logp, ref_grad),
+                            test=WithExpectedResult(ref_logp, ref_grad),
                         ) isa Any
                     end
                 end

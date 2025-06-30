@@ -211,6 +211,21 @@ To test and/or benchmark the performance of an AD backend on a model, DynamicPPL
 
 ```@docs
 DynamicPPL.TestUtils.AD.run_ad
+```
+
+THe default test setting is to compare against ForwardDiff.
+You can have more fine-grained control over how to test the AD backend using the following types:
+
+```@docs
+DynamicPPL.TestUtils.AD.AbstractADCorrectnessTestSetting
+DynamicPPL.TestUtils.AD.WithBackend
+DynamicPPL.TestUtils.AD.WithExpectedResult
+DynamicPPL.TestUtils.AD.NoTest
+```
+
+These are returned / thrown by the `run_ad` function:
+
+```@docs
 DynamicPPL.TestUtils.AD.ADResult
 DynamicPPL.TestUtils.AD.ADIncorrectException
 ```

@@ -4,14 +4,7 @@ using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
-using DynamicPPL:
-    Model,
-    LogDensityFunction,
-    VarInfo,
-    AbstractVarInfo,
-    link,
-    DefaultContext,
-    AbstractContext
+using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: Random, Xoshiro
 using Statistics: median
@@ -20,12 +13,48 @@ using Test: @test
 export ADResult, run_ad, ADIncorrectException
 
 """
-    REFERENCE_ADTYPE
+    AbstractADCorrectnessTestSetting
 
-Reference AD backend to use for comparison. In this case, ForwardDiff.jl, since
-it's the default AD backend used in Turing.jl.
+Different ways of testing the correctness of an AD backend.
 """
-const REFERENCE_ADTYPE = AutoForwardDiff()
+abstract type AbstractADCorrectnessTestSetting end
+
+"""
+    WithBackend(adtype::AbstractADType=AutoForwardDiff()) <: AbstractADCorrectnessTestSetting
+
+Test correctness by comparing it against the result obtained with `adtype`.
+
+`adtype` defaults to ForwardDiff.jl, since it's the default AD backend used in
+Turing.jl.
+"""
+struct WithBackend{AD<:AbstractADType} <: AbstractADCorrectnessTestSetting
+    adtype::AD
+end
+WithBackend() = WithBackend(AutoForwardDiff())
+
+"""
+    WithExpectedResult(
+        value::T,
+        grad::AbstractVector{T}
+    ) where {T <: AbstractFloat}
+    <: AbstractADCorrectnessTestSetting
+
+Test correctness by comparing it against a known result (e.g. one obtained
+analytically, or one obtained with a different backend previously). Both the
+value of the primal (i.e. the log-density) as well as its gradient must be
+supplied.
+"""
+struct WithExpectedResult{T<:AbstractFloat} <: AbstractADCorrectnessTestSetting
+    value::T
+    grad::AbstractVector{T}
+end
+
+"""
+    NoTest() <: AbstractADCorrectnessTestSetting
+
+Disable correctness testing.
+"""
+struct NoTest <: AbstractADCorrectnessTestSetting end
 
 """
     ADIncorrectException{T<:AbstractFloat}
@@ -84,14 +113,12 @@ end
     run_ad(
         model::Model,
         adtype::ADTypes.AbstractADType;
-        test=true,
+        test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
         benchmark=false,
         value_atol=1e-6,
         grad_atol=1e-6,
         varinfo::AbstractVarInfo=link(VarInfo(model), model),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
-        reference_adtype::ADTypes.AbstractADType=REFERENCE_ADTYPE,
-        expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
         verbose=true,
     )::ADResult
 
@@ -143,22 +170,25 @@ Everything else is optional, and can be categorised into several groups:
    prep_params)`. You could then evaluate the gradient at a different set of
    parameters using the `params` keyword argument.
 
-3. _How to specify the results to compare against._ (Only if `test=true`.)
+3. _How to specify the results to compare against._
 
    Once logp and its gradient has been calculated with the specified `adtype`,
-   it must be tested for correctness.
+   it can optionally be tested for correctness. The exact way this is tested 
+   is specified in the `test` parameter.
 
-   This can be done either by specifying `reference_adtype`, in which case logp
-   and its gradient will also be calculated with this reference in order to
-   obtain the ground truth; or by using `expected_value_and_grad`, which is a
-   tuple of `(logp, gradient)` that the calculated values must match. The
-   latter is useful if you are testing multiple AD backends and want to avoid
-   recalculating the ground truth multiple times.
+   There are several options for this:
 
-   The default reference backend is ForwardDiff. If none of these parameters are
-   specified, ForwardDiff will be used to calculate the ground truth.
+    - You can explicitly specify the correct value using
+      [`WithExpectedResult()`](@ref).
+    - You can compare against the result obtained with a different AD backend
+      using [`WithBackend(adtype)`](@ref).
+    - You can disable testing by passing [`NoTest()`](@ref).
+    - The default is to compare against the result obtained with ForwardDiff,
+      i.e. `WithBackend(AutoForwardDiff())`.
+    - `test=false` and `test=true` are synonyms for
+      `NoTest()` and `WithBackend(AutoForwardDiff())`, respectively.
 
-4. _How to specify the tolerances._ (Only if `test=true`.)
+4. _How to specify the tolerances._ (Only if testing is enabled.)
 
    The tolerances for the value and gradient can be set using `value_atol` and
    `grad_atol`. These default to 1e-6.
@@ -180,48 +210,57 @@ thrown as-is.
 function run_ad(
     model::Model,
     adtype::AbstractADType;
-    test::Bool=true,
+    test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
     benchmark::Bool=false,
     value_atol::AbstractFloat=1e-6,
     grad_atol::AbstractFloat=1e-6,
     varinfo::AbstractVarInfo=link(VarInfo(model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
-    reference_adtype::AbstractADType=REFERENCE_ADTYPE,
-    expected_value_and_grad::Union{Nothing,Tuple{AbstractFloat,Vector{<:AbstractFloat}}}=nothing,
     verbose=true,
 )::ADResult
+    # Convert Boolean `test` to an AbstractADCorrectnessTestSetting
+    if test isa Bool
+        test = test ? WithBackend() : NoTest()
+    end
+
+    # Extract parameters
     if isnothing(params)
         params = varinfo[:]
     end
     params = map(identity, params)  # Concretise
 
+    # Calculate log-density and gradient with the backend of interest
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
     ldf = LogDensityFunction(model, varinfo; adtype=adtype)
-
     value, grad = logdensity_and_gradient(ldf, params)
+    # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
     grad = collect(grad)
     verbose && println("       actual : $((value, grad))")
 
-    if test
-        # Calculate ground truth to compare against
-        value_true, grad_true = if expected_value_and_grad === nothing
-            ldf_reference = LogDensityFunction(model, varinfo; adtype=reference_adtype)
-            logdensity_and_gradient(ldf_reference, params)
-        else
-            expected_value_and_grad
+    # Test correctness
+    if test isa NoTest
+        value_true = nothing
+        grad_true = nothing
+    else
+        # Get the correct result
+        if test isa WithExpectedResult
+            value_true = test.value
+            grad_true = test.grad
+        elseif test isa WithBackend
+            ldf_reference = LogDensityFunction(model, varinfo; adtype=test.adtype)
+            value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
+            # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
+            grad_true = collect(grad_true)
         end
+        # Perform testing
         verbose && println("     expected : $((value_true, grad_true))")
-        grad_true = collect(grad_true)
-
         exc() = throw(ADIncorrectException(value, value_true, grad, grad_true))
         isapprox(value, value_true; atol=value_atol) || exc()
         isapprox(grad, grad_true; atol=grad_atol) || exc()
-    else
-        value_true = nothing
-        grad_true = nothing
     end
 
+    # Benchmark
     time_vs_primal = if benchmark
         primal_benchmark = @be (ldf, params) logdensity(_[1], _[2])
         grad_benchmark = @be (ldf, params) logdensity_and_gradient(_[1], _[2])
