@@ -52,17 +52,17 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
                     if is_mooncake && is_1_11 && is_svi_vnv
                         # https://github.com/compintell/Mooncake.jl/issues/470
                         @test_throws ArgumentError DynamicPPL.LogDensityFunction(
-                            ref_ldf, adtype
+                            m, linked_varinfo; adtype=adtype
                         )
                     elseif is_mooncake && is_1_10 && is_svi_vnv
                         # TODO: report upstream
                         @test_throws UndefRefError DynamicPPL.LogDensityFunction(
-                            ref_ldf, adtype
+                            m, linked_varinfo; adtype=adtype
                         )
                     elseif is_mooncake && is_1_10 && is_svi_od
                         # TODO: report upstream
                         @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
-                            ref_ldf, adtype
+                            m, linked_varinfo; adtype=adtype
                         )
                     else
                         @test run_ad(
