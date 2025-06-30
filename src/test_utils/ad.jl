@@ -10,7 +10,7 @@ using Random: AbstractRNG, default_rng
 using Statistics: median
 using Test: @test
 
-export ADResult, run_ad, ADIncorrectException
+export ADResult, run_ad, ADIncorrectException, WithBackend, WithExpectedResult, NoTest
 
 """
     AbstractADCorrectnessTestSetting
@@ -74,17 +74,18 @@ struct ADIncorrectException{T<:AbstractFloat} <: Exception
 end
 
 """
-    ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
+    ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloat}
 
 Data structure to store the results of the AD correctness test.
 
 The type parameter `Tparams` is the numeric type of the parameters passed in;
-`Tresult` is the type of the value and the gradient.
+`Tresult` is the type of the value and the gradient; and `Ttol` is the type of the
+absolute and relative tolerances used for correctness testing.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
+struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloat}
     "The DynamicPPL model that was tested"
     model::Model
     "The VarInfo that was used"
@@ -93,10 +94,10 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat}
     params::Vector{Tparams}
     "The AD backend that was tested"
     adtype::AbstractADType
-    "The absolute tolerance for the value of logp"
-    value_atol::Tresult
-    "The absolute tolerance for the gradient of logp"
-    grad_atol::Tresult
+    "Absolute tolerance used for correctness test"
+    atol::Ttol
+    "Relative tolerance used for correctness test"
+    rtol::Ttol
     "The expected value of logp"
     value_expected::Union{Nothing,Tresult}
     "The expected gradient of logp"
@@ -115,8 +116,8 @@ end
         adtype::ADTypes.AbstractADType;
         test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
         benchmark=false,
-        value_atol=1e-6,
-        grad_atol=1e-6,
+        atol::AbstractFloat=1e-8,
+        rtol::AbstractFloat=sqrt(eps()),
         varinfo::AbstractVarInfo=link(VarInfo(model), model),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
         verbose=true,
@@ -190,8 +191,13 @@ Everything else is optional, and can be categorised into several groups:
 
 4. _How to specify the tolerances._ (Only if testing is enabled.)
 
-   The tolerances for the value and gradient can be set using `value_atol` and
-   `grad_atol`. These default to 1e-6.
+   Both absolute and relative tolerances can be specified using the `atol` and
+   `rtol` keyword arguments respectively. The behaviour of these is similar to
+   `isapprox()`, i.e. the value and gradient are considered correct if either
+   atol or rtol is satisfied. The default values are `1e-8` for `atol` and
+   `sqrt(eps())` for `rtol`.
+
+   Note that gradients are always compared elementwise.
 
 5. _Whether to output extra logging information._
 
@@ -212,8 +218,8 @@ function run_ad(
     adtype::AbstractADType;
     test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
     benchmark::Bool=false,
-    value_atol::AbstractFloat=1e-6,
-    grad_atol::AbstractFloat=1e-6,
+    atol::AbstractFloat=1e-8,
+    rtol::AbstractFloat=sqrt(eps()),
     rng::AbstractRNG=default_rng(),
     varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
@@ -257,8 +263,10 @@ function run_ad(
         # Perform testing
         verbose && println("     expected : $((value_true, grad_true))")
         exc() = throw(ADIncorrectException(value, value_true, grad, grad_true))
-        isapprox(value, value_true; atol=value_atol) || exc()
-        isapprox(grad, grad_true; atol=grad_atol) || exc()
+        isapprox(value, value_true; atol=atol, rtol=rtol) || exc()
+        for (g, g_true) in zip(grad, grad_true)
+            isapprox(g, g_true; atol=atol, rtol=rtol) || exc()
+        end
     end
 
     # Benchmark
@@ -277,8 +285,8 @@ function run_ad(
         varinfo,
         params,
         adtype,
-        value_atol,
-        grad_atol,
+        atol,
+        rtol,
         value_true,
         grad_true,
         value,
