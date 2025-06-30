@@ -6,7 +6,7 @@ import DifferentiationInterface as DI
 using DocStringExtensions
 using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
-using Random: Random, Xoshiro
+using Random: AbstractRNG, default_rng
 using Statistics: median
 using Test: @test
 
@@ -160,8 +160,8 @@ Everything else is optional, and can be categorised into several groups:
 
    Note that if the VarInfo is not specified (and thus automatically generated)
    the parameters in it will have been sampled from the prior of the model. If
-   you want to seed the parameter generation, the easiest way is to pass a
-   `rng` argument to the VarInfo constructor (i.e. do `VarInfo(rng, model)`).
+   you want to seed the parameter generation for the VarInfo, you can pass the
+   `rng` keyword argument, which will then be used to create the VarInfo.
 
    Finally, note that these only reflect the parameters used for _evaluating_
    the gradient. If you also want to control the parameters used for
@@ -214,7 +214,8 @@ function run_ad(
     benchmark::Bool=false,
     value_atol::AbstractFloat=1e-6,
     grad_atol::AbstractFloat=1e-6,
-    varinfo::AbstractVarInfo=link(VarInfo(model), model),
+    rng::AbstractRNG=default_rng(),
+    varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
     verbose=true,
 )::ADResult
