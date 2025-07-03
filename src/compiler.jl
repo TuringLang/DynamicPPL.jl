@@ -1,4 +1,4 @@
-const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
+const INTERNALNAMES = (:__model__, :__varinfo__)
 
 """
     need_concretize(expr)
@@ -30,6 +30,18 @@ function need_concretize(expr)
 end
 
 """
+    make_varname_expression(expr)
+
+Return a `VarName` based on `expr`, concretizing it if necessary.
+"""
+function make_varname_expression(expr)
+    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
+    # that in DynamicPPL we the entire function body. Instead we should be
+    # more selective with our escape. Until that's the case, we remove them all.
+    return AbstractPPL.drop_escape(varname(expr, need_concretize(expr)))
+end
+
+"""
     isassumption(expr[, vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
@@ -48,15 +60,12 @@ evaluates to a `VarName`, and this will be used in the subsequent checks.
 If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(
-    expr::Union{Expr,Symbol},
-    vn=AbstractPPL.drop_escape(varname(expr, need_concretize(expr))),
-)
+function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
     return quote
         if $(DynamicPPL.contextual_isassumption)(
-            __context__, $(DynamicPPL.prefix)(__context__, $vn)
+            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
         )
-            # Considered an assumption by `__context__` which means either:
+            # Considered an assumption by `__model__.context` which means either:
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
             #    the model arguments, hence we need to check this.
@@ -107,7 +116,7 @@ end
 isfixed(expr, vn) = false
 function isfixed(::Union{Symbol,Expr}, vn)
     return :($(DynamicPPL.contextual_isfixed)(
-        __context__, $(DynamicPPL.prefix)(__context__, $vn)
+        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
     ))
 end
 
@@ -167,11 +176,7 @@ function check_tilde_rhs(@nospecialize(x))
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
-check_tilde_rhs(x::ReturnedModelWrapper) = x
-function check_tilde_rhs(x::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix}
-    model = check_tilde_rhs(x.model)
-    return Sampleable{typeof(model),AutoPrefix}(model)
-end
+check_tilde_rhs(x::Submodel{M,AutoPrefix}) where {M,AutoPrefix} = x
 
 """
     check_dot_tilde_rhs(x)
@@ -402,14 +407,18 @@ function generate_mainbody!(mod, found, expr::Expr, warn)
 end
 
 function generate_assign(left, right)
-    right_expr = :($(TrackedValue)($right))
-    tilde_expr = generate_tilde(left, right_expr)
+    # A statement `x := y` reduces to `x = y`, but if __varinfo__ has an accumulator for
+    # ValuesAsInModel then in addition we push! the pair of `x` and `y` to the accumulator.
+    @gensym acc right_val vn
     return quote
-        if $(is_extracting_values)(__context__)
-            $tilde_expr
-        else
-            $left = $right
+        $right_val = $right
+        if $(DynamicPPL.is_extracting_values)(__varinfo__)
+            $vn = $(DynamicPPL.prefix)(__model__.context, $(make_varname_expression(left)))
+            __varinfo__ = $(map_accumulator!!)(
+                $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
+            )
         end
+        $left = $right_val
     end
 end
 
@@ -418,7 +427,11 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __context__, $(DynamicPPL.check_tilde_rhs)($right), $left, __varinfo__
+            __model__.context,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $left,
+            nothing,
+            __varinfo__,
         )
         $value
     end
@@ -437,18 +450,13 @@ function generate_tilde(left, right)
     # if the LHS represents an observation
     @gensym vn isassumption value dist
 
-    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
-    # that in DynamicPPL we the entire function body. Instead we should be
-    # more selective with our escape. Until that's the case, we remove them all.
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)(
-            $(AbstractPPL.drop_escape(varname(left, need_concretize(left)))), $dist
-        )
+        $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
             $left = $(DynamicPPL.getfixed_nested)(
-                __context__, $(DynamicPPL.prefix)(__context__, $vn)
+                __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
             )
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
@@ -456,12 +464,12 @@ function generate_tilde(left, right)
             # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
             if !$(DynamicPPL.inargnames)($vn, __model__)
                 $left = $(DynamicPPL.getconditioned_nested)(
-                    __context__, $(DynamicPPL.prefix)(__context__, $vn)
+                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __context__,
+                __model__.context,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $(maybe_view(left)),
                 $vn,
@@ -486,7 +494,7 @@ function generate_tilde_assume(left, right, vn)
 
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
-            __context__,
+            __model__.context,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )
@@ -644,11 +652,7 @@ function build_output(modeldef, linenumbernode)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [
-            :(__model__::$(DynamicPPL.Model)),
-            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
-            :(__context__::$(DynamicPPL.AbstractContext)),
-        ],
+        [:(__model__::$(DynamicPPL.Model)), :(__varinfo__::$(DynamicPPL.AbstractVarInfo))],
         args,
     )
 
