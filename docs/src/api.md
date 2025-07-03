@@ -152,12 +152,6 @@ In the context of including models within models, it's also useful to prefix the
 DynamicPPL.prefix
 ```
 
-Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
-
-```@docs
-returned(::Model)
-```
-
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.

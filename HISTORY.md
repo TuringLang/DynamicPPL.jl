@@ -31,11 +31,11 @@ This version therefore excises the context argument, and instead uses `model.con
 The upshot of this is that many functions that previously took a context argument now no longer do.
 There were very few such functions where the context argument was actually used (most of them simply took `DefaultContext()` as the default value).
 
-`evaluate!!(model, varinfo, ext_context)` is deprecated, and broadly speaking you should replace calls to that with `new_model = contextualize(model, ext_context); evaluate!!(new_model, varinfo)`.
+`evaluate!!(model, varinfo, ext_context)` is removed, and broadly speaking you should replace calls to that with `new_model = contextualize(model, ext_context); evaluate!!(new_model, varinfo)`.
 If the 'external context' `ext_context` is a parent context, then you should wrap `model.context` appropriately to ensure that its information content is not lost.
 If, on the other hand, `ext_context` is a `DefaultContext`, then you can just drop the argument entirely.
 
-To aid with this process, `contextualize` is now exported from DynamicPPL.
+**To aid with this process, `contextualize` is now exported from DynamicPPL.**
 
 The main situation where one _did_ want to specify an additional evaluation context was when that context was a `SamplingContext`.
 Doing this would allow you to run the model and sample fresh values, instead of just using the values that existed in the VarInfo object.
@@ -54,9 +54,10 @@ However, here are the more user-facing ones:
 
 And a couple of more internal changes:
 
-  - `evaluate!!`, `evaluate_threadsafe!!`, and `evaluate_threadunsafe!!` no longer accept context arguments
+  - Just like `evaluate!!`, the other functions `_evaluate!!`, `evaluate_threadsafe!!`, and `evaluate_threadunsafe!!` now no longer accept context arguments
   - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `evaluate_and_sample!!` instead, or construct your own `SamplingContext`)
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
+  - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
 
 ## 0.36.12
 

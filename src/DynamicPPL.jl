@@ -171,11 +171,11 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 include("utils.jl")
 include("chains.jl")
 include("model.jl")
-include("submodel.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
+include("submodel.jl")
 include("varnamedvector.jl")
 include("accumulators.jl")
 include("default_accumulators.jl")
@@ -223,6 +223,21 @@ if isdefined(Base.Experimental, :register_error_hint)
                 print(
                     io,
                     "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
+                )
+            end
+        end
+
+        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
+            is_evaluate_three_arg =
+                exc.f === AbstractPPL.evaluate!! &&
+                length(argtypes) == 3 &&
+                argtypes[1] <: Model &&
+                argtypes[2] <: AbstractVarInfo &&
+                argtypes[3] <: AbstractContext
+            if is_evaluate_three_arg
+                print(
+                    io,
+                    "\n\nThe method `evaluate!!(model, varinfo, new_ctx)` has been removed. Instead, you should store the `new_ctx` in the `model.context` field using `new_model = contextualize(model, new_ctx)`, and then call `evaluate!!(new_model, varinfo)` on the new model. (Note that, if the model already contained a non-default context, you will need to wrap the existing context.)",
                 )
             end
         end

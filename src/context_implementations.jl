@@ -63,31 +63,10 @@ By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
 probability of `vi` with the returned value.
 """
 function tilde_assume!!(context, right, vn, vi)
-    return if is_rhs_model(right)
-        # Here, we apply the PrefixContext _not_ to the parent `context`, but
-        # to the context of the submodel being evaluated. This means that later=
-        # on in `make_evaluate_args_and_kwargs`, the context stack will be
-        # correctly arranged such that it goes like this:
-        #  parent_context[1] -> parent_context[2] -> ... -> PrefixContext ->
-        #    submodel_context[1] -> submodel_context[2] -> ... -> leafcontext
-        # See the docstring of `make_evaluate_args_and_kwargs`, and the internal
-        # DynamicPPL documentation on submodel conditioning, for more details.
-        #
-        # NOTE: This relies on the existence of `right.model.model`. Right now,
-        # the only thing that can return true for `is_rhs_model` is something
-        # (a `Sampleable`) that has a `model` field that itself (a
-        # `ReturnedModelWrapper`) has a `model` field. This may or may not
-        # change in the future.
-        if should_auto_prefix(right)
-            dppl_model = right.model.model # This isa DynamicPPL.Model
-            prefixed_submodel_context = PrefixContext(vn, dppl_model.context)
-            new_dppl_model = contextualize(dppl_model, prefixed_submodel_context)
-            right = to_submodel(new_dppl_model, true)
-        end
-        rand_like!!(right, context, vi)
+    return if right isa DynamicPPL.Submodel
+        _evaluate!!(right, vi, context, vn)
     else
-        value, vi = tilde_assume(context, right, vn, vi)
-        return value, vi
+        tilde_assume(context, right, vn, vi)
     end
 end
 
@@ -129,17 +108,14 @@ accumulate the log probability, and return the observed value and updated `vi`.
 Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!!(context::DefaultContext, right, left, vn, vi)
-    is_rhs_model(right) && throw(
-        ArgumentError(
-            "`~` with a model on the right-hand side of an observe statement is not supported",
-        ),
-    )
+function tilde_observe!!(::DefaultContext, right, left, vn, vi)
+    right isa DynamicPPL.Submodel &&
+        throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
     vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
 end
 
-function assume(rng::Random.AbstractRNG, spl::Sampler, dist)
+function assume(::Random.AbstractRNG, spl::Sampler, dist)
     return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 
