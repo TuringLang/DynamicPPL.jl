@@ -194,10 +194,12 @@ Everything else is optional, and can be categorised into several groups:
    Both absolute and relative tolerances can be specified using the `atol` and
    `rtol` keyword arguments respectively. The behaviour of these is similar to
    `isapprox()`, i.e. the value and gradient are considered correct if either
-   atol or rtol is satisfied. The default values are `1e-8` for `atol` and
+   atol or rtol is satisfied. The default values are `100*eps()` for `atol` and
    `sqrt(eps())` for `rtol`.
 
-   Note that gradients are always compared elementwise.
+   For the most part, it is the `rtol` check that is more meaningful, because
+   we cannot know the magnitude of logp and its gradient a priori. The `atol`
+   value is supplied to handle the case where gradients are equal to zero.
 
 5. _Whether to output extra logging information._
 
@@ -218,7 +220,7 @@ function run_ad(
     adtype::AbstractADType;
     test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
     benchmark::Bool=false,
-    atol::AbstractFloat=1e-8,
+    atol::AbstractFloat=100 * eps(),
     rtol::AbstractFloat=sqrt(eps()),
     rng::AbstractRNG=default_rng(),
     varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
@@ -264,9 +266,7 @@ function run_ad(
         verbose && println("     expected : $((value_true, grad_true))")
         exc() = throw(ADIncorrectException(value, value_true, grad, grad_true))
         isapprox(value, value_true; atol=atol, rtol=rtol) || exc()
-        for (g, g_true) in zip(grad, grad_true)
-            isapprox(g, g_true; atol=atol, rtol=rtol) || exc()
-        end
+        isapprox(grad, grad_true; atol=atol, rtol=rtol) || exc()
     end
 
     # Benchmark
