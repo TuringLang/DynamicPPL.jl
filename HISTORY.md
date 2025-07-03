@@ -18,7 +18,6 @@ There is now also an `rng` keyword argument to help seed parameter generation.
 
 Finally, instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
 Their semantics are the same as in Julia's `isapprox`; two values are equal if they satisfy either `atol` or `rtol`.
-Note that gradients are always compared elementwise (instead of using the norm, which is what `isapprox` does).
 
 ### Accumulators
 
