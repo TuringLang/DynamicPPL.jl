@@ -166,9 +166,10 @@ It is possible to manually increase (or decrease) the accumulated log density fr
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection samples) or a single sample represented as a `NamedTuple`.
 
 ```@docs
+returned(::DynamicPPL.Model, ::MCMCChains.Chains)
 returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
