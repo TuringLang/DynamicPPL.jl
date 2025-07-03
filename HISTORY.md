@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.13
+
+Added documentation for the `returned(::Model, ::MCMCChains.Chains)` method.
+
 ## 0.36.12
 
 Removed several unexported functions.
