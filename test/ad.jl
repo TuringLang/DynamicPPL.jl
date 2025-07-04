@@ -110,8 +110,7 @@ using DynamicPPL: LogDensityFunction
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
         vi = VarInfo(model)
-        sampling_model = contextualize(model, SamplingContext(model.context))
-        ldf = LogDensityFunction(sampling_model, vi; adtype=AutoReverseDiff(; compile=true))
+        ldf = LogDensityFunction(model, vi; adtype=AutoReverseDiff(; compile=true))
         @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
     end
 

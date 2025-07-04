@@ -193,11 +193,8 @@ module Issue537 end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
-        # During the model evaluation, its context is wrapped in a
-        # SamplingContext, so `model_` is not going to be equal to `model`.
-        # We can still check equality of `f` though.
         @test model_.f === model.f
-        @test model_.context isa SamplingContext
+        @test model_.context isa InitContext
         @test model_.context.rng isa Random.AbstractRNG
 
         # disable warnings

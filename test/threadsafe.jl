@@ -68,8 +68,7 @@
         @time model(vi)
 
         # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
-        sampling_model = contextualize(model, SamplingContext(model.context))
-        DynamicPPL.evaluate_threadsafe!!(sampling_model, vi)
+        DynamicPPL.evaluate_threadsafe!!(model, vi)
         @test getlogjoint(vi) ≈ lp_w_threads
         # check that it's wrapped during the model evaluation
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
@@ -104,8 +103,7 @@
         @test lp_w_threads ≈ lp_wo_threads
 
         # Ensure that we use `VarInfo`.
-        sampling_model = contextualize(model, SamplingContext(model.context))
-        DynamicPPL.evaluate_threadunsafe!!(sampling_model, vi)
+        DynamicPPL.evaluate_threadunsafe!!(model, vi)
         @test getlogjoint(vi) ≈ lp_w_threads
         @test vi_ isa VarInfo
         @test vi isa VarInfo
