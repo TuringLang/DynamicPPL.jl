@@ -6,17 +6,6 @@ function tilde_assume(::DefaultContext, right, vn, vi)
     return assume(right, vn, vi)
 end
 
-function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
-    return tilde_assume(rng, childcontext(context), args...)
-end
-function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, vi)
-    return assume(rng, sampler, right, vn, vi)
-end
-function tilde_assume(::DefaultContext, sampler, right, vn, vi)
-    # same as above but no rng
-    return assume(Random.default_rng(), sampler, right, vn, vi)
-end
-
 function tilde_assume(context::PrefixContext, right, vn, vi)
     # Note that we can't use something like this here:
     #     new_vn = prefix(context, vn)
@@ -29,12 +18,6 @@ function tilde_assume(context::PrefixContext, right, vn, vi)
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
     return tilde_assume(new_context, right, new_vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
-)
-    new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return tilde_assume(rng, new_context, sampler, right, new_vn, vi)
 end
 
 """
@@ -86,10 +69,6 @@ function tilde_observe!!(::DefaultContext, right, left, vn, vi)
         throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
     vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
-end
-
-function assume(::Random.AbstractRNG, spl::Sampler, dist)
-    return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
 end
 
 # fallback without sampler
