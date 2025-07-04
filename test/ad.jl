@@ -29,10 +29,12 @@ using DynamicPPL: LogDensityFunction
 
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 linked_varinfo = DynamicPPL.link(varinfo, m)
-                f = LogDensityFunction(m, linked_varinfo)
+                f = LogDensityFunction(m, getlogjoint, linked_varinfo)
                 x = DynamicPPL.getparams(f)
                 # Calculate reference logp + gradient of logp using ForwardDiff
-                ref_ldf = LogDensityFunction(m, linked_varinfo; adtype=ref_adtype)
+                ref_ldf = LogDensityFunction(
+                    m, getlogjoint, linked_varinfo; adtype=ref_adtype
+                )
                 ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(ref_ldf, x)
 
                 @testset "$adtype" for adtype in test_adtypes
@@ -109,10 +111,12 @@ using DynamicPPL: LogDensityFunction
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
-        vi = VarInfo(model)
         sampling_model = contextualize(model, SamplingContext(model.context))
-        ldf = LogDensityFunction(sampling_model, vi; adtype=AutoReverseDiff(; compile=true))
-        @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
+        ldf = LogDensityFunction(
+            sampling_model, getlogjoint; adtype=AutoReverseDiff(; compile=true)
+        )
+        x = ldf.varinfo[:]
+        @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Any
     end
 
     # Test that various different ways of specifying array types as arguments work with all
