@@ -815,7 +815,7 @@ end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
 function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
-    return first(evaluate_and_sample!!(rng, model, varinfo))
+    return first(init!!(rng, model, varinfo))
 end
 
 """
@@ -829,29 +829,35 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    evaluate_and_sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
+    init!!(
+        [rng::Random.AbstractRNG, ]
+        model::Model,
+        varinfo::AbstractVarInfo,
+        [init_strategy::AbstractInitStrategy=PriorInit()]
+    )
 
-Evaluate the `model` with the given `varinfo`, but perform sampling during the
-evaluation using the given `sampler` by wrapping the model's context in a
-`SamplingContext`.
-
-If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
+Evaluate the `model` and replace the values of the model's random variables
+in the given `varinfo` with new values, using a specified initialisation strategy.
+If the values in `varinfo` are not set, they will be added.
+using a specified initialisation strategy. If `init_strategy` is not provided,
+defaults to PriorInit().
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function evaluate_and_sample!!(
+function init!!(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo::AbstractVarInfo,
-    sampler::AbstractSampler=SampleFromPrior(),
+    init_strategy::AbstractInitStrategy=PriorInit(),
 )
-    sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
-    return evaluate!!(sampling_model, varinfo)
+    new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
+    new_model = contextualize(model, new_context)
+    return evaluate!!(new_model, varinfo)
 end
-function evaluate_and_sample!!(
-    model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
+function init!!(
+    model::Model, varinfo::AbstractVarInfo, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
+    return init!!(Random.default_rng(), model, varinfo, init_strategy)
 end
 
 """
@@ -981,7 +987,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(evaluate_and_sample!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
+    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
     return values_as(x, T)
 end
 
@@ -1207,4 +1213,39 @@ end
 
 function returned(model::Model, values, keys)
     return returned(model, NamedTuple{keys}(values))
+end
+
+"""
+    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::Val{sym})
+    prefix(model::Model, x::Any)
+
+Return `model` but with all random variables prefixed by `x`, where `x` is either:
+- a `VarName` (e.g. `@varname(a)`),
+- a `Val{sym}` (e.g. `Val(:a)`), or
+- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
+  this will introduce runtime overheads so is not recommended unless absolutely
+  necessary.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), @varname(my_prefix)))
+(var"my_prefix.x" = 1,)
+
+julia> rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
+"""
+prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::Val{sym}) where {sym}
+    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+end
+function prefix(model::Model, x)
+    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
 end

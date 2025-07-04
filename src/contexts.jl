@@ -47,7 +47,7 @@ effectively updating the child context.
 ```jldoctest
 julia> using DynamicPPL: DynamicTransformationContext
 
-julia> ctx = SamplingContext();
+julia> ctx = ConditionContext((; a = 1);
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
@@ -121,73 +121,6 @@ setleafcontext(::IsLeaf, ::IsParent, left, right) = right
 setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 
 # Contexts
-"""
-    SamplingContext(
-            [rng::Random.AbstractRNG=Random.default_rng()],
-            [sampler::AbstractSampler=SampleFromPrior()],
-            [context::AbstractContext=DefaultContext()],
-    )
-
-Create a context that allows you to sample parameters with the `sampler` when running the model.
-The `context` determines how the returned log density is computed when running the model.
-
-See also: [`DefaultContext`](@ref)
-"""
-struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
-    rng::R
-    sampler::S
-    context::C
-end
-
-function SamplingContext(
-    rng::Random.AbstractRNG=Random.default_rng(), sampler::AbstractSampler=SampleFromPrior()
-)
-    return SamplingContext(rng, sampler, DefaultContext())
-end
-
-function SamplingContext(
-    sampler::AbstractSampler, context::AbstractContext=DefaultContext()
-)
-    return SamplingContext(Random.default_rng(), sampler, context)
-end
-
-function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
-    return SamplingContext(rng, SampleFromPrior(), context)
-end
-
-function SamplingContext(context::AbstractContext)
-    return SamplingContext(Random.default_rng(), SampleFromPrior(), context)
-end
-
-NodeTrait(context::SamplingContext) = IsParent()
-childcontext(context::SamplingContext) = context.context
-function setchildcontext(parent::SamplingContext, child)
-    return SamplingContext(parent.rng, parent.sampler, child)
-end
-
-"""
-    hassampler(context)
-
-Return `true` if `context` has a sampler.
-"""
-hassampler(::SamplingContext) = true
-hassampler(context::AbstractContext) = hassampler(NodeTrait(context), context)
-hassampler(::IsLeaf, context::AbstractContext) = false
-hassampler(::IsParent, context::AbstractContext) = hassampler(childcontext(context))
-
-"""
-    getsampler(context)
-
-Return the sampler of the context `context`.
-
-This will traverse the context tree until it reaches the first [`SamplingContext`](@ref),
-at which point it will return the sampler of that context.
-"""
-getsampler(context::SamplingContext) = context.sampler
-getsampler(context::AbstractContext) = getsampler(NodeTrait(context), context)
-getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(context))
-getsampler(::IsLeaf, ::AbstractContext) = error("No sampler found in context")
-
 """
     struct DefaultContext <: AbstractContext end
 
@@ -278,41 +211,6 @@ prefix_and_strip_contexts(::IsLeaf, ctx::AbstractContext, vn::VarName) = (vn, ct
 function prefix_and_strip_contexts(::IsParent, ctx::AbstractContext, vn::VarName)
     vn, new_ctx = prefix_and_strip_contexts(childcontext(ctx), vn)
     return vn, setchildcontext(ctx, new_ctx)
-end
-
-"""
-    prefix(model::Model, x::VarName)
-    prefix(model::Model, x::Val{sym})
-    prefix(model::Model, x::Any)
-
-Return `model` but with all random variables prefixed by `x`, where `x` is either:
-- a `VarName` (e.g. `@varname(a)`),
-- a `Val{sym}` (e.g. `Val(:a)`), or
-- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
-  this will introduce runtime overheads so is not recommended unless absolutely
-  necessary.
-
-# Examples
-
-```jldoctest
-julia> using DynamicPPL: prefix
-
-julia> @model demo() = x ~ Dirac(1)
-demo (generic function with 2 methods)
-
-julia> rand(prefix(demo(), @varname(my_prefix)))
-(var"my_prefix.x" = 1,)
-
-julia> rand(prefix(demo(), Val(:my_prefix)))
-(var"my_prefix.x" = 1,)
-```
-"""
-prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
-function prefix(model::Model, x::Val{sym}) where {sym}
-    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
-end
-function prefix(model::Model, x)
-    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
 end
 
 """

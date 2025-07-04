@@ -1,34 +1,3 @@
-# TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
-# That would let us use all defaults for Sampler, combine it with other samplers etc.
-"""
-    SampleFromUniform
-
-Sampling algorithm that samples unobserved random variables from a uniform distribution.
-
-# References
-
-[Stan reference manual](https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values)
-"""
-struct SampleFromUniform <: AbstractSampler end
-
-"""
-    SampleFromPrior
-
-Sampling algorithm that samples unobserved random variables from their prior distribution.
-"""
-struct SampleFromPrior <: AbstractSampler end
-
-# Initializations.
-init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
-function init(rng, dist, ::SampleFromUniform)
-    return istransformable(dist) ? inittrans(rng, dist) : rand(rng, dist)
-end
-
-init(rng, dist, ::SampleFromPrior, n::Int) = rand(rng, dist, n)
-function init(rng, dist, ::SampleFromUniform, n::Int)
-    return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
-end
-
 # TODO(mhauru) Could we get rid of Sampler now that it's just a wrapper around `alg`?
 # (Selector has been removed).
 """
@@ -47,19 +16,6 @@ By default, values are sampled from the prior.
 """
 struct Sampler{T} <: AbstractSampler
     alg::T
-end
-
-# AbstractMCMC interface for SampleFromUniform and SampleFromPrior
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Union{SampleFromUniform,SampleFromPrior},
-    state=nothing;
-    kwargs...,
-)
-    vi = VarInfo()
-    DynamicPPL.evaluate_and_sample!!(rng, model, vi, sampler)
-    return vi, nothing
 end
 
 """
@@ -133,107 +89,12 @@ Default type of the chain of posterior samples from `sampler`.
 default_chain_type(sampler::Sampler) = Any
 
 """
-    initialsampler(sampler::Sampler)
+    init_strategy(sampler)
 
-Return the sampler that is used for generating the initial parameters when sampling with
-`sampler`.
-
-By default, it returns an instance of [`SampleFromPrior`](@ref).
+Define the initialisation strategy used for generating initial values when
+sampling with `sampler`. Defaults to `PriorInit()`, but can be overridden.
 """
-initialsampler(spl::Sampler) = SampleFromPrior()
-
-"""
-    set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
-    set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
-
-Take the values inside `initial_params`, replace the corresponding values in
-the given VarInfo object, and return a new VarInfo object with the updated values.
-
-This differs from `DynamicPPL.unflatten` in two ways:
-
-1. It works with `NamedTuple` arguments.
-2. For the `AbstractVector` method, if any of the elements are missing, it will not
-overwrite the original value in the VarInfo (it will just use the original
-value instead).
-"""
-function set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
-    throw(
-        ArgumentError(
-            "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
-            "If `initial_params` is a vector of vectors, please flatten it (e.g. using `vcat`) first.",
-        ),
-    )
-end
-
-function set_initial_values(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}
-)
-    flattened_param_vals = varinfo[:]
-    length(flattened_param_vals) == length(initial_params) || throw(
-        DimensionMismatch(
-            "Provided initial value size ($(length(initial_params))) doesn't match " *
-            "the model size ($(length(flattened_param_vals))).",
-        ),
-    )
-
-    # Update values that are provided.
-    for i in eachindex(initial_params)
-        x = initial_params[i]
-        if x !== missing
-            flattened_param_vals[i] = x
-        end
-    end
-
-    # Update in `varinfo`.
-    new_varinfo = unflatten(varinfo, flattened_param_vals)
-    return new_varinfo
-end
-
-function set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
-    varinfo = deepcopy(varinfo)
-    vars_in_varinfo = keys(varinfo)
-    for v in keys(initial_params)
-        vn = VarName{v}()
-        if !(vn in vars_in_varinfo)
-            for vv in vars_in_varinfo
-                if subsumes(vn, vv)
-                    throw(
-                        ArgumentError(
-                            "The current model contains sub-variables of $v, such as ($vv). " *
-                            "Using NamedTuple for initial_params is not supported in such a case. " *
-                            "Please use AbstractVector for initial_params instead of NamedTuple.",
-                        ),
-                    )
-                end
-            end
-            throw(ArgumentError("Variable $v not found in the model."))
-        end
-    end
-    initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
-    return update_values!!(
-        varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
-    )
-end
-
-function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Model)
-    @debug "Using passed-in initial variable values" initial_params
-
-    # `link` the varinfo if needed.
-    linked = islinked(vi)
-    if linked
-        vi = invlink!!(vi, model)
-    end
-
-    # Set the values in `vi`.
-    vi = set_initial_values(vi, initial_params)
-
-    # `invlink` if needed.
-    if linked
-        vi = link!!(vi, model)
-    end
-
-    return vi
-end
+init_strategy(::Sampler) = PriorInit()
 
 """
     initialstep(rng, model, sampler, varinfo; kwargs...)

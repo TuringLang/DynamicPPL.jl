@@ -57,18 +57,14 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     end
 
     # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
-    # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
     # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
     # context might alter which variables are present, their names, etc., e.g. `PrefixContext`.
     # TODO(torfjelde): Make the `varinfo` used for testing a kwarg once it makes sense for other varinfos.
     # Untyped varinfo.
     varinfo_untyped = DynamicPPL.VarInfo()
-    model_with_spl = contextualize(model, SamplingContext(context))
-    model_without_spl = contextualize(model, context)
-    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_untyped) isa Any
-    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_untyped) isa Any
+    new_model = contextualize(model, context)
+    @test DynamicPPL.evaluate!!(new_model, varinfo_untyped) isa Any
     # Typed varinfo.
     varinfo_typed = DynamicPPL.typed_varinfo(varinfo_untyped)
-    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_typed) isa Any
-    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_typed) isa Any
+    @test DynamicPPL.evaluate!!(new_model, varinfo_typed) isa Any
 end
