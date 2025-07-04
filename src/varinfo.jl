@@ -126,11 +126,11 @@ given `rng` and `init_strategy`.
     instead.
 """
 function VarInfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=Prior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
     return typed_varinfo(rng, model, init_strategy)
 end
-function VarInfo(model::Model, init_strategy::AbstractInitStrategy=Prior())
+function VarInfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
     return VarInfo(Random.default_rng(), model, init_strategy)
 end
 
@@ -196,14 +196,14 @@ Construct a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `Prior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function untyped_varinfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=Prior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
     return last(init!!(rng, model, VarInfo(Metadata()), init_strategy))
 end
-function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=Prior())
+function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
     return untyped_varinfo(Random.default_rng(), model, init_strategy)
 end
 
@@ -275,14 +275,14 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `Prior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function typed_varinfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=Prior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
     return typed_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=Prior())
+function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
     return typed_varinfo(Random.default_rng(), model, init_strategy)
 end
 
@@ -295,18 +295,20 @@ Return a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `Prior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     return VarInfo(md, deepcopy(vi.accs))
 end
 function untyped_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=Prior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
     return untyped_vector_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function untyped_vector_varinfo(model::Model, init_strategy::AbstractInitStrategy=Prior())
+function untyped_vector_varinfo(
+    model::Model, init_strategy::AbstractInitStrategy=PriorInit()
+)
     return untyped_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
@@ -319,7 +321,7 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `Prior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
@@ -331,11 +333,11 @@ function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     return VarInfo(nt, deepcopy(vi.accs))
 end
 function typed_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=Prior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
     return typed_vector_varinfo(untyped_vector_varinfo(rng, model, init_strategy))
 end
-function typed_vector_varinfo(model::Model, init_strategy::AbstractInitStrategy=Prior())
+function typed_vector_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
     return typed_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
