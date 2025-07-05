@@ -62,7 +62,12 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::Uniform
     sz = Bijectors.output_size(b, size(dist))
     y = rand(rng, Uniform(u.lower, u.upper), sz)
     b_inv = Bijectors.inverse(b)
-    return b_inv(y)
+    x = b_inv(y)
+    # https://github.com/TuringLang/Bijectors.jl/issues/398
+    if x isa Array{<:Any,0}
+        x = x[]
+    end
+    return x
 end
 
 """
@@ -134,12 +139,14 @@ function tilde_assume(
     # `init()` always returns values in original space, i.e. possibly
     # constrained
     x = init(ctx.rng, vn, dist, ctx.strategy)
-    # There is a function `to_maybe_linked_internal_transform` that does this,
-    # but unfortunately it uses `istrans(vi, vn)` which fails if vn is not in
-    # vi, so we have to manually check. By default we will insert an unlinked
-    # value into the varinfo.
-    is_transformed = in_varinfo ? istrans(vi, vn) : false
-    f = if is_transformed
+    # Determine whether to insert a transformed value into the VarInfo.
+    # If the VarInfo alrady had a value for this variable, we will
+    # keep the same linked status as in the original VarInfo. If not, we
+    # check the rest of the VarInfo to see if other variables are linked.
+    # istrans(vi) returns true if vi is nonempty and all variables in vi
+    # are linked.
+    insert_transformed_value = in_varinfo ? istrans(vi, vn) : istrans(vi)
+    f = if insert_transformed_value
         to_linked_internal_transform(vi, vn, dist)
     else
         to_internal_transform(vi, vn, dist)
@@ -150,7 +157,7 @@ function tilde_assume(
     # always converts x to a vector, i.e., if dist is univariate, f(x) will be
     # a vector of length 1. It would be nice if we could unify these.
     y = f(x)
-    logjac = logabsdetjac(is_transformed ? Bijectors.bijector(dist) : identity, x)
+    logjac = logabsdetjac(insert_transformed_value ? link_transform(dist) : identity, x)
     # Add the new value to the VarInfo. `push!!` errors if the value already
     # exists, hence the need for setindex!!
     if in_varinfo

@@ -124,9 +124,7 @@ function DynamicPPL.predict(
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
         # Extract values from the chain
-        values_dict = DynamicPPL.chain_sample_to_varname_dict(
-            parameter_only_chain, sample_idx, chain_idx
-        )
+        values_dict = chain_sample_to_varname_dict(parameter_only_chain, sample_idx, chain_idx)
         # Resample any variables that are not present in `values_dict`
         _, varinfo = last(
             DynamicPPL.init!!(
@@ -268,9 +266,7 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
         # Extract values from the chain
-        values_dict = DynamicPPL.chain_sample_to_varname_dict(
-            parameter_only_chain, sample_idx, chain_idx
-        )
+        values_dict = chain_sample_to_varname_dict(chain, sample_idx, chain_idx)
         # Resample any variables that are not present in `values_dict`, and
         # return the model's retval (`first`).
         first(

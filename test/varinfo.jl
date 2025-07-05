@@ -43,7 +43,7 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        vi = DynamicPPL.untyped_varinfo(model, SampleFromUniform())
+        _, vi = DynamicPPL.init!!(model, VarInfo(), UniformInit())
         tvi = DynamicPPL.typed_varinfo(vi)
 
         meta = vi.metadata
