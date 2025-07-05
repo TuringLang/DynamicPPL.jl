@@ -44,7 +44,7 @@ end
 
 function chain_sample_to_varname_dict(c::MCMCChains.Chains, sample_idx, chain_idx)
     _check_varname_indexing(c)
-    d = Dict{VarName}()
+    d = Dict{DynamicPPL.VarName,Any}()
     for vn in DynamicPPL.varnames(c)
         d[vn] = DynamicPPL.getindex_varname(c, sample_idx, vn, chain_idx)
     end
@@ -271,10 +271,7 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
         # return the model's retval (`first`).
         first(
             DynamicPPL.init!!(
-                rng,
-                model,
-                varinfo,
-                DynamicPPL.ParamsInit(values_dict, DynamicPPL.PriorInit()),
+                model, varinfo, DynamicPPL.ParamsInit(values_dict, DynamicPPL.PriorInit())
             ),
         )
     end

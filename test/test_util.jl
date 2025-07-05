@@ -81,8 +81,10 @@ function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::I
     varnames = collect(varnames)
     # Construct matrix of values
     vals = [get(dict, vn, missing) for dict in dicts, vn in varnames]
+    # Construct mapping of varnames to symbols
+    vns_to_syms = Dict{VarName,Symbol}(zip(varnames, Symbol.(varnames)))
     # Construct and return the Chains object
-    return Chains(vals, varnames)
+    return Chains(vals, varnames; info=(varname_to_symbol=vns_to_syms,))
 end
 function make_chain_from_prior(model::Model, n_iters::Int)
     return make_chain_from_prior(Random.default_rng(), model, n_iters)

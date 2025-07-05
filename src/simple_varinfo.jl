@@ -458,7 +458,6 @@ end
 
 # Context implementations
 
-# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
@@ -467,6 +466,9 @@ function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+end
+function settrans!!(::SimpleOrThreadSafeSimple, trans::Bool, vn::VarName)
+    @info "Attempting to call `settrans!!` on a `SimpleVarInfo` for a specific variable `$vn`; this will be ignored"
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)

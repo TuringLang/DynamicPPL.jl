@@ -94,6 +94,23 @@ struct ParamsInit{P,S<:AbstractInitStrategy} <: AbstractInitStrategy
     end
 end
 function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::ParamsInit)
+    # TODO(penelopeysm): Fix this. If anything in p.params _subsumes_ vn,
+    # we don't know how to handle it. This is just another corollary of
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/814
+    # This used to be handled by nested_setindex_maybe, which I'd really like
+    # to get rid of.
+    if p.params isa AbstractDict{<:VarName}
+        strictly_subsumed = filter(
+            vn_in_params -> vn_in_params != vn && subsumes(vn, vn_in_params), keys(p.params)
+        )
+        if !isempty(strictly_subsumed)
+            throw(
+                ArgumentError(
+                    "The given dictionary of parameters contain the following sub-variables of $(vn): $(strictly_subsumed). ParamsInit doesn't know how to deal with this.",
+                ),
+            )
+        end
+    end
     return if hasvalue(p.params, vn)
         x = getvalue(p.params, vn)
         if x === missing
@@ -159,12 +176,15 @@ function tilde_assume(
     y = f(x)
     logjac = logabsdetjac(insert_transformed_value ? link_transform(dist) : identity, x)
     # Add the new value to the VarInfo. `push!!` errors if the value already
-    # exists, hence the need for setindex!!
+    # exists, hence the need for setindex!!.
     if in_varinfo
         vi = setindex!!(vi, y, vn)
     else
         vi = push!!(vi, vn, y, dist)
     end
+    # Neither of these set the `trans` flag so we have to do it manually if
+    # necessary.
+    insert_transformed_value && settrans!!(vi, true, vn)
     # `accumulate_assume!!` wants untransformed values as the second argument.
     vi = accumulate_assume!!(vi, x, -logjac, vn, dist)
     # We always return the untransformed value here, as that will determine
