@@ -89,14 +89,6 @@ Default type of the chain of posterior samples from `sampler`.
 default_chain_type(sampler::Sampler) = Any
 
 """
-    init_strategy(sampler)
-
-Define the initialisation strategy used for generating initial values when
-sampling with `sampler`. Defaults to `PriorInit()`, but can be overridden.
-"""
-init_strategy(::Sampler) = PriorInit()
-
-"""
     initialstep(rng, model, sampler, varinfo; kwargs...)
 
 Perform the initial sampling step of the `sampler` for the `model`.
