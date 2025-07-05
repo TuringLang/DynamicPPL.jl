@@ -165,6 +165,10 @@ function tilde_assume(
     return x, vi
 end
 
+function tilde_observe!!(::InitContext, right, left, vn, vi)
+    return tilde_observe!!(DefaultContext(), right, left, vn, vi)
+end
+
 # """
 #     set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
 #     set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
