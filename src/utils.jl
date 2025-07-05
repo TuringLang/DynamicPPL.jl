@@ -456,50 +456,6 @@ function recombine(d::MultivariateDistribution, val::AbstractVector, n::Int)
     return copy(reshape(val, length(d), n))
 end
 
-# Uniform random numbers with range 4 for robust initializations
-# Reference: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
-randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
-randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
-
-istransformable(dist) = link_transform(dist) !== identity
-
-#################################
-# Single-sample initialisations #
-#################################
-
-inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
-function inittrans(rng, dist::MultivariateDistribution)
-    # Get the length of the unconstrained vector
-    b = link_transform(dist)
-    d = Bijectors.output_length(b, length(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, d))
-end
-function inittrans(rng, dist::MatrixDistribution)
-    # Get the size of the unconstrained vector
-    b = link_transform(dist)
-    sz = Bijectors.output_size(b, size(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, sz...))
-end
-function inittrans(rng, dist::Distribution{CholeskyVariate})
-    # Get the size of the unconstrained vector
-    b = link_transform(dist)
-    sz = Bijectors.output_size(b, size(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, sz...))
-end
-################################
-# Multi-sample initialisations #
-################################
-
-function inittrans(rng, dist::UnivariateDistribution, n::Int)
-    return Bijectors.invlink(dist, randrealuni(rng, n))
-end
-function inittrans(rng, dist::MultivariateDistribution, n::Int)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1], n))
-end
-function inittrans(rng, dist::MatrixDistribution, n::Int)
-    return Bijectors.invlink(dist, [randrealuni(rng, size(dist)...) for _ in 1:n])
-end
-
 #######################
 # Convenience methods #
 #######################
@@ -889,7 +845,7 @@ end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
 # if some ancestor of `vn` is present in `dictlike`.
-function hasvalue(vals::AbstractDict, vn::VarName)
+function hasvalue(vals::AbstractDict{<:VarName}, vn::VarName)
     # First we check if `vn` is present as is.
     haskey(vals, vn) && return true
 
@@ -910,6 +866,39 @@ function hasvalue(vals::AbstractDict, vn::VarName)
     value = vals[VarName(vn, keyoptic)]
 
     return canview(child, value)
+end
+# TODO(penelopeysm): Figure out tuple / namedtuple distributions, and LKJCholesky (grr)
+function hasvalue(vals::AbstractDict, vn::VarName, dist::Distribution)
+    @warn "`hasvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `hasvalue(vals, vn)`."
+    return hasvalue(vals, vn)
+end
+hasvalue(vals::AbstractDict, vn::VarName, ::UnivariateDistribution) = hasvalue(vals, vn)
+function hasvalue(
+    vals::AbstractDict{<:VarName},
+    vn::VarName{sym},
+    dist::Union{MultivariateDistribution,MatrixDistribution},
+) where {sym}
+    # If `vn` is present as-is, then we are good
+    hasvalue(vals, vn) && return true
+    # If not, then we need to check inside `vals` to see if a subset of
+    # `vals` is enough to reconstruct `vn`. For example, if `vals` contains
+    # `x[1]` and `x[2]`, and `dist` is `MvNormal(zeros(2), I)`, then we
+    # can reconstruct `x`. If `dist` is `MvNormal(zeros(3), I)`, then we
+    # can't.
+    # To do this, we get the size of the distribution and iterate over all
+    # possible indices. If every index can be found in `subsumed_keys`, then we
+    # can return true.
+    sz = size(dist)
+    for idx in Iterators.product(map(Base.OneTo, sz)...)
+        new_optic = if getoptic(vn) === identity
+            Accessors.IndexLens(idx)
+        else
+            Accessors.IndexLens(idx) ∘ getoptic(vn)
+        end
+        new_vn = VarName{sym}(new_optic)
+        hasvalue(vals, new_vn) || return false
+    end
+    return true
 end
 
 """

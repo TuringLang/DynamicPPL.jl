@@ -97,13 +97,14 @@ export AbstractVarInfo,
     values_as_in_model,
     # Samplers
     Sampler,
-    SampleFromPrior,
-    SampleFromUniform,
+    # Initialisation strategies
+    PriorInit,
+    UniformInit,
+    ParamsInit,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
     contextualize,
-    SamplingContext,
     DefaultContext,
     PrefixContext,
     ConditionContext,
@@ -170,11 +171,12 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 # Necessary forward declarations
 include("utils.jl")
 include("chains.jl")
+include("contexts.jl")
+include("contexts/init.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
-include("contexts.jl")
 include("submodel.jl")
 include("varnamedvector.jl")
 include("accumulators.jl")

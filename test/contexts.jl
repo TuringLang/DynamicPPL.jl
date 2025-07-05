@@ -49,7 +49,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     contexts = Dict(
         :default => DefaultContext(),
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
-        :sampling => SamplingContext(),
         :prefix => PrefixContext(@varname(x)),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
@@ -150,11 +149,11 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             vn = @varname(x[1])
             ctx1 = PrefixContext(@varname(a))
             @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
-            ctx2 = SamplingContext(ctx1)
+            ctx2 = ConditionContext(Dict(), ctx1)
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
-            ctx4 = DynamicPPL.SamplingContext(ctx3)
+            ctx4 = FixedContext(Dict(), ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
@@ -165,29 +164,28 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_vn == @varname(a.x[1])
             @test new_ctx == DefaultContext()
 
-            ctx2 = SamplingContext(PrefixContext(@varname(a)))
+            ctx2 = FixedContext((b=4,), PrefixContext(@varname(a)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == SamplingContext()
+            @test new_ctx == FixedContext((b=4,))
 
             ctx3 = PrefixContext(@varname(a), ConditionContext((a=1,)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == ConditionContext((a=1,))
 
-            ctx4 = SamplingContext(PrefixContext(@varname(a), ConditionContext((a=1,))))
+            ctx4 = FixedContext((b=4,)PrefixContext(@varname(a), ConditionContext((a=1,))))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == SamplingContext(ConditionContext((a=1,)))
+            @test new_ctx == FixedContext((b=4,)ConditionContext((a=1,)))
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             prefix_vn = @varname(my_prefix)
-            context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
-            sampling_model = contextualize(model, context)
-            # Sample with the context.
-            varinfo = DynamicPPL.VarInfo()
-            DynamicPPL.evaluate!!(sampling_model, varinfo)
+            context = DynamicPPL.PrefixContext(prefix_vn, DefaultContext())
+            new_model = contextualize(model, context)
+            # Initialize a new varinfo with the prefixed model
+            DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
             # Extract the resulting varnames
             vns_actual = Set(keys(varinfo))
 
@@ -200,22 +198,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             # Check that all variables are prefixed correctly.
             @test vns_actual == vns_expected
         end
-    end
-
-    @testset "SamplingContext" begin
-        context = SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext())
-        @test context isa SamplingContext
-
-        # convenience constructors
-        @test SamplingContext() == context
-        @test SamplingContext(Random.default_rng()) == context
-        @test SamplingContext(SampleFromPrior()) == context
-        @test SamplingContext(DefaultContext()) == context
-        @test SamplingContext(Random.default_rng(), SampleFromPrior()) == context
-        @test SamplingContext(Random.default_rng(), DefaultContext()) == context
-        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
-        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
-        @test EnzymeCore.EnzymeRules.inactive_type(typeof(context))
     end
 
     @testset "ConditionContext" begin
