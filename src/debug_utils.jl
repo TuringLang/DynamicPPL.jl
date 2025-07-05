@@ -438,7 +438,9 @@ function check_model_and_trace(
     kwargs...,
 )
     # Execute the model with the debug context.
-    new_context = setleafcontext(model.context, InitContext(rng, Prior()))
+    new_context = DynamicPPL.setleafcontext(
+        model.context, DynamicPPL.InitContext(rng, DynamicPPL.PriorInit())
+    )
     debug_context = DebugContext(new_context; error_on_failure=error_on_failure, kwargs...)
     debug_model = DynamicPPL.contextualize(model, debug_context)
 

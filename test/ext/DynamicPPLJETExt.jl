@@ -70,10 +70,6 @@
             )
             JET.test_call(f_eval, argtypes_eval)
 
-            f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                init_model, varinfo
-            )
-            JET.test_call(f_sample, argtypes_sample)
             # For our demo models, they should all result in typed.
             is_typed = varinfo isa DynamicPPL.NTVarInfo
             @test is_typed

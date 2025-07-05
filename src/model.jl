@@ -1165,8 +1165,8 @@ function predict(
     varinfo = DynamicPPL.VarInfo(model)
     return map(chain) do params_varinfo
         vi = deepcopy(varinfo)
-        DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
-        model(rng, vi)
+        values_nt = values_as(params_varinfo, NamedTuple)
+        _, vi = DynamicPPL.init!!(rng, model, vi, ParamsInit(values_nt, PriorInit()))
         return vi
     end
 end
