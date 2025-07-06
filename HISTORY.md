@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.14
+
+Added compatibility with AbstractPPL@0.12.
+
 ## 0.36.13
 
 Added documentation for the `returned(::Model, ::MCMCChains.Chains)` method.
