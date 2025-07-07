@@ -595,9 +595,9 @@ julia> (parent ∘ parent ∘ parent)(@varname(x.a[1]))
 x
 ```
 """
-function parent(vn::VarName{sym}) where {sym}
+function parent(vn::VarName)
     p = parent(getoptic(vn))
-    return p === nothing ? VarName{sym}(identity) : VarName{sym}(p)
+    return p === nothing ? VarName{getsym(vn)}(identity) : VarName{getsym(vn)}(p)
 end
 
 """
@@ -898,7 +898,7 @@ end
 
 # For `dictlike` we need to check wether `vn` is "immediately" present, or
 # if some ancestor of `vn` is present in `dictlike`.
-function hasvalue(vals::AbstractDict, vn::VarName{sym}) where {sym}
+function hasvalue(vals::AbstractDict, vn::VarName)
     # First we check if `vn` is present as is.
     haskey(vals, vn) && return true
 
@@ -907,7 +907,7 @@ function hasvalue(vals::AbstractDict, vn::VarName{sym}) where {sym}
     # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(vals, VarName{sym}(o))
+        haskey(vals, VarName{getsym(vn)}(o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -916,7 +916,7 @@ function hasvalue(vals::AbstractDict, vn::VarName{sym}) where {sym}
     issuccess || return false
 
     # At this point we just need to check that we `canview` the value.
-    value = vals[VarName{sym}(keyoptic)]
+    value = vals[VarName{getsym(vn)}(keyoptic)]
 
     return canview(child, value)
 end
@@ -927,7 +927,7 @@ end
 Return value corresponding to `vn` in `values` by also looking
 in the the actual values of the dict.
 """
-function nested_getindex(values::AbstractDict, vn::VarName{sym}) where {sym}
+function nested_getindex(values::AbstractDict, vn::VarName)
     maybeval = get(values, vn, nothing)
     if maybeval !== nothing
         return maybeval
@@ -936,7 +936,7 @@ function nested_getindex(values::AbstractDict, vn::VarName{sym}) where {sym}
     # Split the optic into the key / `parent` and the extraction optic / `child`.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(values, VarName{sym}(o))
+        haskey(values, VarName{getsym(vn)}(o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -949,7 +949,7 @@ function nested_getindex(values::AbstractDict, vn::VarName{sym}) where {sym}
 
     # TODO: Should we also check that we `canview` the extracted `value`
     # rather than just let it fail upon `get` call?
-    value = values[VarName{sym}(keyoptic)]
+    value = values[VarName{getsym(vn)}(keyoptic)]
     return child(value)
 end
 
@@ -1065,24 +1065,23 @@ x.z[2][1]
 ```
 """
 varname_leaves(vn::VarName, ::Real) = [vn]
-function varname_leaves(
-    vn::VarName{sym}, val::AbstractArray{<:Union{Real,Missing}}
-) where {sym}
+function varname_leaves(vn::VarName, val::AbstractArray{<:Union{Real,Missing}})
     return (
-        VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)) for
+        VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)) for
         I in CartesianIndices(val)
     )
 end
-function varname_leaves(vn::VarName{sym}, val::AbstractArray) where {sym}
+function varname_leaves(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
-        varname_leaves(VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), val[I])
-        for I in CartesianIndices(val)
+        varname_leaves(
+            VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), val[I]
+        ) for I in CartesianIndices(val)
     )
 end
-function varname_leaves(vn::VarName{sym}, val::NamedTuple) where {sym}
+function varname_leaves(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do k
         optic = Accessors.PropertyLens{k}()
-        varname_leaves(VarName{sym}(optic ∘ getoptic(vn)), optic(val))
+        varname_leaves(VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val))
     end
     return Iterators.flatten(iter)
 end
@@ -1112,7 +1111,7 @@ julia> foreach(println, varname_and_value_leaves(@varname(x), x))
 (x.z[2][1], 3.0)
 ```
 
-There are also some special handling for certain types:
+There is also some special handling for certain types:
 
 ```jldoctest varname-and-value-leaves
 julia> using LinearAlgebra
@@ -1227,26 +1226,30 @@ value(leaf::Leaf) = leaf.value
 # Leaf-types.
 varname_and_value_leaves_inner(vn::VarName, x::Real) = [Leaf(vn, x)]
 function varname_and_value_leaves_inner(
-    vn::VarName{sym}, val::AbstractArray{<:Union{Real,Missing}}
-) where {sym}
+    vn::VarName, val::AbstractArray{<:Union{Real,Missing}}
+)
     return (
         Leaf(
-            VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)), val[I]
+            VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)),
+            val[I],
         ) for I in CartesianIndices(val)
     )
 end
 # Containers.
-function varname_and_value_leaves_inner(vn::VarName{sym}, val::AbstractArray) where {sym}
+function varname_and_value_leaves_inner(vn::VarName, val::AbstractArray)
     return Iterators.flatten(
         varname_and_value_leaves_inner(
-            VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)), val[I]
+            VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)),
+            val[I],
         ) for I in CartesianIndices(val)
     )
 end
-function varname_and_value_leaves_inner(vn::VarName{sym}, val::NamedTuple) where {sym}
+function varname_and_value_leaves_inner(vn::VarName, val::NamedTuple)
     iter = Iterators.map(keys(val)) do k
         optic = Accessors.PropertyLens{k}()
-        varname_and_value_leaves_inner(VarName{sym}(optic ∘ getoptic(vn)), optic(val))
+        varname_and_value_leaves_inner(
+            VarName{getsym(vn)}(optic ∘ getoptic(vn)), optic(val)
+        )
     end
 
     return Iterators.flatten(iter)
@@ -1260,20 +1263,16 @@ function varname_and_value_leaves_inner(vn::VarName, x::Cholesky)
         varname_and_value_leaves_inner(Accessors.PropertyLens{:U}() ∘ vn, x.U)
     end
 end
-function varname_and_value_leaves_inner(
-    vn::VarName{sym}, x::LinearAlgebra.LowerTriangular
-) where {sym}
+function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.LowerTriangular)
     return (
-        Leaf(VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)), x[I])
+        Leaf(VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), x[I])
         # Iteration over the lower-triangular indices.
         for I in CartesianIndices(x) if I[1] >= I[2]
     )
 end
-function varname_and_value_leaves_inner(
-    vn::VarName{sym}, x::LinearAlgebra.UpperTriangular
-) where {sym}
+function varname_and_value_leaves_inner(vn::VarName, x::LinearAlgebra.UpperTriangular)
     return (
-        Leaf(VarName{sym}(Accessors.IndexLens(Tuple(I)) ∘ AbstractPPL.getoptic(vn)), x[I])
+        Leaf(VarName{getsym(vn)}(Accessors.IndexLens(Tuple(I)) ∘ getoptic(vn)), x[I])
         # Iteration over the upper-triangular indices.
         for I in CartesianIndices(x) if I[1] <= I[2]
     )

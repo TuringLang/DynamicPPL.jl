@@ -356,15 +356,13 @@ function BangBang.setindex!!(vi::SimpleVarInfo, vals, vns::AbstractVector{<:VarN
     return vi
 end
 
-function BangBang.setindex!!(
-    vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName{sym}
-) where {sym}
+function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     dict = values_as(vi)
     # Attempt to split into `parent` and `child` optic.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(dict, VarName{sym}(o))
+        haskey(dict, VarName{getsym(vn)}(o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -374,7 +372,7 @@ function BangBang.setindex!!(
         BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName{sym}(keyoptic)
+        vn_key = VarName{getsym(vn)}(keyoptic)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
     return Accessors.@set vi.values = dict_new
