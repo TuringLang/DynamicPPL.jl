@@ -46,7 +46,7 @@ DynamicPPLMooncakeExt = ["Mooncake"]
 [compat]
 ADTypes = "1"
 AbstractMCMC = "5"
-AbstractPPL = "0.11"
+AbstractPPL = "0.11, 0.12"
 Accessors = "0.1"
 BangBang = "0.4.1"
 Bijectors = "0.13.18, 0.14, 0.15"
