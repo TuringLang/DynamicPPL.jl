@@ -481,15 +481,7 @@ If `vns` is provided, then only check if this/these varname(s) are transformed.
 """
 istrans(vi::AbstractVarInfo) = istrans(vi, collect(keys(vi)))
 function istrans(vi::AbstractVarInfo, vns::AbstractVector)
-    # This used to be: `!isempty(vns) && all(Base.Fix1(istrans, vi), vns)`.
-    # In theory that should work perfectly fine. For unbeknownst reasons,
-    # Julia 1.10 fails to infer its return type correctly. Thus we use this
-    # slightly longer definition.
-    isempty(vns) && return false
-    for vn in vns
-        istrans(vi, vn) || return false
-    end
-    return true
+    return !isempty(vns) && all(Base.Fix1(istrans, vi), vns)
 end
 
 """
