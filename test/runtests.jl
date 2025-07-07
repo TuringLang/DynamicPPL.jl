@@ -72,7 +72,6 @@ include("test_util.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
-        include("deprecated.jl")
         include("submodels.jl")
         include("bijector.jl")
     end
