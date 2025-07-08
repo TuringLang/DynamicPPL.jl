@@ -1,6 +1,6 @@
 # DynamicPPL Changelog
 
-## Unreleased
+## 0.36.15
 
 Improved performance for some models with Mooncake.jl by using `NoCache` with `Mooncake.set_to_zero!!` for DynamicPPL types.
 
