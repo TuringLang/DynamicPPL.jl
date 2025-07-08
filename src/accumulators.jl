@@ -53,10 +53,11 @@ function accumulate_observe!! end
 
 Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 
-`vn` is the name of the variable being assumed, `val` is the value of the variable, and
-`right` is the distribution on the RHS of the tilde statement. `logjac` is the log
-determinant of the Jacobian of the transformation that was done to convert the value of `vn`
-as it was given (e.g. by sampler operating in linked space) to `val`.
+`vn` is the name of the variable being assumed, `val` is the value of the variable (in the
+original, unlinked space), and `right` is the distribution on the RHS of the tilde
+statement. `logjac` is the log determinant of the Jacobian of the transformation that was
+done to convert the value of `vn` as it was given to `val`: for example, if the sampler is
+operating in linked (Euclidean) space, then logjac will be nonzero.
 
 `accumulate_assume!!` may mutate `acc`, but not any of the other arguments.
 
@@ -71,16 +72,16 @@ Return a new accumulator like `acc` but empty.
 
 The precise meaning of "empty" is that that the returned value should be such that
 `combine(acc, split(acc))` is equal to `acc`. This is used in the context of multi-threading
-where different threads may accumulate independently and the results are the combined.
+where different threads may accumulate independently and the results are then combined.
 
 See also: [`combine`](@ref)
 """
 function split end
 
 """
-    combine(acc::AbstractAccumulator, acc2::AbstractAccumulator)
+    combine(acc::TAcc, acc2::TAcc) where {TAcc<:AbstractAccumulator}
 
-Combine two accumulators of the same type. Returns a new accumulator.
+Combine two accumulators of the same type. Returns a new accumulator of the same type.
 
 See also: [`split`](@ref)
 """
@@ -126,8 +127,10 @@ end
 AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 
-# When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
-Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
+# When showing with text/plain, leave out type information about the wrapper AccumulatorTuple.
+function Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple)
+    return "AccumulatorTuple(" * show(io, mime, at.nt) * ")"
+end
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)

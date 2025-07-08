@@ -49,7 +49,7 @@ end
 
 function show_right(io::IO, d::Distribution)
     pnames = fieldnames(typeof(d))
-    uml, namevals = Distributions._use_multline_show(d, pnames)
+    _, namevals = Distributions._use_multline_show(d, pnames)
     return Distributions.show_oneline(io, d, namevals)
 end
 
@@ -76,7 +76,6 @@ Base.@kwdef struct AssumeStmt <: Stmt
     varname
     right
     value
-    varinfo = nothing
 end
 
 function Base.show(io::IO, stmt::AssumeStmt)
@@ -88,21 +87,30 @@ function Base.show(io::IO, stmt::AssumeStmt)
     print(io, " ")
     print(io, RESULT_SYMBOL)
     print(io, " ")
-    return print(io, stmt.value)
+    print(io, stmt.value)
+    return nothing
 end
 
 Base.@kwdef struct ObserveStmt <: Stmt
-    left
+    varname
     right
-    varinfo = nothing
+    value
 end
 
 function Base.show(io::IO, stmt::ObserveStmt)
     io = add_io_context(io)
-    print(io, "observe: ")
-    show_right(io, stmt.left)
+    print(io, " observe: ")
+    if stmt.varname === nothing
+        print(io, stmt.value)
+    else
+        show_varname(io, stmt.varname)
+        print(io, " (= ")
+        print(io, stmt.value)
+        print(io, ")")
+    end
     print(io, " ~ ")
-    return show_right(io, stmt.right)
+    show_right(io, stmt.right)
+    return nothing
 end
 
 # Some utility methods for extracting information from a trace.
@@ -124,192 +132,118 @@ distributions_in_stmt(stmt::AssumeStmt) = [stmt.right]
 distributions_in_stmt(stmt::ObserveStmt) = [stmt.right]
 
 """
-    DebugContext <: AbstractContext
+    DebugAccumulator <: AbstractAccumulator
 
-A context used for checking validity of a model.
+An accumulator which captures tilde-statements inside a model and attempts to catch
+errors in the model.
 
 # Fields
-$(FIELDS)
+$(TYPEDFIELDS)
 """
-struct DebugContext{C<:AbstractContext} <: AbstractContext
-    "context used for running the model"
-    context::C
+struct DebugAccumulator <: AbstractAccumulator
     "mapping from varnames to the number of times they have been seen"
     varnames_seen::OrderedDict{VarName,Int}
     "tilde statements that have been executed"
     statements::Vector{Stmt}
-    "whether to throw an error if we encounter warnings"
+    "whether to throw an error if we encounter errors in the model"
     error_on_failure::Bool
-    "whether to record the tilde statements"
-    record_statements::Bool
-    "whether to record the varinfo in every tilde statement"
-    record_varinfo::Bool
 end
 
-function DebugContext(
-    context::AbstractContext=DefaultContext();
-    varnames_seen=OrderedDict{VarName,Int}(),
-    statements=Vector{Stmt}(),
-    error_on_failure=false,
-    record_statements=true,
-    record_varinfo=false,
-)
-    return DebugContext(
-        context,
-        varnames_seen,
-        statements,
-        error_on_failure,
-        record_statements,
-        record_varinfo,
+function DebugAccumulator(error_on_failure=false)
+    return DebugAccumulator(OrderedDict{VarName,Int}(), Vector{Stmt}(), error_on_failure)
+end
+
+const _DEBUG_ACC_NAME = :Debug
+DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME
+
+function split(acc::DebugAccumulator)
+    return DebugAccumulator(
+        OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure
+    )
+end
+function combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
+    return DebugAccumulator(
+        merge(acc1.varnames_seen, acc2.varnames_seen),
+        vcat(acc1.statements, acc2.statements),
+        acc1.error_on_failure || acc2.error_on_failure,
     )
 end
 
-DynamicPPL.NodeTrait(::DebugContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::DebugContext) = context.context
-function DynamicPPL.setchildcontext(context::DebugContext, child)
-    Accessors.@set context.context = child
-end
-
-function record_varname!(context::DebugContext, varname::VarName, dist)
-    prefixed_varname = DynamicPPL.prefix(context, varname)
-    if haskey(context.varnames_seen, prefixed_varname)
-        if context.error_on_failure
-            error("varname $prefixed_varname used multiple times in model")
+function record_varname!(acc::DebugAccumulator, varname::VarName, dist)
+    if haskey(acc.varnames_seen, varname)
+        if acc.error_on_failure
+            error("varname $varname used multiple times in model")
         else
-            @warn "varname $prefixed_varname used multiple times in model"
+            @warn "varname $varname used multiple times in model"
         end
-        context.varnames_seen[prefixed_varname] += 1
+        acc.varnames_seen[varname] += 1
     else
         # We need to check:
         # 1. Does this `varname` subsume any of the other keys.
         # 2. Does any of the other keys subsume `varname`.
-        vns = collect(keys(context.varnames_seen))
+        vns = collect(keys(acc.varnames_seen))
         # Is `varname` subsumed by any of the other keys?
-        idx_parent = findfirst(Base.Fix2(subsumes, prefixed_varname), vns)
+        idx_parent = findfirst(Base.Fix2(subsumes, varname), vns)
         if idx_parent !== nothing
             varname_parent = vns[idx_parent]
-            if context.error_on_failure
+            if acc.error_on_failure
                 error(
-                    "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)",
+                    "varname $(varname_parent) used multiple times in model (subsumes $varname)",
                 )
             else
-                @warn "varname $(varname_parent) used multiple times in model (subsumes $prefixed_varname)"
+                @warn "varname $(varname_parent) used multiple times in model (subsumes $varname)"
             end
             # Update count of parent.
-            context.varnames_seen[varname_parent] += 1
+            acc.varnames_seen[varname_parent] += 1
         else
             # Does `varname` subsume any of the other keys?
-            idx_child = findfirst(Base.Fix1(subsumes, prefixed_varname), vns)
+            idx_child = findfirst(Base.Fix1(subsumes, varname), vns)
             if idx_child !== nothing
                 varname_child = vns[idx_child]
-                if context.error_on_failure
+                if acc.error_on_failure
                     error(
-                        "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)",
+                        "varname $(varname_child) used multiple times in model (subsumed by $varname)",
                     )
                 else
-                    @warn "varname $(varname_child) used multiple times in model (subsumed by $prefixed_varname)"
+                    @warn "varname $(varname_child) used multiple times in model (subsumed by $varname)"
                 end
 
                 # Update count of child.
-                context.varnames_seen[varname_child] += 1
+                acc.varnames_seen[varname_child] += 1
             end
         end
 
-        context.varnames_seen[prefixed_varname] = 1
+        acc.varnames_seen[varname] = 1
     end
-end
-
-_has_missings(x) = ismissing(x)
-function _has_missings(x::AbstractArray)
-    # Can't just use `any` because `x` might contain `undef`.
-    for i in eachindex(x)
-        if isassigned(x, i) && _has_missings(x[i])
-            return true
-        end
-    end
-    return false
 end
 
 _has_nans(x::NamedTuple) = any(_has_nans, x)
 _has_nans(x::AbstractArray) = any(_has_nans, x)
 _has_nans(x) = isnan(x)
 
-# assume
-function record_pre_tilde_assume!(context::DebugContext, vn, dist, varinfo)
-    record_varname!(context, vn, dist)
-    return nothing
-end
-
-function record_post_tilde_assume!(context::DebugContext, vn, dist, value, varinfo)
-    stmt = AssumeStmt(;
-        varname=vn,
-        right=dist,
-        value=value,
-        varinfo=context.record_varinfo ? varinfo : nothing,
-    )
-    if context.record_statements
-        push!(context.statements, stmt)
-    end
-    return nothing
-end
-
-function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
-    record_pre_tilde_assume!(context, vn, right, vi)
-    value, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, vi)
-    return value, vi
-end
-function DynamicPPL.tilde_assume(
-    rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
+function DynamicPPL.accumulate_assume!!(
+    acc::DebugAccumulator, val, _logjac, vn::VarName, right::Distribution
 )
-    record_pre_tilde_assume!(context, vn, right, vi)
-    value, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, vi)
-    return value, vi
+    record_varname!(acc, vn, right)
+    stmt = AssumeStmt(; varname=vn, right=right, value=val)
+    push!(acc.statements, stmt)
+    return acc
 end
 
-# observe
-function record_pre_tilde_observe!(context::DebugContext, left, dist, varinfo)
-    # Check for `missing`s; these should not end up here.
-    if _has_missings(left)
-        error(
-            "Encountered `missing` value(s) on the left-hand side" *
-            " of an observe statement. Using `missing` to de-condition" *
-            " a variable is only supported for univariate distributions," *
-            " not for $dist.",
-        )
-    end
+function DynamicPPL.accumulate_observe!!(
+    acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}
+)
     # Check for NaN's as well
-    if _has_nans(left)
+    if _has_nans(val)
         error(
             "Encountered a NaN value on the left-hand side of an" *
             " observe statement; this may indicate that your data" *
             " contain NaN values.",
         )
     end
-end
-
-function record_post_tilde_observe!(context::DebugContext, left, right, varinfo)
-    stmt = ObserveStmt(;
-        left=left, right=right, varinfo=context.record_varinfo ? varinfo : nothing
-    )
-    if context.record_statements
-        push!(context.statements, stmt)
-    end
-    return nothing
-end
-
-function DynamicPPL.tilde_observe!!(context::DebugContext, right, left, vn, vi)
-    record_pre_tilde_observe!(context, left, right, vi)
-    vi = DynamicPPL.tilde_observe!!(childcontext(context), right, left, vn, vi)
-    record_post_tilde_observe!(context, left, right, vi)
-    return vi
-end
-function DynamicPPL.tilde_observe!!(context::DebugContext, sampler, right, left, vn, vi)
-    record_pre_tilde_observe!(context, left, right, vi)
-    vi = DynamicPPL.tilde_observe!!(childcontext(context), sampler, right, left, vn, vi)
-    record_post_tilde_observe!(context, left, right, vi)
-    return vi
+    stmt = ObserveStmt(; varname=vn, right=right, value=val)
+    push!(acc.statements, stmt)
+    return acc
 end
 
 _conditioned_varnames(d::AbstractDict) = keys(d)
@@ -357,26 +291,26 @@ function check_model_pre_evaluation(model::Model)
     return issuccess
 end
 
-function check_model_post_evaluation(model::Model)
-    return check_varnames_seen(model.context.varnames_seen)
+function check_model_post_evaluation(acc::DebugAccumulator)
+    return check_varnames_seen(acc.varnames_seen)
 end
 
 """
-    check_model_and_trace([rng, ]model::Model; kwargs...)
+    check_model_and_trace(model::Model, varinfo::AbstractVarInfo; error_on_failure=false)
 
-Check that `model` is valid, warning about any potential issues.
+Check that evaluating `model` with the given `varinfo` is valid, warning about any potential
+issues.
 
 This will check the model for the following issues:
+
 1. Repeated usage of the same varname in a model.
-2. Incorrectly treating a variable as random rather than fixed, and vice versa.
+2. `NaN` on the left-hand side of observe statements.
 
 # Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use when evaluating the model.
 - `model::Model`: The model to check.
+- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model.
 
-# Keyword Arguments
-- `varinfo::VarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-- `context::AbstractContext`: The context to use when evaluating the model. Default: [`DefaultContext`](@ref).
+# Keyword Argument
 - `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
 
 # Returns
@@ -394,7 +328,9 @@ julia> rng = StableRNG(42);
 julia> @model demo_correct() = x ~ Normal()
 demo_correct (generic function with 2 methods)
 
-julia> issuccess, trace = check_model_and_trace(rng, demo_correct());
+julia> model = demo_correct(); varinfo = VarInfo(rng, model);
+
+julia> issuccess, trace = check_model_and_trace(model, varinfo);
 
 julia> issuccess
 true
@@ -427,36 +363,27 @@ julia> issuccess, trace = check_model_and_trace(rng, demo_incorrect(); error_on_
 ERROR: varname x used multiple times in model
 ```
 """
-function check_model_and_trace(model::Model; kwargs...)
-    return check_model_and_trace(Random.default_rng(), model; kwargs...)
-end
 function check_model_and_trace(
-    rng::Random.AbstractRNG,
-    model::Model;
-    varinfo=VarInfo(),
-    error_on_failure=false,
-    kwargs...,
+    model::Model, varinfo::AbstractVarInfo; error_on_failure=false
 )
-    # Execute the model with the debug context.
-    debug_context = DebugContext(
-        SamplingContext(rng, model.context); error_on_failure=error_on_failure, kwargs...
-    )
-    debug_model = DynamicPPL.contextualize(model, debug_context)
+    # Add debug accumulator to the VarInfo.
+    varinfo = DynamicPPL.setacc!!(deepcopy(varinfo), DebugAccumulator(error_on_failure))
 
     # Perform checks before evaluating the model.
-    issuccess = check_model_pre_evaluation(debug_model)
+    issuccess = check_model_pre_evaluation(model)
 
     # Force single-threaded execution.
-    DynamicPPL.evaluate_threadunsafe!!(debug_model, varinfo)
+    DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
 
     # Perform checks after evaluating the model.
-    issuccess &= check_model_post_evaluation(debug_model)
+    debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))
+    issuccess = issuccess && check_model_post_evaluation(debug_acc)
 
     if !issuccess && error_on_failure
         error("model check failed")
     end
 
-    trace = debug_context.statements
+    trace = debug_acc.statements
     return issuccess, trace
 end
 
@@ -471,10 +398,8 @@ and details of which types of checks are performed.
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 """
-check_model(model::Model; kwargs...) = first(check_model_and_trace(model; kwargs...))
-function check_model(rng::Random.AbstractRNG, model::Model; kwargs...)
-    return first(check_model_and_trace(rng, model; kwargs...))
-end
+check_model(model::Model, varinfo::AbstractVarInfo=VarInfo(model); error_on_failure=false) =
+    first(check_model_and_trace(model, varinfo; error_on_failure=error_on_failure))
 
 # Convenience method used to check if all elements in a list are the same.
 function all_the_same(xs)
@@ -503,19 +428,16 @@ and checking if the model is consistent across runs.
 
 # Keyword Arguments
 - `num_evals::Int`: The number of evaluations to perform. Default: `5`.
-- `kwargs...`: Additional keyword arguments to pass to [`check_model_and_trace`](@ref).
+- `error_on_failure::Bool`: Whether to throw an error if any of the `num_evals` model
+  checks fail. Default: `false`.
 """
-function has_static_constraints(model::Model; kwargs...)
-    return has_static_constraints(Random.default_rng(), model; kwargs...)
-end
 function has_static_constraints(
-    rng::Random.AbstractRNG, model::Model; num_evals=5, kwargs...
+    rng::Random.AbstractRNG, model::Model; num_evals::Int=5, error_on_failure::Bool=false
 )
+    new_model = DynamicPPL.contextualize(model, SamplingContext(rng, SampleFromPrior()))
     results = map(1:num_evals) do _
-        check_model_and_trace(rng, model; kwargs...)
+        check_model_and_trace(new_model, VarInfo(); error_on_failure=error_on_failure)
     end
-    issuccess = all(first, results)
-    issuccess || throw(ArgumentError("model check failed"))
 
     # Extract the distributions and the corresponding bijectors for each run.
     traces = map(last, results)
@@ -526,6 +448,13 @@ function has_static_constraints(
 
     # Check if the distributions are the same across all runs.
     return all_the_same(transforms)
+end
+function has_static_constraints(
+    model::Model; num_evals::Int=5, error_on_failure::Bool=false
+)
+    return has_static_constraints(
+        Random.default_rng(), model; num_evals=num_evals, error_on_failure=error_on_failure
+    )
 end
 
 """
