@@ -472,7 +472,7 @@ end
 """
     conditioned(context::AbstractContext)
 
-Return a `Dict{VarName,Any}` of the values that are conditioned on under `context`.
+Return `NamedTuple` of values that are conditioned on under context`.
 
 Note that this will recursively traverse the context stack and return
 a merged version of the condition values.
@@ -480,14 +480,14 @@ a merged version of the condition values.
 function conditioned(context::AbstractContext)
     return conditioned(NodeTrait(conditioned, context), context)
 end
-conditioned(::IsLeaf, context) = Dict{VarName,Any}()
+conditioned(::IsLeaf, context) = NamedTuple()
 conditioned(::IsParent, context) = conditioned(childcontext(context))
 function conditioned(context::ConditionContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
     # the `conditioned` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
-    return _merge(conditioned(childcontext(context)), to_varname_dict(context.values))
+    return _merge(context.values, conditioned(childcontext(context)))
 end
 function conditioned(context::PrefixContext)
     return conditioned(collapse_prefix_stack(context))
