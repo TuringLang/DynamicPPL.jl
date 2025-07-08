@@ -129,7 +129,10 @@ AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 
 # When showing with text/plain, leave out type information about the wrapper AccumulatorTuple.
 function Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple)
-    return "AccumulatorTuple(" * show(io, mime, at.nt) * ")"
+    print(io, "AccumulatorTuple(")
+    show(io, mime, at.nt)
+    print(io, ")")
+    return nothing
 end
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
