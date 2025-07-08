@@ -59,6 +59,14 @@ And a couple of more internal changes:
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
   - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
 
+## 0.36.14
+
+Added compatibility with AbstractPPL@0.12.
+
+## 0.36.13
+
+Added documentation for the `returned(::Model, ::MCMCChains.Chains)` method.
+
 ## 0.36.12
 
 Removed several unexported functions.
