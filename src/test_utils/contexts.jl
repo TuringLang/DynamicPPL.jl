@@ -63,10 +63,12 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     # TODO(torfjelde): Make the `varinfo` used for testing a kwarg once it makes sense for other varinfos.
     # Untyped varinfo.
     varinfo_untyped = DynamicPPL.VarInfo()
-    @test (DynamicPPL.evaluate!!(model, varinfo_untyped, SamplingContext(context)); true)
-    @test (DynamicPPL.evaluate!!(model, varinfo_untyped, context); true)
+    model_with_spl = contextualize(model, SamplingContext(context))
+    model_without_spl = contextualize(model, context)
+    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_untyped) isa Any
+    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_untyped) isa Any
     # Typed varinfo.
     varinfo_typed = DynamicPPL.typed_varinfo(varinfo_untyped)
-    @test (DynamicPPL.evaluate!!(model, varinfo_typed, SamplingContext(context)); true)
-    @test (DynamicPPL.evaluate!!(model, varinfo_typed, context); true)
+    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_typed) isa Any
+    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_typed) isa Any
 end

@@ -258,7 +258,7 @@ julia> # However, it's not possible to condition `inner` directly.
        conditioned_model_fail = model | (inner = 1.0, );
 
 julia> conditioned_model_fail()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
 """
@@ -864,12 +864,6 @@ If multiple threads are available, the varinfo provided will be wrapped in a
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
-
-    evaluate!!(model::Model, varinfo, context)
-
-When an extra context stack is provided, the model's context is inserted into
-that context stack. See `combine_model_and_external_contexts`. This method is
-deprecated.
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return if use_threadsafe_eval(model.context, varinfo)
@@ -877,17 +871,6 @@ function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     else
         evaluate_threadunsafe!!(model, varinfo)
     end
-end
-function AbstractPPL.evaluate!!(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext
-)
-    Base.depwarn(
-        "The `context` argument to evaluate!!(model, varinfo, context) is deprecated.",
-        :dynamicppl_evaluate_context,
-    )
-    new_ctx = combine_model_and_external_contexts(model.context, context)
-    model = contextualize(model, new_ctx)
-    return evaluate!!(model, varinfo)
 end
 
 """
@@ -932,53 +915,13 @@ Evaluate the `model` with the given `varinfo`.
 
 This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
 reset the log probability of the `varinfo` before running.
-
-    _evaluate!!(model::Model, varinfo, context)
-
-If an additional `context` is provided, the model's context is combined with
-that context before evaluation.
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
     return model.f(args...; kwargs...)
 end
-function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
-    # TODO(penelopeysm): We don't really need this, but it's a useful
-    # convenience method. We could remove it after we get rid of the
-    # evaluate_threadsafe!! stuff (in favour of making users call evaluate!!
-    # with a TSVI themselves).
-    new_ctx = combine_model_and_external_contexts(model.context, context)
-    model = contextualize(model, new_ctx)
-    return _evaluate!!(model, varinfo)
-end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
-
-"""
-    combine_model_and_external_contexts(model_context, external_context)
-
-Combine a context from a model and an external context into a single context.
-
-The resulting context stack has the following structure:
-
-    `external_context` -> `childcontext(external_context)` -> ... ->
-    `model_context` -> `childcontext(model_context)` -> ... ->
-    `leafcontext(external_context)`
-
-The reason for this is that we want to give `external_context` precedence over
-`model_context`, while also preserving the leaf context of `external_context`.
-We can do this by
-
-1. Set the leaf context of `model_context` to `leafcontext(external_context)`.
-2. Set leaf context of `external_context` to the context resulting from (1).
-"""
-function combine_model_and_external_contexts(
-    model_context::AbstractContext, external_context::AbstractContext
-)
-    return setleafcontext(
-        external_context, setleafcontext(model_context, leafcontext(external_context))
-    )
-end
 
 """
     make_evaluate_args_and_kwargs(model, varinfo)

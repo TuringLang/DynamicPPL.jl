@@ -1,97 +1,12 @@
 """
-    is_rhs_model(x)
+    Submodel{M,AutoPrefix}
 
-Return `true` if `x` is a model or model wrapper, and `false` otherwise.
+A wrapper around a model, plus a flag indicating whether it should be automatically
+prefixed with the left-hand variable in a `~` statement.
 """
-is_rhs_model(x) = false
-
-"""
-    Distributional
-
-Abstract type for type indicating that something is "distributional".
-"""
-abstract type Distributional end
-
-"""
-    should_auto_prefix(distributional)
-
-Return `true` if the `distributional` should use automatic prefixing, and `false` otherwise.
-"""
-function should_auto_prefix end
-
-"""
-    is_rhs_model(x)
-
-Return `true` if the `distributional` is a model, and `false` otherwise.
-"""
-function is_rhs_model end
-
-"""
-    Sampleable{M} <: Distributional
-
-A wrapper around a model indicating it is sampleable.
-"""
-struct Sampleable{M,AutoPrefix} <: Distributional
+struct Submodel{M,AutoPrefix}
     model::M
 end
-
-should_auto_prefix(::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix} = AutoPrefix
-is_rhs_model(x::Sampleable) = is_rhs_model(x.model)
-
-# TODO: Export this if it end up having a purpose beyond `to_submodel`.
-"""
-    to_sampleable(model[, auto_prefix])
-
-Return a wrapper around `model` indicating it is sampleable.
-
-# Arguments
-- `model::Model`: the model to wrap.
-- `auto_prefix::Bool`: whether to prefix the variables in the model. Default: `true`.
-"""
-to_sampleable(model, auto_prefix::Bool=true) = Sampleable{typeof(model),auto_prefix}(model)
-
-"""
-    rand_like!!(model_wrap, context, varinfo)
-
-Returns a tuple with the first element being the realization and the second the updated varinfo.
-
-# Arguments
-- `model_wrap::ReturnedModelWrapper`: the wrapper of the model to use.
-- `context::AbstractContext`: the context to use for evaluation.
-- `varinfo::AbstractVarInfo`: the varinfo to use for evaluation.
-    """
-function rand_like!!(
-    model_wrap::Sampleable, context::AbstractContext, varinfo::AbstractVarInfo
-)
-    return rand_like!!(model_wrap.model, context, varinfo)
-end
-
-"""
-    ReturnedModelWrapper
-
-A wrapper around a model indicating it is a model over its return values.
-
-This should rarely be constructed explicitly; see [`returned(model)`](@ref) instead.
-"""
-struct ReturnedModelWrapper{M<:Model}
-    model::M
-end
-
-is_rhs_model(::ReturnedModelWrapper) = true
-
-function rand_like!!(
-    model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
-)
-    # Return's the value and the (possibly mutated) varinfo.
-    return _evaluate!!(model_wrap.model, varinfo, context)
-end
-
-"""
-    returned(model)
-
-Return a `model` wrapper indicating that it is a model over its return-values.
-"""
-returned(model::Model) = ReturnedModelWrapper(model)
 
 """
     to_submodel(model::Model[, auto_prefix::Bool])
@@ -106,8 +21,8 @@ the model can be sampled from but not necessarily evaluated for its log density.
     `left ~ right` such as [`condition`](@ref), will also not work with `to_submodel`.
 
 !!! warning
-    To avoid variable names clashing between models, it is recommend leave argument `auto_prefix` equal to `true`.
-    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly.
+    To avoid variable names clashing between models, it is recommended to leave the argument `auto_prefix` equal to `true`.
+    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly, i.e. `to_submodel(prefix(model, @varname(my_prefix)))`
 
 # Arguments
 - `model::Model`: the model to wrap.
@@ -231,9 +146,50 @@ illegal_likelihood (generic function with 2 methods)
 julia> model = illegal_likelihood() | (a = 1.0,);
 
 julia> model()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
 """
-to_submodel(model::Model, auto_prefix::Bool=true) =
-    to_sampleable(returned(model), auto_prefix)
+to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
+
+# When automatic prefixing is used, the submodel itself doesn't carry the
+# prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
+# is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
+# passed into this function.
+#
+# `parent_context` here refers to the context of the model that contains the
+# submodel.
+function _evaluate!!(
+    submodel::Submodel{M,AutoPrefix},
+    vi::AbstractVarInfo,
+    parent_context::AbstractContext,
+    left_vn::VarName,
+) where {M<:Model,AutoPrefix}
+    # First, we construct the context to be used when evaluating the submodel. There
+    # are several considerations here:
+    # (1) We need to apply an appropriate PrefixContext when evaluating the submodel, but
+    # _only_ if automatic prefixing is supposed to be applied.
+    submodel_context_prefixed = if AutoPrefix
+        PrefixContext(left_vn, submodel.model.context)
+    else
+        submodel.model.context
+    end
+
+    # (2) We need to respect the leaf-context of the parent model. This, unfortunately,
+    # means disregarding the leaf-context of the submodel.
+    submodel_context = setleafcontext(
+        submodel_context_prefixed, leafcontext(parent_context)
+    )
+
+    # (3) We need to use the parent model's context to wrap the whole thing, so that
+    # e.g. if the user conditions the parent model, the conditioned variables will be
+    # correctly picked up when evaluating the submodel.
+    eval_context = setleafcontext(parent_context, submodel_context)
+
+    # (4) Finally, we need to store that context inside the submodel.
+    model = contextualize(submodel.model, eval_context)
+
+    # Once that's all set up nicely, we can just _evaluate!! the wrapped model. This
+    # returns a tuple of submodel.model's return value and the new varinfo.
+    return _evaluate!!(model, vi)
+end
