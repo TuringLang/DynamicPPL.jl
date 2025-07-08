@@ -487,7 +487,7 @@ function conditioned(context::ConditionContext)
     # is that the outermost `context` takes precendence, hence when resolving
     # the `conditioned` variables we need to ensure that `context.values` takes
     # precedence over decendants of `context`.
-    return _merge(to_varname_dict(context.values), conditioned(childcontext(context)))
+    return _merge(conditioned(childcontext(context)), to_varname_dict(context.values))
 end
 function conditioned(context::PrefixContext)
     return conditioned(collapse_prefix_stack(context))
