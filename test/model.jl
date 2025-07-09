@@ -162,12 +162,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             for i in 1:10
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.default_rng(), vi, sampler)
+                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
                 vals = vi[:]
 
                 Random.seed!(100 + i)
                 vi = VarInfo()
-                model(Random.default_rng(), vi, sampler)
+                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
                 @test vi[:] == vals
             end
         end
@@ -223,7 +223,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         # Second component of return-value of `evaluate!!` should
         # be a `DynamicPPL.AbstractVarInfo`.
-        evaluate_retval = DynamicPPL.evaluate!!(model, vi, DefaultContext())
+        evaluate_retval = DynamicPPL.evaluate!!(model, vi)
         @test evaluate_retval[2] isa DynamicPPL.AbstractVarInfo
 
         # Should not return `AbstractVarInfo` when we call the model.
@@ -332,11 +332,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(
-                DynamicPPL.evaluate!!(
-                    model, SimpleVarInfo(OrderedDict()), SamplingContext()
-                ),
-            )
+            vi = last(DynamicPPL.evaluate_and_sample!!(model, SimpleVarInfo(OrderedDict())))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -397,7 +393,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             models_to_test = [
                 DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
-            context = DefaultContext()
             @testset "$(model.f)" for model in models_to_test
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -407,13 +402,13 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                     @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo, context))
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo))
                         true
                     end
 
                     varinfo_linked = DynamicPPL.link(varinfo, model)
                     @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked, context))
+                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked))
                         true
                     end
                 end
@@ -492,7 +487,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             varinfo_linked = DynamicPPL.link(varinfo, model)
             varinfo_linked_result = last(
-                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked), DefaultContext())
+                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked))
             )
             @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
         end
@@ -596,7 +591,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             xs_train = 1:0.1:10
             ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
             m_lin_reg = linear_reg(xs_train, ys_train)
-            chain = [evaluate!!(m_lin_reg)[2] for _ in 1:10000]
+            chain = [
+                last(DynamicPPL.evaluate_and_sample!!(m_lin_reg, VarInfo())) for
+                _ in 1:10000
+            ]
 
             # chain is generated from the prior
             @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1
@@ -616,5 +614,16 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 predicted_vis[i][@varname(y[2])] for i in eachindex(predicted_vis)
             ]) ≈ 1.0 * xs_test[2] rtol = 0.1
         end
+    end
+
+    @testset "ProductNamedTupleDistribution sampling" begin
+        priors = (a=Normal(), b=Normal())
+        d = product_distribution(priors)
+        @model function sample_nt(priors_dist)
+            x ~ priors_dist
+            return x
+        end
+        model = sample_nt(d)
+        @test model() isa NamedTuple
     end
 end

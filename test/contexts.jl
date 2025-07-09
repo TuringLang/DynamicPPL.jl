@@ -184,9 +184,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             prefix_vn = @varname(my_prefix)
             context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
+            sampling_model = contextualize(model, context)
             # Sample with the context.
             varinfo = DynamicPPL.VarInfo()
-            DynamicPPL.evaluate!!(model, varinfo, context)
+            DynamicPPL.evaluate!!(sampling_model, varinfo)
             # Extract the resulting varnames
             vns_actual = Set(keys(varinfo))
 

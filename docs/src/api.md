@@ -36,6 +36,12 @@ getargnames
 getmissings
 ```
 
+The context of a model can be set using [`contextualize`](@ref):
+
+```@docs
+contextualize
+```
+
 ## Evaluation
 
 With [`rand`](@ref) one can draw samples from the prior distribution of a [`Model`](@ref).
@@ -140,22 +146,10 @@ to_submodel
 
 Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
 
-In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
-
-```@docs
-@submodel
-```
-
 In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
 
 ```@docs
 DynamicPPL.prefix
-```
-
-Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
-
-```@docs
-returned(::Model)
 ```
 
 ## Utilities
@@ -166,9 +160,10 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples) or a single sample represented as a `NamedTuple`.
 
 ```@docs
+returned(::DynamicPPL.Model, ::MCMCChains.Chains)
 returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
@@ -211,6 +206,21 @@ To test and/or benchmark the performance of an AD backend on a model, DynamicPPL
 
 ```@docs
 DynamicPPL.TestUtils.AD.run_ad
+```
+
+The default test setting is to compare against ForwardDiff.
+You can have more fine-grained control over how to test the AD backend using the following types:
+
+```@docs
+DynamicPPL.TestUtils.AD.AbstractADCorrectnessTestSetting
+DynamicPPL.TestUtils.AD.WithBackend
+DynamicPPL.TestUtils.AD.WithExpectedResult
+DynamicPPL.TestUtils.AD.NoTest
+```
+
+These are returned / thrown by the `run_ad` function:
+
+```@docs
 DynamicPPL.TestUtils.AD.ADResult
 DynamicPPL.TestUtils.AD.ADIncorrectException
 ```
@@ -438,13 +448,21 @@ DynamicPPL.varname_and_value_leaves
 
 ### Evaluation Contexts
 
-Internally, both sampling and evaluation of log densities are performed with [`AbstractPPL.evaluate!!`](@ref).
+Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
 ```@docs
 AbstractPPL.evaluate!!
 ```
 
-The behaviour of a model execution can be changed with evaluation contexts that are passed as additional argument to the model function.
+This method mutates the `varinfo` used for execution.
+By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
+To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
+
+```@docs
+DynamicPPL.evaluate_and_sample!!
+```
+
+The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs

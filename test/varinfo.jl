@@ -67,19 +67,11 @@ end
 
     @testset "Base" begin
         # Test Base functions:
-        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
+        #   in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
-        csym = gensym()
-        vn1 = @varname x[1][2]
-        @test string(vn1) == "x[1][2]"
-        @test Symbol(vn1) == Symbol("x[1][2]")
 
-        vn2 = @varname x[1][2]
-        @test vn2 == vn1
-        @test hash(vn2) == hash(vn1)
-
-        function test_base!!(vi_original)
-            vi = empty!!(vi_original)
+        function test_base(vi_original)
+            vi = deepcopy(vi_original)
             @test getlogjoint(vi) == 0
             @test isempty(vi[:])
 
@@ -97,8 +89,10 @@ end
 
             @test length(vi[vn]) == 1
             @test vi[vn] == r
+            @test vi[:] == [r]
             vi = DynamicPPL.setindex!!(vi, 2 * r, vn)
             @test vi[vn] == 2 * r
+            @test vi[:] == [2 * r]
 
             # TODO(mhauru) Implement these functions for other VarInfo types too.
             if vi isa DynamicPPL.UntypedVectorVarInfo
@@ -113,12 +107,11 @@ end
             @test ~isempty(vi)
         end
 
-        vi = VarInfo()
-        test_base!!(vi)
-        test_base!!(DynamicPPL.typed_varinfo(vi))
-        test_base!!(SimpleVarInfo())
-        test_base!!(SimpleVarInfo(Dict()))
-        test_base!!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
+        test_base(VarInfo())
+        test_base(DynamicPPL.typed_varinfo(VarInfo()))
+        test_base(SimpleVarInfo())
+        test_base(SimpleVarInfo(Dict()))
+        test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
     @testset "get/set/acc/resetlogp" begin
@@ -210,10 +203,12 @@ end
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogLikelihood" getlogp(vi)
-        @test_throws "has no field LogLikelihood" getlogjoint(vi)
-        @test_throws "has no field VariableOrder" get_num_produce(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogLikelihood" getlogp(vi)
+        @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -228,20 +223,24 @@ end
                 m, DynamicPPL.setaccs!!(deepcopy(vi), (VariableOrderAccumulator(),))
             ),
         )
-        @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogPrior" getlogp(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
         @test get_num_produce(vi) == 2
 
         # Test evaluating without any accumulators.
         vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
-        @test_throws "has no field LogPrior" getlogprior(vi)
-        @test_throws "has no field LogLikelihood" getloglikelihood(vi)
-        @test_throws "has no field LogPrior" getlogp(vi)
-        @test_throws "has no field LogPrior" getlogjoint(vi)
-        @test_throws "has no field VariableOrder" get_num_produce(vi)
-        @test_throws "has no field VariableOrder" reset_num_produce!!(vi)
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
+        @test_throws r"has no field `?VariableOrder" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
@@ -282,14 +281,14 @@ end
     @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, s^2 * I)
         end
 
         @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
 
             m = TV(undef, n)
             for i in eachindex(m)
@@ -487,10 +486,17 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model does not perform linking
+        # Check that instantiating the model using SampleFromUniform does not
+        # perform linking
+        # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
+        # specifically in this test is because SFU samples from the linked 
+        # distribution i.e. in unconstrained space. However, it does this not
+        # by linking the varinfo but by transforming the distributions on the
+        # fly. That's why it's worth specifically checking that it can do this
+        # without having to change the VarInfo object.
         vi = VarInfo()
         meta = vi.metadata
-        model(vi, SampleFromUniform())
+        _, vi = DynamicPPL.evaluate_and_sample!!(model, vi, SampleFromUniform())
         @test all(x -> !istrans(vi, x), meta.vns)
 
         # Check that linking and invlinking set the `trans` flag accordingly
@@ -547,10 +553,10 @@ end
     end
 
     @testset "istrans" begin
-        @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
+        @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
-        dist = truncated(Normal(), 0, Inf)
+        dist = truncated(Normal(); lower=0)
 
         ### `VarInfo`
         # Need to run once since we can't specify that we want to _sample_
@@ -564,7 +570,7 @@ end
         vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -573,7 +579,7 @@ end
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -582,7 +588,7 @@ end
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -591,7 +597,7 @@ end
         ## `SimpleVarInfo{<:NamedTuple}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -599,7 +605,7 @@ end
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -607,7 +613,7 @@ end
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
         # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -689,7 +695,7 @@ end
                     end
 
                     # Evaluate the model once to update the logp of the varinfo.
-                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()))
+                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
 
                     varinfo_linked = if mutating
                         DynamicPPL.link!!(deepcopy(varinfo), model)
@@ -992,9 +998,7 @@ end
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo(2)
-        varinfo2 = last(
-            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
-        )
+        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
         for vn in [@varname(x[1]), @varname(x[2])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -1013,9 +1017,7 @@ end
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo_dot(2)
-        varinfo2 = last(
-            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
-        )
+        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
         for vn in [@varname(x), @varname(y[1])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end

@@ -51,16 +51,17 @@ function _transform!!(
     vi::AbstractVarInfo,
     model::Model,
 )
-    # To transform using DynamicTransformationContext, we evaluate the model, but we do not
-    # need to use any accumulators other than LogPriorAccumulator (which is affected by the Jacobian of
-    # the transformation).
+    # To transform using DynamicTransformationContext, we evaluate the model using that as the leaf context:
+    model = contextualize(model, setleafcontext(model.context, ctx))
+    # but we do not need to use any accumulators other than LogPriorAccumulator
+    # (which is affected by the Jacobian of the transformation).
     accs = getaccs(vi)
     has_logprior = haskey(accs, Val(:LogPrior))
     if has_logprior
         old_logprior = getacc(accs, Val(:LogPrior))
         vi = setaccs!!(vi, (old_logprior,))
     end
-    vi = settrans!!(last(evaluate!!(model, vi, ctx)), t)
+    vi = settrans!!(last(evaluate!!(model, vi)), t)
     # Restore the accumulators.
     if has_logprior
         new_logprior = getacc(vi, Val(:LogPrior))

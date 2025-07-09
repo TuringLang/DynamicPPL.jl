@@ -115,7 +115,7 @@ function DynamicPPL.predict(
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
         DynamicPPL.setval_and_resample!(varinfo, parameter_only_chain, sample_idx, chain_idx)
-        model(rng, varinfo, DynamicPPL.SampleFromPrior())
+        varinfo = last(DynamicPPL.evaluate_and_sample!!(rng, model, varinfo))
 
         vals = DynamicPPL.values_as_in_model(model, false, varinfo)
         varname_vals = mapreduce(
