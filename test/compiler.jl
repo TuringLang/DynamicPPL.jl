@@ -498,7 +498,7 @@ module Issue537 end
         @model function demo(y)
             α ~ Uniform()
             μ ~ Normal()
-            σ ~ truncated(Normal(), 0, Inf)
+            σ ~ truncated(Normal(); lower=0)
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
