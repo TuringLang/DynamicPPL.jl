@@ -70,11 +70,11 @@ julia> # (✓) Sort of fast, but only possible at runtime.
 
 julia> # In addtion, we can only access varnames as they appear in the model!
        vi[@varname(x)]
-ERROR: KeyError: key x not found
+ERROR: getvalue: x was not found in the values provided
 [...]
 
 julia> vi[@varname(x[1:2])]
-ERROR: KeyError: key x[1:2] not found
+ERROR: getvalue: x[1:2] was not found in the values provided
 [...]
 ```
 
@@ -177,11 +177,11 @@ julia> svi_dict[@varname(m.a[1])]
 1.0
 
 julia> svi_dict[@varname(m.a[2])]
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+ERROR: getvalue: m.a[2] was not found in the values provided
 [...]
 
 julia> svi_dict[@varname(m.b)]
-ERROR: type NamedTuple has no field b
+ERROR: getvalue: m.b was not found in the values provided
 [...]
 ```
 """
