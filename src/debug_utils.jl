@@ -394,17 +394,15 @@ function check_model_and_trace(
 end
 
 """
-    check_model([rng, ]model::Model; kwargs...)
+    check_model(model::Model, varinfo::AbstractVarInfo; error_on_failure=false)
 
-Check that `model` is valid, warning about any potential issues.
-
-See [`check_model_and_trace`](@ref) for more details on supported keyword arguments
-and details of which types of checks are performed.
+Check that `model` is valid, warning about any potential issues (or erroring if
+`error_on_failure` is `true`).
 
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 """
-check_model(model::Model, varinfo::AbstractVarInfo=VarInfo(model); error_on_failure=false) =
+check_model(model::Model, varinfo::AbstractVarInfo; error_on_failure=false) =
     first(check_model_and_trace(model, varinfo; error_on_failure=error_on_failure))
 
 # Convenience method used to check if all elements in a list are the same.
@@ -421,7 +419,7 @@ function all_the_same(xs)
 end
 
 """
-    has_static_constraints([rng, ]model::Model; num_evals=5, kwargs...)
+    has_static_constraints([rng, ]model::Model; num_evals=5, error_on_failure=false)
 
 Return `true` if the model has static constraints, `false` otherwise.
 
