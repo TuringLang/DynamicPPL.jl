@@ -147,17 +147,11 @@ function tilde_assume(
     # are linked.
     insert_transformed_value = in_varinfo ? istrans(vi, vn) : istrans(vi)
     f = if insert_transformed_value
-        to_linked_internal_transform(vi, vn, dist)
+        link_transform(dist)
     else
-        to_internal_transform(vi, vn, dist)
+        identity
     end
-    # TODO(penelopeysm): We would really like to do:
-    #     y, logjac = with_logabsdet_jacobian(f, x)
-    # Unfortunately, `to_{linked_}internal_transform` returns a function that
-    # always converts x to a vector, i.e., if dist is univariate, f(x) will be
-    # a vector of length 1. It would be nice if we could unify these.
-    y = f(x)
-    logjac = logabsdetjac(insert_transformed_value ? link_transform(dist) : identity, x)
+    y, logjac = with_logabsdet_jacobian(f, x)
     # Add the new value to the VarInfo. `push!!` errors if the value already
     # exists, hence the need for setindex!!.
     if in_varinfo

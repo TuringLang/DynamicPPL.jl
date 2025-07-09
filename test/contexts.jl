@@ -20,8 +20,9 @@ using DynamicPPL:
     hasconditioned_nested,
     getconditioned_nested,
     collapse_prefix_stack,
-    prefix_cond_and_fixed_variables,
-    getvalue
+    prefix_cond_and_fixed_variables
+using LinearAlgebra: I
+using Random: Xoshiro
 
 using EnzymeCore
 
@@ -103,7 +104,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # sometimes only the main symbol (e.g. it contains `x` when
                 # `vn` is `x[1]`)
                 for vn in conditioned_vns
-                    val = DynamicPPL.getvalue(conditioned_values, vn)
+                    val = getvalue(conditioned_values, vn)
                     # These VarNames are present in the conditioning values, so
                     # we should always be able to extract the value.
                     @test hasconditioned_nested(context, vn)
@@ -433,12 +434,180 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     end
 
     @testset "InitContext" begin
-        @testset "PriorInit" begin end
+        empty_varinfos = [
+            VarInfo(),
+            DynamicPPL.typed_varinfo(VarInfo()),
+            VarInfo(DynamicPPL.VarNamedVector()),
+            DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
+            SimpleVarInfo(),
+            SimpleVarInfo(Dict{VarName,Any}()),
+        ]
 
-        @testset "UniformInit" begin end
+        @model function test_init_model()
+            x ~ Normal()
+            y ~ MvNormal(fill(x, 2), I)
+            1.0 ~ Normal()
+            return nothing
+        end
+        function test_generating_new_values(strategy::AbstractInitStrategy)
+            @testset "generating new values: $(typeof(strategy))" begin
+                # Check that init!! can generate values that weren't there
+                # previously.
+                model = test_init_model()
+                for empty_vi in empty_varinfos
+                    this_vi = deepcopy(empty_vi)
+                    _, vi = DynamicPPL.init!!(model, this_vi, strategy)
+                    @test Set(keys(vi)) == Set([@varname(x), @varname(y)])
+                    x, y = vi[@varname(x)], vi[@varname(y)]
+                    @test x isa Real
+                    @test y isa AbstractVector{<:Real}
+                    @test length(y) == 2
+                    (; logprior, loglikelihood) = getlogp(vi)
+                    @test logpdf(Normal(), x) + logpdf(MvNormal(fill(x, 2), I), y) ==
+                        logprior
+                    @test logpdf(Normal(), 1.0) == loglikelihood
+                end
+            end
+        end
+        function test_replacing_values(strategy::AbstractInitStrategy)
+            @testset "replacing old values: $(typeof(strategy))" begin
+                # Check that init!! can overwrite values that were already there.
+                model = test_init_model()
+                for empty_vi in empty_varinfos
+                    # start by generating some rubbish values
+                    vi = deepcopy(empty_vi)
+                    old_x, old_y = 100000.00, [300000.00, 500000.00]
+                    push!!(vi, @varname(x), old_x, Normal())
+                    push!!(vi, @varname(y), old_y, MvNormal(fill(old_x, 2), I))
+                    # then overwrite it
+                    _, new_vi = DynamicPPL.init!!(model, vi, strategy)
+                    new_x, new_y = new_vi[@varname(x)], new_vi[@varname(y)]
+                    # check that the values are (presumably) different
+                    @test old_x != new_x
+                    @test old_y != new_y
+                end
+            end
+        end
+        function test_rng_respected(strategy::AbstractInitStrategy)
+            @testset "check that RNG is respected: $(typeof(strategy))" begin
+                model = test_init_model()
+                for empty_vi in empty_varinfos
+                    _, vi1 = DynamicPPL.init!!(
+                        Xoshiro(468), model, deepcopy(empty_vi), strategy
+                    )
+                    _, vi2 = DynamicPPL.init!!(
+                        Xoshiro(468), model, deepcopy(empty_vi), strategy
+                    )
+                    _, vi3 = DynamicPPL.init!!(
+                        Xoshiro(469), model, deepcopy(empty_vi), strategy
+                    )
+                    @test vi1[@varname(x)] == vi2[@varname(x)]
+                    @test vi1[@varname(y)] == vi2[@varname(y)]
+                    @test vi1[@varname(x)] != vi3[@varname(x)]
+                    @test vi1[@varname(y)] != vi3[@varname(y)]
+                end
+            end
+        end
 
-        @testset "ParamsInit" begin end
+        @testset "PriorInit" begin
+            test_generating_new_values(PriorInit())
+            test_replacing_values(PriorInit())
+            test_rng_respected(PriorInit())
 
-        @testset "rng is respected (at least with PriorInit" begin end
+            @testset "check that values are within support" begin
+                # Not many other sensible checks we can do for priors.
+                @model just_unif() = x ~ Uniform(0.0, 1e-7)
+                for _ in 1:100
+                    _, vi = DynamicPPL.init!!(just_unif(), VarInfo(), PriorInit())
+                    @test vi[@varname(x)] isa Real
+                    @test 0.0 <= vi[@varname(x)] <= 1e-7
+                end
+            end
+        end
+
+        @testset "UniformInit" begin
+            test_generating_new_values(UniformInit())
+            test_replacing_values(UniformInit())
+            test_rng_respected(UniformInit())
+
+            @testset "check that bounds are respected" begin
+                @testset "unconstrained" begin
+                    umin, umax = -1.0, 1.0
+                    @model just_norm() = x ~ Normal()
+                    for _ in 1:100
+                        _, vi = DynamicPPL.init!!(
+                            just_norm(), VarInfo(), UniformInit(umin, umax)
+                        )
+                        @test vi[@varname(x)] isa Real
+                        @test umin <= vi[@varname(x)] <= umax
+                    end
+                end
+                @testset "constrained" begin
+                    umin, umax = -1.0, 1.0
+                    @model just_beta() = x ~ Beta(2, 2)
+                    inv_bijector = inverse(Bijectors.bijector(Beta(2, 2)))
+                    tmin, tmax = inv_bijector(umin), inv_bijector(umax)
+                    for _ in 1:100
+                        _, vi = DynamicPPL.init!!(
+                            just_beta(), VarInfo(), UniformInit(umin, umax)
+                        )
+                        @test vi[@varname(x)] isa Real
+                        @test tmin <= vi[@varname(x)] <= tmax
+                    end
+                end
+            end
+        end
+
+        @testset "ParamsInit" begin
+            @testset "given full set of parameters" begin
+                # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
+                my_x, my_y = 1.0, [2.0, 3.0]
+                params_nt = (; x=my_x, y=my_y)
+                params_dict = Dict(@varname(x) => my_x, @varname(y) => my_y)
+                model = test_init_model()
+                for empty_vi in empty_varinfos
+                    _, vi = DynamicPPL.init!!(
+                        model, deepcopy(empty_vi), ParamsInit(params_nt)
+                    )
+                    @test vi[@varname(x)] == my_x
+                    @test vi[@varname(y)] == my_y
+                    logp_nt = getlogp(vi)
+                    _, vi = DynamicPPL.init!!(
+                        model, deepcopy(empty_vi), ParamsInit(params_dict)
+                    )
+                    @test vi[@varname(x)] == my_x
+                    @test vi[@varname(y)] == my_y
+                    logp_dict = getlogp(vi)
+                    @test logp_nt == logp_dict
+                end
+            end
+
+            @testset "given only partial parameters" begin
+                # In this case, we expect `ParamsInit` to use the value of x, and
+                # generate a new value for y.
+                my_x = 1.0
+                params_nt = (; x=my_x)
+                params_dict = Dict(@varname(x) => my_x)
+                model = test_init_model()
+                for empty_vi in empty_varinfos
+                    _, vi = DynamicPPL.init!!(
+                        Xoshiro(468), model, deepcopy(empty_vi), ParamsInit(params_nt)
+                    )
+                    @test vi[@varname(x)] == my_x
+                    nt_y = vi[@varname(y)]
+                    @test nt_y isa AbstractVector{<:Real}
+                    @test length(nt_y) == 2
+                    _, vi = DynamicPPL.init!!(
+                        Xoshiro(469), model, deepcopy(empty_vi), ParamsInit(params_dict)
+                    )
+                    @test vi[@varname(x)] == my_x
+                    dict_y = vi[@varname(y)]
+                    @test dict_y isa AbstractVector{<:Real}
+                    @test length(dict_y) == 2
+                    # the values should be different since we used different seeds
+                    @test dict_y != nt_y
+                end
+            end
+        end
     end
 end
