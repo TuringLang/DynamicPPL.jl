@@ -855,6 +855,39 @@ function evaluate_and_sample!!(
 end
 
 """
+    init!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        varinfo::AbstractVarInfo,
+        [init_strategy::AbstractInitStrategy=PriorInit()]
+    )
+
+Evaluate the `model` and replace the values of the model's random variables in
+the given `varinfo` with new values using a specified initialisation strategy.
+If the values in `varinfo` are not already present, they will be added using
+that same strategy.
+
+If `init_strategy` is not provided, defaults to PriorInit().
+
+Returns a tuple of the model's return value, plus the updated `varinfo` object.
+"""
+function init!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy=PriorInit(),
+)
+    new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
+    new_model = contextualize(model, new_context)
+    return evaluate!!(new_model, varinfo)
+end
+function init!!(
+    model::Model, varinfo::AbstractVarInfo, init_strategy::AbstractInitStrategy=PriorInit()
+)
+    return init!!(Random.default_rng(), model, varinfo, init_strategy)
+end
+
+"""
     evaluate!!(model::Model, varinfo)
 
 Evaluate the `model` with the given `varinfo`.
