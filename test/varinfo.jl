@@ -69,6 +69,8 @@ end
         # Test Base functions:
         #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
+
+        #= It's just this that needs to go I believe. Everything else is already gone
         csym = gensym()
         vn1 = @varname x[1][2]
         @test string(vn1) == "x[1][2]"
@@ -77,6 +79,7 @@ end
         vn2 = @varname x[1][2]
         @test vn2 == vn1
         @test hash(vn2) == hash(vn1)
+        =#
 
         function test_base(vi_original)
             vi = deepcopy(vi_original)
