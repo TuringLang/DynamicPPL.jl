@@ -28,7 +28,7 @@
             buggy_model = buggy_demo_model()
             varinfo = VarInfo(buggy_model)
 
-            @test_logs (:warn,) (:warn,) check_model(buggy_model)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
             issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
             @test_throws ErrorException check_model(
@@ -142,6 +142,17 @@
     end
 
     @testset "incorrect use of condition" begin
+        @testset "missing in multivariate" begin
+            @model function demo_missing_in_multivariate(x)
+                return x ~ MvNormal(zeros(length(x)), I)
+            end
+            model = demo_missing_in_multivariate([1.0, missing])
+            # Have to run this check_model call with an empty varinfo, because actually
+            # instantiating the VarInfo would cause it to throw a MethodError.
+            model = contextualize(model, SamplingContext())
+            @test_throws ErrorException check_model(model, VarInfo(); error_on_failure=true)
+        end
+
         @testset "condition both in args and context" begin
             @model function demo_condition_both_in_args_and_context(x)
                 return x ~ Normal()

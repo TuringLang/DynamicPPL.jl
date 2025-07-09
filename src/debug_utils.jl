@@ -217,9 +217,21 @@ function record_varname!(acc::DebugAccumulator, varname::VarName, dist)
     end
 end
 
+_has_missings(x) = ismissing(x)
+function _has_missings(x::AbstractArray)
+    # Can't just use `any` because `x` might contain `undef`.
+    for i in eachindex(x)
+        if isassigned(x, i) && _has_missings(x[i])
+            return true
+        end
+    end
+    return false
+end
+
 _has_nans(x::NamedTuple) = any(_has_nans, x)
 _has_nans(x::AbstractArray) = any(_has_nans, x)
 _has_nans(x) = isnan(x)
+_has_nans(::Missing) = false
 
 function DynamicPPL.accumulate_assume!!(
     acc::DebugAccumulator, val, _logjac, vn::VarName, right::Distribution
@@ -233,13 +245,38 @@ end
 function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}
 )
+    if _has_missings(val)
+        # If `val` itself is a missing, that's a bug because that should cause
+        # us to go down the assume path.
+        val === missing && error(
+            "Encountered `missing` value on the left-hand side of an observe" *
+            " statement. This should not happen. Please open an issue at" *
+            " https://github.com/TuringLang/DynamicPPL.jl.",
+        )
+        # Otherwise it's an array with some missing values.
+        msg =
+            "Encountered a container with one or more `missing` value(s) on the" *
+            " left-hand side of an observe statement. To treat the variable on" *
+            " the left-hand side as a random variable, you should specify a single" *
+            " `missing` rather than a vector of `missing`s. It is not possible to" *
+            " set part but not all of a distribution to be `missing`."
+        if acc.error_on_failure
+            error(msg)
+        else
+            @warn msg
+        end
+    end
     # Check for NaN's as well
     if _has_nans(val)
-        error(
+        msg =
             "Encountered a NaN value on the left-hand side of an" *
             " observe statement; this may indicate that your data" *
-            " contain NaN values.",
-        )
+            " contain NaN values."
+        if acc.error_on_failure
+            error(msg)
+        else
+            @warn msg
+        end
     end
     stmt = ObserveStmt(; varname=vn, right=right, value=val)
     push!(acc.statements, stmt)
@@ -373,7 +410,10 @@ function check_model_and_trace(
     model::Model, varinfo::AbstractVarInfo; error_on_failure=false
 )
     # Add debug accumulator to the VarInfo.
-    varinfo = DynamicPPL.setacc!!(deepcopy(varinfo), DebugAccumulator(error_on_failure))
+    # Need a NumProduceAccumulator as well or else get_num_produce may throw
+    varinfo = DynamicPPL.setaccs!!(
+        deepcopy(varinfo), (DebugAccumulator(error_on_failure), NumProduceAccumulator())
+    )
 
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
