@@ -338,7 +338,9 @@ true
 julia> print(trace)
  assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252
 
-julia> issuccess, trace = check_model_and_trace(rng, demo_correct() | (x = 1.0,));
+julia> cond_model = model | (x = 1.0,);
+
+julia> issuccess, trace = check_model_and_trace(cond_model, VarInfo(cond_model));
 ┌ Warning: The model does not contain any parameters.
 └ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:342
 
@@ -346,7 +348,7 @@ julia> issuccess
 true
 
 julia> print(trace)
-observe: 1.0 ~ Normal{Float64}(μ=0.0, σ=1.0)
+observe: x (= 1.0) ~ Normal{Float64}(μ=0.0, σ=1.0)
 ```
 
 ## Incorrect model
@@ -359,7 +361,11 @@ julia> @model function demo_incorrect()
        end
 demo_incorrect (generic function with 2 methods)
 
-julia> issuccess, trace = check_model_and_trace(rng, demo_incorrect(); error_on_failure=true);
+julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't actually 
+       # alert us to the issue of `x` being sampled twice.
+       model = demo_incorrect(); varinfo = VarInfo(model);
+
+julia> issuccess, trace = check_model_and_trace(model, varinfo; error_on_failure=true);
 ERROR: varname x used multiple times in model
 ```
 """
