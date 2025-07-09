@@ -38,6 +38,8 @@ to unconstrained space, and then sampling a value uniformly between `lower` and
 If unspecified, defaults to `(lower, upper) = (-2, 2)`, which mimics Stan's
 default initialisation strategy.
 
+Requires that `lower <= upper`.
+
 # References
 
 [Stan reference manual page on initialization](https://mc-stan.org/docs/reference-manual/execution.html#initialization)
@@ -55,7 +57,7 @@ end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::UniformInit)
     b = Bijectors.bijector(dist)
     sz = Bijectors.output_size(b, size(dist))
-    y = rand(rng, Uniform(u.lower, u.upper), sz)
+    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
     b_inv = Bijectors.inverse(b)
     x = b_inv(y)
     # 0-dim arrays: https://github.com/TuringLang/Bijectors.jl/issues/398
