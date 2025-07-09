@@ -32,11 +32,11 @@ init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::PriorInit) = rand
     UniformInit(lower, upper)
 
 Obtain new values by first transforming the distribution of the random variable
-to unconstrained space, and then sampling a value uniformly between `lower` and
-`upper`.
+to unconstrained space, then sampling a value uniformly between `lower` and
+`upper`, and transforming that value back to the original space.
 
-If unspecified, defaults to `(lower, upper) = (-2, 2)`, which mimics Stan's
-default initialisation strategy.
+If `lower` and `upper` are unspecified, they default to `(-2, 2)`, which mimics
+Stan's default initialisation strategy.
 
 Requires that `lower <= upper`.
 
@@ -91,17 +91,17 @@ struct ParamsInit{P,S<:AbstractInitStrategy} <: AbstractInitStrategy
     end
 end
 function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::ParamsInit)
-    # TODO(penelopeysm): We should do a check to make sure that all of the
-    # parameters in `p.params` were actually used, and either warn or error if
-    # they aren't. This is non-trivial (we need to use something like
-    # varname_leaves), so I'm going to defer it to a later PR.
+    # TODO(penelopeysm): It would be nice to do a check to make sure that all
+    # of the parameters in `p.params` were actually used, and either warn or
+    # error if they aren't. This is actually quite non-trivial though because
+    # the structure of Dicts in particular can have arbitrary nesting.
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
         if x === missing
             init(rng, vn, dist, p.default)
         else
-            # TODO(penelopeysm): We could also check that the type of x matches
-            # the dist?
+            # TODO(penelopeysm): Since x is user-supplied, maybe we could also
+            # check here that the type / size of x matches the dist?
             x
         end
     else
