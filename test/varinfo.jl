@@ -182,14 +182,14 @@ end
     @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, s^2 * I)
         end
 
         @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
 
             m = TV(undef, n)
             for i in eachindex(m)
@@ -447,10 +447,10 @@ end
     end
 
     @testset "istrans" begin
-        @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
+        @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
-        dist = truncated(Normal(), 0, Inf)
+        dist = truncated(Normal(); lower=0)
 
         ### `VarInfo`
         # Need to run once since we can't specify that we want to _sample_
