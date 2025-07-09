@@ -348,7 +348,7 @@ julia> issuccess
 true
 
 julia> print(trace)
-observe: x (= 1.0) ~ Normal{Float64}(μ=0.0, σ=1.0)
+ observe: x (= 1.0) ~ Normal{Float64}(μ=0.0, σ=1.0)
 ```
 
 ## Incorrect model
