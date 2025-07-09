@@ -39,7 +39,7 @@ const AQUA = get(ENV, "AQUA", "true") == "true"
 # Detect if prerelease version, if so, we skip some tests
 const IS_PRERELEASE = !isempty(VERSION.prerelease)
 if !IS_PRERELEASE
-    Pkg.add("Mooncake")
+    Pkg.add(; name="Mooncake", version="0.4.136")
     using Mooncake: Mooncake
 end
 
