@@ -79,9 +79,10 @@ See also: [`combine`](@ref)
 function split end
 
 """
-    combine(acc::TAcc, acc2::TAcc) where {TAcc<:AbstractAccumulator}
+    combine(acc::AbstractAccumulator, acc2::AbstractAccumulator)
 
-Combine two accumulators of the same type. Returns a new accumulator of the same type.
+Combine two accumulators which have the same type (but may, in general, have different type
+parameters). Returns a new accumulator of the same type.
 
 See also: [`split`](@ref)
 """
