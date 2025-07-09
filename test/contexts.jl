@@ -1,5 +1,5 @@
 using Test, DynamicPPL, Accessors
-using AbstractPPL: getoptic
+using AbstractPPL: getoptic, hasvalue, getvalue
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -430,5 +430,15 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test conditioned(c6) == Dict(@varname(a.c) => 1)
             @test fixed(c6) == Dict(@varname(a.b.d) => 2)
         end
+    end
+
+    @testset "InitContext" begin
+        @testset "PriorInit" begin end
+
+        @testset "UniformInit" begin end
+
+        @testset "ParamsInit" begin end
+
+        @testset "rng is respected (at least with PriorInit" begin end
     end
 end
