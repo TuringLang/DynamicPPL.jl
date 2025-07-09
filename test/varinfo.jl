@@ -603,8 +603,9 @@ end
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        # Sample in unconstrained space.
+        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
