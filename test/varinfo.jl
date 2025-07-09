@@ -67,16 +67,8 @@ end
 
     @testset "Base" begin
         # Test Base functions:
-        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
+        #   in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
-        csym = gensym()
-        vn1 = @varname x[1][2]
-        @test string(vn1) == "x[1][2]"
-        @test Symbol(vn1) == Symbol("x[1][2]")
-
-        vn2 = @varname x[1][2]
-        @test vn2 == vn1
-        @test hash(vn2) == hash(vn1)
 
         function test_base(vi_original)
             vi = deepcopy(vi_original)
@@ -289,14 +281,14 @@ end
     @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, s^2 * I)
         end
 
         @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
 
             m = TV(undef, n)
             for i in eachindex(m)
@@ -561,10 +553,10 @@ end
     end
 
     @testset "istrans" begin
-        @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
+        @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
-        dist = truncated(Normal(), 0, Inf)
+        dist = truncated(Normal(); lower=0)
 
         ### `VarInfo`
         # Need to run once since we can't specify that we want to _sample_

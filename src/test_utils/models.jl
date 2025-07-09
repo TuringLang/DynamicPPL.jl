@@ -14,12 +14,12 @@ A model with variables `m` and `x` with `x` having support depending on `m`.
 """
 @model function demo_dynamic_constraint()
     m ~ Normal()
-    x ~ truncated(Normal(), m, Inf)
+    x ~ truncated(Normal(); lower=m)
 
     return (m=m, x=x)
 end
 function logprior_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
-    return logpdf(Normal(), m) + logpdf(truncated(Normal(), m, Inf), x)
+    return logpdf(Normal(), m) + logpdf(truncated(Normal(); lower=m), x)
 end
 function loglikelihood_true(model::Model{typeof(demo_dynamic_constraint)}, m, x)
     return zero(float(eltype(m)))
@@ -30,7 +30,7 @@ end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_dynamic_constraint)}, m, x
 )
-    b_x = Bijectors.bijector(truncated(Normal(), m, Inf))
+    b_x = Bijectors.bijector(truncated(Normal(); lower=m))
     x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
     return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
 end

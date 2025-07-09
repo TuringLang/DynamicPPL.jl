@@ -70,6 +70,10 @@ And a couple of more internal changes:
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
   - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
 
+## 0.36.15
+
+Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).
+
 ## 0.36.14
 
 Added compatibility with AbstractPPL@0.12.
