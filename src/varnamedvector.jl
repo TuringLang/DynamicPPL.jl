@@ -1482,7 +1482,7 @@ function values_as(vnv::VarNamedVector, ::Type{D}) where {D<:AbstractDict}
 end
 
 # See the docstring of `getvalue` for the semantics of `hasvalue` and `getvalue`, and how
-# they differ from `haskey` and `getindex`. They can be found in src/utils.jl.
+# they differ from `haskey` and `getindex`. They can be found in AbstractPPL.jl.
 
 # TODO(mhauru) This is tricky to implement in the general case, and the below implementation
 # only covers some simple cases. It's probably sufficient in most situations though.

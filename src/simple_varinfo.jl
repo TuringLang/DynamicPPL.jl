@@ -62,7 +62,7 @@ ERROR: type NamedTuple has no field x
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict()));
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -107,7 +107,7 @@ julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true));
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
@@ -206,7 +206,7 @@ end
 function SimpleVarInfo(values)
     return SimpleVarInfo{LogProbType}(values)
 end
-function SimpleVarInfo(values::Union{<:NamedTuple,<:AbstractDict})
+function SimpleVarInfo(values::Union{<:NamedTuple,<:AbstractDict{<:VarName}})
     return if isempty(values)
         # Can't infer from values, so we just use default.
         SimpleVarInfo{LogProbType}(values)
@@ -258,7 +258,7 @@ function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
 end
 
 function untyped_simple_varinfo(model::Model)
-    varinfo = SimpleVarInfo(OrderedDict())
+    varinfo = SimpleVarInfo(OrderedDict{VarName,Any}())
     return last(evaluate_and_sample!!(model, varinfo))
 end
 
