@@ -67,7 +67,7 @@ end
 
     @testset "Base" begin
         # Test Base functions:
-        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
+        #   in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
 
         function test_base(vi_original)
