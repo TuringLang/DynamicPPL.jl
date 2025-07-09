@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.36.15
+
+Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).
+
 ## 0.36.14
 
 Added compatibility with AbstractPPL@0.12.
