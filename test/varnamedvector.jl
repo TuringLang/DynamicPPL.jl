@@ -603,20 +603,18 @@ end
             DynamicPPL.TestUtils.test_values(varinfo, value_true, vns)
 
             # Is evaluation correct?
-            varinfo_eval = last(
-                DynamicPPL.evaluate!!(model, deepcopy(varinfo), DefaultContext())
-            )
+            varinfo_eval = last(DynamicPPL.evaluate!!(model, deepcopy(varinfo)))
             # Log density should be the same.
-            @test getlogp(varinfo_eval) ≈ logp_true
+            @test getlogjoint(varinfo_eval) ≈ logp_true
             # Values should be the same.
             DynamicPPL.TestUtils.test_values(varinfo_eval, value_true, vns)
 
             # Is sampling correct?
             varinfo_sample = last(
-                DynamicPPL.evaluate!!(model, deepcopy(varinfo), SamplingContext())
+                DynamicPPL.evaluate_and_sample!!(model, deepcopy(varinfo))
             )
             # Log density should be different.
-            @test getlogp(varinfo_sample) != getlogp(varinfo)
+            @test getlogjoint(varinfo_sample) != getlogjoint(varinfo)
             # Values should be different.
             DynamicPPL.TestUtils.test_values(
                 varinfo_sample, value_true, vns; compare=!isequal

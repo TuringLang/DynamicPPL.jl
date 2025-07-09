@@ -35,7 +35,7 @@ using Test
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
                 vi = VarInfo(model)
-                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(a.y)])
+                @test getlogjoint(vi) == x_logp + logpdf(Normal(), vi[@varname(a.y)])
                 # Check the keys
                 @test Set(keys(VarInfo(model))) == Set([@varname(a.y)])
             end
@@ -67,7 +67,7 @@ using Test
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
                 vi = VarInfo(model)
-                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(y)])
+                @test getlogjoint(vi) == x_logp + logpdf(Normal(), vi[@varname(y)])
                 # Check the keys
                 @test Set(keys(VarInfo(model))) == Set([@varname(y)])
             end
@@ -99,7 +99,7 @@ using Test
                 @test model()[1] == x_val
                 # Test that the logp was correctly set
                 vi = VarInfo(model)
-                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(b.y)])
+                @test getlogjoint(vi) == x_logp + logpdf(Normal(), vi[@varname(b.y)])
                 # Check the keys
                 @test Set(keys(VarInfo(model))) == Set([@varname(b.y)])
             end
@@ -148,7 +148,7 @@ using Test
             # No conditioning
             vi = VarInfo(h())
             @test Set(keys(vi)) == Set([@varname(a.b.x), @varname(a.b.y)])
-            @test getlogp(vi) ==
+            @test getlogjoint(vi) ==
                 logpdf(Normal(), vi[@varname(a.b.x)]) +
                   logpdf(Normal(), vi[@varname(a.b.y)])
 
@@ -174,7 +174,7 @@ using Test
             @testset "$name" for (name, model) in models
                 vi = VarInfo(model)
                 @test Set(keys(vi)) == Set([@varname(a.b.y)])
-                @test getlogp(vi) == x_logp + logpdf(Normal(), vi[@varname(a.b.y)])
+                @test getlogjoint(vi) == x_logp + logpdf(Normal(), vi[@varname(a.b.y)])
             end
         end
     end

@@ -1,7 +1,7 @@
 @testset "check_model" begin
     @testset "context interface" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            context = DynamicPPL.DebugUtils.DebugContext(model)
+            context = DynamicPPL.DebugUtils.DebugContext()
             DynamicPPL.TestUtils.test_context(context, model)
         end
     end
@@ -35,9 +35,7 @@
             buggy_model = buggy_demo_model()
 
             @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(
-                buggy_model; context=SamplingContext(), record_varinfo=false
-            )
+            issuccess = check_model(buggy_model; record_varinfo=false)
             @test !issuccess
             @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
@@ -81,9 +79,7 @@
             buggy_model = buggy_subsumes_demo_model()
 
             @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(
-                buggy_model; context=SamplingContext(), record_varinfo=false
-            )
+            issuccess = check_model(buggy_model; record_varinfo=false)
             @test !issuccess
             @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
@@ -98,9 +94,7 @@
             buggy_model = buggy_subsumes_demo_model()
 
             @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(
-                buggy_model; context=SamplingContext(), record_varinfo=false
-            )
+            issuccess = check_model(buggy_model; record_varinfo=false)
             @test !issuccess
             @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
@@ -115,9 +109,7 @@
             buggy_model = buggy_subsumes_demo_model()
 
             @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(
-                buggy_model; context=SamplingContext(), record_varinfo=false
-            )
+            issuccess = check_model(buggy_model; record_varinfo=false)
             @test !issuccess
             @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
         end
