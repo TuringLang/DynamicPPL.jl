@@ -463,6 +463,27 @@ SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
+InitContext
+```
+
+### VarInfo initialisation
+
+`InitContext` is used to initialise, or overwrite, values in a VarInfo.
+
+To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.
+There are three concrete strategies provided in DynamicPPL:
+
+```@docs
+PriorInit
+UniformInit
+ParamsInit
+```
+
+If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.
+
+```@docs
+DynamicPPL.AbstractInitStrategy
+DynamicPPL.init
 ```
 
 ### Samplers
