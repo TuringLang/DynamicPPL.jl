@@ -63,7 +63,7 @@ end
 """
     VariableOrderAccumulator{T<:Integer}(n=zero(T))
 
-Create a new `VariableOrderAccumulator` accumulator with the number of observations set to n
+Create a new `VariableOrderAccumulator` with the number of observations set to `n`.
 """
 VariableOrderAccumulator{T}(n=zero(T)) where {T<:Integer} =
     VariableOrderAccumulator(convert(T, n), Dict{VarName,T}())
