@@ -3,9 +3,8 @@ using Distributions
 using Random
 using Test
 using StableRNGs
-using Mooncake: NoCache, set_to_zero!!, set_to_zero_internal!!, zero_tangent
-using DynamicPPL.TestUtils.AD: @be
-using Statistics: median
+using Mooncake: Mooncake, NoCache, set_to_zero!!, set_to_zero_internal!!, zero_tangent
+using DynamicPPL.TestUtils.AD: @be, median
 
 # Define models globally to avoid closure issues
 @model function test_model1(x)
@@ -106,6 +105,7 @@ end
         speedup = time_iddict / time_nocache
         @test speedup > 1.5  # Conservative expectation - should be ~4x
 
+        # Sanity check
         @info "Performance improvement" speedup time_iddict_μs = time_iddict / 1000 time_nocache_μs =
             time_nocache / 1000
     end
@@ -188,8 +188,5 @@ end
 
         # Global should be faster (uses NoCache)
         @test time_global < time_closure
-
-        @info "Closure handling" time_global_ms = time_global * 1000 time_closure_ms =
-            time_closure * 1000
     end
 end
