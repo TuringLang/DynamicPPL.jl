@@ -1209,8 +1209,15 @@ function predict(
     varinfo = DynamicPPL.VarInfo(model)
     return map(chain) do params_varinfo
         vi = deepcopy(varinfo)
-        DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
-        model(rng, vi)
+        # TODO(penelopeysm): Requires two model evaluations, one to extract the
+        # parameters and one to set them. The reason why we need values_as_in_model
+        # is because `params_varinfo` may well have some weird combination of
+        # linked/unlinked, whereas `varinfo` is always unlinked since it is
+        # freshly constructed.
+        # This is quite inefficient. It would of course be alright if
+        # ValuesAsInModelAccumulator was a default acc.
+        values_nt = values_as_in_model(model, false, params_varinfo)
+        _, vi = DynamicPPL.init!!(rng, model, vi, ParamsInit(values_nt, PriorInit()))
         return vi
     end
 end
