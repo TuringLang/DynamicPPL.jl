@@ -29,21 +29,45 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     node_trait = DynamicPPL.NodeTrait(context)
     # Throw error immediately if it it's missing a `NodeTrait` implementation.
     node_trait isa Union{DynamicPPL.IsLeaf,DynamicPPL.IsParent} ||
-        throw(ValueError("Invalid NodeTrait: $node_trait"))
+        error("Invalid NodeTrait: $node_trait")
 
-    # To see change, let's make sure we're using a different leaf context than the current.
-    leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
-        DynamicPPL.DynamicTransformationContext{false}()
+    if node_trait isa DynamicPPL.IsLeaf
+        test_leaf_context(context, model)
     else
-        DefaultContext()
+        test_parent_context(context, model)
     end
-    @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
-        leafcontext_new
+end
 
-    # The interface methods.
-    if node_trait isa DynamicPPL.IsParent
-        # `childcontext` and `setchildcontext`
-        # With new child context
+function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
+    @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsLeaf
+
+    # Note that for a leaf context we can't assume that it will work with an
+    # empty VarInfo. Thus we only test evaluation (i.e., assuming that the
+    # varinfo already contains all necessary variables).
+    @testset "evaluation" begin
+        # Generate a new filled untyped varinfo
+        _, untyped_vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
+        typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
+        new_model = contextualize(model, context)
+        for vi in [untyped_vi, typed_vi]
+            _, vi = DynamicPPL.evaluate!!(new_model, vi)
+            @test vi isa DynamicPPL.VarInfo
+        end
+    end
+end
+
+function test_parent_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
+    @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsParent
+
+    @testset "{set,}{leaf,child}context" begin
+        # Ensure we're using a different leaf context than the current.
+        leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
+            DynamicPPL.DynamicTransformationContext{false}()
+        else
+            DefaultContext()
+        end
+        @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
+            leafcontext_new
         childcontext_new = TestParentContext()
         @test DynamicPPL.childcontext(
             DynamicPPL.setchildcontext(context, childcontext_new)
@@ -56,19 +80,15 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
             leafcontext_new
     end
 
-    # Make sure that the we can evaluate the model with the context (i.e. that none of the tilde-functions are incorrectly overloaded).
-    # The tilde-pipeline contains two different paths: with `SamplingContext` as a parent, and without it.
-    # NOTE(torfjelde): Need to sample with the untyped varinfo _using_ the context, since the
-    # context might alter which variables are present, their names, etc., e.g. `PrefixContext`.
-    # TODO(torfjelde): Make the `varinfo` used for testing a kwarg once it makes sense for other varinfos.
-    # Untyped varinfo.
-    varinfo_untyped = DynamicPPL.VarInfo()
-    model_with_spl = contextualize(model, SamplingContext(context))
-    model_without_spl = contextualize(model, context)
-    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_untyped) isa Any
-    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_untyped) isa Any
-    # Typed varinfo.
-    varinfo_typed = DynamicPPL.typed_varinfo(varinfo_untyped)
-    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_typed) isa Any
-    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_typed) isa Any
+    @testset "initialisation and evaluation" begin
+        new_model = contextualize(model, context)
+        for vi in [DynamicPPL.VarInfo(), DynamicPPL.typed_varinfo(DynamicPPL.VarInfo())]
+            # Initialisation
+            _, vi = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
+            @test vi isa DynamicPPL.VarInfo
+            # Evaluation
+            _, vi = DynamicPPL.evaluate!!(new_model, vi)
+            @test vi isa DynamicPPL.VarInfo
+        end
+    end
 end

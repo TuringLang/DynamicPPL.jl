@@ -113,10 +113,14 @@ function VarInfo(meta=Metadata())
 end
 
 """
-    VarInfo([rng, ]model[, sampler])
+    VarInfo(
+        [rng::Random.AbstractRNG],
+        model,
+        [init_strategy::AbstractInitStrategy]
+    )
 
-Generate a `VarInfo` object for the given `model`, by evaluating it once using
-the given `rng`, `sampler`.
+Generate a `VarInfo` object for the given `model`, by initialising it with the
+given `rng` and `init_strategy`.
 
 !!! warning
 
@@ -129,12 +133,12 @@ the given `rng`, `sampler`.
     instead.
 """
 function VarInfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return typed_varinfo(rng, model, sampler)
+    return typed_varinfo(rng, model, init_strategy)
 end
-function VarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return VarInfo(Random.default_rng(), model, sampler)
+function VarInfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+    return VarInfo(Random.default_rng(), model, init_strategy)
 end
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
@@ -195,7 +199,7 @@ end
 ########################
 
 """
-    untyped_varinfo([rng, ]model[, sampler])
+    untyped_varinfo([rng, ]model[, init_strategy])
 
 Construct a VarInfo object for the given `model`, which has just a single
 `Metadata` as its metadata field.
@@ -203,15 +207,15 @@ Construct a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function untyped_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return last(evaluate_and_sample!!(rng, model, VarInfo(Metadata()), sampler))
+    return last(init!!(rng, model, VarInfo(Metadata()), init_strategy))
 end
-function untyped_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return untyped_varinfo(Random.default_rng(), model, sampler)
+function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+    return untyped_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
@@ -270,7 +274,7 @@ function typed_varinfo(vi::NTVarInfo)
     return vi
 end
 """
-    typed_varinfo([rng, ]model[, sampler])
+    typed_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has a NamedTuple of
 `Metadata` structs as its metadata field.
@@ -278,19 +282,19 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function typed_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return typed_varinfo(untyped_varinfo(rng, model, sampler))
+    return typed_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function typed_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return typed_varinfo(Random.default_rng(), model, sampler)
+function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+    return typed_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
-    untyped_vector_varinfo([rng, ]model[, sampler])
+    untyped_vector_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has just a single
 `VarNamedVector` as its metadata field.
@@ -298,23 +302,25 @@ Return a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     return VarInfo(md, copy(vi.accs))
 end
 function untyped_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler))
+    return untyped_vector_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function untyped_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return untyped_vector_varinfo(Random.default_rng(), model, sampler)
+function untyped_vector_varinfo(
+    model::Model, init_strategy::AbstractInitStrategy=PriorInit()
+)
+    return untyped_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
-    typed_vector_varinfo([rng, ]model[, sampler])
+    typed_vector_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has a NamedTuple of
 `VarNamedVector`s as its metadata field.
@@ -322,7 +328,7 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `PriorInit()`.
 """
 function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
@@ -334,12 +340,12 @@ function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     return VarInfo(nt, copy(vi.accs))
 end
 function typed_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler))
+    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, init_strategy))
 end
-function typed_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return typed_vector_varinfo(Random.default_rng(), model, sampler)
+function typed_vector_varinfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+    return typed_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """

@@ -166,29 +166,30 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_vn == @varname(a.x[1])
             @test new_ctx == DefaultContext()
 
-            ctx2 = SamplingContext(PrefixContext(@varname(a)))
+            ctx2 = FixedContext((b=4,), PrefixContext(@varname(a)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == SamplingContext()
+            @test new_ctx == FixedContext((b=4,))
 
             ctx3 = PrefixContext(@varname(a), ConditionContext((a=1,)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == ConditionContext((a=1,))
 
-            ctx4 = SamplingContext(PrefixContext(@varname(a), ConditionContext((a=1,))))
+            ctx4 = FixedContext(
+                (b=4,), PrefixContext(@varname(a), ConditionContext((a=1,)))
+            )
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == SamplingContext(ConditionContext((a=1,)))
+            @test new_ctx == FixedContext((b=4,), ConditionContext((a=1,)))
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             prefix_vn = @varname(my_prefix)
-            context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
-            sampling_model = contextualize(model, context)
-            # Sample with the context.
-            varinfo = DynamicPPL.VarInfo()
-            DynamicPPL.evaluate!!(sampling_model, varinfo)
+            context = DynamicPPL.PrefixContext(prefix_vn, DefaultContext())
+            new_model = contextualize(model, context)
+            # Initialize a new varinfo with the prefixed model
+            _, varinfo = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
             # Extract the resulting varnames
             vns_actual = Set(keys(varinfo))
 

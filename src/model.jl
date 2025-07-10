@@ -850,7 +850,7 @@ end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
 function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
-    return first(evaluate_and_sample!!(rng, model, varinfo))
+    return first(init!!(rng, model, varinfo))
 end
 
 """
@@ -864,32 +864,6 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    evaluate_and_sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
-
-Evaluate the `model` with the given `varinfo`, but perform sampling during the
-evaluation using the given `sampler` by wrapping the model's context in a
-`SamplingContext`.
-
-If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
-
-Returns a tuple of the model's return value, plus the updated `varinfo` object.
-"""
-function evaluate_and_sample!!(
-    rng::Random.AbstractRNG,
-    model::Model,
-    varinfo::AbstractVarInfo,
-    sampler::AbstractSampler=SampleFromPrior(),
-)
-    sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
-    return evaluate!!(sampling_model, varinfo)
-end
-function evaluate_and_sample!!(
-    model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
-)
-    return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
-end
-
-"""
     init!!(
         [rng::Random.AbstractRNG,]
         model::Model,
@@ -897,10 +871,10 @@ end
         [init_strategy::AbstractInitStrategy=PriorInit()]
     )
 
-Evaluate the `model` and replace the values of the model's random variables in
-the given `varinfo` with new values using a specified initialisation strategy.
-If the values in `varinfo` are not already present, they will be added using
-that same strategy.
+Evaluate the `model` and replace the values of the model's random variables
+in the given `varinfo` with new values, using a specified initialisation strategy.
+If the values in `varinfo` are not set, they will be added.
+using a specified initialisation strategy.
 
 If `init_strategy` is not provided, defaults to PriorInit().
 
@@ -1049,11 +1023,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(
-        evaluate_and_sample!!(
-            rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())
-        ),
-    )
+    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())))
     return values_as(x, T)
 end
 

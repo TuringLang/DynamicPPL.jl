@@ -449,11 +449,6 @@ AbstractPPL.evaluate!!
 
 This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
-To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
-
-```@docs
-DynamicPPL.evaluate_and_sample!!
-```
 
 The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
@@ -468,7 +463,12 @@ InitContext
 
 ### VarInfo initialisation
 
-`InitContext` is used to initialise, or overwrite, values in a VarInfo.
+The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
+It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
+
+```@docs
+DynamicPPL.init!!
+```
 
 To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.
 There are three concrete strategies provided in DynamicPPL:
