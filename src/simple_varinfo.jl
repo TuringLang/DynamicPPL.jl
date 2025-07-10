@@ -39,7 +39,7 @@ julia> rng = StableRNG(42);
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo((x = ones(2), )));
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo((x = ones(2), )));
 
 julia> # (✓) Vroom, vroom! FAST!!!
        vi[@varname(x[1])]
@@ -57,12 +57,12 @@ julia> vi[@varname(x[1:2])]
  1.3736306979834252
 
 julia> # (×) If we don't provide the container...
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo()); vi
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo()); vi
 ERROR: type NamedTuple has no field x
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -91,28 +91,28 @@ demo_constrained (generic function with 2 methods)
 
 julia> m = demo_constrained();
 
-julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo());
+julia> _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo());
 
 julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
 1.8632965762164932
 
-julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
+julia> _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 -0.21080155351918753
 
-julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
+       _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
 
-julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
@@ -226,24 +226,25 @@ end
 
 # Constructor from `Model`.
 function SimpleVarInfo{T}(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 ) where {T<:Real}
-    new_model = contextualize(model, SamplingContext(rng, sampler, model.context))
+    new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
+    new_model = contextualize(model, new_context)
     return last(evaluate!!(new_model, SimpleVarInfo{T}()))
 end
 function SimpleVarInfo{T}(
-    model::Model, sampler::AbstractSampler=SampleFromPrior()
+    model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 ) where {T<:Real}
-    return SimpleVarInfo{T}(Random.default_rng(), model, sampler)
+    return SimpleVarInfo{T}(Random.default_rng(), model, init_strategy)
 end
 # Constructors without type param
 function SimpleVarInfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
 )
-    return SimpleVarInfo{LogProbType}(rng, model, sampler)
+    return SimpleVarInfo{LogProbType}(rng, model, init_strategy)
 end
-function SimpleVarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return SimpleVarInfo{LogProbType}(Random.default_rng(), model, sampler)
+function SimpleVarInfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+    return SimpleVarInfo{LogProbType}(Random.default_rng(), model, init_strategy)
 end
 
 # Constructor from `VarInfo`.
@@ -259,12 +260,12 @@ end
 
 function untyped_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo(OrderedDict{VarName,Any}())
-    return last(evaluate_and_sample!!(model, varinfo))
+    return last(init!!(model, varinfo))
 end
 
 function typed_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo{Float64}()
-    return last(evaluate_and_sample!!(model, varinfo))
+    return last(init!!(model, varinfo))
 end
 
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
@@ -474,7 +475,6 @@ function assume(
     return value, vi
 end
 
-# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
@@ -483,6 +483,15 @@ function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
 end
 function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+end
+function settrans!!(vi::SimpleOrThreadSafeSimple, trans::Bool, ::VarName)
+    # We keep this method around just to obey the AbstractVarInfo interface; however,
+    # this is only a valid operation if it would be a no-op.
+    if trans != istrans(vi)
+        error(
+            "Individual variables in SimpleVarInfo cannot have different `settrans` statuses.",
+        )
+    end
 end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
