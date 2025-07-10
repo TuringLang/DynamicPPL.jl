@@ -1,45 +1,14 @@
 # assume
-"""
-    tilde_assume(context::SamplingContext, right, vn, vi)
-
-Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
-accumulate the log probability, and return the sampled value with a context associated
-with a sampler.
-
-Falls back to
-```julia
-tilde_assume(context.rng, context.context, context.sampler, right, vn, vi)
-```
-"""
-function tilde_assume(context::SamplingContext, right, vn, vi)
-    return tilde_assume(context.rng, context.context, context.sampler, right, vn, vi)
-end
-
 function tilde_assume(context::AbstractContext, args...)
     return tilde_assume(childcontext(context), args...)
 end
 function tilde_assume(::DefaultContext, right, vn, vi)
-    return assume(right, vn, vi)
+    y = getindex_internal(vi, vn)
+    f = from_maybe_linked_internal_transform(vi, vn, right)
+    x, inv_logjac = with_logabsdet_jacobian(f, y)
+    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right)
+    return x, vi
 end
-
-function tilde_assume(rng::Random.AbstractRNG, context::AbstractContext, args...)
-    return tilde_assume(rng, childcontext(context), args...)
-end
-function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, vi)
-    return assume(rng, sampler, right, vn, vi)
-end
-function tilde_assume(rng::Random.AbstractRNG, ::InitContext, sampler, right, vn, vi)
-    @warn(
-        "Encountered SamplingContext->InitContext. This method will be removed in the next PR.",
-    )
-    # just pretend the `InitContext` isn't there for now.
-    return assume(rng, sampler, right, vn, vi)
-end
-function tilde_assume(::DefaultContext, sampler, right, vn, vi)
-    # same as above but no rng
-    return assume(Random.default_rng(), sampler, right, vn, vi)
-end
-
 function tilde_assume(context::PrefixContext, right, vn, vi)
     # Note that we can't use something like this here:
     #     new_vn = prefix(context, vn)
@@ -52,12 +21,6 @@ function tilde_assume(context::PrefixContext, right, vn, vi)
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
     return tilde_assume(new_context, right, new_vn, vi)
-end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::PrefixContext, sampler, right, vn, vi
-)
-    new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return tilde_assume(rng, new_context, sampler, right, new_vn, vi)
 end
 
 """
@@ -78,17 +41,6 @@ function tilde_assume!!(context, right, vn, vi)
 end
 
 # observe
-"""
-    tilde_observe!!(context::SamplingContext, right, left, vi)
-
-Handle observed constants with a `context` associated with a sampler.
-
-Falls back to `tilde_observe!!(context.context, right, left, vi)`.
-"""
-function tilde_observe!!(context::SamplingContext, right, left, vn, vi)
-    return tilde_observe!!(context.context, right, left, vn, vi)
-end
-
 function tilde_observe!!(context::AbstractContext, right, left, vn, vi)
     return tilde_observe!!(childcontext(context), right, left, vn, vi)
 end
@@ -120,59 +72,4 @@ function tilde_observe!!(::DefaultContext, right, left, vn, vi)
         throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
     vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
-end
-
-function assume(::Random.AbstractRNG, spl::Sampler, dist)
-    return error("DynamicPPL.assume: unmanaged inference algorithm: $(typeof(spl))")
-end
-
-# fallback without sampler
-function assume(dist::Distribution, vn::VarName, vi)
-    y = getindex_internal(vi, vn)
-    f = from_maybe_linked_internal_transform(vi, vn, dist)
-    x, inv_logjac = with_logabsdet_jacobian(f, y)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, dist)
-    return x, vi
-end
-
-# TODO: Remove this thing.
-# SampleFromPrior and SampleFromUniform
-function assume(
-    rng::Random.AbstractRNG,
-    sampler::Union{SampleFromPrior,SampleFromUniform},
-    dist::Distribution,
-    vn::VarName,
-    vi::VarInfoOrThreadSafeVarInfo,
-)
-    if haskey(vi, vn)
-        # Always overwrite the parameters with new ones for `SampleFromUniform`.
-        if sampler isa SampleFromUniform || is_flagged(vi, vn, "del")
-            # TODO(mhauru) Is it important to unset the flag here? The `true` allows us
-            # to ignore the fact that for VarNamedVector this does nothing, but I'm unsure
-            # if that's okay.
-            unset_flag!(vi, vn, "del", true)
-            r = init(rng, dist, sampler)
-            f = to_maybe_linked_internal_transform(vi, vn, dist)
-            # TODO(mhauru) This should probably be call a function called setindex_internal!
-            vi = BangBang.setindex!!(vi, f(r), vn)
-        else
-            # Otherwise we just extract it.
-            r = vi[vn, dist]
-        end
-    else
-        r = init(rng, dist, sampler)
-        if istrans(vi)
-            f = to_linked_internal_transform(vi, vn, dist)
-            vi = push!!(vi, vn, f(r), dist)
-            # By default `push!!` sets the transformed flag to `false`.
-            vi = settrans!!(vi, true, vn)
-        else
-            vi = push!!(vi, vn, r, dist)
-        end
-    end
-
-    # HACK: The above code might involve an `invlink` somewhere, etc. so we need to correct.
-    logjac = logabsdetjac(istrans(vi, vn) ? link_transform(dist) : identity, r)
-    vi = accumulate_assume!!(vi, r, logjac, vn, dist)
-    return r, vi
 end
