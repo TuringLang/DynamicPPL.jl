@@ -34,7 +34,7 @@ function setup_varinfos(
 
     # SimpleVarInfo
     svi_typed = SimpleVarInfo(example_values)
-    svi_untyped = SimpleVarInfo(OrderedDict())
+    svi_untyped = SimpleVarInfo(OrderedDict{VarName,Any}())
     svi_vnv = SimpleVarInfo(DynamicPPL.VarNamedVector())
 
     varinfos = map((

@@ -12,12 +12,12 @@ $(TYPEDFIELDS)
 """
 struct ValuesAsInModelAccumulator <: AbstractAccumulator
     "values that are extracted from the model"
-    values::OrderedDict
+    values::OrderedDict{<:VarName}
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
 end
 function ValuesAsInModelAccumulator(include_colon_eq)
-    return ValuesAsInModelAccumulator(OrderedDict(), include_colon_eq)
+    return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
 end
 
 accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel

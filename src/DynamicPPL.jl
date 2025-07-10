@@ -23,7 +23,7 @@ using DocStringExtensions
 using Random: Random
 
 # For extending
-import AbstractPPL: predict
+import AbstractPPL: predict, hasvalue, getvalue
 
 # TODO: Remove these when it's possible.
 import Bijectors: link, invlink
