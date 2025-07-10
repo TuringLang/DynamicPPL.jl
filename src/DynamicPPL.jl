@@ -104,8 +104,9 @@ export AbstractVarInfo,
     DefaultContext,
     PrefixContext,
     ConditionContext,
-    assume,
-    tilde_assume,
+    # Tilde pipeline
+    tilde_assume!!,
+    tilde_observe!!,
     # Initialisation
     InitContext,
     AbstractInitStrategy,
