@@ -253,17 +253,9 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, varin
     return nothing
 end
 
-function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
+function DynamicPPL.tilde_assume!!(context::DebugContext, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
-    value, vi = DynamicPPL.tilde_assume(childcontext(context), right, vn, vi)
-    record_post_tilde_assume!(context, vn, right, value, vi)
-    return value, vi
-end
-function DynamicPPL.tilde_assume(
-    rng::Random.AbstractRNG, context::DebugContext, sampler, right, vn, vi
-)
-    record_pre_tilde_assume!(context, vn, right, vi)
-    value, vi = DynamicPPL.tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
+    value, vi = DynamicPPL.tilde_assume!!(childcontext(context), right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, vi)
     return value, vi
 end
@@ -438,9 +430,10 @@ function check_model_and_trace(
     kwargs...,
 )
     # Execute the model with the debug context.
-    debug_context = DebugContext(
-        SamplingContext(rng, model.context); error_on_failure=error_on_failure, kwargs...
+    new_context = DynamicPPL.setleafcontext(
+        model.context, DynamicPPL.InitContext(rng, DynamicPPL.PriorInit())
     )
+    debug_context = DebugContext(new_context; error_on_failure=error_on_failure, kwargs...)
     debug_model = DynamicPPL.contextualize(model, debug_context)
 
     # Perform checks before evaluating the model.

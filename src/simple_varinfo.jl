@@ -457,23 +457,6 @@ function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
 end
 
 # Context implementations
-# NOTE: Evaluations, i.e. those without `rng` are shared with other
-# implementations of `AbstractVarInfo`.
-function assume(
-    rng::Random.AbstractRNG,
-    sampler::Union{SampleFromPrior,SampleFromUniform},
-    dist::Distribution,
-    vn::VarName,
-    vi::SimpleOrThreadSafeSimple,
-)
-    value = init(rng, dist, sampler)
-    # Transform if we're working in unconstrained space.
-    f = to_maybe_linked_internal_transform(vi, vn, dist)
-    value_raw, logjac = with_logabsdet_jacobian(f, value)
-    vi = BangBang.push!!(vi, vn, value_raw, dist)
-    vi = accumulate_assume!!(vi, value, -logjac, vn, dist)
-    return value, vi
-end
 
 function settrans!!(vi::SimpleVarInfo, trans)
     return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
