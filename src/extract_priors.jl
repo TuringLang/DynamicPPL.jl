@@ -117,7 +117,7 @@ extract_priors(args::Union{Model,AbstractVarInfo}...) =
 function extract_priors(rng::Random.AbstractRNG, model::Model)
     varinfo = VarInfo()
     varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(),))
-    varinfo = last(evaluate_and_sample!!(rng, model, varinfo))
+    varinfo = last(init!!(rng, model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end
 
