@@ -103,13 +103,10 @@ export AbstractVarInfo,
     values_as_in_model,
     # Samplers
     Sampler,
-    SampleFromPrior,
-    SampleFromUniform,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
     contextualize,
-    SamplingContext,
     DefaultContext,
     PrefixContext,
     ConditionContext,

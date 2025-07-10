@@ -462,12 +462,12 @@ AbstractPPL.evaluate!!
 
 This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
+If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
 The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
-SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
@@ -501,15 +501,7 @@ DynamicPPL.init
 
 ### Samplers
 
-In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
-
-```@docs
-SampleFromPrior
-SampleFromUniform
-```
-
-Additionally, a generic sampler for inference is implemented.
+In DynamicPPL a generic sampler for inference is implemented.
 
 ```@docs
 Sampler

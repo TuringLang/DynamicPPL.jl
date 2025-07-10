@@ -149,7 +149,7 @@
             model = demo_missing_in_multivariate([1.0, missing])
             # Have to run this check_model call with an empty varinfo, because actually
             # instantiating the VarInfo would cause it to throw a MethodError.
-            model = contextualize(model, SamplingContext())
+            model = contextualize(model, InitContext())
             @test_throws ErrorException check_model(model, VarInfo(); error_on_failure=true)
         end
 

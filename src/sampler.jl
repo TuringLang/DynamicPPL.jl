@@ -1,34 +1,3 @@
-# TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
-# That would let us use all defaults for Sampler, combine it with other samplers etc.
-"""
-    SampleFromUniform
-
-Sampling algorithm that samples unobserved random variables from a uniform distribution.
-
-# References
-
-[Stan reference manual](https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values)
-"""
-struct SampleFromUniform <: AbstractSampler end
-
-"""
-    SampleFromPrior
-
-Sampling algorithm that samples unobserved random variables from their prior distribution.
-"""
-struct SampleFromPrior <: AbstractSampler end
-
-# Initializations.
-init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
-function init(rng, dist, ::SampleFromUniform)
-    return istransformable(dist) ? inittrans(rng, dist) : rand(rng, dist)
-end
-
-init(rng, dist, ::SampleFromPrior, n::Int) = rand(rng, dist, n)
-function init(rng, dist, ::SampleFromUniform, n::Int)
-    return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
-end
-
 # TODO(mhauru) Could we get rid of Sampler now that it's just a wrapper around `alg`?
 # (Selector has been removed).
 """
@@ -47,20 +16,6 @@ By default, values are sampled from the prior.
 """
 struct Sampler{T} <: AbstractSampler
     alg::T
-end
-
-# AbstractMCMC interface for SampleFromUniform and SampleFromPrior
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Union{SampleFromUniform,SampleFromPrior},
-    state=nothing;
-    kwargs...,
-)
-    vi = VarInfo()
-    strategy = sampler isa SampleFromPrior ? PriorInit() : UniformInit()
-    _, new_vi = DynamicPPL.init!!(rng, model, vi, strategy)
-    return new_vi, nothing
 end
 
 """
