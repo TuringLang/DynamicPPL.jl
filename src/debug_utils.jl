@@ -253,7 +253,7 @@ function record_post_tilde_assume!(context::DebugContext, vn, dist, value, varin
     return nothing
 end
 
-function DynamicPPL.tilde_assume(context::DebugContext, right, vn, vi)
+function DynamicPPL.tilde_assume!!(context::DebugContext, right, vn, vi)
     record_pre_tilde_assume!(context, vn, right, vi)
     value, vi = DynamicPPL.tilde_assume!!(childcontext(context), right, vn, vi)
     record_post_tilde_assume!(context, vn, right, value, vi)

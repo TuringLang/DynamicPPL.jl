@@ -521,9 +521,3 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
 ```
-
-### [Model-Internal Functions](@id model_internal)
-
-```@docs
-tilde_assume
-```
