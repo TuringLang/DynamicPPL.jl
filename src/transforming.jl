@@ -12,7 +12,7 @@ how to do the transformation, used by e.g. `SimpleVarInfo`.
 struct DynamicTransformationContext{isinverse} <: AbstractContext end
 NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
-function tilde_assume(
+function tilde_assume!!(
     ::DynamicTransformationContext{isinverse}, right, vn, vi
 ) where {isinverse}
     # vi[vn, right] always provides the value in unlinked space.

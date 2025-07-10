@@ -8,7 +8,7 @@ Part of the API of DynamicPPL is defined in the more lightweight interface packa
 
 A core component of DynamicPPL is the [`@model`](@ref) macro.
 It can be used to define probabilistic models in an intuitive way by specifying random variables and their distributions with `~` statements.
-These statements are rewritten by `@model` as calls of [internal functions](@ref model_internal) for sampling the variables and computing their log densities.
+These statements are rewritten by `@model` as calls of internal functions for sampling the variables and computing their log densities.
 
 ```@docs
 @model
@@ -344,6 +344,13 @@ Base.empty!
 SimpleVarInfo
 ```
 
+### Tilde-pipeline
+
+```@docs
+tilde_assume!!
+tilde_observe!!
+```
+
 ### Accumulators
 
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
@@ -511,10 +518,4 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 ```@docs
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
-```
-
-### [Model-Internal Functions](@id model_internal)
-
-```@docs
-tilde_assume
 ```
