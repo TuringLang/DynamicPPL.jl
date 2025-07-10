@@ -466,7 +466,6 @@ The behaviour of a model execution can be changed with evaluation contexts, whic
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
-SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
@@ -495,15 +494,7 @@ DynamicPPL.init
 
 ### Samplers
 
-In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
-
-```@docs
-SampleFromPrior
-SampleFromUniform
-```
-
-Additionally, a generic sampler for inference is implemented.
+In DynamicPPL a generic sampler for inference is implemented.
 
 ```@docs
 Sampler

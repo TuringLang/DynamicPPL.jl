@@ -62,19 +62,14 @@
 
     @testset "demo models" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            sampling_model = contextualize(model, SamplingContext(model.context))
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
-            # Check that the inferred varinfo is indeed suitable for evaluation and sampling
+            # Check that the inferred varinfo is indeed suitable for evaluation and initialisation
             f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
                 model, varinfo
             )
             JET.test_call(f_eval, argtypes_eval)
 
-            f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                sampling_model, varinfo
-            )
-            JET.test_call(f_sample, argtypes_sample)
             # For our demo models, they should all result in typed.
             is_typed = varinfo isa DynamicPPL.NTVarInfo
             @test is_typed
@@ -85,10 +80,6 @@
                     model, typed_vi
                 )
                 JET.test_call(f_eval, argtypes_eval)
-                f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                    sampling_model, typed_vi
-                )
-                JET.test_call(f_sample, argtypes_sample)
             end
         end
     end

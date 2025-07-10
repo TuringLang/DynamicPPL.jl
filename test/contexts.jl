@@ -50,7 +50,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     contexts = Dict(
         :default => DefaultContext(),
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
-        :sampling => SamplingContext(),
         :prefix => PrefixContext(@varname(x)),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
@@ -151,11 +150,11 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             vn = @varname(x[1])
             ctx1 = PrefixContext(@varname(a))
             @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
-            ctx2 = SamplingContext(ctx1)
+            ctx2 = ConditionContext(Dict(), ctx1)
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
-            ctx4 = DynamicPPL.SamplingContext(ctx3)
+            ctx4 = FixedContext(Dict(), ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
@@ -202,22 +201,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             # Check that all variables are prefixed correctly.
             @test vns_actual == vns_expected
         end
-    end
-
-    @testset "SamplingContext" begin
-        context = SamplingContext(Random.default_rng(), SampleFromPrior(), DefaultContext())
-        @test context isa SamplingContext
-
-        # convenience constructors
-        @test SamplingContext() == context
-        @test SamplingContext(Random.default_rng()) == context
-        @test SamplingContext(SampleFromPrior()) == context
-        @test SamplingContext(DefaultContext()) == context
-        @test SamplingContext(Random.default_rng(), SampleFromPrior()) == context
-        @test SamplingContext(Random.default_rng(), DefaultContext()) == context
-        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
-        @test SamplingContext(SampleFromPrior(), DefaultContext()) == context
-        @test EnzymeCore.EnzymeRules.inactive_type(typeof(context))
     end
 
     @testset "ConditionContext" begin
