@@ -507,7 +507,7 @@ The default implementation of [`Sampler`](@ref) uses the following unexported fu
 ```@docs
 DynamicPPL.initialstep
 DynamicPPL.loadstate
-DynamicPPL.initialsampler
+DynamicPPL.init_strategy
 ```
 
 Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
