@@ -40,6 +40,11 @@
             end
         end
         @test DynamicPPL.Experimental.determine_suitable_varinfo(demo4()) isa
+            DynamicPPL.NTVarInfo
+        init_model = DynamicPPL.contextualize(
+            demo4(), DynamicPPL.InitContext(DynamicPPL.PriorInit())
+        )
+        @test DynamicPPL.Experimental.determine_suitable_varinfo(init_model) isa
             DynamicPPL.UntypedVarInfo
 
         # In this model, the type error occurs in the user code rather than in DynamicPPL.
