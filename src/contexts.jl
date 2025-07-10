@@ -185,7 +185,7 @@ PrefixContexts removed.
 
 NOTE: This does _not_ modify any variables in any `ConditionContext` and
 `FixedContext` that may be present in the context stack. This is because this
-function is only used in `tilde_assume`, which is lower in the tilde-pipeline
+function is only used in `tilde_assume!!`, which is lower in the tilde-pipeline
 than `contextual_isassumption` and `contextual_isfixed` (the functions which
 actually use the `ConditionContext` and `FixedContext` values). Thus, by this
 time, any `ConditionContext`s and `FixedContext`s present have already served
