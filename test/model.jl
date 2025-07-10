@@ -580,7 +580,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             xs_train = 1:0.1:10
             ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
             m_lin_reg = linear_reg(xs_train, ys_train)
-            chain = [VarInfo(m_lin_reg) _ in 1:10000]
+            chain = [VarInfo(m_lin_reg) for _ in 1:10000]
 
             # chain is generated from the prior
             @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1
