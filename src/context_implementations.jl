@@ -1,18 +1,18 @@
 # assume
-function tilde_assume(context::AbstractContext, args...)
-    return tilde_assume(childcontext(context), args...)
+function tilde_assume!!(context::AbstractContext, right::Distribution, vn, vi)
+    return tilde_assume!!(childcontext(context), right, vn, vi)
 end
-function tilde_assume(::DefaultContext, right, vn, vi)
+function tilde_assume!!(::DefaultContext, right::Distribution, vn, vi)
     y = getindex_internal(vi, vn)
     f = from_maybe_linked_internal_transform(vi, vn, right)
     x, inv_logjac = with_logabsdet_jacobian(f, y)
     vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right)
     return x, vi
 end
-function tilde_assume(context::PrefixContext, right, vn, vi)
+function tilde_assume!!(context::PrefixContext, right::Distribution, vn, vi)
     # Note that we can't use something like this here:
     #     new_vn = prefix(context, vn)
-    #     return tilde_assume(childcontext(context), right, new_vn, vi)
+    #     return tilde_assume!!(childcontext(context), right, new_vn, vi)
     # This is because `prefix` applies _all_ prefixes in a given context to a
     # variable name. Thus, if we had two levels of nested prefixes e.g.
     # `PrefixContext{:a}(PrefixContext{:b}(DefaultContext()))`, then the
@@ -20,7 +20,7 @@ function tilde_assume(context::PrefixContext, right, vn, vi)
     # would apply the prefix `b._`, resulting in `b.a.b._`.
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return tilde_assume(new_context, right, new_vn, vi)
+    return tilde_assume!!(new_context, right, new_vn, vi)
 end
 
 """
@@ -28,16 +28,9 @@ end
 
 Handle assumed variables, e.g., `x ~ Normal()` (where `x` does occur in the model inputs),
 accumulate the log probability, and return the sampled value and updated `vi`.
-
-By default, calls `tilde_assume(context, right, vn, vi)` and accumulates the log
-probability of `vi` with the returned value.
 """
-function tilde_assume!!(context, right, vn, vi)
-    return if right isa DynamicPPL.Submodel
-        _evaluate!!(right, vi, context, vn)
-    else
-        tilde_assume(context, right, vn, vi)
-    end
+function tilde_assume!!(context, right::DynamicPPL.Submodel, vn, vi)
+    return _evaluate!!(right, vi, context, vn)
 end
 
 # observe
