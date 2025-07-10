@@ -278,7 +278,7 @@ end
         @test typed_vi[vn_y] == 2.0
     end
 
-    @testset "setval! & setval_and_resample!" begin
+    @testset "setval!" begin
         @model function testmodel(x)
             n = length(x)
             s ~ truncated(Normal(); lower=0)
@@ -329,8 +329,8 @@ end
                 else
                     DynamicPPL.setval!(vicopy, (m=zeros(5),))
                 end
-                # Setting `m` fails for univariate due to limitations of `setval!`
-                # and `setval_and_resample!`. See docstring of `setval!` for more info.
+                # Setting `m` fails for univariate due to limitations of `setval!`.
+                # See docstring of `setval!` for more info.
                 if model == model_uv && vi in [vi_untyped, vi_typed]
                     @test_broken vicopy[m_vns] == zeros(5)
                 else
@@ -355,57 +355,6 @@ end
                 DynamicPPL.setval!(vicopy, (s=42,))
                 @test vicopy[m_vns] == 1:5
                 @test vicopy[s_vns] == 42
-
-                ### `setval_and_resample!` ###
-                if model == model_mv && vi == vi_untyped
-                    # Trying to re-run model with `MvNormal` on `vi_untyped` will call
-                    # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
-                    # so we skip this particular case.
-                    continue
-                end
-
-                if vi in [vi_vnv, vi_vnv_typed]
-                    # `setval_and_resample!` works differently for `VarNamedVector`: All
-                    # values will be resampled when model(vicopy) is called. Hence the below
-                    # tests are not applicable.
-                    continue
-                end
-
-                vicopy = deepcopy(vi)
-                DynamicPPL.setval_and_resample!(vicopy, (m=zeros(5),))
-                model(vicopy)
-                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
-                if model == model_uv
-                    @test_broken vicopy[m_vns] == zeros(5)
-                else
-                    @test vicopy[m_vns] == zeros(5)
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Ordering is NOT preserved.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
-                )
-                model(vicopy)
-                if model == model_uv
-                    @test vicopy[m_vns] == 1:5
-                else
-                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Correct ordering.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 2, 3, 4, 5))...)
-                )
-                model(vicopy)
-                @test vicopy[m_vns] == 1:5
-                @test vicopy[s_vns] != vi[s_vns]
-
-                DynamicPPL.setval_and_resample!(vicopy, (s=42,))
-                model(vicopy)
-                @test vicopy[m_vns] != 1:5
-                @test vicopy[s_vns] == 42
             end
         end
 
@@ -418,9 +367,6 @@ end
         vals_prev = vi.metadata.x.vals
         ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
         DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
-        @test vals_prev == vi.metadata.x.vals
-
-        DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
         @test vals_prev == vi.metadata.x.vals
     end
 
