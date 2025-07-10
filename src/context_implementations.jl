@@ -28,6 +28,11 @@ end
 function tilde_assume(rng::Random.AbstractRNG, ::DefaultContext, sampler, right, vn, vi)
     return assume(rng, sampler, right, vn, vi)
 end
+function tilde_assume(::Random.AbstractRNG, ::InitContext, sampler, right, vn, vi)
+    return error(
+        "Encountered SamplingContext->InitContext. This method will be removed in the next PR.",
+    )
+end
 function tilde_assume(::DefaultContext, sampler, right, vn, vi)
     # same as above but no rng
     return assume(Random.default_rng(), sampler, right, vn, vi)
