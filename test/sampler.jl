@@ -82,7 +82,9 @@
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
             let inits = (; p=0.2)
-                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+                chain = sample(
+                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
+                )
                 @test chain[1].metadata.p.vals == [0.2]
                 @test getlogjoint(chain[1]) == lptrue
 
@@ -110,7 +112,9 @@
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
             for inits in ([4, -1], (; s=4, m=-1))
-                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+                chain = sample(
+                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
+                )
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
                 @test getlogjoint(chain[1]) == lptrue
@@ -122,7 +126,7 @@
                     MCMCThreads(),
                     1,
                     10;
-                    initial_params=fill(inits, 10),
+                    initial_params=fill(ParamsInit(inits), 10),
                     progress=false,
                 )
                 for c in chains
@@ -133,8 +137,10 @@
             end
 
             # set only m = -1
-            for inits in ([missing, -1], (; s=missing, m=-1), (; m=-1))
-                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
+            for inits in ((; s=missing, m=-1), (; m=-1))
+                chain = sample(
+                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
+                )
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]
 
@@ -153,54 +159,6 @@
                     @test c[1].metadata.m.vals == [-1]
                 end
             end
-
-            # specify `initial_params=nothing`
-            Random.seed!(1234)
-            chain1 = sample(model, sampler, 1; progress=false)
-            Random.seed!(1234)
-            chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
-            @test_throws DimensionMismatch sample(
-                model, sampler, 1; progress=false, initial_params=zeros(10)
-            )
-            @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
-            @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
-
-            # parallel sampling
-            Random.seed!(1234)
-            chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
-            Random.seed!(1234)
-            chains2 = sample(
-                model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false
-            )
-            for (c1, c2) in zip(chains1, chains2)
-                @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
-                @test c1[1].metadata.s.vals == c2[1].metadata.s.vals
-            end
-        end
-
-        @testset "error handling" begin
-            # https://github.com/TuringLang/Turing.jl/issues/2452
-            @model function constrained_uniform(n)
-                Z ~ Uniform(10, 20)
-                X = Vector{Float64}(undef, n)
-                for i in 1:n
-                    X[i] ~ Uniform(0, Z)
-                end
-            end
-
-            n = 2
-            initial_z = 15
-            initial_x = [0.2, 0.5]
-            model = constrained_uniform(n)
-            vi = VarInfo(model)
-
-            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, [initial_z, initial_x], model
-            )
-
-            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, (X=initial_x, Z=initial_z), model
-            )
         end
     end
 end
