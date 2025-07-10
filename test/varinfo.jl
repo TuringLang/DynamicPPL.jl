@@ -43,7 +43,7 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        vi = DynamicPPL.untyped_varinfo(model, SampleFromUniform())
+        _, vi = DynamicPPL.init!!(model, VarInfo(), UniformInit())
         tvi = DynamicPPL.typed_varinfo(vi)
 
         meta = vi.metadata
@@ -278,7 +278,7 @@ end
         @test typed_vi[vn_y] == 2.0
     end
 
-    @testset "setval! & setval_and_resample!" begin
+    @testset "setval!" begin
         @model function testmodel(x)
             n = length(x)
             s ~ truncated(Normal(); lower=0)
@@ -329,8 +329,8 @@ end
                 else
                     DynamicPPL.setval!(vicopy, (m=zeros(5),))
                 end
-                # Setting `m` fails for univariate due to limitations of `setval!`
-                # and `setval_and_resample!`. See docstring of `setval!` for more info.
+                # Setting `m` fails for univariate due to limitations of `setval!`.
+                # See docstring of `setval!` for more info.
                 if model == model_uv && vi in [vi_untyped, vi_typed]
                     @test_broken vicopy[m_vns] == zeros(5)
                 else
@@ -355,57 +355,6 @@ end
                 DynamicPPL.setval!(vicopy, (s=42,))
                 @test vicopy[m_vns] == 1:5
                 @test vicopy[s_vns] == 42
-
-                ### `setval_and_resample!` ###
-                if model == model_mv && vi == vi_untyped
-                    # Trying to re-run model with `MvNormal` on `vi_untyped` will call
-                    # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
-                    # so we skip this particular case.
-                    continue
-                end
-
-                if vi in [vi_vnv, vi_vnv_typed]
-                    # `setval_and_resample!` works differently for `VarNamedVector`: All
-                    # values will be resampled when model(vicopy) is called. Hence the below
-                    # tests are not applicable.
-                    continue
-                end
-
-                vicopy = deepcopy(vi)
-                DynamicPPL.setval_and_resample!(vicopy, (m=zeros(5),))
-                model(vicopy)
-                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
-                if model == model_uv
-                    @test_broken vicopy[m_vns] == zeros(5)
-                else
-                    @test vicopy[m_vns] == zeros(5)
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Ordering is NOT preserved.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
-                )
-                model(vicopy)
-                if model == model_uv
-                    @test vicopy[m_vns] == 1:5
-                else
-                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Correct ordering.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 2, 3, 4, 5))...)
-                )
-                model(vicopy)
-                @test vicopy[m_vns] == 1:5
-                @test vicopy[s_vns] != vi[s_vns]
-
-                DynamicPPL.setval_and_resample!(vicopy, (s=42,))
-                model(vicopy)
-                @test vicopy[m_vns] != 1:5
-                @test vicopy[s_vns] == 42
             end
         end
 
@@ -418,9 +367,6 @@ end
         vals_prev = vi.metadata.x.vals
         ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
         DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
-        @test vals_prev == vi.metadata.x.vals
-
-        DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
         @test vals_prev == vi.metadata.x.vals
     end
 
@@ -486,17 +432,18 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model using SampleFromUniform does not
+        # Check that instantiating the model using UniformInit does not
         # perform linking
-        # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
-        # specifically in this test is because SFU samples from the linked 
-        # distribution i.e. in unconstrained space. However, it does this not
-        # by linking the varinfo but by transforming the distributions on the
-        # fly. That's why it's worth specifically checking that it can do this
-        # without having to change the VarInfo object.
+        # Note (penelopeysm): The purpose of using UniformInit specifically in
+        # this test is because it samples from the linked distribution i.e. in
+        # unconstrained space. However, it does this not by linking the varinfo
+        # but by transforming the distributions on the fly. That's why it's
+        # worth specifically checking that it can do this without having to
+        # change the VarInfo object.
+        # TODO(penelopeysm): Move this to UniformInit tests rather than here.
         vi = VarInfo()
         meta = vi.metadata
-        _, vi = DynamicPPL.evaluate_and_sample!!(model, vi, SampleFromUniform())
+        _, vi = DynamicPPL.init!!(model, vi, UniformInit())
         @test all(x -> !istrans(vi, x), meta.vns)
 
         # Check that linking and invlinking set the `trans` flag accordingly
@@ -569,8 +516,8 @@ end
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -578,8 +525,8 @@ end
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -587,8 +534,8 @@ end
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -596,24 +543,24 @@ end
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+        # Resample in unconstrained space.
+        vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
         f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
         x = f(DynamicPPL.getindex_internal(vi, vn))
         @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
@@ -994,10 +941,9 @@ end
         end
         model1 = demo(1)
         varinfo1 = DynamicPPL.link!!(VarInfo(model1), model1)
-        # Sampling from `model2` should hit the `istrans(vi) == true` branches
-        # because all the existing variables are linked.
+        # Calling init!! should preserve the fact that the variables are linked.
         model2 = demo(2)
-        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
+        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), PriorInit()))
         for vn in [@varname(x[1]), @varname(x[2])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -1013,10 +959,9 @@ end
         end
         model1 = demo_dot(1)
         varinfo1 = DynamicPPL.link!!(DynamicPPL.untyped_varinfo(model1), model1)
-        # Sampling from `model2` should hit the `istrans(vi) == true` branches
-        # because all the existing variables are linked.
+        # Calling init!! should preserve the fact that the variables are linked.
         model2 = demo_dot(2)
-        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
+        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), PriorInit()))
         for vn in [@varname(x), @varname(y[1])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
