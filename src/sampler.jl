@@ -58,7 +58,8 @@ function AbstractMCMC.step(
     kwargs...,
 )
     vi = VarInfo()
-    DynamicPPL.evaluate_and_sample!!(rng, model, vi, sampler)
+    strategy = sampler isa SampleFromPrior ? PriorInit() : UniformInit()
+    DynamicPPL.init!!(rng, model, vi, strategy)
     return vi, nothing
 end
 

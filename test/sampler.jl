@@ -69,8 +69,8 @@
         end
 
         # initial samplers
-        DynamicPPL.initialsampler(::Sampler{OnlyInitAlgUniform}) = SampleFromUniform()
-        @test DynamicPPL.initialsampler(Sampler(OnlyInitAlgDefault())) == SampleFromPrior()
+        DynamicPPL.init_strategy(::Sampler{OnlyInitAlgUniform}) = UniformInit()
+        @test DynamicPPL.init_strategy(Sampler(OnlyInitAlgDefault())) == PriorInit()
 
         for alg in (OnlyInitAlgDefault(), OnlyInitAlgUniform())
             # model with one variable: initialization p = 0.2
