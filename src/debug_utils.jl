@@ -411,6 +411,7 @@ function check_model_and_trace(
 )
     # Add debug accumulator to the VarInfo.
     # Need a NumProduceAccumulator as well or else get_num_produce may throw
+    # TODO(mhauru) Remove this once VariableOrderAccumulator stuff is done.
     varinfo = DynamicPPL.setaccs!!(
         deepcopy(varinfo), (DebugAccumulator(error_on_failure), NumProduceAccumulator())
     )
