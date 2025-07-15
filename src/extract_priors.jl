@@ -116,10 +116,7 @@ extract_priors(args::Union{Model,AbstractVarInfo}...) =
     extract_priors(Random.default_rng(), args...)
 function extract_priors(rng::Random.AbstractRNG, model::Model)
     varinfo = VarInfo()
-    # TODO(mhauru) This doesn't actually need the NumProduceAccumulator, it's only a
-    # workaround for the fact that `order` is still hardcoded in VarInfo, and hence you
-    # can't push new variables without knowing the num_produce. Remove this when possible.
-    varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(), NumProduceAccumulator()))
+    varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(),))
     varinfo = last(evaluate_and_sample!!(rng, model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end
@@ -133,12 +130,7 @@ This is done by evaluating the model at the values present in `varinfo`
 and recording the distributions that are present at each tilde statement.
 """
 function extract_priors(model::Model, varinfo::AbstractVarInfo)
-    # TODO(mhauru) This doesn't actually need the NumProduceAccumulator, it's only a
-    # workaround for the fact that `order` is still hardcoded in VarInfo, and hence you
-    # can't push new variables without knowing the num_produce. Remove this when possible.
-    varinfo = setaccs!!(
-        deepcopy(varinfo), (PriorDistributionAccumulator(), NumProduceAccumulator())
-    )
+    varinfo = setaccs!!(deepcopy(varinfo), (PriorDistributionAccumulator(),))
     varinfo = last(evaluate!!(model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end
