@@ -128,13 +128,8 @@ end
 AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 
-# When showing with text/plain, leave out type information about the wrapper AccumulatorTuple.
-function Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple)
-    print(io, "AccumulatorTuple(")
-    show(io, mime, at.nt)
-    print(io, ")")
-    return nothing
-end
+# When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
+Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
