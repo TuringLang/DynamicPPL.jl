@@ -123,7 +123,7 @@ accumulator_name(::Type{<:VariableOrderAccumulator}) = :VariableOrder
 
 split(::LogPriorAccumulator{T}) where {T} = LogPriorAccumulator(zero(T))
 split(::LogLikelihoodAccumulator{T}) where {T} = LogLikelihoodAccumulator(zero(T))
-split(acc::VariableOrderAccumulator) = acc
+split(acc::VariableOrderAccumulator) = copy(acc)
 
 function combine(acc::LogPriorAccumulator, acc2::LogPriorAccumulator)
     return LogPriorAccumulator(acc.logp + acc2.logp)
@@ -132,7 +132,7 @@ function combine(acc::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return LogLikelihoodAccumulator(acc.logp + acc2.logp)
 end
 function combine(acc::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
-    # Note that assumptions are not allowed within in parallelised blocks, and thus the
+    # Note that assumptions are not allowed in parallelised blocks, and thus the
     # dictionaries should be identical.
     return VariableOrderAccumulator(
         max(acc.num_produce, acc2.num_produce), merge(acc.order, acc2.order)
