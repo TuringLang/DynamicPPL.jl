@@ -70,11 +70,11 @@ julia> # (✓) Sort of fast, but only possible at runtime.
 
 julia> # In addtion, we can only access varnames as they appear in the model!
        vi[@varname(x)]
-ERROR: getvalue: x was not found in the values provided
+ERROR: x was not found in the dictionary provided
 [...]
 
 julia> vi[@varname(x[1:2])]
-ERROR: getvalue: x[1:2] was not found in the values provided
+ERROR: x[1:2] was not found in the dictionary provided
 [...]
 ```
 
@@ -177,11 +177,11 @@ julia> svi_dict[@varname(m.a[1])]
 1.0
 
 julia> svi_dict[@varname(m.a[2])]
-ERROR: getvalue: m.a[2] was not found in the values provided
+ERROR: m.a[2] was not found in the dictionary provided
 [...]
 
 julia> svi_dict[@varname(m.b)]
-ERROR: getvalue: m.b was not found in the values provided
+ERROR: m.b was not found in the dictionary provided
 [...]
 ```
 """
