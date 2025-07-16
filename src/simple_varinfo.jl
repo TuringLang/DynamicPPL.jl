@@ -122,7 +122,7 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), AccumulatorTuple((LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0))))
+Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
@@ -130,7 +130,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), AccumulatorTuple((LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0))))
+SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0)))
 
 julia> # (✓) No probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
