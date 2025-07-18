@@ -60,9 +60,11 @@ accumulate the log probability, and return the observed value and updated `vi`.
 Falls back to `tilde_observe!!(context, right, left, vi)` ignoring the information about variable name
 and indices; if needed, these can be accessed through this function, though.
 """
-function tilde_observe!!(::DefaultContext, right, left, vn, vi)
-    right isa DynamicPPL.Submodel &&
-        throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
+function tilde_observe!!(::DefaultContext, right::Distribution, left, vn, vi)
     vi = accumulate_observe!!(vi, right, left, vn)
     return left, vi
+end
+
+function tilde_observe!!(::DefaultContext, ::DynamicPPL.Submodel, left, vn, vi)
+    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
 end
