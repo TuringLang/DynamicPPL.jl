@@ -1099,10 +1099,28 @@ end
         @test DynamicPPL.getorder(vi, vn_z3) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        vi = DynamicPPL.reset_num_produce!!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
+        DynamicPPL.set_retained_vns_del!(vi)
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
+
         vi = DynamicPPL.reset_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
         @test DynamicPPL.is_flagged(vi, vn_z2, "del")
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")

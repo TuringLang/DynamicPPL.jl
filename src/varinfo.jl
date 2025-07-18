@@ -1813,54 +1813,23 @@ end
 """
     set_retained_vns_del!(vi::VarInfo)
 
-Set the `"del"` flag of variables in `vi` with `order > vi.num_produce[]` to `true`.
+Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`.
+
+Will error if `vi` does not have an accumulator for `VariableOrder`.
 """
-function set_retained_vns_del!(vi::UntypedVarInfo)
-    idcs = _getidcs(vi)
-    if get_num_produce(vi) == 0
-        for i in length(idcs):-1:1
-            vi.metadata.flags["del"][idcs[i]] = true
-        end
-    else
-        for i in 1:length(vi.orders)
-            if i in idcs && vi.orders[i] > get_num_produce(vi)
-                vi.metadata.flags["del"][i] = true
-            end
+function set_retained_vns_del!(vi::VarInfo)
+    if !hasacc(vi, Val(:VariableOrder))
+        msg = "`vi` must have an accumulator for VariableOrder to set the `del` flag."
+        raise(ArgumentError(msg))
+    end
+    num_produce = get_num_produce(vi)
+    for vn in keys(vi)
+        order = getorder(vi, vn)
+        if order > num_produce
+            set_flag!(vi, vn, "del")
         end
     end
     return nothing
-end
-function set_retained_vns_del!(vi::NTVarInfo)
-    idcs = _getidcs(vi)
-    return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
-end
-@generated function _set_retained_vns_del!(
-    metadata, idcs::NamedTuple{names}, num_produce
-) where {names}
-    expr = Expr(:block)
-    for f in names
-        f_idcs = :(idcs.$f)
-        f_orders = :(metadata.$f.orders)
-        f_flags = :(metadata.$f.flags)
-        push!(
-            expr.args,
-            quote
-                # Set the flag for variables with symbol `f`
-                if num_produce == 0
-                    for i in length($f_idcs):-1:1
-                        $f_flags["del"][$f_idcs[i]] = true
-                    end
-                else
-                    for i in 1:length($f_orders)
-                        if i in $f_idcs && $f_orders[i] > num_produce
-                            $f_flags["del"][i] = true
-                        end
-                    end
-                end
-            end,
-        )
-    end
-    return expr
 end
 
 # TODO: Maybe rename or something?
