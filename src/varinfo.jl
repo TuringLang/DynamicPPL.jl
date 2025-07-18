@@ -1148,7 +1148,9 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(md, yvec, vn)
-    vi = acclogprior!!(vi, -logjac)
+    if hasacc(vi, Val(:LogPrior))
+        vi = acclogprior!!(vi, -logjac)
+    end
     return vi
 end
 
@@ -1185,7 +1187,9 @@ function _link(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogPrior))
+        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    end
     return new_varinfo
 end
 
@@ -1199,7 +1203,9 @@ function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogPrior))
+        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    end
     return new_varinfo
 end
 
@@ -1347,7 +1353,9 @@ function _invlink(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     md, logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogPrior))
+        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    end
     return new_varinfo
 end
 
@@ -1361,7 +1369,9 @@ function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md, logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogPrior))
+        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    end
     return new_varinfo
 end
 
