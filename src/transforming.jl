@@ -13,7 +13,7 @@ struct DynamicTransformationContext{isinverse} <: AbstractContext end
 NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
 function tilde_assume!!(
-    ::DynamicTransformationContext{isinverse}, right, vn, vi
+    ::DynamicTransformationContext{isinverse}, right::Distribution, vn, vi
 ) where {isinverse}
     # vi[vn, right] always provides the value in unlinked space.
     x = vi[vn, right]
@@ -31,7 +31,7 @@ function tilde_assume!!(
     return x, vi
 end
 
-function tilde_observe!!(::DynamicTransformationContext, right, left, vn, vi)
+function tilde_observe!!(::DynamicTransformationContext, right::Distribution, left, vn, vi)
     return tilde_observe!!(DefaultContext(), right, left, vn, vi)
 end
 
