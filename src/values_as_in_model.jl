@@ -20,6 +20,10 @@ function ValuesAsInModelAccumulator(include_colon_eq)
     return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
 end
 
+function Base.copy(acc::ValuesAsInModelAccumulator)
+    return ValuesAsInModelAccumulator(copy(acc.values), acc.include_colon_eq)
+end
+
 accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
 
 function split(acc::ValuesAsInModelAccumulator)

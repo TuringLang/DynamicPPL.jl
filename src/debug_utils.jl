@@ -410,11 +410,7 @@ function check_model_and_trace(
     model::Model, varinfo::AbstractVarInfo; error_on_failure=false
 )
     # Add debug accumulator to the VarInfo.
-    # Need a NumProduceAccumulator as well or else get_num_produce may throw
-    # TODO(mhauru) Remove this once VariableOrderAccumulator stuff is done.
-    varinfo = DynamicPPL.setaccs!!(
-        deepcopy(varinfo), (DebugAccumulator(error_on_failure), NumProduceAccumulator())
-    )
+    varinfo = DynamicPPL.setaccs!!(deepcopy(varinfo), (DebugAccumulator(error_on_failure),))
 
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
