@@ -122,7 +122,7 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0)))
+Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) Positive probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
@@ -130,7 +130,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), NumProduce = NumProduceAccumulator(0)))
+SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) No probability mass on negative numbers!
        getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
@@ -195,6 +195,12 @@ struct SimpleVarInfo{NT,Accs<:AccumulatorTuple where {N},C<:AbstractTransformati
     transformation::C
 end
 
+function Base.:(==)(vi1::SimpleVarInfo, vi2::SimpleVarInfo)
+    return vi1.values == vi2.values &&
+           vi1.accs == vi2.accs &&
+           vi1.transformation == vi2.transformation
+end
+
 transformation(vi::SimpleVarInfo) = vi.transformation
 
 function SimpleVarInfo(values, accs)
@@ -249,7 +255,7 @@ end
 # Constructor from `VarInfo`.
 function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
     values = values_as(vi, D)
-    return SimpleVarInfo(values, deepcopy(getaccs(vi)))
+    return SimpleVarInfo(values, copy(getaccs(vi)))
 end
 function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
     values = values_as(vi, D)
@@ -356,7 +362,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
     # Attempt to split into `parent` and `child` optic.
     parent, child, issuccess = splitoptic(getoptic(vn)) do optic
         o = optic === nothing ? identity : optic
-        haskey(dict, VarName(vn, o))
+        haskey(dict, VarName{getsym(vn)}(o))
     end
     # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
     keyoptic = parent === nothing ? identity : parent
@@ -366,7 +372,7 @@ function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName
         BangBang.setindex!!(dict, val, vn)
     else
         # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName(vn, keyoptic)
+        vn_key = VarName{getsym(vn)}(keyoptic)
         BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
     end
     return Accessors.@set vi.values = dict_new
@@ -448,7 +454,7 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    accs = deepcopy(getaccs(varinfo_right))
+    accs = copy(getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )

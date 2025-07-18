@@ -160,9 +160,10 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function for a collection of samples can be obtained with [`returned(model, chain)`](@ref).
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples) or a single sample represented as a `NamedTuple`.
 
 ```@docs
+returned(::DynamicPPL.Model, ::MCMCChains.Chains)
 returned(::DynamicPPL.Model, ::NamedTuple)
 ```
 
@@ -205,6 +206,21 @@ To test and/or benchmark the performance of an AD backend on a model, DynamicPPL
 
 ```@docs
 DynamicPPL.TestUtils.AD.run_ad
+```
+
+The default test setting is to compare against ForwardDiff.
+You can have more fine-grained control over how to test the AD backend using the following types:
+
+```@docs
+DynamicPPL.TestUtils.AD.AbstractADCorrectnessTestSetting
+DynamicPPL.TestUtils.AD.WithBackend
+DynamicPPL.TestUtils.AD.WithExpectedResult
+DynamicPPL.TestUtils.AD.NoTest
+```
+
+These are returned / thrown by the `run_ad` function:
+
+```@docs
 DynamicPPL.TestUtils.AD.ADResult
 DynamicPPL.TestUtils.AD.ADIncorrectException
 ```
@@ -325,7 +341,7 @@ get_num_produce
 set_num_produce!!
 increment_num_produce!!
 reset_num_produce!!
-setorder!
+setorder!!
 set_retained_vns_del!
 ```
 
@@ -352,7 +368,7 @@ DynamicPPL provides the following default accumulators.
 ```@docs
 LogPriorAccumulator
 LogLikelihoodAccumulator
-NumProduceAccumulator
+VariableOrderAccumulator
 ```
 
 ### Common API

@@ -2,11 +2,56 @@
 
 ## 0.37.0
 
-**Breaking changes**
+DynamicPPL 0.37 comes with a substantial reworking of its internals.
+Fundamentally, there is no change to the actual modelling syntax: if you are a Turing.jl user, for example, this release is unlikely to affect you much.
+However, if you are a package developer or someone who uses DynamicPPL's functionality directly, you will notice a number of changes.
+
+To avoid overwhelming the reader, we begin by listing the most important, user-facing changes, before explaining the changes to the internals in more detail.
+
+Note that virtually all changes listed here are breaking.
+
+**Public-facing changes**
 
 ### Submodel macro
 
 The `@submodel` macro is fully removed; please use `to_submodel` instead.
+
+### `DynamicPPL.TestUtils.AD.run_ad`
+
+The three keyword arguments, `test`, `reference_backend`, and `expected_value_and_grad` have been merged into a single `test` keyword argument.
+Please see the API documentation for more details.
+(The old `test=true` and `test=false` values are still valid, and you only need to adjust the invocation if you were explicitly passing the `reference_backend` or `expected_value_and_grad` arguments.)
+
+There is now also an `rng` keyword argument to help seed parameter generation.
+
+Finally, instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
+Their semantics are the same as in Julia's `isapprox`; two values are equal if they satisfy either `atol` or `rtol`.
+
+### `DynamicPPL.TestUtils.check_model`
+
+You now need to explicitly pass a `VarInfo` argument to `check_model` and `check_model_and_trace`.
+Previously, these functions would generate a new VarInfo for you (using an optionally provided `rng`).
+
+### Removal of `PriorContext` and `LikelihoodContext`
+
+A number of DynamicPPL's contexts have been removed, most notably `PriorContext` and `LikelihoodContext`.
+Although these are not the only _exported_ contexts, we consider unlikely that anyone was using _other_ contexts manually: if you have a question about contexts _other_ than these, please continue reading the 'Internals' section below.
+
+Previously, during evaluation of a model, DynamicPPL only had the capability to store a _single_ log probability (`logp`) field.
+`DefaultContext`, `PriorContext`, and `LikelihoodContext` were used to control what this field represented: they would accumulate the log joint, log prior, or log likelihood, respectively.
+
+Now, we have reworked DynamicPPL's `VarInfo` object such that it can track multiple log probabilities at once (see the 'Accumulators' section below).
+If you were evaluating a model with `PriorContext`, you can now just evaluate it with `DefaultContext`, and instead of calling `getlogp(varinfo)`, you can call `getlogprior(varinfo)` (and similarly for the likelihood).
+
+If you were constructing a `LogDensityFunction` with `PriorContext`, you can now stick to `DefaultContext`.
+`LogDensityFunction` now has an extra field, called `getlogdensity`, which represents a function that takes a `VarInfo` and returns the log density you want.
+Thus, if you pass `getlogprior` as the value of this parameter, you will get the same behaviour as with `PriorContext`.
+
+The other case where one might use `PriorContext` was to use `@addlogprob!` to add to the log prior.
+Previously, this was accomplished by manually checking `__context__ isa DynamicPPL.PriorContext`.
+Now, you can write `@addlogprob (; logprior=x, loglikelihood=y)` to add `x` to the log-prior and `y` to the log-likelihood.
+
+**Internals**
 
 ### Accumulators
 
@@ -58,6 +103,18 @@ And a couple of more internal changes:
   - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `evaluate_and_sample!!` instead, or construct your own `SamplingContext`)
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
   - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
+
+## 0.36.15
+
+Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).
+
+## 0.36.14
+
+Added compatibility with AbstractPPL@0.12.
+
+## 0.36.13
+
+Added documentation for the `returned(::Model, ::MCMCChains.Chains)` method.
 
 ## 0.36.12
 

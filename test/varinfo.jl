@@ -21,12 +21,13 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
     if !haskey(vi, vn)
         r = rand(dist)
         push!!(vi, vn, r, dist)
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     elseif DynamicPPL.is_flagged(vi, vn, "del")
         DynamicPPL.unset_flag!(vi, vn, "del")
         r = rand(dist)
         vi[vn] = DynamicPPL.tovec(r)
-        DynamicPPL.setorder!(vi, vn, DynamicPPL.get_num_produce(vi))
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     else
         vi[vn]
@@ -54,7 +55,6 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                @test meta.orders[ind] == fmeta.orders[tind]
                 for flag in keys(meta.flags)
                     @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
                 end
@@ -67,16 +67,8 @@ end
 
     @testset "Base" begin
         # Test Base functions:
-        #   string, Symbol, ==, hash, in, keys, haskey, isempty, push!!, empty!!,
+        #   in, keys, haskey, isempty, push!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
-        csym = gensym()
-        vn1 = @varname x[1][2]
-        @test string(vn1) == "x[1][2]"
-        @test Symbol(vn1) == Symbol("x[1][2]")
-
-        vn2 = @varname x[1][2]
-        @test vn2 == vn1
-        @test hash(vn2) == hash(vn1)
 
         function test_base(vi_original)
             vi = deepcopy(vi_original)
@@ -216,7 +208,7 @@ end
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
         @test_throws r"has no field `?LogLikelihood" getlogp(vi)
         @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
-        @test_throws r"has no field `?NumProduce" get_num_produce(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -228,7 +220,7 @@ end
 
         vi = last(
             DynamicPPL.evaluate!!(
-                m, DynamicPPL.setaccs!!(deepcopy(vi), (NumProduceAccumulator(),))
+                m, DynamicPPL.setaccs!!(deepcopy(vi), (VariableOrderAccumulator(),))
             ),
         )
         # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
@@ -247,8 +239,8 @@ end
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
         @test_throws r"has no field `?LogPrior" getlogp(vi)
         @test_throws r"has no field `?LogPrior" getlogjoint(vi)
-        @test_throws r"has no field `?NumProduce" get_num_produce(vi)
-        @test_throws r"has no field `?NumProduce" reset_num_produce!!(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
+        @test_throws r"has no field `?VariableOrder" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
@@ -289,14 +281,14 @@ end
     @testset "setval! & setval_and_resample!" begin
         @model function testmodel(x)
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
             m ~ MvNormal(zeros(n), I)
             return x ~ MvNormal(m, s^2 * I)
         end
 
         @model function testmodel_univariate(x, ::Type{TV}=Vector{Float64}) where {TV}
             n = length(x)
-            s ~ truncated(Normal(), 0, Inf)
+            s ~ truncated(Normal(); lower=0)
 
             m = TV(undef, n)
             for i in eachindex(m)
@@ -561,10 +553,10 @@ end
     end
 
     @testset "istrans" begin
-        @model demo_constrained() = x ~ truncated(Normal(), 0, Inf)
+        @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
-        dist = truncated(Normal(), 0, Inf)
+        dist = truncated(Normal(); lower=0)
 
         ### `VarInfo`
         # Need to run once since we can't specify that we want to _sample_
@@ -1099,13 +1091,36 @@ end
         randr(vi, vn_a2, dists[2])
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
+
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        vi = DynamicPPL.reset_num_produce!!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
+        DynamicPPL.set_retained_vns_del!(vi)
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
         vi = DynamicPPL.reset_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
         @test DynamicPPL.is_flagged(vi, vn_z2, "del")
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
@@ -1118,7 +1133,12 @@ end
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = empty!!(DynamicPPL.typed_varinfo(vi))
@@ -1133,9 +1153,12 @@ end
         randr(vi, vn_a2, dists[2])
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 2]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = DynamicPPL.reset_num_produce!!(vi)
@@ -1154,9 +1177,12 @@ end
         vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 3]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
     end
 

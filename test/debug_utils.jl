@@ -1,13 +1,6 @@
 @testset "check_model" begin
-    @testset "context interface" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            context = DynamicPPL.DebugUtils.DebugContext()
-            DynamicPPL.TestUtils.test_context(context, model)
-        end
-    end
-
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, trace = check_model_and_trace(model)
+        issuccess, trace = check_model_and_trace(model, VarInfo(model))
         # These models should all work.
         @test issuccess
 
@@ -33,11 +26,14 @@
                 return y ~ Normal()
             end
             buggy_model = buggy_demo_model()
+            varinfo = VarInfo(buggy_model)
 
-            @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(buggy_model; record_varinfo=false)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
+            issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
-            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                buggy_model, varinfo; error_on_failure=true
+            )
         end
 
         @testset "submodel" begin
@@ -48,7 +44,10 @@
                 return x ~ Normal()
             end
             model = ModelOuterBroken()
-            @test_throws ErrorException check_model(model; error_on_failure=true)
+            varinfo = VarInfo(model)
+            @test_throws ErrorException check_model(
+                model, VarInfo(model); error_on_failure=true
+            )
 
             @model function ModelOuterWorking()
                 # With automatic prefixing => `x` is not duplicated.
@@ -57,7 +56,7 @@
                 return z
             end
             model = ModelOuterWorking()
-            @test check_model(model; error_on_failure=true)
+            @test check_model(model, VarInfo(model); error_on_failure=true)
 
             # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
             @model function ModelOuterWorking2()
@@ -66,7 +65,7 @@
                 return (x1, x2)
             end
             model = ModelOuterWorking2()
-            @test check_model(model; error_on_failure=true)
+            @test check_model(model, VarInfo(model); error_on_failure=true)
         end
 
         @testset "subsumes (x then x[1])" begin
@@ -77,11 +76,14 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
+            varinfo = VarInfo(buggy_model)
 
-            @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(buggy_model; record_varinfo=false)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
+            issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
-            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                buggy_model, varinfo; error_on_failure=true
+            )
         end
 
         @testset "subsumes (x[1] then x)" begin
@@ -92,11 +94,14 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
+            varinfo = VarInfo(buggy_model)
 
-            @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(buggy_model; record_varinfo=false)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
+            issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
-            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                buggy_model, varinfo; error_on_failure=true
+            )
         end
 
         @testset "subsumes (x.a then x)" begin
@@ -107,11 +112,14 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
+            varinfo = VarInfo(buggy_model)
 
-            @test_logs (:warn,) (:warn,) check_model(buggy_model)
-            issuccess = check_model(buggy_model; record_varinfo=false)
+            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
+            issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
-            @test_throws ErrorException check_model(buggy_model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                buggy_model, varinfo; error_on_failure=true
+            )
         end
     end
 
@@ -123,14 +131,14 @@
             end
         end
         m = demo_nan_in_data([1.0, NaN])
-        @test_throws ErrorException check_model(m; error_on_failure=true)
+        @test_throws ErrorException check_model(m, VarInfo(m); error_on_failure=true)
         # Test NamedTuples with nested arrays, see #898
         @model function demo_nan_complicated(nt)
             nt ~ product_distribution((x=Normal(), y=Dirichlet([2, 4])))
             return x ~ Normal()
         end
         m = demo_nan_complicated((x=1.0, y=[NaN, 0.5]))
-        @test_throws ErrorException check_model(m; error_on_failure=true)
+        @test_throws ErrorException check_model(m, VarInfo(m); error_on_failure=true)
     end
 
     @testset "incorrect use of condition" begin
@@ -139,7 +147,10 @@
                 return x ~ MvNormal(zeros(length(x)), I)
             end
             model = demo_missing_in_multivariate([1.0, missing])
-            @test_throws ErrorException check_model(model)
+            # Have to run this check_model call with an empty varinfo, because actually
+            # instantiating the VarInfo would cause it to throw a MethodError.
+            model = contextualize(model, SamplingContext())
+            @test_throws ErrorException check_model(model, VarInfo(); error_on_failure=true)
         end
 
         @testset "condition both in args and context" begin
@@ -153,8 +164,9 @@
                 OrderedDict(@varname(x[1]) => 2.0),
             ]
                 conditioned_model = DynamicPPL.condition(model, vals)
+                varinfo = VarInfo(conditioned_model)
                 @test_throws ErrorException check_model(
-                    conditioned_model; error_on_failure=true
+                    conditioned_model, varinfo; error_on_failure=true
                 )
             end
         end
@@ -163,23 +175,26 @@
     @testset "printing statements" begin
         @testset "assume" begin
             @model demo_assume() = x ~ Normal()
-            isuccess, trace = check_model_and_trace(demo_assume())
-            @test isuccess
+            model = demo_assume()
+            issuccess, trace = check_model_and_trace(model, VarInfo(model))
+            @test issuccess
             @test startswith(string(trace), " assume: x ~ Normal")
         end
 
         @testset "observe" begin
             @model demo_observe(x) = x ~ Normal()
-            isuccess, trace = check_model_and_trace(demo_observe(1.0))
-            @test isuccess
-            @test occursin(r"observe: \d+\.\d+ ~ Normal", string(trace))
+            model = demo_observe(1.0)
+            issuccess, trace = check_model_and_trace(model, VarInfo(model))
+            @test issuccess
+            @test occursin(r"observe: x \(= \d+\.\d+\) ~ Normal", string(trace))
         end
     end
 
     @testset "comparing multiple traces" begin
+        # Run the same model but with different VarInfos.
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        issuccess_1, trace_1 = check_model_and_trace(model)
-        issuccess_2, trace_2 = check_model_and_trace(model)
+        issuccess_1, trace_1 = check_model_and_trace(model, VarInfo(model))
+        issuccess_2, trace_2 = check_model_and_trace(model, VarInfo(model))
         @test issuccess_1 && issuccess_2
 
         # Should have the same varnames present.
@@ -204,7 +219,7 @@
         end
         for ns in [(2,), (2, 2), (2, 2, 2)]
             model = demo_undef(ns...)
-            @test check_model(model; error_on_failure=true)
+            @test check_model(model, VarInfo(model); error_on_failure=true)
         end
     end
 

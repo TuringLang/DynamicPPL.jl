@@ -13,6 +13,7 @@ An accumulator type `T <: AbstractAccumulator` must implement the following meth
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
 - `accumulate_observe!!(acc::T, right, left, vn)`
 - `accumulate_assume!!(acc::T, val, logjac, vn, right)`
+- `Base.copy(acc::T)`
 
 To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
@@ -53,10 +54,11 @@ function accumulate_observe!! end
 
 Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 
-`vn` is the name of the variable being assumed, `val` is the value of the variable, and
-`right` is the distribution on the RHS of the tilde statement. `logjac` is the log
-determinant of the Jacobian of the transformation that was done to convert the value of `vn`
-as it was given (e.g. by sampler operating in linked space) to `val`.
+`vn` is the name of the variable being assumed, `val` is the value of the variable (in the
+original, unlinked space), and `right` is the distribution on the RHS of the tilde
+statement. `logjac` is the log determinant of the Jacobian of the transformation that was
+done to convert the value of `vn` as it was given to `val`: for example, if the sampler is
+operating in linked (Euclidean) space, then logjac will be nonzero.
 
 `accumulate_assume!!` may mutate `acc`, but not any of the other arguments.
 
@@ -71,7 +73,7 @@ Return a new accumulator like `acc` but empty.
 
 The precise meaning of "empty" is that that the returned value should be such that
 `combine(acc, split(acc))` is equal to `acc`. This is used in the context of multi-threading
-where different threads may accumulate independently and the results are the combined.
+where different threads may accumulate independently and the results are then combined.
 
 See also: [`combine`](@ref)
 """
@@ -80,7 +82,8 @@ function split end
 """
     combine(acc::AbstractAccumulator, acc2::AbstractAccumulator)
 
-Combine two accumulators of the same type. Returns a new accumulator.
+Combine two accumulators which have the same type (but may, in general, have different type
+parameters). Returns a new accumulator of the same type.
 
 See also: [`split`](@ref)
 """
@@ -136,6 +139,9 @@ function Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname}
     @inline return haskey(at.nt, accname)
 end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
+Base.:(==)(at1::AccumulatorTuple, at2::AccumulatorTuple) = at1.nt == at2.nt
+Base.hash(at::AccumulatorTuple, h::UInt) = Base.hash((AccumulatorTuple, at.nt), h)
+Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
     return AccumulatorTuple(convert(T, accs.nt))
