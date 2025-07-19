@@ -508,11 +508,33 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 end
             end
         end
+        function test_link_status_respected(strategy::AbstractInitStrategy)
+            @testset "check that varinfo linking is preserved: $(typeof(strategy))" begin
+                @model logn() = a ~ LogNormal()
+                model = logn()
+                vi = VarInfo(model)
+                linked_vi = DynamicPPL.link!!(vi, model)
+                _, new_vi = DynamicPPL.init!!(model, linked_vi, strategy)
+                @test DynamicPPL.istrans(new_vi)
+                # this is the unlinked value, since it uses `getindex`
+                a = new_vi[@varname(a)]
+                # internal logjoint should correspond to the transformed value
+                @test isapprox(
+                    DynamicPPL.getlogjoint_internal(new_vi), logpdf(Normal(), log(a))
+                )
+                # user logjoint should correspond to the transformed value
+                @test isapprox(DynamicPPL.getlogjoint(new_vi), logpdf(LogNormal(), a))
+                @test isapprox(
+                    only(DynamicPPL.getindex_internal(new_vi, @varname(a))), log(a)
+                )
+            end
+        end
 
         @testset "PriorInit" begin
             test_generating_new_values(PriorInit())
             test_replacing_values(PriorInit())
             test_rng_respected(PriorInit())
+            test_link_status_respected(PriorInit())
 
             @testset "check that values are within support" begin
                 # Not many other sensible checks we can do for priors.
@@ -529,6 +551,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             test_generating_new_values(UniformInit())
             test_replacing_values(UniformInit())
             test_rng_respected(UniformInit())
+            test_link_status_respected(UniformInit())
 
             @testset "check that bounds are respected" begin
                 @testset "unconstrained" begin
@@ -559,6 +582,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         end
 
         @testset "ParamsInit" begin
+            test_link_status_respected(ParamsInit((; a=1.0)))
+            test_link_status_respected(ParamsInit(Dict(@varname(a) => 1.0)))
+
             @testset "given full set of parameters" begin
                 # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
                 my_x, my_y = 1.0, [2.0, 3.0]
