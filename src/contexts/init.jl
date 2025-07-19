@@ -165,7 +165,7 @@ function tilde_assume(
     # necessary.
     insert_transformed_value && settrans!!(vi, true, vn)
     # `accumulate_assume!!` wants untransformed values as the second argument.
-    vi = accumulate_assume!!(vi, x, -logjac, vn, dist)
+    vi = accumulate_assume!!(vi, x, logjac, vn, dist)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi
