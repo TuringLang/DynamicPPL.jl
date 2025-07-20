@@ -1,8 +1,12 @@
 # DynamicPPL Changelog
 
-## 0.36.15
+## 0.36.16
 
 Improved performance for some models with Mooncake.jl by using `NoCache` with `Mooncake.set_to_zero!!` for DynamicPPL types.
+
+## 0.36.15
+
+Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).
 
 ## 0.36.14
 
