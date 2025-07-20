@@ -59,8 +59,8 @@ function AbstractMCMC.step(
 )
     vi = VarInfo()
     strategy = sampler isa SampleFromPrior ? PriorInit() : UniformInit()
-    DynamicPPL.init!!(rng, model, vi, strategy)
-    return vi, nothing
+    _, new_vi = DynamicPPL.init!!(rng, model, vi, strategy)
+    return new_vi, nothing
 end
 
 """

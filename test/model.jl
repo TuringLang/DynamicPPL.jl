@@ -495,7 +495,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # Construct a chain with 'sampled values' of β
             ground_truth_β = 2
-            β_chain = MCMCChains.Chains(rand(Normal(ground_truth_β, 0.002), 1000), [:β])
+            β_chain = MCMCChains.Chains(
+                rand(Normal(ground_truth_β, 0.002), 1000),
+                [:β];
+                info=(; varname_to_symbol=Dict(@varname(β) => :β)),
+            )
 
             # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
@@ -541,7 +545,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @testset "prediction from multiple chains" begin
                 # Normal linreg model
                 multiple_β_chain = MCMCChains.Chains(
-                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2), [:β]
+                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
+                    [:β];
+                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
                 )
                 predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
                 @test size(multiple_β_chain, 3) == size(predictions, 3)

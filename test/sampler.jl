@@ -25,8 +25,8 @@
         @test length(chains) == N
 
         # `m` is Gaussian, i.e. no transformation is used, so it
-        # should have a mean equal to its prior, i.e. 2.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
+        # will be drawn from U[-2, 2] and its mean should be 0.
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 0.0 atol = 0.1
 
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
@@ -81,10 +81,8 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            let inits = (; p=0.2)
-                chain = sample(
-                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
-                )
+            let inits = ParamsInit((; p=0.2))
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.p.vals == [0.2]
                 @test getlogjoint(chain[1]) == lptrue
 
@@ -111,10 +109,8 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            for inits in ([4, -1], (; s=4, m=-1))
-                chain = sample(
-                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
-                )
+            let inits = ParamsInit((; s=4, m=-1))
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
                 @test getlogjoint(chain[1]) == lptrue
@@ -126,7 +122,7 @@
                     MCMCThreads(),
                     1,
                     10;
-                    initial_params=fill(ParamsInit(inits), 10),
+                    initial_params=fill(inits, 10),
                     progress=false,
                 )
                 for c in chains
@@ -137,10 +133,8 @@
             end
 
             # set only m = -1
-            for inits in ((; s=missing, m=-1), (; m=-1))
-                chain = sample(
-                    model, sampler, 1; initial_params=ParamsInit(inits), progress=false
-                )
+            for inits in (ParamsInit((; s=missing, m=-1)), ParamsInit((; m=-1)))
+                chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]
 
