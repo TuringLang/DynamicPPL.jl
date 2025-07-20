@@ -766,9 +766,7 @@ function update_internal!(
     return nothing
 end
 
-# TODO(mhauru) The num_produce argument is used by Particle Gibbs.
-# Remove this method as soon as possible.
-function BangBang.push!(vnv::VarNamedVector, vn, val, dist, num_produce)
+function BangBang.push!(vnv::VarNamedVector, vn, val, dist)
     f = from_vec_transform(dist)
     return setindex_internal!(vnv, tovec(val), vn, f)
 end
