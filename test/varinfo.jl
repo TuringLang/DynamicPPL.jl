@@ -565,13 +565,13 @@ end
             @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
         end
 
+        ### `VarInfo`
+        # Need to run once since we can't specify that we want to _sample_
+        # in the unconstrained space for `VarInfo` without having `vn`
+        # present in the `varinfo`.
+
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
-        test_linked_varinfo(model, vi)
-
-        ## `typed_varinfo`
-        vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
         test_linked_varinfo(model, vi)
 
