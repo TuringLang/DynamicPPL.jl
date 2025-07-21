@@ -214,7 +214,7 @@ function ldf_default_varinfo(model::Model, ::typeof(getlogprior_internal))
 end
 
 function ldf_default_varinfo(model::Model, ::typeof(getlogprior))
-    return setaccs!!(VarInfo(model), (LogPriorAccumulator()))
+    return setaccs!!(VarInfo(model), (LogPriorAccumulator(),))
 end
 
 function ldf_default_varinfo(model::Model, ::typeof(getloglikelihood))

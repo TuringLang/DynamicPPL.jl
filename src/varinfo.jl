@@ -1148,8 +1148,8 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(md, yvec, vn)
-    if hasacc(vi, Val(:LogPrior))
-        vi = acclogprior!!(vi, -logjac)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
     end
     return vi
 end
@@ -1187,8 +1187,8 @@ function _link(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogPrior))
-        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
     end
     return new_varinfo
 end
@@ -1203,8 +1203,8 @@ function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogPrior))
-        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
     end
     return new_varinfo
 end
@@ -1353,8 +1353,8 @@ function _invlink(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     md, logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogPrior))
-        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
     end
     return new_varinfo
 end
@@ -1369,8 +1369,8 @@ function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md, logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogPrior))
-        new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
     end
     return new_varinfo
 end
@@ -1430,11 +1430,11 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         y = getindex_internal(varinfo, vn)
         dist = getdist(varinfo, vn)
         f = from_linked_internal_transform(varinfo, vn, dist)
-        x, logjac = with_logabsdet_jacobian(f, y)
+        x, inv_logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
         xvec = tovec(x)
         # Accumulate the log-abs-det jacobian correction.
-        cumulative_logjac += logjac
+        cumulative_logjac -= inv_logjac
         # Mark as no longer transformed.
         settrans!!(varinfo, false, vn)
         # Return the vectorized transformed value.

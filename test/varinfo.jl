@@ -211,7 +211,7 @@ end
         # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
         # missing field is surrounded by backticks)
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogLikelihood" getlogp(vi)
+        @test_throws r"has no field `?LogJacobian" getlogp(vi)
         @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
         @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
         @test begin
@@ -579,30 +579,30 @@ end
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        test_linked_varinfo(model, vi, dist)
+        test_linked_varinfo(model, vi)
     end
 
     @testset "values_as" begin
@@ -705,8 +705,8 @@ end
                     lp = logjoint(model, varinfo)
                     @test lp ≈ lp_true
                     @test getlogjoint(varinfo) ≈ lp_true
-                    lp_linked = getlogjoint(varinfo_linked)
-                    @test lp_linked ≈ lp_linked_true
+                    lp_linked_internal = getlogjoint_internal(varinfo_linked)
+                    @test lp_linked_internal ≈ lp_linked_true
 
                     # TODO: Compare values once we are no longer working with `NamedTuple` for
                     # the true values, e.g. `value_true`.
@@ -718,6 +718,7 @@ end
                         )
                         @test length(varinfo_invlinked[:]) == length(varinfo[:])
                         @test getlogjoint(varinfo_invlinked) ≈ lp_true
+                        @test getlogjoint_internal(varinfo_invlinked) ≈ lp_true
                     end
                 end
             end

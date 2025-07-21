@@ -89,11 +89,11 @@
     @testset "link!! & invlink!! on $(nameof(model))" for model in
                                                           DynamicPPL.TestUtils.DEMO_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
-        @testset "$(typeof(vi))" for vi in (
-            SimpleVarInfo(Dict()),
-            SimpleVarInfo(values_constrained),
-            SimpleVarInfo(DynamicPPL.VarNamedVector()),
-            DynamicPPL.typed_varinfo(model),
+        @testset "$name" for (name, vi) in (
+            ("SVI{Dict}", SimpleVarInfo(Dict())),
+            ("SVI{NamedTuple}", SimpleVarInfo(values_constrained)),
+            ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
+            ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),
         )
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
@@ -102,7 +102,7 @@
 
             # Calculate ground truth
             lp_unlinked_true = DynamicPPL.TestUtils.logjoint_true(
-                models, values_constrained...
+                model, values_constrained...
             )
             _, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                 model, values_constrained...
@@ -145,10 +145,10 @@
         end
         svi_vnv = SimpleVarInfo(vnv)
 
-        @testset "$(nameof(typeof(DynamicPPL.values_as(svi))))" for svi in (
-            svi_nt,
-            svi_dict,
-            svi_vnv,
+        @testset "$name" for (name, svi) in (
+            ("NamedTuple", svi_nt),
+            ("Dict", svi_dict),
+            ("VarNamedVector", svi_vnv),
             # TODO(mhauru) Fix linked SimpleVarInfos to work with our test models.
             # DynamicPPL.settrans!!(deepcopy(svi_nt), true),
             # DynamicPPL.settrans!!(deepcopy(svi_dict), true),
@@ -283,31 +283,36 @@
                 vi_linked = DynamicPPL.setindex!!(vi_linked, -rand(), vn)
             end
 
-            retval, vi_linked_result = DynamicPPL.evaluate!!(model, deepcopy(vi_linked))
+            # NOTE: Evaluating a linked VarInfo, **specifically when the transformation
+            # is static**, will result in an invlinked VarInfo. This is because of
+            # `maybe_invlink_before_eval!`, which only invlinks if the transformation
+            # is static. (src/abstract_varinfo.jl)
+            retval, vi_unlinked_again = DynamicPPL.evaluate!!(model, deepcopy(vi_linked))
 
             @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≠
                 DynamicPPL.tovec(retval.s)  # `s` is unconstrained in original
             @test DynamicPPL.tovec(
-                DynamicPPL.getindex_internal(vi_linked_result, @varname(s))
+                DynamicPPL.getindex_internal(vi_unlinked_again, @varname(s))
             ) == DynamicPPL.tovec(retval.s)  # `s` is constrained in result
 
             # `m` should not be transformed.
             @test vi_linked[@varname(m)] == retval.m
-            @test vi_linked_result[@varname(m)] == retval.m
+            @test vi_unlinked_again[@varname(m)] == retval.m
 
-            # Compare to truth.
-            retval_unconstrained, lp_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+            # Get ground truths
+            retval_unconstrained, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                 model, retval.s, retval.m
             )
+            lp_unlinked_true = DynamicPPL.TestUtils.logjoint_true(model, retval.s, retval.m)
 
             @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(s))) ≈
                 DynamicPPL.tovec(retval_unconstrained.s)
             @test DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_linked, @varname(m))) ≈
                 DynamicPPL.tovec(retval_unconstrained.m)
 
-            # The resulting varinfo should hold the correct logp.
-            lp = getlogjoint_internal(vi_linked_result)
-            @test lp ≈ lp_true
+            # The unlinked varinfo should hold the unlinked logp.
+            lp_unlinked = getlogjoint(vi_unlinked_again)
+            @test getlogjoint(vi_unlinked_again) ≈ lp_unlinked_true
         end
     end
 end

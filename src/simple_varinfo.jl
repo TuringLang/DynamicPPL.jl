@@ -494,6 +494,7 @@ end
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
 
 islinked(vi::SimpleVarInfo) = istrans(vi)
 
@@ -619,8 +620,10 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     vi_new = Accessors.@set(vi.values = y)
-    if hasacc(vi_new, Val(:LogPrior))
-        vi_new = acclogprior!!(vi_new, -logjac)
+    # Since there's only a single transformation, we can overwrite any previous
+    # value in logjac.
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = setlogjac!!(vi_new, logjac)
     end
     return settrans!!(vi_new, t)
 end
@@ -632,10 +635,11 @@ function invlink!!(
 )
     b = t.bijector
     y = vi.values
-    x, logjac = with_logabsdet_jacobian(b, y)
+    x = b(y)
     vi_new = Accessors.@set(vi.values = x)
-    if hasacc(vi_new, Val(:LogPrior))
-        vi_new = acclogprior!!(vi_new, logjac)
+    # logjac should be zero for an unlinked VarInfo.
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = map_accumulator!!(zero, vi_new, Val(:LogJacobian))
     end
     return settrans!!(vi_new, NoTransformation())
 end

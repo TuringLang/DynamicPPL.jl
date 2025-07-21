@@ -909,7 +909,8 @@ function link!!(
 
     # Set parameters
     vi_new = unflatten(vi, y)
-    # Update logjac
+    # Update logjac. We can overwrite any old value since there is only
+    # a single logjac term to worry about.
     vi_new = setlogjac!!(vi_new, logjac)
     return settrans!!(vi_new, t)
 end
@@ -923,8 +924,10 @@ function invlink!!(
 
     # Set parameters
     vi_new = unflatten(vi, x)
-    # Reset logjac to 0
-    vi_new = setlogjac!!(vi_new, 0.0)
+    # Reset logjac to 0.
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = map_accumulator!!(zero, vi_new, Val(:LogJacobian))
+    end
     return settrans!!(vi_new, NoTransformation())
 end
 
