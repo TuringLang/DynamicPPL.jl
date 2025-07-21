@@ -28,26 +28,8 @@ end
         )
     end
 
-    @testset "set_to_zero!! optimization" begin
-        # Test with a real DynamicPPL model
-        model = test_model1([1.0, 2.0, 3.0])
-        vi = VarInfo(Random.default_rng(), model)
-        ldf = LogDensityFunction(model, vi, DefaultContext())
-        tangent = zero_tangent(ldf)
-
-        # Test that set_to_zero!! works correctly
-        result = set_to_zero!!(deepcopy(tangent))
-        @test result isa typeof(tangent)
-
-        # Test with metadata - verify structure exists
-        if hasfield(typeof(tangent.fields.varinfo.fields), :metadata)
-            metadata = tangent.fields.varinfo.fields.metadata
-            @test !isnothing(metadata)
-        end
-    end
-
-    @testset "NoCache optimization correctness" begin
-        # Test that set_to_zero!! uses NoCache for DynamicPPL types
+    @testset "set_to_zero!! correctness" begin
+        # Test that set_to_zero!! works correctly for DynamicPPL types
         model = test_model1([1.0, 2.0, 3.0])
         vi = VarInfo(Random.default_rng(), model)
         ldf = LogDensityFunction(model, vi, DefaultContext())
@@ -63,7 +45,8 @@ end
         end
 
         # Call set_to_zero!! and verify it works
-        set_to_zero!!(tangent)
+        result = set_to_zero!!(tangent)
+        @test result isa typeof(tangent)
 
         # Check that values are zeroed
         if hasfield(typeof(tangent.fields.model.fields), :args) &&
@@ -76,15 +59,7 @@ end
     end
 
     @testset "Performance improvement" begin
-        # Test with DEMO_MODELS if available
-        if isdefined(DynamicPPL.TestUtils, :DEMO_MODELS) &&
-            !isempty(DynamicPPL.TestUtils.DEMO_MODELS)
-            model = DynamicPPL.TestUtils.DEMO_MODELS[1]
-        else
-            # Fallback to our test model
-            model = test_model1([1.0, 2.0, 3.0, 4.0])
-        end
-
+        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
         vi = VarInfo(Random.default_rng(), model)
         ldf = LogDensityFunction(model, vi, DefaultContext())
         tangent = zero_tangent(ldf)
@@ -188,5 +163,88 @@ end
 
         # Global should be faster (uses NoCache)
         @test time_global < time_closure
+    end
+
+    @testset "Struct field assumptions" begin
+        # Test that our assumptions about DynamicPPL struct fields are correct
+        # These tests will fail if DynamicPPL changes its internal structure
+
+        @testset "LogDensityFunction tangent structure" begin
+            model = test_model1([1.0, 2.0, 3.0])
+            vi = VarInfo(Random.default_rng(), model)
+            ldf = LogDensityFunction(model, vi, DefaultContext())
+            tangent = zero_tangent(ldf)
+
+            # Test expected fields exist
+            @test hasfield(typeof(tangent), :fields)
+            @test hasfield(typeof(tangent.fields), :model)
+            @test hasfield(typeof(tangent.fields), :varinfo)
+            @test hasfield(typeof(tangent.fields), :context)
+            @test hasfield(typeof(tangent.fields), :adtype)
+            @test hasfield(typeof(tangent.fields), :prep)
+
+            # Test exact field names match
+            @test propertynames(tangent.fields) ==
+                (:model, :varinfo, :context, :adtype, :prep)
+        end
+
+        @testset "VarInfo tangent structure" begin
+            model = test_model1([1.0, 2.0, 3.0])
+            vi = VarInfo(Random.default_rng(), model)
+            tangent_vi = zero_tangent(vi)
+
+            # Test expected fields exist
+            @test hasfield(typeof(tangent_vi), :fields)
+            @test hasfield(typeof(tangent_vi.fields), :metadata)
+            @test hasfield(typeof(tangent_vi.fields), :logp)
+            @test hasfield(typeof(tangent_vi.fields), :num_produce)
+
+            # Test exact field names match
+            @test propertynames(tangent_vi.fields) == (:metadata, :logp, :num_produce)
+        end
+
+        @testset "Model tangent structure" begin
+            model = test_model1([1.0, 2.0, 3.0])
+            tangent_model = zero_tangent(model)
+
+            # Test expected fields exist
+            @test hasfield(typeof(tangent_model), :fields)
+            @test hasfield(typeof(tangent_model.fields), :f)
+            @test hasfield(typeof(tangent_model.fields), :args)
+            @test hasfield(typeof(tangent_model.fields), :defaults)
+            @test hasfield(typeof(tangent_model.fields), :context)
+
+            # Test exact field names match
+            @test propertynames(tangent_model.fields) == (:f, :args, :defaults, :context)
+        end
+
+        @testset "Metadata tangent structure" begin
+            model = test_model1([1.0, 2.0, 3.0])
+            vi = VarInfo(Random.default_rng(), model)
+            tangent_vi = zero_tangent(vi)
+            metadata = tangent_vi.fields.metadata
+
+            # Metadata is a NamedTuple with variable names as keys
+            @test metadata isa NamedTuple
+
+            # Each variable's metadata should be a Tangent with the expected fields
+            for (varname, var_metadata) in pairs(metadata)
+                @test var_metadata isa Mooncake.Tangent
+                @test hasfield(typeof(var_metadata), :fields)
+
+                # Test expected fields exist
+                @test hasfield(typeof(var_metadata.fields), :idcs)
+                @test hasfield(typeof(var_metadata.fields), :vns)
+                @test hasfield(typeof(var_metadata.fields), :ranges)
+                @test hasfield(typeof(var_metadata.fields), :vals)
+                @test hasfield(typeof(var_metadata.fields), :dists)
+                @test hasfield(typeof(var_metadata.fields), :orders)
+                @test hasfield(typeof(var_metadata.fields), :flags)
+
+                # Test exact field names match
+                @test propertynames(var_metadata.fields) ==
+                    (:idcs, :vns, :ranges, :vals, :dists, :orders, :flags)
+            end
+        end
     end
 end
