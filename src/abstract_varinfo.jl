@@ -100,15 +100,33 @@ See also: [`getlogprior`](@ref), [`getloglikelihood`](@ref).
 getlogjoint(vi::AbstractVarInfo) = getlogprior(vi) + getloglikelihood(vi)
 
 """
+    getlogjoint_internal(vi::AbstractVarInfo)
+
+Return the log of the joint probability of the observed data and parameters as
+they are stored internally in `vi`, including the log-Jacobian for any linked
+parameters.
+
+In general, we have that:
+
+```julia
+getlogjoint_internal(vi) == getlogjoint(vi) - getlogjac(vi)
+```
+"""
+getlogjoint_internal(vi::AbstractVarInfo) =
+    getlogprior(vi) + getloglikelihood(vi) - getlogjac(vi)
+
+"""
     getlogp(vi::AbstractVarInfo)
 
-Return a NamedTuple of the log prior and log likelihood probabilities.
+Return a NamedTuple of the log prior, log Jacobian, and log likelihood probabilities.
 
-The keys are called `logprior` and `loglikelihood`. If either one is not present in `vi` an
-error will be thrown.
+The keys are called `logprior`, `logjac`, and `loglikelihood`. If any of them
+are not present in `vi` an error will be thrown.
 """
 function getlogp(vi::AbstractVarInfo)
-    return (; logprior=getlogprior(vi), loglikelihood=getloglikelihood(vi))
+    return (;
+        logprior=getlogprior(vi), logjac=getlogjac(vi), loglikelihood=getloglikelihood(vi)
+    )
 end
 
 """
@@ -165,6 +183,30 @@ See also: [`getlogjoint`](@ref), [`getloglikelihood`](@ref), [`setlogprior!!`](@
 getlogprior(vi::AbstractVarInfo) = getacc(vi, Val(:LogPrior)).logp
 
 """
+    getlogprior_internal(vi::AbstractVarInfo)
+
+Return the log of the prior probability of the parameters as stored internally
+in `vi`. This includes the log-Jacobian for any linked parameters.
+
+In general, we have that:
+
+```julia
+getlogprior_internal(vi) == getlogprior(vi) - getlogjac(vi)
+```
+"""
+getlogprior_internal(vi::AbstractVarInfo) = getlogprior(vi) - getlogjac(vi)
+
+"""
+    getlogjac(vi::AbstractVarInfo)
+
+Return the accumulated log-Jacobian term for any linked parameters in `vi`. The
+Jacobian here is taken with respect to the forward (link) transform.
+
+See also: [`setlogjac!!`](@ref).
+"""
+getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logJ
+
+"""
     getloglikelihood(vi::AbstractVarInfo)
 
 Return the log of the likelihood probability of the observed data in `vi`.
@@ -197,6 +239,16 @@ See also: [`setloglikelihood!!`](@ref), [`setlogp!!`](@ref), [`getlogprior`](@re
 setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPriorAccumulator(logp))
 
 """
+    setlogjac!!(vi::AbstractVarInfo, logJ)
+
+Set the accumulated log-Jacobian term for any linked parameters in `vi`. The
+Jacobian here is taken with respect to the forward (link) transform.
+
+See also: [`getlogjac!!`](@ref).
+"""
+setlogjac!!(vi::AbstractVarInfo, logJ) = setacc!!(vi, LogJacobianAccumulator(logJ))
+
+"""
     setloglikelihood!!(vi::AbstractVarInfo, logp)
 
 Set the log of the likelihood probability of the observed data sampled in `vi` to `logp`.
@@ -215,10 +267,13 @@ Set both the log prior and the log likelihood probabilities in `vi`.
 See also: [`setlogprior!!`](@ref), [`setloglikelihood!!`](@ref), [`getlogp`](@ref).
 """
 function setlogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
-    if !(names == (:logprior, :loglikelihood) || names == (:loglikelihood, :logprior))
-        error("logp must have the fields logprior and loglikelihood and no other fields.")
+    if Set(names) != Set([:logprior, :logjac, :loglikelihood])
+        error(
+            "The second argument to `setlogp!!` must be a NamedTuple with the fields logprior, logjac, and loglikelihood.",
+        )
     end
     vi = setlogprior!!(vi, logp.logprior)
+    vi = setlogjac!!(vi, logp.logjac)
     vi = setloglikelihood!!(vi, logp.loglikelihood)
     return vi
 end
@@ -226,7 +281,7 @@ end
 function setlogp!!(vi::AbstractVarInfo, logp::Number)
     return error("""
                  `setlogp!!(vi::AbstractVarInfo, logp::Number)` is no longer supported. Use
-                 `setloglikelihood!!`  and/or `setlogprior!!` instead.
+                 `setloglikelihood!!`, `setlogjac!!`, and/or `setlogprior!!` instead.
                  """)
 end
 
@@ -307,6 +362,19 @@ function acclogprior!!(vi::AbstractVarInfo, logp)
 end
 
 """
+    acclogjac!!(vi::AbstractVarInfo, logJ)
+
+Add `logJ` to the value of the log Jacobian in `vi`.
+
+See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
+"""
+function acclogjac!!(vi::AbstractVarInfo, logJ)
+    return map_accumulator!!(
+        acc -> acc + LogJacobianAccumulator(logJ), vi, Val(:LogJacobian)
+    )
+end
+
+"""
     accloglikelihood!!(vi::AbstractVarInfo, logp)
 
 Add `logp` to the value of the log of the likelihood in `vi`.
@@ -367,6 +435,9 @@ Reset the values of the log probabilities (prior and likelihood) in `vi` to zero
 function resetlogp!!(vi::AbstractVarInfo)
     if hasacc(vi, Val(:LogPrior))
         vi = map_accumulator!!(zero, vi, Val(:LogPrior))
+    end
+    if hasacc(vi, Val(:LogJacobian))
+        vi = map_accumulator!!(zero, vi, Val(:LogJacobian))
     end
     if hasacc(vi, Val(:LogLikelihood))
         vi = map_accumulator!!(zero, vi, Val(:LogLikelihood))
@@ -836,8 +907,10 @@ function link!!(
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
-    lp_new = getlogprior(vi) - logjac
-    vi_new = setlogprior!!(unflatten(vi, y), lp_new)
+    # Set parameters
+    vi_new = unflatten(vi, y)
+    # Update logjac
+    vi_new = setlogjac!!(vi_new, logjac)
     return settrans!!(vi_new, t)
 end
 
@@ -846,10 +919,12 @@ function invlink!!(
 )
     b = t.bijector
     y = vi[:]
-    x, logjac = with_logabsdet_jacobian(b, y)
+    x = b(y)
 
-    lp_new = getlogprior(vi) + logjac
-    vi_new = setlogprior!!(unflatten(vi, x), lp_new)
+    # Set parameters
+    vi_new = unflatten(vi, x)
+    # Reset logjac to 0
+    vi_new = setlogjac!!(vi_new, 0.0)
     return settrans!!(vi_new, NoTransformation())
 end
 

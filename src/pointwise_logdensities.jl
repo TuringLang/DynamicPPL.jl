@@ -74,6 +74,8 @@ function accumulate_assume!!(
         # T is the element type of the vectors that are the values of `acc.logps`. Usually
         # it's LogProbType.
         T = eltype(last(fieldtypes(eltype(acc.logps))))
+        # Note that accumulating LogPrior ignores logjac (since we want to
+        # return log densities that don't depend on the linking status of the VarInfo).
         subacc = accumulate_assume!!(LogPriorAccumulator{T}(), val, logjac, vn, right)
         push!(acc, vn, subacc.logp)
     end

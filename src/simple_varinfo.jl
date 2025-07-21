@@ -476,7 +476,7 @@ function assume(
     f = to_maybe_linked_internal_transform(vi, vn, dist)
     value_raw, logjac = with_logabsdet_jacobian(f, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist)
-    vi = accumulate_assume!!(vi, value, -logjac, vn, dist)
+    vi = accumulate_assume!!(vi, value, logjac, vn, dist)
     return value, vi
 end
 
