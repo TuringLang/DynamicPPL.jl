@@ -89,13 +89,55 @@ function is_closure_model(model_f_tangent)
     return false
 end
 
+"""
+Check if a VarInfo tangent needs caching due to circular references (e.g., Ref fields).
+"""
+function needs_caching_for_varinfo(x)
+    # Check if it's a VarInfo tangent
+    is_dppl_varinfo_tangent(x) || return false
+
+    # Check if the logp field contains a Ref-like tangent structure
+    hasfield(typeof(x.fields), :logp) || return false
+    logp_tangent = x.fields.logp
+
+    # Ref types in tangents often appear as MutableTangent with circular references
+    return logp_tangent isa MutableTangent
+end
+
+"""
+Check if a tangent contains PossiblyUninitTangent{Any} which can cause infinite recursion.
+"""
+function contains_possibly_uninit_any(x)
+    x isa Mooncake.PossiblyUninitTangent{Any} && return true
+
+    if x isa Tangent && hasfield(typeof(x), :fields)
+        for (_, fval) in pairs(x.fields)
+            contains_possibly_uninit_any(fval) && return true
+        end
+    elseif x isa MutableTangent && hasfield(typeof(x), :fields)
+        hasfield(typeof(x.fields), :contents) &&
+            x.fields.contents isa Mooncake.PossiblyUninitTangent{Any} &&
+            return true
+    end
+
+    return false
+end
+
 function Mooncake.set_to_zero!!(x)
+    # Always use caching if we detect PossiblyUninitTangent{Any} anywhere
+    if contains_possibly_uninit_any(x)
+        return set_to_zero_internal!!(IdDict{Any,Bool}(), x)
+    end
+
     # Check for DynamicPPL types and use NoCache for better performance
     if is_dppl_ldf_tangent(x)
         # Special handling for LogDensityFunction to detect closures
         model_f_tangent = x.fields.model.fields.f
         cache = is_closure_model(model_f_tangent) ? IdDict{Any,Bool}() : NoCache()
         return set_to_zero_internal!!(cache, x)
+    elseif is_dppl_varinfo_tangent(x) && needs_caching_for_varinfo(x)
+        # Use IdDict for SimpleVarInfo with Ref fields to avoid circular references
+        return set_to_zero_internal!!(IdDict{Any,Bool}(), x)
     elseif is_dppl_varinfo_tangent(x) ||
         is_dppl_model_tangent(x) ||
         is_dppl_metadata_tangent(x)
