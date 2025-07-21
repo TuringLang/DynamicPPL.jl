@@ -995,6 +995,10 @@ Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
 
+Note that this probability always refers to the parameters in unlinked space, i.e.,
+the return value of `logjoint` does not depend on whether `VarInfo` has been linked
+or not.
+
 See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
@@ -1041,6 +1045,10 @@ end
     logprior(model::Model, varinfo::AbstractVarInfo)
 
 Return the log prior probability of variables `varinfo` for the probabilistic `model`.
+
+Note that this probability always refers to the parameters in unlinked space, i.e.,
+the return value of `logprior` does not depend on whether `VarInfo` has been linked
+or not.
 
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """

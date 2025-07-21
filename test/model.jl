@@ -485,11 +485,18 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             DynamicPPL.untyped_simple_varinfo(model),
         ]
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            logjoint = getlogjoint(varinfo) # unlinked space
             varinfo_linked = DynamicPPL.link(varinfo, model)
             varinfo_linked_result = last(
                 DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked))
             )
+            # getlogjoint should return the same result as before it was linked
             @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
+            @test getlogjoint(varinfo_linked) ≈ logjoint
+            # getlogjoint_internal shouldn't
+            @test getlogjoint_internal(varinfo_linked) ≈
+                getlogjoint_internal(varinfo_linked_result)
+            @test !isapprox(getlogjoint_internal(varinfo_linked), logjoint)
         end
     end
 

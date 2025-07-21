@@ -167,8 +167,9 @@ end
 
         vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
+        @test getlogjac(vi) == 0.0
         @test getloglikelihood(vi) == lp_c + lp_d
-        @test getlogp(vi) == (; logprior=lp_a + lp_b, loglikelihood=lp_c + lp_d)
+        @test getlogp(vi) == (; logprior=lp_a + lp_b, logjac=0.0, loglikelihood=lp_c + lp_d)
         @test getlogjoint(vi) == lp_a + lp_b + lp_c + lp_d
         @test get_num_produce(vi) == 2
         @test begin
@@ -184,16 +185,20 @@ end
             getlogprior(vi) == -1.0
         end
         @test begin
+            vi = setlogjac!!(vi, -1.0)
+            getlogjac(vi) == -1.0
+        end
+        @test begin
             vi = setloglikelihood!!(vi, -1.0)
             getloglikelihood(vi) == -1.0
         end
         @test begin
-            vi = setlogp!!(vi, (logprior=-3.0, loglikelihood=-3.0))
-            getlogp(vi) == (; logprior=-3.0, loglikelihood=-3.0)
+            vi = setlogp!!(vi, (logprior=-3.0, logjac=-3.0, loglikelihood=-3.0))
+            getlogp(vi) == (; logprior=-3.0, logjac=-3.0, loglikelihood=-3.0)
         end
         @test begin
             vi = acclogp!!(vi, (logprior=1.0, loglikelihood=1.0))
-            getlogp(vi) == (; logprior=-2.0, loglikelihood=-2.0)
+            getlogp(vi) == (; logprior=-2.0, logjac=-3.0, loglikelihood=-2.0)
         end
         @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
 
@@ -552,71 +557,52 @@ end
         end
     end
 
-    @testset "istrans" begin
+    @testset "logp evaluation on linked varinfo" begin
         @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
         dist = truncated(Normal(); lower=0)
 
-        ### `VarInfo`
-        # Need to run once since we can't specify that we want to _sample_
-        # in the unconstrained space for `VarInfo` without having `vn`
-        # present in the `varinfo`.
-
-        ## `untyped_varinfo`
-        vi = DynamicPPL.untyped_varinfo(model)
+        function test_linked_varinfo(model, vi)
+            # vn and dist are taken from the containing scope
+            vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+            f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+            x = f(DynamicPPL.getindex_internal(vi, vn))
+            @test istrans(vi, vn)
+            @test getlogjoint_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+            @test getlogprior_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+            @test getloglikelihood(vi) == 0.0
+            @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
+            @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
+        end
 
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
 
         ## `SimpleVarInfo{<:Dict}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi, dist)
     end
 
     @testset "values_as" begin

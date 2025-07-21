@@ -100,27 +100,29 @@
             end
             vi = last(DynamicPPL.evaluate!!(model, vi))
 
-            # `link!!`
-            vi_linked = link!!(deepcopy(vi), model)
-            lp_linked = getlogjoint(vi_linked)
-            values_unconstrained, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
+            # Calculate ground truth
+            lp_unlinked_true = DynamicPPL.TestUtils.logjoint_true(
+                models, values_constrained...
+            )
+            _, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
                 model, values_constrained...
             )
-            # Should result in the correct logjoint.
+
+            # `link!!`
+            vi_linked = link!!(deepcopy(vi), model)
+            lp_unlinked = getlogjoint(vi_linked)
+            lp_linked = getlogjoint_internal(vi_linked)
             @test lp_linked ≈ lp_linked_true
-            # Should be approx. the same as the "lazy" transformation.
-            @test logjoint(model, vi_linked) ≈ lp_linked
+            @test lp_unlinked ≈ lp_unlinked_true
+            @test logjoint(model, vi_linked) ≈ lp_unlinked
 
             # `invlink!!`
             vi_invlinked = invlink!!(deepcopy(vi_linked), model)
-            lp_invlinked = getlogjoint(vi_invlinked)
-            lp_invlinked_true = DynamicPPL.TestUtils.logjoint_true(
-                model, values_constrained...
-            )
-            # Should result in the correct logjoint.
-            @test lp_invlinked ≈ lp_invlinked_true
-            # Should be approx. the same as the "lazy" transformation.
-            @test logjoint(model, vi_invlinked) ≈ lp_invlinked
+            lp_unlinked = getlogjoint(vi_invlinked)
+            also_lp_unlinked = getlogjoint_internal(vi_invlinked)
+            @test lp_unlinked ≈ lp_unlinked_true
+            @test also_lp_unlinked ≈ lp_unlinked_true
+            @test logjoint(model, vi_invlinked) ≈ lp_unlinked
 
             # Should result in same values.
             @test all(
@@ -250,7 +252,7 @@
                 end
 
                 # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
-                lp = getlogjoint(svi)
+                lp = getlogjoint_internal(svi)
                 # needs higher atol because of https://github.com/TuringLang/Bijectors.jl/issues/375
                 @test lp ≈ lp_true atol = 1.2e-5
             end
@@ -304,7 +306,7 @@
                 DynamicPPL.tovec(retval_unconstrained.m)
 
             # The resulting varinfo should hold the correct logp.
-            lp = getlogjoint(vi_linked_result)
+            lp = getlogjoint_internal(vi_linked_result)
             @test lp ≈ lp_true
         end
     end

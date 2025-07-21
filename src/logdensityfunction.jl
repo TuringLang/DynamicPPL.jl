@@ -18,7 +18,7 @@ is_supported(::ADTypes.AutoReverseDiff) = true
 """
     LogDensityFunction(
         model::Model,
-        getlogdensity::Function=getlogjoint,
+        getlogdensity::Function=getlogjoint_internal,
         varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing
     )
@@ -29,20 +29,43 @@ A struct which contains a model, along with all the information necessary to:
  - and if `adtype` is provided, calculate the gradient of the log density at
  that point.
 
-At its most basic level, a LogDensityFunction wraps the model together with a
-function that specifies how to extract the log density, and the type of 
-VarInfo to be used. These must be known in order to calculate the log density
-(using [`DynamicPPL.evaluate!!`](@ref)).
+This information can be extracted using the LogDensityProblems.jl interface,
+specifically, using `LogDensityProblems.logdensity` and
+`LogDensityProblems.logdensity_and_gradient`. If `adtype` is nothing, then only
+`logdensity` is implemented. If `adtype` is a concrete AD backend type, then
+`logdensity_and_gradient` is also implemented.
+
+There are several options for `getlogdensity` that are 'supported' out of the
+box:
+
+- [`getlogjoint_internal`](@ref): calculate the log joint, including the
+  log-Jacobian term for any variables that have been linked in the provided
+  VarInfo.
+- [`getlogprior_internal`](@ref): calculate the log prior, including the
+  log-Jacobian term for any variables that have been linked in the provided
+  VarInfo.
+- [`getlogjoint`](@ref): calculate the log joint in the model space, ignoring
+  any effects of linking
+- [`getlogprior`](@ref): calculate the log prior in the model space, ignoring
+  any effects of linking
+- [`getloglikelihood`](@ref): calculate the log likelihood (this is unaffected
+  by linking, since transforms are only applied to random variables) 
+
+!!! note
+    By default, `LogDensityFunction` uses `getlogjoint_internal`, i.e., the
+    result of `LogDensityProblems.logdensity(f, x)` will depend on whether the
+    `LogDensityFunction` was created with a linked or unlinked VarInfo. This
+    is done primarily to ease interoperability with MCMC samplers.
+
+If you provide one of these functions, a `VarInfo` will be automatically created
+for you. If you provide a different function, you have to manually create a
+VarInfo and pass it as the third argument.
 
 If the `adtype` keyword argument is provided, then this struct will also store
 the adtype along with other information for efficient calculation of the
 gradient of the log density. Note that preparing a `LogDensityFunction` with an
 AD type `AutoBackend()` requires the AD backend itself to have been loaded
 (e.g. with `import Backend`).
-
-`DynamicPPL.LogDensityFunction` implements the LogDensityProblems.jl interface.
-If `adtype` is nothing, then only `logdensity` is implemented. If `adtype` is a
-concrete AD backend type, then `logdensity_and_gradient` is also implemented.
 
 # Fields
 $(FIELDS)
@@ -74,7 +97,7 @@ julia> LogDensityProblems.dimension(f)
 1
 
 julia> # By default it uses `VarInfo` under the hood, but this is not necessary.
-       f = LogDensityFunction(model, getlogjoint, SimpleVarInfo(model));
+       f = LogDensityFunction(model, getlogjoint_internal, SimpleVarInfo(model));
 
 julia> LogDensityProblems.logdensity(f, [0.0])
 -2.3378770664093453
@@ -99,7 +122,7 @@ struct LogDensityFunction{
 } <: AbstractModel
     "model used for evaluation"
     model::M
-    "function to be called on `varinfo` to extract the log density. By default `getlogjoint`."
+    "function to be called on `varinfo` to extract the log density. By default `getlogjoint_internal`."
     getlogdensity::F
     "varinfo used for evaluation. If not specified, generated with `ldf_default_varinfo`."
     varinfo::V
@@ -110,7 +133,7 @@ struct LogDensityFunction{
 
     function LogDensityFunction(
         model::Model,
-        getlogdensity::Function=getlogjoint,
+        getlogdensity::Function=getlogjoint_internal,
         varinfo::AbstractVarInfo=ldf_default_varinfo(model, getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
@@ -180,10 +203,18 @@ function ldf_default_varinfo(::Model, getlogdensity::Function)
     return error(msg)
 end
 
-ldf_default_varinfo(model::Model, ::typeof(getlogjoint)) = VarInfo(model)
+ldf_default_varinfo(model::Model, ::typeof(getlogjoint_internal)) = VarInfo(model)
+
+function ldf_default_varinfo(model::Model, ::typeof(getlogjoint))
+    return setaccs!!(VarInfo(model), (LogPriorAccumulator(), LogLikelihoodAccumulator()))
+end
+
+function ldf_default_varinfo(model::Model, ::typeof(getlogprior_internal))
+    return setaccs!!(VarInfo(model), (LogPriorAccumulator(), LogJacobianAccumulator()))
+end
 
 function ldf_default_varinfo(model::Model, ::typeof(getlogprior))
-    return setaccs!!(VarInfo(model), (LogPriorAccumulator(),))
+    return setaccs!!(VarInfo(model), (LogPriorAccumulator()))
 end
 
 function ldf_default_varinfo(model::Model, ::typeof(getloglikelihood))

@@ -4,7 +4,8 @@ using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
-using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, getlogjoint, link
+using DynamicPPL:
+    Model, LogDensityFunction, VarInfo, AbstractVarInfo, getlogjoint_internal, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: AbstractRNG, default_rng
 using Statistics: median
@@ -224,7 +225,7 @@ function run_ad(
     benchmark::Bool=false,
     atol::AbstractFloat=100 * eps(),
     rtol::AbstractFloat=sqrt(eps()),
-    getlogdensity::Function=getlogjoint,
+    getlogdensity::Function=getlogjoint_internal,
     rng::AbstractRNG=default_rng(),
     varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
