@@ -10,6 +10,36 @@ using Mooncake: NoTangent, Tangent, MutableTangent, NoCache, set_to_zero_interna
 # This is purely an optimisation.
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(istrans),Vararg}
 
+# =======================
+# Cache Strategy System
+# =======================
+
+"""
+    determine_cache_strategy(x)
+
+Determines the appropriate caching strategy for a given tangent.
+Returns either `NoCache()` for safe types or `IdDict{Any,Bool}()` for types with circular reference risk.
+"""
+function determine_cache_strategy(x)
+    # Fast path: check for known circular reference patterns
+    has_circular_reference_risk(x) && return IdDict{Any,Bool}()
+
+    # Check for DynamicPPL types that can safely use NoCache
+    is_safe_dppl_type(x) && return NoCache()
+
+    # Special case: LogDensityFunction without problematic patterns can use NoCache
+    if is_dppl_ldf_tangent(x)
+        return NoCache()
+    end
+
+    # Default to safe caching for unknown types
+    return IdDict{Any,Bool}()
+end
+
+# =======================
+# Type Recognition
+# =======================
+
 """
 Check if a tangent has the expected structure for a given type.
 """
@@ -68,15 +98,46 @@ function is_dppl_metadata_tangent(x)
     )
 end
 
-"""
-Check if a model function tangent represents a closure.
-"""
-function is_closure_model(model_f_tangent)
-    model_f_tangent isa MutableTangent && return true
+# =======================
+# Circular Reference Detection
+# =======================
 
-    if model_f_tangent isa Tangent && hasfield(typeof(model_f_tangent), :fields)
-        # Check if any field is a MutableTangent with PossiblyUninitTangent{Any}
-        for (_, fval) in pairs(model_f_tangent.fields)
+"""
+    has_circular_reference_risk(x)
+
+Main entry point for detecting circular reference patterns that require caching.
+Optimized for performance with targeted checks instead of recursive traversal.
+"""
+function has_circular_reference_risk(x)
+    # Type-specific targeted checks only
+    if is_dppl_ldf_tangent(x)
+        # Check model function for closure patterns with circular refs
+        model_f = x.fields.model.fields.f
+        return is_closure_with_circular_refs(model_f)
+    elseif is_dppl_varinfo_tangent(x)
+        # Check for Ref fields in VarInfo
+        return check_for_ref_fields(x)
+    end
+
+    # For unknown types, do a shallow check for PossiblyUninitTangent{Any}
+    return x isa Mooncake.PossiblyUninitTangent{Any}
+end
+
+"""
+Check if a tangent represents a closure with circular reference patterns.
+Only returns true for actual problematic patterns, not all MutableTangents.
+"""
+function is_closure_with_circular_refs(x)
+    # Check if MutableTangent contains PossiblyUninitTangent{Any}
+    if x isa MutableTangent && hasfield(typeof(x), :fields)
+        hasfield(typeof(x.fields), :contents) &&
+            x.fields.contents isa Mooncake.PossiblyUninitTangent{Any} &&
+            return true
+    end
+
+    # For Tangent, only check immediate fields (no deep recursion)
+    if x isa Tangent && hasfield(typeof(x), :fields)
+        for (_, fval) in pairs(x.fields)
             if fval isa MutableTangent &&
                 hasfield(typeof(fval), :fields) &&
                 hasfield(typeof(fval.fields), :contents) &&
@@ -90,9 +151,9 @@ function is_closure_model(model_f_tangent)
 end
 
 """
-Check if a VarInfo tangent needs caching due to circular references (e.g., Ref fields).
+Check if a VarInfo tangent has Ref fields that need caching.
 """
-function needs_caching_for_varinfo(x)
+function check_for_ref_fields(x)
     # Check if it's a VarInfo tangent
     is_dppl_varinfo_tangent(x) || return false
 
@@ -105,48 +166,32 @@ function needs_caching_for_varinfo(x)
 end
 
 """
-Check if a tangent contains PossiblyUninitTangent{Any} which can cause infinite recursion.
+Check if a tangent is a safe DynamicPPL type that can use NoCache.
 """
-function contains_possibly_uninit_any(x)
-    x isa Mooncake.PossiblyUninitTangent{Any} && return true
+function is_safe_dppl_type(x)
+    # Metadata is always safe
+    is_dppl_metadata_tangent(x) && return true
 
-    if x isa Tangent && hasfield(typeof(x), :fields)
-        for (_, fval) in pairs(x.fields)
-            contains_possibly_uninit_any(fval) && return true
-        end
-    elseif x isa MutableTangent && hasfield(typeof(x), :fields)
-        hasfield(typeof(x.fields), :contents) &&
-            x.fields.contents isa Mooncake.PossiblyUninitTangent{Any} &&
-            return true
+    # Model tangents without closures are safe
+    if is_dppl_model_tangent(x)
+        !is_closure_with_circular_refs(x.fields.f) && return true
+    end
+
+    # VarInfo without Ref fields is safe
+    if is_dppl_varinfo_tangent(x)
+        !check_for_ref_fields(x) && return true
     end
 
     return false
 end
 
-function Mooncake.set_to_zero!!(x)
-    # Always use caching if we detect PossiblyUninitTangent{Any} anywhere
-    if contains_possibly_uninit_any(x)
-        return set_to_zero_internal!!(IdDict{Any,Bool}(), x)
-    end
+# =======================
+# Main Entry Point
+# =======================
 
-    # Check for DynamicPPL types and use NoCache for better performance
-    if is_dppl_ldf_tangent(x)
-        # Special handling for LogDensityFunction to detect closures
-        model_f_tangent = x.fields.model.fields.f
-        cache = is_closure_model(model_f_tangent) ? IdDict{Any,Bool}() : NoCache()
-        return set_to_zero_internal!!(cache, x)
-    elseif is_dppl_varinfo_tangent(x) && needs_caching_for_varinfo(x)
-        # Use IdDict for SimpleVarInfo with Ref fields to avoid circular references
-        return set_to_zero_internal!!(IdDict{Any,Bool}(), x)
-    elseif is_dppl_varinfo_tangent(x) ||
-        is_dppl_model_tangent(x) ||
-        is_dppl_metadata_tangent(x)
-        # These types can always use NoCache
-        return set_to_zero_internal!!(NoCache(), x)
-    else
-        # Use the original implementation with IdDict for all other types
-        return set_to_zero_internal!!(IdDict{Any,Bool}(), x)
-    end
+function Mooncake.set_to_zero!!(x)
+    cache = determine_cache_strategy(x)
+    return set_to_zero_internal!!(cache, x)
 end
 
 end # module
