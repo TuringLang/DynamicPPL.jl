@@ -87,8 +87,8 @@ end
             # Difference between the internal logjoints should just be the log-absdet-jacobian "correction".
             @test DynamicPPL.getlogjoint_internal(vi) -
                   DynamicPPL.getlogjoint_internal(vi_linked) ≈ log(2)
-            # The non-internal logjoint should be the same.
-            @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint_internal(vi_linked)
+            # The non-internal logjoint should be the same since it doesn't depend on linking.
+            @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
             @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
@@ -101,7 +101,10 @@ end
             end
             @test length(vi_invlinked[:]) == length(vi[:])
             @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            # The non-internal logjoint should still be the same, again since
+            # it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi_invlinked) ≈ DynamicPPL.getlogjoint(vi)
+            # The internal logjoint should also be the same as before the round-trip linking.
             @test DynamicPPL.getlogjoint_internal(vi_invlinked) ≈
                 DynamicPPL.getlogjoint_internal(vi)
         end
