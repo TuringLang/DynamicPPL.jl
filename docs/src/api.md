@@ -384,6 +384,7 @@ getlogjoint
 getlogjoint_internal
 getlogjac
 setlogjac!!
+acclogjac!!
 getlogprior
 getlogprior_internal
 setlogprior!!
