@@ -32,20 +32,40 @@ Their semantics are the same as in Julia's `isapprox`; two values are equal if t
 You now need to explicitly pass a `VarInfo` argument to `check_model` and `check_model_and_trace`.
 Previously, these functions would generate a new VarInfo for you (using an optionally provided `rng`).
 
-### Removal of `PriorContext` and `LikelihoodContext`
-
-A number of DynamicPPL's contexts have been removed, most notably `PriorContext` and `LikelihoodContext`.
-Although these are not the only _exported_ contexts, we consider unlikely that anyone was using _other_ contexts manually: if you have a question about contexts _other_ than these, please continue reading the 'Internals' section below.
+### Evaluating model log-probabilities in more detail
 
 Previously, during evaluation of a model, DynamicPPL only had the capability to store a _single_ log probability (`logp`) field.
 `DefaultContext`, `PriorContext`, and `LikelihoodContext` were used to control what this field represented: they would accumulate the log joint, log prior, or log likelihood, respectively.
 
-Now, we have reworked DynamicPPL's `VarInfo` object such that it can track multiple log probabilities at once (see the 'Accumulators' section below).
+In this version, we have overhauled this quite substantially.
+The technical details of exactly _how_ this is done is covered in the 'Accumulators' section below, but the upshot is that the log prior, log likelihood, and log Jacobian terms (for any linked variables) are separately tracked.
+
+Specifically, you will want to use the following functions to access these log probabilities:
+
+  - `getlogprior(varinfo)` to get the log prior. **Note:** This version introduces new, more consistent behaviour for this function, in that it always returns the log-prior of the values in the original, untransformed space, even if the `varinfo` has been linked.
+  - `getloglikelihood(varinfo)` to get the log likelihood.
+  - `getlogjoint(varinfo)` to get the log joint probability. **Note:** Similar to `getlogprior`, this function now always returns the log joint of the values in the original, untransformed space, even if the `varinfo` has been linked.
+
+If you are using linked VarInfos (e.g. if you are writing a sampler), you may find that you need to obtain the log probability of the variables in the transformed space.
+To this end, you can use:
+
+  - `getlogjac(varinfo)` to get the log Jacobian of the link transforms for any linked variables.
+  - `getlogprior_internal(varinfo)` to get the log prior of the variables in the transformed space.
+  - `getlogjoint_internal(varinfo)` to get the log joint probability of the variables in the transformed space.
+
+Since transformations only apply to random variables, the likelihood is unaffected by linking.
+
+### Removal of `PriorContext` and `LikelihoodContext`
+
+Following on from the above, a number of DynamicPPL's contexts have been removed, most notably `PriorContext` and `LikelihoodContext`.
+Although these are not the only _exported_ contexts, we consider unlikely that anyone was using _other_ contexts manually: if you have a question about contexts _other_ than these, please continue reading the 'Internals' section below.
+
 If you were evaluating a model with `PriorContext`, you can now just evaluate it with `DefaultContext`, and instead of calling `getlogp(varinfo)`, you can call `getlogprior(varinfo)` (and similarly for the likelihood).
 
 If you were constructing a `LogDensityFunction` with `PriorContext`, you can now stick to `DefaultContext`.
 `LogDensityFunction` now has an extra field, called `getlogdensity`, which represents a function that takes a `VarInfo` and returns the log density you want.
-Thus, if you pass `getlogprior` as the value of this parameter, you will get the same behaviour as with `PriorContext`.
+Thus, if you pass `getlogprior_internal` as the value of this parameter, you will get the same behaviour as with `PriorContext`.
+(You should consider whether your use case needs the log prior in the transformed space, or the original space, and use (respectively) `getlogprior_internal` or `getlogprior` as needed.)
 
 The other case where one might use `PriorContext` was to use `@addlogprob!` to add to the log prior.
 Previously, this was accomplished by manually checking `__context__ isa DynamicPPL.PriorContext`.
