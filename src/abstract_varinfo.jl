@@ -244,7 +244,7 @@ setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPriorAccumulator(logp
 Set the accumulated log-Jacobian term for any linked parameters in `vi`. The
 Jacobian here is taken with respect to the forward (link) transform.
 
-See also: [`getlogjac!!`](@ref).
+See also: [`getlogjac`](@ref), [`acclogjac!!`](@ref).
 """
 setlogjac!!(vi::AbstractVarInfo, logJ) = setacc!!(vi, LogJacobianAccumulator(logJ))
 
