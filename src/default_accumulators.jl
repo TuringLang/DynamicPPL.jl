@@ -33,14 +33,15 @@ distribution to unconstrained space.
 
 !!! note
     This accumulator is only incremented if the variable is transformed by a
-    link function, i.e., if the VarInfo is linked (for this particular
-    variable). If the VarInfo is not linked, the log Jacobian term will be 0.
+    link function, i.e., if the VarInfo is linked (for the particular
+    variable that is currently being accumulated). If the variable is not
+    linked, the log Jacobian term will be 0.
 
-    In general, for the forward Jacobian `J` corresponding to the function `y =
-    f(x)`,
+    In general, for the forward Jacobian ``\\mathbf{J}`` corresponding to the
+    function ``\\mathbf{y} = f(\\mathbf{x})``,
 
     ```math
-    \\log(q(\\mathbf{y})) = \\log(p(\\mathbf{x})) - \\log\\(|\\mathbf{J}|\\)
+    \\log(q(\\mathbf{y})) = \\log(p(\\mathbf{x})) - \\log (|\\mathbf{J}|)
     ```
 
     and correspondingly:
