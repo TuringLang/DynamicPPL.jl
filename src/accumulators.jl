@@ -198,7 +198,7 @@ end
 A helper function that returns three tuples of keys given two `NamedTuple`s:
 The keys only in `nt1`, only in `nt2`, and in both, and in that order.
 
-Implemented as a generated function to enabled constant propagation of the result in `merge`.
+Implemented as a generated function to enable constant propagation of the result in `merge`.
 """
 @generated function _joint_keys(
     nt1::NamedTuple{names1}, nt2::NamedTuple{names2}
