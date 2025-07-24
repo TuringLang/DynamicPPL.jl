@@ -16,8 +16,8 @@ An accumulator type `T <: AbstractAccumulator` must implement the following meth
 - `Base.copy(acc::T)`
 
 In these functions:
-- `val` is the new value of the random variable sampled from a new distribution (always
-  in the original unlinked space), or the value on the left-hand side of an observe
+- `val` is the new value of the random variable sampled from a distribution (always in
+  the original unlinked space), or the value on the left-hand side of an observe
   statement.
 - `dist` is the distribution on the RHS of the tilde statement.
 - `vn` is the `VarName` that is on the left-hand side of the tilde-statement. If the
