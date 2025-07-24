@@ -622,10 +622,8 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     vi_new = Accessors.@set(vi.values = y)
-    # Since there's only a single transformation, we can overwrite any previous
-    # value in logjac.
     if hasacc(vi_new, Val(:LogJacobian))
-        vi_new = setlogjac!!(vi_new, logjac)
+        vi_new = acclogjac!!(vi_new, logjac)
     end
     return settrans!!(vi_new, t)
 end
@@ -637,11 +635,13 @@ function invlink!!(
 )
     b = t.bijector
     y = vi.values
-    x = b(y)
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
     vi_new = Accessors.@set(vi.values = x)
-    # logjac should be zero for an unlinked VarInfo.
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
     if hasacc(vi_new, Val(:LogJacobian))
-        vi_new = map_accumulator!!(zero, vi_new, Val(:LogJacobian))
+        vi_new = acclogjac!!(vi_new, inv_logjac)
     end
     return settrans!!(vi_new, NoTransformation())
 end

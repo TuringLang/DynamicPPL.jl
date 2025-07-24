@@ -204,7 +204,7 @@ Jacobian here is taken with respect to the forward (link) transform.
 
 See also: [`setlogjac!!`](@ref).
 """
-getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logJ
+getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logjac
 
 """
     getloglikelihood(vi::AbstractVarInfo)
@@ -239,14 +239,14 @@ See also: [`setloglikelihood!!`](@ref), [`setlogp!!`](@ref), [`getlogprior`](@re
 setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPriorAccumulator(logp))
 
 """
-    setlogjac!!(vi::AbstractVarInfo, logJ)
+    setlogjac!!(vi::AbstractVarInfo, logjac)
 
 Set the accumulated log-Jacobian term for any linked parameters in `vi`. The
 Jacobian here is taken with respect to the forward (link) transform.
 
 See also: [`getlogjac`](@ref), [`acclogjac!!`](@ref).
 """
-setlogjac!!(vi::AbstractVarInfo, logJ) = setacc!!(vi, LogJacobianAccumulator(logJ))
+setlogjac!!(vi::AbstractVarInfo, logjac) = setacc!!(vi, LogJacobianAccumulator(logjac))
 
 """
     setloglikelihood!!(vi::AbstractVarInfo, logp)
@@ -370,6 +370,19 @@ See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
 function acclogjac!!(vi::AbstractVarInfo, logJ)
     return map_accumulator!!(acc -> acclogp(acc, logJ), vi, Val(:LogJacobian))
+end
+
+"""
+    acclogjac!!(vi::AbstractVarInfo, logjac)
+
+Add `logjac` to the value of the log Jacobian in `vi`.
+
+See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
+"""
+function acclogjac!!(vi::AbstractVarInfo, logjac)
+    return map_accumulator!!(
+        acc -> acc + LogJacobianAccumulator(logjac), vi, Val(:LogJacobian)
+    )
 end
 
 """
@@ -903,12 +916,12 @@ function link!!(
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
-    # Set parameters
-    vi_new = unflatten(vi, y)
-    # Update logjac. We can overwrite any old value since there is only
-    # a single logjac term to worry about.
-    vi_new = setlogjac!!(vi_new, logjac)
-    return settrans!!(vi_new, t)
+    # Set parameters and add the logjac term.
+    vi = unflatten(vi, y)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
+    return settrans!!(vi, t)
 end
 
 function invlink!!(
@@ -916,15 +929,16 @@ function invlink!!(
 )
     b = t.bijector
     y = vi[:]
-    x = b(y)
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
 
-    # Set parameters
-    vi_new = unflatten(vi, x)
-    # Reset logjac to 0.
-    if hasacc(vi_new, Val(:LogJacobian))
-        vi_new = map_accumulator!!(zero, vi_new, Val(:LogJacobian))
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    vi = unflatten(vi, x)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, inv_logjac)
     end
-    return settrans!!(vi_new, NoTransformation())
+    return settrans!!(vi, NoTransformation())
 end
 
 """
