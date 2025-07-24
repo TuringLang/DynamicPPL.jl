@@ -31,7 +31,7 @@ Create a new `LogProbAccumulator` accumulator with the log prior initialized to 
 Base.copy(acc::LogProbAccumulator) = acc
 
 function Base.show(io::IO, acc::LogProbAccumulator)
-    return print(io, "$(repr(accumulator_name(acc)))($(repr(logp(acc)))))")
+    return print(io, "$(string(basetypeof(acc)))($(repr(logp(acc))))")
 end
 
 # Note that == and isequal are different, and equality under the latter should imply

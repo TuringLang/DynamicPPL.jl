@@ -362,17 +362,6 @@ function acclogprior!!(vi::AbstractVarInfo, logp)
 end
 
 """
-    acclogjac!!(vi::AbstractVarInfo, logJ)
-
-Add `logJ` to the value of the log Jacobian in `vi`.
-
-See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
-"""
-function acclogjac!!(vi::AbstractVarInfo, logJ)
-    return map_accumulator!!(acc -> acclogp(acc, logJ), vi, Val(:LogJacobian))
-end
-
-"""
     acclogjac!!(vi::AbstractVarInfo, logjac)
 
 Add `logjac` to the value of the log Jacobian in `vi`.
@@ -380,9 +369,7 @@ Add `logjac` to the value of the log Jacobian in `vi`.
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
 function acclogjac!!(vi::AbstractVarInfo, logjac)
-    return map_accumulator!!(
-        acc -> acc + LogJacobianAccumulator(logjac), vi, Val(:LogJacobian)
-    )
+    return map_accumulator!!(acc -> acclogp(acc, logjac), vi, Val(:LogJacobian))
 end
 
 """
