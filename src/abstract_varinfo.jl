@@ -204,7 +204,7 @@ Jacobian here is taken with respect to the forward (link) transform.
 
 See also: [`setlogjac!!`](@ref).
 """
-getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logJ
+getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logjac
 
 """
     getloglikelihood(vi::AbstractVarInfo)
@@ -239,14 +239,14 @@ See also: [`setloglikelihood!!`](@ref), [`setlogp!!`](@ref), [`getlogprior`](@re
 setlogprior!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogPriorAccumulator(logp))
 
 """
-    setlogjac!!(vi::AbstractVarInfo, logJ)
+    setlogjac!!(vi::AbstractVarInfo, logjac)
 
 Set the accumulated log-Jacobian term for any linked parameters in `vi`. The
 Jacobian here is taken with respect to the forward (link) transform.
 
 See also: [`getlogjac`](@ref), [`acclogjac!!`](@ref).
 """
-setlogjac!!(vi::AbstractVarInfo, logJ) = setacc!!(vi, LogJacobianAccumulator(logJ))
+setlogjac!!(vi::AbstractVarInfo, logjac) = setacc!!(vi, LogJacobianAccumulator(logjac))
 
 """
     setloglikelihood!!(vi::AbstractVarInfo, logp)
@@ -362,15 +362,15 @@ function acclogprior!!(vi::AbstractVarInfo, logp)
 end
 
 """
-    acclogjac!!(vi::AbstractVarInfo, logJ)
+    acclogjac!!(vi::AbstractVarInfo, logjac)
 
-Add `logJ` to the value of the log Jacobian in `vi`.
+Add `logjac` to the value of the log Jacobian in `vi`.
 
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
-function acclogjac!!(vi::AbstractVarInfo, logJ)
+function acclogjac!!(vi::AbstractVarInfo, logjac)
     return map_accumulator!!(
-        acc -> acc + LogJacobianAccumulator(logJ), vi, Val(:LogJacobian)
+        acc -> acc + LogJacobianAccumulator(logjac), vi, Val(:LogJacobian)
     )
 end
 

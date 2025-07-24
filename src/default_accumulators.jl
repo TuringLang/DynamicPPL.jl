@@ -55,7 +55,7 @@ $(TYPEDFIELDS)
 """
 struct LogJacobianAccumulator{T<:Real} <: AbstractAccumulator
     "the logabsdet of the link transform Jacobian"
-    logJ::T
+    logjac::T
 end
 
 """
@@ -128,7 +128,7 @@ function Base.show(io::IO, acc::LogPriorAccumulator)
     return print(io, "LogPriorAccumulator($(repr(acc.logp)))")
 end
 function Base.show(io::IO, acc::LogJacobianAccumulator)
-    return print(io, "LogJacobianAccumulator($(repr(acc.logJ)))")
+    return print(io, "LogJacobianAccumulator($(repr(acc.logjac)))")
 end
 function Base.show(io::IO, acc::LogLikelihoodAccumulator)
     return print(io, "LogLikelihoodAccumulator($(repr(acc.logp)))")
@@ -144,7 +144,7 @@ end
 # implementation for structs.
 Base.:(==)(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator) = acc1.logp == acc2.logp
 function Base.:(==)(acc1::LogJacobianAccumulator, acc2::LogJacobianAccumulator)
-    return acc1.logJ == acc2.logJ
+    return acc1.logjac == acc2.logjac
 end
 function Base.:(==)(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return acc1.logp == acc2.logp
@@ -157,7 +157,7 @@ function Base.isequal(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator)
     return isequal(acc1.logp, acc2.logp)
 end
 function Base.isequal(acc1::LogJacobianAccumulator, acc2::LogJacobianAccumulator)
-    return isequal(acc1.logJ, acc2.logJ)
+    return isequal(acc1.logjac, acc2.logjac)
 end
 function Base.isequal(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return isequal(acc1.logp, acc2.logp)
@@ -168,7 +168,7 @@ end
 
 Base.hash(acc::LogPriorAccumulator, h::UInt) = hash((LogPriorAccumulator, acc.logp), h)
 function Base.hash(acc::LogJacobianAccumulator, h::UInt)
-    return hash((LogJacobianAccumulator, acc.logJ), h)
+    return hash((LogJacobianAccumulator, acc.logjac), h)
 end
 function Base.hash(acc::LogLikelihoodAccumulator, h::UInt)
     return hash((LogLikelihoodAccumulator, acc.logp), h)
@@ -191,7 +191,7 @@ function combine(acc::LogPriorAccumulator, acc2::LogPriorAccumulator)
     return LogPriorAccumulator(acc.logp + acc2.logp)
 end
 function combine(acc::LogJacobianAccumulator, acc2::LogJacobianAccumulator)
-    return LogJacobianAccumulator(acc.logJ + acc2.logJ)
+    return LogJacobianAccumulator(acc.logjac + acc2.logjac)
 end
 function combine(acc::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return LogLikelihoodAccumulator(acc.logp + acc2.logp)
@@ -208,7 +208,7 @@ function Base.:+(acc1::LogPriorAccumulator, acc2::LogPriorAccumulator)
     return LogPriorAccumulator(acc1.logp + acc2.logp)
 end
 function Base.:+(acc1::LogJacobianAccumulator, acc2::LogJacobianAccumulator)
-    return LogJacobianAccumulator(acc1.logJ + acc2.logJ)
+    return LogJacobianAccumulator(acc1.logjac + acc2.logjac)
 end
 function Base.:+(acc1::LogLikelihoodAccumulator, acc2::LogLikelihoodAccumulator)
     return LogLikelihoodAccumulator(acc1.logp + acc2.logp)
@@ -218,7 +218,7 @@ function increment(acc::VariableOrderAccumulator)
 end
 
 Base.zero(acc::LogPriorAccumulator) = LogPriorAccumulator(zero(acc.logp))
-Base.zero(acc::LogJacobianAccumulator) = LogJacobianAccumulator(zero(acc.logJ))
+Base.zero(acc::LogJacobianAccumulator) = LogJacobianAccumulator(zero(acc.logjac))
 Base.zero(acc::LogLikelihoodAccumulator) = LogLikelihoodAccumulator(zero(acc.logp))
 
 function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right)
@@ -251,7 +251,7 @@ end
 function Base.convert(
     ::Type{LogJacobianAccumulator{T}}, acc::LogJacobianAccumulator
 ) where {T}
-    return LogJacobianAccumulator(convert(T, acc.logJ))
+    return LogJacobianAccumulator(convert(T, acc.logjac))
 end
 function Base.convert(
     ::Type{LogLikelihoodAccumulator{T}}, acc::LogLikelihoodAccumulator
@@ -277,7 +277,7 @@ function convert_eltype(::Type{T}, acc::LogPriorAccumulator) where {T}
     return LogPriorAccumulator(convert(T, acc.logp))
 end
 function convert_eltype(::Type{T}, acc::LogJacobianAccumulator) where {T}
-    return LogJacobianAccumulator(convert(T, acc.logJ))
+    return LogJacobianAccumulator(convert(T, acc.logjac))
 end
 function convert_eltype(::Type{T}, acc::LogLikelihoodAccumulator) where {T}
     return LogLikelihoodAccumulator(convert(T, acc.logp))
