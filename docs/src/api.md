@@ -367,6 +367,7 @@ DynamicPPL provides the following default accumulators.
 
 ```@docs
 LogPriorAccumulator
+LogJacobianAccumulator
 LogLikelihoodAccumulator
 VariableOrderAccumulator
 ```
@@ -380,7 +381,12 @@ getlogp
 setlogp!!
 acclogp!!
 getlogjoint
+getlogjoint_internal
+getlogjac
+setlogjac!!
+acclogjac!!
 getlogprior
+getlogprior_internal
 setlogprior!!
 acclogprior!!
 getloglikelihood

@@ -26,8 +26,11 @@ end
             loglikelihood(model, vi)
 
         @testset "$(varinfo)" for varinfo in varinfos
+            # Note use of `getlogjoint` rather than `getlogjoint_internal` here ...
             logdensity = DynamicPPL.LogDensityFunction(model, getlogjoint, varinfo)
             θ = varinfo[:]
+            # ... because it has to match with `logjoint(model, vi)`, which always returns
+            # the unlinked value
             @test LogDensityProblems.logdensity(logdensity, θ) ≈ logjoint(model, varinfo)
             @test LogDensityProblems.dimension(logdensity) == length(θ)
         end

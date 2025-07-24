@@ -87,7 +87,9 @@ using DynamicPPL:
             vn = @varname(x)
             dist = Normal()
             @test accumulate_assume!!(LogPriorAccumulator(1.0), val, logjac, vn, dist) ==
-                LogPriorAccumulator(1.0 + logjac + logpdf(dist, val))
+                LogPriorAccumulator(1.0 + logpdf(dist, val))
+            @test accumulate_assume!!(LogJacobianAccumulator(2.0), val, logjac, vn, dist) ==
+                LogJacobianAccumulator(2.0 + logjac)
             @test accumulate_assume!!(
                 LogLikelihoodAccumulator(1.0), val, logjac, vn, dist
             ) == LogLikelihoodAccumulator(1.0)
@@ -101,6 +103,8 @@ using DynamicPPL:
             vn = @varname(x)
             @test accumulate_observe!!(LogPriorAccumulator(1.0), right, left, vn) ==
                 LogPriorAccumulator(1.0)
+            @test accumulate_observe!!(LogJacobianAccumulator(1.0), right, left, vn) ==
+                LogJacobianAccumulator(1.0)
             @test accumulate_observe!!(LogLikelihoodAccumulator(1.0), right, left, vn) ==
                 LogLikelihoodAccumulator(1.0 + logpdf(right, left))
             @test accumulate_observe!!(VariableOrderAccumulator(1), right, left, vn) ==

@@ -15,8 +15,8 @@ NodeTrait(::DynamicTransformationContext) = IsLeaf()
 function tilde_assume(
     ::DynamicTransformationContext{isinverse}, right, vn, vi
 ) where {isinverse}
-    r = vi[vn, right]
-    lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
+    # vi[vn, right] always provides the value in unlinked space.
+    x = vi[vn, right]
 
     if istrans(vi, vn)
         isinverse || @warn "Trying to link an already transformed variable ($vn)"
@@ -24,13 +24,11 @@ function tilde_assume(
         isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"
     end
 
-    # Only transform if `!isinverse` since `vi[vn, right]`
-    # already performs the inverse transformation if it's transformed.
-    r_transformed = isinverse ? r : link_transform(right)(r)
-    if hasacc(vi, Val(:LogPrior))
-        vi = acclogprior!!(vi, lp)
-    end
-    return r, setindex!!(vi, r_transformed, vn)
+    transform = isinverse ? identity : link_transform(right)
+    y, logjac = with_logabsdet_jacobian(transform, x)
+    vi = accumulate_assume!!(vi, x, logjac, vn, right)
+    vi = setindex!!(vi, y, vn)
+    return x, vi
 end
 
 function tilde_observe!!(::DynamicTransformationContext, right, left, vn, vi)
@@ -53,21 +51,7 @@ function _transform!!(
 )
     # To transform using DynamicTransformationContext, we evaluate the model using that as the leaf context:
     model = contextualize(model, setleafcontext(model.context, ctx))
-    # but we do not need to use any accumulators other than LogPriorAccumulator
-    # (which is affected by the Jacobian of the transformation).
-    accs = getaccs(vi)
-    has_logprior = haskey(accs, Val(:LogPrior))
-    if has_logprior
-        old_logprior = getacc(accs, Val(:LogPrior))
-        vi = setaccs!!(vi, (old_logprior,))
-    end
     vi = settrans!!(last(evaluate!!(model, vi)), t)
-    # Restore the accumulators.
-    if has_logprior
-        new_logprior = getacc(vi, Val(:LogPrior))
-        accs = setacc!!(accs, new_logprior)
-    end
-    vi = setaccs!!(vi, accs)
     return vi
 end
 
