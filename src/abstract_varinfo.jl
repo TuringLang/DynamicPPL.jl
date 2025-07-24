@@ -907,12 +907,12 @@ function link!!(
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
 
-    # Set parameters
-    vi_new = unflatten(vi, y)
-    # Update logjac. We can overwrite any old value since there is only
-    # a single logjac term to worry about.
-    vi_new = setlogjac!!(vi_new, logjac)
-    return settrans!!(vi_new, t)
+    # Set parameters and add the logjac term.
+    vi = unflatten(vi, y)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
+    return settrans!!(vi, t)
 end
 
 function invlink!!(
@@ -920,15 +920,16 @@ function invlink!!(
 )
     b = t.bijector
     y = vi[:]
-    x = b(y)
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
 
-    # Set parameters
-    vi_new = unflatten(vi, x)
-    # Reset logjac to 0.
-    if hasacc(vi_new, Val(:LogJacobian))
-        vi_new = map_accumulator!!(zero, vi_new, Val(:LogJacobian))
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    vi = unflatten(vi, x)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, inv_logjac)
     end
-    return settrans!!(vi_new, NoTransformation())
+    return settrans!!(vi, NoTransformation())
 end
 
 """
