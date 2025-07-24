@@ -358,7 +358,7 @@ Add `logp` to the value of the log of the prior probability in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
 function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acc + LogPriorAccumulator(logp), vi, Val(:LogPrior))
+    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogPrior))
 end
 
 """
@@ -369,9 +369,7 @@ Add `logJ` to the value of the log Jacobian in `vi`.
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
 function acclogjac!!(vi::AbstractVarInfo, logJ)
-    return map_accumulator!!(
-        acc -> acc + LogJacobianAccumulator(logJ), vi, Val(:LogJacobian)
-    )
+    return map_accumulator!!(acc -> acclogp(acc, logJ), vi, Val(:LogJacobian))
 end
 
 """
@@ -382,9 +380,7 @@ Add `logp` to the value of the log of the likelihood in `vi`.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
 """
 function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(
-        acc -> acc + LogLikelihoodAccumulator(logp), vi, Val(:LogLikelihood)
-    )
+    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogLikelihood))
 end
 
 """

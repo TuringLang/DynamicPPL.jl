@@ -39,13 +39,11 @@ using DynamicPPL:
         end
 
         @testset "addition and incrementation" begin
-            @test LogPriorAccumulator(1.0f0) + LogPriorAccumulator(1.0f0) ==
-                LogPriorAccumulator(2.0f0)
-            @test LogPriorAccumulator(1.0) + LogPriorAccumulator(1.0f0) ==
-                LogPriorAccumulator(2.0)
-            @test LogLikelihoodAccumulator(1.0f0) + LogLikelihoodAccumulator(1.0f0) ==
+            @test acclogp(LogPriorAccumulator(1.0f0), 1.0f0) == LogPriorAccumulator(2.0f0)
+            @test acclogp(LogPriorAccumulator(1.0), 1.0f0) == LogPriorAccumulator(2.0)
+            @test acclogp(LogLikelihoodAccumulator(1.0f0), 1.0f0) ==
                 LogLikelihoodAccumulator(2.0f0)
-            @test LogLikelihoodAccumulator(1.0) + LogLikelihoodAccumulator(1.0f0) ==
+            @test acclogp(LogLikelihoodAccumulator(1.0), 1.0f0) ==
                 LogLikelihoodAccumulator(2.0)
             @test increment(VariableOrderAccumulator()) == VariableOrderAccumulator(1)
             @test increment(VariableOrderAccumulator{UInt8}()) ==

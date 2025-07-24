@@ -57,13 +57,7 @@ function combine(acc::LogProbAccumulator, acc2::LogProbAccumulator)
     return basetypeof(acc)(logp(acc) + logp(acc2))
 end
 
-function Base.:+(acc1::LogProbAccumulator, acc2::LogProbAccumulator)
-    if basetypeof(acc1) !== basetypeof(acc2)
-        msg = "Cannot add accumulators of different types: $(basetypeof(acc1)) and $(basetypeof(acc2))"
-        throw(ArgumentError(msg))
-    end
-    return basetypeof(acc1)(logp(acc1) + logp(acc2))
-end
+acclogp(acc::LogProbAccumulator, val) = basetypeof(acc)(logp(acc) + val)
 
 Base.zero(acc::T) where {T<:LogProbAccumulator} = T(zero(logp(acc)))
 
@@ -99,7 +93,7 @@ logp(acc::LogPriorAccumulator) = acc.logp
 accumulator_name(::Type{<:LogPriorAccumulator}) = :LogPrior
 
 function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right)
-    return acc + LogPriorAccumulator(logpdf(right, val))
+    return acclogp(acc, logpdf(right, val))
 end
 accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn) = acc
 
@@ -143,7 +137,7 @@ logp(acc::LogJacobianAccumulator) = acc.logJ
 accumulator_name(::Type{<:LogJacobianAccumulator}) = :LogJacobian
 
 function accumulate_assume!!(acc::LogJacobianAccumulator, val, logjac, vn, right)
-    return acc + LogJacobianAccumulator(logjac)
+    return acclogp(acc, logjac)
 end
 accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn) = acc
 
@@ -169,7 +163,7 @@ function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
     # Note that it's important to use the loglikelihood function here, not logpdf, because
     # they handle vectors differently:
     # https://github.com/JuliaStats/Distributions.jl/issues/1972
-    return acc + LogLikelihoodAccumulator(Distributions.loglikelihood(right, left))
+    return acclogp(acc, Distributions.loglikelihood(right, left))
 end
 
 """
@@ -208,7 +202,7 @@ end
 
 function Base.show(io::IO, acc::VariableOrderAccumulator)
     return print(
-        io, "VariableOrderAccumulator($(repr(acc.num_produce)), $(repr(acc.order)))"
+        io, "VariableOrderAccumulator($(string(acc.num_produce)), $(repr(acc.order)))"
     )
 end
 
