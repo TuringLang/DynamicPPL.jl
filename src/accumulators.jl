@@ -203,11 +203,9 @@ Implemented as a generated function to enabled constant propagation of the resul
 @generated function _joint_keys(
     nt1::NamedTuple{names1}, nt2::NamedTuple{names2}
 ) where {names1,names2}
-    set_names1 = Set(names1)
-    set_names2 = Set(names2)
-    only_in_nt1 = tuple(setdiff(set_names1, set_names2)...)
-    only_in_nt2 = tuple(setdiff(set_names2, set_names1)...)
-    in_both = tuple(intersect(set_names1, set_names2)...)
+    only_in_nt1 = tuple(setdiff(names1, names2)...)
+    only_in_nt2 = tuple(setdiff(names2, names1)...)
+    in_both = tuple(intersect(names1, names2)...)
     return :($only_in_nt1, $only_in_nt2, $in_both)
 end
 
@@ -226,7 +224,7 @@ function Base.merge(at1::AccumulatorTuple, at2::AccumulatorTuple)
     accs_in_both = (
         merge(getfield(at1.nt, key), getfield(at2.nt, key)) for key in keys_in_both
     )
-    return AccumulatorTuple(accs_in_at1..., accs_in_at2..., accs_in_both...)
+    return AccumulatorTuple(accs_in_at1..., accs_in_both..., accs_in_at2...)
 end
 
 """
