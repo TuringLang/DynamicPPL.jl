@@ -1332,3 +1332,10 @@ function group_varnames_by_symbol(vns::VarNameTuple)
     elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
     return NamedTuple{syms}(elements)
 end
+
+"""
+    basetypeof(x)
+
+Return `typeof(x)` stripped of its type parameters.
+"""
+basetypeof(x::T) where {T} = Base.typename(T).wrapper
