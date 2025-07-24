@@ -417,7 +417,9 @@ Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
-    return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
+    return SimpleVarInfo(
+        _subset(varinfo.values, vns), subset(getaccs(varinfo), vns), varinfo.transformation
+    )
 end
 
 function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
@@ -454,7 +456,7 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    accs = copy(getaccs(varinfo_right))
+    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )

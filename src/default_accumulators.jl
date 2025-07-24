@@ -266,3 +266,19 @@ function default_accumulators(
         VariableOrderAccumulator{IntT}(),
     )
 end
+
+function subset(acc::VariableOrderAccumulator, vns::AbstractVector{<:VarName})
+    order = filter(pair -> any(subsumes(vn, first(pair)) for vn in vns), acc.order)
+    return VariableOrderAccumulator(acc.num_produce, order)
+end
+
+"""
+    merge(acc1::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
+
+Merge two `VariableOrderAccumulator` instances.
+
+The `num_produce` field of the return value is the `num_produce` of `acc2`.
+"""
+function Base.merge(acc1::VariableOrderAccumulator, acc2::VariableOrderAccumulator)
+    return VariableOrderAccumulator(acc2.num_produce, merge(acc1.order, acc2.order))
+end

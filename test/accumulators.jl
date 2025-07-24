@@ -108,6 +108,30 @@ using DynamicPPL:
             @test accumulate_observe!!(VariableOrderAccumulator(1), right, left, vn) ==
                 VariableOrderAccumulator(2)
         end
+
+        @testset "merge and subset" begin
+            @test merge(LogPriorAccumulator(1.0), LogPriorAccumulator(2.0)) ==
+                LogPriorAccumulator(3.0)
+            @test merge(LogJacobianAccumulator(1.0), LogJacobianAccumulator(2.0)) ==
+                LogJacobianAccumulator(3.0)
+            @test merge(LogLikelihoodAccumulator(1.0), LogLikelihoodAccumulator(2.0)) ==
+                LogLikelihoodAccumulator(3.0)
+
+            @test merge(
+                VariableOrderAccumulator(1, Dict{VarName,Int}()),
+                VariableOrderAccumulator(2, Dict{VarName,Int}()),
+            ) == VariableOrderAccumulator(2, Dict{VarName,Int}())
+            @test merge(
+                VariableOrderAccumulator(
+                    2, Dict{VarName,Int}((@varname(a) => 1, @varname(b) => 2))
+                ),
+                VariableOrderAccumulator(
+                    1, Dict{VarName,Int}((@varname(a) => 2, @varname(c) => 3))
+                ),
+            ) == VariableOrderAccumulator(
+                1, Dict{VarName,Int}((@varname(a) => 2, @varname(b) => 2, @varname(c) => 3))
+            )
+        end
     end
 
     @testset "accumulator tuples" begin

@@ -447,7 +447,7 @@ end
 
 function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, copy(varinfo.accs))
+    return VarInfo(metadata, subset(getaccs(varinfo), vns))
 end
 
 function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
@@ -528,7 +528,8 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    return VarInfo(metadata, copy(varinfo_right.accs))
+    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
+    return VarInfo(metadata, accs)
 end
 
 function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
