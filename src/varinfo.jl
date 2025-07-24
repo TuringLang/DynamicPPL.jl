@@ -528,8 +528,7 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
-    return VarInfo(metadata, accs)
+    return VarInfo(metadata, copy(getaccs(varinfo_right)))
 end
 
 function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
@@ -1831,6 +1830,8 @@ end
     set_retained_vns_del!(vi::VarInfo)
 
 Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`.
+If `num_produce` is zero, then all variables in `vi` will have their `"del"`
+flag set to `true`.
 
 Will error if `vi` does not have an accumulator for `VariableOrder`.
 """
@@ -1841,9 +1842,13 @@ function set_retained_vns_del!(vi::VarInfo)
     end
     num_produce = get_num_produce(vi)
     for vn in keys(vi)
-        order = getorder(vi, vn)
-        if order > num_produce
+        if num_produce == 0
             set_flag!(vi, vn, "del")
+        else
+            order = getorder(vi, vn)
+            if order > num_produce
+                set_flag!(vi, vn, "del")
+            end
         end
     end
     return nothing
