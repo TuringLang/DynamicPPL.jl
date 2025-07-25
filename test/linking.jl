@@ -84,8 +84,11 @@ end
             else
                 DynamicPPL.link(vi, model)
             end
-            # Difference should just be the log-absdet-jacobian "correction".
-            @test DynamicPPL.getlogjoint(vi) - DynamicPPL.getlogjoint(vi_linked) ≈ log(2)
+            # Difference between the internal logjoints should just be the log-absdet-jacobian "correction".
+            @test DynamicPPL.getlogjoint_internal(vi) -
+                  DynamicPPL.getlogjoint_internal(vi_linked) ≈ log(2)
+            # The non-internal logjoint should be the same since it doesn't depend on linking.
+            @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
             @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
@@ -98,7 +101,12 @@ end
             end
             @test length(vi_invlinked[:]) == length(vi[:])
             @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            # The non-internal logjoint should still be the same, again since
+            # it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi_invlinked) ≈ DynamicPPL.getlogjoint(vi)
+            # The internal logjoint should also be the same as before the round-trip linking.
+            @test DynamicPPL.getlogjoint_internal(vi_invlinked) ≈
+                DynamicPPL.getlogjoint_internal(vi)
         end
     end
 
@@ -130,7 +138,7 @@ end
                     end
                     @test length(vi_linked[:]) == d * (d - 1) ÷ 2
                     # Should now include the log-absdet-jacobian correction.
-                    @test !(getlogjoint(vi_linked) ≈ lp)
+                    @test !(getlogjoint_internal(vi_linked) ≈ lp)
                     # Invlinked.
                     vi_invlinked = if mutable
                         DynamicPPL.invlink!!(deepcopy(vi_linked), model)
@@ -138,7 +146,7 @@ end
                         DynamicPPL.invlink(vi_linked, model)
                     end
                     @test length(vi_invlinked[:]) == d^2
-                    @test getlogjoint(vi_invlinked) ≈ lp
+                    @test getlogjoint_internal(vi_invlinked) ≈ lp
                 end
             end
         end
@@ -164,7 +172,7 @@ end
                 end
                 @test length(vi_linked[:]) == d - 1
                 # Should now include the log-absdet-jacobian correction.
-                @test !(getlogjoint(vi_linked) ≈ lp)
+                @test !(getlogjoint_internal(vi_linked) ≈ lp)
                 # Invlinked.
                 vi_invlinked = if mutable
                     DynamicPPL.invlink!!(deepcopy(vi_linked), model)
@@ -172,7 +180,7 @@ end
                     DynamicPPL.invlink(vi_linked, model)
                 end
                 @test length(vi_invlinked[:]) == d
-                @test getlogjoint(vi_invlinked) ≈ lp
+                @test getlogjoint_internal(vi_invlinked) ≈ lp
             end
         end
     end

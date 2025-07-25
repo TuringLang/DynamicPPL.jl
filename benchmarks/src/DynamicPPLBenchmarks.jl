@@ -86,7 +86,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
         vi = DynamicPPL.link(vi, model)
     end
 
-    f = DynamicPPL.LogDensityFunction(model, vi; adtype=adbackend)
+    f = DynamicPPL.LogDensityFunction(
+        model, DynamicPPL.getlogjoint_internal, vi; adtype=adbackend
+    )
     # The parameters at which we evaluate f.
     θ = vi[:]
 

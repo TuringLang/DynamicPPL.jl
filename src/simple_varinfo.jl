@@ -122,18 +122,18 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
+Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) Positive probability mass on negative numbers!
-       getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
+       getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
 -1.3678794411714423
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
+SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) No probability mass on negative numbers!
-       getlogjoint(last(DynamicPPL.evaluate!!(m, vi)))
+       getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
 -Inf
 ```
 
@@ -476,7 +476,7 @@ function assume(
     f = to_maybe_linked_internal_transform(vi, vn, dist)
     value_raw, logjac = with_logabsdet_jacobian(f, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist)
-    vi = accumulate_assume!!(vi, value, -logjac, vn, dist)
+    vi = accumulate_assume!!(vi, value, logjac, vn, dist)
     return value, vi
 end
 
@@ -494,6 +494,7 @@ end
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
 
 islinked(vi::SimpleVarInfo) = istrans(vi)
 
@@ -619,7 +620,9 @@ function link!!(
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
     vi_new = Accessors.@set(vi.values = y)
-    vi_new = acclogprior!!(vi_new, -logjac)
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = acclogjac!!(vi_new, logjac)
+    end
     return settrans!!(vi_new, t)
 end
 
@@ -630,9 +633,14 @@ function invlink!!(
 )
     b = t.bijector
     y = vi.values
-    x, logjac = with_logabsdet_jacobian(b, y)
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
     vi_new = Accessors.@set(vi.values = x)
-    vi_new = acclogprior!!(vi_new, logjac)
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = acclogjac!!(vi_new, inv_logjac)
+    end
     return settrans!!(vi_new, NoTransformation())
 end
 

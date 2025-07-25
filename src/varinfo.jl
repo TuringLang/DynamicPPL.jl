@@ -1148,7 +1148,9 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(md, yvec, vn)
-    vi = acclogprior!!(vi, -logjac)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
     return vi
 end
 
@@ -1185,7 +1187,9 @@ function _link(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
+    end
     return new_varinfo
 end
 
@@ -1199,7 +1203,9 @@ function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
     md, logjac = _link_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
+    end
     return new_varinfo
 end
 
@@ -1345,9 +1351,14 @@ end
 
 function _invlink(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
-    md, logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
+    md, inv_logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+        # because we are trying to remove the logjac of the forward transform
+        # that was previously accumulated when linking.
+        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
+    end
     return new_varinfo
 end
 
@@ -1359,9 +1370,14 @@ end
 
 function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
-    md, logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
+    md, inv_logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
     new_varinfo = VarInfo(md, varinfo.accs)
-    new_varinfo = acclogprior!!(new_varinfo, -logjac)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+        # because we are trying to remove the logjac of the forward transform
+        # that was previously accumulated when linking.
+        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
+    end
     return new_varinfo
 end
 
@@ -1372,7 +1388,7 @@ end
     vns::NamedTuple{vns_names},
 ) where {metadata_names,vns_names}
     expr = quote
-        cumulative_logjac = zero(LogProbType)
+        cumulative_inv_logjac = zero(LogProbType)
     end
     mds = Expr(:tuple)
     for f in metadata_names
@@ -1381,10 +1397,10 @@ end
                 mds.args,
                 quote
                     begin
-                        md, logjac = _invlink_metadata!!(
+                        md, inv_logjac = _invlink_metadata!!(
                             model, varinfo, metadata.$f, vns.$f
                         )
-                        cumulative_logjac += logjac
+                        cumulative_inv_logjac += inv_logjac
                         md
                     end
                 end,
@@ -1397,7 +1413,7 @@ end
     push!(
         expr.args,
         quote
-            (NamedTuple{$metadata_names}($mds), cumulative_logjac)
+            (NamedTuple{$metadata_names}($mds), cumulative_inv_logjac)
         end,
     )
     return expr
@@ -1405,7 +1421,7 @@ end
 
 function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
-    cumulative_logjac = zero(LogProbType)
+    cumulative_inv_logjac = zero(LogProbType)
 
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
@@ -1420,11 +1436,11 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         y = getindex_internal(varinfo, vn)
         dist = getdist(varinfo, vn)
         f = from_linked_internal_transform(varinfo, vn, dist)
-        x, logjac = with_logabsdet_jacobian(f, y)
+        x, inv_logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
         xvec = tovec(x)
         # Accumulate the log-abs-det jacobian correction.
-        cumulative_logjac += logjac
+        cumulative_inv_logjac += inv_logjac
         # Mark as no longer transformed.
         settrans!!(varinfo, false, vn)
         # Return the vectorized transformed value.
@@ -1449,25 +1465,25 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         metadata.dists,
         metadata.flags,
     ),
-    cumulative_logjac
+    cumulative_inv_logjac
 end
 
 function _invlink_metadata!!(
     ::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
     vns = target_vns === nothing ? keys(metadata) : target_vns
-    cumulative_logjac = zero(LogProbType)
+    cumulative_inv_logjac = zero(LogProbType)
     for vn in vns
         transform = gettransform(metadata, vn)
         old_val = getindex_internal(metadata, vn)
-        new_val, logjac = with_logabsdet_jacobian(transform, old_val)
+        new_val, inv_logjac = with_logabsdet_jacobian(transform, old_val)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
-        cumulative_logjac += logjac
+        cumulative_inv_logjac += inv_logjac
         new_transform = from_vec_transform(new_val)
         metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
         settrans!(metadata, false, vn)
     end
-    return metadata, cumulative_logjac
+    return metadata, cumulative_inv_logjac
 end
 
 # TODO(mhauru) The treatment of the case when some variables are linked and others are not
@@ -1813,19 +1829,19 @@ end
 """
     set_retained_vns_del!(vi::VarInfo)
 
-Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`.
+Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`. If
+`num_produce` is `0`, _all_ variables will have their `"del"` flag set to `true`.
 
 Will error if `vi` does not have an accumulator for `VariableOrder`.
 """
 function set_retained_vns_del!(vi::VarInfo)
     if !hasacc(vi, Val(:VariableOrder))
         msg = "`vi` must have an accumulator for VariableOrder to set the `del` flag."
-        raise(ArgumentError(msg))
+        throw(ArgumentError(msg))
     end
     num_produce = get_num_produce(vi)
     for vn in keys(vi)
-        order = getorder(vi, vn)
-        if order > num_produce
+        if num_produce == 0 || getorder(vi, vn) > num_produce
             set_flag!(vi, vn, "del")
         end
     end

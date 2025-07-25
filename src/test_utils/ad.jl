@@ -4,7 +4,8 @@ using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
-using DynamicPPL: Model, LogDensityFunction, VarInfo, AbstractVarInfo, link
+using DynamicPPL:
+    Model, LogDensityFunction, VarInfo, AbstractVarInfo, getlogjoint_internal, link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: AbstractRNG, default_rng
 using Statistics: median
@@ -88,6 +89,8 @@ $(TYPEDFIELDS)
 struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloat}
     "The DynamicPPL model that was tested"
     model::Model
+    "The function used to extract the log density from the model"
+    getlogdensity::Function
     "The VarInfo that was used"
     varinfo::AbstractVarInfo
     "The values at which the model was evaluated"
@@ -222,6 +225,7 @@ function run_ad(
     benchmark::Bool=false,
     atol::AbstractFloat=100 * eps(),
     rtol::AbstractFloat=sqrt(eps()),
+    getlogdensity::Function=getlogjoint_internal,
     rng::AbstractRNG=default_rng(),
     varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
@@ -241,7 +245,8 @@ function run_ad(
     # Calculate log-density and gradient with the backend of interest
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model, varinfo; adtype=adtype)
+    ldf = LogDensityFunction(model, getlogdensity, varinfo; adtype=adtype)
+
     value, grad = logdensity_and_gradient(ldf, params)
     # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
     grad = collect(grad)
@@ -257,7 +262,9 @@ function run_ad(
             value_true = test.value
             grad_true = test.grad
         elseif test isa WithBackend
-            ldf_reference = LogDensityFunction(model, varinfo; adtype=test.adtype)
+            ldf_reference = LogDensityFunction(
+                model, getlogdensity, varinfo; adtype=test.adtype
+            )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
             # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
             grad_true = collect(grad_true)
@@ -282,6 +289,7 @@ function run_ad(
 
     return ADResult(
         model,
+        getlogdensity,
         varinfo,
         params,
         adtype,

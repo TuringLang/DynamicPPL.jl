@@ -11,9 +11,20 @@ seen so far.
 
 An accumulator type `T <: AbstractAccumulator` must implement the following methods:
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
-- `accumulate_observe!!(acc::T, right, left, vn)`
-- `accumulate_assume!!(acc::T, val, logjac, vn, right)`
+- `accumulate_observe!!(acc::T, dist, val, vn)`
+- `accumulate_assume!!(acc::T, val, logjac, vn, dist)`
 - `Base.copy(acc::T)`
+
+In these functions:
+- `val` is the new value of the random variable sampled from a distribution (always in
+  the original unlinked space), or the value on the left-hand side of an observe
+  statement.
+- `dist` is the distribution on the RHS of the tilde statement.
+- `vn` is the `VarName` that is on the left-hand side of the tilde-statement. If the
+  tilde-statement is a literal observation like `0.0 ~ Normal()`, then `vn` is `nothing`.
+- `logjac` is the log determinant of the Jacobian of the link transformation, _if_ the
+  variable is stored as a linked value in the VarInfo. If the variable is stored in its
+  original, unlinked form, then `logjac` is zero.
 
 To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`

@@ -123,8 +123,8 @@ end
 function assume(dist::Distribution, vn::VarName, vi)
     y = getindex_internal(vi, vn)
     f = from_maybe_linked_internal_transform(vi, vn, dist)
-    x, logjac = with_logabsdet_jacobian(f, y)
-    vi = accumulate_assume!!(vi, x, logjac, vn, dist)
+    x, inv_logjac = with_logabsdet_jacobian(f, y)
+    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, dist)
     return x, vi
 end
 
@@ -166,6 +166,6 @@ function assume(
 
     # HACK: The above code might involve an `invlink` somewhere, etc. so we need to correct.
     logjac = logabsdetjac(istrans(vi, vn) ? link_transform(dist) : identity, r)
-    vi = accumulate_assume!!(vi, r, -logjac, vn, dist)
+    vi = accumulate_assume!!(vi, r, logjac, vn, dist)
     return r, vi
 end

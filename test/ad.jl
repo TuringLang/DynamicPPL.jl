@@ -30,7 +30,7 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 linked_varinfo = DynamicPPL.link(varinfo, m)
-                f = LogDensityFunction(m, linked_varinfo)
+                f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
                 x = DynamicPPL.getparams(f)
 
                 # Calculate reference logp + gradient of logp using ForwardDiff
@@ -52,17 +52,17 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
                     if is_mooncake && is_1_11 && is_svi_vnv
                         # https://github.com/compintell/Mooncake.jl/issues/470
                         @test_throws ArgumentError DynamicPPL.LogDensityFunction(
-                            m, linked_varinfo; adtype=adtype
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
                         )
                     elseif is_mooncake && is_1_10 && is_svi_vnv
                         # TODO: report upstream
                         @test_throws UndefRefError DynamicPPL.LogDensityFunction(
-                            m, linked_varinfo; adtype=adtype
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
                         )
                     elseif is_mooncake && is_1_10 && is_svi_od
                         # TODO: report upstream
                         @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
-                            m, linked_varinfo; adtype=adtype
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
                         )
                     else
                         @test run_ad(
@@ -111,10 +111,12 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
-        vi = VarInfo(model)
         sampling_model = contextualize(model, SamplingContext(model.context))
-        ldf = LogDensityFunction(sampling_model, vi; adtype=AutoReverseDiff(; compile=true))
-        @test LogDensityProblems.logdensity_and_gradient(ldf, vi[:]) isa Any
+        ldf = LogDensityFunction(
+            sampling_model, getlogjoint_internal; adtype=AutoReverseDiff(; compile=true)
+        )
+        x = ldf.varinfo[:]
+        @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Any
     end
 
     # Test that various different ways of specifying array types as arguments work with all

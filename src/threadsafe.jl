@@ -201,6 +201,11 @@ function resetlogp!!(vi::ThreadSafeVarInfo)
                 zero, vi.accs_by_thread[i], Val(:LogPrior)
             )
         end
+        if hasacc(vi, Val(:LogJacobian))
+            vi.accs_by_thread[i] = map_accumulator(
+                zero, vi.accs_by_thread[i], Val(:LogJacobian)
+            )
+        end
         if hasacc(vi, Val(:LogLikelihood))
             vi.accs_by_thread[i] = map_accumulator(
                 zero, vi.accs_by_thread[i], Val(:LogLikelihood)
