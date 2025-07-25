@@ -981,7 +981,11 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(evaluate_and_sample!!(rng, model, SimpleVarInfo{Float64}(OrderedDict())))
+    x = last(
+        evaluate_and_sample!!(
+            rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())
+        ),
+    )
     return values_as(x, T)
 end
 
@@ -1032,7 +1036,7 @@ julia> logjoint(demo_model([1., 2.]), chain);
 function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
@@ -1090,7 +1094,7 @@ julia> logprior(demo_model([1., 2.]), chain);
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
@@ -1144,7 +1148,7 @@ julia> loglikelihood(demo_model([1., 2.]), chain);
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
