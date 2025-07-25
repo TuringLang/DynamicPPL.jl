@@ -27,9 +27,6 @@ using LinearAlgebra # Diagonal
 
 using JET: JET
 
-# need to call this to get the AbstractPPL I think
-Pkg.update()
-
 using Combinatorics: combinations
 using OrderedCollections: OrderedSet
 
