@@ -1830,19 +1830,19 @@ end
 """
     set_retained_vns_del!(vi::VarInfo)
 
-Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`.
+Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`. If
+`num_produce` is `0`, _all_ variables will have their `"del"` flag set to `true`.
 
 Will error if `vi` does not have an accumulator for `VariableOrder`.
 """
 function set_retained_vns_del!(vi::VarInfo)
     if !hasacc(vi, Val(:VariableOrder))
         msg = "`vi` must have an accumulator for VariableOrder to set the `del` flag."
-        raise(ArgumentError(msg))
+        throw(ArgumentError(msg))
     end
     num_produce = get_num_produce(vi)
     for vn in keys(vi)
-        order = getorder(vi, vn)
-        if order > num_produce
+        if num_produce == 0 || getorder(vi, vn) > num_produce
             set_flag!(vi, vn, "del")
         end
     end
