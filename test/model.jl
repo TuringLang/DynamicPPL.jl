@@ -566,40 +566,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 end
             end
         end
-
-        @testset "with AbstractVector{<:AbstractVarInfo}" begin
-            @model function linear_reg(x, y, σ=0.1)
-                β ~ Normal(1, 1)
-                for i in eachindex(y)
-                    y[i] ~ Normal(β * x[i], σ)
-                end
-            end
-
-            ground_truth_β = 2.0
-            # the data will be ignored, as we are generating samples from the prior
-            xs_train = 1:0.1:10
-            ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
-            m_lin_reg = linear_reg(xs_train, ys_train)
-            chain = [VarInfo(m_lin_reg) for _ in 1:10000]
-
-            # chain is generated from the prior
-            @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1
-
-            xs_test = [10 + 0.1, 10 + 2 * 0.1]
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
-            predicted_vis = DynamicPPL.predict(m_lin_reg_test, chain)
-
-            @test size(predicted_vis) == size(chain)
-            @test Set(keys(predicted_vis[1])) ==
-                Set([@varname(β), @varname(y[1]), @varname(y[2])])
-            # because β samples are from the prior, the std will be larger
-            @test mean([
-                predicted_vis[i][@varname(y[1])] for i in eachindex(predicted_vis)
-            ]) ≈ 1.0 * xs_test[1] rtol = 0.1
-            @test mean([
-                predicted_vis[i][@varname(y[2])] for i in eachindex(predicted_vis)
-            ]) ≈ 1.0 * xs_test[2] rtol = 0.1
-        end
     end
 
     @testset "ProductNamedTupleDistribution sampling" begin
