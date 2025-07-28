@@ -110,7 +110,7 @@ end
         test_base(VarInfo())
         test_base(DynamicPPL.typed_varinfo(VarInfo()))
         test_base(SimpleVarInfo())
-        test_base(SimpleVarInfo(Dict()))
+        test_base(SimpleVarInfo(Dict{VarName,Any}()))
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
@@ -597,7 +597,7 @@ end
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
@@ -737,11 +737,10 @@ end
             model, (; x=1.0), (@varname(x),); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            # Skip the severely inconcrete `SimpleVarInfo` types, since checking for type
+            # Skip the inconcrete `SimpleVarInfo` types, since checking for type
             # stability for them doesn't make much sense anyway.
-            if varinfo isa SimpleVarInfo{OrderedDict{Any,Any}} ||
-                varinfo isa
-               DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{OrderedDict{Any,Any}}}
+            if varinfo isa SimpleVarInfo{<:AbstractDict} ||
+                varinfo isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{<:AbstractDict}}
                 continue
             end
             @inferred DynamicPPL.unflatten(varinfo, varinfo[:])
