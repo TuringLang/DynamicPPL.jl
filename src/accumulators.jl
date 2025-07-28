@@ -30,6 +30,13 @@ To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
 - `combine(acc::T, acc2::T)`
 
+If two accumulators of the same type should be merged in some non-trivial way, other than
+always keeping the second one over the first, `merge(acc1::T, acc2::T)` should be defined.
+
+If limiting the accumulator to a subset of `VarName`s is a meaningful operation and should
+do something other than copy the original accumulator, then
+`subset(acc::T, vns::AbstractVector{<:VarnName})` should be defined.`
+
 See the documentation for each of these functions for more details.
 """
 abstract type AbstractAccumulator end
@@ -114,6 +121,24 @@ used by various AD backends, should implement a method for this function.
 convert_eltype(::Type, acc::AbstractAccumulator) = acc
 
 """
+    subset(acc::AbstractAccumulator, vns::AbstractVector{<:VarName})
+
+Return a new accumulator that only contains the information for the `VarName`s in `vns`.
+
+By default returns a copy of `acc`. Subtypes should override this behaviour as needed.
+"""
+subset(acc::AbstractAccumulator, ::AbstractVector{<:VarName}) = copy(acc)
+
+"""
+    merge(acc1::AbstractAccumulator, acc2::AbstractAccumulator)
+
+Merge two accumulators of the same type. Returns a new accumulator of the same type.
+
+By default returns a copy of `acc2`. Subtypes should override this behaviour as needed.
+"""
+Base.merge(acc1::AbstractAccumulator, acc2::AbstractAccumulator) = copy(acc2)
+
+"""
     AccumulatorTuple{N,T<:NamedTuple}
 
 A collection of accumulators, stored as a `NamedTuple` of length `N`
@@ -156,6 +181,50 @@ Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
     return AccumulatorTuple(convert(T, accs.nt))
+end
+
+"""
+    subset(at::AccumulatorTuple, vns::AbstractVector{<:VarName})
+
+Replace each accumulator `acc` in `at` with `subset(acc, vns)`.
+"""
+function subset(at::AccumulatorTuple, vns::AbstractVector{<:VarName})
+    return AccumulatorTuple(map(Base.Fix2(subset, vns), at.nt))
+end
+
+"""
+    _joint_keys(nt1::NamedTuple, nt2::NamedTuple)
+
+A helper function that returns three tuples of keys given two `NamedTuple`s:
+The keys only in `nt1`, only in `nt2`, and in both, and in that order.
+
+Implemented as a generated function to enable constant propagation of the result in `merge`.
+"""
+@generated function _joint_keys(
+    nt1::NamedTuple{names1}, nt2::NamedTuple{names2}
+) where {names1,names2}
+    only_in_nt1 = tuple(setdiff(names1, names2)...)
+    only_in_nt2 = tuple(setdiff(names2, names1)...)
+    in_both = tuple(intersect(names1, names2)...)
+    return :($only_in_nt1, $only_in_nt2, $in_both)
+end
+
+"""
+    merge(at1::AccumulatorTuple, at2::AccumulatorTuple)
+
+Merge two `AccumulatorTuple`s.
+
+For any `accumulator_name` that exists in both `at1` and `at2`, we call `merge` on the two
+accumulators themselves. Other accumulators are copied.
+"""
+function Base.merge(at1::AccumulatorTuple, at2::AccumulatorTuple)
+    keys_in_at1, keys_in_at2, keys_in_both = _joint_keys(at1.nt, at2.nt)
+    accs_in_at1 = (getfield(at1.nt, key) for key in keys_in_at1)
+    accs_in_at2 = (getfield(at2.nt, key) for key in keys_in_at2)
+    accs_in_both = (
+        merge(getfield(at1.nt, key), getfield(at2.nt, key)) for key in keys_in_both
+    )
+    return AccumulatorTuple(accs_in_at1..., accs_in_both..., accs_in_at2...)
 end
 
 """
