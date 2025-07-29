@@ -1,10 +1,8 @@
 module DynamicPPLBenchmarks
 
-using DynamicPPL: VarInfo, SimpleVarInfo, VarName
-using BenchmarkTools: BenchmarkGroup, @benchmarkable
+using DynamicPPL: Model, VarInfo, SimpleVarInfo
 using DynamicPPL: DynamicPPL
 using ADTypes: ADTypes
-using LogDensityProblems: LogDensityProblems
 
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
@@ -55,14 +53,14 @@ function make_varinfo(model::Model, varinfo_choice::Symbol, adbackend::Symbol)
     elseif varinfo_choice == :simple_namedtuple
         SimpleVarInfo{Float64}(model(rng))
     elseif varinfo_choice == :simple_dict
-        retvals = model(rng)
-        vns = [VarName{k}() for k in keys(retvals)]
-        SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
+        vi = DynamicPPL.typed_varinfo(rng, model)
+        vals = DynamicPPL.values_as(vi, Dict)
+        SimpleVarInfo{Float64}(vals)
     else
         error("Unknown varinfo choice: $varinfo_choice")
     end
 
-    return DynamicPPL.link(vi, model)
+    return DynamicPPL.link!!(vi, model)
 end
 
 end # module
