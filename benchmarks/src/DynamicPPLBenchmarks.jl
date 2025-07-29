@@ -19,7 +19,6 @@ export Models, to_backend, make_varinfo
 const SYMBOL_TO_BACKEND = Dict(
     :forwarddiff => ADTypes.AutoForwardDiff(),
     :reversediff => ADTypes.AutoReverseDiff(; compile=false),
-    :reversediff_compiled => ADTypes.AutoReverseDiff(; compile=true),
     :mooncake => ADTypes.AutoMooncake(; config=nothing),
 )
 
