@@ -14,21 +14,7 @@ using StableRNGs: StableRNG
 include("./Models.jl")
 using .Models: Models
 
-export Models, make_suite, model_dimension
-
-"""
-    model_dimension(model, islinked)
-
-Return the dimension of `model`, accounting for linking, if any.
-"""
-function model_dimension(model, islinked)
-    vi = VarInfo()
-    model(StableRNG(23), vi)
-    if islinked
-        vi = DynamicPPL.link(vi, model)
-    end
-    return length(vi[:])
-end
+export Models, to_backend, make_varinfo
 
 # Utility functions for representing AD backends using symbols.
 # Copied from TuringBenchmarking.jl.
@@ -48,23 +34,19 @@ function to_backend(x::Union{AbstractString,Symbol})
 end
 
 """
-    make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+    make_varinfo(model, varinfo_choice::Symbol)
 
-Create a benchmark suite for `model` using the selected varinfo type and AD backend.
+Create a VarInfo for the given `model` using the selected varinfo type.
 Available varinfo choices:
   • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
   • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
   • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
   • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
 
-The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversediff`, `:zygote`).
-
-`islinked` determines whether to link the VarInfo for evaluation.
+The VarInfo is always linked.
 """
-function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+function make_varinfo(model::Model, varinfo_choice::Symbol, adbackend::Symbol)
     rng = StableRNG(23)
-
-    suite = BenchmarkGroup()
 
     vi = if varinfo_choice == :untyped
         DynamicPPL.untyped_varinfo(rng, model)
@@ -80,26 +62,7 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
         error("Unknown varinfo choice: $varinfo_choice")
     end
 
-    adbackend = to_backend(adbackend)
-
-    if islinked
-        vi = DynamicPPL.link(vi, model)
-    end
-
-    f = DynamicPPL.LogDensityFunction(
-        model, DynamicPPL.getlogjoint_internal, vi; adtype=adbackend
-    )
-    # The parameters at which we evaluate f.
-    θ = vi[:]
-
-    # Run once to trigger compilation.
-    LogDensityProblems.logdensity_and_gradient(f, θ)
-    suite["gradient"] = @benchmarkable $(LogDensityProblems.logdensity_and_gradient)($f, $θ)
-
-    # Also benchmark just standard model evaluation because why not.
-    suite["evaluation"] = @benchmarkable $(LogDensityProblems.logdensity)($f, $θ)
-
-    return suite
+    return DynamicPPL.link(vi, model)
 end
 
 end # module

@@ -1,7 +1,6 @@
-using Pkg
-
-using DynamicPPLBenchmarks: Models, make_suite, model_dimension
-using BenchmarkTools: @benchmark, median, run
+using DynamicPPLBenchmarks: Models, to_backend, make_varinfo, model_dimension
+using DynamicPPL.TestUtils.AD: run_ad, NoTest
+using Chairmarks: @be
 using PrettyTables: PrettyTables, ft_printf
 using StableRNGs: StableRNG
 
@@ -35,48 +34,45 @@ chosen_combinations = [
         Models.simple_assume_observe(randn(rng)),
         :typed,
         :forwarddiff,
-        false,
     ),
-    ("Smorgasbord", smorgasbord_instance, :typed, :forwarddiff, false),
-    ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
-    ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
-    ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
-    ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
-    ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
-    ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
-    ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
-    ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-    ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
-    ("LDA", lda_instance, :typed, :reversediff, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, :forwarddiff),
+    ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff),
+    ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff),
+    ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff),
+    ("Smorgasbord", smorgasbord_instance, :typed, :reversediff),
+    ("Smorgasbord", smorgasbord_instance, :typed, :mooncake),
+    ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake),
+    ("Multivariate 1k", multivariate1k, :typed, :mooncake),
+    ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake),
+    ("Multivariate 10k", multivariate10k, :typed, :mooncake),
+    ("Dynamic", Models.dynamic(), :typed, :mooncake),
+    ("Submodel", Models.parent(randn(rng)), :typed, :mooncake),
+    ("LDA", lda_instance, :typed, :reversediff),
 ]
 
 # Time running a model-like function that does not use DynamicPPL, as a reference point.
 # Eval timings will be relative to this.
 reference_time = begin
     obs = randn(rng)
-    median(@benchmark Models.simple_assume_observe_non_model(obs)).time
+    median(@be Models.simple_assume_observe_non_model(obs)).time
 end
 
 results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
     @info "Running benchmark for $model_name"
-    suite = make_suite(model, varinfo_choice, adbackend, islinked)
-    results = run(suite)
-    eval_time = median(results["evaluation"]).time
-    relative_eval_time = eval_time / reference_time
-    ad_eval_time = median(results["gradient"]).time
-    relative_ad_eval_time = ad_eval_time / eval_time
+    adtype = to_backend(adbackend)
+    varinfo = make_varinfo(model, varinfo_choice)
+    ad_result = run_ad(model, adtype; test=NoTest(), benchmark=true, varinfo=varinfo)
+    relative_eval_time = ad_result.primal_time / reference_time
+    relative_ad_eval_time = ad_result.grad_time / ad_result.primal_time
     push!(
         results_table,
         (
             model_name,
-            model_dimension(model, islinked),
+            length(varinfo[:]),
             string(adbackend),
             string(varinfo_choice),
-            islinked,
             relative_eval_time,
             relative_ad_eval_time,
         ),
@@ -89,7 +85,6 @@ header = [
     "Dimension",
     "AD Backend",
     "VarInfo Type",
-    "Linked",
     "Eval Time / Ref Time",
     "AD Time / Eval Time",
 ]
@@ -97,6 +92,6 @@ PrettyTables.pretty_table(
     table_matrix;
     header=header,
     tf=PrettyTables.tf_markdown,
-    formatters=ft_printf("%.1f", [6, 7]),
+    formatters=ft_printf("%.1f", [5, 6]),
     crop=:none,  # Always print the whole table, even if it doesn't fit in the terminal.
 )

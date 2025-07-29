@@ -109,8 +109,11 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloa
     value_actual::Tresult
     "The gradient of logp (calculated using `adtype`)"
     grad_actual::Vector{Tresult}
-    "If benchmarking was requested, the time taken by the AD backend to calculate the gradient of logp, divided by the time taken to evaluate logp itself"
-    time_vs_primal::Union{Nothing,Tresult}
+    "If benchmarking was requested, the time taken by the AD backend to evaluate the gradient
+     of logp"
+    grad_time::Union{Nothing,Tresult}
+    "If benchmarking was requested, the time taken by the AD backend to evaluate logp"
+    primal_time::Union{Nothing,Tresult}
 end
 
 """
@@ -121,6 +124,8 @@ end
         benchmark=false,
         atol::AbstractFloat=1e-8,
         rtol::AbstractFloat=sqrt(eps()),
+        getlogdensity::Function=getlogjoint_internal,
+        rng::AbstractRNG=default_rng(),
         varinfo::AbstractVarInfo=link(VarInfo(model), model),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
         verbose=true,
@@ -173,6 +178,21 @@ Everything else is optional, and can be categorised into several groups:
    the VarInfo object, for example using `vi = DynamicPPL.unflatten(vi,
    prep_params)`. You could then evaluate the gradient at a different set of
    parameters using the `params` keyword argument.
+
+3. _Which type of logp is being calculated._
+
+   By default, `run_ad` evaluates the 'internal log joint density' of the model,
+   i.e., the log joint density in the unconstrained space. Thus, for example, in
+
+       @model f() = x ~ LogNormal()
+
+   the internal log joint density is `logpdf(Normal(), log(x))`. This is the
+   relevant log density for e.g. Hamiltonian Monte Carlo samplers and is therefore
+   the most useful to test.
+
+   If you want the log joint density in the original model parameterisation, you
+   can use `getlogjoint`. Likewise, if you want only the prior or likelihood,
+   you can use `getlogprior` or `getloglikelihood`, respectively.
 
 3. _How to specify the results to compare against._
 
@@ -277,12 +297,16 @@ function run_ad(
     end
 
     # Benchmark
-    time_vs_primal = if benchmark
+    grad_time, primal_time = if benchmark
         primal_benchmark = @be (ldf, params) logdensity(_[1], _[2])
         grad_benchmark = @be (ldf, params) logdensity_and_gradient(_[1], _[2])
-        t = median(grad_benchmark).time / median(primal_benchmark).time
-        verbose && println("grad / primal : $(t)")
-        t
+        median_primal = median(primal_benchmark).time
+        median_grad = median(grad_benchmark).time
+        r(f) = round(f; sigdigits=4)
+        verbose && println(
+            "grad / primal : $(r(median_grad))/$(r(median_primal)) = $(r(median_grad / median_primal))",
+        )
+        (median_grad, median_primal)
     else
         nothing
     end
@@ -299,7 +323,8 @@ function run_ad(
         grad_true,
         value,
         grad,
-        time_vs_primal,
+        grad_time,
+        primal_time,
     )
 end
 
