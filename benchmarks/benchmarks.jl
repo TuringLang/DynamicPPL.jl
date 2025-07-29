@@ -1,4 +1,4 @@
-using DynamicPPLBenchmarks: Models, to_backend, make_varinfo, model_dimension
+using DynamicPPLBenchmarks: Models, to_backend, make_varinfo
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Chairmarks: @be
 using PrettyTables: PrettyTables, ft_printf
@@ -58,9 +58,9 @@ reference_time = begin
     median(@be Models.simple_assume_observe_non_model(obs)).time
 end
 
-results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
+results_table = Tuple{String,Int,String,String,Float64,Float64}[]
 
-for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
+for (model_name, model, varinfo_choice, adbackend) in chosen_combinations
     @info "Running benchmark for $model_name"
     adtype = to_backend(adbackend)
     varinfo = make_varinfo(model, varinfo_choice)
