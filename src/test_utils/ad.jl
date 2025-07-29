@@ -308,7 +308,7 @@ function run_ad(
         )
         (median_grad, median_primal)
     else
-        nothing
+        nothing, nothing
     end
 
     return ADResult(

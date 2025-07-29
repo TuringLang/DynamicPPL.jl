@@ -3,6 +3,7 @@ using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Chairmarks: @be
 using PrettyTables: PrettyTables, ft_printf
 using StableRNGs: StableRNG
+using Statistics: median
 
 rng = StableRNG(23)
 
