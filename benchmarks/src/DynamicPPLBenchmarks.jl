@@ -42,7 +42,7 @@ Available varinfo choices:
 
 The VarInfo is always linked.
 """
-function make_varinfo(model::Model, varinfo_choice::Symbol, adbackend::Symbol)
+function make_varinfo(model::Model, varinfo_choice::Symbol)
     rng = StableRNG(23)
 
     vi = if varinfo_choice == :untyped
