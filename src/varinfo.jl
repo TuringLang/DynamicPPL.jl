@@ -37,7 +37,7 @@ struct Metadata{
     TIdcs<:Dict{<:VarName,Int},
     TDists<:AbstractVector{<:Distribution},
     TVN<:AbstractVector{<:VarName},
-    TVal<:AbstractVector{<:Real},
+    TVal<:AbstractVector{<:Any},
 }
     # Mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`
     idcs::TIdcs # Dict{<:VarName,Int}
@@ -51,7 +51,7 @@ struct Metadata{
 
     # Vector of values of all the univariate, multivariate and matrix variables
     # The value(s) of `vn` is/are `vals[ranges[idcs[vn]]]`
-    vals::TVal # AbstractVector{<:Real}
+    vals::TVal # AbstractVector{<:Any}
 
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
@@ -409,7 +409,7 @@ unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
 Construct an empty type unstable instance of `Metadata`.
 """
 function Metadata()
-    vals = Vector{Real}()
+    vals = Vector{Any}()
     flags = Dict{String,BitVector}()
     flags["del"] = BitVector()
     flags["trans"] = BitVector()
@@ -576,8 +576,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     T_right = eltype(metadata_right.vals)
     T = promote_type(T_left, T_right)
     # TODO: Is this necessary?
-    if !(T <: Real)
-        T = Real
+    if !(T <: Any)
+        T = Any
     end
 
     # Determine `eltype` of `dists`.
@@ -767,7 +767,7 @@ function getindex_internal(vi::NTVarInfo, ::Colon)
     return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
 end
 function getindex_internal(vi::VarInfo{NamedTuple{(),Tuple{}}}, ::Colon)
-    return float(Real)[]
+    return Any[]
 end
 function getindex_internal(md::Metadata, ::Colon)
     return mapreduce(
