@@ -12,7 +12,6 @@ using DynamicPPL:
     combine,
     convert_eltype,
     getacc,
-    increment,
     map_accumulator,
     setacc!!,
     split
