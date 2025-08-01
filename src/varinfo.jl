@@ -447,7 +447,7 @@ end
 
 function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, subset(getaccs(varinfo), vns))
+    return VarInfo(metadata, map(copy, getaccs(varinfo)))
 end
 
 function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
@@ -528,7 +528,7 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
+    accs = map(copy, getaccs(varinfo_right))
     return VarInfo(metadata, accs)
 end
 
@@ -884,7 +884,6 @@ end
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
     vi = resetlogp!!(vi)
-    vi = reset_num_produce!!(vi)
     return vi
 end
 
@@ -1825,28 +1824,6 @@ function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String, ignorable::Bo
         throw(ErrorException("Flag $flag not valid for VarNamedVector"))
     end
     return vnv
-end
-
-"""
-    set_retained_vns_del!(vi::VarInfo)
-
-Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`. If
-`num_produce` is `0`, _all_ variables will have their `"del"` flag set to `true`.
-
-Will error if `vi` does not have an accumulator for `VariableOrder`.
-"""
-function set_retained_vns_del!(vi::VarInfo)
-    if !hasacc(vi, Val(:VariableOrder))
-        msg = "`vi` must have an accumulator for VariableOrder to set the `del` flag."
-        throw(ArgumentError(msg))
-    end
-    num_produce = get_num_produce(vi)
-    for vn in keys(vi)
-        if num_produce == 0 || getorder(vi, vn) > num_produce
-            set_flag!(vi, vn, "del")
-        end
-    end
-    return nothing
 end
 
 # TODO: Maybe rename or something?

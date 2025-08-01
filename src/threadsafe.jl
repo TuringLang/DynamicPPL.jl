@@ -73,23 +73,8 @@ function BangBang.push!!(vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distributi
     return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist)
 end
 
-# TODO(mhauru) Why these short-circuits? Why not use the thread-specific ones?
-get_num_produce(vi::ThreadSafeVarInfo) = get_num_produce(vi.varinfo)
-function increment_num_produce!!(vi::ThreadSafeVarInfo)
-    return ThreadSafeVarInfo(increment_num_produce!!(vi.varinfo), vi.accs_by_thread)
-end
-function reset_num_produce!!(vi::ThreadSafeVarInfo)
-    return ThreadSafeVarInfo(reset_num_produce!!(vi.varinfo), vi.accs_by_thread)
-end
-function set_num_produce!!(vi::ThreadSafeVarInfo, n::Int)
-    return ThreadSafeVarInfo(set_num_produce!!(vi.varinfo, n), vi.accs_by_thread)
-end
-
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
-function setorder!!(vi::ThreadSafeVarInfo, vn::VarName, index::Int)
-    return ThreadSafeVarInfo(setorder!!(vi.varinfo, vn, index), vi.accs_by_thread)
-end
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)

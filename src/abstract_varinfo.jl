@@ -441,24 +441,6 @@ function resetlogp!!(vi::AbstractVarInfo)
     return vi
 end
 
-"""
-    setorder!!(vi::AbstractVarInfo, vn::VarName, index::Integer)
-
-Set the `order` of `vn` in `vi` to `index`, where `order` is the number of `observe
-statements run before sampling `vn`.
-"""
-function setorder!!(vi::AbstractVarInfo, vn::VarName, index::Integer)
-    return map_accumulator!!(acc -> (acc.order[vn] = index; acc), vi, Val(:VariableOrder))
-end
-
-"""
-    getorder(vi::VarInfo, vn::VarName)
-
-Get the `order` of `vn` in `vi`, where `order` is the number of `observe` statements
-run before sampling `vn`.
-"""
-getorder(vi::AbstractVarInfo, vn::VarName) = getacc(vi, Val(:VariableOrder)).order[vn]
-
 # Variables and their realizations.
 @doc """
     keys(vi::AbstractVarInfo)
@@ -509,8 +491,7 @@ function getindex_internal end
 @doc """
     empty!!(vi::AbstractVarInfo)
 
-Empty the fields of `vi.metadata` and reset `vi.logp[]` and `vi.num_produce[]` to
-zeros.
+Empty `vi` of variables and reset any `logp` accumulators zeros.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """ BangBang.empty!!
@@ -1067,43 +1048,6 @@ function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
     x, logjac = with_logabsdet_jacobian(f, y)
     return x, logpdf(dist, x) + logjac
 end
-
-"""
-    get_num_produce(vi::AbstractVarInfo)
-
-Return the `num_produce` of `vi`.
-"""
-get_num_produce(vi::AbstractVarInfo) = getacc(vi, Val(:VariableOrder)).num_produce
-
-"""
-    set_num_produce!!(vi::AbstractVarInfo, n::Int)
-
-Set the `num_produce` field of `vi` to `n`.
-"""
-function set_num_produce!!(vi::AbstractVarInfo, n::Integer)
-    if hasacc(vi, Val(:VariableOrder))
-        acc = getacc(vi, Val(:VariableOrder))
-        acc = VariableOrderAccumulator(n, acc.order)
-    else
-        acc = VariableOrderAccumulator(n)
-    end
-    return setacc!!(vi, acc)
-end
-
-"""
-    increment_num_produce!!(vi::AbstractVarInfo)
-
-Add 1 to `num_produce` in `vi`.
-"""
-increment_num_produce!!(vi::AbstractVarInfo) =
-    map_accumulator!!(increment, vi, Val(:VariableOrder))
-
-"""
-    reset_num_produce!!(vi::AbstractVarInfo)
-
-Reset the value of `num_produce` in `vi` to 0.
-"""
-reset_num_produce!!(vi::AbstractVarInfo) = set_num_produce!!(vi, zero(get_num_produce(vi)))
 
 """
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])

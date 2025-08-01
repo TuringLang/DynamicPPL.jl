@@ -334,17 +334,6 @@ unset_flag!
 is_flagged
 ```
 
-The following functions were used for sequential Monte Carlo methods.
-
-```@docs
-get_num_produce
-set_num_produce!!
-increment_num_produce!!
-reset_num_produce!!
-setorder!!
-set_retained_vns_del!
-```
-
 ```@docs
 Base.empty!
 ```
