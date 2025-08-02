@@ -16,7 +16,7 @@ StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 [compat]
 AbstractPPL = "0.11, 0.12"
 Accessors = "0.1"
-DataStructures = "0.18"
+DataStructures = "0.18, 0.19"
 Distributions = "0.25"
 Documenter = "1"
 DocumenterMermaid = "0.1, 0.2"
