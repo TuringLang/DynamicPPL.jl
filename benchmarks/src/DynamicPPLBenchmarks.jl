@@ -19,7 +19,7 @@ export Models, to_backend, make_varinfo
 const SYMBOL_TO_BACKEND = Dict(
     :forwarddiff => ADTypes.AutoForwardDiff(),
     :reversediff => ADTypes.AutoReverseDiff(; compile=false),
-    :mooncake => ADTypes.AutoMooncake(; config=nothing),
+    :mooncake => ADTypes.AutoMooncake(),
 )
 
 to_backend(x) = error("Unknown backend: $x")
@@ -37,8 +37,8 @@ Create a VarInfo for the given `model` using the selected varinfo type.
 Available varinfo choices:
   • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
   • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
-  • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
-  • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
+  • `:simple_namedtuple` → builds a `SimpleVarInfo{Float64}(::NamedTuple)`
+  • `:simple_dict`       → builds a `SimpleVarInfo{Float64}(::Dict)`
 
 The VarInfo is always linked.
 """
@@ -50,7 +50,9 @@ function make_varinfo(model::Model, varinfo_choice::Symbol)
     elseif varinfo_choice == :typed
         DynamicPPL.typed_varinfo(rng, model)
     elseif varinfo_choice == :simple_namedtuple
-        SimpleVarInfo{Float64}(model(rng))
+        vi = DynamicPPL.typed_varinfo(rng, model)
+        vals = DynamicPPL.values_as(vi, NamedTuple)
+        SimpleVarInfo{Float64}(vals)
     elseif varinfo_choice == :simple_dict
         vi = DynamicPPL.typed_varinfo(rng, model)
         vals = DynamicPPL.values_as(vi, Dict)
