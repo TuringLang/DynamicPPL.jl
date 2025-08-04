@@ -74,7 +74,13 @@ Now, you can write `@addlogprob (; logprior=x, loglikelihood=y)` to add `x` to t
 
 ### Removal of `order` and `num_produce`
 
-The `VarInfo` type used to carry with it information about the order in which variables had been evaluated, and a variable called `num_produce` for where in this evaluation the `VarInfo` was at. This was used in particle samplers in Turing.jl. The particle sampler code has been simplified and no longer needs this functionality, and thus we remove it from DynamicPPL. The following exported functions are now gone:
+The `VarInfo` type used to carry with it:
+
+  - `num_produce`, an integer which recorded the number of observe tilde-statements that had been evaluated so far; and
+  - `order`, an integer per `VarName` which recorded the value of `num_produce` at the time that the variable was seen.
+
+These fields were used in particle samplers in Turing.jl.
+In DynamicPPL 0.37, these fields and the associated functions have been removed:
 
   - `get_num_produce`
   - `set_num_produce!!`
@@ -82,6 +88,18 @@ The `VarInfo` type used to carry with it information about the order in which va
   - `increment_num_produce!!`
   - `set_retained_vns_del!`
   - `setorder!!`
+
+Because this is one of the more arcane features of DynamicPPL, some extra explanation is warranted.
+
+`num_produce` and `order`, along with the `del` flag in `VarInfo`, were used to control whether new values for variables were sampled during model execution.
+For example, the particle Gibbs method has a _reference particle_, for which variables are never resampled.
+However, if the reference particle is _forked_ (i.e., if the reference particle is selected by a resampling step multiple times and thereby copied), then the variables that have not yet been evaluated must be sampled anew to ensure that the new particle is independent of the reference particle.
+
+Previousy, this was accomplished by setting the `del` flag in the `VarInfo` object for all variables with `order` greater or equal to than `num_produce`.
+Note that setting the `del` flag does not itself trigger a new value to be sampled; rather, it indicates that a new value should be sampled _if the variable is encountered again_.
+[This Turing.jl PR](https://github.com/TuringLang/Turing.jl/pull/2629) changes the implementation to set the `del` flag for _all_ variables in the `VarInfo`.
+Since the `del` flag only makes a difference when encountering a variable, this approach is entirely equivalent as long as the same variable is not seen multiple times in the model.
+The interested reader is referred to that PR for more details.
 
 **Internals**
 
