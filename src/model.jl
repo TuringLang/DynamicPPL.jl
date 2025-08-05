@@ -446,7 +446,7 @@ Return the conditioned values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: conditioned, contextualize
+julia> using DynamicPPL: conditioned
 
 julia> @model function demo()
            m ~ Normal()
@@ -456,8 +456,24 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have conditioned on + their values.
-       conditioned(condition(m, x=100.0, m=1.0))
+julia> # Condition on some values.
+       cm = m | (; x = 100.0, m = 1.0);
+
+julia> # Returns all the variables we have conditioned on, and their values.
+       conditioned(cm)
+(x = 100.0, m = 1.0)
+
+julia> # If we prefix the model, the conditioned variables will also be prefixed.
+       pm = prefix(cm, @varname(f)); conditioned(pm)
+Dict{VarName{:f}, Float64} with 2 entries:
+  f.x => 100.0
+  f.m => 1.0
+
+julia> # If we condition _after_ the prefix, the prefix is not applied.
+       pm2 = prefix(m, @varname(f)); cm2 = pm2 | (; x = 100.0, m = 1.0);
+
+julia> # When running this model, the variables inside are not treated as conditioned!
+       conditioned(cm2)
 (x = 100.0, m = 1.0)
 ```
 """
@@ -762,7 +778,7 @@ Return the fixed values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: fixed, contextualize
+julia> using DynamicPPL: fixed
 
 julia> @model function demo()
            m ~ Normal()
@@ -772,8 +788,24 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have fixed on + their values.
-       fixed(fix(m, x=100.0, m=1.0))
+julia> # Fix some values.
+       fm = fix(m, (; x = 100.0, m = 1.0));
+
+julia> # Returns all the variables we have fixed on, and their values.
+       fixed(fm)
+(x = 100.0, m = 1.0)
+
+julia> # If we prefix the model, the fixed variables will also be prefixed.
+       pm = prefix(fm, @varname(f)); fixed(pm)
+Dict{VarName{:f}, Float64} with 2 entries:
+  f.x => 100.0
+  f.m => 1.0
+
+julia> # If we fix _after_ the prefix, the prefix is not applied.
+       pm2 = prefix(m, @varname(f)); fm2 = fix(pm2, (; x = 100.0, m = 1.0));
+
+julia> # When running this model, the variables inside are not treated as fixed!
+       fixed(fm2)
 (x = 100.0, m = 1.0)
 ```
 """
