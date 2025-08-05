@@ -102,7 +102,6 @@ export AbstractVarInfo,
     # Contexts
     contextualize,
     DefaultContext,
-    PrefixContext,
     ConditionContext,
     # Tilde pipeline
     tilde_assume!!,
@@ -177,6 +176,7 @@ include("chains.jl")
 include("contexts.jl")
 include("contexts/init.jl")
 include("model.jl")
+include("prefix.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")

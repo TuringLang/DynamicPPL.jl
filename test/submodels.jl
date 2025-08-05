@@ -135,7 +135,54 @@ end
             end
         end
 
-        @testset "Nested submodels" begin
+        @testset "Nested submodels with auto prefix" begin
+            @model function f()
+                x ~ Normal()
+                return y ~ Normal()
+            end
+            @model function g()
+                return b ~ to_submodel(f())
+            end
+            @model function h()
+                return a ~ to_submodel(g())
+            end
+
+            # No conditioning
+            vi = VarInfo(h())
+            @test Set(keys(vi)) == Set([@varname(a.b.x), @varname(a.b.y)])
+            @test getlogjoint(vi) ==
+                logpdf(Normal(), vi[@varname(a.b.x)]) +
+                  logpdf(Normal(), vi[@varname(a.b.y)])
+
+            # Conditioning/fixing at the top level
+            op_h = op(h(), (@varname(a.b.x) => x_val))
+
+            # Conditioning/fixing at the second level
+            op_g = op(g(), (@varname(b.x) => x_val))
+            @model function h2()
+                return a ~ to_submodel(op_g)
+            end
+
+            # Conditioning/fixing at the very bottom
+            op_f = op(f(), (@varname(x) => x_val))
+            @model function g2()
+                return _unused ~ to_submodel(prefix(op_f, :b), false)
+            end
+            @model function h3()
+                return a ~ to_submodel(g2())
+            end
+
+            models = [("top", op_h), ("middle", h2()), ("bottom", h3())]
+            @testset "$name" for (name, model) in models
+                vi = VarInfo(model)
+                @test Set(keys(vi)) == Set([@varname(a.b.y)])
+                @test getlogjoint(vi) == x_logp + logpdf(Normal(), vi[@varname(a.b.y)])
+            end
+        end
+
+        @testset "Nested submodels with manual prefix" begin
+            # Same tests as above, just that the middle layer has manual prefixing
+            # rather than automatic.
             @model function f()
                 x ~ Normal()
                 return y ~ Normal()
