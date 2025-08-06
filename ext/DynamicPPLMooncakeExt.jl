@@ -12,21 +12,21 @@ Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(istrans),Vararg}
     function Mooncake.requires_cache(::Type{<:DynamicPPL.Metadata})
         return Val(false)
     end
-    
+
     function Mooncake.requires_cache(::Type{<:DynamicPPL.TypedVarInfo})
         return Val(false)
     end
-    
+
     function Mooncake.requires_cache(::Type{<:DynamicPPL.Model})
         # Model has f (function/closure), args, defaults, context
         # Closures can have circular references
         return Val(false)
     end
-    
+
     function Mooncake.requires_cache(::Type{<:DynamicPPL.LogDensityFunction})
         return Val(false)
     end
-    
+
     function Mooncake.requires_cache(::Type{<:DynamicPPL.AbstractContext})
         return Val(false)
     end
