@@ -3,7 +3,8 @@
 ## 0.37.0
 
 DynamicPPL 0.37 comes with a substantial reworking of its internals.
-Fundamentally, there is no change to the actual modelling syntax: if you are a Turing.jl user, for example, this release is unlikely to affect you much.
+Fundamentally, there is no change to the actual modelling syntax: if you are a Turing.jl user, for example, this release will not affect you too much (apart from the changes to `@addlogprob!`).
+Any such changes will be covered separately in the Turing.jl changelog when a release is made.
 However, if you are a package developer or someone who uses DynamicPPL's functionality directly, you will notice a number of changes.
 
 To avoid overwhelming the reader, we begin by listing the most important, user-facing changes, before explaining the changes to the internals in more detail.
