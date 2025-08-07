@@ -24,12 +24,12 @@ using DynamicPPL:
                 LogPriorAccumulator() ==
                 LogPriorAccumulator{Float64}() ==
                 LogPriorAccumulator{Float64}(0.0) ==
-                zero(LogPriorAccumulator(1.0))
+                DynamicPPL.reset(LogPriorAccumulator(1.0))
             @test LogLikelihoodAccumulator(0.0) ==
                 LogLikelihoodAccumulator() ==
                 LogLikelihoodAccumulator{Float64}() ==
                 LogLikelihoodAccumulator{Float64}(0.0) ==
-                zero(LogLikelihoodAccumulator(1.0))
+                DynamicPPL.reset(LogLikelihoodAccumulator(1.0))
         end
 
         @testset "addition and incrementation" begin
@@ -136,7 +136,7 @@ using DynamicPPL:
         @testset "map_accumulator(s)!!" begin
             # map over all accumulators
             accs = AccumulatorTuple(lp_f32, ll_f32)
-            @test map(zero, accs) == AccumulatorTuple(
+            @test map(DynamicPPL.reset, accs) == AccumulatorTuple(
                 LogPriorAccumulator(0.0f0), LogLikelihoodAccumulator(0.0f0)
             )
             # Test that the original wasn't modified.
@@ -147,7 +147,7 @@ using DynamicPPL:
                 AccumulatorTuple(LogPriorAccumulator(1.0), LogLikelihoodAccumulator(1.0))
 
             # only apply to a particular accumulator
-            @test map_accumulator(zero, accs, Val(:LogLikelihood)) ==
+            @test map_accumulator(DynamicPPL.reset, accs, Val(:LogLikelihood)) ==
                 AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(0.0f0))
             @test map_accumulator(
                 acc -> convert_eltype(Float64, acc), accs, Val(:LogLikelihood)

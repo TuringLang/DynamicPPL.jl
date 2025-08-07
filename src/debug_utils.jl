@@ -426,7 +426,7 @@ function check_model_and_trace(
     issuccess = check_model_pre_evaluation(model)
 
     # Force single-threaded execution.
-    DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
+    _, varinfo = DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
 
     # Perform checks after evaluating the model.
     debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))
