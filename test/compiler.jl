@@ -1,3 +1,8 @@
+module DynamicPPLCompilerTests
+
+using DynamicPPL, Distributions, Random, Test
+using LinearAlgebra: I
+
 macro custom(expr)
     (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
     quote
@@ -794,3 +799,5 @@ module Issue537 end
         @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
     end
 end
+
+end # module DynamicPPLCompilerTests

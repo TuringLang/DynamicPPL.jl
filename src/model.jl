@@ -933,9 +933,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue(varinfo, model.args.$var)...)
+            :(deepcopy(model.args.$var)...)
         else
-            :($matchingvalue(varinfo, model.args.$var))
+            :(deepcopy(model.args.$var))
         end for var in argnames
     ]
     return quote

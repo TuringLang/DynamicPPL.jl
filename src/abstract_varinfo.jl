@@ -612,29 +612,6 @@ julia> values_as(vi, Vector)
 function values_as end
 
 """
-    eltype(vi::AbstractVarInfo)
-
-Return the `eltype` of the values returned by `vi[:]`.
-
-!!! warning
-    This should generally not be called explicitly, as it's only used in
-    [`matchingvalue`](@ref) to determine the default type to use in place of
-    type-parameters passed to the model.
-
-    This method is considered legacy, and is likely to be deprecated in the future.
-"""
-function Base.eltype(vi::AbstractVarInfo)
-    T = Base.promote_op(getindex, typeof(vi), Colon)
-    if T === Union{}
-        # In this case `getindex(vi, :)` errors
-        # Let us throw a more descriptive error message
-        # Ref https://github.com/TuringLang/Turing.jl/issues/2151
-        return eltype(vi[:])
-    end
-    return eltype(T)
-end
-
-"""
     has_varnamedvector(varinfo::VarInfo)
 
 Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
