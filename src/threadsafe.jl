@@ -169,10 +169,6 @@ function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
     return vector_getranges(vi.varinfo, vns)
 end
 
-function set_retained_vns_del!(vi::ThreadSafeVarInfo)
-    return set_retained_vns_del!(vi.varinfo)
-end
-
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
     return resetlogp!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
