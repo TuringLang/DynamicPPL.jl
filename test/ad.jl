@@ -82,14 +82,15 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
         t = 1:0.05:8
         σ = 0.3
         y = @. rand(sin(t) + Normal(0, σ))
-        @model function state_space(y, TT, ::Type{T}=Float64) where {T}
+        @model function state_space(y, TT)
             # Priors
             α ~ Normal(y[1], 0.001)
             τ ~ Exponential(1)
             η ~ filldist(Normal(0, 1), TT - 1)
             σ ~ Exponential(1)
-            # create latent variable
-            x = Vector{T}(undef, TT)
+            # create latent variable -- Have to use typeof(α) here to ensure that
+            # AD works fine. Not sure if this is a generally good workaround.
+            x = Vector{typeof(α)}(undef, TT)
             x[1] = α
             for t in 2:TT
                 x[t] = x[t - 1] + η[t - 1] * τ
