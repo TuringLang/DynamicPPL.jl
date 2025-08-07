@@ -583,12 +583,6 @@ function add_return_to_last_statment(body::Expr)
     return Expr(body.head, new_args...)
 end
 
-const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
-hasmissing(::Type) = false
-hasmissing(::Type{>:Missing}) = true
-hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
-hasmissing(::Type{Union{}}) = false # issue #368
-
 """
     TypeWrap{T}
 
