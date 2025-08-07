@@ -21,13 +21,11 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
     if !haskey(vi, vn)
         r = rand(dist)
         push!!(vi, vn, r, dist)
-        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     elseif DynamicPPL.is_flagged(vi, vn, "del")
         DynamicPPL.unset_flag!(vi, vn, "del")
         r = rand(dist)
         vi[vn] = DynamicPPL.tovec(r)
-        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     else
         vi[vn]
@@ -161,9 +159,7 @@ end
         lp_d = logpdf(Normal(), values.d)
         m = demo() | (; c=values.c, d=values.d)
 
-        vi = DynamicPPL.reset_num_produce!!(
-            DynamicPPL.unflatten(VarInfo(m), collect(values))
-        )
+        vi = DynamicPPL.unflatten(VarInfo(m), collect(values))
 
         vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
@@ -171,7 +167,6 @@ end
         @test getloglikelihood(vi) == lp_c + lp_d
         @test getlogp(vi) == (; logprior=lp_a + lp_b, logjac=0.0, loglikelihood=lp_c + lp_d)
         @test getlogjoint(vi) == lp_a + lp_b + lp_c + lp_d
-        @test get_num_produce(vi) == 2
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -213,7 +208,6 @@ end
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
         @test_throws r"has no field `?LogJacobian" getlogp(vi)
         @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
-        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -223,19 +217,6 @@ end
             getlogprior(vi) == -1.0
         end
 
-        vi = last(
-            DynamicPPL.evaluate!!(
-                m, DynamicPPL.setaccs!!(deepcopy(vi), (VariableOrderAccumulator(),))
-            ),
-        )
-        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
-        # missing field is surrounded by backticks)
-        @test_throws r"has no field `?LogPrior" getlogprior(vi)
-        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogPrior" getlogp(vi)
-        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
-        @test get_num_produce(vi) == 2
-
         # Test evaluating without any accumulators.
         vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
         # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
@@ -244,8 +225,6 @@ end
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
         @test_throws r"has no field `?LogPrior" getlogp(vi)
         @test_throws r"has no field `?LogPrior" getlogjoint(vi)
-        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
-        @test_throws r"has no field `?VariableOrder" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
@@ -494,7 +473,7 @@ end
         # Check that instantiating the model using SampleFromUniform does not
         # perform linking
         # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
-        # specifically in this test is because SFU samples from the linked 
+        # specifically in this test is because SFU samples from the linked
         # distribution i.e. in unconstrained space. However, it does this not
         # by linking the varinfo but by transforming the distributions on the
         # fly. That's why it's worth specifically checking that it can do this
@@ -1049,127 +1028,6 @@ end
                 @test x[reduce(vcat, ranges_duplicated)] == repeat(x, 2)
             end
         end
-    end
-
-    @testset "orders" begin
-        @model empty_model() = x = 1
-
-        csym = gensym() # unique per model
-        vn_z1 = @varname z[1]
-        vn_z2 = @varname z[2]
-        vn_z3 = @varname z[3]
-        vn_z4 = @varname z[4]
-        vn_a1 = @varname a[1]
-        vn_a2 = @varname a[2]
-        vn_b = @varname b
-
-        vi = DynamicPPL.VarInfo()
-        dists = [Categorical([0.7, 0.3]), Normal()]
-
-        # First iteration, variables are added to vi
-        # variables samples in order: z1,a1,z2,a2,z3
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z1, dists[1])
-        randr(vi, vn_a1, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_b, dists[2])
-        randr(vi, vn_z2, dists[1])
-        randr(vi, vn_a2, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z3, dists[1])
-        @test DynamicPPL.getorder(vi, vn_z1) == 1
-        @test DynamicPPL.getorder(vi, vn_a1) == 1
-        @test DynamicPPL.getorder(vi, vn_b) == 2
-        @test DynamicPPL.getorder(vi, vn_z2) == 2
-        @test DynamicPPL.getorder(vi, vn_a2) == 2
-        @test DynamicPPL.getorder(vi, vn_z3) == 3
-        @test DynamicPPL.get_num_produce(vi) == 3
-
-        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_b, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_z2, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_a2, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_z3, "del")
-
-        vi = DynamicPPL.reset_num_produce!!(vi)
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        DynamicPPL.set_retained_vns_del!(vi)
-        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
-        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_b, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
-
-        vi = DynamicPPL.reset_num_produce!!(vi)
-        DynamicPPL.set_retained_vns_del!(vi)
-        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_b, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
-
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z1, dists[1])
-        randr(vi, vn_a1, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z2, dists[1])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z3, dists[1])
-        randr(vi, vn_a2, dists[2])
-        @test DynamicPPL.getorder(vi, vn_z1) == 1
-        @test DynamicPPL.getorder(vi, vn_a1) == 1
-        @test DynamicPPL.getorder(vi, vn_b) == 2
-        @test DynamicPPL.getorder(vi, vn_z2) == 2
-        @test DynamicPPL.getorder(vi, vn_z3) == 3
-        @test DynamicPPL.getorder(vi, vn_a2) == 3
-        @test DynamicPPL.get_num_produce(vi) == 3
-
-        vi = empty!!(DynamicPPL.typed_varinfo(vi))
-        # First iteration, variables are added to vi
-        # variables samples in order: z1,a1,z2,a2,z3
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z1, dists[1])
-        randr(vi, vn_a1, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_b, dists[2])
-        randr(vi, vn_z2, dists[1])
-        randr(vi, vn_a2, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z3, dists[1])
-        @test DynamicPPL.getorder(vi, vn_z1) == 1
-        @test DynamicPPL.getorder(vi, vn_z2) == 2
-        @test DynamicPPL.getorder(vi, vn_z3) == 3
-        @test DynamicPPL.getorder(vi, vn_a1) == 1
-        @test DynamicPPL.getorder(vi, vn_a2) == 2
-        @test DynamicPPL.getorder(vi, vn_b) == 2
-        @test DynamicPPL.get_num_produce(vi) == 3
-
-        vi = DynamicPPL.reset_num_produce!!(vi)
-        DynamicPPL.set_retained_vns_del!(vi)
-        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
-        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
-
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z1, dists[1])
-        randr(vi, vn_a1, dists[2])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z2, dists[1])
-        vi = DynamicPPL.increment_num_produce!!(vi)
-        randr(vi, vn_z3, dists[1])
-        randr(vi, vn_a2, dists[2])
-        @test DynamicPPL.getorder(vi, vn_z1) == 1
-        @test DynamicPPL.getorder(vi, vn_z2) == 2
-        @test DynamicPPL.getorder(vi, vn_z3) == 3
-        @test DynamicPPL.getorder(vi, vn_a1) == 1
-        @test DynamicPPL.getorder(vi, vn_a2) == 3
-        @test DynamicPPL.getorder(vi, vn_b) == 2
-        @test DynamicPPL.get_num_produce(vi) == 3
     end
 
     @testset "issue #842" begin

@@ -766,13 +766,6 @@ function update_internal!(
     return nothing
 end
 
-# TODO(mhauru) The num_produce argument is used by Particle Gibbs.
-# Remove this method as soon as possible.
-function BangBang.push!(vnv::VarNamedVector, vn, val, dist, num_produce)
-    f = from_vec_transform(dist)
-    return setindex_internal!(vnv, tovec(val), vn, f)
-end
-
 # BangBang versions of the above functions.
 # The only difference is that update_internal!! and insert_internal!! check whether the
 # container types of the VarNamedVector vector need to be expanded to accommodate the new
@@ -961,13 +954,6 @@ end
 function BangBang.push!!(vnv::VarNamedVector, pair::Pair)
     vn, val = pair
     return setindex!!(vnv, val, vn)
-end
-
-# TODO(mhauru) The num_produce argument is used by Particle Gibbs.
-# Remove this method as soon as possible.
-function BangBang.push!!(vnv::VarNamedVector, vn, val, dist, num_produce)
-    f = from_vec_transform(dist)
-    return setindex_internal!!(vnv, tovec(val), vn, f)
 end
 
 function Base.empty!(vnv::VarNamedVector)

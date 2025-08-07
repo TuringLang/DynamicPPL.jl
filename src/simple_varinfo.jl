@@ -122,7 +122,7 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
+Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
        getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
@@ -130,7 +130,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
+SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) No probability mass on negative numbers!
        getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
@@ -418,7 +418,7 @@ Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
     return SimpleVarInfo(
-        _subset(varinfo.values, vns), subset(getaccs(varinfo), vns), varinfo.transformation
+        _subset(varinfo.values, vns), map(copy, getaccs(varinfo)), varinfo.transformation
     )
 end
 
@@ -456,7 +456,7 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
+    accs = map(copy, getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )

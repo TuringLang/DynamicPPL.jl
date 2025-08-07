@@ -72,6 +72,35 @@ The other case where one might use `PriorContext` was to use `@addlogprob!` to a
 Previously, this was accomplished by manually checking `__context__ isa DynamicPPL.PriorContext`.
 Now, you can write `@addlogprob (; logprior=x, loglikelihood=y)` to add `x` to the log-prior and `y` to the log-likelihood.
 
+### Removal of `order` and `num_produce`
+
+The `VarInfo` type used to carry with it:
+
+  - `num_produce`, an integer which recorded the number of observe tilde-statements that had been evaluated so far; and
+  - `order`, an integer per `VarName` which recorded the value of `num_produce` at the time that the variable was seen.
+
+These fields were used in particle samplers in Turing.jl.
+In DynamicPPL 0.37, these fields and the associated functions have been removed:
+
+  - `get_num_produce`
+  - `set_num_produce!!`
+  - `reset_num_produce!!`
+  - `increment_num_produce!!`
+  - `set_retained_vns_del!`
+  - `setorder!!`
+
+Because this is one of the more arcane features of DynamicPPL, some extra explanation is warranted.
+
+`num_produce` and `order`, along with the `del` flag in `VarInfo`, were used to control whether new values for variables were sampled during model execution.
+For example, the particle Gibbs method has a _reference particle_, for which variables are never resampled.
+However, if the reference particle is _forked_ (i.e., if the reference particle is selected by a resampling step multiple times and thereby copied), then the variables that have not yet been evaluated must be sampled anew to ensure that the new particle is independent of the reference particle.
+
+Previousy, this was accomplished by setting the `del` flag in the `VarInfo` object for all variables with `order` greater or equal to than `num_produce`.
+Note that setting the `del` flag does not itself trigger a new value to be sampled; rather, it indicates that a new value should be sampled _if the variable is encountered again_.
+[This Turing.jl PR](https://github.com/TuringLang/Turing.jl/pull/2629) changes the implementation to set the `del` flag for _all_ variables in the `VarInfo`.
+Since the `del` flag only makes a difference when encountering a variable, this approach is entirely equivalent as long as the same variable is not seen multiple times in the model.
+The interested reader is referred to that PR for more details.
+
 **Internals**
 
 ### Accumulators
@@ -83,7 +112,6 @@ This release overhauls how VarInfo objects track variables such as the log joint
   - `tilde_observe` and `observe` have been removed. `tilde_observe!!` still exists, and any contexts should modify its behaviour. We may further rework the call stack under `tilde_observe!!` in the near future.
   - `tilde_assume` no longer returns the log density of the current assumption as its second return value. We may further rework the `tilde_assume!!` call stack as well.
   - For literal observation statements like `0.0 ~ Normal(blahblah)` we used to call `tilde_observe!!` without the `vn` argument. This method no longer exists. Rather we call `tilde_observe!!` with `vn` set to `nothing`.
-  - `set/reset/increment_num_produce!` have become `set/reset/increment_num_produce!!` (note the second exclamation mark). They are no longer guaranteed to modify the `VarInfo` in place, and one should always use the return value.
   - `@addlogprob!` now _always_ adds to the log likelihood. Previously it added to the log probability that the execution context specified, e.g. the log prior when using `PriorContext`.
   - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
   - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
