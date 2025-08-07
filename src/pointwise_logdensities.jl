@@ -244,8 +244,7 @@ function pointwise_logdensities(
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
-        vi = setaccs!!(vi, (AccType(),))
-        vi = last(_evaluate!!(model, vi))
+        vi = last(evaluate!!(model, vi))
 
         # Get the log-probabilities
         this_iter_logps = getacc(vi, Val(accumulator_name(AccType))).logps
