@@ -13,6 +13,7 @@ using DynamicPPL:
     convert_eltype,
     getacc,
     map_accumulator,
+    reset,
     setacc!!,
     split
 

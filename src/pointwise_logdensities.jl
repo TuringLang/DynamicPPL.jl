@@ -32,6 +32,12 @@ function PointwiseLogProbAccumulator{whichlogprob,KeyType}() where {whichlogprob
     return PointwiseLogProbAccumulator{whichlogprob,KeyType,typeof(logps)}(logps)
 end
 
+function Base.:(==)(
+    acc1::PointwiseLogProbAccumulator{wlp1}, acc2::PointwiseLogProbAccumulator{wlp2}
+) where {wlp1,wlp2}
+    return (wlp1 == wlp2 && acc1.logps == acc2.logps)
+end
+
 function Base.copy(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
     return PointwiseLogProbAccumulator{whichlogprob}(copy(acc.logps))
 end

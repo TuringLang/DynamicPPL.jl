@@ -20,6 +20,10 @@ function ValuesAsInModelAccumulator(include_colon_eq)
     return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
 end
 
+function Base.:(==)(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
+    return (acc1.include_colon_eq == acc2.include_colon_eq && acc1.values == acc2.values)
+end
+
 function Base.copy(acc::ValuesAsInModelAccumulator)
     return ValuesAsInModelAccumulator(copy(acc.values), acc.include_colon_eq)
 end
