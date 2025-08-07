@@ -91,8 +91,12 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
             # create latent variable -- Have to use typeof(α) here to ensure that
             # AD works fine. Not sure if this is a generally good workaround.
             x = Vector{typeof(α)}(undef, TT)
+            # As an alternative to the above, we could do this:
+            # using Accessors
+            # x = Accessors.set(x, (Accessors.@optic _[1]), α)
             x[1] = α
             for t in 2:TT
+                # and likewise for this line -- use Accessors
                 x[t] = x[t - 1] + η[t - 1] * τ
             end
             # measurement model
