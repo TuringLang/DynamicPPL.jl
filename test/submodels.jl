@@ -4,6 +4,12 @@ using DynamicPPL
 using Distributions
 using Test
 
+# Dummy object that we can use to test VarNames with property lenses.
+mutable struct P
+    a::Float64
+    b::Float64
+end
+
 @testset "submodels.jl" begin
     @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
@@ -106,10 +112,6 @@ using Test
         end
 
         @testset "Complex prefixes" begin
-            mutable struct P
-                a::Float64
-                b::Float64
-            end
             @model function f()
                 x = Vector{Float64}(undef, 1)
                 x[1] ~ Normal()
