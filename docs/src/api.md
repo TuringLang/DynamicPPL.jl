@@ -36,6 +36,12 @@ getargnames
 getmissings
 ```
 
+The context of a model can be set using [`contextualize`](@ref):
+
+```@docs
+contextualize
+```
+
 ## Evaluation
 
 With [`rand`](@ref) one can draw samples from the prior distribution of a [`Model`](@ref).
@@ -140,27 +146,15 @@ to_submodel
 
 Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
 
-In the past, one would instead embed sub-models using [`@submodel`](@ref), which has been deprecated since the introduction of [`to_submodel(model)`](@ref)
-
-```@docs
-@submodel
-```
-
 In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
 
 ```@docs
 DynamicPPL.prefix
 ```
 
-Under the hood, [`to_submodel`](@ref) makes use of the following method to indicate that the model it's wrapping is a model over its return-values rather than something else
-
-```@docs
-returned(::Model)
-```
-
 ## Utilities
 
-It is possible to manually increase (or decrease) the accumulated log density from within a model function.
+It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
 
 ```@docs
 @addlogprob!
@@ -212,6 +206,21 @@ To test and/or benchmark the performance of an AD backend on a model, DynamicPPL
 
 ```@docs
 DynamicPPL.TestUtils.AD.run_ad
+```
+
+The default test setting is to compare against ForwardDiff.
+You can have more fine-grained control over how to test the AD backend using the following types:
+
+```@docs
+DynamicPPL.TestUtils.AD.AbstractADCorrectnessTestSetting
+DynamicPPL.TestUtils.AD.WithBackend
+DynamicPPL.TestUtils.AD.WithExpectedResult
+DynamicPPL.TestUtils.AD.NoTest
+```
+
+These are returned / thrown by the `run_ad` function:
+
+```@docs
 DynamicPPL.TestUtils.AD.ADResult
 DynamicPPL.TestUtils.AD.ADIncorrectException
 ```
@@ -329,10 +338,10 @@ The following functions were used for sequential Monte Carlo methods.
 
 ```@docs
 get_num_produce
-set_num_produce!
-increment_num_produce!
-reset_num_produce!
-setorder!
+set_num_produce!!
+increment_num_produce!!
+reset_num_produce!!
+setorder!!
 set_retained_vns_del!
 ```
 
@@ -346,6 +355,23 @@ Base.empty!
 SimpleVarInfo
 ```
 
+### Accumulators
+
+The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
+
+```@docs
+AbstractAccumulator
+```
+
+DynamicPPL provides the following default accumulators.
+
+```@docs
+LogPriorAccumulator
+LogJacobianAccumulator
+LogLikelihoodAccumulator
+VariableOrderAccumulator
+```
+
 ### Common API
 
 #### Accumulation of log-probabilities
@@ -354,6 +380,18 @@ SimpleVarInfo
 getlogp
 setlogp!!
 acclogp!!
+getlogjoint
+getlogjoint_internal
+getlogjac
+setlogjac!!
+acclogjac!!
+getlogprior
+getlogprior_internal
+setlogprior!!
+acclogprior!!
+getloglikelihood
+setloglikelihood!!
+accloglikelihood!!
 resetlogp!!
 ```
 
@@ -416,21 +454,26 @@ DynamicPPL.varname_and_value_leaves
 
 ### Evaluation Contexts
 
-Internally, both sampling and evaluation of log densities are performed with [`AbstractPPL.evaluate!!`](@ref).
+Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
 ```@docs
 AbstractPPL.evaluate!!
 ```
 
-The behaviour of a model execution can be changed with evaluation contexts that are passed as additional argument to the model function.
+This method mutates the `varinfo` used for execution.
+By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
+To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
+
+```@docs
+DynamicPPL.evaluate_and_sample!!
+```
+
+The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
 SamplingContext
 DefaultContext
-LikelihoodContext
-PriorContext
-MiniBatchContext
 PrefixContext
 ConditionContext
 ```
@@ -476,8 +519,4 @@ DynamicPPL.Experimental.is_suitable_varinfo
 
 ```@docs
 tilde_assume
-```
-
-```@docs
-tilde_observe
 ```

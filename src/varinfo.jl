@@ -15,10 +15,9 @@ not.
 Let `md` be an instance of `Metadata`:
 - `md.vns` is the vector of all `VarName` instances.
 - `md.idcs` is the dictionary that maps each `VarName` instance to its index in
- `md.vns`, `md.ranges` `md.dists`, `md.orders` and `md.flags`.
+ `md.vns`, `md.ranges` `md.dists`, and `md.flags`.
 - `md.vns[md.idcs[vn]] == vn`.
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
-- `md.orders[md.idcs[vn]]` is the number of `observe` statements before `vn` is sampled.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
 - `md.flags` is a dictionary of true/false flags. `md.flags[flag][md.idcs[vn]]` is the
@@ -57,11 +56,19 @@ struct Metadata{
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
 
-    # Number of `observe` statements before each random variable is sampled
-    orders::Vector{Int}
-
     # Each `flag` has a `BitVector` `flags[flag]`, where `flags[flag][i]` is the true/false flag value corresonding to `vns[i]`
     flags::Dict{String,BitVector}
+end
+
+function Base.:(==)(md1::Metadata, md2::Metadata)
+    return (
+        md1.idcs == md2.idcs &&
+        md1.vns == md2.vns &&
+        md1.ranges == md2.ranges &&
+        md1.vals == md2.vals &&
+        md1.dists == md2.dists &&
+        md1.flags == md2.flags
+    )
 end
 
 ###########
@@ -69,10 +76,9 @@ end
 ###########
 
 """
-    struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
+    struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
         metadata::Tmeta
-        logp::Base.RefValue{Tlogp}
-        num_produce::Base.RefValue{Int}
+        accs::Accs
     end
 
 A light wrapper over some kind of metadata.
@@ -98,17 +104,19 @@ Note that for NTVarInfo, it is the user's responsibility to ensure that each
 symbol is visited at least once during model evaluation, regardless of any
 stochastic branching.
 """
-struct VarInfo{Tmeta,Tlogp} <: AbstractVarInfo
+struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
     metadata::Tmeta
-    logp::Base.RefValue{Tlogp}
-    num_produce::Base.RefValue{Int}
+    accs::Accs
 end
-VarInfo(meta=Metadata()) = VarInfo(meta, Ref{LogProbType}(0.0), Ref(0))
+function VarInfo(meta=Metadata())
+    return VarInfo(meta, default_accumulators())
+end
+
 """
-    VarInfo([rng, ]model[, sampler, context])
+    VarInfo([rng, ]model[, sampler])
 
 Generate a `VarInfo` object for the given `model`, by evaluating it once using
-the given `rng`, `sampler`, and `context`.
+the given `rng`, `sampler`.
 
 !!! warning
 
@@ -121,28 +129,12 @@ the given `rng`, `sampler`, and `context`.
     instead.
 """
 function VarInfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    return typed_varinfo(rng, model, sampler, context)
+    return typed_varinfo(rng, model, sampler)
 end
-function VarInfo(
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    # No rng
-    return VarInfo(Random.default_rng(), model, sampler, context)
-end
-function VarInfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
-    # No sampler
-    return VarInfo(rng, model, SampleFromPrior(), context)
-end
-function VarInfo(model::Model, context::AbstractContext)
-    # No sampler, no rng
-    return VarInfo(Random.default_rng(), model, SampleFromPrior(), context)
+function VarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return VarInfo(Random.default_rng(), model, sampler)
 end
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
@@ -157,6 +149,10 @@ const NTVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
+
+function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
+    return (vi1.metadata == vi2.metadata && vi1.accs == vi2.accs)
+end
 
 # NOTE: This is kind of weird, but it effectively preserves the "old"
 # behavior where we're allowed to call `link!` on the same `VarInfo`
@@ -199,42 +195,23 @@ end
 ########################
 
 """
-    untyped_varinfo([rng, ]model[, sampler, context, metadata])
+    untyped_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has just a
-single `Metadata` as its metadata field.
+Construct a VarInfo object for the given `model`, which has just a single
+`Metadata` as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
-- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
 function untyped_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    varinfo = VarInfo(Metadata())
-    context = SamplingContext(rng, sampler, context)
-    return last(evaluate!!(model, varinfo, context))
+    return last(evaluate_and_sample!!(rng, model, VarInfo(Metadata()), sampler))
 end
-function untyped_varinfo(
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    # No rng
-    return untyped_varinfo(Random.default_rng(), model, sampler, context)
-end
-function untyped_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
-    # No sampler
-    return untyped_varinfo(rng, model, SampleFromPrior(), context)
-end
-function untyped_varinfo(model::Model, context::AbstractContext)
-    # No sampler, no rng
-    return untyped_varinfo(model, SampleFromPrior(), context)
+function untyped_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return untyped_varinfo(Random.default_rng(), model, sampler)
 end
 
 """
@@ -261,8 +238,6 @@ function typed_varinfo(vi::UntypedVarInfo)
         sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
         # New dists
         sym_dists = getindex.((meta.dists,), inds)
-        # New orders
-        sym_orders = getindex.((meta.orders,), inds)
         # New flags
         sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
 
@@ -280,15 +255,11 @@ function typed_varinfo(vi::UntypedVarInfo)
 
         push!(
             new_metas,
-            Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_orders, sym_flags
-            ),
+            Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_flags),
         )
     end
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
+    return VarInfo(nt, copy(vi.accs))
 end
 function typed_varinfo(vi::NTVarInfo)
     # This function preserves the behaviour of typed_varinfo(vi) where vi is
@@ -299,135 +270,76 @@ function typed_varinfo(vi::NTVarInfo)
     return vi
 end
 """
-    typed_varinfo([rng, ]model[, sampler, context, metadata])
+    typed_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has a NamedTuple of
+Return a VarInfo object for the given `model`, which has a NamedTuple of
 `Metadata` structs as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
-- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
 function typed_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    return typed_varinfo(untyped_varinfo(rng, model, sampler, context))
+    return typed_varinfo(untyped_varinfo(rng, model, sampler))
 end
-function typed_varinfo(
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    # No rng
-    return typed_varinfo(Random.default_rng(), model, sampler, context)
-end
-function typed_varinfo(rng::Random.AbstractRNG, model::Model, context::AbstractContext)
-    # No sampler
-    return typed_varinfo(rng, model, SampleFromPrior(), context)
-end
-function typed_varinfo(model::Model, context::AbstractContext)
-    # No sampler, no rng
-    return typed_varinfo(model, SampleFromPrior(), context)
+function typed_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return typed_varinfo(Random.default_rng(), model, sampler)
 end
 
 """
-    untyped_vector_varinfo([rng, ]model[, sampler, context, metadata])
+    untyped_vector_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has just a
-single `VarNamedVector` as its metadata field.
+Return a VarInfo object for the given `model`, which has just a single
+`VarNamedVector` as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
-- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
 function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+    return VarInfo(md, copy(vi.accs))
 end
 function untyped_vector_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler, context))
+    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler))
 end
-function untyped_vector_varinfo(
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    # No rng
-    return untyped_vector_varinfo(Random.default_rng(), model, sampler, context)
-end
-function untyped_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, context::AbstractContext
-)
-    # No sampler
-    return untyped_vector_varinfo(rng, model, SampleFromPrior(), context)
-end
-function untyped_vector_varinfo(model::Model, context::AbstractContext)
-    # No sampler, no rng
-    return untyped_vector_varinfo(model, SampleFromPrior(), context)
+function untyped_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return untyped_vector_varinfo(Random.default_rng(), model, sampler)
 end
 
 """
-    typed_vector_varinfo([rng, ]model[, sampler, context, metadata])
+    typed_vector_varinfo([rng, ]model[, sampler])
 
-Return a VarInfo object for the given `model` and `context`, which has a
-NamedTuple of `VarNamedVector`s as its metadata field.
+Return a VarInfo object for the given `model`, which has a NamedTuple of
+`VarNamedVector`s as its metadata field.
 
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
 - `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
-- `context::AbstractContext`: The context in which to evaluate the model. Defaults to `DefaultContext()`.
 """
 function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
-    lp = getlogp(vi)
-    return VarInfo(md, Base.RefValue{eltype(lp)}(lp), Ref(get_num_produce(vi)))
+    return VarInfo(md, copy(vi.accs))
 end
 function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     new_metas = group_by_symbol(vi.metadata)
-    logp = getlogp(vi)
-    num_produce = get_num_produce(vi)
     nt = NamedTuple(new_metas)
-    return VarInfo(nt, Ref(logp), Ref(num_produce))
+    return VarInfo(nt, copy(vi.accs))
 end
 function typed_vector_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
 )
-    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler, context))
+    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler))
 end
-function typed_vector_varinfo(
-    model::Model,
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    # No rng
-    return typed_vector_varinfo(Random.default_rng(), model, sampler, context)
-end
-function typed_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, context::AbstractContext
-)
-    # No sampler
-    return typed_vector_varinfo(rng, model, SampleFromPrior(), context)
-end
-function typed_vector_varinfo(model::Model, context::AbstractContext)
-    # No sampler, no rng
-    return typed_vector_varinfo(model, SampleFromPrior(), context)
+function typed_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return typed_vector_varinfo(Random.default_rng(), model, sampler)
 end
 
 """
@@ -441,13 +353,21 @@ vector_length(md::Metadata) = sum(length, md.ranges)
 
 function unflatten(vi::VarInfo, x::AbstractVector)
     md = unflatten_metadata(vi.metadata, x)
-    # Note that use of RefValue{eltype(x)} rather than Ref is necessary to deal with cases
-    # where e.g. x is a type gradient of some AD backend.
-    return VarInfo(
-        md,
-        Base.RefValue{float_type_with_fallback(eltype(x))}(getlogp(vi)),
-        Ref(get_num_produce(vi)),
+    # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
+    # a gradient type of some AD backend.
+    # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!
+    # for ThreadSafeVarInfo. In that one, if the map produces e.g a ForwardDiff.Dual, but
+    # the accumulators in the VarInfo are plain floats, we error since we can't change the
+    # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
+    # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
+    # plain ugly and hacky.
+    # The below line is finicky for type stability. For instance, assigning the eltype to
+    # convert to into an intermediate variable makes this unstable (constant propagation)
+    # fails. Take care when editing.
+    accs = map(
+        acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc), copy(getaccs(vi))
     )
+    return VarInfo(md, accs)
 end
 
 # We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
@@ -468,7 +388,7 @@ end
 end
 
 function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.orders, md.flags)
+    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.flags)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
@@ -494,7 +414,6 @@ function Metadata()
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
-        Vector{Int}(),
         flags,
     )
 end
@@ -512,7 +431,6 @@ function empty!(meta::Metadata)
     empty!(meta.ranges)
     empty!(meta.vals)
     empty!(meta.dists)
-    empty!(meta.orders)
     for k in keys(meta.flags)
         empty!(meta.flags[k])
     end
@@ -529,7 +447,7 @@ end
 
 function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
     metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, deepcopy(varinfo.logp), deepcopy(varinfo.num_produce))
+    return VarInfo(metadata, subset(getaccs(varinfo), vns))
 end
 
 function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
@@ -601,15 +519,7 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
     end
 
     flags = Dict(k => v[indices_for_vns] for (k, v) in metadata.flags)
-    return Metadata(
-        indices,
-        vns,
-        ranges,
-        vals,
-        metadata.dists[indices_for_vns],
-        metadata.orders[indices_for_vns],
-        flags,
-    )
+    return Metadata(indices, vns, ranges, vals, metadata.dists[indices_for_vns], flags)
 end
 
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
@@ -618,9 +528,8 @@ end
 
 function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    return VarInfo(
-        metadata, Ref(getlogp(varinfo_right)), Ref(get_num_produce(varinfo_right))
-    )
+    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
+    return VarInfo(metadata, accs)
 end
 
 function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
@@ -681,7 +590,6 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    orders = Int[]
     flags = Dict{String,BitVector}()
     # Initialize the `flags`.
     for k in union(keys(metadata_left.flags), keys(metadata_right.flags))
@@ -703,13 +611,12 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        push!(orders, getorder(metadata_for_vn, vn))
         for k in keys(flags)
             push!(flags[k], is_flagged(metadata_for_vn, vn, k))
         end
     end
 
-    return Metadata(idcs, vns, ranges, vals, dists, orders, flags)
+    return Metadata(idcs, vns, ranges, vals, dists, flags)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -976,8 +883,8 @@ end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    resetlogp!!(vi)
-    reset_num_produce!(vi)
+    vi = resetlogp!!(vi)
+    vi = reset_num_produce!!(vi)
     return vi
 end
 
@@ -1011,46 +918,8 @@ end
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
 istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
 
-getlogp(vi::VarInfo) = vi.logp[]
-
-function setlogp!!(vi::VarInfo, logp)
-    vi.logp[] = logp
-    return vi
-end
-
-function acclogp!!(vi::VarInfo, logp)
-    vi.logp[] += logp
-    return vi
-end
-
-"""
-    get_num_produce(vi::VarInfo)
-
-Return the `num_produce` of `vi`.
-"""
-get_num_produce(vi::VarInfo) = vi.num_produce[]
-
-"""
-    set_num_produce!(vi::VarInfo, n::Int)
-
-Set the `num_produce` field of `vi` to `n`.
-"""
-set_num_produce!(vi::VarInfo, n::Int) = vi.num_produce[] = n
-
-"""
-    increment_num_produce!(vi::VarInfo)
-
-Add 1 to `num_produce` in `vi`.
-"""
-increment_num_produce!(vi::VarInfo) = vi.num_produce[] += 1
-
-"""
-    reset_num_produce!(vi::VarInfo)
-
-Reset the value of `num_produce` the log of the joint probability of the observed data
-and parameters sampled in `vi` to 0.
-"""
-reset_num_produce!(vi::VarInfo) = set_num_produce!(vi, 0)
+getaccs(vi::VarInfo) = vi.accs
+setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
 
 # Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
 isempty(vi::VarInfo) = _isempty(vi.metadata)
@@ -1064,7 +933,7 @@ function link!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
-    _link!(vi, vns)
+    vi = _link!!(vi, vns)
     return vi
 end
 
@@ -1072,7 +941,7 @@ function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
     vns = keys(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
-    _link!(vi, vns)
+    vi = _link!!(vi, vns)
     return vi
 end
 
@@ -1085,8 +954,7 @@ end
 function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
-    # Call `_link!` instead of `link!` to avoid deprecation warning.
-    _link!(vi, vns)
+    vi = _link!!(vi, vns)
     return vi
 end
 
@@ -1101,27 +969,28 @@ function link!!(
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
-function _link!(vi::UntypedVarInfo, vns)
+function _link!!(vi::UntypedVarInfo, vns)
     # TODO: Change to a lazy iterator over `vns`
     if ~istrans(vi, vns[1])
         for vn in vns
             f = internal_to_linked_internal_transform(vi, vn)
-            _inner_transform!(vi, vn, f)
-            settrans!!(vi, true, vn)
+            vi = _inner_transform!(vi, vn, f)
+            vi = settrans!!(vi, true, vn)
         end
+        return vi
     else
         @warn("[DynamicPPL] attempt to link a linked vi")
     end
 end
 
-# If we try to _link! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# If we try to _link!! a NTVarInfo with a Tuple of VarNames, first convert it to a
 # NamedTuple that matches the structure of the NTVarInfo.
-function _link!(vi::NTVarInfo, vns::VarNameTuple)
-    return _link!(vi, group_varnames_by_symbol(vns))
+function _link!!(vi::NTVarInfo, vns::VarNameTuple)
+    return _link!!(vi, group_varnames_by_symbol(vns))
 end
 
-function _link!(vi::NTVarInfo, vns::NamedTuple)
-    return _link!(vi.metadata, vi, vns)
+function _link!!(vi::NTVarInfo, vns::NamedTuple)
+    return _link!!(vi.metadata, vi, vns)
 end
 
 """
@@ -1133,7 +1002,7 @@ function filter_subsumed(filter_vns, filtered_vns)
     return filter(x -> any(subsumes(y, x) for y in filter_vns), filtered_vns)
 end
 
-@generated function _link!(
+@generated function _link!!(
     ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
 ) where {metadata_names,vns_names}
     expr = Expr(:block)
@@ -1151,8 +1020,8 @@ end
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             f = internal_to_linked_internal_transform(vi, vn)
-                            _inner_transform!(vi, vn, f)
-                            settrans!!(vi, true, vn)
+                            vi = _inner_transform!(vi, vn, f)
+                            vi = settrans!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -1161,6 +1030,7 @@ end
             end,
         )
     end
+    push!(expr.args, :(return vi))
     return expr
 end
 
@@ -1168,8 +1038,7 @@ function invlink!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
     vns = all_varnames_grouped_by_symbol(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
-    _invlink!(vi, vns)
+    vi = _invlink!!(vi, vns)
     return vi
 end
 
@@ -1177,7 +1046,7 @@ function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
     vns = keys(vi)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    _invlink!(vi, vns)
+    vi = _invlink!!(vi, vns)
     return vi
 end
 
@@ -1190,8 +1059,7 @@ end
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    # Call `_invlink!` instead of `invlink!` to avoid deprecation warning.
-    _invlink!(vi, vns)
+    vi = _invlink!!(vi, vns)
     return vi
 end
 
@@ -1214,29 +1082,30 @@ function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
     return maybe_invlink_before_eval!!(t, vi, model)
 end
 
-function _invlink!(vi::UntypedVarInfo, vns)
+function _invlink!!(vi::UntypedVarInfo, vns)
     if istrans(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
-            _inner_transform!(vi, vn, f)
-            settrans!!(vi, false, vn)
+            vi = _inner_transform!(vi, vn, f)
+            vi = settrans!!(vi, false, vn)
         end
+        return vi
     else
         @warn("[DynamicPPL] attempt to invlink an invlinked vi")
     end
 end
 
-# If we try to _invlink! a NTVarInfo with a Tuple of VarNames, first convert it to a
+# If we try to _invlink!! a NTVarInfo with a Tuple of VarNames, first convert it to a
 # NamedTuple that matches the structure of the NTVarInfo.
-function _invlink!(vi::NTVarInfo, vns::VarNameTuple)
-    return _invlink!(vi.metadata, vi, group_varnames_by_symbol(vns))
+function _invlink!!(vi::NTVarInfo, vns::VarNameTuple)
+    return _invlink!!(vi.metadata, vi, group_varnames_by_symbol(vns))
 end
 
-function _invlink!(vi::NTVarInfo, vns::NamedTuple)
-    return _invlink!(vi.metadata, vi, vns)
+function _invlink!!(vi::NTVarInfo, vns::NamedTuple)
+    return _invlink!!(vi.metadata, vi, vns)
 end
 
-@generated function _invlink!(
+@generated function _invlink!!(
     ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
 ) where {metadata_names,vns_names}
     expr = Expr(:block)
@@ -1254,8 +1123,8 @@ end
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
                         f = linked_internal_to_internal_transform(vi, vn)
-                        _inner_transform!(vi, vn, f)
-                        settrans!!(vi, false, vn)
+                        vi = _inner_transform!(vi, vn, f)
+                        vi = settrans!!(vi, false, vn)
                     end
                 else
                     @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -1263,6 +1132,7 @@ end
             end,
         )
     end
+    push!(expr.args, :(return vi))
     return expr
 end
 
@@ -1279,7 +1149,9 @@ function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
     setrange!(md, vn, start:(start + length(yvec) - 1))
     # Set the new value.
     setval!(md, yvec, vn)
-    acclogp!!(vi, -logjac)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
     return vi
 end
 
@@ -1314,8 +1186,12 @@ end
 
 function _link(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
-    md = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
-    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+    md, logjac = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
+    new_varinfo = VarInfo(md, varinfo.accs)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
+    end
+    return new_varinfo
 end
 
 # If we try to _link a NTVarInfo with a Tuple of VarNames, first convert it to a
@@ -1326,8 +1202,12 @@ end
 
 function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
-    md = _link_metadata!(model, varinfo, varinfo.metadata, vns)
-    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+    md, logjac = _link_metadata!(model, varinfo, varinfo.metadata, vns)
+    new_varinfo = VarInfo(md, varinfo.accs)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        new_varinfo = acclogjac!!(new_varinfo, logjac)
+    end
+    return new_varinfo
 end
 
 @generated function _link_metadata!(
@@ -1336,20 +1216,39 @@ end
     metadata::NamedTuple{metadata_names},
     vns::NamedTuple{vns_names},
 ) where {metadata_names,vns_names}
-    vals = Expr(:tuple)
+    expr = quote
+        cumulative_logjac = zero(LogProbType)
+    end
+    mds = Expr(:tuple)
     for f in metadata_names
         if f in vns_names
-            push!(vals.args, :(_link_metadata!!(model, varinfo, metadata.$f, vns.$f)))
+            push!(
+                mds.args,
+                quote
+                    begin
+                        md, logjac = _link_metadata!!(model, varinfo, metadata.$f, vns.$f)
+                        cumulative_logjac += logjac
+                        md
+                    end
+                end,
+            )
         else
-            push!(vals.args, :(metadata.$f))
+            push!(mds.args, :(metadata.$f))
         end
     end
 
-    return :(NamedTuple{$metadata_names}($vals))
+    push!(
+        expr.args,
+        quote
+            NamedTuple{$metadata_names}($mds), cumulative_logjac
+        end,
+    )
+    return expr
 end
 
 function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
+    cumulative_logjac = zero(LogProbType)
 
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
@@ -1367,7 +1266,7 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         # Vectorize value.
         yvec = tovec(y)
         # Accumulate the log-abs-det jacobian correction.
-        acclogp!!(varinfo, -logjac)
+        cumulative_logjac += logjac
         # Mark as transformed.
         settrans!!(varinfo, true, vn)
         # Return the vectorized transformed value.
@@ -1390,9 +1289,9 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.orders,
         metadata.flags,
-    )
+    ),
+    cumulative_logjac
 end
 
 function _link_metadata!!(
@@ -1400,6 +1299,7 @@ function _link_metadata!!(
 )
     vns = target_vns === nothing ? keys(metadata) : target_vns
     dists = extract_priors(model, varinfo)
+    cumulative_logjac = zero(LogProbType)
     for vn in vns
         # First transform from however the variable is stored in vnv to the model
         # representation.
@@ -1412,11 +1312,11 @@ function _link_metadata!!(
         val_new, logjac2 = with_logabsdet_jacobian(transform_to_linked, val_orig)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
         # Fix this when attending to issue #653.
-        acclogp!!(varinfo, -logjac1 - logjac2)
+        cumulative_logjac += logjac1 + logjac2
         metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
         settrans!(metadata, true, vn)
     end
-    return metadata
+    return metadata, cumulative_logjac
 end
 
 function invlink(::DynamicTransformation, vi::NTVarInfo, model::Model)
@@ -1452,11 +1352,15 @@ end
 
 function _invlink(model::Model, varinfo::VarInfo, vns)
     varinfo = deepcopy(varinfo)
-    return VarInfo(
-        _invlink_metadata!!(model, varinfo, varinfo.metadata, vns),
-        Base.Ref(getlogp(varinfo)),
-        Ref(get_num_produce(varinfo)),
-    )
+    md, inv_logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
+    new_varinfo = VarInfo(md, varinfo.accs)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+        # because we are trying to remove the logjac of the forward transform
+        # that was previously accumulated when linking.
+        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
+    end
+    return new_varinfo
 end
 
 # If we try to _invlink a NTVarInfo with a Tuple of VarNames, first convert it to a
@@ -1467,8 +1371,15 @@ end
 
 function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
     varinfo = deepcopy(varinfo)
-    md = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
-    return VarInfo(md, Base.Ref(getlogp(varinfo)), Ref(get_num_produce(varinfo)))
+    md, inv_logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
+    new_varinfo = VarInfo(md, varinfo.accs)
+    if hasacc(new_varinfo, Val(:LogJacobian))
+        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+        # because we are trying to remove the logjac of the forward transform
+        # that was previously accumulated when linking.
+        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
+    end
+    return new_varinfo
 end
 
 @generated function _invlink_metadata!(
@@ -1477,20 +1388,41 @@ end
     metadata::NamedTuple{metadata_names},
     vns::NamedTuple{vns_names},
 ) where {metadata_names,vns_names}
-    vals = Expr(:tuple)
+    expr = quote
+        cumulative_inv_logjac = zero(LogProbType)
+    end
+    mds = Expr(:tuple)
     for f in metadata_names
         if (f in vns_names)
-            push!(vals.args, :(_invlink_metadata!!(model, varinfo, metadata.$f, vns.$f)))
+            push!(
+                mds.args,
+                quote
+                    begin
+                        md, inv_logjac = _invlink_metadata!!(
+                            model, varinfo, metadata.$f, vns.$f
+                        )
+                        cumulative_inv_logjac += inv_logjac
+                        md
+                    end
+                end,
+            )
         else
-            push!(vals.args, :(metadata.$f))
+            push!(mds.args, :(metadata.$f))
         end
     end
 
-    return :(NamedTuple{$metadata_names}($vals))
+    push!(
+        expr.args,
+        quote
+            (NamedTuple{$metadata_names}($mds), cumulative_inv_logjac)
+        end,
+    )
+    return expr
 end
 
 function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
     vns = metadata.vns
+    cumulative_inv_logjac = zero(LogProbType)
 
     # Construct the new transformed values, and keep track of their lengths.
     vals_new = map(vns) do vn
@@ -1505,11 +1437,11 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         y = getindex_internal(varinfo, vn)
         dist = getdist(varinfo, vn)
         f = from_linked_internal_transform(varinfo, vn, dist)
-        x, logjac = with_logabsdet_jacobian(f, y)
+        x, inv_logjac = with_logabsdet_jacobian(f, y)
         # Vectorize value.
         xvec = tovec(x)
         # Accumulate the log-abs-det jacobian correction.
-        acclogp!!(varinfo, -logjac)
+        cumulative_inv_logjac += inv_logjac
         # Mark as no longer transformed.
         settrans!!(varinfo, false, vn)
         # Return the vectorized transformed value.
@@ -1532,26 +1464,27 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.orders,
         metadata.flags,
-    )
+    ),
+    cumulative_inv_logjac
 end
 
 function _invlink_metadata!!(
     ::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
 )
     vns = target_vns === nothing ? keys(metadata) : target_vns
+    cumulative_inv_logjac = zero(LogProbType)
     for vn in vns
         transform = gettransform(metadata, vn)
         old_val = getindex_internal(metadata, vn)
-        new_val, logjac = with_logabsdet_jacobian(transform, old_val)
+        new_val, inv_logjac = with_logabsdet_jacobian(transform, old_val)
         # TODO(mhauru) We are calling a !! function but ignoring the return value.
-        acclogp!!(varinfo, -logjac)
+        cumulative_inv_logjac += inv_logjac
         new_transform = from_vec_transform(new_val)
         metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
         settrans!(metadata, false, vn)
     end
-    return metadata
+    return metadata, cumulative_inv_logjac
 end
 
 # TODO(mhauru) The treatment of the case when some variables are linked and others are not
@@ -1708,19 +1641,34 @@ function Base.haskey(vi::NTVarInfo, vn::VarName)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
-    vi_str = """
-    /=======================================================================
-    | VarInfo
-    |-----------------------------------------------------------------------
-    | Varnames  :   $(string(vi.metadata.vns))
-    | Range     :   $(vi.metadata.ranges)
-    | Vals      :   $(vi.metadata.vals)
-    | Orders    :   $(vi.metadata.orders)
-    | Logp      :   $(getlogp(vi))
-    | #produce  :   $(get_num_produce(vi))
-    | flags     :   $(vi.metadata.flags)
-    \\=======================================================================
-    """
+    lines = Tuple{String,Any}[
+        ("VarNames", vi.metadata.vns),
+        ("Range", vi.metadata.ranges),
+        ("Vals", vi.metadata.vals),
+    ]
+    for accname in acckeys(vi)
+        push!(lines, (string(accname), getacc(vi, Val(accname))))
+    end
+    push!(lines, ("flags", vi.metadata.flags))
+    max_name_length = maximum(map(length ∘ first, lines))
+    fmt = Printf.Format("%-$(max_name_length)s")
+    vi_str = (
+        """
+        /=======================================================================
+        | VarInfo
+        |-----------------------------------------------------------------------
+        """ *
+        prod(
+            map(lines) do (name, value)
+                """
+                | $(Printf.format(fmt, name)) : $(value)
+                """
+            end,
+        ) *
+        """
+        \\=======================================================================
+        """
+    )
     return print(io, vi_str)
 end
 
@@ -1750,7 +1698,11 @@ end
 function Base.show(io::IO, vi::UntypedVarInfo)
     print(io, "VarInfo (")
     _show_varnames(io, vi)
-    print(io, "; logp: ", round(getlogp(vi); digits=3))
+    print(io, "; accumulators: ")
+    # TODO(mhauru) This uses "text/plain" because we are doing quite a condensed repretation
+    # of vi anyway. However, technically `show(io, x)` should give full details of x and
+    # preferably output valid Julia code.
+    show(io, MIME"text/plain"(), getaccs(vi))
     return print(io, ")")
 end
 
@@ -1777,13 +1729,12 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
             [1:length(val)],
             val,
             [dist],
-            [get_num_produce(vi)],
             Dict{String,BitVector}("trans" => [false], "del" => [false]),
         )
         vi = Accessors.@set vi.metadata[sym] = md
     else
         meta = getmetadata(vi, vn)
-        push!(meta, vn, r, dist, get_num_produce(vi))
+        push!(meta, vn, r, dist)
     end
 
     return vi
@@ -1803,7 +1754,7 @@ end
 # exist in the NTVarInfo already. We could implement it in the cases where it it does
 # exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
 
-function Base.push!(meta::Metadata, vn, r, dist, num_produce)
+function Base.push!(meta::Metadata, vn, r, dist)
     val = tovec(r)
     meta.idcs[vn] = length(meta.idcs) + 1
     push!(meta.vns, vn)
@@ -1812,7 +1763,6 @@ function Base.push!(meta::Metadata, vn, r, dist, num_produce)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.orders, num_produce)
     push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
     return meta
@@ -1822,31 +1772,6 @@ function Base.delete!(vi::VarInfo, vn::VarName)
     delete!(getmetadata(vi, vn), vn)
     return vi
 end
-
-"""
-    setorder!(vi::VarInfo, vn::VarName, index::Int)
-
-Set the `order` of `vn` in `vi` to `index`, where `order` is the number of `observe
-statements run before sampling `vn`.
-"""
-function setorder!(vi::VarInfo, vn::VarName, index::Int)
-    setorder!(getmetadata(vi, vn), vn, index)
-    return vi
-end
-function setorder!(metadata::Metadata, vn::VarName, index::Int)
-    metadata.orders[metadata.idcs[vn]] = index
-    return metadata
-end
-setorder!(vnv::VarNamedVector, ::VarName, ::Int) = vnv
-
-"""
-    getorder(vi::VarInfo, vn::VarName)
-
-Get the `order` of `vn` in `vi`, where `order` is the number of `observe` statements
-run before sampling `vn`.
-"""
-getorder(vi::VarInfo, vn::VarName) = getorder(getmetadata(vi, vn), vn)
-getorder(metadata::Metadata, vn::VarName) = metadata.orders[getidx(metadata, vn)]
 
 #######################################
 # Rand & replaying method for VarInfo #
@@ -1905,54 +1830,23 @@ end
 """
     set_retained_vns_del!(vi::VarInfo)
 
-Set the `"del"` flag of variables in `vi` with `order > vi.num_produce[]` to `true`.
+Set the `"del"` flag of variables in `vi` with `order > num_produce` to `true`. If
+`num_produce` is `0`, _all_ variables will have their `"del"` flag set to `true`.
+
+Will error if `vi` does not have an accumulator for `VariableOrder`.
 """
-function set_retained_vns_del!(vi::UntypedVarInfo)
-    idcs = _getidcs(vi)
-    if get_num_produce(vi) == 0
-        for i in length(idcs):-1:1
-            vi.metadata.flags["del"][idcs[i]] = true
-        end
-    else
-        for i in 1:length(vi.orders)
-            if i in idcs && vi.orders[i] > get_num_produce(vi)
-                vi.metadata.flags["del"][i] = true
-            end
+function set_retained_vns_del!(vi::VarInfo)
+    if !hasacc(vi, Val(:VariableOrder))
+        msg = "`vi` must have an accumulator for VariableOrder to set the `del` flag."
+        throw(ArgumentError(msg))
+    end
+    num_produce = get_num_produce(vi)
+    for vn in keys(vi)
+        if num_produce == 0 || getorder(vi, vn) > num_produce
+            set_flag!(vi, vn, "del")
         end
     end
     return nothing
-end
-function set_retained_vns_del!(vi::NTVarInfo)
-    idcs = _getidcs(vi)
-    return _set_retained_vns_del!(vi.metadata, idcs, get_num_produce(vi))
-end
-@generated function _set_retained_vns_del!(
-    metadata, idcs::NamedTuple{names}, num_produce
-) where {names}
-    expr = Expr(:block)
-    for f in names
-        f_idcs = :(idcs.$f)
-        f_orders = :(metadata.$f.orders)
-        f_flags = :(metadata.$f.flags)
-        push!(
-            expr.args,
-            quote
-                # Set the flag for variables with symbol `f`
-                if num_produce == 0
-                    for i in length($f_idcs):-1:1
-                        $f_flags["del"][$f_idcs[i]] = true
-                    end
-                else
-                    for i in 1:length($f_orders)
-                        if i in $f_idcs && $f_orders[i] > num_produce
-                            $f_flags["del"][i] = true
-                        end
-                    end
-                end
-            end,
-        )
-    end
-    return expr
 end
 
 # TODO: Maybe rename or something?

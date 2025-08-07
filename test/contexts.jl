@@ -9,7 +9,6 @@ using DynamicPPL:
     NodeTrait,
     IsLeaf,
     IsParent,
-    PointwiseLogdensityContext,
     contextual_isassumption,
     FixedContext,
     ConditionContext,
@@ -47,18 +46,11 @@ Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
 @testset "contexts.jl" begin
-    child_contexts = Dict(
+    contexts = Dict(
         :default => DefaultContext(),
-        :prior => PriorContext(),
-        :likelihood => LikelihoodContext(),
-    )
-
-    parent_contexts = Dict(
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :sampling => SamplingContext(),
-        :minibatch => MiniBatchContext(DefaultContext(), 0.0),
         :prefix => PrefixContext(@varname(x)),
-        :pointwiselogdensity => PointwiseLogdensityContext(),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(
             (x=1.0,), DynamicPPL.TestUtils.TestParentContext(ConditionContext((y=2.0,)))
@@ -69,8 +61,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         ),
         :condition4 => ConditionContext((x=[1.0, missing],)),
     )
-
-    contexts = merge(child_contexts, parent_contexts)
 
     @testset "$(name)" for (name, context) in contexts
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -164,7 +154,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
-            ctx4 = DynamicPPL.ValuesAsInModelContext(OrderedDict(), false, ctx3)
+            ctx4 = DynamicPPL.SamplingContext(ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
@@ -194,9 +184,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             prefix_vn = @varname(my_prefix)
             context = DynamicPPL.PrefixContext(prefix_vn, SamplingContext())
+            sampling_model = contextualize(model, context)
             # Sample with the context.
             varinfo = DynamicPPL.VarInfo()
-            DynamicPPL.evaluate!!(model, varinfo, context)
+            DynamicPPL.evaluate!!(sampling_model, varinfo)
             # Extract the resulting varnames
             vns_actual = Set(keys(varinfo))
 
@@ -235,7 +226,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # Values from outer context should override inner one
                 ctx1 = ConditionContext(n1, ConditionContext(n2))
                 @test ctx1.values == (x=1, y=2)
-                # Check that the two ConditionContexts are collapsed 
+                # Check that the two ConditionContexts are collapsed
                 @test childcontext(ctx1) isa DefaultContext
                 # Then test the nesting the other way round
                 ctx2 = ConditionContext(n2, ConditionContext(n1))

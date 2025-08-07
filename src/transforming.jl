@@ -15,8 +15,8 @@ NodeTrait(::DynamicTransformationContext) = IsLeaf()
 function tilde_assume(
     ::DynamicTransformationContext{isinverse}, right, vn, vi
 ) where {isinverse}
-    r = vi[vn, right]
-    lp = Bijectors.logpdf_with_trans(right, r, !isinverse)
+    # vi[vn, right] always provides the value in unlinked space.
+    x = vi[vn, right]
 
     if istrans(vi, vn)
         isinverse || @warn "Trying to link an already transformed variable ($vn)"
@@ -24,21 +24,35 @@ function tilde_assume(
         isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"
     end
 
-    # Only transform if `!isinverse` since `vi[vn, right]`
-    # already performs the inverse transformation if it's transformed.
-    r_transformed = isinverse ? r : link_transform(right)(r)
-    return r, lp, setindex!!(vi, r_transformed, vn)
+    transform = isinverse ? identity : link_transform(right)
+    y, logjac = with_logabsdet_jacobian(transform, x)
+    vi = accumulate_assume!!(vi, x, logjac, vn, right)
+    vi = setindex!!(vi, y, vn)
+    return x, vi
+end
+
+function tilde_observe!!(::DynamicTransformationContext, right, left, vn, vi)
+    return tilde_observe!!(DefaultContext(), right, left, vn, vi)
 end
 
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    return settrans!!(last(evaluate!!(model, vi, DynamicTransformationContext{false}())), t)
+    return _transform!!(t, DynamicTransformationContext{false}(), vi, model)
 end
 
 function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    return settrans!!(
-        last(evaluate!!(model, vi, DynamicTransformationContext{true}())),
-        NoTransformation(),
-    )
+    return _transform!!(NoTransformation(), DynamicTransformationContext{true}(), vi, model)
+end
+
+function _transform!!(
+    t::AbstractTransformation,
+    ctx::DynamicTransformationContext,
+    vi::AbstractVarInfo,
+    model::Model,
+)
+    # To transform using DynamicTransformationContext, we evaluate the model using that as the leaf context:
+    model = contextualize(model, setleafcontext(model.context, ctx))
+    vi = settrans!!(last(evaluate!!(model, vi)), t)
+    return vi
 end
 
 function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)

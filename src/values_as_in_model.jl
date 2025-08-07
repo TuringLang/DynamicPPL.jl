@@ -1,16 +1,7 @@
-struct TrackedValue{T}
-    value::T
-end
-
-is_tracked_value(::TrackedValue) = true
-is_tracked_value(::Any) = false
-
-check_tilde_rhs(x::TrackedValue) = x
-
 """
-    ValuesAsInModelContext
+    ValuesAsInModelAccumulator <: AbstractAccumulator
 
-A context that is used by [`values_as_in_model`](@ref) to obtain values
+An accumulator that is used by [`values_as_in_model`](@ref) to obtain values
 of the model parameters as they are in the model.
 
 This is particularly useful when working in unconstrained space, but one
@@ -19,79 +10,53 @@ wants to extract the realization of a model in a constrained space.
 # Fields
 $(TYPEDFIELDS)
 """
-struct ValuesAsInModelContext{C<:AbstractContext} <: AbstractContext
+struct ValuesAsInModelAccumulator <: AbstractAccumulator
     "values that are extracted from the model"
-    values::OrderedDict
+    values::OrderedDict{<:VarName}
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
-    "child context"
-    context::C
 end
-function ValuesAsInModelContext(include_colon_eq, context::AbstractContext)
-    return ValuesAsInModelContext(OrderedDict(), include_colon_eq, context)
+function ValuesAsInModelAccumulator(include_colon_eq)
+    return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
 end
 
-NodeTrait(::ValuesAsInModelContext) = IsParent()
-childcontext(context::ValuesAsInModelContext) = context.context
-function setchildcontext(context::ValuesAsInModelContext, child)
-    return ValuesAsInModelContext(context.values, context.include_colon_eq, child)
+function Base.copy(acc::ValuesAsInModelAccumulator)
+    return ValuesAsInModelAccumulator(copy(acc.values), acc.include_colon_eq)
 end
 
-is_extracting_values(context::ValuesAsInModelContext) = context.include_colon_eq
-function is_extracting_values(context::AbstractContext)
-    return is_extracting_values(NodeTrait(context), context)
-end
-is_extracting_values(::IsParent, ::AbstractContext) = false
-is_extracting_values(::IsLeaf, ::AbstractContext) = false
+accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
 
-function Base.push!(context::ValuesAsInModelContext, vn::VarName, value)
-    return setindex!(context.values, copy(value), prefix(context, vn))
+function split(acc::ValuesAsInModelAccumulator)
+    return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
 end
-
-function broadcast_push!(context::ValuesAsInModelContext, vns, values)
-    return push!.((context,), vns, values)
-end
-
-# This will be hit if we're broadcasting an `AbstractMatrix` over a `MultivariateDistribution`.
-function broadcast_push!(
-    context::ValuesAsInModelContext, vns::AbstractVector, values::AbstractMatrix
-)
-    for (vn, col) in zip(vns, eachcol(values))
-        push!(context, vn, col)
+function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
+    if acc1.include_colon_eq != acc2.include_colon_eq
+        msg = "Cannot combine accumulators with different include_colon_eq values."
+        throw(ArgumentError(msg))
     end
+    return ValuesAsInModelAccumulator(
+        merge(acc1.values, acc2.values), acc1.include_colon_eq
+    )
 end
 
-# `tilde_asssume`
-function tilde_assume(context::ValuesAsInModelContext, right, vn, vi)
-    if is_tracked_value(right)
-        value = right.value
-        logp = zero(getlogp(vi))
-    else
-        value, logp, vi = tilde_assume(childcontext(context), right, vn, vi)
-    end
-    # Save the value.
-    push!(context, vn, value)
-    # Save the value.
-    # Pass on.
-    return value, logp, vi
+function Base.push!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
+    setindex!(acc.values, deepcopy(val), vn)
+    return acc
 end
-function tilde_assume(
-    rng::Random.AbstractRNG, context::ValuesAsInModelContext, sampler, right, vn, vi
-)
-    if is_tracked_value(right)
-        value = right.value
-        logp = zero(getlogp(vi))
-    else
-        value, logp, vi = tilde_assume(rng, childcontext(context), sampler, right, vn, vi)
-    end
-    # Save the value.
-    push!(context, vn, value)
-    # Pass on.
-    return value, logp, vi
+
+function is_extracting_values(vi::AbstractVarInfo)
+    return hasacc(vi, Val(:ValuesAsInModel)) &&
+           getacc(vi, Val(:ValuesAsInModel)).include_colon_eq
 end
+
+function accumulate_assume!!(acc::ValuesAsInModelAccumulator, val, logjac, vn, right)
+    return push!(acc, vn, val)
+end
+
+accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc
 
 """
-    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo[, context::AbstractContext])
+    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
 
 Get the values of `varinfo` as they would be seen in the model.
 
@@ -108,8 +73,6 @@ space at the cost of additional model evaluations.
 - `model::Model`: model to extract realizations from.
 - `include_colon_eq::Bool`: whether to also include variables on the LHS of `:=`.
 - `varinfo::AbstractVarInfo`: variable information to use for the extraction.
-- `context::AbstractContext`: base context to use for the extraction. Defaults
-   to `DynamicPPL.DefaultContext()`.
 
 # Examples
 
@@ -163,13 +126,8 @@ julia> # Approach 2: Extract realizations using `values_as_in_model`.
 true
 ```
 """
-function values_as_in_model(
-    model::Model,
-    include_colon_eq::Bool,
-    varinfo::AbstractVarInfo,
-    context::AbstractContext=DefaultContext(),
-)
-    context = ValuesAsInModelContext(include_colon_eq, context)
-    evaluate!!(model, varinfo, context)
-    return context.values
+function values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
+    varinfo = setaccs!!(deepcopy(varinfo), (ValuesAsInModelAccumulator(include_colon_eq),))
+    varinfo = last(evaluate!!(model, varinfo))
+    return getacc(varinfo, Val(:ValuesAsInModel)).values
 end

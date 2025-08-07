@@ -1,5 +1,130 @@
 # DynamicPPL Changelog
 
+## 0.37.0
+
+DynamicPPL 0.37 comes with a substantial reworking of its internals.
+Fundamentally, there is no change to the actual modelling syntax: if you are a Turing.jl user, for example, this release will not affect you too much (apart from the changes to `@addlogprob!`).
+Any such changes will be covered separately in the Turing.jl changelog when a release is made.
+However, if you are a package developer or someone who uses DynamicPPL's functionality directly, you will notice a number of changes.
+
+To avoid overwhelming the reader, we begin by listing the most important, user-facing changes, before explaining the changes to the internals in more detail.
+
+Note that virtually all changes listed here are breaking.
+
+**Public-facing changes**
+
+### Submodel macro
+
+The `@submodel` macro is fully removed; please use `to_submodel` instead.
+
+### `DynamicPPL.TestUtils.AD.run_ad`
+
+The three keyword arguments, `test`, `reference_backend`, and `expected_value_and_grad` have been merged into a single `test` keyword argument.
+Please see the API documentation for more details.
+(The old `test=true` and `test=false` values are still valid, and you only need to adjust the invocation if you were explicitly passing the `reference_backend` or `expected_value_and_grad` arguments.)
+
+There is now also an `rng` keyword argument to help seed parameter generation.
+
+Finally, instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
+Their semantics are the same as in Julia's `isapprox`; two values are equal if they satisfy either `atol` or `rtol`.
+
+### `DynamicPPL.TestUtils.check_model`
+
+You now need to explicitly pass a `VarInfo` argument to `check_model` and `check_model_and_trace`.
+Previously, these functions would generate a new VarInfo for you (using an optionally provided `rng`).
+
+### Evaluating model log-probabilities in more detail
+
+Previously, during evaluation of a model, DynamicPPL only had the capability to store a _single_ log probability (`logp`) field.
+`DefaultContext`, `PriorContext`, and `LikelihoodContext` were used to control what this field represented: they would accumulate the log joint, log prior, or log likelihood, respectively.
+
+In this version, we have overhauled this quite substantially.
+The technical details of exactly _how_ this is done is covered in the 'Accumulators' section below, but the upshot is that the log prior, log likelihood, and log Jacobian terms (for any linked variables) are separately tracked.
+
+Specifically, you will want to use the following functions to access these log probabilities:
+
+  - `getlogprior(varinfo)` to get the log prior. **Note:** This version introduces new, more consistent behaviour for this function, in that it always returns the log-prior of the values in the original, untransformed space, even if the `varinfo` has been linked.
+  - `getloglikelihood(varinfo)` to get the log likelihood.
+  - `getlogjoint(varinfo)` to get the log joint probability. **Note:** Similar to `getlogprior`, this function now always returns the log joint of the values in the original, untransformed space, even if the `varinfo` has been linked.
+
+If you are using linked VarInfos (e.g. if you are writing a sampler), you may find that you need to obtain the log probability of the variables in the transformed space.
+To this end, you can use:
+
+  - `getlogjac(varinfo)` to get the log Jacobian of the link transforms for any linked variables.
+  - `getlogprior_internal(varinfo)` to get the log prior of the variables in the transformed space.
+  - `getlogjoint_internal(varinfo)` to get the log joint probability of the variables in the transformed space.
+
+Since transformations only apply to random variables, the likelihood is unaffected by linking.
+
+### Removal of `PriorContext` and `LikelihoodContext`
+
+Following on from the above, a number of DynamicPPL's contexts have been removed, most notably `PriorContext` and `LikelihoodContext`.
+Although these are not the only _exported_ contexts, we consider unlikely that anyone was using _other_ contexts manually: if you have a question about contexts _other_ than these, please continue reading the 'Internals' section below.
+
+If you were evaluating a model with `PriorContext`, you can now just evaluate it with `DefaultContext`, and instead of calling `getlogp(varinfo)`, you can call `getlogprior(varinfo)` (and similarly for the likelihood).
+
+If you were constructing a `LogDensityFunction` with `PriorContext`, you can now stick to `DefaultContext`.
+`LogDensityFunction` now has an extra field, called `getlogdensity`, which represents a function that takes a `VarInfo` and returns the log density you want.
+Thus, if you pass `getlogprior_internal` as the value of this parameter, you will get the same behaviour as with `PriorContext`.
+(You should consider whether your use case needs the log prior in the transformed space, or the original space, and use (respectively) `getlogprior_internal` or `getlogprior` as needed.)
+
+The other case where one might use `PriorContext` was to use `@addlogprob!` to add to the log prior.
+Previously, this was accomplished by manually checking `__context__ isa DynamicPPL.PriorContext`.
+Now, you can write `@addlogprob (; logprior=x, loglikelihood=y)` to add `x` to the log-prior and `y` to the log-likelihood.
+
+**Internals**
+
+### Accumulators
+
+This release overhauls how VarInfo objects track variables such as the log joint probability. The new approach is to use what we call accumulators: Objects that the VarInfo carries on it that may change their state at each `tilde_assume!!` and `tilde_observe!!` call based on the value of the variable in question. They replace both variables that were previously hard-coded in the `VarInfo` object (`logp` and `num_produce`) and some contexts. This brings with it a number of breaking changes:
+
+  - `PriorContext` and `LikelihoodContext` no longer exist. By default, a `VarInfo` tracks both the log prior and the log likelihood separately, and they can be accessed with `getlogprior` and `getloglikelihood`. If you want to execute a model while only accumulating one of the two (to save clock cycles), you can do so by creating a `VarInfo` that only has one accumulator in it, e.g. `varinfo = setaccs!!(varinfo, (LogPriorAccumulator(),))`.
+  - `MiniBatchContext` does not exist anymore. It can be replaced by creating and using a custom accumulator that replaces the default `LikelihoodContext`. We may introduce such an accumulator in DynamicPPL in the future, but for now you'll need to do it yourself.
+  - `tilde_observe` and `observe` have been removed. `tilde_observe!!` still exists, and any contexts should modify its behaviour. We may further rework the call stack under `tilde_observe!!` in the near future.
+  - `tilde_assume` no longer returns the log density of the current assumption as its second return value. We may further rework the `tilde_assume!!` call stack as well.
+  - For literal observation statements like `0.0 ~ Normal(blahblah)` we used to call `tilde_observe!!` without the `vn` argument. This method no longer exists. Rather we call `tilde_observe!!` with `vn` set to `nothing`.
+  - `set/reset/increment_num_produce!` have become `set/reset/increment_num_produce!!` (note the second exclamation mark). They are no longer guaranteed to modify the `VarInfo` in place, and one should always use the return value.
+  - `@addlogprob!` now _always_ adds to the log likelihood. Previously it added to the log probability that the execution context specified, e.g. the log prior when using `PriorContext`.
+  - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
+  - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
+
+### Evaluation contexts
+
+Historically, evaluating a DynamicPPL model has required three arguments: a model, some kind of VarInfo, and a context.
+It's less known, though, that since DynamicPPL 0.14.0 the _model_ itself actually contains a context as well.
+This version therefore excises the context argument, and instead uses `model.context` as the evaluation context.
+
+The upshot of this is that many functions that previously took a context argument now no longer do.
+There were very few such functions where the context argument was actually used (most of them simply took `DefaultContext()` as the default value).
+
+`evaluate!!(model, varinfo, ext_context)` is removed, and broadly speaking you should replace calls to that with `new_model = contextualize(model, ext_context); evaluate!!(new_model, varinfo)`.
+If the 'external context' `ext_context` is a parent context, then you should wrap `model.context` appropriately to ensure that its information content is not lost.
+If, on the other hand, `ext_context` is a `DefaultContext`, then you can just drop the argument entirely.
+
+**To aid with this process, `contextualize` is now exported from DynamicPPL.**
+
+The main situation where one _did_ want to specify an additional evaluation context was when that context was a `SamplingContext`.
+Doing this would allow you to run the model and sample fresh values, instead of just using the values that existed in the VarInfo object.
+Thus, this release also introduces the **unexported** function `evaluate_and_sample!!`.
+Essentially, `evaluate_and_sample!!(rng, model, varinfo, sampler)` is a drop-in replacement for `evaluate!!(model, varinfo, SamplingContext(rng, sampler))`.
+**Do note that this is an internal method**, and its name or semantics are liable to change in the future without warning.
+
+There are many methods that no longer take a context argument, and listing them all would be too much.
+However, here are the more user-facing ones:
+
+  - `LogDensityFunction` no longer has a context field (or type parameter)
+  - `DynamicPPL.TestUtils.AD.run_ad` no longer uses a context (and the returned `ADResult` object no longer has a context field)
+  - `VarInfo(rng, model, sampler)` and other VarInfo constructors / functions that made VarInfos (e.g. `typed_varinfo`) from a model
+  - `(::Model)(args...)`: specifically, this now only takes `rng` and `varinfo` arguments (with both being optional)
+  - If you are using the `__context__` special variable inside a model, you will now have to use `__model__.context` instead
+
+And a couple of more internal changes:
+
+  - Just like `evaluate!!`, the other functions `_evaluate!!`, `evaluate_threadsafe!!`, and `evaluate_threadunsafe!!` now no longer accept context arguments
+  - `evaluate!!` no longer takes rng and sampler (if you used this, you should use `evaluate_and_sample!!` instead, or construct your own `SamplingContext`)
+  - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
+  - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
+
 ## 0.36.15
 
 Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).

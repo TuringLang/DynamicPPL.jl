@@ -21,12 +21,13 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
     if !haskey(vi, vn)
         r = rand(dist)
         push!!(vi, vn, r, dist)
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     elseif DynamicPPL.is_flagged(vi, vn, "del")
         DynamicPPL.unset_flag!(vi, vn, "del")
         r = rand(dist)
         vi[vn] = DynamicPPL.tovec(r)
-        DynamicPPL.setorder!(vi, vn, DynamicPPL.get_num_produce(vi))
+        vi = DynamicPPL.setorder!!(vi, vn, DynamicPPL.get_num_produce(vi))
         r
     else
         vi[vn]
@@ -54,7 +55,6 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                @test meta.orders[ind] == fmeta.orders[tind]
                 for flag in keys(meta.flags)
                     @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
                 end
@@ -72,7 +72,7 @@ end
 
         function test_base(vi_original)
             vi = deepcopy(vi_original)
-            @test getlogp(vi) == 0
+            @test getlogjoint(vi) == 0
             @test isempty(vi[:])
 
             vn = @varname x
@@ -110,19 +110,31 @@ end
         test_base(VarInfo())
         test_base(DynamicPPL.typed_varinfo(VarInfo()))
         test_base(SimpleVarInfo())
-        test_base(SimpleVarInfo(Dict()))
+        test_base(SimpleVarInfo(Dict{VarName,Any}()))
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
     @testset "get/set/acc/resetlogp" begin
         function test_varinfo_logp!(vi)
-            @test DynamicPPL.getlogp(vi) === 0.0
-            vi = DynamicPPL.setlogp!!(vi, 1.0)
-            @test DynamicPPL.getlogp(vi) === 1.0
-            vi = DynamicPPL.acclogp!!(vi, 1.0)
-            @test DynamicPPL.getlogp(vi) === 2.0
+            @test DynamicPPL.getlogjoint(vi) === 0.0
+            vi = DynamicPPL.setlogprior!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 1.0
+            @test DynamicPPL.getloglikelihood(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 1.0
+            vi = DynamicPPL.acclogprior!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 2.0
+            vi = DynamicPPL.setloglikelihood!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 1.0
+            @test DynamicPPL.getlogjoint(vi) === 3.0
+            vi = DynamicPPL.accloglikelihood!!(vi, 1.0)
+            @test DynamicPPL.getlogprior(vi) === 2.0
+            @test DynamicPPL.getloglikelihood(vi) === 2.0
+            @test DynamicPPL.getlogjoint(vi) === 4.0
             vi = DynamicPPL.resetlogp!!(vi)
-            @test DynamicPPL.getlogp(vi) === 0.0
+            @test DynamicPPL.getlogjoint(vi) === 0.0
         end
 
         vi = VarInfo()
@@ -131,6 +143,109 @@ end
         test_varinfo_logp!(SimpleVarInfo())
         test_varinfo_logp!(SimpleVarInfo(Dict()))
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
+    end
+
+    @testset "accumulators" begin
+        @model function demo()
+            a ~ Normal()
+            b ~ Normal()
+            c ~ Normal()
+            d ~ Normal()
+            return nothing
+        end
+
+        values = (; a=1.0, b=2.0, c=3.0, d=4.0)
+        lp_a = logpdf(Normal(), values.a)
+        lp_b = logpdf(Normal(), values.b)
+        lp_c = logpdf(Normal(), values.c)
+        lp_d = logpdf(Normal(), values.d)
+        m = demo() | (; c=values.c, d=values.d)
+
+        vi = DynamicPPL.reset_num_produce!!(
+            DynamicPPL.unflatten(VarInfo(m), collect(values))
+        )
+
+        vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
+        @test getlogprior(vi) == lp_a + lp_b
+        @test getlogjac(vi) == 0.0
+        @test getloglikelihood(vi) == lp_c + lp_d
+        @test getlogp(vi) == (; logprior=lp_a + lp_b, logjac=0.0, loglikelihood=lp_c + lp_d)
+        @test getlogjoint(vi) == lp_a + lp_b + lp_c + lp_d
+        @test get_num_produce(vi) == 2
+        @test begin
+            vi = acclogprior!!(vi, 1.0)
+            getlogprior(vi) == lp_a + lp_b + 1.0
+        end
+        @test begin
+            vi = accloglikelihood!!(vi, 1.0)
+            getloglikelihood(vi) == lp_c + lp_d + 1.0
+        end
+        @test begin
+            vi = setlogprior!!(vi, -1.0)
+            getlogprior(vi) == -1.0
+        end
+        @test begin
+            vi = setlogjac!!(vi, -1.0)
+            getlogjac(vi) == -1.0
+        end
+        @test begin
+            vi = setloglikelihood!!(vi, -1.0)
+            getloglikelihood(vi) == -1.0
+        end
+        @test begin
+            vi = setlogp!!(vi, (logprior=-3.0, logjac=-3.0, loglikelihood=-3.0))
+            getlogp(vi) == (; logprior=-3.0, logjac=-3.0, loglikelihood=-3.0)
+        end
+        @test begin
+            vi = acclogp!!(vi, (logprior=1.0, loglikelihood=1.0))
+            getlogp(vi) == (; logprior=-2.0, logjac=-3.0, loglikelihood=-2.0)
+        end
+        @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
+
+        vi = last(
+            DynamicPPL.evaluate!!(
+                m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),))
+            ),
+        )
+        @test getlogprior(vi) == lp_a + lp_b
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogJacobian" getlogp(vi)
+        @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
+        @test begin
+            vi = acclogprior!!(vi, 1.0)
+            getlogprior(vi) == lp_a + lp_b + 1.0
+        end
+        @test begin
+            vi = setlogprior!!(vi, -1.0)
+            getlogprior(vi) == -1.0
+        end
+
+        vi = last(
+            DynamicPPL.evaluate!!(
+                m, DynamicPPL.setaccs!!(deepcopy(vi), (VariableOrderAccumulator(),))
+            ),
+        )
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        @test get_num_produce(vi) == 2
+
+        # Test evaluating without any accumulators.
+        vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
+        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
+        # missing field is surrounded by backticks)
+        @test_throws r"has no field `?LogPrior" getlogprior(vi)
+        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
+        @test_throws r"has no field `?LogPrior" getlogp(vi)
+        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        @test_throws r"has no field `?VariableOrder" get_num_produce(vi)
+        @test_throws r"has no field `?VariableOrder" reset_num_produce!!(vi)
     end
 
     @testset "flags" begin
@@ -376,10 +491,17 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model does not perform linking
+        # Check that instantiating the model using SampleFromUniform does not
+        # perform linking
+        # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
+        # specifically in this test is because SFU samples from the linked 
+        # distribution i.e. in unconstrained space. However, it does this not
+        # by linking the varinfo but by transforming the distributions on the
+        # fly. That's why it's worth specifically checking that it can do this
+        # without having to change the VarInfo object.
         vi = VarInfo()
         meta = vi.metadata
-        model(vi, SampleFromUniform())
+        _, vi = DynamicPPL.evaluate_and_sample!!(model, vi, SampleFromUniform())
         @test all(x -> !istrans(vi, x), meta.vns)
 
         # Check that linking and invlinking set the `trans` flag accordingly
@@ -435,59 +557,52 @@ end
         end
     end
 
-    @testset "istrans" begin
+    @testset "logp evaluation on linked varinfo" begin
         @model demo_constrained() = x ~ truncated(Normal(); lower=0)
         model = demo_constrained()
         vn = @varname(x)
         dist = truncated(Normal(); lower=0)
 
-        ### `VarInfo`
-        # Need to run once since we can't specify that we want to _sample_
-        # in the unconstrained space for `VarInfo` without having `vn`
-        # present in the `varinfo`.
+        function test_linked_varinfo(model, vi)
+            # vn and dist are taken from the containing scope
+            vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+            f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
+            x = f(DynamicPPL.getindex_internal(vi, vn))
+            @test istrans(vi, vn)
+            @test getlogjoint_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+            @test getlogprior_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+            @test getloglikelihood(vi) == 0.0
+            @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
+            @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
+        end
 
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.settrans!!(vi, true, vn)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi)
+
+        ## `typed_varinfo`
+        vi = DynamicPPL.typed_varinfo(model)
+        vi = DynamicPPL.settrans!!(vi, true, vn)
+        test_linked_varinfo(model, vi)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
         vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        # Sample in unconstrained space.
-        vi = last(DynamicPPL.evaluate!!(model, vi, SamplingContext()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test getlogp(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
+        test_linked_varinfo(model, vi)
     end
 
     @testset "values_as" begin
@@ -566,7 +681,7 @@ end
                     end
 
                     # Evaluate the model once to update the logp of the varinfo.
-                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo, DefaultContext()))
+                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
 
                     varinfo_linked = if mutating
                         DynamicPPL.link!!(deepcopy(varinfo), model)
@@ -589,9 +704,9 @@ end
 
                     lp = logjoint(model, varinfo)
                     @test lp ≈ lp_true
-                    @test getlogp(varinfo) ≈ lp_true
-                    lp_linked = getlogp(varinfo_linked)
-                    @test lp_linked ≈ lp_linked_true
+                    @test getlogjoint(varinfo) ≈ lp_true
+                    lp_linked_internal = getlogjoint_internal(varinfo_linked)
+                    @test lp_linked_internal ≈ lp_linked_true
 
                     # TODO: Compare values once we are no longer working with `NamedTuple` for
                     # the true values, e.g. `value_true`.
@@ -602,10 +717,33 @@ end
                             varinfo_linked_unflattened, model
                         )
                         @test length(varinfo_invlinked[:]) == length(varinfo[:])
-                        @test getlogp(varinfo_invlinked) ≈ lp_true
+                        @test getlogjoint(varinfo_invlinked) ≈ lp_true
+                        @test getlogjoint_internal(varinfo_invlinked) ≈ lp_true
                     end
                 end
             end
+        end
+    end
+
+    @testset "unflatten type stability" begin
+        @model function demo(y)
+            x ~ Normal()
+            y ~ Normal(x, 1)
+            return nothing
+        end
+
+        model = demo(0.0)
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(
+            model, (; x=1.0), (@varname(x),); include_threadsafe=true
+        )
+        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+            # Skip the inconcrete `SimpleVarInfo` types, since checking for type
+            # stability for them doesn't make much sense anyway.
+            if varinfo isa SimpleVarInfo{<:AbstractDict} ||
+                varinfo isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{<:AbstractDict}}
+                continue
+            end
+            @inferred DynamicPPL.unflatten(varinfo, varinfo[:])
         end
     end
 
@@ -846,9 +984,7 @@ end
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo(2)
-        varinfo2 = last(
-            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
-        )
+        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
         for vn in [@varname(x[1]), @varname(x[2])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -867,9 +1003,7 @@ end
         # Sampling from `model2` should hit the `istrans(vi) == true` branches
         # because all the existing variables are linked.
         model2 = demo_dot(2)
-        varinfo2 = last(
-            DynamicPPL.evaluate!!(model2, deepcopy(varinfo1), SamplingContext())
-        )
+        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
         for vn in [@varname(x), @varname(y[1])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -934,55 +1068,86 @@ end
 
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_b, dists[2])
         randr(vi, vn_z2, dists[1])
         randr(vi, vn_a2, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.orders == [1, 1, 2, 2, 2, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
-        DynamicPPL.reset_num_produce!(vi)
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        vi = DynamicPPL.reset_num_produce!!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
-        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
-        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test !DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
         @test DynamicPPL.is_flagged(vi, vn_z2, "del")
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.reset_num_produce!!(vi)
+        DynamicPPL.set_retained_vns_del!(vi)
+        @test DynamicPPL.is_flagged(vi, vn_z1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a1, "del")
+        @test DynamicPPL.is_flagged(vi, vn_b, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_a2, "del")
+        @test DynamicPPL.is_flagged(vi, vn_z3, "del")
+
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z2, dists[1])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.orders == [1, 1, 2, 2, 3, 3]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_b) == 2
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
         @test DynamicPPL.get_num_produce(vi) == 3
 
         vi = empty!!(DynamicPPL.typed_varinfo(vi))
         # First iteration, variables are added to vi
         # variables samples in order: z1,a1,z2,a2,z3
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_b, dists[2])
         randr(vi, vn_z2, dists[1])
         randr(vi, vn_a2, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 2]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 2
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
 
-        DynamicPPL.reset_num_produce!(vi)
+        vi = DynamicPPL.reset_num_produce!!(vi)
         DynamicPPL.set_retained_vns_del!(vi)
         @test DynamicPPL.is_flagged(vi, vn_z1, "del")
         @test DynamicPPL.is_flagged(vi, vn_a1, "del")
@@ -990,17 +1155,20 @@ end
         @test DynamicPPL.is_flagged(vi, vn_a2, "del")
         @test DynamicPPL.is_flagged(vi, vn_z3, "del")
 
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z1, dists[1])
         randr(vi, vn_a1, dists[2])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z2, dists[1])
-        DynamicPPL.increment_num_produce!(vi)
+        vi = DynamicPPL.increment_num_produce!!(vi)
         randr(vi, vn_z3, dists[1])
         randr(vi, vn_a2, dists[2])
-        @test vi.metadata.z.orders == [1, 2, 3]
-        @test vi.metadata.a.orders == [1, 3]
-        @test vi.metadata.b.orders == [2]
+        @test DynamicPPL.getorder(vi, vn_z1) == 1
+        @test DynamicPPL.getorder(vi, vn_z2) == 2
+        @test DynamicPPL.getorder(vi, vn_z3) == 3
+        @test DynamicPPL.getorder(vi, vn_a1) == 1
+        @test DynamicPPL.getorder(vi, vn_a2) == 3
+        @test DynamicPPL.getorder(vi, vn_b) == 2
         @test DynamicPPL.get_num_produce(vi) == 3
     end
 
@@ -1010,8 +1178,8 @@ end
 
         n = length(varinfo[:])
         # `Bool`.
-        @test getlogp(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
+        @test getlogjoint(DynamicPPL.unflatten(varinfo, fill(true, n))) isa typeof(float(1))
         # `Int`.
-        @test getlogp(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
+        @test getlogjoint(DynamicPPL.unflatten(varinfo, fill(1, n))) isa typeof(float(1))
     end
 end

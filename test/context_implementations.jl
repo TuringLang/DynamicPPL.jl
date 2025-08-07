@@ -5,12 +5,12 @@
             μ ~ MvNormal(zeros(2), 4 * I)
             z = Vector{Int}(undef, length(x))
             z ~ product_distribution(Categorical.(fill([0.5, 0.5], length(x))))
-            for i in 1:length(x)
+            for i in eachindex(x)
                 x[i] ~ Normal(μ[z[i]], 0.1)
             end
         end
 
-        test([1, 1, -1])(VarInfo(), SampleFromPrior(), LikelihoodContext())
+        test([1, 1, -1])(VarInfo())
     end
 
     @testset "dot tilde with varying sizes" begin
@@ -18,13 +18,14 @@
             @model function test(x, size)
                 y = Array{Float64,length(size)}(undef, size...)
                 y .~ Normal(x)
-                return y, getlogp(__varinfo__)
+                return y
             end
 
             for ysize in ((2,), (2, 3), (2, 3, 4))
                 x = randn()
                 model = test(x, ysize)
-                y, lp = model()
+                y = model()
+                lp = logjoint(model, (; y=y))
                 @test lp ≈ sum(logpdf.(Normal.(x), y))
 
                 ys = [first(model()) for _ in 1:10_000]

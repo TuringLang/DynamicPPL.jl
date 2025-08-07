@@ -36,13 +36,10 @@ julia> m = demo();
 
 julia> rng = StableRNG(42);
 
-julia> ### Sampling ###
-       ctx = SamplingContext(rng, SampleFromPrior(), DefaultContext());
-
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo((x = ones(2), )), ctx);
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo((x = ones(2), )));
 
 julia> # (✓) Vroom, vroom! FAST!!!
        vi[@varname(x[1])]
@@ -60,12 +57,12 @@ julia> vi[@varname(x[1:2])]
  1.3736306979834252
 
 julia> # (×) If we don't provide the container...
-       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx); vi
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo()); vi
 ERROR: type NamedTuple has no field x
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo{Float64}(OrderedDict()), ctx);
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -73,11 +70,11 @@ julia> # (✓) Sort of fast, but only possible at runtime.
 
 julia> # In addtion, we can only access varnames as they appear in the model!
        vi[@varname(x)]
-ERROR: KeyError: key x not found
+ERROR: x was not found in the dictionary provided
 [...]
 
 julia> vi[@varname(x[1:2])]
-ERROR: KeyError: key x[1:2] not found
+ERROR: x[1:2] was not found in the dictionary provided
 [...]
 ```
 
@@ -94,28 +91,28 @@ demo_constrained (generic function with 2 methods)
 
 julia> m = demo_constrained();
 
-julia> _, vi = DynamicPPL.evaluate!!(m, SimpleVarInfo(), ctx);
+julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo());
 
 julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
 1.8632965762164932
 
-julia> _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx);
+julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 -0.21080155351918753
 
-julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict()), true), ctx);
+       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
 
-julia> xs = [last(DynamicPPL.evaluate!!(m, DynamicPPL.settrans!!(SimpleVarInfo(), true), ctx))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
@@ -125,18 +122,18 @@ Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
 julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
-Transformed SimpleVarInfo((x = -1.0,), 0.0)
+Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) Positive probability mass on negative numbers!
-       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+       getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
 -1.3678794411714423
 
 julia> # While if we forget to indicate that it's transformed:
        vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
-SimpleVarInfo((x = -1.0,), 0.0)
+SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0), VariableOrder = VariableOrderAccumulator(0, Dict{VarName, Int64}())))
 
 julia> # (✓) No probability mass on negative numbers!
-       getlogp(last(DynamicPPL.evaluate!!(m, vi, DynamicPPL.DefaultContext())))
+       getlogjoint_internal(last(DynamicPPL.evaluate!!(m, vi)))
 -Inf
 ```
 
@@ -180,48 +177,50 @@ julia> svi_dict[@varname(m.a[1])]
 1.0
 
 julia> svi_dict[@varname(m.a[2])]
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+ERROR: m.a[2] was not found in the dictionary provided
 [...]
 
 julia> svi_dict[@varname(m.b)]
-ERROR: type NamedTuple has no field b
+ERROR: m.b was not found in the dictionary provided
 [...]
 ```
 """
-struct SimpleVarInfo{NT,T,C<:AbstractTransformation} <: AbstractVarInfo
+struct SimpleVarInfo{NT,Accs<:AccumulatorTuple where {N},C<:AbstractTransformation} <:
+       AbstractVarInfo
     "underlying representation of the realization represented"
     values::NT
-    "holds the accumulated log-probability"
-    logp::T
+    "tuple of accumulators for things like log prior and log likelihood"
+    accs::Accs
     "represents whether it assumes variables to be transformed"
     transformation::C
 end
 
+function Base.:(==)(vi1::SimpleVarInfo, vi2::SimpleVarInfo)
+    return vi1.values == vi2.values &&
+           vi1.accs == vi2.accs &&
+           vi1.transformation == vi2.transformation
+end
+
 transformation(vi::SimpleVarInfo) = vi.transformation
 
-# Makes things a bit more readable vs. putting `Float64` everywhere.
-const SIMPLEVARINFO_DEFAULT_ELTYPE = Float64
-
-function SimpleVarInfo{NT,T}(values, logp) where {NT,T}
-    return SimpleVarInfo{NT,T,NoTransformation}(values, logp, NoTransformation())
+function SimpleVarInfo(values, accs)
+    return SimpleVarInfo(values, accs, NoTransformation())
 end
-function SimpleVarInfo{T}(θ) where {T<:Real}
-    return SimpleVarInfo{typeof(θ),T}(θ, zero(T))
+function SimpleVarInfo{T}(values) where {T<:Real}
+    return SimpleVarInfo(values, default_accumulators(T))
 end
-
-# Constructors without type-specification.
-SimpleVarInfo(θ) = SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
-function SimpleVarInfo(θ::Union{<:NamedTuple,<:AbstractDict})
-    return if isempty(θ)
+function SimpleVarInfo(values)
+    return SimpleVarInfo{LogProbType}(values)
+end
+function SimpleVarInfo(values::Union{<:NamedTuple,<:AbstractDict{<:VarName}})
+    return if isempty(values)
         # Can't infer from values, so we just use default.
-        SimpleVarInfo{SIMPLEVARINFO_DEFAULT_ELTYPE}(θ)
+        SimpleVarInfo{LogProbType}(values)
     else
         # Infer from `values`.
-        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(typeof(θ)))}(θ)
+        SimpleVarInfo{float_type_with_fallback(infer_nested_eltype(typeof(values)))}(values)
     end
 end
-
-SimpleVarInfo(values, logp) = SimpleVarInfo{typeof(values),typeof(logp)}(values, logp)
 
 # Using `kwargs` to specify the values.
 function SimpleVarInfo{T}(; kwargs...) where {T<:Real}
@@ -232,45 +231,59 @@ function SimpleVarInfo(; kwargs...)
 end
 
 # Constructor from `Model`.
-function SimpleVarInfo(
-    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
-)
-    return SimpleVarInfo{Float64}(model, args...)
+function SimpleVarInfo{T}(
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+) where {T<:Real}
+    new_model = contextualize(model, SamplingContext(rng, sampler, model.context))
+    return last(evaluate!!(new_model, SimpleVarInfo{T}()))
 end
 function SimpleVarInfo{T}(
-    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
+    model::Model, sampler::AbstractSampler=SampleFromPrior()
 ) where {T<:Real}
-    return last(evaluate!!(model, SimpleVarInfo{T}(), args...))
+    return SimpleVarInfo{T}(Random.default_rng(), model, sampler)
+end
+# Constructors without type param
+function SimpleVarInfo(
+    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+)
+    return SimpleVarInfo{LogProbType}(rng, model, sampler)
+end
+function SimpleVarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
+    return SimpleVarInfo{LogProbType}(Random.default_rng(), model, sampler)
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::NTVarInfo, (::Type{D})=NamedTuple; kwargs...) where {D}
-    return SimpleVarInfo{eltype(getlogp(vi))}(vi, D; kwargs...)
-end
-function SimpleVarInfo{T}(
-    vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
-) where {T<:Real,names,D}
+function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
     values = values_as(vi, D)
-    return SimpleVarInfo(values, convert(T, getlogp(vi)))
+    return SimpleVarInfo(values, copy(getaccs(vi)))
+end
+function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
+    values = values_as(vi, D)
+    accs = map(acc -> convert_eltype(T, acc), getaccs(vi))
+    return SimpleVarInfo(values, accs)
 end
 
 function untyped_simple_varinfo(model::Model)
-    varinfo = SimpleVarInfo(OrderedDict())
-    return last(evaluate!!(model, varinfo, SamplingContext()))
+    varinfo = SimpleVarInfo(OrderedDict{VarName,Any}())
+    return last(evaluate_and_sample!!(model, varinfo))
 end
 
 function typed_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo{Float64}()
-    return last(evaluate!!(model, varinfo, SamplingContext()))
+    return last(evaluate_and_sample!!(model, varinfo))
 end
 
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
-    logp = getlogp(svi)
     vals = unflatten(svi.values, x)
-    T = eltype(x)
-    return SimpleVarInfo{typeof(vals),T,typeof(svi.transformation)}(
-        vals, T(logp), svi.transformation
+    # TODO(mhauru) See comment in unflatten in src/varinfo.jl for why this conversion is
+    # required but undesireable.
+    # The below line is finicky for type stability. For instance, assigning the eltype to
+    # convert to into an intermediate variable makes this unstable (constant propagation)
+    # fails. Take care when editing.
+    accs = map(
+        acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc), getaccs(svi)
     )
+    return SimpleVarInfo(vals, accs, svi.transformation)
 end
 
 function BangBang.empty!!(vi::SimpleVarInfo)
@@ -278,21 +291,8 @@ function BangBang.empty!!(vi::SimpleVarInfo)
 end
 Base.isempty(vi::SimpleVarInfo) = isempty(vi.values)
 
-getlogp(vi::SimpleVarInfo) = vi.logp
-getlogp(vi::SimpleVarInfo{<:Any,<:Ref}) = vi.logp[]
-
-setlogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = logp
-acclogp!!(vi::SimpleVarInfo, logp) = Accessors.@set vi.logp = getlogp(vi) + logp
-
-function setlogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
-    vi.logp[] = logp
-    return vi
-end
-
-function acclogp!!(vi::SimpleVarInfo{<:Any,<:Ref}, logp)
-    vi.logp[] += logp
-    return vi
-end
+getaccs(vi::SimpleVarInfo) = vi.accs
+setaccs!!(vi::SimpleVarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
 
 """
     keys(vi::SimpleVarInfo)
@@ -302,12 +302,12 @@ Return an iterator of keys present in `vi`.
 Base.keys(vi::SimpleVarInfo) = keys(vi.values)
 Base.keys(vi::SimpleVarInfo{<:NamedTuple}) = map(k -> VarName{k}(), keys(vi.values))
 
-function Base.show(io::IO, ::MIME"text/plain", svi::SimpleVarInfo)
+function Base.show(io::IO, mime::MIME"text/plain", svi::SimpleVarInfo)
     if !(svi.transformation isa NoTransformation)
         print(io, "Transformed ")
     end
 
-    return print(io, "SimpleVarInfo(", svi.values, ", ", svi.logp, ")")
+    return print(io, "SimpleVarInfo(", svi.values, ", ", repr(mime, getaccs(svi)), ")")
 end
 
 function Base.getindex(vi::SimpleVarInfo, vn::VarName, dist::Distribution)
@@ -417,7 +417,9 @@ Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
-    return Accessors.@set varinfo.values = _subset(varinfo.values, vns)
+    return SimpleVarInfo(
+        _subset(varinfo.values, vns), subset(getaccs(varinfo), vns), varinfo.transformation
+    )
 end
 
 function _subset(x::AbstractDict, vns::AbstractVector{VN}) where {VN<:VarName}
@@ -454,11 +456,11 @@ _subset(x::VarNamedVector, vns) = subset(x, vns)
 # `merge`
 function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     values = merge(varinfo_left.values, varinfo_right.values)
-    logp = getlogp(varinfo_right)
+    accs = merge(getaccs(varinfo_left), getaccs(varinfo_right))
     transformation = merge_transformations(
         varinfo_left.transformation, varinfo_right.transformation
     )
-    return SimpleVarInfo(values, logp, transformation)
+    return SimpleVarInfo(values, accs, transformation)
 end
 
 # Context implementations
@@ -473,9 +475,11 @@ function assume(
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
-    value_raw = to_maybe_linked_internal(vi, vn, dist, value)
+    f = to_maybe_linked_internal_transform(vi, vn, dist)
+    value_raw, logjac = with_logabsdet_jacobian(f, value)
     vi = BangBang.push!!(vi, vn, value_raw, dist)
-    return value, Bijectors.logpdf_with_trans(dist, value, istrans(vi, vn)), vi
+    vi = accumulate_assume!!(vi, value, logjac, vn, dist)
+    return value, vi
 end
 
 # NOTE: We don't implement `settrans!!(vi, trans, vn)`.
@@ -492,13 +496,14 @@ end
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
 istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
+istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
 
 islinked(vi::SimpleVarInfo) = istrans(vi)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
-function values_as(vi::SimpleVarInfo{<:Any,T}, ::Type{Vector}) where {T}
-    isempty(vi) && return T[]
+function values_as(vi::SimpleVarInfo, ::Type{Vector})
+    isempty(vi) && return Any[]
     return mapreduce(tovec, vcat, values(vi.values))
 end
 function values_as(vi::SimpleVarInfo, ::Type{D}) where {D<:AbstractDict}
@@ -613,12 +618,13 @@ function link!!(
     vi::SimpleVarInfo{<:NamedTuple},
     ::Model,
 )
-    # TODO: Make sure that `spl` is respected.
     b = inverse(t.bijector)
     x = vi.values
     y, logjac = with_logabsdet_jacobian(b, x)
-    lp_new = getlogp(vi) - logjac
-    vi_new = setlogp!!(Accessors.@set(vi.values = y), lp_new)
+    vi_new = Accessors.@set(vi.values = y)
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = acclogjac!!(vi_new, logjac)
+    end
     return settrans!!(vi_new, t)
 end
 
@@ -627,12 +633,16 @@ function invlink!!(
     vi::SimpleVarInfo{<:NamedTuple},
     ::Model,
 )
-    # TODO: Make sure that `spl` is respected.
     b = t.bijector
     y = vi.values
-    x, logjac = with_logabsdet_jacobian(b, y)
-    lp_new = getlogp(vi) + logjac
-    vi_new = setlogp!!(Accessors.@set(vi.values = x), lp_new)
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
+    vi_new = Accessors.@set(vi.values = x)
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    if hasacc(vi_new, Val(:LogJacobian))
+        vi_new = acclogjac!!(vi_new, inv_logjac)
+    end
     return settrans!!(vi_new, NoTransformation())
 end
 
@@ -643,17 +653,6 @@ from_internal_transform(vi::SimpleVarInfo, ::VarName, dist) = identity
 from_linked_internal_transform(vi::SimpleVarInfo, ::VarName) = identity
 function from_linked_internal_transform(vi::SimpleVarInfo, ::VarName, dist)
     return invlink_transform(dist)
-end
-
-# Threadsafe stuff.
-# For `SimpleVarInfo` we don't really need `Ref` so let's not use it.
-function ThreadSafeVarInfo(vi::SimpleVarInfo)
-    return ThreadSafeVarInfo(vi, zeros(typeof(getlogp(vi)), Threads.nthreads() * 2))
-end
-function ThreadSafeVarInfo(vi::SimpleVarInfo{<:Any,<:Ref})
-    return ThreadSafeVarInfo(
-        vi, [Ref(zero(getlogp(vi))) for _ in 1:(Threads.nthreads() * 2)]
-    )
 end
 
 has_varnamedvector(vi::SimpleVarInfo) = vi.values isa VarNamedVector

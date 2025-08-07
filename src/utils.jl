@@ -18,23 +18,29 @@ const LogProbType = float(Real)
 """
     @addlogprob!(ex)
 
-Add the result of the evaluation of `ex` to the joint log probability.
+Add a term to the log joint.
+
+If `ex` evaluates to a `NamedTuple` with keys `:loglikelihood` and/or `:logprior`, the
+values are added to the log likelihood and log prior respectively.
+
+If `ex` evaluates to a number it is added to the log likelihood.
 
 # Examples
 
-This macro allows you to [include arbitrary terms in the likelihood](https://github.com/TuringLang/Turing.jl/issues/1332)
-
 ```jldoctest; setup = :(using Distributions)
-julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
+julia> mylogjoint(x, μ) = (; loglikelihood=loglikelihood(Normal(μ, 1), x), logprior=1.0);
 
 julia> @model function demo(x)
            μ ~ Normal()
-           @addlogprob! myloglikelihood(x, μ)
+           @addlogprob! mylogjoint(x, μ)
        end;
 
 julia> x = [1.3, -2.1];
 
-julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
+julia> loglikelihood(demo(x), (μ=0.2,)) ≈ mylogjoint(x, 0.2).loglikelihood
+true
+
+julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2) + mylogjoint(x, 0.2).logprior
 true
 ```
 
@@ -44,7 +50,7 @@ and to [reject samples](https://github.com/TuringLang/Turing.jl/issues/1328):
 julia> @model function demo(x)
            m ~ MvNormal(zero(x), I)
            if dot(m, x) < 0
-               @addlogprob! -Inf
+               @addlogprob! (; loglikelihood=-Inf)
                # Exit the model evaluation early
                return
            end
@@ -55,37 +61,22 @@ julia> @model function demo(x)
 julia> logjoint(demo([-2.1]), (m=[0.2],)) == -Inf
 true
 ```
-
-!!! note
-    The `@addlogprob!` macro increases the accumulated log probability regardless of the evaluation context,
-    i.e., regardless of whether you evaluate the log prior, the log likelihood or the log joint density.
-    If you would like to avoid this behaviour you should check the evaluation context.
-    It can be accessed with the internal variable `__context__`.
-    For instance, in the following example the log density is not accumulated when only the log prior is computed:
-    ```jldoctest; setup = :(using Distributions)
-    julia> myloglikelihood(x, μ) = loglikelihood(Normal(μ, 1), x);
-
-    julia> @model function demo(x)
-               μ ~ Normal()
-               if DynamicPPL.leafcontext(__context__) !== PriorContext()
-                   @addlogprob! myloglikelihood(x, μ)
-               end
-           end;
-
-    julia> x = [1.3, -2.1];
-
-    julia> logprior(demo(x), (μ=0.2,)) ≈ logpdf(Normal(), 0.2)
-    true
-
-    julia> loglikelihood(demo(x), (μ=0.2,)) ≈ myloglikelihood(x, 0.2)
-    true
-    ```
 """
 macro addlogprob!(ex)
     return quote
-        $(esc(:(__varinfo__))) = acclogp!!(
-            $(esc(:(__context__))), $(esc(:(__varinfo__))), $(esc(ex))
-        )
+        val = $(esc(ex))
+        vi = $(esc(:(__varinfo__)))
+        if val isa Number
+            if hasacc(vi, Val(:LogLikelihood))
+                $(esc(:(__varinfo__))) = accloglikelihood!!($(esc(:(__varinfo__))), val)
+            end
+        elseif val isa NamedTuple
+            $(esc(:(__varinfo__))) = acclogp!!(
+                $(esc(:(__varinfo__))), val; ignore_missing_accumulator=true
+            )
+        else
+            error("logp must be a Number or a NamedTuple.")
+        end
     end
 end
 
@@ -760,199 +751,6 @@ function unflatten(original::AbstractDict, x::AbstractVector)
     return D(zip(keys(original), unflatten(collect(values(original)), x)))
 end
 
-# TODO: Move `getvalue` and `hasvalue` to AbstractPPL.jl.
-"""
-    getvalue(vals, vn::VarName)
-
-Return the value(s) in `vals` represented by `vn`.
-
-Note that this method is different from `getindex`. See examples below.
-
-# Examples
-
-For `NamedTuple`:
-
-```jldoctest
-julia> vals = (x = [1.0],);
-
-julia> DynamicPPL.getvalue(vals, @varname(x)) # same as `getindex`
-1-element Vector{Float64}:
- 1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[1])) # different from `getindex`
-1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[2]))
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
-[...]
-```
-
-For `AbstractDict`:
-
-```jldoctest
-julia> vals = Dict(@varname(x) => [1.0]);
-
-julia> DynamicPPL.getvalue(vals, @varname(x)) # same as `getindex`
-1-element Vector{Float64}:
- 1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[1])) # different from `getindex`
-1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[2]))
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
-[...]
-```
-
-In the `AbstractDict` case we can also have keys such as `v[1]`:
-
-```jldoctest
-julia> vals = Dict(@varname(x[1]) => [1.0,]);
-
-julia> DynamicPPL.getvalue(vals, @varname(x[1])) # same as `getindex`
-1-element Vector{Float64}:
- 1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[1][1])) # different from `getindex`
-1.0
-
-julia> DynamicPPL.getvalue(vals, @varname(x[1][2]))
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
-[...]
-
-julia> DynamicPPL.getvalue(vals, @varname(x[2][1]))
-ERROR: KeyError: key x[2][1] not found
-[...]
-```
-"""
-getvalue(vals::NamedTuple, vn::VarName) = get(vals, vn)
-getvalue(vals::AbstractDict, vn::VarName) = nested_getindex(vals, vn)
-
-"""
-    hasvalue(vals, vn::VarName)
-
-Determine whether `vals` has a mapping for a given `vn`, as compatible with [`getvalue`](@ref).
-
-# Examples
-With `x` as a `NamedTuple`:
-
-```jldoctest
-julia> DynamicPPL.hasvalue((x = 1.0, ), @varname(x))
-true
-
-julia> DynamicPPL.hasvalue((x = 1.0, ), @varname(x[1]))
-false
-
-julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x))
-true
-
-julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x[1]))
-true
-
-julia> DynamicPPL.hasvalue((x = [1.0],), @varname(x[2]))
-false
-```
-
-With `x` as a `AbstractDict`:
-
-```jldoctest
-julia> DynamicPPL.hasvalue(Dict(@varname(x) => 1.0, ), @varname(x))
-true
-
-julia> DynamicPPL.hasvalue(Dict(@varname(x) => 1.0, ), @varname(x[1]))
-false
-
-julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x))
-true
-
-julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x[1]))
-true
-
-julia> DynamicPPL.hasvalue(Dict(@varname(x) => [1.0]), @varname(x[2]))
-false
-```
-
-In the `AbstractDict` case we can also have keys such as `v[1]`:
-
-```jldoctest
-julia> vals = Dict(@varname(x[1]) => [1.0,]);
-
-julia> DynamicPPL.hasvalue(vals, @varname(x[1])) # same as `haskey`
-true
-
-julia> DynamicPPL.hasvalue(vals, @varname(x[1][1])) # different from `haskey`
-true
-
-julia> DynamicPPL.hasvalue(vals, @varname(x[1][2]))
-false
-
-julia> DynamicPPL.hasvalue(vals, @varname(x[2][1]))
-false
-```
-"""
-function hasvalue(vals::NamedTuple, vn::VarName{sym}) where {sym}
-    # LHS: Ensure that `nt` indeed has the property we want.
-    # RHS: Ensure that the optic can view into `nt`.
-    return haskey(vals, sym) && canview(getoptic(vn), getproperty(vals, sym))
-end
-
-# For `dictlike` we need to check wether `vn` is "immediately" present, or
-# if some ancestor of `vn` is present in `dictlike`.
-function hasvalue(vals::AbstractDict, vn::VarName)
-    # First we check if `vn` is present as is.
-    haskey(vals, vn) && return true
-
-    # If `vn` is not present, we check any parent-varnames by attempting
-    # to split the optic into the key / `parent` and the extraction optic / `child`.
-    # If `issuccess` is `true`, we found such a split, and hence `vn` is present.
-    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
-        o = optic === nothing ? identity : optic
-        haskey(vals, VarName{getsym(vn)}(o))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
-    keyoptic = parent === nothing ? identity : parent
-
-    # Return early if no such split could be found.
-    issuccess || return false
-
-    # At this point we just need to check that we `canview` the value.
-    value = vals[VarName{getsym(vn)}(keyoptic)]
-
-    return canview(child, value)
-end
-
-"""
-    nested_getindex(values::AbstractDict, vn::VarName)
-
-Return value corresponding to `vn` in `values` by also looking
-in the the actual values of the dict.
-"""
-function nested_getindex(values::AbstractDict, vn::VarName)
-    maybeval = get(values, vn, nothing)
-    if maybeval !== nothing
-        return maybeval
-    end
-
-    # Split the optic into the key / `parent` and the extraction optic / `child`.
-    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
-        o = optic === nothing ? identity : optic
-        haskey(values, VarName{getsym(vn)}(o))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
-    keyoptic = parent === nothing ? identity : parent
-
-    # If we found a valid split, then we can extract the value.
-    if !issuccess
-        # At this point we just throw an error since the key could not be found.
-        throw(KeyError(vn))
-    end
-
-    # TODO: Should we also check that we `canview` the extracted `value`
-    # rather than just let it fail upon `get` call?
-    value = values[VarName{getsym(vn)}(keyoptic)]
-    return child(value)
-end
-
 """
     update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
 
@@ -1341,3 +1139,10 @@ function group_varnames_by_symbol(vns::VarNameTuple)
     elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
     return NamedTuple{syms}(elements)
 end
+
+"""
+    basetypeof(x)
+
+Return `typeof(x)` stripped of its type parameters.
+"""
+basetypeof(x::T) where {T} = Base.typename(T).wrapper

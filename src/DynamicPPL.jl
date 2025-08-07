@@ -6,6 +6,7 @@ using Bijectors
 using Compat
 using Distributions
 using OrderedCollections: OrderedCollections, OrderedDict
+using Printf: Printf
 
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
@@ -22,7 +23,7 @@ using DocStringExtensions
 using Random: Random
 
 # For extending
-import AbstractPPL: predict
+import AbstractPPL: predict, hasvalue, getvalue
 
 # TODO: Remove these when it's possible.
 import Bijectors: link, invlink
@@ -46,22 +47,40 @@ import Base:
 export AbstractVarInfo,
     VarInfo,
     SimpleVarInfo,
+    AbstractAccumulator,
+    LogLikelihoodAccumulator,
+    LogPriorAccumulator,
+    LogJacobianAccumulator,
+    VariableOrderAccumulator,
     push!!,
     empty!!,
     subset,
     getlogp,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
+    getlogjac,
+    getlogjoint_internal,
+    getlogprior_internal,
     setlogp!!,
+    setlogprior!!,
+    setlogjac!!,
+    setloglikelihood!!,
+    acclogp,
     acclogp!!,
+    acclogjac!!,
+    acclogprior!!,
+    accloglikelihood!!,
     resetlogp!!,
     get_num_produce,
-    set_num_produce!,
-    reset_num_produce!,
-    increment_num_produce!,
+    set_num_produce!!,
+    reset_num_produce!!,
+    increment_num_produce!!,
     set_retained_vns_del!,
     is_flagged,
     set_flag!,
     unset_flag!,
-    setorder!,
+    setorder!!,
     istrans,
     link,
     link!!,
@@ -90,17 +109,13 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
+    contextualize,
     SamplingContext,
     DefaultContext,
-    LikelihoodContext,
-    PriorContext,
-    MiniBatchContext,
     PrefixContext,
     ConditionContext,
     assume,
-    observe,
     tilde_assume,
-    tilde_observe,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -120,7 +135,6 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
-    @submodel,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
@@ -146,6 +160,9 @@ macro prob_str(str)
     ))
 end
 
+# TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
+# has to implement. Not sure what the full list is for parameters values, but for
+# accumulators we only need `getaccs` and `setaccs!!`.
 """
     AbstractVarInfo
 
@@ -165,7 +182,10 @@ include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("contexts.jl")
+include("submodel.jl")
 include("varnamedvector.jl")
+include("accumulators.jl")
+include("default_accumulators.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
@@ -173,7 +193,6 @@ include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("submodel_macro.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
@@ -211,6 +230,21 @@ if isdefined(Base.Experimental, :register_error_hint)
                 print(
                     io,
                     "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
+                )
+            end
+        end
+
+        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
+            is_evaluate_three_arg =
+                exc.f === AbstractPPL.evaluate!! &&
+                length(argtypes) == 3 &&
+                argtypes[1] <: Model &&
+                argtypes[2] <: AbstractVarInfo &&
+                argtypes[3] <: AbstractContext
+            if is_evaluate_three_arg
+                print(
+                    io,
+                    "\n\nThe method `evaluate!!(model, varinfo, new_ctx)` has been removed. Instead, you should store the `new_ctx` in the `model.context` field using `new_model = contextualize(model, new_ctx)`, and then call `evaluate!!(new_model, varinfo)` on the new model. (Note that, if the model already contained a non-default context, you will need to wrap the existing context.)",
                 )
             end
         end

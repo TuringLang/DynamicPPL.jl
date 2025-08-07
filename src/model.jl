@@ -85,6 +85,12 @@ function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); k
     return Model(f, args, NamedTuple(kwargs), context)
 end
 
+"""
+    contextualize(model::Model, context::AbstractContext)
+
+Return a new `Model` with the same evaluation function and other arguments, but
+with its underlying context set to `context`.
+"""
 function contextualize(model::Model, context::AbstractContext)
     return Model(model.f, model.args, model.defaults, context)
 end
@@ -252,7 +258,7 @@ julia> # However, it's not possible to condition `inner` directly.
        conditioned_model_fail = model | (inner = 1.0, );
 
 julia> conditioned_model_fail()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
+ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
 [...]
 ```
 """
@@ -794,15 +800,23 @@ julia> # Now `a.x` will be sampled.
 fixed(model::Model) = fixed(model.context)
 
 """
-    (model::Model)([rng, varinfo, sampler, context])
+    (model::Model)([rng, varinfo])
 
-Sample from the `model` using the `sampler` with random number generator `rng` and the
-`context`, and store the sample and log joint probability in `varinfo`.
+Sample from the prior of the `model` with random number generator `rng`.
 
-The method resets the log joint probability of `varinfo` and increases the evaluation
-number of `sampler`.
+Returns the model's return value.
+
+Note that calling this with an existing `varinfo` object will mutate it.
 """
-(model::Model)(args...) = first(evaluate!!(model, args...))
+(model::Model)() = model(Random.default_rng(), VarInfo())
+function (model::Model)(varinfo::AbstractVarInfo)
+    return model(Random.default_rng(), varinfo)
+end
+# ^ Weird Documenter.jl bug means that we have to write the two above separately
+# as it can only detect the `function`-less syntax.
+function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
+    return first(evaluate_and_sample!!(rng, model, varinfo))
+end
 
 """
     use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
@@ -815,65 +829,52 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    evaluate!!(model::Model[, rng, varinfo, sampler, context])
+    evaluate_and_sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
 
-Sample from the `model` using the `sampler` with random number generator `rng` and the
-`context`, and store the sample and log joint probability in `varinfo`.
+Evaluate the `model` with the given `varinfo`, but perform sampling during the
+evaluation using the given `sampler` by wrapping the model's context in a
+`SamplingContext`.
 
-Returns both the return-value of the original model, and the resulting varinfo.
+If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
 
-The method resets the log joint probability of `varinfo` and increases the evaluation
-number of `sampler`.
+Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function AbstractPPL.evaluate!!(
-    model::Model, varinfo::AbstractVarInfo, context::AbstractContext
+function evaluate_and_sample!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfo::AbstractVarInfo,
+    sampler::AbstractSampler=SampleFromPrior(),
 )
-    return if use_threadsafe_eval(context, varinfo)
-        evaluate_threadsafe!!(model, varinfo, context)
+    sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
+    return evaluate!!(sampling_model, varinfo)
+end
+function evaluate_and_sample!!(
+    model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
+)
+    return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
+end
+
+"""
+    evaluate!!(model::Model, varinfo)
+
+Evaluate the `model` with the given `varinfo`.
+
+If multiple threads are available, the varinfo provided will be wrapped in a
+`ThreadSafeVarInfo` before evaluation.
+
+Returns a tuple of the model's return value, plus the updated `varinfo`
+(unwrapped if necessary).
+"""
+function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
+    return if use_threadsafe_eval(model.context, varinfo)
+        evaluate_threadsafe!!(model, varinfo)
     else
-        evaluate_threadunsafe!!(model, varinfo, context)
+        evaluate_threadunsafe!!(model, varinfo)
     end
 end
 
-function AbstractPPL.evaluate!!(
-    model::Model,
-    rng::Random.AbstractRNG,
-    varinfo::AbstractVarInfo=VarInfo(),
-    sampler::AbstractSampler=SampleFromPrior(),
-    context::AbstractContext=DefaultContext(),
-)
-    return evaluate!!(model, varinfo, SamplingContext(rng, sampler, context))
-end
-
-function AbstractPPL.evaluate!!(model::Model, context::AbstractContext)
-    return evaluate!!(model, VarInfo(), context)
-end
-
-function AbstractPPL.evaluate!!(
-    model::Model, args::Union{AbstractVarInfo,AbstractSampler,AbstractContext}...
-)
-    return evaluate!!(model, Random.default_rng(), args...)
-end
-
-# without VarInfo
-function AbstractPPL.evaluate!!(
-    model::Model,
-    rng::Random.AbstractRNG,
-    sampler::AbstractSampler,
-    args::AbstractContext...,
-)
-    return evaluate!!(model, rng, VarInfo(), sampler, args...)
-end
-
-# without VarInfo and without AbstractSampler
-function AbstractPPL.evaluate!!(
-    model::Model, rng::Random.AbstractRNG, context::AbstractContext
-)
-    return evaluate!!(model, rng, VarInfo(), SampleFromPrior(), context)
-end
-
 """
-    evaluate_threadunsafe!!(model, varinfo, context)
+    evaluate_threadunsafe!!(model, varinfo)
 
 Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
 
@@ -882,8 +883,8 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadsafe!!`](@ref)
 """
-function evaluate_threadunsafe!!(model, varinfo, context)
-    return _evaluate!!(model, resetlogp!!(varinfo), context)
+function evaluate_threadunsafe!!(model, varinfo)
+    return _evaluate!!(model, resetlogp!!(varinfo))
 end
 
 """
@@ -897,31 +898,38 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 
 See also: [`evaluate_threadunsafe!!`](@ref)
 """
-function evaluate_threadsafe!!(model, varinfo, context)
+function evaluate_threadsafe!!(model, varinfo)
     wrapper = ThreadSafeVarInfo(resetlogp!!(varinfo))
-    result, wrapper_new = _evaluate!!(model, wrapper, context)
-    return result, setlogp!!(wrapper_new.varinfo, getlogp(wrapper_new))
+    result, wrapper_new = _evaluate!!(model, wrapper)
+    # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
+    # will return the underlying VI, which is a bit counterintuitive (because
+    # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
+    # again).
+    return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
 end
 
 """
-    _evaluate!!(model::Model, varinfo, context)
+    _evaluate!!(model::Model, varinfo)
 
-Evaluate the `model` with the arguments matching the given `context` and `varinfo` object.
+Evaluate the `model` with the given `varinfo`.
+
+This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
+reset the log probability of the `varinfo` before running.
 """
-function _evaluate!!(model::Model, varinfo::AbstractVarInfo, context::AbstractContext)
-    args, kwargs = make_evaluate_args_and_kwargs(model, varinfo, context)
+function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
+    args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
     return model.f(args...; kwargs...)
 end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 
 """
-    make_evaluate_args_and_kwargs(model, varinfo, context)
+    make_evaluate_args_and_kwargs(model, varinfo)
 
 Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F,argnames}, varinfo::AbstractVarInfo, context::AbstractContext
+    model::Model{_F,argnames}, varinfo::AbstractVarInfo
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
@@ -930,18 +938,7 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             :($matchingvalue(varinfo, model.args.$var))
         end for var in argnames
     ]
-
-    # We want to give `context` precedence over `model.context` while also
-    # preserving the leaf context of `context`. We can do this by
-    # 1. Set the leaf context of `model.context` to `leafcontext(context)`.
-    # 2. Set leaf context of `context` to the context resulting from (1).
-    # The result is:
-    # `context` -> `childcontext(context)` -> ... -> `model.context`
-    #  -> `childcontext(model.context)` -> ... -> `leafcontext(context)`
     return quote
-        context_new = setleafcontext(
-            context, setleafcontext(model.context, leafcontext(context))
-        )
         args = (
             model,
             # Maybe perform `invlink!!` once prior to evaluation to avoid
@@ -949,7 +946,6 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             # speeding up computation. See docs for `maybe_invlink_before_eval!!`
             # for more information.
             maybe_invlink_before_eval!!(varinfo, model),
-            context_new,
             $(unwrap_args...),
         )
         kwargs = model.defaults
@@ -986,12 +982,8 @@ Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
     x = last(
-        evaluate!!(
-            model,
-            SimpleVarInfo{Float64}(OrderedDict()),
-            # NOTE: Use `leafcontext` here so we a) avoid overriding the leaf context of `model`,
-            # and b) avoid double-stacking the parent contexts.
-            SamplingContext(rng, SampleFromPrior(), leafcontext(model.context)),
+        evaluate_and_sample!!(
+            rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())
         ),
     )
     return values_as(x, T)
@@ -1007,10 +999,14 @@ Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 Return the log joint probability of variables `varinfo` for the probabilistic `model`.
 
+Note that this probability always refers to the parameters in unlinked space, i.e.,
+the return value of `logjoint` does not depend on whether `VarInfo` has been linked
+or not.
+
 See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
-    return getlogp(last(evaluate!!(model, varinfo, DefaultContext())))
+    return getlogjoint(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1040,7 +1036,7 @@ julia> logjoint(demo_model([1., 2.]), chain);
 function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
@@ -1054,10 +1050,21 @@ end
 
 Return the log prior probability of variables `varinfo` for the probabilistic `model`.
 
+Note that this probability always refers to the parameters in unlinked space, i.e.,
+the return value of `logprior` does not depend on whether `VarInfo` has been linked
+or not.
+
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
-    return getlogp(last(evaluate!!(model, varinfo, PriorContext())))
+    # Remove other accumulators from varinfo, since they are unnecessary.
+    logprioracc = if hasacc(varinfo, Val(:LogPrior))
+        getacc(varinfo, Val(:LogPrior))
+    else
+        LogPriorAccumulator()
+    end
+    varinfo = setaccs!!(deepcopy(varinfo), (logprioracc,))
+    return getlogprior(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1087,7 +1094,7 @@ julia> logprior(demo_model([1., 2.]), chain);
 function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
@@ -1104,7 +1111,14 @@ Return the log likelihood of variables `varinfo` for the probabilistic `model`.
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    return getlogp(last(evaluate!!(model, varinfo, LikelihoodContext())))
+    # Remove other accumulators from varinfo, since they are unnecessary.
+    loglikelihoodacc = if hasacc(varinfo, Val(:LogLikelihood))
+        getacc(varinfo, Val(:LogLikelihood))
+    else
+        LogLikelihoodAccumulator()
+    end
+    varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
+    return getloglikelihood(last(evaluate!!(model, varinfo)))
 end
 
 """
@@ -1134,7 +1148,7 @@ julia> loglikelihood(demo_model([1., 2.]), chain);
 function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
     var_info = VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict(
+        argvals_dict = OrderedDict{VarName,Any}(
             vn_parent =>
                 values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
             vn_parent in keys(var_info)
@@ -1144,7 +1158,7 @@ function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractC
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
+    predict([rng::Random.AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
 
 Generate samples from the posterior predictive distribution by evaluating `model` at each set
 of parameter values provided in `chain`. The number of posterior predictive samples matches
@@ -1158,7 +1172,7 @@ function predict(
     return map(chain) do params_varinfo
         vi = deepcopy(varinfo)
         DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
-        model(rng, vi, SampleFromPrior())
+        model(rng, vi)
         return vi
     end
 end
@@ -1206,243 +1220,3 @@ end
 function returned(model::Model, values, keys)
     return returned(model, NamedTuple{keys}(values))
 end
-
-"""
-    is_rhs_model(x)
-
-Return `true` if `x` is a model or model wrapper, and `false` otherwise.
-"""
-is_rhs_model(x) = false
-
-"""
-    Distributional
-
-Abstract type for type indicating that something is "distributional".
-"""
-abstract type Distributional end
-
-"""
-    should_auto_prefix(distributional)
-
-Return `true` if the `distributional` should use automatic prefixing, and `false` otherwise.
-"""
-function should_auto_prefix end
-
-"""
-    is_rhs_model(x)
-
-Return `true` if the `distributional` is a model, and `false` otherwise.
-"""
-function is_rhs_model end
-
-"""
-    Sampleable{M} <: Distributional
-
-A wrapper around a model indicating it is sampleable.
-"""
-struct Sampleable{M,AutoPrefix} <: Distributional
-    model::M
-end
-
-should_auto_prefix(::Sampleable{<:Any,AutoPrefix}) where {AutoPrefix} = AutoPrefix
-is_rhs_model(x::Sampleable) = is_rhs_model(x.model)
-
-# TODO: Export this if it end up having a purpose beyond `to_submodel`.
-"""
-    to_sampleable(model[, auto_prefix])
-
-Return a wrapper around `model` indicating it is sampleable.
-
-# Arguments
-- `model::Model`: the model to wrap.
-- `auto_prefix::Bool`: whether to prefix the variables in the model. Default: `true`.
-"""
-to_sampleable(model, auto_prefix::Bool=true) = Sampleable{typeof(model),auto_prefix}(model)
-
-"""
-    rand_like!!(model_wrap, context, varinfo)
-
-Returns a tuple with the first element being the realization and the second the updated varinfo.
-
-# Arguments
-- `model_wrap::ReturnedModelWrapper`: the wrapper of the model to use.
-- `context::AbstractContext`: the context to use for evaluation.
-- `varinfo::AbstractVarInfo`: the varinfo to use for evaluation.
-    """
-function rand_like!!(
-    model_wrap::Sampleable, context::AbstractContext, varinfo::AbstractVarInfo
-)
-    return rand_like!!(model_wrap.model, context, varinfo)
-end
-
-"""
-    ReturnedModelWrapper
-
-A wrapper around a model indicating it is a model over its return values.
-
-This should rarely be constructed explicitly; see [`returned(model)`](@ref) instead.
-"""
-struct ReturnedModelWrapper{M<:Model}
-    model::M
-end
-
-is_rhs_model(::ReturnedModelWrapper) = true
-
-function rand_like!!(
-    model_wrap::ReturnedModelWrapper, context::AbstractContext, varinfo::AbstractVarInfo
-)
-    # Return's the value and the (possibly mutated) varinfo.
-    return _evaluate!!(model_wrap.model, varinfo, context)
-end
-
-"""
-    returned(model)
-
-Return a `model` wrapper indicating that it is a model over its return-values.
-"""
-returned(model::Model) = ReturnedModelWrapper(model)
-
-"""
-    to_submodel(model::Model[, auto_prefix::Bool])
-
-Return a model wrapper indicating that it is a sampleable model over the return-values.
-
-This is mainly meant to be used on the right-hand side of a `~` operator to indicate that
-the model can be sampled from but not necessarily evaluated for its log density.
-
-!!! warning
-    Note that some other operations that one typically associate with expressions of the form
-    `left ~ right` such as [`condition`](@ref), will also not work with `to_submodel`.
-
-!!! warning
-    To avoid variable names clashing between models, it is recommend leave argument `auto_prefix` equal to `true`.
-    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly.
-
-# Arguments
-- `model::Model`: the model to wrap.
-- `auto_prefix::Bool`: whether to automatically prefix the variables in the model using the left-hand
-    side of the `~` statement. Default: `true`.
-
-# Examples
-
-## Simple example
-```jldoctest submodel-to_submodel; setup=:(using Distributions)
-julia> @model function demo1(x)
-           x ~ Normal()
-           return 1 + abs(x)
-       end;
-
-julia> @model function demo2(x, y)
-            a ~ to_submodel(demo1(x))
-            return y ~ Uniform(0, a)
-       end;
-```
-
-When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
-```jldoctest submodel-to_submodel
-julia> vi = VarInfo(demo2(missing, 0.4));
-
-julia> @varname(a.x) in keys(vi)
-true
-```
-
-The variable `a` is not tracked. However, it will be assigned the return value of `demo1`,
-and can be used in subsequent lines of the model, as shown above.
-```jldoctest submodel-to_submodel
-julia> @varname(a) in keys(vi)
-false
-```
-
-We can check that the log joint probability of the model accumulated in `vi` is correct:
-
-```jldoctest submodel-to_submodel
-julia> x = vi[@varname(a.x)];
-
-julia> getlogp(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
-true
-```
-
-## Without automatic prefixing
-As mentioned earlier, by default, the `auto_prefix` argument specifies whether to automatically
-prefix the variables in the submodel. If `auto_prefix=false`, then the variables in the submodel
-will not be prefixed.
-```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
-julia> @model function demo1(x)
-           x ~ Normal()
-           return 1 + abs(x)
-       end;
-
-julia> @model function demo2_no_prefix(x, z)
-            a ~ to_submodel(demo1(x), false)
-            return z ~ Uniform(-a, 1)
-       end;
-
-julia> vi = VarInfo(demo2_no_prefix(missing, 0.4));
-
-julia> @varname(x) in keys(vi)  # here we just use `x` instead of `a.x`
-true
-```
-However, not using prefixing is generally not recommended as it can lead to variable name clashes
-unless one is careful. For example, if we're re-using the same model twice in a model, not using prefixing
-will lead to variable name clashes: However, one can manually prefix using the [`prefix(::Model, input)`](@ref):
-```jldoctest submodel-to_submodel-prefix
-julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), :sub1), false)
-            b ~ to_submodel(prefix(demo1(y), :sub2), false)
-            return z ~ Uniform(-a, b)
-       end;
-
-julia> vi = VarInfo(demo2(missing, missing, 0.4));
-
-julia> @varname(sub1.x) in keys(vi)
-true
-
-julia> @varname(sub2.x) in keys(vi)
-true
-```
-
-Variables `a` and `b` are not tracked, but are assigned the return values of the respective
-calls to `demo1`:
-```jldoctest submodel-to_submodel-prefix
-julia> @varname(a) in keys(vi)
-false
-
-julia> @varname(b) in keys(vi)
-false
-```
-
-We can check that the log joint probability of the model accumulated in `vi` is correct:
-
-```jldoctest submodel-to_submodel-prefix
-julia> sub1_x = vi[@varname(sub1.x)];
-
-julia> sub2_x = vi[@varname(sub2.x)];
-
-julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
-
-julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
-
-julia> getlogp(vi) ≈ logprior + loglikelihood
-true
-```
-
-## Usage as likelihood is illegal
-
-Note that it is illegal to use a `to_submodel` model as a likelihood in another model:
-
-```jldoctest submodel-to_submodel-illegal; setup=:(using Distributions)
-julia> @model inner() = x ~ Normal()
-inner (generic function with 2 methods)
-
-julia> @model illegal_likelihood() = a ~ to_submodel(inner())
-illegal_likelihood (generic function with 2 methods)
-
-julia> model = illegal_likelihood() | (a = 1.0,);
-
-julia> model()
-ERROR: ArgumentError: `~` with a model on the right-hand side of an observe statement is not supported
-[...]
-```
-"""
-to_submodel(model::Model, auto_prefix::Bool=true) =
-    to_sampleable(returned(model), auto_prefix)

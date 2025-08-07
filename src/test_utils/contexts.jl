@@ -3,34 +3,6 @@
 #
 # Utilities for testing contexts.
 
-"""
-Context that multiplies each log-prior by mod
-used to test whether varwise_logpriors respects child-context.
-"""
-struct TestLogModifyingChildContext{T,Ctx} <: DynamicPPL.AbstractContext
-    mod::T
-    context::Ctx
-end
-function TestLogModifyingChildContext(
-    mod=1.2, context::DynamicPPL.AbstractContext=DynamicPPL.DefaultContext()
-)
-    return TestLogModifyingChildContext{typeof(mod),typeof(context)}(mod, context)
-end
-
-DynamicPPL.NodeTrait(::TestLogModifyingChildContext) = DynamicPPL.IsParent()
-DynamicPPL.childcontext(context::TestLogModifyingChildContext) = context.context
-function DynamicPPL.setchildcontext(context::TestLogModifyingChildContext, child)
-    return TestLogModifyingChildContext(context.mod, child)
-end
-function DynamicPPL.tilde_assume(context::TestLogModifyingChildContext, right, vn, vi)
-    value, logp, vi = DynamicPPL.tilde_assume(context.context, right, vn, vi)
-    return value, logp * context.mod, vi
-end
-function DynamicPPL.tilde_observe(context::TestLogModifyingChildContext, right, left, vi)
-    logp, vi = DynamicPPL.tilde_observe(context.context, right, left, vi)
-    return logp * context.mod, vi
-end
-
 # Dummy context to test nested behaviors.
 struct TestParentContext{C<:DynamicPPL.AbstractContext} <: DynamicPPL.AbstractContext
     context::C
@@ -61,7 +33,7 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
 
     # To see change, let's make sure we're using a different leaf context than the current.
     leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
-        PriorContext()
+        DynamicPPL.DynamicTransformationContext{false}()
     else
         DefaultContext()
     end
@@ -91,10 +63,12 @@ function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Mod
     # TODO(torfjelde): Make the `varinfo` used for testing a kwarg once it makes sense for other varinfos.
     # Untyped varinfo.
     varinfo_untyped = DynamicPPL.VarInfo()
-    @test (DynamicPPL.evaluate!!(model, varinfo_untyped, SamplingContext(context)); true)
-    @test (DynamicPPL.evaluate!!(model, varinfo_untyped, context); true)
+    model_with_spl = contextualize(model, SamplingContext(context))
+    model_without_spl = contextualize(model, context)
+    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_untyped) isa Any
+    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_untyped) isa Any
     # Typed varinfo.
     varinfo_typed = DynamicPPL.typed_varinfo(varinfo_untyped)
-    @test (DynamicPPL.evaluate!!(model, varinfo_typed, SamplingContext(context)); true)
-    @test (DynamicPPL.evaluate!!(model, varinfo_typed, context); true)
+    @test DynamicPPL.evaluate!!(model_with_spl, varinfo_typed) isa Any
+    @test DynamicPPL.evaluate!!(model_without_spl, varinfo_typed) isa Any
 end
