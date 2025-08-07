@@ -10,7 +10,9 @@ end
 
 accumulator_name(::PriorDistributionAccumulator) = :PriorDistributionAccumulator
 
-split(acc::PriorDistributionAccumulator) = PriorDistributionAccumulator(empty(acc.priors))
+_zero(acc::PriorDistributionAccumulator) = PriorDistributionAccumulator(empty(acc.priors))
+reset(acc::PriorDistributionAccumulator) = _zero(acc)
+split(acc::PriorDistributionAccumulator) = _zero(acc)
 function combine(acc1::PriorDistributionAccumulator, acc2::PriorDistributionAccumulator)
     return PriorDistributionAccumulator(merge(acc1.priors, acc2.priors))
 end

@@ -331,6 +331,15 @@ function map_accumulators!!(func::Function, vi::AbstractVarInfo)
 end
 
 """
+    resetaccs!!(vi::AbstractVarInfo)
+
+Reset the values of all accumulators, using [`reset`](@ref).
+"""
+function resetaccs!!(vi::AbstractVarInfo)
+    return setaccs!!(vi, map(reset, getaccs(vi)))
+end
+
+"""
     map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) where {accname}
 
 Update the accumulator `accname` of `vi` by calling `func` on it and replacing it with the
@@ -423,24 +432,6 @@ function acclogp!!(vi::AbstractVarInfo, logp::Number)
     return accloglikelihood!!(vi, logp)
 end
 
-"""
-    resetlogp!!(vi::AbstractVarInfo)
-
-Reset the values of the log probabilities (prior and likelihood) in `vi` to zero.
-"""
-function resetlogp!!(vi::AbstractVarInfo)
-    if hasacc(vi, Val(:LogPrior))
-        vi = map_accumulator!!(zero, vi, Val(:LogPrior))
-    end
-    if hasacc(vi, Val(:LogJacobian))
-        vi = map_accumulator!!(zero, vi, Val(:LogJacobian))
-    end
-    if hasacc(vi, Val(:LogLikelihood))
-        vi = map_accumulator!!(zero, vi, Val(:LogLikelihood))
-    end
-    return vi
-end
-
 # Variables and their realizations.
 @doc """
     keys(vi::AbstractVarInfo)
@@ -491,7 +482,7 @@ function getindex_internal end
 @doc """
     empty!!(vi::AbstractVarInfo)
 
-Empty `vi` of variables and reset any `logp` accumulators zeros.
+Empty `vi` of variables and reset all accumulators.
 
 This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. `SMC`.
 """ BangBang.empty!!

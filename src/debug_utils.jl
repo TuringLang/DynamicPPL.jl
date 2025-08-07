@@ -156,11 +156,13 @@ end
 const _DEBUG_ACC_NAME = :Debug
 DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME
 
-function split(acc::DebugAccumulator)
+function _zero(acc::DebugAccumulator)
     return DebugAccumulator(
         OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure
     )
 end
+reset(acc::DebugAccumulator) = _zero(acc)
+split(acc::DebugAccumulator) = _zero(acc)
 function combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
     return DebugAccumulator(
         merge(acc1.varnames_seen, acc2.varnames_seen),

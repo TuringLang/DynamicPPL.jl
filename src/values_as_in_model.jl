@@ -26,9 +26,11 @@ end
 
 accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
 
-function split(acc::ValuesAsInModelAccumulator)
+function _zero(acc::ValuesAsInModelAccumulator)
     return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
 end
+reset(acc::ValuesAsInModelAccumulator) = _zero(acc)
+split(acc::ValuesAsInModelAccumulator) = _zero(acc)
 function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
     if acc1.include_colon_eq != acc2.include_colon_eq
         msg = "Cannot combine accumulators with different include_colon_eq values."

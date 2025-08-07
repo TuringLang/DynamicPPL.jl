@@ -171,27 +171,13 @@ end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
-    return resetlogp!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
+    return resetaccs!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
 end
 
-function resetlogp!!(vi::ThreadSafeVarInfo)
-    vi = Accessors.@set vi.varinfo = resetlogp!!(vi.varinfo)
+function resetaccs!!(vi::ThreadSafeVarInfo)
+    vi = Accessors.@set vi.varinfo = resetaccs!!(vi.varinfo)
     for i in eachindex(vi.accs_by_thread)
-        if hasacc(vi, Val(:LogPrior))
-            vi.accs_by_thread[i] = map_accumulator(
-                zero, vi.accs_by_thread[i], Val(:LogPrior)
-            )
-        end
-        if hasacc(vi, Val(:LogJacobian))
-            vi.accs_by_thread[i] = map_accumulator(
-                zero, vi.accs_by_thread[i], Val(:LogJacobian)
-            )
-        end
-        if hasacc(vi, Val(:LogLikelihood))
-            vi.accs_by_thread[i] = map_accumulator(
-                zero, vi.accs_by_thread[i], Val(:LogLikelihood)
-            )
-        end
+        vi.accs_by_thread[i] = map(reset, vi.accs_by_thread[i])
     end
     return vi
 end

@@ -56,10 +56,11 @@ function accumulator_name(
     return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
 end
 
-function split(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
+function _zero(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
     return PointwiseLogProbAccumulator{whichlogprob}(empty(acc.logps))
 end
-
+reset(acc::PointwiseLogProbAccumulator) = _zero(acc)
+split(acc::PointwiseLogProbAccumulator) = _zero(acc)
 function combine(
     acc::PointwiseLogProbAccumulator{whichlogprob},
     acc2::PointwiseLogProbAccumulator{whichlogprob},

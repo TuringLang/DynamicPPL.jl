@@ -13,6 +13,7 @@ An accumulator type `T <: AbstractAccumulator` must implement the following meth
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
 - `accumulate_observe!!(acc::T, dist, val, vn)`
 - `accumulate_assume!!(acc::T, val, logjac, vn, dist)`
+- `reset(acc::T)`
 - `Base.copy(acc::T)`
 
 In these functions:
@@ -50,9 +51,7 @@ accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
 
 Update `acc` in a `tilde_observe!!` call. Returns the updated `acc`.
 
-`vn` is the name of the variable being observed, `left` is the value of the variable, and
-`right` is the distribution on the RHS of the tilde statement. `vn` is `nothing` in the case
-of literal observations like `0.0 ~ Normal()`.
+See [`AbstractAccumulator`](@ref) for the meaning of the arguments.
 
 `accumulate_observe!!` may mutate `acc`, but not any of the other arguments.
 
@@ -65,11 +64,7 @@ function accumulate_observe!! end
 
 Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 
-`vn` is the name of the variable being assumed, `val` is the value of the variable (in the
-original, unlinked space), and `right` is the distribution on the RHS of the tilde
-statement. `logjac` is the log determinant of the Jacobian of the transformation that was
-done to convert the value of `vn` as it was given to `val`: for example, if the sampler is
-operating in linked (Euclidean) space, then logjac will be nonzero.
+See [`AbstractAccumulator`](@ref) for the meaning of the arguments.
 
 `accumulate_assume!!` may mutate `acc`, but not any of the other arguments.
 
@@ -78,13 +73,36 @@ See also: [`accumulate_observe!!`](@ref)
 function accumulate_assume!! end
 
 """
+    reset(acc::AbstractAccumulator)
+
+Return a new accumulator like `acc`, but with its contents reset to the state that they
+should be at the beginning of model evaluation.
+
+Note that this may in general have very similar behaviour to [`split`](@ref), and may share
+the same implementation, but the difference is that `split` may in principle happen at any
+stage during model evaluation, whereas `reset` is only called at the beginning of model
+evaluation.
+"""
+function reset end
+
+@doc """
+    Base.copy(acc::AbstractAccumulator)
+
+Create a new accumulator that is a copy of `acc`, without aliasing (i.e., this should
+behave conceptually like a `deepcopy`).
+""" Base.copy
+
+"""
     split(acc::AbstractAccumulator)
 
-Return a new accumulator like `acc` but empty.
+Return a new accumulator like `acc` suitable for use in a forked thread.
 
-The precise meaning of "empty" is that that the returned value should be such that
-`combine(acc, split(acc))` is equal to `acc`. This is used in the context of multi-threading
-where different threads may accumulate independently and the results are then combined.
+The returned value should be such that `combine(acc, split(acc))` is equal to `acc`. This is
+used in the context of multi-threading where different threads may accumulate independently
+and the results are then combined.
+
+Note that this may in general have very similar behaviour to [`reset`](@ref), but is
+semantically different. See [`reset`](@ref) for more details.
 
 See also: [`combine`](@ref)
 """
