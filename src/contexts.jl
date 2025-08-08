@@ -47,7 +47,7 @@ effectively updating the child context.
 ```jldoctest
 julia> using DynamicPPL: DynamicTransformationContext
 
-julia> ctx = SamplingContext();
+julia> ctx = ConditionContext((; a = 1));
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
@@ -122,73 +122,6 @@ setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
 
 # Contexts
 """
-    SamplingContext(
-            [rng::Random.AbstractRNG=Random.default_rng()],
-            [sampler::AbstractSampler=SampleFromPrior()],
-            [context::AbstractContext=DefaultContext()],
-    )
-
-Create a context that allows you to sample parameters with the `sampler` when running the model.
-The `context` determines how the returned log density is computed when running the model.
-
-See also: [`DefaultContext`](@ref)
-"""
-struct SamplingContext{S<:AbstractSampler,C<:AbstractContext,R} <: AbstractContext
-    rng::R
-    sampler::S
-    context::C
-end
-
-function SamplingContext(
-    rng::Random.AbstractRNG=Random.default_rng(), sampler::AbstractSampler=SampleFromPrior()
-)
-    return SamplingContext(rng, sampler, DefaultContext())
-end
-
-function SamplingContext(
-    sampler::AbstractSampler, context::AbstractContext=DefaultContext()
-)
-    return SamplingContext(Random.default_rng(), sampler, context)
-end
-
-function SamplingContext(rng::Random.AbstractRNG, context::AbstractContext)
-    return SamplingContext(rng, SampleFromPrior(), context)
-end
-
-function SamplingContext(context::AbstractContext)
-    return SamplingContext(Random.default_rng(), SampleFromPrior(), context)
-end
-
-NodeTrait(context::SamplingContext) = IsParent()
-childcontext(context::SamplingContext) = context.context
-function setchildcontext(parent::SamplingContext, child)
-    return SamplingContext(parent.rng, parent.sampler, child)
-end
-
-"""
-    hassampler(context)
-
-Return `true` if `context` has a sampler.
-"""
-hassampler(::SamplingContext) = true
-hassampler(context::AbstractContext) = hassampler(NodeTrait(context), context)
-hassampler(::IsLeaf, context::AbstractContext) = false
-hassampler(::IsParent, context::AbstractContext) = hassampler(childcontext(context))
-
-"""
-    getsampler(context)
-
-Return the sampler of the context `context`.
-
-This will traverse the context tree until it reaches the first [`SamplingContext`](@ref),
-at which point it will return the sampler of that context.
-"""
-getsampler(context::SamplingContext) = context.sampler
-getsampler(context::AbstractContext) = getsampler(NodeTrait(context), context)
-getsampler(::IsParent, context::AbstractContext) = getsampler(childcontext(context))
-getsampler(::IsLeaf, ::AbstractContext) = error("No sampler found in context")
-
-"""
     struct DefaultContext <: AbstractContext end
 
 The `DefaultContext` is used by default to accumulate values like the log joint probability
@@ -252,7 +185,7 @@ PrefixContexts removed.
 
 NOTE: This does _not_ modify any variables in any `ConditionContext` and
 `FixedContext` that may be present in the context stack. This is because this
-function is only used in `tilde_assume`, which is lower in the tilde-pipeline
+function is only used in `tilde_assume!!`, which is lower in the tilde-pipeline
 than `contextual_isassumption` and `contextual_isfixed` (the functions which
 actually use the `ConditionContext` and `FixedContext` values). Thus, by this
 time, any `ConditionContext`s and `FixedContext`s present have already served
