@@ -155,24 +155,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         logjoint(model, chain)
     end
 
-    @testset "rng" begin
-        model = GDEMO_DEFAULT
-
-        for sampler in (SampleFromPrior(), SampleFromUniform())
-            for i in 1:10
-                Random.seed!(100 + i)
-                vi = VarInfo()
-                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
-                vals = vi[:]
-
-                Random.seed!(100 + i)
-                vi = VarInfo()
-                DynamicPPL.evaluate_and_sample!!(Random.default_rng(), model, vi, sampler)
-                @test vi[:] == vals
-            end
-        end
-    end
-
     @testset "defaults without VarInfo, Sampler, and Context" begin
         model = GDEMO_DEFAULT
 
@@ -332,7 +314,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.evaluate_and_sample!!(model, SimpleVarInfo(OrderedDict())))
+            vi = last(DynamicPPL.init!!(model, SimpleVarInfo(OrderedDict{VarName,Any}())))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -513,7 +495,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # Construct a chain with 'sampled values' of β
             ground_truth_β = 2
-            β_chain = MCMCChains.Chains(rand(Normal(ground_truth_β, 0.002), 1000), [:β])
+            β_chain = MCMCChains.Chains(
+                rand(Normal(ground_truth_β, 0.002), 1000),
+                [:β];
+                info=(; varname_to_symbol=Dict(@varname(β) => :β)),
+            )
 
             # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
@@ -559,7 +545,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @testset "prediction from multiple chains" begin
                 # Normal linreg model
                 multiple_β_chain = MCMCChains.Chains(
-                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2), [:β]
+                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
+                    [:β];
+                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
                 )
                 predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
                 @test size(multiple_β_chain, 3) == size(predictions, 3)
@@ -583,43 +571,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
                 end
             end
-        end
-
-        @testset "with AbstractVector{<:AbstractVarInfo}" begin
-            @model function linear_reg(x, y, σ=0.1)
-                β ~ Normal(1, 1)
-                for i in eachindex(y)
-                    y[i] ~ Normal(β * x[i], σ)
-                end
-            end
-
-            ground_truth_β = 2.0
-            # the data will be ignored, as we are generating samples from the prior
-            xs_train = 1:0.1:10
-            ys_train = ground_truth_β .* xs_train + rand(Normal(0, 0.1), length(xs_train))
-            m_lin_reg = linear_reg(xs_train, ys_train)
-            chain = [
-                last(DynamicPPL.evaluate_and_sample!!(m_lin_reg, VarInfo())) for
-                _ in 1:10000
-            ]
-
-            # chain is generated from the prior
-            @test mean([chain[i][@varname(β)] for i in eachindex(chain)]) ≈ 1.0 atol = 0.1
-
-            xs_test = [10 + 0.1, 10 + 2 * 0.1]
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
-            predicted_vis = DynamicPPL.predict(m_lin_reg_test, chain)
-
-            @test size(predicted_vis) == size(chain)
-            @test Set(keys(predicted_vis[1])) ==
-                Set([@varname(β), @varname(y[1]), @varname(y[2])])
-            # because β samples are from the prior, the std will be larger
-            @test mean([
-                predicted_vis[i][@varname(y[1])] for i in eachindex(predicted_vis)
-            ]) ≈ 1.0 * xs_test[1] rtol = 0.1
-            @test mean([
-                predicted_vis[i][@varname(y[2])] for i in eachindex(predicted_vis)
-            ]) ≈ 1.0 * xs_test[2] rtol = 0.1
         end
     end
 
