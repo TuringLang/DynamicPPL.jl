@@ -923,6 +923,9 @@ end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 
+# TODO(penelopeysm) fix
+maybe_deepcopy(x) = deepcopy(x)
+
 """
     make_evaluate_args_and_kwargs(model, varinfo)
 
@@ -933,9 +936,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :(deepcopy(model.args.$var)...)
+            :($(maybe_deepcopy)(model.args.$var)...)
         else
-            :(deepcopy(model.args.$var))
+            :($(maybe_deepcopy)(model.args.$var))
         end for var in argnames
     ]
     return quote
