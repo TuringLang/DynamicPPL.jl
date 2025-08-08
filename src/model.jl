@@ -884,7 +884,7 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 See also: [`evaluate_threadsafe!!`](@ref)
 """
 function evaluate_threadunsafe!!(model, varinfo)
-    return _evaluate!!(model, resetlogp!!(varinfo))
+    return _evaluate!!(model, resetaccs!!(varinfo))
 end
 
 """
@@ -899,7 +899,7 @@ This method is not exposed and supposed to be used only internally in DynamicPPL
 See also: [`evaluate_threadunsafe!!`](@ref)
 """
 function evaluate_threadsafe!!(model, varinfo)
-    wrapper = ThreadSafeVarInfo(resetlogp!!(varinfo))
+    wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
     result, wrapper_new = _evaluate!!(model, wrapper)
     # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
     # will return the underlying VI, which is a bit counterintuitive (because

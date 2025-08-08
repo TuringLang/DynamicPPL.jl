@@ -380,7 +380,6 @@ acclogprior!!
 getloglikelihood
 setloglikelihood!!
 accloglikelihood!!
-resetlogp!!
 ```
 
 #### Variables and their realizations

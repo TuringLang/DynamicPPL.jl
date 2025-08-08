@@ -25,7 +25,7 @@
         @test getlogjoint(vi) == lp
         @test getlogjoint(threadsafe_vi) == lp + 42
 
-        threadsafe_vi = resetlogp!!(threadsafe_vi)
+        threadsafe_vi = DynamicPPL.resetaccs!!(threadsafe_vi)
         @test iszero(getlogjoint(threadsafe_vi))
         expected_accs = DynamicPPL.AccumulatorTuple(
             (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(threadsafe_vi.varinfo))...

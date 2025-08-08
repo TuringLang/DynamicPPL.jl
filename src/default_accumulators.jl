@@ -47,8 +47,9 @@ end
 
 Base.hash(acc::T, h::UInt) where {T<:LogProbAccumulator} = hash((T, logp(acc)), h)
 
-split(::AccType) where {T,AccType<:LogProbAccumulator{T}} = AccType(zero(T))
-
+_zero(::Tacc) where {Tlogp,Tacc<:LogProbAccumulator{Tlogp}} = Tacc(zero(Tlogp))
+reset(acc::LogProbAccumulator) = _zero(acc)
+split(acc::LogProbAccumulator) = _zero(acc)
 function combine(acc::LogProbAccumulator, acc2::LogProbAccumulator)
     if basetypeof(acc) !== basetypeof(acc2)
         msg = "Cannot combine accumulators of different types: $(basetypeof(acc)) and $(basetypeof(acc2))"
@@ -58,8 +59,6 @@ function combine(acc::LogProbAccumulator, acc2::LogProbAccumulator)
 end
 
 acclogp(acc::LogProbAccumulator, val) = basetypeof(acc)(logp(acc) + val)
-
-Base.zero(acc::T) where {T<:LogProbAccumulator} = T(zero(logp(acc)))
 
 function Base.convert(
     ::Type{AccType}, acc::LogProbAccumulator

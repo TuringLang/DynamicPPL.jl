@@ -883,7 +883,7 @@ end
 
 function BangBang.empty!!(vi::VarInfo)
     _empty!(vi.metadata)
-    vi = resetlogp!!(vi)
+    vi = resetaccs!!(vi)
     return vi
 end
 

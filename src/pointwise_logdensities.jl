@@ -32,6 +32,12 @@ function PointwiseLogProbAccumulator{whichlogprob,KeyType}() where {whichlogprob
     return PointwiseLogProbAccumulator{whichlogprob,KeyType,typeof(logps)}(logps)
 end
 
+function Base.:(==)(
+    acc1::PointwiseLogProbAccumulator{wlp1}, acc2::PointwiseLogProbAccumulator{wlp2}
+) where {wlp1,wlp2}
+    return (wlp1 == wlp2 && acc1.logps == acc2.logps)
+end
+
 function Base.copy(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
     return PointwiseLogProbAccumulator{whichlogprob}(copy(acc.logps))
 end
@@ -56,10 +62,11 @@ function accumulator_name(
     return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
 end
 
-function split(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
+function _zero(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
     return PointwiseLogProbAccumulator{whichlogprob}(empty(acc.logps))
 end
-
+reset(acc::PointwiseLogProbAccumulator) = _zero(acc)
+split(acc::PointwiseLogProbAccumulator) = _zero(acc)
 function combine(
     acc::PointwiseLogProbAccumulator{whichlogprob},
     acc2::PointwiseLogProbAccumulator{whichlogprob},
@@ -223,23 +230,37 @@ function pointwise_logdensities(
     # Get the data by executing the model once
     vi = VarInfo(model)
 
+    # This accumulator tracks the pointwise log-probabilities in a single iteration.
     AccType = PointwiseLogProbAccumulator{whichlogprob,KeyType}
     vi = setaccs!!(vi, (AccType(),))
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+
+    # Maintain a separate accumulator that isn't tied to a VarInfo but rather
+    # tracks _all_ iterations.
+    all_logps = AccType()
     for (sample_idx, chain_idx) in iters
         # Update the values
         setval!(vi, chain, sample_idx, chain_idx)
 
         # Execute model
         vi = last(evaluate!!(model, vi))
+
+        # Get the log-probabilities
+        this_iter_logps = getacc(vi, Val(accumulator_name(AccType))).logps
+
+        # Merge into main acc
+        for (varname, this_lp) in this_iter_logps
+            # Because `this_lp` is obtained from one model execution, it should only
+            # contain one variable, hence `only()`.
+            push!(all_logps, varname, only(this_lp))
+        end
     end
 
-    logps = getacc(vi, Val(accumulator_name(AccType))).logps
     niters = size(chain, 1)
     nchains = size(chain, 3)
     logdensities = OrderedDict(
-        varname => reshape(vals, niters, nchains) for (varname, vals) in logps
+        varname => reshape(vals, niters, nchains) for (varname, vals) in all_logps.logps
     )
     return logdensities
 end
