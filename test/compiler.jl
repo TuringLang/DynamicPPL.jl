@@ -1,3 +1,8 @@
+module DynamicPPLCompilerTests
+
+using DynamicPPL, Distributions, Random, Test
+using LinearAlgebra: I
+
 macro custom(expr)
     (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
     quote
@@ -661,20 +666,6 @@ module Issue537 end
         @test demo_ret_with_ret()() === Val(1)
     end
 
-    @testset "issue #368: hasmissing dispatch" begin
-        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
-
-        # (nested) arrays with `Missing` eltypes
-        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
-        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
-        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
-
-        # no `Missing`
-        @test !DynamicPPL.hasmissing(Vector{Float64})
-        @test !DynamicPPL.hasmissing(Matrix{Real})
-        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
-    end
-
     @testset "issue #393: anonymous argument with type parameter" begin
         @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
         @test f_393()() == 1
@@ -794,3 +785,5 @@ module Issue537 end
         @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
     end
 end
+
+end # module DynamicPPLCompilerTests
