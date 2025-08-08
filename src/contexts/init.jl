@@ -135,7 +135,7 @@ end
 NodeTrait(::InitContext) = IsLeaf()
 
 function tilde_assume!!(
-    ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
+    ctx::InitContext, prefix, dist::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     in_varinfo = haskey(vi, vn)
     # `init()` always returns values in original space, i.e. possibly
