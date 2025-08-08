@@ -109,6 +109,12 @@ export AbstractVarInfo,
     ConditionContext,
     assume,
     tilde_assume,
+    # Initialisation
+    InitContext,
+    AbstractInitStrategy,
+    PriorInit,
+    UniformInit,
+    ParamsInit,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -170,11 +176,12 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 # Necessary forward declarations
 include("utils.jl")
 include("chains.jl")
+include("contexts.jl")
+include("contexts/init.jl")
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
-include("contexts.jl")
 include("submodel.jl")
 include("varnamedvector.jl")
 include("accumulators.jl")
