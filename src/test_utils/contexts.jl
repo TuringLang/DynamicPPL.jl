@@ -25,16 +25,13 @@ This method ensures that `context`
 - Correctly implements the tilde-pipeline.
 """
 function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
-    # `NodeTrait`.
     node_trait = DynamicPPL.NodeTrait(context)
-    # Throw error immediately if it it's missing a `NodeTrait` implementation.
-    node_trait isa Union{DynamicPPL.IsLeaf,DynamicPPL.IsParent} ||
-        error("Invalid NodeTrait: $node_trait")
-
     if node_trait isa DynamicPPL.IsLeaf
         test_leaf_context(context, model)
-    else
+    elseif node_trait isa DynamicPPL.IsParent
         test_parent_context(context, model)
+    else
+        error("Invalid NodeTrait: $node_trait")
     end
 end
 
