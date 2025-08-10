@@ -156,12 +156,22 @@ end
 const _DEBUG_ACC_NAME = :Debug
 DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME
 
-function split(acc::DebugAccumulator)
+function Base.:(==)(acc1::DebugAccumulator, acc2::DebugAccumulator)
+    return (
+        acc1.varnames_seen == acc2.varnames_seen &&
+        acc1.statements == acc2.statements &&
+        acc1.error_on_failure == acc2.error_on_failure
+    )
+end
+
+function _zero(acc::DebugAccumulator)
     return DebugAccumulator(
         OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure
     )
 end
-function combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
+DynamicPPL.reset(acc::DebugAccumulator) = _zero(acc)
+DynamicPPL.split(acc::DebugAccumulator) = _zero(acc)
+function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
     return DebugAccumulator(
         merge(acc1.varnames_seen, acc2.varnames_seen),
         vcat(acc1.statements, acc2.statements),
@@ -416,7 +426,7 @@ function check_model_and_trace(
     issuccess = check_model_pre_evaluation(model)
 
     # Force single-threaded execution.
-    DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
+    _, varinfo = DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
 
     # Perform checks after evaluating the model.
     debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))

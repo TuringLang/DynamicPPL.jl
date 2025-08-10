@@ -74,7 +74,13 @@ function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::I
         vals = DynamicPPL.values_as(t, OrderedDict)
         iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
         tuples = mapreduce(collect, vcat, iters)
-        push!(varnames, map(first, tuples)...)
+        # The following loop is a replacement for:
+        #     push!(varnames, map(first, tuples)...)
+        # which causes a stack overflow if `map(first, tuples)` is too large.
+        # Unfortunately there isn't a union() function for OrderedSet.
+        for vn in map(first, tuples)
+            push!(varnames, vn)
+        end
         OrderedDict(tuples)
     end
     # Convert back to list

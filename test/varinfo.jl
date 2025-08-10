@@ -112,7 +112,7 @@ end
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
-    @testset "get/set/acc/resetlogp" begin
+    @testset "get/set/acclogp" begin
         function test_varinfo_logp!(vi)
             @test DynamicPPL.getlogjoint(vi) === 0.0
             vi = DynamicPPL.setlogprior!!(vi, 1.0)
@@ -131,8 +131,6 @@ end
             @test DynamicPPL.getlogprior(vi) === 2.0
             @test DynamicPPL.getloglikelihood(vi) === 2.0
             @test DynamicPPL.getlogjoint(vi) === 4.0
-            vi = DynamicPPL.resetlogp!!(vi)
-            @test DynamicPPL.getlogjoint(vi) === 0.0
         end
 
         vi = VarInfo()
@@ -143,7 +141,7 @@ end
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
-    @testset "accumulators" begin
+    @testset "logp accumulators" begin
         @model function demo()
             a ~ Normal()
             b ~ Normal()
@@ -225,6 +223,71 @@ end
         @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
         @test_throws r"has no field `?LogPrior" getlogp(vi)
         @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+    end
+
+    @testset "resetaccs" begin
+        # Put in a bunch of accumulators, check that they're all reset either
+        # when we call resetaccs!!, empty!!, or evaluate!!.
+        @model function demo()
+            a ~ Normal()
+            return x ~ Normal(a)
+        end
+        model = demo()
+        vi_orig = VarInfo(model)
+        # It already has the logp accumulators, so let's add in some more.
+        vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.DebugUtils.DebugAccumulator(true))
+        vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.ValuesAsInModelAccumulator(true))
+        vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.PriorDistributionAccumulator())
+        vi_orig = DynamicPPL.setacc!!(
+            vi_orig, DynamicPPL.PointwiseLogProbAccumulator{:both}()
+        )
+        # And evaluate the model once so that they are populated.
+        _, vi_orig = DynamicPPL.evaluate!!(model, vi_orig)
+
+        function all_accs_empty(vi::AbstractVarInfo)
+            for acc_key in keys(DynamicPPL.getaccs(vi))
+                acc = DynamicPPL.getacc(vi, Val(acc_key))
+                acc == DynamicPPL.reset(acc) || return false
+            end
+            return true
+        end
+
+        @test !all_accs_empty(vi_orig)
+
+        vi = DynamicPPL.resetaccs!!(deepcopy(vi_orig))
+        @test all_accs_empty(vi)
+        @test getlogjoint(vi) == 0.0 # for good measure
+        @test getlogprior(vi) == 0.0
+        @test getloglikelihood(vi) == 0.0
+
+        vi = DynamicPPL.empty!!(deepcopy(vi_orig))
+        @test all_accs_empty(vi)
+        @test getlogjoint(vi) == 0.0
+        @test getlogprior(vi) == 0.0
+        @test getloglikelihood(vi) == 0.0
+
+        function all_accs_same(vi1::AbstractVarInfo, vi2::AbstractVarInfo)
+            # Check that they have the same accs
+            keys1 = Set(keys(DynamicPPL.getaccs(vi1)))
+            keys2 = Set(keys(DynamicPPL.getaccs(vi2)))
+            keys1 == keys2 || return false
+            # Check that they have the same values
+            for acc_key in keys1
+                acc1 = DynamicPPL.getacc(vi1, Val(acc_key))
+                acc2 = DynamicPPL.getacc(vi2, Val(acc_key))
+                if acc1 != acc2
+                    @show acc1, acc2
+                end
+                acc1 == acc2 || return false
+            end
+            return true
+        end
+        # Hopefully this doesn't matter
+        @test all_accs_same(vi_orig, deepcopy(vi_orig))
+        # If we re-evaluate, then we expect the accs to be reset prior to evaluation.
+        # Thus after re-evaluation, the accs should be exactly the same as before.
+        _, vi = DynamicPPL.evaluate!!(model, deepcopy(vi_orig))
+        @test all_accs_same(vi, vi_orig)
     end
 
     @testset "flags" begin
