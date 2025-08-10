@@ -485,7 +485,7 @@ and checking if the model is consistent across runs.
 function has_static_constraints(
     rng::Random.AbstractRNG, model::Model; num_evals::Int=5, error_on_failure::Bool=false
 )
-    new_model = DynamicPPL.contextualize(model, SamplingContext(rng, SampleFromPrior()))
+    new_model = DynamicPPL.contextualize(model, InitContext(rng))
     results = map(1:num_evals) do _
         check_model_and_trace(new_model, VarInfo(); error_on_failure=error_on_failure)
     end
