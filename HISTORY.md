@@ -25,8 +25,13 @@ Please see the API documentation for more details.
 
 There is now also an `rng` keyword argument to help seed parameter generation.
 
-Finally, instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
+Instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
 Their semantics are the same as in Julia's `isapprox`; two values are equal if they satisfy either `atol` or `rtol`.
+
+Finally, the `ADResult` object returned by `run_ad` now has both `grad_time` and `primal_time` fields, which contain (respectively) the time it took to calculate the gradient of logp, and the time taken to calculate logp itself.
+Times are reported in seconds.
+Previously there was only a single `time_vs_primal` field which represented the ratio of these two.
+You can of course access the same quantity by dividing `grad_time` by `primal_time`.
 
 ### `DynamicPPL.TestUtils.check_model`
 
