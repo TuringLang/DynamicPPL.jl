@@ -449,6 +449,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             1.0 ~ Normal()
             return nothing
         end
+
         function test_generating_new_values(strategy::AbstractInitStrategy)
             @testset "generating new values: $(typeof(strategy))" begin
                 # Check that init!! can generate values that weren't there
@@ -469,6 +470,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 end
             end
         end
+
         function test_replacing_values(strategy::AbstractInitStrategy)
             @testset "replacing old values: $(typeof(strategy))" begin
                 # Check that init!! can overwrite values that were already there.
@@ -488,6 +490,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 end
             end
         end
+
         function test_rng_respected(strategy::AbstractInitStrategy)
             @testset "check that RNG is respected: $(typeof(strategy))" begin
                 model = test_init_model()
@@ -508,6 +511,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 end
             end
         end
+
         function test_link_status_respected(strategy::AbstractInitStrategy)
             @testset "check that varinfo linking is preserved: $(typeof(strategy))" begin
                 @model logn() = a ~ LogNormal()
