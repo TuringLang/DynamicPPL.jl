@@ -435,12 +435,15 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
     @testset "InitContext" begin
         empty_varinfos = [
-            VarInfo(),
-            DynamicPPL.typed_varinfo(VarInfo()),
-            VarInfo(DynamicPPL.VarNamedVector()),
-            DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
-            SimpleVarInfo(),
-            SimpleVarInfo(Dict{VarName,Any}()),
+            ("untyped+metadata", VarInfo()),
+            ("typed+metadata", DynamicPPL.typed_varinfo(VarInfo())),
+            ("untyped+VNV", VarInfo(DynamicPPL.VarNamedVector())),
+            (
+                "typed+VNV",
+                DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
+            ),
+            ("SVI+NamedTuple", SimpleVarInfo()),
+            ("Svi+Dict", SimpleVarInfo(Dict{VarName,Any}())),
         ]
 
         @model function test_init_model()
@@ -455,7 +458,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # Check that init!! can generate values that weren't there
                 # previously.
                 model = test_init_model()
-                for empty_vi in empty_varinfos
+                @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
                     this_vi = deepcopy(empty_vi)
                     _, vi = DynamicPPL.init!!(model, this_vi, strategy)
                     @test Set(keys(vi)) == Set([@varname(x), @varname(y)])
@@ -475,7 +478,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @testset "replacing old values: $(typeof(strategy))" begin
                 # Check that init!! can overwrite values that were already there.
                 model = test_init_model()
-                for empty_vi in empty_varinfos
+                @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
                     # start by generating some rubbish values
                     vi = deepcopy(empty_vi)
                     old_x, old_y = 100000.00, [300000.00, 500000.00]
@@ -494,7 +497,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         function test_rng_respected(strategy::AbstractInitStrategy)
             @testset "check that RNG is respected: $(typeof(strategy))" begin
                 model = test_init_model()
-                for empty_vi in empty_varinfos
+                @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
                     _, vi1 = DynamicPPL.init!!(
                         Xoshiro(468), model, deepcopy(empty_vi), strategy
                     )
@@ -613,29 +616,60 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             end
 
             @testset "given only partial parameters" begin
-                # In this case, we expect `ParamsInit` to use the value of x, and
-                # generate a new value for y.
                 my_x = 1.0
                 params_nt = (; x=my_x)
                 params_dict = Dict(@varname(x) => my_x)
                 model = test_init_model()
-                for empty_vi in empty_varinfos
-                    _, vi = DynamicPPL.init!!(
-                        Xoshiro(468), model, deepcopy(empty_vi), ParamsInit(params_nt)
-                    )
-                    @test vi[@varname(x)] == my_x
-                    nt_y = vi[@varname(y)]
-                    @test nt_y isa AbstractVector{<:Real}
-                    @test length(nt_y) == 2
-                    _, vi = DynamicPPL.init!!(
-                        Xoshiro(469), model, deepcopy(empty_vi), ParamsInit(params_dict)
-                    )
-                    @test vi[@varname(x)] == my_x
-                    dict_y = vi[@varname(y)]
-                    @test dict_y isa AbstractVector{<:Real}
-                    @test length(dict_y) == 2
-                    # the values should be different since we used different seeds
-                    @test dict_y != nt_y
+                @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
+                    @testset "with PriorInit fallback" begin
+                        _, vi = DynamicPPL.init!!(
+                            Xoshiro(468),
+                            model,
+                            deepcopy(empty_vi),
+                            ParamsInit(params_nt, PriorInit()),
+                        )
+                        @test vi[@varname(x)] == my_x
+                        nt_y = vi[@varname(y)]
+                        @test nt_y isa AbstractVector{<:Real}
+                        @test length(nt_y) == 2
+                        _, vi = DynamicPPL.init!!(
+                            Xoshiro(469),
+                            model,
+                            deepcopy(empty_vi),
+                            ParamsInit(params_dict, PriorInit()),
+                        )
+                        @test vi[@varname(x)] == my_x
+                        dict_y = vi[@varname(y)]
+                        @test dict_y isa AbstractVector{<:Real}
+                        @test length(dict_y) == 2
+                        # the values should be different since we used different seeds
+                        @test dict_y != nt_y
+                    end
+
+                    @testset "with no fallback" begin
+                        # These just don't have an entry for `y`.
+                        @test_throws ErrorException DynamicPPL.init!!(
+                            model, deepcopy(empty_vi), ParamsInit(params_nt, nothing)
+                        )
+                        @test_throws ErrorException DynamicPPL.init!!(
+                            model, deepcopy(empty_vi), ParamsInit(params_dict, nothing)
+                        )
+                        # We also explicitly test the case where `y = missing`.
+                        params_nt_missing = (; x=my_x, y=missing)
+                        params_dict_missing = Dict(
+                            @varname(x) => my_x, @varname(y) => missing
+                        )
+                        @test_throws ErrorException DynamicPPL.init!!(
+                            model,
+                            deepcopy(empty_vi),
+                            ParamsInit(params_nt_missing, nothing),
+                        )
+                        @test_throws ErrorException DynamicPPL.init!!(
+                            model,
+                            deepcopy(empty_vi),
+                            ParamsInit(params_dict_missing, nothing),
+                        )
+                    end
                 end
             end
         end
