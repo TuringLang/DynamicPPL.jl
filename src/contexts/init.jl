@@ -3,6 +3,9 @@
 
 Abstract type representing the possible ways of initialising new values for
 the random variables in a model (e.g., when creating a new VarInfo).
+
+Any subtype of `AbstractInitStrategy` must implement the
+[`DynamicPPL.init`](@ref) method.
 """
 abstract type AbstractInitStrategy end
 
@@ -11,8 +14,8 @@ abstract type AbstractInitStrategy end
 
 Generate a new value for a random variable with the given distribution.
 
-!!! warning "Values must be unlinked"
-    The values returned by `init` are always in the untransformed space, i.e.,
+!!! warning "Return values must be unlinked"
+    The values returned by `init` must always be in the untransformed space, i.e.,
     they must be within the support of the original distribution. That means that,
     for example, `init(rng, dist, u::UniformInit)` will in general return values that
     are outside the range [u.lower, u.upper].
