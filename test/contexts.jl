@@ -598,7 +598,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 params_nt = (; x=my_x, y=my_y)
                 params_dict = Dict(@varname(x) => my_x, @varname(y) => my_y)
                 model = test_init_model()
-                for empty_vi in empty_varinfos
+                @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
                     _, vi = DynamicPPL.init!!(
                         model, deepcopy(empty_vi), ParamsInit(params_nt)
                     )
