@@ -894,7 +894,7 @@ end
         [rng::Random.AbstractRNG,]
         model::Model,
         varinfo::AbstractVarInfo,
-        [init_strategy::AbstractInitStrategy=PriorInit()]
+        [init_strategy::AbstractInitStrategy=InitFromPrior()]
     )
 
 Evaluate the `model` and replace the values of the model's random variables in
@@ -902,7 +902,7 @@ the given `varinfo` with new values using a specified initialisation strategy.
 If the values in `varinfo` are not already present, they will be added using
 that same strategy.
 
-If `init_strategy` is not provided, defaults to PriorInit().
+If `init_strategy` is not provided, defaults to InitFromPrior().
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
@@ -910,14 +910,16 @@ function init!!(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo::AbstractVarInfo,
-    init_strategy::AbstractInitStrategy=PriorInit(),
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
     new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
     new_model = contextualize(model, new_context)
     return evaluate!!(new_model, varinfo)
 end
 function init!!(
-    model::Model, varinfo::AbstractVarInfo, init_strategy::AbstractInitStrategy=PriorInit()
+    model::Model,
+    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
     return init!!(Random.default_rng(), model, varinfo, init_strategy)
 end

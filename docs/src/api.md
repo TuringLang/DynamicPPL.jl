@@ -474,9 +474,9 @@ To accomplish this, an initialisation _strategy_ is required, which defines how 
 There are three concrete strategies provided in DynamicPPL:
 
 ```@docs
-PriorInit
-UniformInit
-ParamsInit
+InitFromPrior
+InitFromUniform
+InitFromParams
 ```
 
 If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.

@@ -17,22 +17,24 @@ Generate a new value for a random variable with the given distribution.
 !!! warning "Return values must be unlinked"
     The values returned by `init` must always be in the untransformed space, i.e.,
     they must be within the support of the original distribution. That means that,
-    for example, `init(rng, dist, u::UniformInit)` will in general return values that
+    for example, `init(rng, dist, u::InitFromUniform)` will in general return values that
     are outside the range [u.lower, u.upper].
 """
 function init end
 
 """
-    PriorInit()
+    InitFromPrior()
 
 Obtain new values by sampling from the prior distribution.
 """
-struct PriorInit <: AbstractInitStrategy end
-init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::PriorInit) = rand(rng, dist)
+struct InitFromPrior <: AbstractInitStrategy end
+function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
+    return rand(rng, dist)
+end
 
 """
-    UniformInit()
-    UniformInit(lower, upper)
+    InitFromUniform()
+    InitFromUniform(lower, upper)
 
 Obtain new values by first transforming the distribution of the random variable
 to unconstrained space, then sampling a value uniformly between `lower` and
@@ -47,17 +49,17 @@ Requires that `lower <= upper`.
 
 [Stan reference manual page on initialization](https://mc-stan.org/docs/reference-manual/execution.html#initialization)
 """
-struct UniformInit{T<:AbstractFloat} <: AbstractInitStrategy
+struct InitFromUniform{T<:AbstractFloat} <: AbstractInitStrategy
     lower::T
     upper::T
-    function UniformInit(lower::T, upper::T) where {T<:AbstractFloat}
+    function InitFromUniform(lower::T, upper::T) where {T<:AbstractFloat}
         lower > upper &&
             throw(ArgumentError("`lower` must be less than or equal to `upper`"))
         return new{T}(lower, upper)
     end
-    UniformInit() = UniformInit(-2.0, 2.0)
+    InitFromUniform() = InitFromUniform(-2.0, 2.0)
 end
-function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::UniformInit)
+function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFromUniform)
     b = Bijectors.bijector(dist)
     sz = Bijectors.output_size(b, size(dist))
     y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
@@ -71,9 +73,9 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::Uniform
 end
 
 """
-    ParamsInit(
+    InitFromParams(
         params::Union{AbstractDict{<:VarName},NamedTuple},
-        fallback::Union{AbstractInitStrategy,Nothing}=PriorInit()
+        fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
     )
 
 Obtain new values by extracting them from the given dictionary or NamedTuple.
@@ -82,28 +84,30 @@ The parameter `fallback` specifies how new values are to be obtained if they
 cannot be found in `params`, or they are specified as `missing`. `fallback`
 can either be an initialisation strategy itself, in which case it will be
 used to obtain new values, or it can be `nothing`, in which case an error
-will be thrown. The default for `fallback` is `PriorInit()`.
+will be thrown. The default for `fallback` is `InitFromPrior()`.
 
 !!! note
     The values in `params` must be provided in the space of the untransformed
-distribution.
+    distribution.
 """
-struct ParamsInit{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
+struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
     params::P
     fallback::S
-    function ParamsInit(
+    function InitFromParams(
         params::AbstractDict{<:VarName}, fallback::Union{AbstractInitStrategy,Nothing}
     )
         return new{typeof(params),typeof(fallback)}(params, fallback)
     end
-    ParamsInit(params::AbstractDict{<:VarName}) = ParamsInit(params, PriorInit())
-    function ParamsInit(
-        params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing}=PriorInit()
+    function InitFromParams(params::AbstractDict{<:VarName})
+        return InitFromParams(params, InitFromPrior())
+    end
+    function InitFromParams(
+        params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
     )
-        return ParamsInit(to_varname_dict(params), fallback)
+        return InitFromParams(to_varname_dict(params), fallback)
     end
 end
-function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::ParamsInit)
+function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams)
     # TODO(penelopeysm): It would be nice to do a check to make sure that all
     # of the parameters in `p.params` were actually used, and either warn or
     # error if they aren't. This is actually quite non-trivial though because
@@ -128,7 +132,7 @@ end
 """
     InitContext(
             [rng::Random.AbstractRNG=Random.default_rng()],
-            [strategy::AbstractInitStrategy=PriorInit()],
+            [strategy::AbstractInitStrategy=InitFromPrior()],
     )
 
 A leaf context that indicates that new values for random variables are
@@ -140,11 +144,11 @@ struct InitContext{R<:Random.AbstractRNG,S<:AbstractInitStrategy} <: AbstractCon
     rng::R
     strategy::S
     function InitContext(
-        rng::Random.AbstractRNG, strategy::AbstractInitStrategy=PriorInit()
+        rng::Random.AbstractRNG, strategy::AbstractInitStrategy=InitFromPrior()
     )
         return new{typeof(rng),typeof(strategy)}(rng, strategy)
     end
-    function InitContext(strategy::AbstractInitStrategy=PriorInit())
+    function InitContext(strategy::AbstractInitStrategy=InitFromPrior())
         return InitContext(Random.default_rng(), strategy)
     end
 end

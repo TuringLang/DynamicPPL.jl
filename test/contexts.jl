@@ -537,28 +537,28 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             end
         end
 
-        @testset "PriorInit" begin
-            test_generating_new_values(PriorInit())
-            test_replacing_values(PriorInit())
-            test_rng_respected(PriorInit())
-            test_link_status_respected(PriorInit())
+        @testset "InitFromPrior" begin
+            test_generating_new_values(InitFromPrior())
+            test_replacing_values(InitFromPrior())
+            test_rng_respected(InitFromPrior())
+            test_link_status_respected(InitFromPrior())
 
             @testset "check that values are within support" begin
                 # Not many other sensible checks we can do for priors.
                 @model just_unif() = x ~ Uniform(0.0, 1e-7)
                 for _ in 1:100
-                    _, vi = DynamicPPL.init!!(just_unif(), VarInfo(), PriorInit())
+                    _, vi = DynamicPPL.init!!(just_unif(), VarInfo(), InitFromPrior())
                     @test vi[@varname(x)] isa Real
                     @test 0.0 <= vi[@varname(x)] <= 1e-7
                 end
             end
         end
 
-        @testset "UniformInit" begin
-            test_generating_new_values(UniformInit())
-            test_replacing_values(UniformInit())
-            test_rng_respected(UniformInit())
-            test_link_status_respected(UniformInit())
+        @testset "InitFromUniform" begin
+            test_generating_new_values(InitFromUniform())
+            test_replacing_values(InitFromUniform())
+            test_rng_respected(InitFromUniform())
+            test_link_status_respected(InitFromUniform())
 
             @testset "check that bounds are respected" begin
                 @testset "unconstrained" begin
@@ -566,7 +566,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                     @model just_norm() = x ~ Normal()
                     for _ in 1:100
                         _, vi = DynamicPPL.init!!(
-                            just_norm(), VarInfo(), UniformInit(umin, umax)
+                            just_norm(), VarInfo(), InitFromUniform(umin, umax)
                         )
                         @test vi[@varname(x)] isa Real
                         @test umin <= vi[@varname(x)] <= umax
@@ -579,7 +579,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                     tmin, tmax = inv_bijector(umin), inv_bijector(umax)
                     for _ in 1:100
                         _, vi = DynamicPPL.init!!(
-                            just_beta(), VarInfo(), UniformInit(umin, umax)
+                            just_beta(), VarInfo(), InitFromUniform(umin, umax)
                         )
                         @test vi[@varname(x)] isa Real
                         @test tmin <= vi[@varname(x)] <= tmax
@@ -588,9 +588,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             end
         end
 
-        @testset "ParamsInit" begin
-            test_link_status_respected(ParamsInit((; a=1.0)))
-            test_link_status_respected(ParamsInit(Dict(@varname(a) => 1.0)))
+        @testset "InitFromParams" begin
+            test_link_status_respected(InitFromParams((; a=1.0)))
+            test_link_status_respected(InitFromParams(Dict(@varname(a) => 1.0)))
 
             @testset "given full set of parameters" begin
                 # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
@@ -600,13 +600,13 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 model = test_init_model()
                 @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
                     _, vi = DynamicPPL.init!!(
-                        model, deepcopy(empty_vi), ParamsInit(params_nt)
+                        model, deepcopy(empty_vi), InitFromParams(params_nt)
                     )
                     @test vi[@varname(x)] == my_x
                     @test vi[@varname(y)] == my_y
                     logp_nt = getlogp(vi)
                     _, vi = DynamicPPL.init!!(
-                        model, deepcopy(empty_vi), ParamsInit(params_dict)
+                        model, deepcopy(empty_vi), InitFromParams(params_dict)
                     )
                     @test vi[@varname(x)] == my_x
                     @test vi[@varname(y)] == my_y
@@ -621,12 +621,12 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 params_dict = Dict(@varname(x) => my_x)
                 model = test_init_model()
                 @testset "$vi_name" for (vi_name, empty_vi) in empty_varinfos
-                    @testset "with PriorInit fallback" begin
+                    @testset "with InitFromPrior fallback" begin
                         _, vi = DynamicPPL.init!!(
                             Xoshiro(468),
                             model,
                             deepcopy(empty_vi),
-                            ParamsInit(params_nt, PriorInit()),
+                            InitFromParams(params_nt, InitFromPrior()),
                         )
                         @test vi[@varname(x)] == my_x
                         nt_y = vi[@varname(y)]
@@ -636,7 +636,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                             Xoshiro(469),
                             model,
                             deepcopy(empty_vi),
-                            ParamsInit(params_dict, PriorInit()),
+                            InitFromParams(params_dict, InitFromPrior()),
                         )
                         @test vi[@varname(x)] == my_x
                         dict_y = vi[@varname(y)]
@@ -649,10 +649,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                     @testset "with no fallback" begin
                         # These just don't have an entry for `y`.
                         @test_throws ErrorException DynamicPPL.init!!(
-                            model, deepcopy(empty_vi), ParamsInit(params_nt, nothing)
+                            model, deepcopy(empty_vi), InitFromParams(params_nt, nothing)
                         )
                         @test_throws ErrorException DynamicPPL.init!!(
-                            model, deepcopy(empty_vi), ParamsInit(params_dict, nothing)
+                            model, deepcopy(empty_vi), InitFromParams(params_dict, nothing)
                         )
                         # We also explicitly test the case where `y = missing`.
                         params_nt_missing = (; x=my_x, y=missing)
@@ -662,12 +662,12 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                         @test_throws ErrorException DynamicPPL.init!!(
                             model,
                             deepcopy(empty_vi),
-                            ParamsInit(params_nt_missing, nothing),
+                            InitFromParams(params_nt_missing, nothing),
                         )
                         @test_throws ErrorException DynamicPPL.init!!(
                             model,
                             deepcopy(empty_vi),
-                            ParamsInit(params_dict_missing, nothing),
+                            InitFromParams(params_dict_missing, nothing),
                         )
                     end
                 end

@@ -111,9 +111,9 @@ export AbstractVarInfo,
     # Initialisation
     InitContext,
     AbstractInitStrategy,
-    PriorInit,
-    UniformInit,
-    ParamsInit,
+    InitFromPrior,
+    InitFromUniform,
+    InitFromParams,
     # Pseudo distributions
     NamedDist,
     NoDist,
