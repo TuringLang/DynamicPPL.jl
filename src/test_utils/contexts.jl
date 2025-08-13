@@ -39,13 +39,16 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
     @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsLeaf
 
     # Note that for a leaf context we can't assume that it will work with an
-    # empty VarInfo. Thus we only test evaluation (i.e., assuming that the
-    # varinfo already contains all necessary variables).
+    # empty VarInfo. (For example, DefaultContext will error with empty
+    # varinfos.) Thus we only test evaluation with VarInfos that are already
+    # filled with values.
     @testset "evaluation" begin
         # Generate a new filled untyped varinfo
         _, untyped_vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
         typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
-        new_model = contextualize(model, context)
+        # Set the test context as the new leaf context
+        new_model = contextualize(model, DynamicPPL.setleafcontext(model.context, context))
+        # Check that evaluation works
         for vi in [untyped_vi, typed_vi]
             _, vi = DynamicPPL.evaluate!!(new_model, vi)
             @test vi isa DynamicPPL.VarInfo
