@@ -73,16 +73,16 @@ end
 """
     ParamsInit(
         params::Union{AbstractDict{<:VarName},NamedTuple},
-        default::Union{AbstractInitStrategy,Nothing}=PriorInit()
+        fallback::Union{AbstractInitStrategy,Nothing}=PriorInit()
     )
 
 Obtain new values by extracting them from the given dictionary or NamedTuple.
 
-The parameter `default` specifies how new values are to be obtained if they
-cannot be found in `params`, or they are specified as `missing`. `default`
+The parameter `fallback` specifies how new values are to be obtained if they
+cannot be found in `params`, or they are specified as `missing`. `fallback`
 can either be an initialisation strategy itself, in which case it will be
 used to obtain new values, or it can be `nothing`, in which case an error
-will be thrown. The default for `default` is `PriorInit()`.
+will be thrown. The default for `fallback` is `PriorInit()`.
 
 !!! note
     The values in `params` must be provided in the space of the untransformed
@@ -90,17 +90,17 @@ distribution.
 """
 struct ParamsInit{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
     params::P
-    default::S
+    fallback::S
     function ParamsInit(
-        params::AbstractDict{<:VarName}, default::Union{AbstractInitStrategy,Nothing}
+        params::AbstractDict{<:VarName}, fallback::Union{AbstractInitStrategy,Nothing}
     )
-        return new{typeof(params),typeof(default)}(params, default)
+        return new{typeof(params),typeof(fallback)}(params, fallback)
     end
     ParamsInit(params::AbstractDict{<:VarName}) = ParamsInit(params, PriorInit())
     function ParamsInit(
-        params::NamedTuple, default::Union{AbstractInitStrategy,Nothing}=PriorInit()
+        params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing}=PriorInit()
     )
-        return ParamsInit(to_varname_dict(params), default)
+        return ParamsInit(to_varname_dict(params), fallback)
     end
 end
 function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::ParamsInit)
@@ -111,17 +111,17 @@ function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::Param
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
         if x === missing
-            p.default === nothing &&
+            p.fallback === nothing &&
                 error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.default)
+            init(rng, vn, dist, p.fallback)
         else
             # TODO(penelopeysm): Since x is user-supplied, maybe we could also
             # check here that the type / size of x matches the dist?
             x
         end
     else
-        p.default === nothing && error("No value was provided for the variable `$(vn)`.")
-        init(rng, vn, dist, p.default)
+        p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
+        init(rng, vn, dist, p.fallback)
     end
 end
 
