@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.37.1
+
+Update DynamicPPLMooncakeExt to work with Mooncake 0.4.147.
+
 ## 0.37.0
 
 DynamicPPL 0.37 comes with a substantial reworking of its internals.
@@ -25,8 +29,13 @@ Please see the API documentation for more details.
 
 There is now also an `rng` keyword argument to help seed parameter generation.
 
-Finally, instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
+Instead of specifying `value_atol` and `grad_atol`, you can now specify `atol` and `rtol` which are used for both value and gradient.
 Their semantics are the same as in Julia's `isapprox`; two values are equal if they satisfy either `atol` or `rtol`.
+
+Finally, the `ADResult` object returned by `run_ad` now has both `grad_time` and `primal_time` fields, which contain (respectively) the time it took to calculate the gradient of logp, and the time taken to calculate logp itself.
+Times are reported in seconds.
+Previously there was only a single `time_vs_primal` field which represented the ratio of these two.
+You can of course access the same quantity by dividing `grad_time` by `primal_time`.
 
 ### `DynamicPPL.TestUtils.check_model`
 
@@ -95,7 +104,7 @@ Because this is one of the more arcane features of DynamicPPL, some extra explan
 For example, the particle Gibbs method has a _reference particle_, for which variables are never resampled.
 However, if the reference particle is _forked_ (i.e., if the reference particle is selected by a resampling step multiple times and thereby copied), then the variables that have not yet been evaluated must be sampled anew to ensure that the new particle is independent of the reference particle.
 
-Previousy, this was accomplished by setting the `del` flag in the `VarInfo` object for all variables with `order` greater or equal to than `num_produce`.
+Previously, this was accomplished by setting the `del` flag in the `VarInfo` object for all variables with `order` greater or equal to than `num_produce`.
 Note that setting the `del` flag does not itself trigger a new value to be sampled; rather, it indicates that a new value should be sampled _if the variable is encountered again_.
 [This Turing.jl PR](https://github.com/TuringLang/Turing.jl/pull/2629) changes the implementation to set the `del` flag for _all_ variables in the `VarInfo`.
 Since the `del` flag only makes a difference when encountering a variable, this approach is entirely equivalent as long as the same variable is not seen multiple times in the model.
