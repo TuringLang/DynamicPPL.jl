@@ -50,7 +50,6 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     contexts = Dict(
         :default => DefaultContext(),
         :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
-        :sampling => SamplingContext(),
         :prefix => PrefixContext(@varname(x)),
         :condition1 => ConditionContext((x=1.0,)),
         :condition2 => ConditionContext(

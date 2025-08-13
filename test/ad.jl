@@ -111,9 +111,10 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 
         # Compiling the ReverseDiff tape used to fail here
         spl = Sampler(MyEmptyAlg())
+        vi = DynamicPPL.link!!(VarInfo(model), model)
         sampling_model = contextualize(model, SamplingContext(model.context))
         ldf = LogDensityFunction(
-            sampling_model, getlogjoint_internal; adtype=AutoReverseDiff(; compile=true)
+            sampling_model, getlogjoint_internal, vi; adtype=AutoReverseDiff(; compile=true)
         )
         x = ldf.varinfo[:]
         @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Any
