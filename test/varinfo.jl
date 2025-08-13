@@ -42,7 +42,7 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        _, vi = DynamicPPL.init!!(model, VarInfo(), UniformInit())
+        _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromUniform())
         tvi = DynamicPPL.typed_varinfo(vi)
 
         meta = vi.metadata
@@ -479,18 +479,18 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model using UniformInit does not
+        # Check that instantiating the model using InitFromUniform does not
         # perform linking
-        # Note (penelopeysm): The purpose of using UniformInit specifically in
+        # Note (penelopeysm): The purpose of using InitFromUniform specifically in
         # this test is because it samples from the linked distribution i.e. in
         # unconstrained space. However, it does this not by linking the varinfo
         # but by transforming the distributions on the fly. That's why it's
         # worth specifically checking that it can do this without having to
         # change the VarInfo object.
-        # TODO(penelopeysm): Move this to UniformInit tests rather than here.
+        # TODO(penelopeysm): Move this to InitFromUniform tests rather than here.
         vi = VarInfo()
         meta = vi.metadata
-        _, vi = DynamicPPL.init!!(model, vi, UniformInit())
+        _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
         @test all(x -> !istrans(vi, x), meta.vns)
 
         # Check that linking and invlinking set the `trans` flag accordingly
@@ -554,7 +554,7 @@ end
 
         function test_linked_varinfo(model, vi)
             # vn and dist are taken from the containing scope
-            vi = last(DynamicPPL.init!!(model, vi, PriorInit()))
+            vi = last(DynamicPPL.init!!(model, vi, InitFromPrior()))
             f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
             x = f(DynamicPPL.getindex_internal(vi, vn))
             @test istrans(vi, vn)
@@ -972,7 +972,7 @@ end
         varinfo1 = DynamicPPL.link!!(VarInfo(model1), model1)
         # Calling init!! should preserve the fact that the variables are linked.
         model2 = demo(2)
-        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), PriorInit()))
+        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), InitFromPrior()))
         for vn in [@varname(x[1]), @varname(x[2])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end
@@ -990,7 +990,7 @@ end
         varinfo1 = DynamicPPL.link!!(DynamicPPL.untyped_varinfo(model1), model1)
         # Calling init!! should preserve the fact that the variables are linked.
         model2 = demo_dot(2)
-        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), PriorInit()))
+        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), InitFromPrior()))
         for vn in [@varname(x), @varname(y[1])]
             @test DynamicPPL.istrans(varinfo2, vn)
         end

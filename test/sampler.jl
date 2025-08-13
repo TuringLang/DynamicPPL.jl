@@ -69,8 +69,8 @@
         end
 
         # initial samplers
-        DynamicPPL.init_strategy(::Sampler{OnlyInitAlgUniform}) = UniformInit()
-        @test DynamicPPL.init_strategy(Sampler(OnlyInitAlgDefault())) == PriorInit()
+        DynamicPPL.init_strategy(::Sampler{OnlyInitAlgUniform}) = InitFromUniform()
+        @test DynamicPPL.init_strategy(Sampler(OnlyInitAlgDefault())) == InitFromPrior()
 
         for alg in (OnlyInitAlgDefault(), OnlyInitAlgUniform())
             # model with one variable: initialization p = 0.2
@@ -81,7 +81,7 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            let inits = ParamsInit((; p=0.2))
+            let inits = InitFromParams((; p=0.2))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.p.vals == [0.2]
                 @test getlogjoint(chain[1]) == lptrue
@@ -109,7 +109,7 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            let inits = ParamsInit((; s=4, m=-1))
+            let inits = InitFromParams((; s=4, m=-1))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
@@ -133,7 +133,7 @@
             end
 
             # set only m = -1
-            for inits in (ParamsInit((; s=missing, m=-1)), ParamsInit((; m=-1)))
+            for inits in (InitFromParams((; s=missing, m=-1)), InitFromParams((; m=-1)))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]

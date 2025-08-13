@@ -58,7 +58,7 @@ function AbstractMCMC.step(
     kwargs...,
 )
     vi = VarInfo()
-    strategy = sampler isa SampleFromPrior ? PriorInit() : UniformInit()
+    strategy = sampler isa SampleFromPrior ? InitFromPrior() : InitFromUniform()
     _, new_vi = DynamicPPL.init!!(rng, model, vi, strategy)
     return new_vi, nothing
 end
@@ -103,9 +103,9 @@ end
     init_strategy(sampler)
 
 Define the initialisation strategy used for generating initial values when
-sampling with `sampler`. Defaults to `PriorInit()`, but can be overridden.
+sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
 """
-init_strategy(::Sampler) = PriorInit()
+init_strategy(::Sampler) = InitFromPrior()
 
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
@@ -118,7 +118,7 @@ function AbstractMCMC.step(
     # with NamedTuple of Metadata).
     vi = default_varinfo(rng, model, spl)
 
-    # Fill it with initial parameters. Note that, if `ParamsInit` is used, the
+    # Fill it with initial parameters. Note that, if `InitFromParams` is used, the
     # parameters provided must be in unlinked space (when inserted into the
     # varinfo, they will be adjusted to match the linking status of the
     # varinfo).

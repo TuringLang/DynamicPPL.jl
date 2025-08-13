@@ -130,7 +130,7 @@ function DynamicPPL.predict(
             rng,
             model,
             varinfo,
-            DynamicPPL.ParamsInit(values_dict, DynamicPPL.PriorInit()),
+            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
         )
         vals = DynamicPPL.values_as_in_model(model, false, varinfo)
         varname_vals = mapreduce(
@@ -268,7 +268,9 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
         # Resample any variables that are not present in `values_dict`, and
         # return the model's retval.
         retval, _ = DynamicPPL.init!!(
-            model, varinfo, DynamicPPL.ParamsInit(values_dict, DynamicPPL.PriorInit())
+            model,
+            varinfo,
+            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
         )
         retval
     end

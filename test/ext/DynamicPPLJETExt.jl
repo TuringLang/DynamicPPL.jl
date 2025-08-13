@@ -42,7 +42,7 @@
         @test DynamicPPL.Experimental.determine_suitable_varinfo(demo4()) isa
             DynamicPPL.NTVarInfo
         init_model = DynamicPPL.contextualize(
-            demo4(), DynamicPPL.InitContext(DynamicPPL.PriorInit())
+            demo4(), DynamicPPL.InitContext(DynamicPPL.InitFromPrior())
         )
         @test DynamicPPL.Experimental.determine_suitable_varinfo(init_model) isa
             DynamicPPL.UntypedVarInfo

@@ -232,22 +232,26 @@ end
 
 # Constructor from `Model`.
 function SimpleVarInfo{T}(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 ) where {T<:Real}
     return last(init!!(rng, model, SimpleVarInfo{T}(), init_strategy))
 end
 function SimpleVarInfo{T}(
-    model::Model, init_strategy::AbstractInitStrategy=PriorInit()
+    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
 ) where {T<:Real}
     return SimpleVarInfo{T}(Random.default_rng(), model, init_strategy)
 end
 # Constructors without type param
 function SimpleVarInfo(
-    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy=PriorInit()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
     return SimpleVarInfo{LogProbType}(rng, model, init_strategy)
 end
-function SimpleVarInfo(model::Model, init_strategy::AbstractInitStrategy=PriorInit())
+function SimpleVarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
     return SimpleVarInfo{LogProbType}(Random.default_rng(), model, init_strategy)
 end
 
