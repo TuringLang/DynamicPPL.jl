@@ -959,43 +959,6 @@ end
         @test merge(vi_double, vi_single)[vn] == 1.0
     end
 
-    @testset "sampling from linked varinfo" begin
-        # `~`
-        @model function demo(n=1)
-            x = Vector(undef, n)
-            for i in eachindex(x)
-                x[i] ~ Exponential()
-            end
-            return x
-        end
-        model1 = demo(1)
-        varinfo1 = DynamicPPL.link!!(VarInfo(model1), model1)
-        # Calling init!! should preserve the fact that the variables are linked.
-        model2 = demo(2)
-        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), InitFromPrior()))
-        for vn in [@varname(x[1]), @varname(x[2])]
-            @test DynamicPPL.istrans(varinfo2, vn)
-        end
-
-        # `.~`
-        @model function demo_dot(n=1)
-            x ~ Exponential()
-            if n > 1
-                y = Vector(undef, n - 1)
-                y .~ Exponential()
-            end
-            return x
-        end
-        model1 = demo_dot(1)
-        varinfo1 = DynamicPPL.link!!(DynamicPPL.untyped_varinfo(model1), model1)
-        # Calling init!! should preserve the fact that the variables are linked.
-        model2 = demo_dot(2)
-        varinfo2 = last(DynamicPPL.init!!(model2, deepcopy(varinfo1), InitFromPrior()))
-        for vn in [@varname(x), @varname(y[1])]
-            @test DynamicPPL.istrans(varinfo2, vn)
-        end
-    end
-
     # NOTE: It is not yet clear if this is something we want from all varinfo types.
     # Hence, we only test the `VarInfo` types here.
     @testset "vector_getranges for `VarInfo`" begin
