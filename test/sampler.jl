@@ -25,8 +25,8 @@
         @test length(chains) == N
 
         # `m` is Gaussian, i.e. no transformation is used, so it
-        # should have a mean equal to its prior, i.e. 2.
-        @test mean(vi[@varname(m)] for vi in chains) ≈ 2 atol = 0.1
+        # will be drawn from U[-2, 2] and its mean should be 0.
+        @test mean(vi[@varname(m)] for vi in chains) ≈ 0.0 atol = 0.1
 
         # Expected value of ``exp(X)`` where ``X ~ U[-2, 2]`` is ≈ 1.8.
         @test mean(vi[@varname(s)] for vi in chains) ≈ 1.8 atol = 0.1
@@ -69,8 +69,8 @@
         end
 
         # initial samplers
-        DynamicPPL.initialsampler(::Sampler{OnlyInitAlgUniform}) = SampleFromUniform()
-        @test DynamicPPL.initialsampler(Sampler(OnlyInitAlgDefault())) == SampleFromPrior()
+        DynamicPPL.init_strategy(::Sampler{OnlyInitAlgUniform}) = InitFromUniform()
+        @test DynamicPPL.init_strategy(Sampler(OnlyInitAlgDefault())) == InitFromPrior()
 
         for alg in (OnlyInitAlgDefault(), OnlyInitAlgUniform())
             # model with one variable: initialization p = 0.2
@@ -81,7 +81,7 @@
             model = coinflip()
             sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
-            let inits = (; p=0.2)
+            let inits = InitFromParams((; p=0.2))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.p.vals == [0.2]
                 @test getlogjoint(chain[1]) == lptrue
@@ -109,7 +109,7 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            for inits in ([4, -1], (; s=4, m=-1))
+            let inits = InitFromParams((; s=4, m=-1))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
@@ -133,7 +133,7 @@
             end
 
             # set only m = -1
-            for inits in ([missing, -1], (; s=missing, m=-1), (; m=-1))
+            for inits in (InitFromParams((; s=missing, m=-1)), InitFromParams((; m=-1)))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]
@@ -153,54 +153,6 @@
                     @test c[1].metadata.m.vals == [-1]
                 end
             end
-
-            # specify `initial_params=nothing`
-            Random.seed!(1234)
-            chain1 = sample(model, sampler, 1; progress=false)
-            Random.seed!(1234)
-            chain2 = sample(model, sampler, 1; initial_params=nothing, progress=false)
-            @test_throws DimensionMismatch sample(
-                model, sampler, 1; progress=false, initial_params=zeros(10)
-            )
-            @test chain1[1].metadata.m.vals == chain2[1].metadata.m.vals
-            @test chain1[1].metadata.s.vals == chain2[1].metadata.s.vals
-
-            # parallel sampling
-            Random.seed!(1234)
-            chains1 = sample(model, sampler, MCMCThreads(), 1, 10; progress=false)
-            Random.seed!(1234)
-            chains2 = sample(
-                model, sampler, MCMCThreads(), 1, 10; initial_params=nothing, progress=false
-            )
-            for (c1, c2) in zip(chains1, chains2)
-                @test c1[1].metadata.m.vals == c2[1].metadata.m.vals
-                @test c1[1].metadata.s.vals == c2[1].metadata.s.vals
-            end
-        end
-
-        @testset "error handling" begin
-            # https://github.com/TuringLang/Turing.jl/issues/2452
-            @model function constrained_uniform(n)
-                Z ~ Uniform(10, 20)
-                X = Vector{Float64}(undef, n)
-                for i in 1:n
-                    X[i] ~ Uniform(0, Z)
-                end
-            end
-
-            n = 2
-            initial_z = 15
-            initial_x = [0.2, 0.5]
-            model = constrained_uniform(n)
-            vi = VarInfo(model)
-
-            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, [initial_z, initial_x], model
-            )
-
-            @test_throws ArgumentError DynamicPPL.initialize_parameters!!(
-                vi, (X=initial_x, Z=initial_z), model
-            )
         end
     end
 end
