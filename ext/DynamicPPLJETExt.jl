@@ -6,7 +6,6 @@ using JET: JET
 function DynamicPPL.Experimental.is_suitable_varinfo(
     model::DynamicPPL.Model, varinfo::DynamicPPL.AbstractVarInfo; only_ddpl::Bool=true
 )
-    # Let's make sure that both evaluation and sampling doesn't result in type errors.
     f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(model, varinfo)
     # If specified, we only check errors originating somewhere in the DynamicPPL.jl.
     # This way we don't just fall back to untyped if the user's code is the issue.
