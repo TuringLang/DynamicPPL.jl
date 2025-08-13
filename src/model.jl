@@ -800,6 +800,41 @@ julia> # Now `a.x` will be sampled.
 fixed(model::Model) = fixed(model.context)
 
 """
+    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::Val{sym})
+    prefix(model::Model, x::Any)
+
+Return `model` but with all random variables prefixed by `x`, where `x` is either:
+- a `VarName` (e.g. `@varname(a)`),
+- a `Val{sym}` (e.g. `Val(:a)`), or
+- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
+  this will introduce runtime overheads so is not recommended unless absolutely
+  necessary.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), @varname(my_prefix)))
+(var"my_prefix.x" = 1,)
+
+julia> rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
+"""
+prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::Val{sym}) where {sym}
+    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+end
+function prefix(model::Model, x)
+    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
+end
+
+"""
     (model::Model)([rng, varinfo])
 
 Sample from the prior of the `model` with random number generator `rng`.
@@ -852,6 +887,41 @@ function evaluate_and_sample!!(
     model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
 )
     return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
+end
+
+"""
+    init!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        varinfo::AbstractVarInfo,
+        [init_strategy::AbstractInitStrategy=InitFromPrior()]
+    )
+
+Evaluate the `model` and replace the values of the model's random variables in
+the given `varinfo` with new values using a specified initialisation strategy.
+If the values in `varinfo` are not already present, they will be added using
+that same strategy.
+
+If `init_strategy` is not provided, defaults to InitFromPrior().
+
+Returns a tuple of the model's return value, plus the updated `varinfo` object.
+"""
+function init!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+)
+    new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
+    new_model = contextualize(model, new_context)
+    return evaluate!!(new_model, varinfo)
+end
+function init!!(
+    model::Model,
+    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+)
+    return init!!(Random.default_rng(), model, varinfo, init_strategy)
 end
 
 """

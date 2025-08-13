@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.38.0
+
+[...]
+
 ## 0.37.1
 
 Update DynamicPPLMooncakeExt to work with Mooncake 0.4.147.
