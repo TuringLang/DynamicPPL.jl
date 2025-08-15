@@ -865,7 +865,7 @@ If multiple threads are available, the varinfo provided will be wrapped in a
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
-function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
+@inline function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return if use_threadsafe_eval(model.context, varinfo)
         evaluate_threadsafe!!(model, varinfo)
     else
