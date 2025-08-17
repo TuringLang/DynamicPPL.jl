@@ -160,6 +160,12 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
+If you want to perform observations in parallel (using Julia threads), you can use the following macro.
+
+```@docs
+@pobserve
+```
+
 Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples) or a single sample represented as a `NamedTuple`.
 
 ```@docs

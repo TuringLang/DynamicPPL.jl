@@ -152,9 +152,6 @@ const UntypedVarInfo = VarInfo{<:Metadata}
 # something which carried both its keys as well as its values' types as type
 # parameters.
 const NTVarInfo = VarInfo{<:NamedTuple}
-const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
-    VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
-}
 
 function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
     return (vi1.metadata == vi2.metadata && vi1.accs == vi2.accs)
@@ -382,6 +379,7 @@ function unflatten(vi::VarInfo, x::AbstractVector)
     # The below line is finicky for type stability. For instance, assigning the eltype to
     # convert to into an intermediate variable makes this unstable (constant propagation)
     # fails. Take care when editing.
+    # TODO(penelopeysm): Can this be simplified if TSVI is gone?
     accs = map(
         acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc), copy(getaccs(vi))
     )
@@ -962,28 +960,11 @@ function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
     return vi
 end
 
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, model)
-end
-
 function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _link(model, vi, vns)
     vi = _link!!(vi, vns)
     return vi
-end
-
-function link!!(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
 function _link!!(vi::UntypedVarInfo, vns)
@@ -1067,28 +1048,11 @@ function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
     return vi
 end
 
-function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(t, vi.varinfo, model)
-end
-
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
     # If we're working with a `VarNamedVector`, we always use immutable.
     has_varnamedvector(vi) && return _invlink(model, vi, vns)
     vi = _invlink!!(vi, vns)
     return vi
-end
-
-function invlink!!(
-    ::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, vns, model)
 end
 
 function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
@@ -1180,25 +1144,8 @@ function link(::DynamicTransformation, varinfo::VarInfo, model::Model)
     return _link(model, varinfo, keys(varinfo))
 end
 
-function link(::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, model)
-end
-
 function link(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
     return _link(model, varinfo, vns)
-end
-
-function link(
-    ::DynamicTransformation,
-    varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, vns, model)
 end
 
 function _link(model::Model, varinfo::VarInfo, vns)
@@ -1344,27 +1291,8 @@ function invlink(::DynamicTransformation, vi::VarInfo, model::Model)
     return _invlink(model, vi, keys(vi))
 end
 
-function invlink(
-    ::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, model)
-end
-
 function invlink(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
     return _invlink(model, varinfo, vns)
-end
-
-function invlink(
-    ::DynamicTransformation,
-    varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, vns, model)
 end
 
 function _invlink(model::Model, varinfo::VarInfo, vns)
@@ -1814,7 +1742,7 @@ end
 
 Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
 """
-function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
+function _apply!(kernel!, vi::VarInfo, values, keys)
     keys_strings = map(string, collect_maybe(keys))
     num_indices_seen = 0
 
@@ -1872,7 +1800,7 @@ end
     end
 end
 
-function _find_missing_keys(vi::VarInfoOrThreadSafeVarInfo, keys)
+function _find_missing_keys(vi::VarInfo, keys)
     string_vns = map(string, collect_maybe(Base.keys(vi)))
     # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
     missing_keys = filter(keys) do key
@@ -1937,7 +1865,7 @@ function setval!(vi::VarInfo, chains::AbstractChains, sample_idx::Int, chain_idx
     return setval!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
 end
 
-function _setval_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys)
+function _setval_kernel!(vi::VarInfo, vn::VarName, values, keys)
     indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
     if !isempty(indices)
         val = reduce(vcat, values[indices])

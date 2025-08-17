@@ -13,9 +13,6 @@ const gdemo_default = gdemo_d()
 
 Return string representing a short description of `vi`.
 """
-function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
-    return "threadsafe($(short_varinfo_name(vi.varinfo)))"
-end
 function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
     return if DynamicPPL.has_varnamedvector(vi)
         "TypedVectorVarInfo"

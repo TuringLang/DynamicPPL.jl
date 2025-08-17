@@ -586,9 +586,7 @@ end
         value_true = DynamicPPL.TestUtils.rand_prior_true(model)
         vns = DynamicPPL.TestUtils.varnames(model)
         varnames = DynamicPPL.TestUtils.varnames(model)
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, value_true, varnames; include_threadsafe=false
-        )
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
         # Filter out those which are not based on `VarNamedVector`.
         varinfos = filter(DynamicPPL.has_varnamedvector, varinfos)
         # Get the true log joint.
