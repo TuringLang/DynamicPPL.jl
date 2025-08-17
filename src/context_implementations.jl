@@ -135,7 +135,7 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::VarInfoOrThreadSafeVarInfo,
+    vi::VarInfo,
 )
     if haskey(vi, vn)
         # Always overwrite the parameters with new ones for `SampleFromUniform`.

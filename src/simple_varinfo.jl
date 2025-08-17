@@ -408,12 +408,8 @@ function BangBang.push!!(
     return Accessors.@set vi.values = setindex!!(vi.values, value, vn)
 end
 
-const SimpleOrThreadSafeSimple{T,V,C} = Union{
-    SimpleVarInfo{T,V,C},ThreadSafeVarInfo{<:SimpleVarInfo{T,V,C}}
-}
-
 # Necessary for `matchingvalue` to work properly.
-Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
+Base.eltype(::SimpleVarInfo{<:Any,V}) where {V} = V
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
@@ -471,7 +467,7 @@ function assume(
     sampler::Union{SampleFromPrior,SampleFromUniform},
     dist::Distribution,
     vn::VarName,
-    vi::SimpleOrThreadSafeSimple,
+    vi::SimpleVarInfo,
 )
     value = init(rng, dist, sampler)
     # Transform if we're working in unconstrained space.
@@ -489,14 +485,9 @@ end
 function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
     return Accessors.@set vi.transformation = transformation
 end
-function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
-end
 
 istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
 istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
 
 islinked(vi::SimpleVarInfo) = istrans(vi)
 
