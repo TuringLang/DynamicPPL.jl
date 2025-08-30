@@ -180,12 +180,16 @@ Everything else is optional, and can be categorised into several groups:
    parameters using the `params` keyword argument.
 
 1. _Which type of logp is being calculated._
+
    By default, `run_ad` evaluates the 'internal log joint density' of the model,
    i.e., the log joint density in the unconstrained space. Thus, for example, in
+
        @model f() = x ~ LogNormal()
+
    the internal log joint density is `logpdf(Normal(), log(x))`. This is the
    relevant log density for e.g. Hamiltonian Monte Carlo samplers and is therefore
    the most useful to test.
+
    If you want the log joint density in the original model parameterisation, you
    can use `getlogjoint`. Likewise, if you want only the prior or likelihood,
    you can use `getlogprior` or `getloglikelihood`, respectively.

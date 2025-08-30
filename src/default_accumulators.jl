@@ -165,9 +165,7 @@ function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
     return acclogp(acc, Distributions.loglikelihood(right, left))
 end
 
-function default_accumulators(
-    ::Type{FloatT}=LogProbType, ::Type{IntT}=Int
-) where {FloatT,IntT}
+function default_accumulators(::Type{FloatT}=LogProbType) where {FloatT}
     return AccumulatorTuple(
         LogPriorAccumulator{FloatT}(),
         LogJacobianAccumulator{FloatT}(),
