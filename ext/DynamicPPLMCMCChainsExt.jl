@@ -1,12 +1,7 @@
 module DynamicPPLMCMCChainsExt
 
-if isdefined(Base, :get_extension)
-    using DynamicPPL: DynamicPPL
-    using MCMCChains: MCMCChains
-else
-    using ..DynamicPPL: DynamicPPL
-    using ..MCMCChains: MCMCChains
-end
+using DynamicPPL: DynamicPPL, AbstractPPL
+using MCMCChains: MCMCChains
 
 # Load state from a `Chains`: By convention, it is stored in `:samplerstate` metadata
 function DynamicPPL.loadstate(chain::MCMCChains.Chains)
