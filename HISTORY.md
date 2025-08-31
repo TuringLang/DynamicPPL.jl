@@ -1,5 +1,12 @@
 # DynamicPPL Changelog
 
+## 0.38.0
+
+The `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
+Their behaviour is otherwise identical.
+
+[...]
+
 ## 0.37.1
 
 Update DynamicPPLMooncakeExt to work with Mooncake 0.4.147.

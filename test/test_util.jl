@@ -72,7 +72,7 @@ function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::I
     # We have to use varname_and_value_leaves so that each parameter is a scalar
     dicts = map(varinfos) do t
         vals = DynamicPPL.values_as(t, OrderedDict)
-        iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+        iters = map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals))
         tuples = mapreduce(collect, vcat, iters)
         # The following loop is a replacement for:
         #     push!(varnames, map(first, tuples)...)
