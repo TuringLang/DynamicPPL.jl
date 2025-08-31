@@ -488,7 +488,7 @@ end
             θ_new = var_info[:]
             @test θ_old != θ_new
             vals = DynamicPPL.values_as(var_info, OrderedDict)
-            iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+            iters = map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals))
             for (n, v) in mapreduce(collect, vcat, iters)
                 n = string(n)
                 if Symbol(n) ∉ keys(chain)
