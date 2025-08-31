@@ -71,7 +71,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             chain_sym_map = Dict{Symbol,Symbol}()
             for vn_parent in keys(var_info)
                 sym = DynamicPPL.getsym(vn_parent)
-                vn_children = DynamicPPL.varname_leaves(vn_parent, var_info[vn_parent])
+                vn_children = AbstractPPL.varname_leaves(vn_parent, var_info[vn_parent])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
                 end
