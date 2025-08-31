@@ -121,7 +121,7 @@ function DynamicPPL.predict(
         varname_vals = mapreduce(
             collect,
             vcat,
-            map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals)),
+            map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals)),
         )
 
         return (varname_and_values=varname_vals, logp=DynamicPPL.getlogjoint(varinfo))
