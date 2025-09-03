@@ -1,5 +1,11 @@
 # DynamicPPL Changelog
 
+## 0.37.2
+
+Make the `resume_from` keyword work for multiple-chain (parallel) sampling as well.
+Prior to this version, it was silently ignored.
+Note that to get the correct behaviour you also need to have a recent version of MCMCChains (v7.2.1).
+
 ## 0.37.1
 
 Update DynamicPPLMooncakeExt to work with Mooncake 0.4.147.
