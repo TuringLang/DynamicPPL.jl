@@ -90,8 +90,14 @@ function AbstractMCMC.sample(
     initial_state=loadstate(resume_from),
     kwargs...,
 )
+    # Only use resume_from if initial_state wasn't manually provided
+    init_state = initial_state
+    if init_state === nothing && resume_from !== nothing
+        init_state = loadstate(resume_from)
+    end
+
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_state, kwargs...
+        rng, model, sampler, N; chain_type, initial_state=init_state, kwargs...
     )
 end
 
