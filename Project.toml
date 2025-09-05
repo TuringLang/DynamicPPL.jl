@@ -34,6 +34,7 @@ ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 
 [extensions]
@@ -41,6 +42,7 @@ DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
 DynamicPPLJETExt = ["JET"]
+DynamicPPLMarginalLogDensitiesExt = ["MarginalLogDensities"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMooncakeExt = ["Mooncake"]
 

@@ -122,6 +122,7 @@ export AbstractVarInfo,
     fix,
     unfix,
     predict,
+    marginalize,
     prefix,
     returned,
     to_submodel,
@@ -199,10 +200,6 @@ include("test_utils.jl")
 include("experimental.jl")
 include("deprecated.jl")
 
-if !isdefined(Base, :get_extension)
-    using Requires
-end
-
 # Better error message if users forget to load JET
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
@@ -246,5 +243,8 @@ end
 # Standard tag: Improves stacktraces
 # Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
 struct DynamicPPLTag end
+
+# Extended in MarginalLogDensitiesExt
+function marginalize end
 
 end # module
