@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.37.3
+
+An extension for MarginalLogDensities.jl has been added.
+Loading DynamicPPL and MarginalLogDensities now provides the `DynamicPPL.marginalize` function to marginalize out variables from a model; please see the documentation for further information.
+
 ## 0.37.2
 
 Make the `resume_from` keyword work for multiple-chain (parallel) sampling as well.

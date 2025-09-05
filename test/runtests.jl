@@ -80,6 +80,7 @@ include("test_util.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLJETExt.jl")
+            include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
