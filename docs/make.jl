@@ -11,6 +11,7 @@ using Distributions
 using DocumenterMermaid
 # load MCMCChains package extension to make `predict` available
 using MCMCChains
+using MarginalLogDensities: MarginalLogDensities
 
 # Doctest setup
 DocMeta.setdocmeta!(

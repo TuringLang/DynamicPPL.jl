@@ -123,6 +123,15 @@ The `predict` function has two main methods:
 predict
 ```
 
+## Marginalization
+
+DynamicPPL provides the `marginalize` function to marginalize out variables from a model.
+This requires `MarginalLogDensities.jl` to be loaded in your environment.
+
+```@docs
+marginalize
+```
+
 ### Basic Usage
 
 The typical workflow for posterior prediction involves:
