@@ -95,6 +95,23 @@ function AbstractMCMC.sample(
     )
 end
 
+function AbstractMCMC.sample(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::Sampler,
+    parallel::AbstractMCMC.AbstractMCMCEnsemble,
+    N::Integer,
+    nchains::Integer;
+    chain_type=default_chain_type(sampler),
+    resume_from=nothing,
+    initial_state=loadstate(resume_from),
+    kwargs...,
+)
+    return AbstractMCMC.mcmcsample(
+        rng, model, sampler, parallel, N, nchains; chain_type, initial_state, kwargs...
+    )
+end
+
 # initial step: general interface for resuming and
 function AbstractMCMC.step(
     rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
