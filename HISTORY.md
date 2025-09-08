@@ -1,5 +1,12 @@
 # DynamicPPL Changelog
 
+## 0.38.0
+
+TODO: write up InitContext changes
+
+`DynamicPPL.Sampler` and `DynamicPPL.initialstep` have also been removed entirely.
+If you were using these, you should unwrap your sampler and implement `AbstractMCMC.step` as usual for any other `AbstractMCMC.AbstractSampler`.
+
 ## 0.37.0
 
 DynamicPPL 0.37 comes with a substantial reworking of its internals.
