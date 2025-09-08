@@ -94,28 +94,23 @@
         abstract type OnlyInitAlg end
         struct OnlyInitAlgDefault <: OnlyInitAlg end
         struct OnlyInitAlgUniform <: OnlyInitAlg end
-        function DynamicPPL.initialstep(
-            rng::Random.AbstractRNG,
-            model::Model,
-            ::Sampler{<:OnlyInitAlg},
-            vi::AbstractVarInfo;
-            kwargs...,
+        function AbstractMCMC.step(
+            rng::Random.AbstractRNG, model::Model, ::OnlyInitAlg, kwargs...
         )
             return vi, nothing
         end
 
         # initial samplers
-        DynamicPPL.init_strategy(::Sampler{OnlyInitAlgUniform}) = InitFromUniform()
-        @test DynamicPPL.init_strategy(Sampler(OnlyInitAlgDefault())) == InitFromPrior()
+        DynamicPPL.init_strategy(::OnlyInitAlgUniform) = UniformInit()
+        @test DynamicPPL.init_strategy(OnlyInitAlgDefault()) == PriorInit()
 
-        for alg in (OnlyInitAlgDefault(), OnlyInitAlgUniform())
+        for sampler in (OnlyInitAlgDefault(), OnlyInitAlgUniform())
             # model with one variable: initialization p = 0.2
             @model function coinflip()
                 p ~ Beta(1, 1)
                 return 10 ~ Binomial(25, p)
             end
             model = coinflip()
-            sampler = Sampler(alg)
             lptrue = logpdf(Binomial(25, 0.2), 10)
             let inits = InitFromParams((; p=0.2))
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)

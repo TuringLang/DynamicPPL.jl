@@ -42,6 +42,11 @@ The main change that this is likely to create is for those who are implementing 
 The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
 Broadly speaking, though, `SamplingContext(MySampler())` will be removed so if your sampler needs custom behaviour with the tilde-pipeline you will likely have to define your own context.
 
+### Removal of `DynamicPPL.Sampler`
+
+`DynamicPPL.Sampler` and `DynamicPPL.initialstep` have also been removed entirely.
+If you were using these, you should unwrap your sampler and implement `AbstractMCMC.step` as usual for any other `AbstractMCMC.AbstractSampler`.
+
 ### Simplification of the tilde-pipeline
 
 There are now only two functions in the tilde-pipeline that need to be overloaded to change the behaviour of tilde-statements, namely, `tilde_assume!!` and `tilde_observe!!`.

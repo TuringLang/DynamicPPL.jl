@@ -1,23 +1,3 @@
-# TODO(mhauru) Could we get rid of Sampler now that it's just a wrapper around `alg`?
-# (Selector has been removed).
-"""
-    Sampler{T}
-
-Generic sampler type for inference algorithms of type `T` in DynamicPPL.
-
-`Sampler` should implement the AbstractMCMC interface, and in particular
-`AbstractMCMC.step`. A default implementation of the initial sampling step is
-provided that supports resuming sampling from a previous state and setting initial
-parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
-for loading previous states and actually performing the initial sampling step,
-respectively. Additionally, sometimes one might want to implement an [`init_strategy`](@ref)
-that specifies how the initial parameter values are sampled if they are not provided.
-By default, values are sampled from the prior.
-"""
-struct Sampler{T} <: AbstractSampler
-    alg::T
-end
-
 """
     default_varinfo(rng, model, sampler)
 
@@ -72,71 +52,6 @@ function _convert_initial_params(::AbstractVector)
     throw(ArgumentError(errmsg))
 end
 
-function AbstractMCMC.sample(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Sampler,
-    N::Integer;
-    initial_params=init_strategy(sampler),
-    initial_state=nothing,
-    kwargs...,
-)
-    return AbstractMCMC.mcmcsample(
-        rng,
-        model,
-        sampler,
-        N;
-        initial_params=_convert_initial_params(initial_params),
-        initial_state,
-        kwargs...,
-    )
-end
-
-function AbstractMCMC.sample(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Sampler,
-    parallel::AbstractMCMC.AbstractMCMCEnsemble,
-    N::Integer,
-    nchains::Integer;
-    initial_params=fill(init_strategy(sampler), nchains),
-    initial_state=nothing,
-    kwargs...,
-)
-    return AbstractMCMC.mcmcsample(
-        rng,
-        model,
-        sampler,
-        parallel,
-        N,
-        nchains;
-        initial_params=map(_convert_initial_params, initial_params),
-        initial_state,
-        kwargs...,
-    )
-end
-
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    spl::Sampler;
-    initial_params::AbstractInitStrategy=init_strategy(spl),
-    kwargs...,
-)
-    # Generate the default varinfo. Note that any parameters inside this varinfo
-    # will be immediately overwritten by the next call to `init!!`.
-    vi = default_varinfo(rng, model, spl)
-
-    # Fill it with initial parameters. Note that, if `InitFromParams` is used, the
-    # parameters provided must be in unlinked space (when inserted into the
-    # varinfo, they will be adjusted to match the linking status of the
-    # varinfo).
-    _, vi = init!!(rng, model, vi, initial_params)
-
-    # Call the actual function that does the first step.
-    return initialstep(rng, model, spl, vi; initial_params, kwargs...)
-end
-
 """
     loadstate(chain::AbstractChains)
 
@@ -144,13 +59,11 @@ Load sampler state from an `AbstractChains` object. This function should be over
 concrete Chains implementation.
 """
 function loadstate end
+loadstate(data) = data
 
 """
-    initialstep(rng, model, sampler, varinfo; kwargs...)
+    default_chain_type(sampler)
 
-Perform the initial sampling step of the `sampler` for the `model`.
-
-The `varinfo` contains the initial samples, which can be provided by the user or
-sampled randomly.
+Default type of the chain of posterior samples from `sampler`.
 """
-function initialstep end
+default_chain_type(::AbstractSampler) = Any
