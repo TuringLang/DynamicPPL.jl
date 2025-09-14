@@ -13,7 +13,7 @@ using StableRNGs: StableRNG
 
 include("./Models.jl")
 using .Models: Models
-
+import Enzyme
 export Models, make_suite, model_dimension
 
 """
@@ -37,6 +37,7 @@ const SYMBOL_TO_BACKEND = Dict(
     :reversediff => ADTypes.AutoReverseDiff(; compile=false),
     :reversediff_compiled => ADTypes.AutoReverseDiff(; compile=true),
     :mooncake => ADTypes.AutoMooncake(; config=nothing),
+    :enzyme => ADTypes.AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse), function_annotation=Enzyme.Const),
 )
 
 to_backend(x) = error("Unknown backend: $x")
