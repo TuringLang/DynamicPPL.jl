@@ -9,6 +9,7 @@ _to_varname(n::VarName) = n
 """
     marginalize(
         model::DynamicPPL.Model,
+        varinfo::DynamicPPL.AbstractVarInfo=VarInfo(model),
         varnames::AbstractVector{<:Union{Symbol,<:VarName}},
         getlogprob=DynamicPPL.getlogjoint,
         method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
@@ -54,22 +55,19 @@ julia> logpdf(Normal(2.0), 1.0)
 function DynamicPPL.marginalize(
     model::DynamicPPL.Model,
     varnames::AbstractVector{<:Union{Symbol,<:VarName}},
-    getlogprob=DynamicPPL.getlogjoint,
+    varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.VarInfo(model),
+    getlogprob::Function=DynamicPPL.getlogjoint,
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
     kwargs...,
 )
     # Determine the indices for the variables to marginalise out.
-    varinfo = DynamicPPL.typed_varinfo(model)
     vns = map(_to_varname, varnames)
     varindices = reduce(vcat, DynamicPPL.vector_getranges(varinfo, vns))
     # Construct the marginal log-density model.
-    # Use linked `varinfo` to that we're working in unconstrained space
-    varinfo_linked = DynamicPPL.link(varinfo, model)
-
-    f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo_linked)
+    f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     mdl = MarginalLogDensities.MarginalLogDensity(
         (x, _) -> LogDensityProblems.logdensity(f, x),
-        varinfo_linked[:],
+        varinfo[:],
         varindices,
         (),
         method;
