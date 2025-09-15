@@ -51,7 +51,7 @@ function test_sampler(
         for vn in filter(varnames_filter, varnames(model))
             # We want to compare elementwise which can be achieved by
             # extracting the leaves of the `VarName` and the corresponding value.
-            for vn_leaf in varname_leaves(vn, get(target_values, vn))
+            for vn_leaf in AbstractPPL.varname_leaves(vn, get(target_values, vn))
                 target_value = get(target_values, vn_leaf)
                 chain_mean_value = marginal_mean_of_samples(chain, vn_leaf)
                 @test chain_mean_value ≈ target_value atol = atol rtol = rtol

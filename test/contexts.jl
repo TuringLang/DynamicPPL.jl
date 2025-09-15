@@ -92,7 +92,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # here to split up arrays which could potentially have some,
                 # but not all, elements being `missing`.
                 conditioned_vns = mapreduce(
-                    p -> DynamicPPL.TestUtils.varname_leaves(p.first, p.second),
+                    p -> AbstractPPL.varname_leaves(p.first, p.second),
                     vcat,
                     pairs(conditioned_values),
                 )

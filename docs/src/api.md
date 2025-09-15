@@ -435,8 +435,6 @@ DynamicPPL.maybe_invlink_before_eval!!
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
 DynamicPPL.unflatten
-DynamicPPL.varname_leaves
-DynamicPPL.varname_and_value_leaves
 ```
 
 ### Evaluation Contexts

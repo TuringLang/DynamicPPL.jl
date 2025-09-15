@@ -1,4 +1,105 @@
 @testset "sampler.jl" begin
+    @testset "initial_state and resume_from kwargs" begin
+        # Model is unused, but has to be a DynamicPPL.Model otherwise we won't hit our
+        # overloaded method.
+        @model f() = x ~ Normal()
+        model = f()
+        # This sampler just returns the state it was given as its 'sample'
+        struct S <: AbstractMCMC.AbstractSampler end
+        function AbstractMCMC.step(
+            rng::Random.AbstractRNG,
+            model::Model,
+            sampler::Sampler{<:S},
+            state=nothing;
+            kwargs...,
+        )
+            if state === nothing
+                s = rand()
+                return s, s
+            else
+                return state, state
+            end
+        end
+        spl = Sampler(S())
+
+        function AbstractMCMC.bundle_samples(
+            samples::Vector{Float64},
+            model::Model,
+            sampler::Sampler{<:S},
+            state,
+            chain_type::Type{MCMCChains.Chains};
+            kwargs...,
+        )
+            return MCMCChains.Chains(samples, [:x]; info=(samplerstate=state,))
+        end
+
+        N_iters, N_chains = 10, 3
+
+        @testset "single-chain sampling" begin
+            chn = sample(model, spl, N_iters; progress=false, chain_type=MCMCChains.Chains)
+            initial_value = chn[:x][1]
+            @test all(chn[:x] .== initial_value) # sanity check
+            # using `initial_state`
+            chn2 = sample(
+                model,
+                spl,
+                N_iters;
+                progress=false,
+                initial_state=chn.info.samplerstate,
+                chain_type=MCMCChains.Chains,
+            )
+            @test all(chn2[:x] .== initial_value)
+            # using `resume_from`
+            chn3 = sample(
+                model,
+                spl,
+                N_iters;
+                progress=false,
+                resume_from=chn,
+                chain_type=MCMCChains.Chains,
+            )
+            @test all(chn3[:x] .== initial_value)
+        end
+
+        @testset "multiple-chain sampling" begin
+            chn = sample(
+                model,
+                spl,
+                MCMCThreads(),
+                N_iters,
+                N_chains;
+                progress=false,
+                chain_type=MCMCChains.Chains,
+            )
+            initial_value = chn[:x][1, :]
+            @test all(i -> chn[:x][i, :] == initial_value, 1:N_iters) # sanity check
+            # using `initial_state`
+            chn2 = sample(
+                model,
+                spl,
+                MCMCThreads(),
+                N_iters,
+                N_chains;
+                progress=false,
+                initial_state=chn.info.samplerstate,
+                chain_type=MCMCChains.Chains,
+            )
+            @test all(i -> chn2[:x][i, :] == initial_value, 1:N_iters)
+            # using `resume_from`
+            chn3 = sample(
+                model,
+                spl,
+                MCMCThreads(),
+                N_iters,
+                N_chains;
+                progress=false,
+                resume_from=chn,
+                chain_type=MCMCChains.Chains,
+            )
+            @test all(i -> chn3[:x][i, :] == initial_value, 1:N_iters)
+        end
+    end
+
     @testset "SampleFromPrior and SampleUniform" begin
         @model function gdemo(x, y)
             s ~ InverseGamma(2, 3)

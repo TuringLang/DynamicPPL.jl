@@ -84,6 +84,14 @@ function default_varinfo(::Random.AbstractRNG, ::Model, ::AbstractSampler)
     return typed_varinfo(VarInfo())
 end
 
+"""
+    init_strategy(sampler)
+
+Define the initialisation strategy used for generating initial values when
+sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
+"""
+init_strategy(::Sampler) = InitFromPrior()
+
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
     model::Model,
@@ -99,13 +107,22 @@ function AbstractMCMC.sample(
     )
 end
 
-"""
-    init_strategy(sampler)
-
-Define the initialisation strategy used for generating initial values when
-sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
-"""
-init_strategy(::Sampler) = InitFromPrior()
+function AbstractMCMC.sample(
+    rng::Random.AbstractRNG,
+    model::Model,
+    sampler::Sampler,
+    parallel::AbstractMCMC.AbstractMCMCEnsemble,
+    N::Integer,
+    nchains::Integer;
+    chain_type=default_chain_type(sampler),
+    resume_from=nothing,
+    initial_state=loadstate(resume_from),
+    kwargs...,
+)
+    return AbstractMCMC.mcmcsample(
+        rng, model, sampler, parallel, N, nchains; chain_type, initial_state, kwargs...
+    )
+end
 
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
