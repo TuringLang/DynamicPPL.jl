@@ -9,8 +9,8 @@ _to_varname(n::VarName) = n
 """
     marginalize(
         model::DynamicPPL.Model,
-        varinfo::DynamicPPL.AbstractVarInfo=VarInfo(model),
         varnames::AbstractVector{<:Union{Symbol,<:VarName}},
+        varinfo::DynamicPPL.AbstractVarInfo=link(VarInfo(model), model),
         getlogprob=DynamicPPL.getlogjoint,
         method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
         kwargs...,
@@ -22,6 +22,10 @@ log-density of the given `model`, after marginalizing out the variables specifie
 
 The resulting object can be called with a vector of parameter values to compute the marginal
 log-density.
+
+You can specify the `varinfo` to use for the model. By default we use a linked `VarInfo`,
+meaning that the resulting log-density function accepts parameters that have been
+transformed to unconstrained space.
 
 The `getlogprob` argument can be used to specify which kind of marginal log-density to
 compute. Its default value is `DynamicPPL.getlogjoint` which returns the marginal log-joint
@@ -55,7 +59,7 @@ julia> logpdf(Normal(2.0), 1.0)
 function DynamicPPL.marginalize(
     model::DynamicPPL.Model,
     varnames::AbstractVector{<:Union{Symbol,<:VarName}},
-    varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.VarInfo(model),
+    varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.link(DynamicPPL.VarInfo(model), model),
     getlogprob::Function=DynamicPPL.getlogjoint,
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
     kwargs...,
