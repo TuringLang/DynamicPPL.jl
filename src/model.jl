@@ -873,10 +873,10 @@ end
 
 Evaluate the `model` and replace the values of the model's random variables
 in the given `varinfo` with new values, using a specified initialisation strategy.
-If the values in `varinfo` are not set, they will be added.
+If the values in `varinfo` are not set, they will be added
 using a specified initialisation strategy.
 
-If `init_strategy` is not provided, defaults to InitFromPrior().
+If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
