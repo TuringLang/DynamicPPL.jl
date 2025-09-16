@@ -37,9 +37,11 @@ function DynamicPPL.varnames(c::MCMCChains.Chains)
     return keys(c.info.varname_to_symbol)
 end
 
-function chain_sample_to_varname_dict(c::MCMCChains.Chains, sample_idx, chain_idx)
+function chain_sample_to_varname_dict(
+    c::MCMCChains.Chains{Tval}, sample_idx, chain_idx
+) where {Tval}
     _check_varname_indexing(c)
-    d = Dict{DynamicPPL.VarName,Any}()
+    d = Dict{DynamicPPL.VarName,Tval}()
     for vn in DynamicPPL.varnames(c)
         d[vn] = DynamicPPL.getindex_varname(c, sample_idx, vn, chain_idx)
     end
