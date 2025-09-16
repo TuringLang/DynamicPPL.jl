@@ -59,7 +59,7 @@ end
 function test_parent_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
     @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsParent
 
-    @testset "{set,}{leaf,child}context" begin
+    @testset "get/set leaf and child contexts" begin
         # Ensure we're using a different leaf context than the current.
         leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
             DynamicPPL.DynamicTransformationContext{false}()
