@@ -1,4 +1,17 @@
 @testset "sampler.jl" begin
+    @testset "varnames with same symbol but different type" begin
+        struct S <: AbstractMCMC.AbstractSampler end
+        DynamicPPL.initialstep(rng, model, ::DynamicPPL.Sampler{S}, vi; kwargs...) = vi
+        @model function g()
+            y = (; a=1, b=2)
+            y.a ~ Normal()
+            return y.b ~ Normal()
+        end
+        model = g()
+        spl = DynamicPPL.Sampler(S())
+        @test AbstractMCMC.step(Xoshiro(468), g(), spl) isa Any
+    end
+
     @testset "initial_state and resume_from kwargs" begin
         # Model is unused, but has to be a DynamicPPL.Model otherwise we won't hit our
         # overloaded method.

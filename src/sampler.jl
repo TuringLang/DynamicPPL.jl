@@ -68,7 +68,7 @@ end
 
 Return a default varinfo object for the given `model` and `sampler`.
 
-The default method for this returns an empty NTVarInfo (i.e. 'typed varinfo').
+The default method for this returns a NTVarInfo (i.e. 'typed varinfo').
 
 # Arguments
 - `rng::Random.AbstractRNG`: Random number generator.
@@ -78,10 +78,14 @@ The default method for this returns an empty NTVarInfo (i.e. 'typed varinfo').
 # Returns
 - `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
 """
-function default_varinfo(::Random.AbstractRNG, ::Model, ::AbstractSampler)
-    # Note that variable values are unconditionally initialized later, so no
-    # point putting them in now.
-    return typed_varinfo(VarInfo())
+function default_varinfo(rng::Random.AbstractRNG, model::Model, ::AbstractSampler)
+    # Note that in `AbstractMCMC.step`, the values in the varinfo returned here are
+    # immediately overwritten by a subsequent call to `init!!`. The reason why we
+    # _do_ create a varinfo with parameters here (as opposed to simply returning
+    # an empty `typed_varinfo(VarInfo())`) is to avoid issues where pushing to an empty
+    # typed VarInfo would fail. This can happen if two VarNames have different types
+    # but share the same symbol (e.g. `x.a` and `x.b`).
+    return typed_varinfo(VarInfo(rng, model))
 end
 
 """
@@ -131,8 +135,8 @@ function AbstractMCMC.step(
     initial_params::AbstractInitStrategy=init_strategy(spl),
     kwargs...,
 )
-    # Generate the default varinfo (usually this just makes an empty VarInfo
-    # with NamedTuple of Metadata).
+    # Generate the default varinfo. Note that any parameters inside this varinfo
+    # will be immediately overwritten by the next call to `init!!`.
     vi = default_varinfo(rng, model, spl)
 
     # Fill it with initial parameters. Note that, if `InitFromParams` is used, the
