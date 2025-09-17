@@ -123,15 +123,6 @@ The `predict` function has two main methods:
 predict
 ```
 
-## Marginalization
-
-DynamicPPL provides the `marginalize` function to marginalize out variables from a model.
-This requires `MarginalLogDensities.jl` to be loaded in your environment.
-
-```@docs
-marginalize
-```
-
 ### Basic Usage
 
 The typical workflow for posterior prediction involves:
@@ -144,6 +135,15 @@ When using `predict` with `MCMCChains.Chains`, you can control which variables a
 
   - `include_all=false` (default): Include only newly predicted variables
   - `include_all=true`: Include both parameters from the original chain and predicted variables
+
+## Marginalization
+
+DynamicPPL provides the `marginalize` function to marginalize out variables from a model.
+This requires `MarginalLogDensities.jl` to be loaded in your environment.
+
+```@docs
+marginalize
+```
 
 ## Models within models
 
