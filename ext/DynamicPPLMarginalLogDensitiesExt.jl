@@ -9,7 +9,7 @@ _to_varname(n::VarName) = n
 """
     marginalize(
         model::DynamicPPL.Model,
-        varnames::AbstractVector{<:Union{Symbol,<:VarName}},
+        varnames::AbstractVector{<:Union{Symbol,<:VarName}};
         varinfo::DynamicPPL.AbstractVarInfo=link(VarInfo(model), model),
         getlogprob=DynamicPPL.getlogjoint,
         method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
@@ -23,17 +23,22 @@ log-density of the given `model`, after marginalizing out the variables specifie
 The resulting object can be called with a vector of parameter values to compute the marginal
 log-density.
 
-You can specify the `varinfo` to use for the model. By default we use a linked `VarInfo`,
-meaning that the resulting log-density function accepts parameters that have been
-transformed to unconstrained space.
+## Keyword arguments
 
-The `getlogprob` argument can be used to specify which kind of marginal log-density to
-compute. Its default value is `DynamicPPL.getlogjoint` which returns the marginal log-joint
-probability.
+- `varinfo`: The `varinfo` to use for the model. By default we use a linked `VarInfo`,
+   meaning that the resulting log-density function accepts parameters that have bee_FWDn
+   transformed to unconstrained space.
 
-By default the marginalization is performed with a Laplace approximation. Please see [the
-MarginalLogDensities.jl package](https://github.com/ElOceanografo/MarginalLogDensities.jl/)
-for other options.
+- `getlogprob`: A function which specifies which kind of marginal log-density to compute.
+   Its default value is `DynamicPPL.getlogjoint` which returns the marginal log-joint
+   probability.
+
+- `method`: The marginalization method; defaults to a Laplace approximation. Please see [the
+   MarginalLogDensities.jl package](https://github.com/ElOceanografo/MarginalLogDensities.jl/)
+   for other options.
+
+- Other keyword arguments are passed to the `MarginalLogDensities.MarginalLogDensity`
+  constructor.
 
 ## Example
 
@@ -58,10 +63,10 @@ julia> logpdf(Normal(2.0), 1.0)
 """
 function DynamicPPL.marginalize(
     model::DynamicPPL.Model,
-    varnames::AbstractVector{<:Union{Symbol,<:VarName}},
+    varnames::AbstractVector{<:Union{Symbol,<:VarName}};
     varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.link(DynamicPPL.VarInfo(model), model),
     getlogprob::Function=DynamicPPL.getlogjoint,
-    method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
+    method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
     kwargs...,
 )
     # Determine the indices for the variables to marginalise out.
