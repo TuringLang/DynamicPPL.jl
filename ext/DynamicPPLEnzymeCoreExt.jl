@@ -12,7 +12,6 @@ end
 
 # Mark istrans as having 0 derivative. The `nothing` return value is not significant, Enzyme
 # only checks whether such a method exists, and never runs it.
-@inline EnzymeCore.EnzymeRules.inactive_noinl(::typeof(DynamicPPL.istrans), args...) =
-    nothing
+@inline EnzymeCore.EnzymeRules.inactive(::typeof(DynamicPPL.istrans), args...) = nothing
 
 end
