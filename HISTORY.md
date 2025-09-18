@@ -1,6 +1,6 @@
 # DynamicPPL Changelog
 
-## 0.37.3
+## 0.37.4
 
 An extension for MarginalLogDensities.jl has been added.
 
@@ -9,6 +9,10 @@ This is useful for averaging out random effects or nuisance parameters while imp
 The `marginalize` function returns a `MarginalLogDensities.MarginalLogDensity`, a function-like callable struct that returns the approximate log-density of a subset of the parameters after integrating out the rest of them.
 By default, this uses the Laplace approximation and sparse AD, making the marginalization computationally very efficient.
 Please see [the documentation](https://turinglang.org/DynamicPPL.jl/v0.37/api/#Marginalization) for further information.
+
+## 0.37.3
+
+Prevents inlining of `DynamicPPL.istrans` with Enzyme, which allows Enzyme to differentiate models where `VarName`s have the same symbol but different types.
 
 ## 0.37.2
 
