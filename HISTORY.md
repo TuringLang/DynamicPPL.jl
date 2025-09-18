@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.37.3
+
+Prevents inlining of `DynamicPPL.istrans` with Enzyme, which allows Enzyme to differentiate models where `VarName`s have the same symbol but different types.
+
 ## 0.37.2
 
 Make the `resume_from` keyword work for multiple-chain (parallel) sampling as well.
