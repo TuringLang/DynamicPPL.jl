@@ -85,6 +85,8 @@ function default_varinfo(rng::Random.AbstractRNG, model::Model, ::AbstractSample
     # an empty `typed_varinfo(VarInfo())`) is to avoid issues where pushing to an empty
     # typed VarInfo would fail. This can happen if two VarNames have different types
     # but share the same symbol (e.g. `x.a` and `x.b`).
+    # TODO(mhauru) Fix push!! to work with arbitrary lens types, and then remove the arguments
+    # and return an empty VarInfo instead.
     return typed_varinfo(VarInfo(rng, model))
 end
 
