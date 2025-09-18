@@ -21,7 +21,7 @@ _lkj_atol = 0.05
 
 @testset "Sample from x ~ LKJ(2, 1)" begin
     model = lkj_prior_demo()
-    for init_strategy in [PriorInit(), UniformInit()]
+    for init_strategy in [InitFromPrior(), InitFromUniform()]
         samples = [
             last(DynamicPPL.init!!(model, VarInfo(), init_strategy)) for _ in 1:n_samples
         ]
@@ -32,8 +32,7 @@ end
 
 @testset "Sample from x ~ LKJCholesky(2, 1, $(uplo))" for uplo in ['U', 'L']
     model = lkj_chol_prior_demo(uplo)
-    # `SampleFromPrior` will sample in unconstrained space.
-    for init_strategy in [PriorInit(), UniformInit()]
+    for init_strategy in [InitFromPrior(), InitFromUniform()]
         samples = [
             last(DynamicPPL.init!!(model, VarInfo(), init_strategy)) for _ in 1:n_samples
         ]
