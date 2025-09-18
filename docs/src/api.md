@@ -145,6 +145,13 @@ This requires `MarginalLogDensities.jl` to be loaded in your environment.
 marginalize
 ```
 
+A `MarginalLogDensity` object acts as a function which maps non-marginalized parameter values to a marginal log-probability.
+To retrieve a VarInfo object from it, you can use:
+
+```@docs
+VarInfo(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
+```
+
 ## Models within models
 
 One can include models and call another model inside the model function with `left ~ to_submodel(model)`.

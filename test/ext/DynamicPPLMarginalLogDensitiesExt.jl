@@ -69,6 +69,38 @@ using ADTypes: AutoForwardDiff
             end
         end
     end
+
+    @testset "retrieving VarInfo from MLD" begin
+        @model function f()
+            x ~ Normal()
+            return y ~ Beta(2, 2)
+        end
+        model = f()
+        vi_unlinked = VarInfo(model)
+        vi_linked = DynamicPPL.link(vi_unlinked, model)
+
+        @testset "unlinked VarInfo" begin
+            mx = marginalize(model, [@varname(x)]; varinfo=vi_unlinked)
+            mx([0.5]) # evaluate at some point to force calculation of Laplace approx
+            vi = VarInfo(mx)
+            @test vi[@varname(x)] ≈ mode(Normal())
+            vi = VarInfo(mx, [0.5]) # this 0.5 is unlinked
+            @test vi[@varname(x)] ≈ mode(Normal())
+            @test vi[@varname(y)] ≈ 0.5
+        end
+
+        @testset "linked VarInfo" begin
+            mx = marginalize(model, [@varname(x)]; varinfo=vi_linked)
+            mx([0.5]) # evaluate at some point to force calculation of Laplace approx
+            vi = VarInfo(mx)
+            @test vi[@varname(x)] ≈ mode(Normal())
+            vi = VarInfo(mx, [0.5]) # this 0.5 is linked
+            binv = Bijectors.inverse(Bijectors.bijector(Beta(2, 2)))
+            @test vi[@varname(x)] ≈ mode(Normal())
+            # when using getindex it always returns unlinked values
+            @test vi[@varname(y)] ≈ binv(0.5)
+        end
+    end
 end
 
 end
