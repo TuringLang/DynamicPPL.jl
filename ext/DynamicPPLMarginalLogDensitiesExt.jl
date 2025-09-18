@@ -195,9 +195,10 @@ function DynamicPPL.VarInfo(
 )
     # Extract the original VarInfo. Its contents will in general be junk.
     original_vi = mld.logdensity.logdensity.varinfo
-    # `mld.u` will contain the modes for any marginalized parameters
-    full_params = mld.u
-    # We can then set the values for any non-marginalized parameters
+    # Extract the stored parameters, which includes the modes for any marginalized
+    # parameters
+    full_params = MarginalLogDensities.cached_params(mld)
+    # We can then (if needed) set the values for any non-marginalized parameters
     if unmarginalized_params !== nothing
         full_params[MarginalLogDensities.ijoint(mld)] = unmarginalized_params
     end
