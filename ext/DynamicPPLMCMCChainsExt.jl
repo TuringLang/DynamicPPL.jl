@@ -23,7 +23,7 @@ end
 
 function _check_varname_indexing(c::MCMCChains.Chains)
     return DynamicPPL.supports_varname_indexing(c) ||
-           error("Chains do not support indexing using `VarName`s.")
+           error("This `Chains` object does not support indexing using `VarName`s.")
 end
 
 function DynamicPPL.getindex_varname(
@@ -35,6 +35,17 @@ end
 function DynamicPPL.varnames(c::MCMCChains.Chains)
     _check_varname_indexing(c)
     return keys(c.info.varname_to_symbol)
+end
+
+function chain_sample_to_varname_dict(
+    c::MCMCChains.Chains{Tval}, sample_idx, chain_idx
+) where {Tval}
+    _check_varname_indexing(c)
+    d = Dict{DynamicPPL.VarName,Tval}()
+    for vn in DynamicPPL.varnames(c)
+        d[vn] = DynamicPPL.getindex_varname(c, sample_idx, vn, chain_idx)
+    end
+    return d
 end
 
 """
@@ -109,9 +120,15 @@ function DynamicPPL.predict(
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
-        DynamicPPL.setval_and_resample!(varinfo, parameter_only_chain, sample_idx, chain_idx)
-        varinfo = last(DynamicPPL.evaluate_and_sample!!(rng, model, varinfo))
-
+        # Extract values from the chain
+        values_dict = chain_sample_to_varname_dict(parameter_only_chain, sample_idx, chain_idx)
+        # Resample any variables that are not present in `values_dict`
+        _, varinfo = DynamicPPL.init!!(
+            rng,
+            model,
+            varinfo,
+            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
+        )
         vals = DynamicPPL.values_as_in_model(model, false, varinfo)
         varname_vals = mapreduce(
             collect,
@@ -243,13 +260,16 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     return map(iters) do (sample_idx, chain_idx)
-        # TODO: Use `fix` once we've addressed https://github.com/TuringLang/DynamicPPL.jl/issues/702.
-        # Update the varinfo with the current sample and make variables not present in `chain`
-        # to be sampled.
-        DynamicPPL.setval_and_resample!(varinfo, chain, sample_idx, chain_idx)
-        # NOTE: Some of the varialbes can be a view into the `varinfo`, so we need to
-        # `deepcopy` the `varinfo` before passing it to the `model`.
-        model(deepcopy(varinfo))
+        # Extract values from the chain
+        values_dict = chain_sample_to_varname_dict(chain, sample_idx, chain_idx)
+        # Resample any variables that are not present in `values_dict`, and
+        # return the model's retval.
+        retval, _ = DynamicPPL.init!!(
+            model,
+            varinfo,
+            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
+        )
+        retval
     end
 end
 

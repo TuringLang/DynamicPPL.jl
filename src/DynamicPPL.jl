@@ -206,10 +206,6 @@ include("test_utils.jl")
 include("experimental.jl")
 include("deprecated.jl")
 
-if !isdefined(Base, :get_extension)
-    using Requires
-end
-
 # Better error message if users forget to load JET
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()

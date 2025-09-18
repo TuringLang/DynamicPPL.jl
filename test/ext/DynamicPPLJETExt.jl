@@ -30,7 +30,7 @@
             DynamicPPL.UntypedVarInfo
 
         # Evaluation works (and it would even do so in practice), but sampling
-        # fill fail due to storing `Cauchy{Float64}` in `Vector{Normal{Float64}}`.
+        # will fail due to storing `Cauchy{Float64}` in `Vector{Normal{Float64}}`.
         @model function demo4()
             x ~ Bernoulli()
             if x
@@ -62,33 +62,37 @@
 
     @testset "demo models" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            sampling_model = contextualize(model, SamplingContext(model.context))
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
-            # Check that the inferred varinfo is indeed suitable for evaluation and sampling
-            f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                model, varinfo
-            )
-            JET.test_call(f_eval, argtypes_eval)
-
-            f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                sampling_model, varinfo
-            )
-            JET.test_call(f_sample, argtypes_sample)
             # For our demo models, they should all result in typed.
             is_typed = varinfo isa DynamicPPL.NTVarInfo
             @test is_typed
-            # If the test failed, check why it didn't infer a typed varinfo
+            # If the test failed, check what the type stability problem was for
+            # the typed varinfo. This is mostly useful for debugging from test
+            # logs.
             if !is_typed
+                @info "Model `$(model.f)` is not type stable with typed varinfo."
                 typed_vi = DynamicPPL.typed_varinfo(model)
-                f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                    model, typed_vi
+
+                @info "Evaluating with DefaultContext:"
+                model = DynamicPPL.contextualize(
+                    model,
+                    DynamicPPL.setleafcontext(model.context, DynamicPPL.DefaultContext()),
                 )
-                JET.test_call(f_eval, argtypes_eval)
-                f_sample, argtypes_sample = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
-                    sampling_model, typed_vi
+                f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+                    model, varinfo
                 )
-                JET.test_call(f_sample, argtypes_sample)
+                JET.test_call(f, argtypes)
+
+                @info "Initialising with InitContext:"
+                model = DynamicPPL.contextualize(
+                    model,
+                    DynamicPPL.setleafcontext(model.context, DynamicPPL.InitContext()),
+                )
+                f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+                    model, varinfo
+                )
+                JET.test_call(f, argtypes)
             end
         end
     end
