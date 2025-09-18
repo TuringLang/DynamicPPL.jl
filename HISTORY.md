@@ -3,7 +3,12 @@
 ## 0.37.3
 
 An extension for MarginalLogDensities.jl has been added.
-Loading DynamicPPL and MarginalLogDensities now provides the `DynamicPPL.marginalize` function to marginalize out variables from a model; please see the documentation for further information.
+
+Loading DynamicPPL and MarginalLogDensities now provides the `DynamicPPL.marginalize` function to marginalize out variables from a model.
+This is useful for averaging out random effects or nuisance parameters while improving inference on fixed effects/parameters of interest.
+The `marginalize` function returns a `MarginalLogDensities.MarginalLogDensity`, a function-like callable struct that returns the approximate log-density of a subset of the parameters after integrating out the rest of them.
+By default, this uses the Laplace approximation and sparse AD, making the marginalization computationally very efficient.
+Please see [the documentation](https://turinglang.org/DynamicPPL.jl/v0.37/api/#Marginalization) for further information.
 
 ## 0.37.2
 
