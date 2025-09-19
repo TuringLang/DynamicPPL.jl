@@ -2,6 +2,41 @@
 
 ## 0.38.0
 
+**Breaking changes**
+
+foo
+
+**Other changes**
+
+### Thread-safe execution
+
+This release removes `ThreadSafeVarInfo`, which was a construction used to ensure thread-safe accumulation of log-likelihood terms using the `Threads.@threads`.
+However, `Threads.@threads` is no longer the recommended way to perform multithreaded tasks: see e.g. [this Julia blog post](https://julialang.org/blog/2023/07/PSA-dont-use-threadid/).
+
+In its place a new macro, `@pobserve` is introduced, which under the hood uses `Threads.@spawn`.
+**From a user's point of view you simply need to replace `Threads.@threads` with `@pobserve`.**
+For example, here the likelihood contributions for each element of `y` are calculated in parallel:
+
+```julia
+@model function f(y)
+    mu ~ Normal()
+    yplusones = @pobserve for i in eachindex(y)
+        y[i] ~ Normal(mu)
+        return y[i] + 1
+    end
+end
+```
+
+Furthermore, the `@pobserve` block will also return the final value inside the block, so can also be used to parallelise arbitrary computation. In the model above, `yplusones` will be a vector of length `y` where each element is `y[i] + 1`.
+
+Please note that this only works for **likelihood terms**, i.e., observed variables (hence the macro name).
+It is a long-term goal to be able to parallelise other parts of model execution such as the sampling of new variables, but this is not presently possible.
+
+`@pobserve` is also not currently compatible with Turing's particle samplers (because Libtask.jl does not work with `Threads.@spawn)`.
+This is, in fact, a good thing, because the previous behaviour of particle samplers with `Threads.@threads` was to silently give a wrong result.
+
+### Other minor changes
+
 The `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
 Their behaviour is otherwise identical.
 
