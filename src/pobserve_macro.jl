@@ -50,13 +50,13 @@ function process_tilde_statements(expr::Expr)
         end
     ) || error("expected block")
     @gensym loglike
-    beginning_expr = quote
+    beginning_expr = :(
         $loglike = if $(DynamicPPL.hasacc)($(esc(:(__varinfo__))), Val(:LogLikelihood))
             zero($(DynamicPPL.getloglikelihood)($(esc(:(__varinfo__)))))
         else
             zero($(DynamicPPL.LogProbType))
         end
-    end
+    )
     n_statements = length(statements)
     transformed_statements::Vector{Vector{Expr}} = map(enumerate(statements)) do (i, stmt)
         is_last = i == n_statements
@@ -64,12 +64,12 @@ function process_tilde_statements(expr::Expr)
             # TODO: We should probably perform some checks to make sure that this
             # indeed was meant to be an observe statement.
             @gensym left
-            e = quote
-                $left = $(esc(lhs))
-                $loglike += $(Distributions.logpdf)($(esc(rhs)), $left)
-            end
-            is_last && push!(e.args, :(($left, $loglike)))
-            e.args
+            e = [
+                :($left = $(esc(lhs))),
+                :($loglike += $(Distributions.logpdf)($(esc(rhs)), $left)),
+            ]
+            is_last && push!(e, :(($left, $loglike)))
+            e
         elseif @capture(stmt, lhs_ .~ rhs_)
             @gensym val
             e = [
@@ -85,6 +85,6 @@ function process_tilde_statements(expr::Expr)
             e
         end
     end
-    new_statements = [beginning_expr.args..., reduce(vcat, transformed_statements)...]
+    new_statements = [beginning_expr, reduce(vcat, transformed_statements)...]
     return Expr(:block, new_statements...)
 end
