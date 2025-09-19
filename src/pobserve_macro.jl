@@ -23,12 +23,13 @@ function _pobserve(expr::Expr)
                 $(process_tilde_statements(block))
             end
         end
-        total_likelihoods = sum(fetch.(likelihood_tasks))
+        retvals_and_likelihoods = fetch.(likelihood_tasks)
+        total_likelihoods = sum(last, retvals_and_likelihoods)
         # println("Total likelihoods: ", total_likelihoods)
         $(esc(:(__varinfo__))) = $(DynamicPPL.accloglikelihood!!)(
             $(esc(:(__varinfo__))), total_likelihoods
         )
-        nothing
+        map(first, retvals_and_likelihoods)
     end
     return return_expr
 end
@@ -50,16 +51,34 @@ function process_tilde_statements(expr::Expr)
     @gensym loglike
     beginning_statement =
         :($loglike = zero($(DynamicPPL.getloglikelihood)($(esc(:(__varinfo__))))))
-    transformed_statements = map(statements) do stmt
-        # skip non-tilde statements
-        # TODO: dot-tilde
-        @capture(stmt, lhs_ ~ rhs_) || return :($(esc(stmt)))
-        # if the above matched, we transform the tilde statement
-        # TODO: We should probably perform some checks to make sure that this
-        # indeed was meant to be an observe statement.
-        :($loglike += $(Distributions.logpdf)($(esc(rhs)), $(esc(lhs))))
+    n_statements = length(statements)
+    transformed_statements::Vector{Vector{Expr}} = map(enumerate(statements)) do (i, stmt)
+        is_last = i == n_statements
+        if @capture(stmt, lhs_ ~ rhs_)
+            # TODO: We should probably perform some checks to make sure that this
+            # indeed was meant to be an observe statement.
+            @gensym left
+            e = quote
+                $left = $(esc(lhs))
+                $loglike += $(Distributions.logpdf)($(esc(rhs)), $left)
+            end
+            is_last && push!(e.args, :(($left, $loglike)))
+            e.args
+        elseif @capture(stmt, lhs_ .~ rhs_)
+            @gensym val
+            e = [
+                # TODO: dot-tilde
+                :($val = $(esc(stmt))),
+            ]
+            is_last && push!(e, :(($val, $loglike)))
+            e
+        else
+            @gensym val
+            e = [:($val = $(esc(stmt)))]
+            is_last && push!(e, :(($val, $loglike)))
+            e
+        end
     end
-    ending_statement = loglike
-    new_statements = [beginning_statement, transformed_statements..., ending_statement]
+    new_statements = [beginning_statement, reduce(vcat, transformed_statements)...]
     return Expr(:block, new_statements...)
 end
