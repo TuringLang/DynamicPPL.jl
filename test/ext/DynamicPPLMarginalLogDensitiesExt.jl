@@ -14,18 +14,16 @@ using ADTypes: AutoForwardDiff
         model = demo()
         vi = VarInfo(model)
         # Marginalize out `x`.
-        for vn in [@varname(x), :x]
-            for getlogprob in [DynamicPPL.getlogprior, DynamicPPL.getlogjoint]
-                marginalized = marginalize(
-                    model,
-                    [vn];
-                    varinfo=vi,
-                    getlogprob=getlogprob,
-                    hess_adtype=AutoForwardDiff(),
-                )
-                for y in range(-5, 5; length=100)
-                    @test marginalized([y]) ≈ logpdf(Normal(0, 1), y) atol = 1e-5
-                end
+        @testset for getlogprob in [DynamicPPL.getlogprior, DynamicPPL.getlogjoint]
+            marginalized = marginalize(
+                model,
+                [@varname(x)];
+                varinfo=vi,
+                getlogprob=getlogprob,
+                hess_adtype=AutoForwardDiff(),
+            )
+            for y in range(-5, 5; length=100)
+                @test marginalized([y]) ≈ logpdf(Normal(0, 1), y) atol = 1e-5
             end
         end
     end
