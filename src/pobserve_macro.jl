@@ -25,10 +25,11 @@ function _pobserve(expr::Expr)
         end
         retvals_and_likelihoods = fetch.(likelihood_tasks)
         total_likelihoods = sum(last, retvals_and_likelihoods)
-        # println("Total likelihoods: ", total_likelihoods)
-        $(esc(:(__varinfo__))) = $(DynamicPPL.accloglikelihood!!)(
-            $(esc(:(__varinfo__))), total_likelihoods
-        )
+        if $(DynamicPPL.hasacc)($(esc(:(__varinfo__))), Val(:LogLikelihood))
+            $(esc(:(__varinfo__))) = $(DynamicPPL.accloglikelihood!!)(
+                $(esc(:(__varinfo__))), total_likelihoods
+            )
+        end
         map(first, retvals_and_likelihoods)
     end
     return return_expr
@@ -49,8 +50,13 @@ function process_tilde_statements(expr::Expr)
         end
     ) || error("expected block")
     @gensym loglike
-    beginning_statement =
-        :($loglike = zero($(DynamicPPL.getloglikelihood)($(esc(:(__varinfo__))))))
+    beginning_expr = quote
+        $loglike = if $(DynamicPPL.hasacc)($(esc(:(__varinfo__))), Val(:LogLikelihood))
+            zero($(DynamicPPL.getloglikelihood)($(esc(:(__varinfo__)))))
+        else
+            zero($(DynamicPPL.LogProbType))
+        end
+    end
     n_statements = length(statements)
     transformed_statements::Vector{Vector{Expr}} = map(enumerate(statements)) do (i, stmt)
         is_last = i == n_statements
@@ -79,6 +85,6 @@ function process_tilde_statements(expr::Expr)
             e
         end
     end
-    new_statements = [beginning_statement, reduce(vcat, transformed_statements)...]
+    new_statements = [beginning_expr.args..., reduce(vcat, transformed_statements)...]
     return Expr(:block, new_statements...)
 end

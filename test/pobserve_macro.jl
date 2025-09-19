@@ -15,6 +15,18 @@ using DynamicPPL, Distributions, Test
         @test isapprox(DynamicPPL.getloglikelihood(vi), expected_loglike)
     end
 
+    @testset "doesn't error when varinfo has no likelihood acc" begin
+        @model function f(x)
+            @pobserve for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        x = randn(3)
+        vi = VarInfo()
+        vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.LogPriorAccumulator(),))
+        @test DynamicPPL.evaluate!!(f(x), vi) isa Any
+    end
+
     @testset "return values are correct" begin
         @testset "single expression at the end" begin
             @model function f(x)
