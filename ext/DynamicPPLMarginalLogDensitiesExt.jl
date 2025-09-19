@@ -3,9 +3,6 @@ module DynamicPPLMarginalLogDensitiesExt
 using DynamicPPL: DynamicPPL, LogDensityProblems, VarName
 using MarginalLogDensities: MarginalLogDensities
 
-_to_varname(n::Symbol) = VarName{n}()
-_to_varname(n::VarName) = n
-
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
 # MarginalLogDensities. It's helpful to have a struct so that we can dispatch on its type
 # below.
@@ -19,7 +16,7 @@ end
 """
     marginalize(
         model::DynamicPPL.Model,
-        varnames::AbstractVector{<:Union{Symbol,<:VarName}};
+        marginalized_varnames::AbstractVector{<:VarName};
         varinfo::DynamicPPL.AbstractVarInfo=link(VarInfo(model), model),
         getlogprob=DynamicPPL.getlogjoint,
         method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
@@ -93,15 +90,14 @@ julia> logpdf(Normal(2.0), 1.0)
 """
 function DynamicPPL.marginalize(
     model::DynamicPPL.Model,
-    varnames::AbstractVector{<:Union{Symbol,<:VarName}};
+    marginalized_varnames::AbstractVector{<:VarName};
     varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.link(DynamicPPL.VarInfo(model), model),
     getlogprob::Function=DynamicPPL.getlogjoint,
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
     kwargs...,
 )
     # Determine the indices for the variables to marginalise out.
-    vns = map(_to_varname, varnames)
-    varindices = reduce(vcat, DynamicPPL.vector_getranges(varinfo, vns))
+    varindices = reduce(vcat, DynamicPPL.vector_getranges(varinfo, marginalized_varnames))
     # Construct the marginal log-density model.
     f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     mld = MarginalLogDensities.MarginalLogDensity(
