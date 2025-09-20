@@ -18,6 +18,8 @@ jobs:
         with:
           version: '1'
 
+      - uses: julia-actions/cache@v2
+
       - name: Install Dependencies
         run: julia --project=benchmarks/ -e 'using Pkg; Pkg.instantiate()'
 
