@@ -37,6 +37,7 @@ const SYMBOL_TO_BACKEND = Dict(
     :reversediff => ADTypes.AutoReverseDiff(; compile=false),
     :reversediff_compiled => ADTypes.AutoReverseDiff(; compile=true),
     :mooncake => ADTypes.AutoMooncake(; config=nothing),
+    :enzyme => ADTypes.AutoEnzyme(; config=nothing),
 )
 
 to_backend(x) = error("Unknown backend: $x")
