@@ -456,50 +456,6 @@ function recombine(d::MultivariateDistribution, val::AbstractVector, n::Int)
     return copy(reshape(val, length(d), n))
 end
 
-# Uniform random numbers with range 4 for robust initializations
-# Reference: https://mc-stan.org/docs/2_19/reference-manual/initialization.html
-randrealuni(rng::Random.AbstractRNG) = 4 * rand(rng) - 2
-randrealuni(rng::Random.AbstractRNG, args...) = 4 .* rand(rng, args...) .- 2
-
-istransformable(dist) = link_transform(dist) !== identity
-
-#################################
-# Single-sample initialisations #
-#################################
-
-inittrans(rng, dist::UnivariateDistribution) = Bijectors.invlink(dist, randrealuni(rng))
-function inittrans(rng, dist::MultivariateDistribution)
-    # Get the length of the unconstrained vector
-    b = link_transform(dist)
-    d = Bijectors.output_length(b, length(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, d))
-end
-function inittrans(rng, dist::MatrixDistribution)
-    # Get the size of the unconstrained vector
-    b = link_transform(dist)
-    sz = Bijectors.output_size(b, size(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, sz...))
-end
-function inittrans(rng, dist::Distribution{CholeskyVariate})
-    # Get the size of the unconstrained vector
-    b = link_transform(dist)
-    sz = Bijectors.output_size(b, size(dist))
-    return Bijectors.invlink(dist, randrealuni(rng, sz...))
-end
-################################
-# Multi-sample initialisations #
-################################
-
-function inittrans(rng, dist::UnivariateDistribution, n::Int)
-    return Bijectors.invlink(dist, randrealuni(rng, n))
-end
-function inittrans(rng, dist::MultivariateDistribution, n::Int)
-    return Bijectors.invlink(dist, randrealuni(rng, size(dist)[1], n))
-end
-function inittrans(rng, dist::MatrixDistribution, n::Int)
-    return Bijectors.invlink(dist, [randrealuni(rng, size(dist)...) for _ in 1:n])
-end
-
 #######################
 # Convenience methods #
 #######################

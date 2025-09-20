@@ -154,7 +154,7 @@ struct InitContext{R<:Random.AbstractRNG,S<:AbstractInitStrategy} <: AbstractCon
 end
 NodeTrait(::InitContext) = IsLeaf()
 
-function tilde_assume(
+function tilde_assume!!(
     ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     in_varinfo = haskey(vi, vn)
@@ -191,6 +191,12 @@ function tilde_assume(
     return x, vi
 end
 
-function tilde_observe!!(::InitContext, right, left, vn, vi)
+function tilde_observe!!(
+    ::InitContext,
+    right::Distribution,
+    left,
+    vn::Union{VarName,Nothing},
+    vi::AbstractVarInfo,
+)
     return tilde_observe!!(DefaultContext(), right, left, vn, vi)
 end
