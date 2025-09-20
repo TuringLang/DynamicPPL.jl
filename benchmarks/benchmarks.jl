@@ -2,7 +2,7 @@ using Pkg
 
 using DynamicPPLBenchmarks: Models, make_suite, model_dimension
 using BenchmarkTools: @benchmark, median, run
-using PrettyTables: PrettyTables, ft_printf
+using PrettyTables: pretty_table, fmt__printf
 using StableRNGs: StableRNG
 
 rng = StableRNG(23)
@@ -85,18 +85,11 @@ end
 
 table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
 header = [
-    "Model",
-    "Dimension",
-    "AD Backend",
-    "VarInfo Type",
-    "Linked",
-    "Eval Time / Ref Time",
-    "AD Time / Eval Time",
+    "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
 ]
-PrettyTables.pretty_table(
+pretty_table(
     table_matrix;
-    header=header,
-    tf=PrettyTables.tf_markdown,
-    formatters=ft_printf("%.1f", [6, 7]),
-    crop=:none,  # Always print the whole table, even if it doesn't fit in the terminal.
+    column_labels=header,
+    backend=:text,
+    formatters=[fmt__printf("%.1f", [6, 7])],
 )
