@@ -11,6 +11,10 @@ using Distributions
 using DocumenterMermaid
 # load MCMCChains package extension to make `predict` available
 using MCMCChains
+using MarginalLogDensities: MarginalLogDensities
+
+# Need this to document a method which uses a type inside the extension...
+DPPLMLDExt = Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt)
 
 # Doctest setup
 DocMeta.setdocmeta!(
@@ -24,7 +28,11 @@ makedocs(;
     format=Documenter.HTML(;
         size_threshold=2^10 * 400, mathengine=Documenter.HTMLWriter.MathJax3()
     ),
-    modules=[DynamicPPL, Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt)],
+    modules=[
+        DynamicPPL,
+        Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt),
+        Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt),
+    ],
     pages=[
         "Home" => "index.md", "API" => "api.md", "Internals" => ["internals/varinfo.md"]
     ],

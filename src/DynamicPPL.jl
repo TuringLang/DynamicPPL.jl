@@ -122,6 +122,7 @@ export AbstractVarInfo,
     fix,
     unfix,
     predict,
+    marginalize,
     prefix,
     returned,
     to_submodel,
@@ -199,9 +200,9 @@ include("test_utils.jl")
 include("experimental.jl")
 include("deprecated.jl")
 
-# Better error message if users forget to load JET
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
+        # Better error message if users forget to load JET.jl
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_jet =
                 exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
@@ -218,6 +219,23 @@ if isdefined(Base.Experimental, :register_error_hint)
                 print(
                     io,
                     "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
+                )
+            end
+        end
+
+        # Same for MarginalLogDensities.jl
+        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
+            requires_mld =
+                exc.f === DynamicPPL.marginalize &&
+                length(argtypes) == 2 &&
+                argtypes[1] <: Model &&
+                argtypes[2] <: AbstractVector{<:Union{Symbol,<:VarName}}
+            if requires_mld
+                printstyled(
+                    io,
+                    "\n\n    `$(exc.f)` requires MarginalLogDensities.jl to be loaded.\n    Please run `using MarginalLogDensities` before calling `$(exc.f)`.\n";
+                    color=:cyan,
+                    bold=true,
                 )
             end
         end
@@ -242,5 +260,8 @@ end
 # Standard tag: Improves stacktraces
 # Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
 struct DynamicPPLTag end
+
+# Extended in MarginalLogDensitiesExt
+function marginalize end
 
 end # module
