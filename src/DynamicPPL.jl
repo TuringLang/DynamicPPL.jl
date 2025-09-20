@@ -199,43 +199,24 @@ include("test_utils.jl")
 include("experimental.jl")
 include("deprecated.jl")
 
-# Better error message if users forget to load JET
+using MethodErrorHints: @method_error_hint
+function _err_hint(fname, package)
+    return "\n\n    The function `$fname` requires $package.jl to be loaded. Please run `using $package` before calling this function.\n"
+end
+
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            requires_jet =
-                exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
-                length(argtypes) >= 2 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext
-            requires_jet |=
-                exc.f === DynamicPPL.Experimental.is_suitable_varinfo &&
-                length(argtypes) >= 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext &&
-                argtypes[3] <: AbstractVarInfo
-            if requires_jet
-                print(
-                    io,
-                    "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
-                )
-            end
-        end
-
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            is_evaluate_three_arg =
-                exc.f === AbstractPPL.evaluate!! &&
-                length(argtypes) == 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractVarInfo &&
-                argtypes[3] <: AbstractContext
-            if is_evaluate_three_arg
-                print(
-                    io,
-                    "\n\nThe method `evaluate!!(model, varinfo, new_ctx)` has been removed. Instead, you should store the `new_ctx` in the `model.context` field using `new_model = contextualize(model, new_ctx)`, and then call `evaluate!!(new_model, varinfo)` on the new model. (Note that, if the model already contained a non-default context, you will need to wrap the existing context.)",
-                )
-            end
-        end
+        @method_error_hint DynamicPPL.Experimental._determine_varinfo_jet(
+            ::Model, ::AbstractContext
+        ) _err_hint("DynamicPPL.Experimental._determine_varinfo_jet", "JET") color = :cyan
+        @method_error_hint DynamicPPL.Experimental._determine_varinfo_jet(
+            ::Model, ::AbstractContext, ::AbstractVarInfo
+        ) _err_hint("DynamicPPL.Experimental._determine_varinfo_jet", "JET") color = :cyan
+        @method_error_hint(
+            AbstractPPL.evaluate!!(::Model, ::AbstractVarInfo, ::AbstractContext),
+            "\n\n    The method `evaluate!!(model, varinfo, new_ctx)` has been removed. Instead, you should store the `new_ctx` in the `model.context` field using `new_model = contextualize(model, new_ctx)`, and then call `evaluate!!(new_model, varinfo)` on the new model. (Note that, if the model already contained a non-default context, you will need to wrap the existing context.)",
+            color = :cyan
+        )
     end
 end
 
