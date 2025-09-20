@@ -113,10 +113,14 @@ function VarInfo(meta=Metadata())
 end
 
 """
-    VarInfo([rng, ]model[, sampler])
+    VarInfo(
+        [rng::Random.AbstractRNG],
+        model,
+        [init_strategy::AbstractInitStrategy]
+    )
 
-Generate a `VarInfo` object for the given `model`, by evaluating it once using
-the given `rng`, `sampler`.
+Generate a `VarInfo` object for the given `model`, by initialising it with the
+given `rng` and `init_strategy`.
 
 !!! warning
 
@@ -129,12 +133,14 @@ the given `rng`, `sampler`.
     instead.
 """
 function VarInfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return typed_varinfo(rng, model, sampler)
+    return typed_varinfo(rng, model, init_strategy)
 end
-function VarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return VarInfo(Random.default_rng(), model, sampler)
+function VarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return VarInfo(Random.default_rng(), model, init_strategy)
 end
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
@@ -195,7 +201,7 @@ end
 ########################
 
 """
-    untyped_varinfo([rng, ]model[, sampler])
+    untyped_varinfo([rng, ]model[, init_strategy])
 
 Construct a VarInfo object for the given `model`, which has just a single
 `Metadata` as its metadata field.
@@ -203,15 +209,17 @@ Construct a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
 function untyped_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return last(evaluate_and_sample!!(rng, model, VarInfo(Metadata()), sampler))
+    return last(init!!(rng, model, VarInfo(Metadata()), init_strategy))
 end
-function untyped_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return untyped_varinfo(Random.default_rng(), model, sampler)
+function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return untyped_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
@@ -270,7 +278,7 @@ function typed_varinfo(vi::NTVarInfo)
     return vi
 end
 """
-    typed_varinfo([rng, ]model[, sampler])
+    typed_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has a NamedTuple of
 `Metadata` structs as its metadata field.
@@ -278,19 +286,21 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
 function typed_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return typed_varinfo(untyped_varinfo(rng, model, sampler))
+    return typed_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function typed_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return typed_varinfo(Random.default_rng(), model, sampler)
+function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return typed_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
-    untyped_vector_varinfo([rng, ]model[, sampler])
+    untyped_vector_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has just a single
 `VarNamedVector` as its metadata field.
@@ -298,23 +308,27 @@ Return a VarInfo object for the given `model`, which has just a single
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
 function untyped_vector_varinfo(vi::UntypedVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     return VarInfo(md, copy(vi.accs))
 end
 function untyped_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return untyped_vector_varinfo(untyped_varinfo(rng, model, sampler))
+    return untyped_vector_varinfo(untyped_varinfo(rng, model, init_strategy))
 end
-function untyped_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return untyped_vector_varinfo(Random.default_rng(), model, sampler)
+function untyped_vector_varinfo(
+    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
+)
+    return untyped_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
-    typed_vector_varinfo([rng, ]model[, sampler])
+    typed_vector_varinfo([rng, ]model[, init_strategy])
 
 Return a VarInfo object for the given `model`, which has a NamedTuple of
 `VarNamedVector`s as its metadata field.
@@ -322,7 +336,7 @@ Return a VarInfo object for the given `model`, which has a NamedTuple of
 # Arguments
 - `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
 - `model::Model`: The model for which to create the varinfo object
-- `sampler::AbstractSampler`: The sampler to use for the model. Defaults to `SampleFromPrior()`.
+- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
 function typed_vector_varinfo(vi::NTVarInfo)
     md = map(metadata_to_varnamedvector, vi.metadata)
@@ -334,12 +348,16 @@ function typed_vector_varinfo(vi::UntypedVectorVarInfo)
     return VarInfo(nt, copy(vi.accs))
 end
 function typed_vector_varinfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, sampler))
+    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, init_strategy))
 end
-function typed_vector_varinfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return typed_vector_varinfo(Random.default_rng(), model, sampler)
+function typed_vector_varinfo(
+    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
+)
+    return typed_vector_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
@@ -1508,42 +1526,6 @@ function islinked(vi::VarInfo)
     return any(istrans(vi, vn) for vn in keys(vi))
 end
 
-function nested_setindex_maybe!(vi::UntypedVarInfo, val, vn::VarName)
-    return _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
-end
-function nested_setindex_maybe!(
-    vi::VarInfo{<:NamedTuple{names}}, val, vn::VarName{sym}
-) where {names,sym}
-    return if sym in names
-        _nested_setindex_maybe!(vi, getmetadata(vi, vn), val, vn)
-    else
-        nothing
-    end
-end
-function _nested_setindex_maybe!(
-    vi::VarInfo, md::Union{Metadata,VarNamedVector}, val, vn::VarName
-)
-    # If `vn` is in `vns`, then we can just use the standard `setindex!`.
-    vns = Base.keys(md)
-    if vn in vns
-        setindex!(vi, val, vn)
-        return vn
-    end
-
-    # Otherwise, we need to check if either of the `vns` subsumes `vn`.
-    i = findfirst(Base.Fix2(subsumes, vn), vns)
-    i === nothing && return nothing
-
-    vn_parent = vns[i]
-    val_parent = getindex(vi, vn_parent)  # TODO: Ensure that we're working with a view here.
-    # Split the varname into its tail optic.
-    optic = remove_parent_optic(vn_parent, vn)
-    # Update the value for the parent.
-    val_parent_updated = set!!(val_parent, optic, val)
-    setindex!(vi, val_parent_updated, vn_parent)
-    return vn_parent
-end
-
 # The default getindex & setindex!() for get & set values
 # NOTE: vi[vn] will always transform the variable to its original space and Julia type
 function getindex(vi::VarInfo, vn::VarName)
@@ -1961,113 +1943,6 @@ function _setval_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, ke
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
         settrans!!(vi, false, vn)
-    end
-
-    return indices
-end
-
-"""
-    setval_and_resample!(vi::VarInfo, x)
-    setval_and_resample!(vi::VarInfo, values, keys)
-    setval_and_resample!(vi::VarInfo, chains::AbstractChains, sample_idx, chain_idx)
-
-Set the values in `vi` to the provided values and those which are not present
-in `x` or `chains` to *be* resampled.
-
-Note that this does *not* resample the values not provided! It will call
-`setflag!(vi, vn, "del")` for variables `vn` for which no values are provided, which means
-that the next time we call `model(vi)` these variables will be resampled.
-
-## Note
-- This suffers from the same limitations as [`setval!`](@ref). See `setval!` for more info.
-
-## Example
-```jldoctest
-julia> using DynamicPPL, Distributions, StableRNGs
-
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1)
-           end
-       end;
-
-julia> rng = StableRNG(42);
-
-julia> m = demo([missing]);
-
-julia> var_info = DynamicPPL.VarInfo(rng, m);
-       # Checking the setting of "del" flags only makes sense for VarInfo{<:Metadata}. For VarInfo{<:VarNamedVector} the flag is effectively always set.
-
-julia> var_info[@varname(m)]
--0.6702516921145671
-
-julia> var_info[@varname(x[1])]
--0.22312984965118443
-
-julia> DynamicPPL.setval_and_resample!(var_info, (m = 100.0, )); # set `m` and ready `x[1]` for resampling
-
-julia> var_info[@varname(m)] # [✓] changed
-100.0
-
-julia> var_info[@varname(x[1])] # [✓] unchanged
--0.22312984965118443
-
-julia> m(rng, var_info); # sample `x[1]` conditioned on `m = 100.0`
-
-julia> var_info[@varname(m)] # [✓] unchanged
-100.0
-
-julia> var_info[@varname(x[1])] # [✓] changed
-101.37363069798343
-```
-
-## See also
-- [`setval!`](@ref)
-"""
-function setval_and_resample!(vi::VarInfoOrThreadSafeVarInfo, x)
-    return setval_and_resample!(vi, values(x), keys(x))
-end
-function setval_and_resample!(vi::VarInfoOrThreadSafeVarInfo, values, keys)
-    return _apply!(_setval_and_resample_kernel!, vi, values, keys)
-end
-function setval_and_resample!(
-    vi::VarInfoOrThreadSafeVarInfo, chains::AbstractChains, sample_idx::Int, chain_idx::Int
-)
-    if supports_varname_indexing(chains)
-        # First we need to set every variable to be resampled.
-        for vn in keys(vi)
-            set_flag!(vi, vn, "del")
-        end
-        # Then we set the variables in `varinfo` from `chain`.
-        for vn in varnames(chains)
-            vn_updated = nested_setindex_maybe!(
-                vi, getindex_varname(chains, sample_idx, vn, chain_idx), vn
-            )
-
-            # Unset the `del` flag if we found something.
-            if vn_updated !== nothing
-                # NOTE: This will be triggered even if only a subset of a variable has been set!
-                unset_flag!(vi, vn_updated, "del")
-            end
-        end
-    else
-        setval_and_resample!(vi, chains.value[sample_idx, :, chain_idx], keys(chains))
-    end
-end
-
-function _setval_and_resample_kernel!(
-    vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, keys
-)
-    indices = findall(Base.Fix1(subsumes_string, string(vn)), keys)
-    if !isempty(indices)
-        val = reduce(vcat, values[indices])
-        setval!(vi, val, vn)
-        settrans!!(vi, false, vn)
-    else
-        # Ensures that we'll resample the variable corresponding to `vn` if we run
-        # the model on `vi` again.
-        set_flag!(vi, vn, "del")
     end
 
     return indices

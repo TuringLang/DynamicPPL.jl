@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.38.0
+
+The `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
+Their behaviour is otherwise identical.
+
 ## 0.37.3
 
 Prevents inlining of `DynamicPPL.istrans` with Enzyme, which allows Enzyme to differentiate models where `VarName`s have the same symbol but different types.
