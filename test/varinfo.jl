@@ -1,5 +1,5 @@
 function check_varinfo_keys(varinfo, vns)
-    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
+    if varinfo isa DynamicPPL.SimpleVarInfo{<:NamedTuple}
         # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
         # since `keys(varinfo_merged)` only contains `VarName` with `identity`.
         # So we just check that the original keys are present.
@@ -600,9 +600,7 @@ end
             vns = DynamicPPL.TestUtils.varnames(model)
 
             # Set up the different instances of `AbstractVarInfo` with the desired values.
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model, example_values, vns; include_threadsafe=true
-            )
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
             @testset "$(short_varinfo_name(vi))" for vi in varinfos
                 # Just making sure.
                 DynamicPPL.TestUtils.test_values(vi, example_values, vns)
@@ -645,11 +643,9 @@ end
             @testset "mutating=$mutating" for mutating in [false, true]
                 value_true = DynamicPPL.TestUtils.rand_prior_true(model)
                 varnames = DynamicPPL.TestUtils.varnames(model)
-                varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                    model, value_true, varnames; include_threadsafe=true
-                )
+                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, value_true, varnames)
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
+                    if varinfo isa DynamicPPL.SimpleVarInfo{<:NamedTuple}
                         # NOTE: this is broken since we'll end up trying to set
                         #
                         #    varinfo[@varname(x[4:5])] = [x[4],]
@@ -722,14 +718,11 @@ end
         end
 
         model = demo(0.0)
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, (; x=1.0), (@varname(x),); include_threadsafe=true
-        )
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, (; x=1.0), (@varname(x),))
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # Skip the inconcrete `SimpleVarInfo` types, since checking for type
             # stability for them doesn't make much sense anyway.
-            if varinfo isa SimpleVarInfo{<:AbstractDict} ||
-                varinfo isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{<:AbstractDict}}
+            if varinfo isa SimpleVarInfo{<:AbstractDict}
                 continue
             end
             @inferred DynamicPPL.unflatten(varinfo, varinfo[:])
@@ -749,13 +742,9 @@ end
         vns = [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
         # `VarInfo` supports, effectively, arbitrary subsetting.
-        varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, model(), vns; include_threadsafe=true
-        )
+        varinfos = DynamicPPL.TestUtils.setup_varinfos(model, model(), vns)
         varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
-        varinfos_simple = filter(
-            Base.Fix2(isa, DynamicPPL.SimpleOrThreadSafeSimple), varinfos
-        )
+        varinfos_simple = filter(Base.Fix2(isa, DynamicPPL.SimpleVarInfo), varinfos)
 
         # `VarInfo` supports subsetting using, basically, arbitrary varnames.
         vns_supported_standard = [
@@ -795,8 +784,7 @@ end
             # `SimpleVarInfo{<:NamedTuple}` only supports subsetting with "simple" varnames,
             ## i.e. `VarName{sym}()` without any indexing, etc.
             vns_supported =
-                if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple &&
-                    values_as(varinfo) isa NamedTuple
+                if varinfo isa DynamicPPL.SimpleVarInfo && values_as(varinfo) isa NamedTuple
                     vns_supported_simple
                 else
                     vns_supported_standard
@@ -868,10 +856,7 @@ end
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model,
-                DynamicPPL.TestUtils.rand_prior_true(model),
-                vns;
-                include_threadsafe=true,
+                model, DynamicPPL.TestUtils.rand_prior_true(model), vns
             )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
@@ -965,13 +950,9 @@ end
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             nt = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model, nt, vns; include_threadsafe=true
-            )
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, nt, vns)
             # Only keep `VarInfo` types.
-            varinfos = filter(
-                Base.Fix2(isa, DynamicPPL.VarInfoOrThreadSafeVarInfo), varinfos
-            )
+            varinfos = filter(Base.Fix2(isa, DynamicPPL.VarInfo), varinfos)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 x = values_as(varinfo, Vector)
 

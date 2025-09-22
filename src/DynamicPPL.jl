@@ -133,6 +133,7 @@ export AbstractVarInfo,
     to_submodel,
     # Convenience macros
     @addlogprob!,
+    @pobserve,
     value_iterator_from_chain,
     check_model,
     check_model_and_trace,
@@ -186,11 +187,11 @@ include("varnamedvector.jl")
 include("accumulators.jl")
 include("default_accumulators.jl")
 include("abstract_varinfo.jl")
-include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
 include("context_implementations.jl")
 include("compiler.jl")
+include("pobserve_macro.jl")
 include("pointwise_logdensities.jl")
 include("transforming.jl")
 include("logdensityfunction.jl")

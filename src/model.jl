@@ -854,16 +854,6 @@ function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInf
 end
 
 """
-    use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-
-Return `true` if evaluation of a model using `context` and `varinfo` should
-wrap `varinfo` in `ThreadSafeVarInfo`, i.e. threadsafe evaluation, and `false` otherwise.
-"""
-function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-    return Threads.nthreads() > 1
-end
-
-"""
     init!!(
         [rng::Random.AbstractRNG,]
         model::Model,
@@ -903,53 +893,11 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-If multiple threads are available, the varinfo provided will be wrapped in a
-`ThreadSafeVarInfo` before evaluation.
-
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    return if use_threadsafe_eval(model.context, varinfo)
-        evaluate_threadsafe!!(model, varinfo)
-    else
-        evaluate_threadunsafe!!(model, varinfo)
-    end
-end
-
-"""
-    evaluate_threadunsafe!!(model, varinfo)
-
-Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
-
-If the `model` makes use of Julia's multithreading this will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadsafe!!`](@ref)
-"""
-function evaluate_threadunsafe!!(model, varinfo)
     return _evaluate!!(model, resetaccs!!(varinfo))
-end
-
-"""
-    evaluate_threadsafe!!(model, varinfo, context)
-
-Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
-
-With the wrapper, Julia's multithreading can be used for observe statements in the `model`
-but parallel sampling will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadunsafe!!`](@ref)
-"""
-function evaluate_threadsafe!!(model, varinfo)
-    wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
-    result, wrapper_new = _evaluate!!(model, wrapper)
-    # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
-    # will return the underlying VI, which is a bit counterintuitive (because
-    # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
-    # again).
-    return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
 end
 
 """
@@ -957,8 +905,7 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
-reset the log probability of the `varinfo` before running.
+This function does not reset the accumulators in the `varinfo` before running.
 """
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)

@@ -142,19 +142,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "DynamicPPL#684: threadsafe evaluation with multiple types" begin
-        @model function multiple_types(x)
-            ns ~ filldist(Normal(0, 2.0), 3)
-            m ~ Uniform(0, 1)
-            return x ~ Normal(m, 1)
-        end
-        model = multiple_types(1)
-        chain = make_chain_from_prior(model, 10)
-        loglikelihood(model, chain)
-        logprior(model, chain)
-        logjoint(model, chain)
-    end
-
     @testset "defaults without VarInfo, Sampler, and Context" begin
         model = GDEMO_DEFAULT
 
