@@ -827,6 +827,27 @@ end
 function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
 end
+function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
+    # has a dedicated implementation
+    ctx = DynamicTransformationContext{false}()
+    model = contextualize(model, setleafcontext(model.context, ctx))
+    vi = last(evaluate!!(model, vi))
+    return settrans!!(vi, t)
+end
+function link!!(
+    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
+)
+    b = inverse(t.bijector)
+    x = vi[:]
+    y, logjac = with_logabsdet_jacobian(b, x)
+    # Set parameters and add the logjac term.
+    vi = unflatten(vi, y)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
+    return settrans!!(vi, t)
+end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
@@ -845,6 +866,9 @@ function link(vi::AbstractVarInfo, model::Model)
 end
 function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
+end
+function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    return link!!(t, deepcopy(vi), model)
 end
 
 """
@@ -866,23 +890,14 @@ end
 function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
 end
-
-# Vector-based ones.
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    b = inverse(t.bijector)
-    x = vi[:]
-    y, logjac = with_logabsdet_jacobian(b, x)
-
-    # Set parameters and add the logjac term.
-    vi = unflatten(vi, y)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, logjac)
-    end
-    return settrans!!(vi, t)
+function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
+    # has a dedicated implementation
+    ctx = DynamicTransformationContext{true}()
+    model = contextualize(model, setleafcontext(model.context, ctx))
+    vi = last(evaluate!!(model, vi))
+    return settrans!!(vi, NoTransformation())
 end
-
 function invlink!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
@@ -918,6 +933,9 @@ function invlink(vi::AbstractVarInfo, model::Model)
 end
 function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
+end
+function invlink(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    return invlink!!(t, deepcopy(vi), model)
 end
 
 """
