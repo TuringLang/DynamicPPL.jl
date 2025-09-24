@@ -36,7 +36,7 @@ For developers working on DynamicPPL, `InitContext` now completely replaces what
 Evaluating a model with `SamplingContext(SampleFromPrior())` (e.g. with `DynamicPPL.evaluate_and_sample!!(model, VarInfo(), SampleFromPrior())` has a direct one-to-one replacement in `DynamicPPL.init!!(model, VarInfo(), InitFromPrior())`.
 Please see the docstring of `init!!` for more details.
 Likewise `SampleFromUniform()` can be replaced with `InitFromUniform()`.
-`InitFromParams()` provides new functionality which previously used to be implemented in the roundabout way of manipulating the VarInfo (e.g. using `unflatten`, or even more hackily by directly modifying values in the VarInfo), and then evaluating using `DefaultContext`.
+`InitFromParams()` provides new functionality which was previously implemented in the roundabout way of manipulating the VarInfo (e.g. using `unflatten`, or even more hackily by directly modifying values in the VarInfo), and then evaluating using `DefaultContext`.
 
 The main change that this is likely to create is for those who are implementing samplers or inference algorithms.
 The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
