@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.37.5
+
+A minor optimisation for Enzyme AD on DynamicPPL models.
+
 ## 0.37.4
 
 An extension for MarginalLogDensities.jl has been added.
