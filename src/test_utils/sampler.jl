@@ -3,6 +3,8 @@
 #
 # Utilities to test samplers on models.
 
+using AbstractPPL: AbstractPPL
+
 """
     marginal_mean_of_samples(chain, varname)
 
