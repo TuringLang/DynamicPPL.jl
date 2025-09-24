@@ -59,12 +59,13 @@ function AbstractMCMC.sample(
     sampler::Sampler,
     N::Integer;
     chain_type=default_chain_type(sampler),
+    initial_params=init_strategy(sampler),
     resume_from=nothing,
     initial_state=loadstate(resume_from),
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_state, kwargs...
+        rng, model, sampler, N; chain_type, initial_params, initial_state, kwargs...
     )
 end
 
@@ -75,13 +76,23 @@ function AbstractMCMC.sample(
     parallel::AbstractMCMC.AbstractMCMCEnsemble,
     N::Integer,
     nchains::Integer;
+    initial_params=fill(init_strategy(sampler), nchains),
     chain_type=default_chain_type(sampler),
     resume_from=nothing,
     initial_state=loadstate(resume_from),
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, parallel, N, nchains; chain_type, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        parallel,
+        N,
+        nchains;
+        chain_type,
+        initial_params,
+        initial_state,
+        kwargs...,
     )
 end
 
@@ -89,7 +100,7 @@ function AbstractMCMC.step(
     rng::Random.AbstractRNG,
     model::Model,
     spl::Sampler;
-    initial_params::AbstractInitStrategy=init_strategy(spl),
+    initial_params::AbstractInitStrategy,
     kwargs...,
 )
     # Generate the default varinfo. Note that any parameters inside this varinfo
