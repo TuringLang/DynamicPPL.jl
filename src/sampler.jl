@@ -51,7 +51,7 @@ end
 Define the initialisation strategy used for generating initial values when
 sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
 """
-init_strategy(::Sampler) = InitFromPrior()
+init_strategy(::AbstractSampler) = InitFromPrior()
 
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
