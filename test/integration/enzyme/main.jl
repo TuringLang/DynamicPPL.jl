@@ -6,10 +6,8 @@ import Enzyme: set_runtime_activity, Forward, Reverse, Const
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 
 ADTYPES = Dict(
-    "EnzymeForward" =>
-        AutoEnzyme(; mode=set_runtime_activity(Forward)),
-    "EnzymeReverse" =>
-	AutoEnzyme(; mode=set_runtime_activity(Reverse)),
+    "EnzymeForward" => AutoEnzyme(; mode=set_runtime_activity(Forward)),
+    "EnzymeReverse" => AutoEnzyme(; mode=set_runtime_activity(Reverse)),
 )
 
 @testset "$ad_key" for (ad_key, ad_type) in ADTYPES
