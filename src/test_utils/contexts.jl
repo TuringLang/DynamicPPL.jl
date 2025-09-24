@@ -47,7 +47,7 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
         _, untyped_vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
         typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
         # Set the test context as the new leaf context
-        new_model = contextualize(model, DynamicPPL.setleafcontext(model.context, context))
+        new_model = DynamicPPL.setleafcontext(model, context)
         # Check that evaluation works
         for vi in [untyped_vi, typed_vi]
             _, vi = DynamicPPL.evaluate!!(new_model, vi)

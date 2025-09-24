@@ -59,7 +59,7 @@ function _transform!!(
     model::Model,
 )
     # To transform using DynamicTransformationContext, we evaluate the model using that as the leaf context:
-    model = contextualize(model, setleafcontext(model.context, ctx))
+    model = setleafcontext(model, ctx)
     vi = settrans!!(last(evaluate!!(model, vi)), t)
     return vi
 end

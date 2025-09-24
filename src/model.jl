@@ -94,6 +94,15 @@ with its underlying context set to `context`.
 function contextualize(model::Model, context::AbstractContext)
     return Model(model.f, model.args, model.defaults, context)
 end
+"""
+    setleafcontext(model::Model, context::AbstractContext)
+
+Return a new `Model` with its leaf context set to `context`. This is a convenience
+shortcut for `contextualize(model, setleafcontext(model.context, context)`).
+"""
+function setleafcontext(model::Model, context::AbstractContext)
+    return contextualize(model, setleafcontext(model.context, context))
+end
 
 """
     model | (x = 1.0, ...)
@@ -886,8 +895,7 @@ function init!!(
     varinfo::AbstractVarInfo,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    new_context = setleafcontext(model.context, InitContext(rng, init_strategy))
-    new_model = contextualize(model, new_context)
+    new_model = setleafcontext(model, InitContext(rng, init_strategy))
     return evaluate!!(new_model, varinfo)
 end
 function init!!(

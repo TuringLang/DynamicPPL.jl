@@ -24,9 +24,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     varinfo = DynamicPPL.typed_varinfo(model)
 
     # Check type stability of evaluation (i.e. DefaultContext)
-    model = DynamicPPL.contextualize(
-        model, DynamicPPL.setleafcontext(model.context, DynamicPPL.DefaultContext())
-    )
+    model = DynamicPPL.setleafcontext(model, DynamicPPL.DefaultContext())
     eval_issuccess, eval_result = DynamicPPL.Experimental.is_suitable_varinfo(
         model, varinfo; only_ddpl
     )
@@ -36,9 +34,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     end
 
     # Check type stability of initialisation (i.e. InitContext)
-    model = DynamicPPL.contextualize(
-        model, DynamicPPL.setleafcontext(model.context, DynamicPPL.InitContext())
-    )
+    model = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
     init_issuccess, init_result = DynamicPPL.Experimental.is_suitable_varinfo(
         model, varinfo; only_ddpl
     )
