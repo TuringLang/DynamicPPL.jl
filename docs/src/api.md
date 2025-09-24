@@ -136,16 +136,16 @@ When using `predict` with `MCMCChains.Chains`, you can control which variables a
   - `include_all=false` (default): Include only newly predicted variables
   - `include_all=true`: Include both parameters from the original chain and predicted variables
 
-## Marginalization
+## Marginalisation
 
-DynamicPPL provides the `marginalize` function to marginalize out variables from a model.
+DynamicPPL provides the `marginalize` function to marginalise out variables from a model.
 This requires `MarginalLogDensities.jl` to be loaded in your environment.
 
 ```@docs
 marginalize
 ```
 
-A `MarginalLogDensity` object acts as a function which maps non-marginalized parameter values to a marginal log-probability.
+A `MarginalLogDensity` object acts as a function which maps non-marginalised parameter values to a marginal log-probability.
 To retrieve a VarInfo object from it, you can use:
 
 ```@docs
