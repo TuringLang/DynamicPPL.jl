@@ -61,16 +61,17 @@ DynamicTransformationContext{true}()
 setchildcontext
 
 """
-    leafcontext(context)
+    leafcontext(context::AbstractContext)
 
 Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
 """
-leafcontext(context) = leafcontext(NodeTrait(leafcontext, context), context)
+leafcontext(context::AbstractContext) =
+    leafcontext(NodeTrait(leafcontext, context), context)
 leafcontext(::IsLeaf, context) = context
 leafcontext(::IsParent, context) = leafcontext(childcontext(context))
 
 """
-    setleafcontext(left, right)
+    setleafcontext(left::AbstractContext, right::AbstractContext)
 
 Return `left` but now with its leaf context replaced by `right`.
 
@@ -106,7 +107,7 @@ julia> # Append another parent context.
 ParentContext(ParentContext(ParentContext(DefaultContext())))
 ```
 """
-function setleafcontext(left, right)
+function setleafcontext(left::AbstractContext, right::AbstractContext)
     return setleafcontext(
         NodeTrait(setleafcontext, left), NodeTrait(setleafcontext, right), left, right
     )
