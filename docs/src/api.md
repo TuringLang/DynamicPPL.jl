@@ -8,7 +8,7 @@ Part of the API of DynamicPPL is defined in the more lightweight interface packa
 
 A core component of DynamicPPL is the [`@model`](@ref) macro.
 It can be used to define probabilistic models in an intuitive way by specifying random variables and their distributions with `~` statements.
-These statements are rewritten by `@model` as calls of [internal functions](@ref model_internal) for sampling the variables and computing their log densities.
+These statements are rewritten by `@model` as calls of internal functions for sampling the variables and computing their log densities.
 
 ```@docs
 @model
@@ -344,6 +344,13 @@ Base.empty!
 SimpleVarInfo
 ```
 
+### Tilde-pipeline
+
+```@docs
+tilde_assume!!
+tilde_observe!!
+```
+
 ### Accumulators
 
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
@@ -447,12 +454,12 @@ AbstractPPL.evaluate!!
 
 This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
+If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
 The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
-SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
@@ -486,15 +493,7 @@ DynamicPPL.init
 
 ### Samplers
 
-In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
-
-```@docs
-SampleFromPrior
-SampleFromUniform
-```
-
-Additionally, a generic sampler for inference is implemented.
+In DynamicPPL a generic sampler for inference is implemented.
 
 ```@docs
 Sampler
@@ -519,10 +518,4 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 ```@docs
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
-```
-
-### [Model-Internal Functions](@id model_internal)
-
-```@docs
-tilde_assume
 ```

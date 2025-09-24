@@ -64,6 +64,12 @@
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
+            # Check that the inferred varinfo is indeed suitable for evaluation
+            f_eval, argtypes_eval = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
+                model, varinfo
+            )
+            JET.test_call(f_eval, argtypes_eval)
+
             # For our demo models, they should all result in typed.
             is_typed = varinfo isa DynamicPPL.NTVarInfo
             @test is_typed
