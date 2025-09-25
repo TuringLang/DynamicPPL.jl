@@ -793,10 +793,6 @@ end
 # Handle `AbstractDict` differently since `eltype` results in a `Pair`.
 infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
 
-broadcast_safe(x) = x
-broadcast_safe(x::Distribution) = (x,)
-broadcast_safe(x::AbstractContext) = (x,)
-
 # Convert (x=1,) to Dict(@varname(x) => 1)
 function to_varname_dict(nt::NamedTuple)
     return Dict{VarName,Any}(VarName{k}() => v for (k, v) in pairs(nt))

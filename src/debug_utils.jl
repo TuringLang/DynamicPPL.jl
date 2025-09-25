@@ -1,7 +1,6 @@
 module DebugUtils
 
 using ..DynamicPPL
-using ..DynamicPPL: broadcast_safe, AbstractContext, childcontext
 
 using Random: Random
 using Accessors: Accessors
