@@ -49,11 +49,8 @@ chosen_combinations = [
     ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
     ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
     ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-    ("Dynamic", Models.dynamic(), :typed, :enzyme, true),
     ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
-    ("Submodel", Models.parent(randn(rng)), :typed, :enzyme, true),
     ("LDA", lda_instance, :typed, :reversediff, true),
-    ("LDA", lda_instance, :typed, :enzyme, true),
 ]
 
 # Time running a model-like function that does not use DynamicPPL, as a reference point.
