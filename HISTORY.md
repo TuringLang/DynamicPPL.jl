@@ -52,6 +52,10 @@ The separation of these functions was primarily implemented to avoid performing 
 
 **Other changes**
 
+### `setleafcontext(model, context)`
+
+This convenience method has been added to quickly modify the leaf context of a model.
+
 ### Reimplementation of functions using `InitContext`
 
 A number of functions have been reimplemented and unified with the help of `InitContext`.
