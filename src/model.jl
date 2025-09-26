@@ -896,7 +896,7 @@ function init!!(
     varinfo::AbstractVarInfo,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    new_model = contextualize(model, InitContext(rng, init_strategy))
+    new_model = setleafcontext(model, InitContext(rng, init_strategy))
     return evaluate!!(new_model, varinfo)
 end
 function init!!(
