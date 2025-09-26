@@ -58,16 +58,17 @@ DynamicTransformationContext{true}()
 setchildcontext
 
 """
-    leafcontext(context)
+    leafcontext(context::AbstractContext)
 
 Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
 """
-leafcontext(context) = leafcontext(NodeTrait(leafcontext, context), context)
-leafcontext(::IsLeaf, context) = context
-leafcontext(::IsParent, context) = leafcontext(childcontext(context))
+leafcontext(context::AbstractContext) =
+    leafcontext(NodeTrait(leafcontext, context), context)
+leafcontext(::IsLeaf, context::AbstractContext) = context
+leafcontext(::IsParent, context::AbstractContext) = leafcontext(childcontext(context))
 
 """
-    setleafcontext(left, right)
+    setleafcontext(left::AbstractContext, right::AbstractContext)
 
 Return `left` but now with its leaf context replaced by `right`.
 
@@ -103,19 +104,21 @@ julia> # Append another parent context.
 ParentContext(ParentContext(ParentContext(DefaultContext())))
 ```
 """
-function setleafcontext(left, right)
+function setleafcontext(left::AbstractContext, right::AbstractContext)
     return setleafcontext(
         NodeTrait(setleafcontext, left), NodeTrait(setleafcontext, right), left, right
     )
 end
-function setleafcontext(::IsParent, ::IsParent, left, right)
+function setleafcontext(
+    ::IsParent, ::IsParent, left::AbstractContext, right::AbstractContext
+)
     return setchildcontext(left, setleafcontext(childcontext(left), right))
 end
-function setleafcontext(::IsParent, ::IsLeaf, left, right)
+function setleafcontext(::IsParent, ::IsLeaf, left::AbstractContext, right::AbstractContext)
     return setchildcontext(left, setleafcontext(childcontext(left), right))
 end
-setleafcontext(::IsLeaf, ::IsParent, left, right) = right
-setleafcontext(::IsLeaf, ::IsLeaf, left, right) = right
+setleafcontext(::IsLeaf, ::IsParent, left::AbstractContext, right::AbstractContext) = right
+setleafcontext(::IsLeaf, ::IsLeaf, left::AbstractContext, right::AbstractContext) = right
 
 """
     DynamicPPL.tilde_assume!!(

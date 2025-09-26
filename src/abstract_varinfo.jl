@@ -830,8 +830,7 @@ end
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
     # has a dedicated implementation
-    ctx = DynamicTransformationContext{false}()
-    model = contextualize(model, setleafcontext(model.context, ctx))
+    model = setleafcontext(model, DynamicTransformationContext{false}())
     vi = last(evaluate!!(model, vi))
     return settrans!!(vi, t)
 end
@@ -893,8 +892,7 @@ end
 function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
     # has a dedicated implementation
-    ctx = DynamicTransformationContext{true}()
-    model = contextualize(model, setleafcontext(model.context, ctx))
+    model = setleafcontext(model, DynamicTransformationContext{true}())
     vi = last(evaluate!!(model, vi))
     return settrans!!(vi, NoTransformation())
 end

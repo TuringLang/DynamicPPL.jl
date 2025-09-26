@@ -81,20 +81,14 @@
                 typed_vi = DynamicPPL.typed_varinfo(model)
 
                 @info "Evaluating with DefaultContext:"
-                model = DynamicPPL.contextualize(
-                    model,
-                    DynamicPPL.setleafcontext(model.context, DynamicPPL.DefaultContext()),
-                )
+                model = DynamicPPL.setleafcontext(model, DynamicPPL.DefaultContext())
                 f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
                     model, varinfo
                 )
                 JET.test_call(f, argtypes)
 
                 @info "Initialising with InitContext:"
-                model = DynamicPPL.contextualize(
-                    model,
-                    DynamicPPL.setleafcontext(model.context, DynamicPPL.InitContext()),
-                )
+                model = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
                 f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(
                     model, varinfo
                 )
