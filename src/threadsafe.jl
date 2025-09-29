@@ -185,13 +185,6 @@ end
 values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
 values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
-function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return unset_flag!(vi.varinfo, vn, flag)
-end
-function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return is_flagged(vi.varinfo, vn, flag)
-end
-
 function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
     return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
 end

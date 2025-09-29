@@ -15,13 +15,13 @@ not.
 Let `md` be an instance of `Metadata`:
 - `md.vns` is the vector of all `VarName` instances.
 - `md.idcs` is the dictionary that maps each `VarName` instance to its index in
- `md.vns`, `md.ranges` `md.dists`, and `md.flags`.
+ `md.vns`, `md.ranges` `md.dists`, and `md.trans`.
 - `md.vns[md.idcs[vn]] == vn`.
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
-- `md.flags` is a dictionary of true/false flags. `md.flags[flag][md.idcs[vn]]` is the
- value of `flag` corresponding to `vn`.
+- `md.trans` is a Bitvector of true/false flags for whether a variable has been transformed.
+    `md.trans[md.idcs[vn]]` is the value of `trans` corresponding to `vn`.
 
 To make `md::Metadata` type stable, all the `md.vns` must have the same symbol
 and distribution type. However, one can have a Julia variable, say `x`, that is a
@@ -56,8 +56,7 @@ struct Metadata{
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
 
-    # Each `flag` has a `BitVector` `flags[flag]`, where `flags[flag][i]` is the true/false flag value corresonding to `vns[i]`
-    flags::Dict{String,BitVector}
+    trans::BitVector
 end
 
 function Base.:(==)(md1::Metadata, md2::Metadata)
@@ -67,7 +66,7 @@ function Base.:(==)(md1::Metadata, md2::Metadata)
         md1.ranges == md2.ranges &&
         md1.vals == md2.vals &&
         md1.dists == md2.dists &&
-        md1.flags == md2.flags
+        md1.trans == md2.trans
     )
 end
 
@@ -246,8 +245,8 @@ function typed_varinfo(vi::UntypedVarInfo)
         sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
         # New dists
         sym_dists = getindex.((meta.dists,), inds)
-        # New flags
-        sym_flags = Dict(a => meta.flags[a][inds] for a in keys(meta.flags))
+        # New trans
+        sym_trans = meta.trans[inds]
 
         # Extract new ranges and vals
         _ranges = getindex.((meta.ranges,), inds)
@@ -263,7 +262,7 @@ function typed_varinfo(vi::UntypedVarInfo)
 
         push!(
             new_metas,
-            Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_flags),
+            Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_trans),
         )
     end
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
@@ -406,7 +405,7 @@ end
 end
 
 function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.flags)
+    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.trans)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
@@ -422,8 +421,7 @@ Construct an empty type unstable instance of `Metadata`.
 """
 function Metadata()
     vals = Vector{Real}()
-    flags = Dict{String,BitVector}()
-    flags["trans"] = BitVector()
+    trans = BitVector()
 
     return Metadata(
         Dict{VarName,Int}(),
@@ -431,7 +429,7 @@ function Metadata()
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
-        flags,
+        trans,
     )
 end
 
@@ -448,10 +446,7 @@ function empty!(meta::Metadata)
     empty!(meta.ranges)
     empty!(meta.vals)
     empty!(meta.dists)
-    for k in keys(meta.flags)
-        empty!(meta.flags[k])
-    end
-
+    empty!(meta.trans)
     return meta
 end
 
@@ -535,8 +530,8 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
         offset = r[end]
     end
 
-    flags = Dict(k => v[indices_for_vns] for (k, v) in metadata.flags)
-    return Metadata(indices, vns, ranges, vals, metadata.dists[indices_for_vns], flags)
+    trans = trans[indices_for_vns]
+    return Metadata(indices, vns, ranges, vals, metadata.dists[indices_for_vns], trans)
 end
 
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
@@ -607,11 +602,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    flags = Dict{String,BitVector}()
-    # Initialize the `flags`.
-    for k in union(keys(metadata_left.flags), keys(metadata_right.flags))
-        flags[k] = BitVector()
-    end
+    trans = BitVector()
 
     # Range offset.
     offset = 0
@@ -628,12 +619,10 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        for k in keys(flags)
-            push!(flags[k], is_flagged(metadata_for_vn, vn, k))
-        end
+        push!(trans, is_trans(metadata_for_vn, vn))
     end
 
-    return Metadata(idcs, vns, ranges, vals, dists, flags)
+    return Metadata(idcs, vns, ranges, vals, dists, trans)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -807,12 +796,7 @@ function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
     return vi
 end
 function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
-    if trans
-        set_flag!(metadata, vn, "trans")
-    else
-        unset_flag!(metadata, vn, "trans")
-    end
-
+    metadata.trans[getidx(metadata, vn)] = trans
     return metadata
 end
 
@@ -870,25 +854,6 @@ all_varnames_grouped_by_symbol(vi::NTVarInfo) = all_varnames_grouped_by_symbol(v
     return expr
 end
 
-# TODO(mhauru) These set_flag! methods return the VarInfo. They should probably be called
-# set_flag!!.
-"""
-    set_flag!(vi::VarInfo, vn::VarName, flag::String)
-
-Set `vn`'s value for `flag` to `true` in `vi`.
-"""
-function set_flag!(vi::VarInfo, vn::VarName, flag::String)
-    set_flag!(getmetadata(vi, vn), vn, flag)
-    return vi
-end
-function set_flag!(md::Metadata, vn::VarName, flag::String)
-    return md.flags[flag][getidx(md, vn)] = true
-end
-
-function set_flag!(vnv::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to set $(flag)."))
-end
-
 ####
 #### APIs for typed and untyped VarInfo
 ####
@@ -927,7 +892,7 @@ Base.keys(vi::NTVarInfo{<:NamedTuple{()}}) = VarName[]
 end
 
 istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
-istrans(md::Metadata, vn::VarName) = is_flagged(md, vn, "trans")
+istrans(md::Metadata, vn::VarName) = md.trans[getidx(md, vn)]
 
 getaccs(vi::VarInfo) = vi.accs
 setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
@@ -1300,7 +1265,7 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.flags,
+        metadata.trans,
     ),
     cumulative_logjac
 end
@@ -1475,7 +1440,7 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.flags,
+        metadata.trans,
     ),
     cumulative_inv_logjac
 end
@@ -1624,7 +1589,7 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     for accname in acckeys(vi)
         push!(lines, (string(accname), getacc(vi, Val(accname))))
     end
-    push!(lines, ("flags", vi.metadata.flags))
+    push!(lines, ("trans", vi.metadata.trans))
     max_name_length = maximum(map(length ∘ first, lines))
     fmt = Printf.Format("%-$(max_name_length)s")
     vi_str = (
@@ -1738,7 +1703,7 @@ function Base.push!(meta::Metadata, vn, r, dist)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.flags["trans"], false)
+    push!(meta.trans, false)
     return meta
 end
 
@@ -1750,39 +1715,6 @@ end
 #######################################
 # Rand & replaying method for VarInfo #
 #######################################
-
-"""
-    is_flagged(vi::VarInfo, vn::VarName, flag::String)
-
-Check whether `vn` has a true value for `flag` in `vi`.
-"""
-function is_flagged(vi::VarInfo, vn::VarName, flag::String)
-    return is_flagged(getmetadata(vi, vn), vn, flag)
-end
-function is_flagged(metadata::Metadata, vn::VarName, flag::String)
-    return metadata.flags[flag][getidx(metadata, vn)]
-end
-function is_flagged(::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to read $(flag)."))
-end
-
-"""
-    unset_flag!(vi::VarInfo, vn::VarName, flag::String
-
-Set `vn`'s value for `flag` to `false` in `vi`.
-"""
-function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
-    unset_flag!(getmetadata(vi, vn), vn, flag)
-    return vi
-end
-function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
-    metadata.flags[flag][getidx(metadata, vn)] = false
-    return metadata
-end
-
-function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to unset $(flag)."))
-end
 
 # TODO: Maybe rename or something?
 """

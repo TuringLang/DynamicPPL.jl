@@ -48,9 +48,7 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                for flag in keys(meta.flags)
-                    @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
-                end
+                @test meta.trans[ind] == fmeta.trans[tind]
                 range = meta.ranges[ind]
                 trange = fmeta.ranges[tind]
                 @test all(meta.vals[range] .== fmeta.vals[trange])
@@ -285,9 +283,8 @@ end
         @test all_accs_same(vi, vi_orig)
     end
 
-    @testset "flags" begin
-        # Test flag setting:
-        #    is_flagged, set_flag!, unset_flag!
+    @testset "trans flag" begin
+        # Test istrans and settrans!!
         function test_varinfo!(vi)
             vn_x = @varname x
             dist = Normal(0, 1)
@@ -296,13 +293,13 @@ end
             push!!(vi, vn_x, r, dist)
 
             # trans is set by default
-            @test !is_flagged(vi, vn_x, "trans")
+            @test !istrans(vi, vn_x)
 
-            set_flag!(vi, vn_x, "trans")
-            @test is_flagged(vi, vn_x, "trans")
+            vi = settrans!!(vi, vn_x, true)
+            @test istrans(vi, vn_x)
 
-            unset_flag!(vi, vn_x, "trans")
-            @test !is_flagged(vi, vn_x, "trans")
+            vi = settrans!!!(vi, vn_x, false)
+            @test !istrans(vi, vn_x)
         end
         vi = VarInfo()
         test_varinfo!(vi)

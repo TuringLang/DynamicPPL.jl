@@ -54,6 +54,8 @@ The separation of these functions was primarily implemented to avoid performing 
 
 Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
 
+The only other flag, other than `"del"`, that `Metadata` ever used was `"trans"`. Thus the generic functions `set_flag!`, `unset_flag!` and `is_flagged!` have also been removed. One can simply use `istrans` and a newly exported function called `settrans!!` instead.
+
 **Other changes**
 
 ### Reimplementation of functions using `InitContext`

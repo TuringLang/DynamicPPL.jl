@@ -329,9 +329,8 @@ The [Transformations section below](#Transformations) describes the methods used
 In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
-set_flag!
-unset_flag!
-is_flagged
+istrans
+settrans!!
 ```
 
 ```@docs
@@ -423,8 +422,6 @@ DynamicPPL.StaticTransformation
 ```
 
 ```@docs
-DynamicPPL.istrans
-DynamicPPL.settrans!!
 DynamicPPL.transformation
 DynamicPPL.link
 DynamicPPL.invlink
