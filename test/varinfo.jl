@@ -22,11 +22,6 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
         r = rand(dist)
         push!!(vi, vn, r, dist)
         r
-    elseif DynamicPPL.is_flagged(vi, vn, "del")
-        DynamicPPL.unset_flag!(vi, vn, "del")
-        r = rand(dist)
-        vi[vn] = DynamicPPL.tovec(r)
-        r
     else
         vi[vn]
     end
@@ -300,14 +295,14 @@ end
 
             push!!(vi, vn_x, r, dist)
 
-            # del is set by default
-            @test !is_flagged(vi, vn_x, "del")
+            # trans is set by default
+            @test !is_flagged(vi, vn_x, "trans")
 
-            set_flag!(vi, vn_x, "del")
-            @test is_flagged(vi, vn_x, "del")
+            set_flag!(vi, vn_x, "trans")
+            @test is_flagged(vi, vn_x, "trans")
 
-            unset_flag!(vi, vn_x, "del")
-            @test !is_flagged(vi, vn_x, "del")
+            unset_flag!(vi, vn_x, "trans")
+            @test !is_flagged(vi, vn_x, "trans")
         end
         vi = VarInfo()
         test_varinfo!(vi)
