@@ -50,6 +50,10 @@ Other functions such as `tilde_assume` and `assume` (and their `observe` counter
 Note that this was effectively already the case in DynamicPPL 0.37 (where they were just wrappers around each other).
 The separation of these functions was primarily implemented to avoid performing extra work where unneeded (e.g. to not calculate the log-likelihood when `PriorContext` was being used). This functionality has since been replaced with accumulators (see the 0.37 changelog for more details).
 
+### Removal of the `"del"` flag
+
+Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
+
 **Other changes**
 
 ### Reimplementation of functions using `InitContext`
