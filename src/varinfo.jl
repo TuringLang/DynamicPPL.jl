@@ -886,7 +886,7 @@ function set_flag!(md::Metadata, vn::VarName, flag::String)
 end
 
 function set_flag!(vnv::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to set ${flag}."))
+    throw(ErrorException("VarNamedVector does not support flags; Tried to set $(flag)."))
 end
 
 ####
@@ -1763,7 +1763,7 @@ function is_flagged(metadata::Metadata, vn::VarName, flag::String)
     return metadata.flags[flag][getidx(metadata, vn)]
 end
 function is_flagged(::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to read ${flag}."))
+    throw(ErrorException("VarNamedVector does not support flags; Tried to read $(flag)."))
 end
 
 """
@@ -1781,7 +1781,7 @@ function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
 end
 
 function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String)
-    throw(ErrorException("VarNamedVector does not support flags; Tried to unset ${flag}."))
+    throw(ErrorException("VarNamedVector does not support flags; Tried to unset $(flag)."))
 end
 
 # TODO: Maybe rename or something?
