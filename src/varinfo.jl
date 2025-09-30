@@ -619,7 +619,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        push!(trans, is_trans(metadata_for_vn, vn))
+        push!(trans, istrans(metadata_for_vn, vn))
     end
 
     return Metadata(idcs, vns, ranges, vals, dists, trans)
