@@ -530,8 +530,9 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
         offset = r[end]
     end
 
-    trans = trans[indices_for_vns]
-    return Metadata(indices, vns, ranges, vals, metadata.dists[indices_for_vns], trans)
+    dists = metadata.dists[indices_for_vns]
+    trans = metadata.trans[indices_for_vns]
+    return Metadata(indices, vns, ranges, vals, dists, trans)
 end
 
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
