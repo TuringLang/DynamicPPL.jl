@@ -423,7 +423,6 @@ Construct an empty type unstable instance of `Metadata`.
 function Metadata()
     vals = Vector{Real}()
     flags = Dict{String,BitVector}()
-    flags["del"] = BitVector()
     flags["trans"] = BitVector()
 
     return Metadata(
@@ -887,12 +886,7 @@ function set_flag!(md::Metadata, vn::VarName, flag::String)
 end
 
 function set_flag!(vnv::VarNamedVector, ::VarName, flag::String)
-    if flag == "del"
-        # The "del" flag is effectively always set for a VarNamedVector, so this is a no-op.
-    else
-        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
-    end
-    return vnv
+    throw(ErrorException("VarNamedVector does not support flags; Tried to set $(flag)."))
 end
 
 ####
@@ -1710,7 +1704,7 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
             [1:length(val)],
             val,
             [dist],
-            Dict{String,BitVector}("trans" => [false], "del" => [false]),
+            Dict{String,BitVector}("trans" => [false]),
         )
         vi = Accessors.@set vi.metadata[sym] = md
     else
@@ -1744,7 +1738,6 @@ function Base.push!(meta::Metadata, vn, r, dist)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.flags["del"], false)
     push!(meta.flags["trans"], false)
     return meta
 end
@@ -1770,42 +1763,25 @@ function is_flagged(metadata::Metadata, vn::VarName, flag::String)
     return metadata.flags[flag][getidx(metadata, vn)]
 end
 function is_flagged(::VarNamedVector, ::VarName, flag::String)
-    if flag == "del"
-        return true
-    else
-        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
-    end
+    throw(ErrorException("VarNamedVector does not support flags; Tried to read $(flag)."))
 end
 
-# TODO(mhauru) The "ignorable" argument is a temporary hack while developing VarNamedVector,
-# but still having to support the interface based on Metadata too
 """
-    unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false
+    unset_flag!(vi::VarInfo, vn::VarName, flag::String
 
 Set `vn`'s value for `flag` to `false` in `vi`.
-
-Setting some flags for some `VarInfo` types is not possible, and by default attempting to do
-so will error. If `ignorable` is set to `true` then this will silently be ignored instead.
 """
-function unset_flag!(vi::VarInfo, vn::VarName, flag::String, ignorable::Bool=false)
-    unset_flag!(getmetadata(vi, vn), vn, flag, ignorable)
+function unset_flag!(vi::VarInfo, vn::VarName, flag::String)
+    unset_flag!(getmetadata(vi, vn), vn, flag)
     return vi
 end
-function unset_flag!(metadata::Metadata, vn::VarName, flag::String, ignorable::Bool=false)
+function unset_flag!(metadata::Metadata, vn::VarName, flag::String)
     metadata.flags[flag][getidx(metadata, vn)] = false
     return metadata
 end
 
-function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String, ignorable::Bool=false)
-    if ignorable
-        return vnv
-    end
-    if flag == "del"
-        throw(ErrorException("The \"del\" flag cannot be unset for VarNamedVector"))
-    else
-        throw(ErrorException("Flag $flag not valid for VarNamedVector"))
-    end
-    return vnv
+function unset_flag!(vnv::VarNamedVector, ::VarName, flag::String)
+    throw(ErrorException("VarNamedVector does not support flags; Tried to unset $(flag)."))
 end
 
 # TODO: Maybe rename or something?
