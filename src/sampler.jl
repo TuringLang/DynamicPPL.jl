@@ -64,6 +64,9 @@ function AbstractMCMC.sample(
     initial_state=loadstate(resume_from),
     kwargs...,
 )
+    if hasproperty(kwargs, :initial_parameters)
+        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
+    end
     return AbstractMCMC.mcmcsample(
         rng, model, sampler, N; chain_type, initial_params, initial_state, kwargs...
     )
@@ -82,6 +85,9 @@ function AbstractMCMC.sample(
     initial_state=loadstate(resume_from),
     kwargs...,
 )
+    if hasproperty(kwargs, :initial_parameters)
+        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
+    end
     return AbstractMCMC.mcmcsample(
         rng,
         model,
