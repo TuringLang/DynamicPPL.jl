@@ -46,12 +46,12 @@ function default_varinfo(rng::Random.AbstractRNG, model::Model, ::AbstractSample
 end
 
 """
-    init_strategy(sampler)
+    init_strategy(sampler::AbstractSampler)
 
 Define the initialisation strategy used for generating initial values when
 sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
 """
-init_strategy(::Sampler) = InitFromPrior()
+init_strategy(::AbstractSampler) = InitFromPrior()
 
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
@@ -60,11 +60,15 @@ function AbstractMCMC.sample(
     N::Integer;
     chain_type=default_chain_type(sampler),
     resume_from=nothing,
+    initial_params=init_strategy(sampler),
     initial_state=loadstate(resume_from),
     kwargs...,
 )
+    if hasproperty(kwargs, :initial_parameters)
+        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
+    end
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_state, kwargs...
+        rng, model, sampler, N; chain_type, initial_params, initial_state, kwargs...
     )
 end
 
@@ -76,12 +80,25 @@ function AbstractMCMC.sample(
     N::Integer,
     nchains::Integer;
     chain_type=default_chain_type(sampler),
+    initial_params=fill(init_strategy(sampler), nchains),
     resume_from=nothing,
     initial_state=loadstate(resume_from),
     kwargs...,
 )
+    if hasproperty(kwargs, :initial_parameters)
+        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
+    end
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, parallel, N, nchains; chain_type, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        parallel,
+        N,
+        nchains;
+        chain_type,
+        initial_params,
+        initial_state,
+        kwargs...,
     )
 end
 

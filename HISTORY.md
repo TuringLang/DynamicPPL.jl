@@ -58,6 +58,10 @@ The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus t
 
 **Other changes**
 
+### `setleafcontext(model, context)`
+
+This convenience method has been added to quickly modify the leaf context of a model.
+
 ### Reimplementation of functions using `InitContext`
 
 A number of functions have been reimplemented and unified with the help of `InitContext`.
@@ -68,6 +72,22 @@ Their APIs are the same.
 
 The implementation of the `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
 Their behaviour is otherwise identical, and they are still accessible from the DynamicPPL module (though still not exported).
+
+## 0.37.5
+
+A minor optimisation for Enzyme AD on DynamicPPL models.
+
+## 0.37.4
+
+An extension for MarginalLogDensities.jl has been added.
+
+Loading DynamicPPL and MarginalLogDensities now provides the `DynamicPPL.marginalize` function to marginalise out variables from a model.
+This is useful for averaging out random effects or nuisance parameters while improving inference on fixed effects/parameters of interest.
+The `marginalize` function returns a `MarginalLogDensities.MarginalLogDensity`, a function-like callable struct that returns the approximate log-density of a subset of the parameters after integrating out the rest of them.
+By default, this uses the Laplace approximation and sparse AD, making the marginalisation computationally very efficient.
+Note that the Laplace approximation relies on the model being differentiable with respect to the marginalised variables, and that their posteriors are unimodal and approximately Gaussian.
+
+Please see [the MarginalLogDensities documentation](https://eloceanografo.github.io/MarginalLogDensities.jl/stable) and the [new Marginalisation section of the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/v0.37/api/#Marginalisation) for further information.
 
 ## 0.37.3
 

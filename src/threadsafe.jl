@@ -103,16 +103,12 @@ end
 # consistency between `vi.accs_by_thread` field and `getacc(vi.varinfo)`, which accumulates
 # to define `getacc(vi)`.
 function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = contextualize(
-        model, setleafcontext(model.context, DynamicTransformationContext{false}())
-    )
+    model = setleafcontext(model, DynamicTransformationContext{false}())
     return set_transformed!!(last(evaluate!!(model, vi)), t)
 end
 
 function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = contextualize(
-        model, setleafcontext(model.context, DynamicTransformationContext{true}())
-    )
+    model = setleafcontext(model, DynamicTransformationContext{true}())
     return set_transformed!!(last(evaluate!!(model, vi)), NoTransformation())
 end
 
