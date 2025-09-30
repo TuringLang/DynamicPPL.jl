@@ -150,9 +150,9 @@
             ("Dict", svi_dict),
             ("VarNamedVector", svi_vnv),
             # TODO(mhauru) Fix linked SimpleVarInfos to work with our test models.
-            # DynamicPPL.settrans!!(deepcopy(svi_nt), true),
-            # DynamicPPL.settrans!!(deepcopy(svi_dict), true),
-            # DynamicPPL.settrans!!(deepcopy(svi_vnv), true),
+            # DynamicPPL.set_transformed!!(deepcopy(svi_nt), true),
+            # DynamicPPL.set_transformed!!(deepcopy(svi_dict), true),
+            # DynamicPPL.set_transformed!!(deepcopy(svi_vnv), true),
         )
             # Random seed is set in each `@testset`, so we need to sample
             # a new realization for `m` here.
@@ -172,7 +172,7 @@
 
             ### Evaluation ###
             values_eval_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
-            if DynamicPPL.istrans(svi)
+            if DynamicPPL.is_transformed(svi)
                 _values_prior, logpri_true = DynamicPPL.TestUtils.logprior_true_with_logabsdet_jacobian(
                     model, values_eval_constrained...
                 )
@@ -227,9 +227,11 @@
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
 
         # Initialize.
-        svi_nt = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        svi_nt = DynamicPPL.set_transformed!!(SimpleVarInfo(), true)
         svi_nt = last(DynamicPPL.init!!(model, svi_nt))
-        svi_vnv = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
+        svi_vnv = DynamicPPL.set_transformed!!(
+            SimpleVarInfo(DynamicPPL.VarNamedVector()), true
+        )
         svi_vnv = last(DynamicPPL.init!!(model, svi_vnv))
 
         for svi in (svi_nt, svi_vnv)
@@ -270,13 +272,13 @@
             vi_linked = DynamicPPL.link!!(vi, model)
 
             # Make sure `maybe_invlink_before_eval!!` results in `invlink!!`.
-            @test !DynamicPPL.istrans(
+            @test !DynamicPPL.is_transformed(
                 DynamicPPL.maybe_invlink_before_eval!!(deepcopy(vi), model)
             )
 
             # Resulting varinfo should no longer be transformed.
             vi_result = last(DynamicPPL.init!!(model, deepcopy(vi)))
-            @test !DynamicPPL.istrans(vi_result)
+            @test !DynamicPPL.is_transformed(vi_result)
 
             # Set the values to something that is out of domain if we're in constrained space.
             for vn in keys(vi)

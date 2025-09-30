@@ -504,7 +504,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 vi = VarInfo(model)
                 linked_vi = DynamicPPL.link!!(vi, model)
                 _, new_vi = DynamicPPL.init!!(model, linked_vi, strategy)
-                @test DynamicPPL.istrans(new_vi)
+                @test DynamicPPL.is_transformed(new_vi)
                 # this is the unlinked value, since it uses `getindex`
                 a = new_vi[@varname(a)]
                 # internal logjoint should correspond to the transformed value

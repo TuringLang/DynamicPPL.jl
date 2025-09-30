@@ -48,9 +48,7 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                for flag in keys(meta.flags)
-                    @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
-                end
+                @test meta.is_transformed[ind] == fmeta.is_transformed[tind]
                 range = meta.ranges[ind]
                 trange = fmeta.ranges[tind]
                 @test all(meta.vals[range] .== fmeta.vals[trange])
@@ -285,9 +283,8 @@ end
         @test all_accs_same(vi, vi_orig)
     end
 
-    @testset "flags" begin
-        # Test flag setting:
-        #    is_flagged, set_flag!, unset_flag!
+    @testset "is_transformed flag" begin
+        # Test is_transformed and set_transformed!!
         function test_varinfo!(vi)
             vn_x = @varname x
             dist = Normal(0, 1)
@@ -295,14 +292,14 @@ end
 
             push!!(vi, vn_x, r, dist)
 
-            # trans is set by default
-            @test !is_flagged(vi, vn_x, "trans")
+            # is_transformed is set by default
+            @test !is_transformed(vi, vn_x)
 
-            set_flag!(vi, vn_x, "trans")
-            @test is_flagged(vi, vn_x, "trans")
+            vi = set_transformed!!(vi, true, vn_x)
+            @test is_transformed(vi, vn_x)
 
-            unset_flag!(vi, vn_x, "trans")
-            @test !is_flagged(vi, vn_x, "trans")
+            vi = set_transformed!!(vi, false, vn_x)
+            @test !is_transformed(vi, vn_x)
         end
         vi = VarInfo()
         test_varinfo!(vi)
@@ -486,14 +483,14 @@ end
         vi = VarInfo()
         meta = vi.metadata
         _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
-        @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> !is_transformed(vi, x), meta.vns)
 
-        # Check that linking and invlinking set the `trans` flag accordingly
+        # Check that linking and invlinking set the `is_transformed` flag accordingly
         v = copy(meta.vals)
         vi = link!!(vi, model)
-        @test all(x -> istrans(vi, x), meta.vns)
+        @test all(x -> is_transformed(vi, x), meta.vns)
         vi = invlink!!(vi, model)
-        @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> !is_transformed(vi, x), meta.vns)
         @test meta.vals ≈ v atol = 1e-10
 
         # Check that linking and invlinking preserves the values
@@ -504,14 +501,14 @@ end
         v_x = copy(meta.x.vals)
         v_y = copy(meta.y.vals)
 
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> !is_transformed(vi, x), meta.s.vns)
+        @test all(x -> !is_transformed(vi, x), meta.m.vns)
         vi = link!!(vi, model)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> is_transformed(vi, x), meta.s.vns)
+        @test all(x -> is_transformed(vi, x), meta.m.vns)
         vi = invlink!!(vi, model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> !is_transformed(vi, x), meta.s.vns)
+        @test all(x -> !is_transformed(vi, x), meta.m.vns)
         @test meta.s.vals ≈ v_s atol = 1e-10
         @test meta.m.vals ≈ v_m atol = 1e-10
 
@@ -530,10 +527,10 @@ end
             @test !isempty(target_vns)
             @test !isempty(other_vns)
             vi = link!!(vi, (vn,), model)
-            @test all(x -> istrans(vi, x), target_vns)
-            @test all(x -> !istrans(vi, x), other_vns)
+            @test all(x -> is_transformed(vi, x), target_vns)
+            @test all(x -> !is_transformed(vi, x), other_vns)
             vi = invlink!!(vi, (vn,), model)
-            @test all(x -> !istrans(vi, x), all_vns)
+            @test all(x -> !is_transformed(vi, x), all_vns)
             @test meta.s.vals ≈ v_s atol = 1e-10
             @test meta.m.vals ≈ v_m atol = 1e-10
             @test meta.x.vals ≈ v_x atol = 1e-10
@@ -552,7 +549,7 @@ end
             vi = last(DynamicPPL.init!!(model, vi, InitFromPrior()))
             f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
             x = f(DynamicPPL.getindex_internal(vi, vn))
-            @test istrans(vi, vn)
+            @test is_transformed(vi, vn)
             @test getlogjoint_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
             @test getlogprior_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
             @test getloglikelihood(vi) == 0.0
@@ -567,25 +564,25 @@ end
 
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
+        vi = DynamicPPL.set_transformed!!(vi, true, vn)
         test_linked_varinfo(model, vi)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
+        vi = DynamicPPL.set_transformed!!(vi, true, vn)
         test_linked_varinfo(model, vi)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(Dict{VarName,Any}()), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
         test_linked_varinfo(model, vi)
     end
 
@@ -673,7 +670,7 @@ end
                         DynamicPPL.link(varinfo, model)
                     end
                     for vn in keys(varinfo)
-                        @test DynamicPPL.istrans(varinfo_linked, vn)
+                        @test DynamicPPL.is_transformed(varinfo_linked, vn)
                     end
                     @test length(varinfo[:]) > length(varinfo_linked[:])
                     varinfo_linked_unflattened = DynamicPPL.unflatten(
@@ -931,7 +928,7 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.settrans!!(varinfo_right, true, @varname(x))
+            varinfo_right = DynamicPPL.set_transformed!!(varinfo_right, true, @varname(x))
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
@@ -939,7 +936,7 @@ end
 
             # Right has precedence.
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
-            @test DynamicPPL.istrans(varinfo_merged, @varname(x))
+            @test DynamicPPL.is_transformed(varinfo_merged, @varname(x))
         end
     end
 
