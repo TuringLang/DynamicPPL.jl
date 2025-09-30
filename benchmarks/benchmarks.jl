@@ -43,6 +43,7 @@ chosen_combinations = [
     ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
+    ("Smorgasbord", smorgasbord_instance, :typed, :enzyme, true),
     ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
     ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
     ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
