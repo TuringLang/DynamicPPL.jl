@@ -20,7 +20,7 @@ Let `md` be an instance of `Metadata`:
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
-- `md.trans` is a Bitvector of true/false flags for whether a variable has been transformed.
+- `md.trans` is a BitVector of true/false flags for whether a variable has been transformed.
     `md.trans[md.idcs[vn]]` is the value of `trans` corresponding to `vn`.
 
 To make `md::Metadata` type stable, all the `md.vns` must have the same symbol
@@ -1663,14 +1663,7 @@ function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
     if vi isa NTVarInfo && ~haskey(vi.metadata, sym)
         # The NamedTuple doesn't have an entry for this variable, let's add one.
         val = tovec(r)
-        md = Metadata(
-            Dict(vn => 1),
-            [vn],
-            [1:length(val)],
-            val,
-            [dist],
-            Dict{String,BitVector}("trans" => [false]),
-        )
+        md = Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
         vi = Accessors.@set vi.metadata[sym] = md
     else
         meta = getmetadata(vi, vn)
