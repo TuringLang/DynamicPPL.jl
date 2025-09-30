@@ -56,6 +56,10 @@ Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo
 
 **Other changes**
 
+### `setleafcontext(model, context)`
+
+This convenience method has been added to quickly modify the leaf context of a model.
+
 ### Reimplementation of functions using `InitContext`
 
 A number of functions have been reimplemented and unified with the help of `InitContext`.
