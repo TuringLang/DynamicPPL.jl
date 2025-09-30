@@ -85,15 +85,7 @@ function AbstractMCMC.sample(
         @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
     end
     return AbstractMCMC.mcmcsample(
-        rng,
-        model,
-        sampler,
-        parallel,
-        N,
-        nchains;
-        initial_params,
-        initial_state,
-        kwargs...,
+        rng, model, sampler, parallel, N, nchains; initial_params, initial_state, kwargs...
     )
 end
 
