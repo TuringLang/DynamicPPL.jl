@@ -106,14 +106,14 @@ function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     model = contextualize(
         model, setleafcontext(model.context, DynamicTransformationContext{false}())
     )
-    return settrans!!(last(evaluate!!(model, vi)), t)
+    return set_transformed!!(last(evaluate!!(model, vi)), t)
 end
 
 function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     model = contextualize(
         model, setleafcontext(model.context, DynamicTransformationContext{true}())
     )
-    return settrans!!(last(evaluate!!(model, vi)), NoTransformation())
+    return set_transformed!!(last(evaluate!!(model, vi)), NoTransformation())
 end
 
 function link(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
@@ -185,12 +185,14 @@ end
 values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
 values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
-function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
+function set_transformed!!(vi::ThreadSafeVarInfo, val::Bool, vn::VarName)
+    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, val, vn)
 end
 
-istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
-istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
+is_transformed(vi::ThreadSafeVarInfo, vn::VarName) = is_transformed(vi.varinfo, vn)
+function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
+    return is_transformed(vi.varinfo, vns)
+end
 
 getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 

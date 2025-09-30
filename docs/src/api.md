@@ -329,8 +329,8 @@ The [Transformations section below](#Transformations) describes the methods used
 In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
-istrans
-settrans!!
+is_transformed
+set_transformed!!
 ```
 
 ```@docs

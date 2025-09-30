@@ -15,13 +15,13 @@ not.
 Let `md` be an instance of `Metadata`:
 - `md.vns` is the vector of all `VarName` instances.
 - `md.idcs` is the dictionary that maps each `VarName` instance to its index in
- `md.vns`, `md.ranges` `md.dists`, and `md.trans`.
+ `md.vns`, `md.ranges` `md.dists`, and `md.is_transformed`.
 - `md.vns[md.idcs[vn]] == vn`.
 - `md.dists[md.idcs[vn]]` is the distribution of `vn`.
 - `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
 - `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
-- `md.trans` is a BitVector of true/false flags for whether a variable has been transformed.
-    `md.trans[md.idcs[vn]]` is the value of `trans` corresponding to `vn`.
+- `md.is_transformed` is a BitVector of true/false flags for whether a variable has been
+    transformed. `md.is_transformed[md.idcs[vn]]` is the value corresponding to `vn`.
 
 To make `md::Metadata` type stable, all the `md.vns` must have the same symbol
 and distribution type. However, one can have a Julia variable, say `x`, that is a
@@ -56,7 +56,7 @@ struct Metadata{
     # Vector of distributions correpsonding to `vns`
     dists::TDists # AbstractVector{<:Distribution}
 
-    trans::BitVector
+    is_transformed::BitVector
 end
 
 function Base.:(==)(md1::Metadata, md2::Metadata)
@@ -66,7 +66,7 @@ function Base.:(==)(md1::Metadata, md2::Metadata)
         md1.ranges == md2.ranges &&
         md1.vals == md2.vals &&
         md1.dists == md2.dists &&
-        md1.trans == md2.trans
+        md1.is_transformed == md2.is_transformed
     )
 end
 
@@ -171,8 +171,8 @@ function metadata_to_varnamedvector(md::Metadata)
     vns = copy(md.vns)
     ranges = copy(md.ranges)
     vals = copy(md.vals)
-    is_unconstrained = map(Base.Fix1(istrans, md), md.vns)
-    transforms = map(md.dists, is_unconstrained) do dist, trans
+    is_trans = map(Base.Fix1(is_transformed, md), md.vns)
+    transforms = map(md.dists, is_trans) do dist, trans
         if trans
             return from_linked_vec_transform(dist)
         else
@@ -181,12 +181,7 @@ function metadata_to_varnamedvector(md::Metadata)
     end
 
     return VarNamedVector(
-        OrderedDict{eltype(keys(idcs)),Int}(idcs),
-        vns,
-        ranges,
-        vals,
-        transforms,
-        is_unconstrained,
+        OrderedDict{eltype(keys(idcs)),Int}(idcs), vns, ranges, vals, transforms, is_trans
     )
 end
 
@@ -245,8 +240,8 @@ function typed_varinfo(vi::UntypedVarInfo)
         sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
         # New dists
         sym_dists = getindex.((meta.dists,), inds)
-        # New trans
-        sym_trans = meta.trans[inds]
+        # New is_transformed
+        sym_is_transformed = meta.is_transformed[inds]
 
         # Extract new ranges and vals
         _ranges = getindex.((meta.ranges,), inds)
@@ -262,7 +257,9 @@ function typed_varinfo(vi::UntypedVarInfo)
 
         push!(
             new_metas,
-            Metadata(sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_trans),
+            Metadata(
+                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_is_transformed
+            ),
         )
     end
     nt = NamedTuple{syms_tuple}(Tuple(new_metas))
@@ -405,7 +402,7 @@ end
 end
 
 function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.trans)
+    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.is_transformed)
 end
 
 unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
@@ -421,7 +418,7 @@ Construct an empty type unstable instance of `Metadata`.
 """
 function Metadata()
     vals = Vector{Real}()
-    trans = BitVector()
+    is_transformed = BitVector()
 
     return Metadata(
         Dict{VarName,Int}(),
@@ -429,7 +426,7 @@ function Metadata()
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
-        trans,
+        is_transformed,
     )
 end
 
@@ -446,7 +443,7 @@ function empty!(meta::Metadata)
     empty!(meta.ranges)
     empty!(meta.vals)
     empty!(meta.dists)
-    empty!(meta.trans)
+    empty!(meta.is_transformed)
     return meta
 end
 
@@ -531,8 +528,8 @@ function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:Va
     end
 
     dists = metadata.dists[indices_for_vns]
-    trans = metadata.trans[indices_for_vns]
-    return Metadata(indices, vns, ranges, vals, dists, trans)
+    is_transformed = metadata.is_transformed[indices_for_vns]
+    return Metadata(indices, vns, ranges, vals, dists, is_transformed)
 end
 
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
@@ -603,7 +600,7 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
-    trans = BitVector()
+    transformed = BitVector()
 
     # Range offset.
     offset = 0
@@ -620,10 +617,10 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
         offset = r[end]
         dist = getdist(metadata_for_vn, vn)
         push!(dists, dist)
-        push!(trans, istrans(metadata_for_vn, vn))
+        push!(transformed, is_transformed(metadata_for_vn, vn))
     end
 
-    return Metadata(idcs, vns, ranges, vals, dists, trans)
+    return Metadata(idcs, vns, ranges, vals, dists, transformed)
 end
 
 const VarView = Union{Int,UnitRange,Vector{Int}}
@@ -792,30 +789,30 @@ function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
 end
 
-function settrans!!(vi::VarInfo, trans::Bool, vn::VarName)
-    settrans!!(getmetadata(vi, vn), trans, vn)
+function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
+    set_transformed!!(getmetadata(vi, vn), val, vn)
     return vi
 end
-function settrans!!(metadata::Metadata, trans::Bool, vn::VarName)
-    metadata.trans[getidx(metadata, vn)] = trans
+function set_transformed!!(metadata::Metadata, val::Bool, vn::VarName)
+    metadata.is_transformed[getidx(metadata, vn)] = val
     return metadata
 end
 
-function settrans!!(vi::VarInfo, trans::Bool)
+function set_transformed!!(vi::VarInfo, val::Bool)
     for vn in keys(vi)
-        settrans!!(vi, trans, vn)
+        set_transformed!!(vi, val, vn)
     end
 
     return vi
 end
 
-settrans!!(vi::VarInfo, trans::NoTransformation) = settrans!!(vi, false)
+set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false)
 # HACK: This is necessary to make something like `link!!(transformation, vi, model)`
 # work properly, which will transform the variables according to `transformation`
-# and then call `settrans!!(vi, transformation)`. An alternative would be to add
+# and then call `set_transformed!!(vi, transformation)`. An alternative would be to add
 # the `transformation` to the `VarInfo` object, but at the moment doesn't seem
 # worth it as `VarInfo` has its own way of handling transformations.
-settrans!!(vi::VarInfo, trans::AbstractTransformation) = settrans!!(vi, true)
+set_transformed!!(vi::VarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
 
 """
     syms(vi::VarInfo)
@@ -892,8 +889,8 @@ Base.keys(vi::NTVarInfo{<:NamedTuple{()}}) = VarName[]
     return expr
 end
 
-istrans(vi::VarInfo, vn::VarName) = istrans(getmetadata(vi, vn), vn)
-istrans(md::Metadata, vn::VarName) = md.trans[getidx(md, vn)]
+is_transformed(vi::VarInfo, vn::VarName) = is_transformed(getmetadata(vi, vn), vn)
+is_transformed(md::Metadata, vn::VarName) = md.is_transformed[getidx(md, vn)]
 
 getaccs(vi::VarInfo) = vi.accs
 setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
@@ -948,11 +945,11 @@ end
 
 function _link!!(vi::UntypedVarInfo, vns)
     # TODO: Change to a lazy iterator over `vns`
-    if ~istrans(vi, vns[1])
+    if ~is_transformed(vi, vns[1])
         for vn in vns
             f = internal_to_linked_internal_transform(vi, vn)
             vi = _inner_transform!(vi, vn, f)
-            vi = settrans!!(vi, true, vn)
+            vi = set_transformed!!(vi, true, vn)
         end
         return vi
     else
@@ -993,12 +990,12 @@ end
                 f_vns = vi.metadata.$f.vns
                 f_vns = filter_subsumed(vns.$f, f_vns)
                 if !isempty(f_vns)
-                    if !istrans(vi, f_vns[1])
+                    if !is_transformed(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
                         for vn in f_vns
                             f = internal_to_linked_internal_transform(vi, vn)
                             vi = _inner_transform!(vi, vn, f)
-                            vi = settrans!!(vi, true, vn)
+                            vi = set_transformed!!(vi, true, vn)
                         end
                     else
                         @warn("[DynamicPPL] attempt to link a linked vi")
@@ -1054,17 +1051,17 @@ end
 function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
     # Because `VarInfo` does not contain any information about what the transformation
     # other than whether or not it has actually been transformed, the best we can do
-    # is just assume that `default_transformation` is the correct one if `istrans(vi)`.
-    t = istrans(vi) ? default_transformation(model, vi) : NoTransformation()
+    # is just assume that `default_transformation` is the correct one if `is_transformed(vi)`.
+    t = is_transformed(vi) ? default_transformation(model, vi) : NoTransformation()
     return maybe_invlink_before_eval!!(t, vi, model)
 end
 
 function _invlink!!(vi::UntypedVarInfo, vns)
-    if istrans(vi, vns[1])
+    if is_transformed(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
             vi = _inner_transform!(vi, vn, f)
-            vi = settrans!!(vi, false, vn)
+            vi = set_transformed!!(vi, false, vn)
         end
         return vi
     else
@@ -1096,12 +1093,12 @@ end
             quote
                 f_vns = vi.metadata.$f.vns
                 f_vns = filter_subsumed(vns.$f, f_vns)
-                if istrans(vi, f_vns[1])
+                if is_transformed(vi, f_vns[1])
                     # Iterate over all `f_vns` and transform
                     for vn in f_vns
                         f = linked_internal_to_internal_transform(vi, vn)
                         vi = _inner_transform!(vi, vn, f)
-                        vi = settrans!!(vi, false, vn)
+                        vi = set_transformed!!(vi, false, vn)
                     end
                 else
                     @warn("[DynamicPPL] attempt to invlink an invlinked vi")
@@ -1231,7 +1228,7 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
     vals_new = map(vns) do vn
         # Return early if we're already in unconstrained space.
         # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
-        if istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
+        if is_transformed(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
         end
 
@@ -1245,7 +1242,7 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         # Accumulate the log-abs-det jacobian correction.
         cumulative_logjac += logjac
         # Mark as transformed.
-        settrans!!(varinfo, true, vn)
+        set_transformed!!(varinfo, true, vn)
         # Return the vectorized transformed value.
         return yvec
     end
@@ -1266,7 +1263,7 @@ function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.trans,
+        metadata.is_transformed,
     ),
     cumulative_logjac
 end
@@ -1291,7 +1288,7 @@ function _link_metadata!!(
         # Fix this when attending to issue #653.
         cumulative_logjac += logjac1 + logjac2
         metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
-        settrans!(metadata, true, vn)
+        set_transformed!(metadata, true, vn)
     end
     return metadata, cumulative_logjac
 end
@@ -1406,7 +1403,7 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         # Return early if we're already in constrained space OR if we're not
         # supposed to touch this `vn`.
         # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
-        if !istrans(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
+        if !is_transformed(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
             return metadata.vals[getrange(metadata, vn)]
         end
 
@@ -1420,7 +1417,7 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         # Accumulate the log-abs-det jacobian correction.
         cumulative_inv_logjac += inv_logjac
         # Mark as no longer transformed.
-        settrans!!(varinfo, false, vn)
+        set_transformed!!(varinfo, false, vn)
         # Return the vectorized transformed value.
         return xvec
     end
@@ -1441,7 +1438,7 @@ function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, targ
         ranges_new,
         reduce(vcat, vals_new),
         metadata.dists,
-        metadata.trans,
+        metadata.is_transformed,
     ),
     cumulative_inv_logjac
 end
@@ -1459,7 +1456,7 @@ function _invlink_metadata!!(
         cumulative_inv_logjac += inv_logjac
         new_transform = from_vec_transform(new_val)
         metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
-        settrans!(metadata, false, vn)
+        set_transformed!(metadata, false, vn)
     end
     return metadata, cumulative_inv_logjac
 end
@@ -1483,7 +1480,7 @@ If some but only some of the variables in `vi` are linked, this function will re
 This behavior will likely change in the future.
 """
 function islinked(vi::VarInfo)
-    return any(istrans(vi, vn) for vn in keys(vi))
+    return any(is_transformed(vi, vn) for vn in keys(vi))
 end
 
 # The default getindex & setindex!() for get & set values
@@ -1590,7 +1587,7 @@ function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
     for accname in acckeys(vi)
         push!(lines, (string(accname), getacc(vi, Val(accname))))
     end
-    push!(lines, ("trans", vi.metadata.trans))
+    push!(lines, ("is_transformed", vi.metadata.is_transformed))
     max_name_length = maximum(map(length ∘ first, lines))
     fmt = Printf.Format("%-$(max_name_length)s")
     vi_str = (
@@ -1697,7 +1694,7 @@ function Base.push!(meta::Metadata, vn, r, dist)
     push!(meta.ranges, (l + 1):(l + n))
     append!(meta.vals, val)
     push!(meta.dists, dist)
-    push!(meta.trans, false)
+    push!(meta.is_transformed, false)
     return meta
 end
 
@@ -1844,7 +1841,7 @@ function _setval_kernel!(vi::VarInfoOrThreadSafeVarInfo, vn::VarName, values, ke
     if !isempty(indices)
         val = reduce(vcat, values[indices])
         setval!(vi, val, vn)
-        settrans!!(vi, false, vn)
+        set_transformed!!(vi, false, vn)
     end
 
     return indices

@@ -769,7 +769,7 @@ end
 
 # Transformations
 """
-    istrans(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
+    is_transformed(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
 
 Return `true` if `vi` is working in unconstrained space, and `false`
 if `vi` is assuming realizations to be in support of the corresponding distributions.
@@ -780,27 +780,27 @@ If `vns` is provided, then only check if this/these varname(s) are transformed.
     Not all implementations of `AbstractVarInfo` support transforming only a subset of
     the variables.
 """
-istrans(vi::AbstractVarInfo) = istrans(vi, collect(keys(vi)))
-function istrans(vi::AbstractVarInfo, vns::AbstractVector)
-    # This used to be: `!isempty(vns) && all(Base.Fix1(istrans, vi), vns)`.
+is_transformed(vi::AbstractVarInfo) = is_transformed(vi, collect(keys(vi)))
+function is_transformed(vi::AbstractVarInfo, vns::AbstractVector)
+    # This used to be: `!isempty(vns) && all(Base.Fix1(is_transformed, vi), vns)`.
     # In theory that should work perfectly fine. For unbeknownst reasons,
     # Julia 1.10 fails to infer its return type correctly. Thus we use this
     # slightly longer definition.
     isempty(vns) && return false
     for vn in vns
-        istrans(vi, vn) || return false
+        is_transformed(vi, vn) || return false
     end
     return true
 end
 
 """
-    settrans!!(vi::AbstractVarInfo, trans::Bool[, vn::VarName])
+    set_transformed!!(vi::AbstractVarInfo, trans::Bool[, vn::VarName])
 
-Return `vi` with `istrans(vi, vn)` evaluating to `true`.
+Return `vi` with `is_transformed(vi, vn)` evaluating to `true`.
 
-If `vn` is not specified, then `istrans(vi)` evaluates to `true` for all variables.
+If `vn` is not specified, then `is_transformed(vi)` evaluates to `true` for all variables.
 """
-function settrans!! end
+function set_transformed!! end
 
 # For link!!, invlink!!, link, and invlink, we deliberately do not provide a fallback
 # method for the case when no `vns` is provided, that would get all the keys from the
@@ -833,7 +833,7 @@ function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     ctx = DynamicTransformationContext{false}()
     model = contextualize(model, setleafcontext(model.context, ctx))
     vi = last(evaluate!!(model, vi))
-    return settrans!!(vi, t)
+    return set_transformed!!(vi, t)
 end
 function link!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
@@ -846,7 +846,7 @@ function link!!(
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, logjac)
     end
-    return settrans!!(vi, t)
+    return set_transformed!!(vi, t)
 end
 
 """
@@ -896,7 +896,7 @@ function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     ctx = DynamicTransformationContext{true}()
     model = contextualize(model, setleafcontext(model.context, ctx))
     vi = last(evaluate!!(model, vi))
-    return settrans!!(vi, NoTransformation())
+    return set_transformed!!(vi, NoTransformation())
 end
 function invlink!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
@@ -912,7 +912,7 @@ function invlink!!(
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, inv_logjac)
     end
-    return settrans!!(vi, NoTransformation())
+    return set_transformed!!(vi, NoTransformation())
 end
 
 """
@@ -1020,7 +1020,7 @@ function unflatten end
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
-Return reconstructed `val`, possibly linked if `istrans(vi, vn)` is `true`.
+Return reconstructed `val`, possibly linked if `is_transformed(vi, vn)` is `true`.
 """
 function to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
     f = to_maybe_linked_internal_transform(vi, vn, dist)
@@ -1030,7 +1030,7 @@ end
 """
     from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 
-Return reconstructed `val`, possibly invlinked if `istrans(vi, vn)` is `true`.
+Return reconstructed `val`, possibly invlinked if `is_transformed(vi, vn)` is `true`.
 """
 function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
     f = from_maybe_linked_internal_transform(vi, vn, dist)
@@ -1087,14 +1087,14 @@ in `varinfo` to a representation compatible with `dist`.
 If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
 """
 function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    return if istrans(varinfo, vn)
+    return if is_transformed(varinfo, vn)
         from_linked_internal_transform(varinfo, vn, dist)
     else
         from_internal_transform(varinfo, vn, dist)
     end
 end
 function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    return if istrans(varinfo, vn)
+    return if is_transformed(varinfo, vn)
         from_linked_internal_transform(varinfo, vn)
     else
         from_internal_transform(varinfo, vn)
