@@ -52,7 +52,6 @@
             chn = sample(model, spl, N_iters; progress=false, chain_type=MCMCChains.Chains)
             initial_value = chn[:x][1]
             @test all(chn[:x] .== initial_value) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
@@ -62,7 +61,6 @@
                 chain_type=MCMCChains.Chains,
             )
             @test all(chn2[:x] .== initial_value)
-            @test all(chn3[:x] .== initial_value)
         end
 
         @testset "multiple-chain sampling" begin
@@ -77,7 +75,6 @@
             )
             initial_value = chn[:x][1, :]
             @test all(i -> chn[:x][i, :] == initial_value, 1:N_iters) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
@@ -89,7 +86,6 @@
                 chain_type=MCMCChains.Chains,
             )
             @test all(i -> chn2[:x][i, :] == initial_value, 1:N_iters)
-            @test all(i -> chn3[:x][i, :] == initial_value, 1:N_iters)
         end
     end
 
