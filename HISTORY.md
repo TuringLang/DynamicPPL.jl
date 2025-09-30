@@ -54,6 +54,11 @@ The separation of these functions was primarily implemented to avoid performing 
 
 Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
 
+### Removal of `resume_from`
+
+The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
+`loadstate` is exported from DynamicPPL.
+
 **Other changes**
 
 ### `setleafcontext(model, context)`
