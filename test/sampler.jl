@@ -12,7 +12,7 @@
         @test AbstractMCMC.step(Xoshiro(468), g(), spl) isa Any
     end
 
-    @testset "initial_state and resume_from kwargs" begin
+    @testset "initial_state" begin
         # Model is unused, but has to be a DynamicPPL.Model otherwise we won't hit our
         # overloaded method.
         @model f() = x ~ Normal()
@@ -52,26 +52,15 @@
             chn = sample(model, spl, N_iters; progress=false, chain_type=MCMCChains.Chains)
             initial_value = chn[:x][1]
             @test all(chn[:x] .== initial_value) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
                 N_iters;
                 progress=false,
-                initial_state=chn.info.samplerstate,
+                initial_state=DynamicPPL.loadstate(chn),
                 chain_type=MCMCChains.Chains,
             )
             @test all(chn2[:x] .== initial_value)
-            # using `resume_from`
-            chn3 = sample(
-                model,
-                spl,
-                N_iters;
-                progress=false,
-                resume_from=chn,
-                chain_type=MCMCChains.Chains,
-            )
-            @test all(chn3[:x] .== initial_value)
         end
 
         @testset "multiple-chain sampling" begin
@@ -86,7 +75,6 @@
             )
             initial_value = chn[:x][1, :]
             @test all(i -> chn[:x][i, :] == initial_value, 1:N_iters) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
@@ -94,22 +82,10 @@
                 N_iters,
                 N_chains;
                 progress=false,
-                initial_state=chn.info.samplerstate,
+                initial_state=DynamicPPL.loadstate(chn),
                 chain_type=MCMCChains.Chains,
             )
             @test all(i -> chn2[:x][i, :] == initial_value, 1:N_iters)
-            # using `resume_from`
-            chn3 = sample(
-                model,
-                spl,
-                MCMCThreads(),
-                N_iters,
-                N_chains;
-                progress=false,
-                resume_from=chn,
-                chain_type=MCMCChains.Chains,
-            )
-            @test all(i -> chn3[:x][i, :] == initial_value, 1:N_iters)
         end
     end
 

@@ -58,17 +58,15 @@ function AbstractMCMC.sample(
     model::Model,
     sampler::Sampler,
     N::Integer;
-    chain_type=default_chain_type(sampler),
-    resume_from=nothing,
     initial_params=init_strategy(sampler),
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
     if hasproperty(kwargs, :initial_parameters)
         @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
     end
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_params, initial_state, kwargs...
+        rng, model, sampler, N; initial_params, initial_state, kwargs...
     )
 end
 
@@ -79,26 +77,15 @@ function AbstractMCMC.sample(
     parallel::AbstractMCMC.AbstractMCMCEnsemble,
     N::Integer,
     nchains::Integer;
-    chain_type=default_chain_type(sampler),
     initial_params=fill(init_strategy(sampler), nchains),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
     if hasproperty(kwargs, :initial_parameters)
         @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
     end
     return AbstractMCMC.mcmcsample(
-        rng,
-        model,
-        sampler,
-        parallel,
-        N,
-        nchains;
-        chain_type,
-        initial_params,
-        initial_state,
-        kwargs...,
+        rng, model, sampler, parallel, N, nchains; initial_params, initial_state, kwargs...
     )
 end
 
@@ -124,20 +111,12 @@ function AbstractMCMC.step(
 end
 
 """
-    loadstate(data)
+    loadstate(chain::AbstractChains)
 
-Load sampler state from `data`.
-
-By default, `data` is returned.
+Load sampler state from an `AbstractChains` object. This function should be overloaded by a
+concrete Chains implementation.
 """
-loadstate(data) = data
-
-"""
-    default_chain_type(sampler)
-
-Default type of the chain of posterior samples from `sampler`.
-"""
-default_chain_type(::Sampler) = Any
+function loadstate end
 
 """
     initialstep(rng, model, sampler, varinfo; kwargs...)
