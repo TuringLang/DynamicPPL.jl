@@ -8,7 +8,7 @@ Part of the API of DynamicPPL is defined in the more lightweight interface packa
 
 A core component of DynamicPPL is the [`@model`](@ref) macro.
 It can be used to define probabilistic models in an intuitive way by specifying random variables and their distributions with `~` statements.
-These statements are rewritten by `@model` as calls of [internal functions](@ref model_internal) for sampling the variables and computing their log densities.
+These statements are rewritten by `@model` as calls of internal functions for sampling the variables and computing their log densities.
 
 ```@docs
 @model
@@ -360,6 +360,13 @@ Base.empty!
 SimpleVarInfo
 ```
 
+### Tilde-pipeline
+
+```@docs
+tilde_assume!!
+tilde_observe!!
+```
+
 ### Accumulators
 
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
@@ -451,8 +458,6 @@ DynamicPPL.maybe_invlink_before_eval!!
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
 DynamicPPL.unflatten
-DynamicPPL.varname_leaves
-DynamicPPL.varname_and_value_leaves
 ```
 
 ### Evaluation Contexts
@@ -465,33 +470,46 @@ AbstractPPL.evaluate!!
 
 This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
-To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
-
-```@docs
-DynamicPPL.evaluate_and_sample!!
-```
+If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
 The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
-SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
+InitContext
+```
+
+### VarInfo initialisation
+
+The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
+It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
+
+```@docs
+DynamicPPL.init!!
+```
+
+To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.
+There are three concrete strategies provided in DynamicPPL:
+
+```@docs
+InitFromPrior
+InitFromUniform
+InitFromParams
+```
+
+If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.
+
+```@docs
+DynamicPPL.AbstractInitStrategy
+DynamicPPL.init
 ```
 
 ### Samplers
 
-In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
-
-```@docs
-SampleFromPrior
-SampleFromUniform
-```
-
-Additionally, a generic sampler for inference is implemented.
+In DynamicPPL a generic sampler for inference is implemented.
 
 ```@docs
 Sampler
@@ -502,7 +520,7 @@ The default implementation of [`Sampler`](@ref) uses the following unexported fu
 ```@docs
 DynamicPPL.initialstep
 DynamicPPL.loadstate
-DynamicPPL.initialsampler
+DynamicPPL.init_strategy
 ```
 
 Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
@@ -516,10 +534,4 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 ```@docs
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
-```
-
-### [Model-Internal Functions](@id model_internal)
-
-```@docs
-tilde_assume
 ```
