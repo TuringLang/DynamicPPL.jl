@@ -145,7 +145,12 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            let inits = InitFromParams((; s=4, m=-1))
+            for inits in (
+                InitFromParams((s=4, m=-1)),
+                (s=4, m=-1),
+                InitFromParams(Dict(@varname(s) => 4, @varname(m) => -1)),
+                Dict(@varname(s) => 4, @varname(m) => -1),
+            )
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
@@ -169,7 +174,15 @@
             end
 
             # set only m = -1
-            for inits in (InitFromParams((; s=missing, m=-1)), InitFromParams((; m=-1)))
+            for inits in (
+                InitFromParams((; s=missing, m=-1)),
+                InitFromParams(Dict(@varname(s) => missing, @varname(m) => -1)),
+                (; s=missing, m=-1),
+                Dict(@varname(s) => missing, @varname(m) => -1),
+                InitFromParams((; m=-1)),
+                InitFromParams(Dict(@varname(m) => -1)),
+                (; m=-1)Dict(@varname(m) => -1),
+            )
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]
