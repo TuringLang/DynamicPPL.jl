@@ -68,9 +68,8 @@ function _convert_initial_params(d::AbstractDict{<:VarName})
     return InitFromParams(d)
 end
 function _convert_initial_params(::AbstractVector)
-    return error(
-        "`initial_params` must be a `NamedTuple`, an `AbstractDict{<:VarName}`, or ideally an `AbstractInitStrategy`. Using a vector of parameters for `initial_params` is no longer supported. Please see https://turinglang.org/docs/usage/sampling-options/#specifying-initial-parameters for details on how to update your code.",
-    )
+    errmsg = "`initial_params` must be a `NamedTuple`, an `AbstractDict{<:VarName}`, or ideally an `AbstractInitStrategy`. Using a vector of parameters for `initial_params` is no longer supported. Please see https://turinglang.org/docs/usage/sampling-options/#specifying-initial-parameters for details on how to update your code."
+    throw(ArgumentError(errmsg))
 end
 
 function AbstractMCMC.sample(

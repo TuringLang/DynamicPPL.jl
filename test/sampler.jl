@@ -138,6 +138,14 @@
                 end
             end
 
+            # check that Vector no longer works
+            @test_throws ArgumentError sample(
+                model, sampler, 1; initial_params=[4, -1], progress=false
+            )
+            @test_throws ArgumentError sample(
+                model, sampler, 1; initial_params=[missing, -1], progress=false
+            )
+
             # model with two variables: initialization s = 4, m = -1
             @model function twovars()
                 s ~ InverseGamma(2, 3)
@@ -181,7 +189,8 @@
                 Dict(@varname(s) => missing, @varname(m) => -1),
                 InitFromParams((; m=-1)),
                 InitFromParams(Dict(@varname(m) => -1)),
-                (; m=-1)Dict(@varname(m) => -1),
+                (; m=-1),
+                Dict(@varname(m) => -1),
             )
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
