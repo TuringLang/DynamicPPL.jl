@@ -84,7 +84,7 @@ include("test_util.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
-            if !IS_PRERELEASE
+            if MOONCAKE_SUPPORTED
                 include("ext/DynamicPPLMooncakeExt.jl")
             end
             include("ad.jl")
