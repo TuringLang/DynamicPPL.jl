@@ -53,6 +53,25 @@ sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
 """
 init_strategy(::AbstractSampler) = InitFromPrior()
 
+"""
+    _convert_initial_params(initial_params)
+
+Convert `initial_params` to an `AbstractInitStrategy` if it is not already one.
+"""
+_convert_initial_params(initial_params::AbstractInitStrategy) = initial_params
+function _convert_initial_params(nt::NamedTuple)
+    @info "Using a NamedTuple for `initial_params` will be deprecated in a future release. Please use `InitFromParams(namedtuple)` instead."
+    return InitFromParams(nt)
+end
+function _convert_initial_params(d::AbstractDict{<:VarName})
+    @info "Using a Dict for `initial_params` will be deprecated in a future release. Please use `InitFromParams(dict)` instead."
+    return InitFromParams(d)
+end
+function _convert_initial_params(::AbstractVector)
+    errmsg = "`initial_params` must be a `NamedTuple`, an `AbstractDict{<:VarName}`, or ideally an `AbstractInitStrategy`. Using a vector of parameters for `initial_params` is no longer supported. Please see https://turinglang.org/docs/usage/sampling-options/#specifying-initial-parameters for details on how to update your code."
+    throw(ArgumentError(errmsg))
+end
+
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
     model::Model,
@@ -63,7 +82,13 @@ function AbstractMCMC.sample(
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; initial_params, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        N;
+        initial_params=_convert_initial_params(initial_params),
+        initial_state,
+        kwargs...,
     )
 end
 
@@ -79,7 +104,15 @@ function AbstractMCMC.sample(
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, parallel, N, nchains; initial_params, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        parallel,
+        N,
+        nchains;
+        initial_params=map(_convert_initial_params, initial_params),
+        initial_state,
+        kwargs...,
     )
 end
 
