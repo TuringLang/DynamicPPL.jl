@@ -36,9 +36,9 @@ using DynamicPPL: getargs_dottilde, getargs_tilde
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
 
-# Detect if prerelease version, if so, we skip some tests
-const IS_PRERELEASE = !isempty(VERSION.prerelease)
-if !IS_PRERELEASE
+# Skip Mooncake if it doesn't work
+const MOONCAKE_SUPPORTED = VERSION < v"1.12.0"
+if MOONCAKE_SUPPORTED
     Pkg.add("Mooncake")
     using Mooncake: Mooncake
 end
