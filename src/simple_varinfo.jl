@@ -58,7 +58,7 @@ julia> vi[@varname(x[1:2])]
 
 julia> # (×) If we don't provide the container...
        _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo()); vi
-ERROR: type NamedTuple has no field x
+ERROR: FieldError: type NamedTuple has no field `x`, available fields: `m`
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
@@ -158,7 +158,7 @@ ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
 [...]
 
 julia> svi_nt[@varname(m.b)]
-ERROR: type NamedTuple has no field b
+ERROR: FieldError: type NamedTuple has no field `b`, available fields: `a`
 [...]
 ```
 
