@@ -53,22 +53,42 @@ sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
 """
 init_strategy(::AbstractSampler) = InitFromPrior()
 
+"""
+    _convert_initial_params(initial_params)
+
+Convert `initial_params` to an `AbstractInitStrategy` if it is not already one.
+"""
+_convert_initial_params(initial_params::AbstractInitStrategy) = initial_params
+function _convert_initial_params(nt::NamedTuple)
+    @info "Using a NamedTuple for `initial_params` will be deprecated in a future release. Please use `InitFromParams(namedtuple)` instead."
+    return InitFromParams(nt)
+end
+function _convert_initial_params(d::AbstractDict{<:VarName})
+    @info "Using a Dict for `initial_params` will be deprecated in a future release. Please use `InitFromParams(dict)` instead."
+    return InitFromParams(d)
+end
+function _convert_initial_params(::AbstractVector)
+    errmsg = "`initial_params` must be a `NamedTuple`, an `AbstractDict{<:VarName}`, or ideally an `AbstractInitStrategy`. Using a vector of parameters for `initial_params` is no longer supported. Please see https://turinglang.org/docs/usage/sampling-options/#specifying-initial-parameters for details on how to update your code."
+    throw(ArgumentError(errmsg))
+end
+
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
     model::Model,
     sampler::Sampler,
     N::Integer;
-    chain_type=default_chain_type(sampler),
-    resume_from=nothing,
     initial_params=init_strategy(sampler),
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
-    if hasproperty(kwargs, :initial_parameters)
-        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
-    end
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_params, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        N;
+        initial_params=_convert_initial_params(initial_params),
+        initial_state,
+        kwargs...,
     )
 end
 
@@ -79,15 +99,10 @@ function AbstractMCMC.sample(
     parallel::AbstractMCMC.AbstractMCMCEnsemble,
     N::Integer,
     nchains::Integer;
-    chain_type=default_chain_type(sampler),
     initial_params=fill(init_strategy(sampler), nchains),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_state=nothing,
     kwargs...,
 )
-    if hasproperty(kwargs, :initial_parameters)
-        @warn "The `initial_parameters` keyword argument is not recognised; please use `initial_params` instead."
-    end
     return AbstractMCMC.mcmcsample(
         rng,
         model,
@@ -95,8 +110,7 @@ function AbstractMCMC.sample(
         parallel,
         N,
         nchains;
-        chain_type,
-        initial_params,
+        initial_params=map(_convert_initial_params, initial_params),
         initial_state,
         kwargs...,
     )
@@ -124,20 +138,12 @@ function AbstractMCMC.step(
 end
 
 """
-    loadstate(data)
+    loadstate(chain::AbstractChains)
 
-Load sampler state from `data`.
-
-By default, `data` is returned.
+Load sampler state from an `AbstractChains` object. This function should be overloaded by a
+concrete Chains implementation.
 """
-loadstate(data) = data
-
-"""
-    default_chain_type(sampler)
-
-Default type of the chain of posterior samples from `sampler`.
-"""
-default_chain_type(::Sampler) = Any
+function loadstate end
 
 """
     initialstep(rng, model, sampler, varinfo; kwargs...)

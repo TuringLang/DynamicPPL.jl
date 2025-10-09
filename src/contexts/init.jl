@@ -94,12 +94,10 @@ struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitS
     params::P
     fallback::S
     function InitFromParams(
-        params::AbstractDict{<:VarName}, fallback::Union{AbstractInitStrategy,Nothing}
+        params::AbstractDict{<:VarName},
+        fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior(),
     )
         return new{typeof(params),typeof(fallback)}(params, fallback)
-    end
-    function InitFromParams(params::AbstractDict{<:VarName})
-        return InitFromParams(params, InitFromPrior())
     end
     function InitFromParams(
         params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()

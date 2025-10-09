@@ -5,14 +5,14 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = if IS_PRERELEASE
-        [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
-    else
+    test_adtypes = if MOONCAKE_SUPPORTED
         [
             AutoReverseDiff(; compile=false),
             AutoReverseDiff(; compile=true),
             AutoMooncake(; config=nothing),
         ]
+    else
+        [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
     end
 
     @testset "Unsupported backends" begin

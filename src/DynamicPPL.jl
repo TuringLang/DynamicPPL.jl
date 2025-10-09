@@ -128,6 +128,8 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
+    # Chain save/resume
+    loadstate,
     # Convenience macros
     @addlogprob!,
     value_iterator_from_chain,

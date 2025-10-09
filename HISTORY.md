@@ -56,6 +56,11 @@ Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo
 
 The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus the generic functions `set_flag!`, `unset_flag!` and `is_flagged!` have also been removed in favour of more specific ones. We've also used this opportunity to name the `"trans"` flag and the corresponding `istrans` function to be more explicit. The new, exported interface consists of the `is_transformed` and `set_transformed!!` functions.
 
+### Removal of `resume_from`
+
+The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
+`loadstate` is exported from DynamicPPL.
+
 **Other changes**
 
 ### `setleafcontext(model, context)`

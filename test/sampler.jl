@@ -12,7 +12,7 @@
         @test AbstractMCMC.step(Xoshiro(468), g(), spl) isa Any
     end
 
-    @testset "initial_state and resume_from kwargs" begin
+    @testset "initial_state" begin
         # Model is unused, but has to be a DynamicPPL.Model otherwise we won't hit our
         # overloaded method.
         @model f() = x ~ Normal()
@@ -52,26 +52,15 @@
             chn = sample(model, spl, N_iters; progress=false, chain_type=MCMCChains.Chains)
             initial_value = chn[:x][1]
             @test all(chn[:x] .== initial_value) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
                 N_iters;
                 progress=false,
-                initial_state=chn.info.samplerstate,
+                initial_state=DynamicPPL.loadstate(chn),
                 chain_type=MCMCChains.Chains,
             )
             @test all(chn2[:x] .== initial_value)
-            # using `resume_from`
-            chn3 = sample(
-                model,
-                spl,
-                N_iters;
-                progress=false,
-                resume_from=chn,
-                chain_type=MCMCChains.Chains,
-            )
-            @test all(chn3[:x] .== initial_value)
         end
 
         @testset "multiple-chain sampling" begin
@@ -86,7 +75,6 @@
             )
             initial_value = chn[:x][1, :]
             @test all(i -> chn[:x][i, :] == initial_value, 1:N_iters) # sanity check
-            # using `initial_state`
             chn2 = sample(
                 model,
                 spl,
@@ -94,22 +82,10 @@
                 N_iters,
                 N_chains;
                 progress=false,
-                initial_state=chn.info.samplerstate,
+                initial_state=DynamicPPL.loadstate(chn),
                 chain_type=MCMCChains.Chains,
             )
             @test all(i -> chn2[:x][i, :] == initial_value, 1:N_iters)
-            # using `resume_from`
-            chn3 = sample(
-                model,
-                spl,
-                MCMCThreads(),
-                N_iters,
-                N_chains;
-                progress=false,
-                resume_from=chn,
-                chain_type=MCMCChains.Chains,
-            )
-            @test all(i -> chn3[:x][i, :] == initial_value, 1:N_iters)
         end
     end
 
@@ -162,6 +138,14 @@
                 end
             end
 
+            # check that Vector no longer works
+            @test_throws ArgumentError sample(
+                model, sampler, 1; initial_params=[4, -1], progress=false
+            )
+            @test_throws ArgumentError sample(
+                model, sampler, 1; initial_params=[missing, -1], progress=false
+            )
+
             # model with two variables: initialization s = 4, m = -1
             @model function twovars()
                 s ~ InverseGamma(2, 3)
@@ -169,7 +153,12 @@
             end
             model = twovars()
             lptrue = logpdf(InverseGamma(2, 3), 4) + logpdf(Normal(0, 2), -1)
-            let inits = InitFromParams((; s=4, m=-1))
+            for inits in (
+                InitFromParams((s=4, m=-1)),
+                (s=4, m=-1),
+                InitFromParams(Dict(@varname(s) => 4, @varname(m) => -1)),
+                Dict(@varname(s) => 4, @varname(m) => -1),
+            )
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test chain[1].metadata.s.vals == [4]
                 @test chain[1].metadata.m.vals == [-1]
@@ -193,7 +182,16 @@
             end
 
             # set only m = -1
-            for inits in (InitFromParams((; s=missing, m=-1)), InitFromParams((; m=-1)))
+            for inits in (
+                InitFromParams((; s=missing, m=-1)),
+                InitFromParams(Dict(@varname(s) => missing, @varname(m) => -1)),
+                (; s=missing, m=-1),
+                Dict(@varname(s) => missing, @varname(m) => -1),
+                InitFromParams((; m=-1)),
+                InitFromParams(Dict(@varname(m) => -1)),
+                (; m=-1),
+                Dict(@varname(m) => -1),
+            )
                 chain = sample(model, sampler, 1; initial_params=inits, progress=false)
                 @test !ismissing(chain[1].metadata.s.vals[1])
                 @test chain[1].metadata.m.vals == [-1]
