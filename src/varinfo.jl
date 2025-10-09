@@ -1051,7 +1051,8 @@ end
 function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
     # Because `VarInfo` does not contain any information about what the transformation
     # other than whether or not it has actually been transformed, the best we can do
-    # is just assume that `default_transformation` is the correct one if `is_transformed(vi)`.
+    # is just assume that `default_transformation` is the correct one if
+    # `is_transformed(vi)`.
     t = is_transformed(vi) ? default_transformation(model, vi) : NoTransformation()
     return maybe_invlink_before_eval!!(t, vi, model)
 end
@@ -1461,25 +1462,26 @@ function _invlink_metadata!!(
     return metadata, cumulative_inv_logjac
 end
 
-# TODO(mhauru) The treatment of the case when some variables are linked and others are not
-# should be revised. It used to be the case that for UntypedVarInfo `islinked` returned
-# whether the first variable was linked. For NTVarInfo we did an OR over the first
+# TODO(mhauru) The treatment of the case when some variables are transformed and others are
+# not should be revised. It used to be the case that for UntypedVarInfo `is_transformed`
+# returned whether the first variable was linked. For NTVarInfo we did an OR over the first
 # variables under each symbol. We now more consistently use OR, but I'm not convinced this
 # is really the right thing to do.
 """
-    islinked(vi::VarInfo)
+    is_transformed(vi::VarInfo)
 
 Check whether `vi` is in the transformed space.
 
 Turing's Hamiltonian samplers use the `link` and `invlink` functions from
 [Bijectors.jl](https://github.com/TuringLang/Bijectors.jl) to map a constrained variable
 (for example, one bounded to the space `[0, 1]`) from its constrained space to the set of
-real numbers. `islinked` checks if the number is in the constrained space or the real space.
+real numbers. `is_transformed` checks if the number is in the constrained space or the real
+space.
 
-If some but only some of the variables in `vi` are linked, this function will return `true`.
-This behavior will likely change in the future.
+If some but only some of the variables in `vi` are transformed, this function will return
+`true`. This behavior will likely change in the future.
 """
-function islinked(vi::VarInfo)
+function is_transformed(vi::VarInfo)
     return any(is_transformed(vi, vn) for vn in keys(vi))
 end
 

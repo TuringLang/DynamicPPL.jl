@@ -493,8 +493,6 @@ function is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName)
 end
 is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = is_transformed(vi.varinfo)
 
-islinked(vi::SimpleVarInfo) = is_transformed(vi)
-
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
 function values_as(vi::SimpleVarInfo, ::Type{Vector})

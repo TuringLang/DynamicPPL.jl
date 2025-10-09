@@ -80,7 +80,7 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-islinked(vi::ThreadSafeVarInfo) = islinked(vi.varinfo)
+is_transformed(vi::ThreadSafeVarInfo) = is_transformed(vi.varinfo)
 
 function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
