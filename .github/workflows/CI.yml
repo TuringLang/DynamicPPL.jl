@@ -35,12 +35,12 @@ jobs:
           - version: 'min'
             os: ubuntu-latest
             num_threads: 2
+          # 1.11
+          - version: '1.11'
+            os: ubuntu-latest
+            num_threads: 2
           # Single-threaded
           - version: '1'
-            os: ubuntu-latest
-            num_threads: 1
-          # Minimum supported version, single-threaded
-          - version: 'min'
             os: ubuntu-latest
             num_threads: 1
           # Windows
