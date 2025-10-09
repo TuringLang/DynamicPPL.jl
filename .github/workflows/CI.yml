@@ -31,7 +31,7 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             num_threads: 2
-          # 1.10
+          # Minimum supported version
           - version: 'min'
             os: ubuntu-latest
             num_threads: 2
