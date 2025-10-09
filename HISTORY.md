@@ -61,6 +61,10 @@ The `resume_from=chn` keyword argument to `sample` has been removed; please use 
 
 **Other changes**
 
+### `predict(model, chain; include_all)`
+
+The `include_all` keyword argument for `predict` now works even when no RNG is specified (previously it would only work when an RNG was explicitly passed).
+
 ### `setleafcontext(model, context)`
 
 This convenience method has been added to quickly modify the leaf context of a model.

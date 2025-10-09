@@ -519,6 +519,23 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]")])
             end
 
+            @testset "include_all=true" begin
+                inc_predictions = DynamicPPL.predict(
+                    m_lin_reg_test, β_chain; include_all=true
+                )
+                @test Set(keys(inc_predictions)) ==
+                    Set([:β, Symbol("y[1]"), Symbol("y[2]")])
+                @test inc_predictions[:β] == β_chain[:β]
+                # check rng is respected
+                inc_predictions1 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; include_all=true
+                )
+                inc_predictions2 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; include_all=true
+                )
+                @test all(Array(inc_predictions1) .== Array(inc_predictions2))
+            end
+
             @testset "accuracy" begin
                 ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
                 @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
