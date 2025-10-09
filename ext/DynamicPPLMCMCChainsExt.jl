@@ -156,6 +156,13 @@ function DynamicPPL.predict(
     end
     return chain_result[parameter_names]
 end
+function DynamicPPL.predict(
+    model::DynamicPPL.Model, chain::MCMCChains.Chains; include_all=false
+)
+    return DynamicPPL.predict(
+        DynamicPPL.Random.default_rng(), model, chain; include_all=include_all
+    )
+end
 
 function _predictive_samples_to_arrays(predictive_samples)
     variable_names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
