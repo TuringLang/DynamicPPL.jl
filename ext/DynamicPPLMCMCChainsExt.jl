@@ -116,7 +116,19 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    varinfo = DynamicPPL.VarInfo(model)
+
+    # Set up a VarInfo with the right accumulators
+    varinfo = DynamicPPL.setaccs!!(
+        DynamicPPL.VarInfo(),
+        (
+            DynamicPPL.LogPriorAccumulator(),
+            DynamicPPL.LogJacobianAccumulator(),
+            DynamicPPL.LogLikelihoodAccumulator(),
+            DynamicPPL.ValuesAsInModelAccumulator(false),
+        ),
+    )
+    _, varinfo = DynamicPPL.init!!(model, varinfo)
+    varinfo = DynamicPPL.typed_varinfo(varinfo)
 
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     predictive_samples = map(iters) do (sample_idx, chain_idx)
@@ -129,7 +141,7 @@ function DynamicPPL.predict(
             varinfo,
             DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
         )
-        vals = DynamicPPL.values_as_in_model(model, false, varinfo)
+        vals = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
         varname_vals = mapreduce(
             collect,
             vcat,
