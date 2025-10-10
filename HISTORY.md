@@ -61,6 +61,10 @@ The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus t
 The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
 `loadstate` is exported from DynamicPPL.
 
+### Change of default keytype of `pointwise_logdensities`
+
+The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` return dictionaries for which the keys are model variables, and the key type is either `VarName` or `String`. This release changes the default from `String` to `VarName`.
+
 **Other changes**
 
 ### `predict(model, chain; include_all)`
