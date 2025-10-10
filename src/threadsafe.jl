@@ -80,7 +80,7 @@ setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
-islinked(vi::ThreadSafeVarInfo) = islinked(vi.varinfo)
+is_transformed(vi::ThreadSafeVarInfo) = is_transformed(vi.varinfo)
 
 function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
@@ -104,12 +104,12 @@ end
 # to define `getacc(vi)`.
 function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     model = setleafcontext(model, DynamicTransformationContext{false}())
-    return settrans!!(last(evaluate!!(model, vi)), t)
+    return set_transformed!!(last(evaluate!!(model, vi)), t)
 end
 
 function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
     model = setleafcontext(model, DynamicTransformationContext{true}())
-    return settrans!!(last(evaluate!!(model, vi)), NoTransformation())
+    return set_transformed!!(last(evaluate!!(model, vi)), NoTransformation())
 end
 
 function link(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
@@ -181,19 +181,14 @@ end
 values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
 values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
 
-function unset_flag!(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return unset_flag!(vi.varinfo, vn, flag)
-end
-function is_flagged(vi::ThreadSafeVarInfo, vn::VarName, flag::String)
-    return is_flagged(vi.varinfo, vn, flag)
+function set_transformed!!(vi::ThreadSafeVarInfo, val::Bool, vn::VarName)
+    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, val, vn)
 end
 
-function settrans!!(vi::ThreadSafeVarInfo, trans::Bool, vn::VarName)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans, vn)
+is_transformed(vi::ThreadSafeVarInfo, vn::VarName) = is_transformed(vi.varinfo, vn)
+function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
+    return is_transformed(vi.varinfo, vns)
 end
-
-istrans(vi::ThreadSafeVarInfo, vn::VarName) = istrans(vi.varinfo, vn)
-istrans(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = istrans(vi.varinfo, vns)
 
 getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 

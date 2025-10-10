@@ -96,23 +96,23 @@ julia> _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo());
 julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
 1.8632965762164932
 
-julia> _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
+julia> _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 -0.21080155351918753
 
-julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
+       _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
 
-julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
@@ -121,7 +121,7 @@ true
 Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
-julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
+julia> vi = DynamicPPL.set_transformed!!(SimpleVarInfo((x = -1.0,)), true)
 Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
@@ -129,7 +129,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 -1.3678794411714423
 
 julia> # While if we forget to indicate that it's transformed:
-       vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
+       vi = DynamicPPL.set_transformed!!(SimpleVarInfo((x = -1.0,)), false)
 SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) No probability mass on negative numbers!
@@ -466,32 +466,32 @@ function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     return SimpleVarInfo(values, accs, transformation)
 end
 
-function settrans!!(vi::SimpleVarInfo, trans)
-    return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
+function set_transformed!!(vi::SimpleVarInfo, trans)
+    return set_transformed!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
-function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
+function set_transformed!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
     return Accessors.@set vi.transformation = transformation
 end
-function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+function set_transformed!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
+    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, trans)
 end
-function settrans!!(vi::SimpleOrThreadSafeSimple, trans::Bool, ::VarName)
+function set_transformed!!(vi::SimpleOrThreadSafeSimple, trans::Bool, ::VarName)
     # We keep this method around just to obey the AbstractVarInfo interface.
     # However, note that this would only be a valid operation if it would be a
     # no-op, which we check here.
-    if trans != istrans(vi)
+    if trans != is_transformed(vi)
         error(
-            "Individual variables in SimpleVarInfo cannot have different `settrans` statuses.",
+            "Individual variables in SimpleVarInfo cannot have different `set_transformed` statuses.",
         )
     end
 end
 
-istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
-istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
-
-islinked(vi::SimpleVarInfo) = istrans(vi)
+is_transformed(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
+is_transformed(vi::SimpleVarInfo, ::VarName) = is_transformed(vi)
+function is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName)
+    return is_transformed(vi.varinfo, vn)
+end
+is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = is_transformed(vi.varinfo)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
@@ -618,7 +618,7 @@ function link!!(
     if hasacc(vi_new, Val(:LogJacobian))
         vi_new = acclogjac!!(vi_new, logjac)
     end
-    return settrans!!(vi_new, t)
+    return set_transformed!!(vi_new, t)
 end
 
 function invlink!!(
@@ -636,7 +636,7 @@ function invlink!!(
     if hasacc(vi_new, Val(:LogJacobian))
         vi_new = acclogjac!!(vi_new, inv_logjac)
     end
-    return settrans!!(vi_new, NoTransformation())
+    return set_transformed!!(vi_new, NoTransformation())
 end
 
 # With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.

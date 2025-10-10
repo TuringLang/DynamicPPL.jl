@@ -163,9 +163,9 @@ function tilde_assume!!(
     # If the VarInfo alrady had a value for this variable, we will
     # keep the same linked status as in the original VarInfo. If not, we
     # check the rest of the VarInfo to see if other variables are linked.
-    # istrans(vi) returns true if vi is nonempty and all variables in vi
+    # is_transformed(vi) returns true if vi is nonempty and all variables in vi
     # are linked.
-    insert_transformed_value = in_varinfo ? istrans(vi, vn) : istrans(vi)
+    insert_transformed_value = in_varinfo ? is_transformed(vi, vn) : is_transformed(vi)
     f = if insert_transformed_value
         link_transform(dist)
     else
@@ -181,7 +181,7 @@ function tilde_assume!!(
     end
     # Neither of these set the `trans` flag so we have to do it manually if
     # necessary.
-    insert_transformed_value && settrans!!(vi, true, vn)
+    insert_transformed_value && set_transformed!!(vi, true, vn)
     # `accumulate_assume!!` wants untransformed values as the second argument.
     vi = accumulate_assume!!(vi, x, logjac, vn, dist)
     # We always return the untransformed value here, as that will determine

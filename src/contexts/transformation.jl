@@ -21,7 +21,7 @@ function tilde_assume!!(
     # vi[vn, right] always provides the value in unlinked space.
     x = vi[vn, right]
 
-    if istrans(vi, vn)
+    if is_transformed(vi, vn)
         isinverse || @warn "Trying to link an already transformed variable ($vn)"
     else
         isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"

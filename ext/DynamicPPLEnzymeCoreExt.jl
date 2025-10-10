@@ -8,8 +8,9 @@ else
     using ..EnzymeCore
 end
 
-# Mark istrans as having 0 derivative. The `nothing` return value is not significant, Enzyme
+# Mark is_transformed as having 0 derivative. The `nothing` return value is not significant, Enzyme
 # only checks whether such a method exists, and never runs it.
-@inline EnzymeCore.EnzymeRules.inactive(::typeof(DynamicPPL.istrans), args...) = nothing
+@inline EnzymeCore.EnzymeRules.inactive(::typeof(DynamicPPL.is_transformed), args...) =
+    nothing
 
 end
