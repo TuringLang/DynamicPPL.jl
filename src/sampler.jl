@@ -1,34 +1,3 @@
-# TODO: Make `UniformSampling` and `Prior` algs + just use `Sampler`
-# That would let us use all defaults for Sampler, combine it with other samplers etc.
-"""
-    SampleFromUniform
-
-Sampling algorithm that samples unobserved random variables from a uniform distribution.
-
-# References
-
-[Stan reference manual](https://mc-stan.org/docs/2_28/reference-manual/initialization.html#random-initial-values)
-"""
-struct SampleFromUniform <: AbstractSampler end
-
-"""
-    SampleFromPrior
-
-Sampling algorithm that samples unobserved random variables from their prior distribution.
-"""
-struct SampleFromPrior <: AbstractSampler end
-
-# Initializations.
-init(rng, dist, ::SampleFromPrior) = rand(rng, dist)
-function init(rng, dist, ::SampleFromUniform)
-    return istransformable(dist) ? inittrans(rng, dist) : rand(rng, dist)
-end
-
-init(rng, dist, ::SampleFromPrior, n::Int) = rand(rng, dist, n)
-function init(rng, dist, ::SampleFromUniform, n::Int)
-    return istransformable(dist) ? inittrans(rng, dist, n) : rand(rng, dist, n)
-end
-
 # TODO(mhauru) Could we get rid of Sampler now that it's just a wrapper around `alg`?
 # (Selector has been removed).
 """
@@ -41,7 +10,7 @@ Generic sampler type for inference algorithms of type `T` in DynamicPPL.
 provided that supports resuming sampling from a previous state and setting initial
 parameter values. It requires to overload [`loadstate`](@ref) and [`initialstep`](@ref)
 for loading previous states and actually performing the initial sampling step,
-respectively. Additionally, sometimes one might want to implement [`initialsampler`](@ref)
+respectively. Additionally, sometimes one might want to implement an [`init_strategy`](@ref)
 that specifies how the initial parameter values are sampled if they are not provided.
 By default, values are sampled from the prior.
 """
@@ -49,23 +18,12 @@ struct Sampler{T} <: AbstractSampler
     alg::T
 end
 
-# AbstractMCMC interface for SampleFromUniform and SampleFromPrior
-function AbstractMCMC.step(
-    rng::Random.AbstractRNG,
-    model::Model,
-    sampler::Union{SampleFromUniform,SampleFromPrior},
-    state=nothing;
-    kwargs...,
-)
-    vi = VarInfo()
-    DynamicPPL.evaluate_and_sample!!(rng, model, vi, sampler)
-    return vi, nothing
-end
-
 """
     default_varinfo(rng, model, sampler)
 
 Return a default varinfo object for the given `model` and `sampler`.
+
+The default method for this returns a NTVarInfo (i.e. 'typed varinfo').
 
 # Arguments
 - `rng::Random.AbstractRNG`: Random number generator.
@@ -75,9 +33,43 @@ Return a default varinfo object for the given `model` and `sampler`.
 # Returns
 - `AbstractVarInfo`: Default varinfo object for the given `model` and `sampler`.
 """
-function default_varinfo(rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler)
-    init_sampler = initialsampler(sampler)
-    return typed_varinfo(rng, model, init_sampler)
+function default_varinfo(rng::Random.AbstractRNG, model::Model, ::AbstractSampler)
+    # Note that in `AbstractMCMC.step`, the values in the varinfo returned here are
+    # immediately overwritten by a subsequent call to `init!!`. The reason why we
+    # _do_ create a varinfo with parameters here (as opposed to simply returning
+    # an empty `typed_varinfo(VarInfo())`) is to avoid issues where pushing to an empty
+    # typed VarInfo would fail. This can happen if two VarNames have different types
+    # but share the same symbol (e.g. `x.a` and `x.b`).
+    # TODO(mhauru) Fix push!! to work with arbitrary lens types, and then remove the arguments
+    # and return an empty VarInfo instead.
+    return typed_varinfo(VarInfo(rng, model))
+end
+
+"""
+    init_strategy(sampler::AbstractSampler)
+
+Define the initialisation strategy used for generating initial values when
+sampling with `sampler`. Defaults to `InitFromPrior()`, but can be overridden.
+"""
+init_strategy(::AbstractSampler) = InitFromPrior()
+
+"""
+    _convert_initial_params(initial_params)
+
+Convert `initial_params` to an `AbstractInitStrategy` if it is not already one.
+"""
+_convert_initial_params(initial_params::AbstractInitStrategy) = initial_params
+function _convert_initial_params(nt::NamedTuple)
+    @info "Using a NamedTuple for `initial_params` will be deprecated in a future release. Please use `InitFromParams(namedtuple)` instead."
+    return InitFromParams(nt)
+end
+function _convert_initial_params(d::AbstractDict{<:VarName})
+    @info "Using a Dict for `initial_params` will be deprecated in a future release. Please use `InitFromParams(dict)` instead."
+    return InitFromParams(d)
+end
+function _convert_initial_params(::AbstractVector)
+    errmsg = "`initial_params` must be a `NamedTuple`, an `AbstractDict{<:VarName}`, or ideally an `AbstractInitStrategy`. Using a vector of parameters for `initial_params` is no longer supported. Please see https://turinglang.org/docs/usage/sampling-options/#specifying-initial-parameters for details on how to update your code."
+    throw(ArgumentError(errmsg))
 end
 
 function AbstractMCMC.sample(
@@ -85,13 +77,18 @@ function AbstractMCMC.sample(
     model::Model,
     sampler::Sampler,
     N::Integer;
-    chain_type=default_chain_type(sampler),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_params=init_strategy(sampler),
+    initial_state=nothing,
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, N; chain_type, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        N;
+        initial_params=_convert_initial_params(initial_params),
+        initial_state,
+        kwargs...,
     )
 end
 
@@ -102,155 +99,51 @@ function AbstractMCMC.sample(
     parallel::AbstractMCMC.AbstractMCMCEnsemble,
     N::Integer,
     nchains::Integer;
-    chain_type=default_chain_type(sampler),
-    resume_from=nothing,
-    initial_state=loadstate(resume_from),
+    initial_params=fill(init_strategy(sampler), nchains),
+    initial_state=nothing,
     kwargs...,
 )
     return AbstractMCMC.mcmcsample(
-        rng, model, sampler, parallel, N, nchains; chain_type, initial_state, kwargs...
+        rng,
+        model,
+        sampler,
+        parallel,
+        N,
+        nchains;
+        initial_params=map(_convert_initial_params, initial_params),
+        initial_state,
+        kwargs...,
     )
 end
 
-# initial step: general interface for resuming and
 function AbstractMCMC.step(
-    rng::Random.AbstractRNG, model::Model, spl::Sampler; initial_params=nothing, kwargs...
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Sampler;
+    initial_params::AbstractInitStrategy=init_strategy(spl),
+    kwargs...,
 )
-    # Sample initial values.
+    # Generate the default varinfo. Note that any parameters inside this varinfo
+    # will be immediately overwritten by the next call to `init!!`.
     vi = default_varinfo(rng, model, spl)
 
-    # Update the parameters if provided.
-    if initial_params !== nothing
-        vi = initialize_parameters!!(vi, initial_params, model)
+    # Fill it with initial parameters. Note that, if `InitFromParams` is used, the
+    # parameters provided must be in unlinked space (when inserted into the
+    # varinfo, they will be adjusted to match the linking status of the
+    # varinfo).
+    _, vi = init!!(rng, model, vi, initial_params)
 
-        # Update joint log probability.
-        # This is a quick fix for https://github.com/TuringLang/Turing.jl/issues/1588
-        # and https://github.com/TuringLang/Turing.jl/issues/1563
-        # to avoid that existing variables are resampled
-        vi = last(evaluate!!(model, vi))
-    end
-
+    # Call the actual function that does the first step.
     return initialstep(rng, model, spl, vi; initial_params, kwargs...)
 end
 
 """
-    loadstate(data)
+    loadstate(chain::AbstractChains)
 
-Load sampler state from `data`.
-
-By default, `data` is returned.
+Load sampler state from an `AbstractChains` object. This function should be overloaded by a
+concrete Chains implementation.
 """
-loadstate(data) = data
-
-"""
-    default_chain_type(sampler)
-
-Default type of the chain of posterior samples from `sampler`.
-"""
-default_chain_type(sampler::Sampler) = Any
-
-"""
-    initialsampler(sampler::Sampler)
-
-Return the sampler that is used for generating the initial parameters when sampling with
-`sampler`.
-
-By default, it returns an instance of [`SampleFromPrior`](@ref).
-"""
-initialsampler(spl::Sampler) = SampleFromPrior()
-
-"""
-    set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
-    set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
-
-Take the values inside `initial_params`, replace the corresponding values in
-the given VarInfo object, and return a new VarInfo object with the updated values.
-
-This differs from `DynamicPPL.unflatten` in two ways:
-
-1. It works with `NamedTuple` arguments.
-2. For the `AbstractVector` method, if any of the elements are missing, it will not
-overwrite the original value in the VarInfo (it will just use the original
-value instead).
-"""
-function set_initial_values(varinfo::AbstractVarInfo, initial_params::AbstractVector)
-    throw(
-        ArgumentError(
-            "`initial_params` must be a vector of type `Union{Real,Missing}`. " *
-            "If `initial_params` is a vector of vectors, please flatten it (e.g. using `vcat`) first.",
-        ),
-    )
-end
-
-function set_initial_values(
-    varinfo::AbstractVarInfo, initial_params::AbstractVector{<:Union{Real,Missing}}
-)
-    flattened_param_vals = varinfo[:]
-    length(flattened_param_vals) == length(initial_params) || throw(
-        DimensionMismatch(
-            "Provided initial value size ($(length(initial_params))) doesn't match " *
-            "the model size ($(length(flattened_param_vals))).",
-        ),
-    )
-
-    # Update values that are provided.
-    for i in eachindex(initial_params)
-        x = initial_params[i]
-        if x !== missing
-            flattened_param_vals[i] = x
-        end
-    end
-
-    # Update in `varinfo`.
-    new_varinfo = unflatten(varinfo, flattened_param_vals)
-    return new_varinfo
-end
-
-function set_initial_values(varinfo::AbstractVarInfo, initial_params::NamedTuple)
-    varinfo = deepcopy(varinfo)
-    vars_in_varinfo = keys(varinfo)
-    for v in keys(initial_params)
-        vn = VarName{v}()
-        if !(vn in vars_in_varinfo)
-            for vv in vars_in_varinfo
-                if subsumes(vn, vv)
-                    throw(
-                        ArgumentError(
-                            "The current model contains sub-variables of $v, such as ($vv). " *
-                            "Using NamedTuple for initial_params is not supported in such a case. " *
-                            "Please use AbstractVector for initial_params instead of NamedTuple.",
-                        ),
-                    )
-                end
-            end
-            throw(ArgumentError("Variable $v not found in the model."))
-        end
-    end
-    initial_params = NamedTuple(k => v for (k, v) in pairs(initial_params) if v !== missing)
-    return update_values!!(
-        varinfo, initial_params, map(k -> VarName{k}(), keys(initial_params))
-    )
-end
-
-function initialize_parameters!!(vi::AbstractVarInfo, initial_params, model::Model)
-    @debug "Using passed-in initial variable values" initial_params
-
-    # `link` the varinfo if needed.
-    linked = islinked(vi)
-    if linked
-        vi = invlink!!(vi, model)
-    end
-
-    # Set the values in `vi`.
-    vi = set_initial_values(vi, initial_params)
-
-    # `invlink` if needed.
-    if linked
-        vi = link!!(vi, model)
-    end
-
-    return vi
-end
+function loadstate end
 
 """
     initialstep(rng, model, sampler, varinfo; kwargs...)

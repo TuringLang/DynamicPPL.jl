@@ -22,11 +22,6 @@ function randr(vi::DynamicPPL.VarInfo, vn::VarName, dist::Distribution)
         r = rand(dist)
         push!!(vi, vn, r, dist)
         r
-    elseif DynamicPPL.is_flagged(vi, vn, "del")
-        DynamicPPL.unset_flag!(vi, vn, "del")
-        r = rand(dist)
-        vi[vn] = DynamicPPL.tovec(r)
-        r
     else
         vi[vn]
     end
@@ -42,7 +37,7 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        vi = DynamicPPL.untyped_varinfo(model, SampleFromUniform())
+        _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromUniform())
         tvi = DynamicPPL.typed_varinfo(vi)
 
         meta = vi.metadata
@@ -53,9 +48,7 @@ end
                 ind = meta.idcs[vn]
                 tind = fmeta.idcs[vn]
                 @test meta.dists[ind] == fmeta.dists[tind]
-                for flag in keys(meta.flags)
-                    @test meta.flags[flag][ind] == fmeta.flags[flag][tind]
-                end
+                @test meta.is_transformed[ind] == fmeta.is_transformed[tind]
                 range = meta.ranges[ind]
                 trange = fmeta.ranges[tind]
                 @test all(meta.vals[range] .== fmeta.vals[trange])
@@ -290,9 +283,8 @@ end
         @test all_accs_same(vi, vi_orig)
     end
 
-    @testset "flags" begin
-        # Test flag setting:
-        #    is_flagged, set_flag!, unset_flag!
+    @testset "is_transformed flag" begin
+        # Test is_transformed and set_transformed!!
         function test_varinfo!(vi)
             vn_x = @varname x
             dist = Normal(0, 1)
@@ -300,14 +292,14 @@ end
 
             push!!(vi, vn_x, r, dist)
 
-            # del is set by default
-            @test !is_flagged(vi, vn_x, "del")
+            # is_transformed is set by default
+            @test !is_transformed(vi, vn_x)
 
-            set_flag!(vi, vn_x, "del")
-            @test is_flagged(vi, vn_x, "del")
+            vi = set_transformed!!(vi, true, vn_x)
+            @test is_transformed(vi, vn_x)
 
-            unset_flag!(vi, vn_x, "del")
-            @test !is_flagged(vi, vn_x, "del")
+            vi = set_transformed!!(vi, false, vn_x)
+            @test !is_transformed(vi, vn_x)
         end
         vi = VarInfo()
         test_varinfo!(vi)
@@ -325,7 +317,7 @@ end
         @test typed_vi[vn_y] == 2.0
     end
 
-    @testset "setval! & setval_and_resample!" begin
+    @testset "setval!" begin
         @model function testmodel(x)
             n = length(x)
             s ~ truncated(Normal(); lower=0)
@@ -376,8 +368,8 @@ end
                 else
                     DynamicPPL.setval!(vicopy, (m=zeros(5),))
                 end
-                # Setting `m` fails for univariate due to limitations of `setval!`
-                # and `setval_and_resample!`. See docstring of `setval!` for more info.
+                # Setting `m` fails for univariate due to limitations of `setval!`.
+                # See docstring of `setval!` for more info.
                 if model == model_uv && vi in [vi_untyped, vi_typed]
                     @test_broken vicopy[m_vns] == zeros(5)
                 else
@@ -402,57 +394,6 @@ end
                 DynamicPPL.setval!(vicopy, (s=42,))
                 @test vicopy[m_vns] == 1:5
                 @test vicopy[s_vns] == 42
-
-                ### `setval_and_resample!` ###
-                if model == model_mv && vi == vi_untyped
-                    # Trying to re-run model with `MvNormal` on `vi_untyped` will call
-                    # `MvNormal(μ::Vector{Real}, Σ)` which causes `StackOverflowError`
-                    # so we skip this particular case.
-                    continue
-                end
-
-                if vi in [vi_vnv, vi_vnv_typed]
-                    # `setval_and_resample!` works differently for `VarNamedVector`: All
-                    # values will be resampled when model(vicopy) is called. Hence the below
-                    # tests are not applicable.
-                    continue
-                end
-
-                vicopy = deepcopy(vi)
-                DynamicPPL.setval_and_resample!(vicopy, (m=zeros(5),))
-                model(vicopy)
-                # Setting `m` fails for univariate due to limitations of `subsumes(::String, ::String)`
-                if model == model_uv
-                    @test_broken vicopy[m_vns] == zeros(5)
-                else
-                    @test vicopy[m_vns] == zeros(5)
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Ordering is NOT preserved.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 3, 5, 4, 2))...)
-                )
-                model(vicopy)
-                if model == model_uv
-                    @test vicopy[m_vns] == 1:5
-                else
-                    @test vicopy[m_vns] == [1, 3, 5, 4, 2]
-                end
-                @test vicopy[s_vns] != vi[s_vns]
-
-                # Correct ordering.
-                DynamicPPL.setval_and_resample!(
-                    vicopy, (; (Symbol("m[$i]") => i for i in (1, 2, 3, 4, 5))...)
-                )
-                model(vicopy)
-                @test vicopy[m_vns] == 1:5
-                @test vicopy[s_vns] != vi[s_vns]
-
-                DynamicPPL.setval_and_resample!(vicopy, (s=42,))
-                model(vicopy)
-                @test vicopy[m_vns] != 1:5
-                @test vicopy[s_vns] == 42
             end
         end
 
@@ -465,9 +406,6 @@ end
         vals_prev = vi.metadata.x.vals
         ks = [@varname(x[1, 1]), @varname(x[2, 1]), @varname(x[1, 2]), @varname(x[2, 2])]
         DynamicPPL.setval!(vi, vi.metadata.x.vals, ks)
-        @test vals_prev == vi.metadata.x.vals
-
-        DynamicPPL.setval_and_resample!(vi, vi.metadata.x.vals, ks)
         @test vals_prev == vi.metadata.x.vals
     end
 
@@ -488,7 +426,7 @@ end
             θ_new = var_info[:]
             @test θ_old != θ_new
             vals = DynamicPPL.values_as(var_info, OrderedDict)
-            iters = map(DynamicPPL.varname_and_value_leaves, keys(vals), values(vals))
+            iters = map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals))
             for (n, v) in mapreduce(collect, vcat, iters)
                 n = string(n)
                 if Symbol(n) ∉ keys(chain)
@@ -533,25 +471,26 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model using SampleFromUniform does not
+        # Check that instantiating the model using InitFromUniform does not
         # perform linking
-        # Note (penelopeysm): The purpose of using SampleFromUniform (SFU)
-        # specifically in this test is because SFU samples from the linked
-        # distribution i.e. in unconstrained space. However, it does this not
-        # by linking the varinfo but by transforming the distributions on the
-        # fly. That's why it's worth specifically checking that it can do this
-        # without having to change the VarInfo object.
+        # Note (penelopeysm): The purpose of using InitFromUniform specifically in
+        # this test is because it samples from the linked distribution i.e. in
+        # unconstrained space. However, it does this not by linking the varinfo
+        # but by transforming the distributions on the fly. That's why it's
+        # worth specifically checking that it can do this without having to
+        # change the VarInfo object.
+        # TODO(penelopeysm): Move this to InitFromUniform tests rather than here.
         vi = VarInfo()
         meta = vi.metadata
-        _, vi = DynamicPPL.evaluate_and_sample!!(model, vi, SampleFromUniform())
-        @test all(x -> !istrans(vi, x), meta.vns)
+        _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
+        @test all(x -> !is_transformed(vi, x), meta.vns)
 
-        # Check that linking and invlinking set the `trans` flag accordingly
+        # Check that linking and invlinking set the `is_transformed` flag accordingly
         v = copy(meta.vals)
         vi = link!!(vi, model)
-        @test all(x -> istrans(vi, x), meta.vns)
+        @test all(x -> is_transformed(vi, x), meta.vns)
         vi = invlink!!(vi, model)
-        @test all(x -> !istrans(vi, x), meta.vns)
+        @test all(x -> !is_transformed(vi, x), meta.vns)
         @test meta.vals ≈ v atol = 1e-10
 
         # Check that linking and invlinking preserves the values
@@ -562,14 +501,14 @@ end
         v_x = copy(meta.x.vals)
         v_y = copy(meta.y.vals)
 
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> !is_transformed(vi, x), meta.s.vns)
+        @test all(x -> !is_transformed(vi, x), meta.m.vns)
         vi = link!!(vi, model)
-        @test all(x -> istrans(vi, x), meta.s.vns)
-        @test all(x -> istrans(vi, x), meta.m.vns)
+        @test all(x -> is_transformed(vi, x), meta.s.vns)
+        @test all(x -> is_transformed(vi, x), meta.m.vns)
         vi = invlink!!(vi, model)
-        @test all(x -> !istrans(vi, x), meta.s.vns)
-        @test all(x -> !istrans(vi, x), meta.m.vns)
+        @test all(x -> !is_transformed(vi, x), meta.s.vns)
+        @test all(x -> !is_transformed(vi, x), meta.m.vns)
         @test meta.s.vals ≈ v_s atol = 1e-10
         @test meta.m.vals ≈ v_m atol = 1e-10
 
@@ -588,10 +527,10 @@ end
             @test !isempty(target_vns)
             @test !isempty(other_vns)
             vi = link!!(vi, (vn,), model)
-            @test all(x -> istrans(vi, x), target_vns)
-            @test all(x -> !istrans(vi, x), other_vns)
+            @test all(x -> is_transformed(vi, x), target_vns)
+            @test all(x -> !is_transformed(vi, x), other_vns)
             vi = invlink!!(vi, (vn,), model)
-            @test all(x -> !istrans(vi, x), all_vns)
+            @test all(x -> !is_transformed(vi, x), all_vns)
             @test meta.s.vals ≈ v_s atol = 1e-10
             @test meta.m.vals ≈ v_m atol = 1e-10
             @test meta.x.vals ≈ v_x atol = 1e-10
@@ -607,10 +546,10 @@ end
 
         function test_linked_varinfo(model, vi)
             # vn and dist are taken from the containing scope
-            vi = last(DynamicPPL.evaluate_and_sample!!(model, vi))
+            vi = last(DynamicPPL.init!!(model, vi, InitFromPrior()))
             f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
             x = f(DynamicPPL.getindex_internal(vi, vn))
-            @test istrans(vi, vn)
+            @test is_transformed(vi, vn)
             @test getlogjoint_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
             @test getlogprior_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
             @test getloglikelihood(vi) == 0.0
@@ -618,32 +557,32 @@ end
             @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
         end
 
+        ### `VarInfo`
+        # Need to run once since we can't specify that we want to _sample_
+        # in the unconstrained space for `VarInfo` without having `vn`
+        # present in the `varinfo`.
+
         ## `untyped_varinfo`
         vi = DynamicPPL.untyped_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
+        vi = DynamicPPL.set_transformed!!(vi, true, vn)
         test_linked_varinfo(model, vi)
 
         ## `typed_varinfo`
         vi = DynamicPPL.typed_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
-        test_linked_varinfo(model, vi)
-
-        ## `typed_varinfo`
-        vi = DynamicPPL.typed_varinfo(model)
-        vi = DynamicPPL.settrans!!(vi, true, vn)
+        vi = DynamicPPL.set_transformed!!(vi, true, vn)
         test_linked_varinfo(model, vi)
 
         ### `SimpleVarInfo`
         ## `SimpleVarInfo{<:NamedTuple}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(Dict{VarName,Any}()), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
-        vi = DynamicPPL.settrans!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
         test_linked_varinfo(model, vi)
     end
 
@@ -731,7 +670,7 @@ end
                         DynamicPPL.link(varinfo, model)
                     end
                     for vn in keys(varinfo)
-                        @test DynamicPPL.istrans(varinfo_linked, vn)
+                        @test DynamicPPL.is_transformed(varinfo_linked, vn)
                     end
                     @test length(varinfo[:]) > length(varinfo_linked[:])
                     varinfo_linked_unflattened = DynamicPPL.unflatten(
@@ -989,7 +928,7 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.settrans!!(varinfo_right, true, @varname(x))
+            varinfo_right = DynamicPPL.set_transformed!!(varinfo_right, true, @varname(x))
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
@@ -997,7 +936,7 @@ end
 
             # Right has precedence.
             @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
-            @test DynamicPPL.istrans(varinfo_merged, @varname(x))
+            @test DynamicPPL.is_transformed(varinfo_merged, @varname(x))
         end
     end
 
@@ -1010,45 +949,6 @@ end
         vi_double = push!!(vi_double, vn, [0.5, 0.6], Dirichlet(2, 1.0))
         @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
         @test merge(vi_double, vi_single)[vn] == 1.0
-    end
-
-    @testset "sampling from linked varinfo" begin
-        # `~`
-        @model function demo(n=1)
-            x = Vector(undef, n)
-            for i in eachindex(x)
-                x[i] ~ Exponential()
-            end
-            return x
-        end
-        model1 = demo(1)
-        varinfo1 = DynamicPPL.link!!(VarInfo(model1), model1)
-        # Sampling from `model2` should hit the `istrans(vi) == true` branches
-        # because all the existing variables are linked.
-        model2 = demo(2)
-        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
-        for vn in [@varname(x[1]), @varname(x[2])]
-            @test DynamicPPL.istrans(varinfo2, vn)
-        end
-
-        # `.~`
-        @model function demo_dot(n=1)
-            x ~ Exponential()
-            if n > 1
-                y = Vector(undef, n - 1)
-                y .~ Exponential()
-            end
-            return x
-        end
-        model1 = demo_dot(1)
-        varinfo1 = DynamicPPL.link!!(DynamicPPL.untyped_varinfo(model1), model1)
-        # Sampling from `model2` should hit the `istrans(vi) == true` branches
-        # because all the existing variables are linked.
-        model2 = demo_dot(2)
-        varinfo2 = last(DynamicPPL.evaluate_and_sample!!(model2, deepcopy(varinfo1)))
-        for vn in [@varname(x), @varname(y[1])]
-            @test DynamicPPL.istrans(varinfo2, vn)
-        end
     end
 
     # NOTE: It is not yet clear if this is something we want from all varinfo types.

@@ -60,11 +60,11 @@ end
     loglikelihoods_pointwise = pointwise_loglikelihoods(model, chain)
 
     # Check that they contain the correct variables.
-    @test all(string(vn) in keys(logjoints_pointwise) for vn in vns)
-    @test all(string(vn) in keys(logpriors_pointwise) for vn in vns)
-    @test !any(Base.Fix2(startswith, "x"), keys(logpriors_pointwise))
-    @test !any(string(vn) in keys(loglikelihoods_pointwise) for vn in vns)
-    @test all(Base.Fix2(startswith, "x"), keys(loglikelihoods_pointwise))
+    @test all(vn in keys(logjoints_pointwise) for vn in vns)
+    @test all(vn in keys(logpriors_pointwise) for vn in vns)
+    @test !any(Base.Fix1(subsumes, @varname(x)), keys(logpriors_pointwise))
+    @test !any(vn in keys(loglikelihoods_pointwise) for vn in vns)
+    @test all(Base.Fix1(subsumes, @varname(x)), keys(loglikelihoods_pointwise))
 
     # Get the sum of the logjoints for each of the iterations.
     logjoints = [

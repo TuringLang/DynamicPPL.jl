@@ -8,6 +8,10 @@ struct Submodel{M,AutoPrefix}
     model::M
 end
 
+# ----------------------
+# Constructing submodels
+# ----------------------
+
 """
     to_submodel(model::Model[, auto_prefix::Bool])
 
@@ -152,6 +156,26 @@ ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observ
 """
 to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
 
+# ---------------------------
+# Submodels in tilde-pipeline
+# ---------------------------
+
+"""
+    DynamicPPL.tilde_assume!!(
+        context::AbstractContext,
+        right::DynamicPPL.Submodel,
+        vn::VarName,
+        vi::AbstractVarInfo
+    )
+
+Evaluate the submodel with the given context.
+"""
+function tilde_assume!!(
+    context::AbstractContext, right::DynamicPPL.Submodel, vn::VarName, vi::AbstractVarInfo
+)
+    return _evaluate!!(right, vi, context, vn)
+end
+
 # When automatic prefixing is used, the submodel itself doesn't carry the
 # prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
 # is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
@@ -192,4 +216,14 @@ function _evaluate!!(
     # Once that's all set up nicely, we can just _evaluate!! the wrapped model. This
     # returns a tuple of submodel.model's return value and the new varinfo.
     return _evaluate!!(model, vi)
+end
+
+function tilde_observe!!(
+    ::AbstractContext,
+    ::DynamicPPL.Submodel,
+    left,
+    vn::Union{VarName,Nothing},
+    ::AbstractVarInfo,
+)
+    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
 end

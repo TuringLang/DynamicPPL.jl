@@ -193,11 +193,11 @@ module Issue537 end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
-        # During the model evaluation, its context is wrapped in a
-        # SamplingContext, so `model_` is not going to be equal to `model`.
-        # We can still check equality of `f` though.
+        # During the model evaluation, its leaf context is changed to an InitContext, so
+        # `model_` is not going to be equal to `model`. We can still check equality of `f`
+        # though.
         @test model_.f === model.f
-        @test model_.context isa SamplingContext
+        @test model_.context isa DynamicPPL.InitContext
         @test model_.context.rng isa Random.AbstractRNG
 
         # disable warnings
@@ -598,13 +598,13 @@ module Issue537 end
         # an attempt at a `NamedTuple` of the form `(x = 1, __varinfo__)`.
         @model empty_model() = return x = 1
         empty_vi = VarInfo()
-        retval_and_vi = DynamicPPL.evaluate_and_sample!!(empty_model(), empty_vi)
+        retval_and_vi = DynamicPPL.init!!(empty_model(), empty_vi)
         @test retval_and_vi isa Tuple{Int,typeof(empty_vi)}
 
         # Even if the return-value is `AbstractVarInfo`, we should return
         # a `Tuple` with `AbstractVarInfo` in the second component too.
         @model demo() = return __varinfo__
-        retval, svi = DynamicPPL.evaluate_and_sample!!(demo(), SimpleVarInfo())
+        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
         @test svi == SimpleVarInfo()
         if Threads.nthreads() > 1
             @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
@@ -620,11 +620,11 @@ module Issue537 end
             f(x) = return x^2
             return f(1.0)
         end
-        retval, svi = DynamicPPL.evaluate_and_sample!!(demo(), SimpleVarInfo())
+        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
         @test retval isa Float64
 
         @model demo() = x ~ Normal()
-        retval, svi = DynamicPPL.evaluate_and_sample!!(demo(), SimpleVarInfo())
+        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
 
         # Return-value when using `to_submodel`
         @model inner() = x ~ Normal()

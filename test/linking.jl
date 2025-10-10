@@ -50,9 +50,9 @@ end
 
 # Specify the link-transform to use.
 Bijectors.bijector(dist::MyMatrixDistribution) = TrilToVec((dist.dim, dist.dim))
-function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, istrans::Bool)
+function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, is_transformed::Bool)
     lp = logpdf(dist, x)
-    if istrans
+    if is_transformed
         lp = lp - logabsdetjac(bijector(dist), x)
     end
 

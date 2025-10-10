@@ -116,13 +116,13 @@ end
         ::Val{whichlogprob}=Val(:both),
     )
 
-Runs `model` on each sample in `chain` returning a `OrderedDict{String, Matrix{Float64}}`
-with keys corresponding to symbols of the variables, and values being matrices
-of shape `(num_chains, num_samples)`.
+Runs `model` on each sample in `chain` returning a `OrderedDict{VarName, Matrix{Float64}}`
+with keys being model variables and values being matrices of shape
+`(num_chains, num_samples)`.
 
 `keytype` specifies what the type of the keys used in the returned `OrderedDict` are.
-Currently, only `String` and `VarName` are supported. `whichlogprob` specifies
-which log-probabilities to compute. It can be `:both`, `:prior`, or
+Currently, only `String` and `VarName` are supported, with `VarName` being the default.
+`whichlogprob` specifies which log-probabilities to compute. It can be `:both`, `:prior`, or
 `:likelihood`.
 
 See also: [`pointwise_loglikelihoods`](@ref), [`pointwise_loglikelihoods`](@ref).
@@ -177,13 +177,13 @@ julia> # A chain with 3 iterations.
        );
 
 julia> pointwise_logdensities(model, chain)
-OrderedDict{String, Matrix{Float64}} with 6 entries:
-  "s"     => [-0.802775; -1.38222; -2.09861;;]
-  "m"     => [-8.91894; -7.51551; -7.46824;;]
-  "xs[1]" => [-5.41894; -5.26551; -5.63491;;]
-  "xs[2]" => [-2.91894; -3.51551; -4.13491;;]
-  "xs[3]" => [-1.41894; -2.26551; -2.96824;;]
-  "y"     => [-0.918939; -1.51551; -2.13491;;]
+OrderedDict{VarName, Matrix{Float64}} with 6 entries:
+  s     => [-0.802775; -1.38222; -2.09861;;]
+  m     => [-8.91894; -7.51551; -7.46824;;]
+  xs[1] => [-5.41894; -5.26551; -5.63491;;]
+  xs[2] => [-2.91894; -3.51551; -4.13491;;]
+  xs[3] => [-1.41894; -2.26551; -2.96824;;]
+  y     => [-0.918939; -1.51551; -2.13491;;]
 
 julia> pointwise_logdensities(model, chain, String)
 OrderedDict{String, Matrix{Float64}} with 6 entries:
@@ -225,7 +225,7 @@ julia> ℓ = pointwise_logdensities(m, VarInfo(m)); first.((ℓ[@varname(x[1])],
 ```
 """
 function pointwise_logdensities(
-    model::Model, chain, ::Type{KeyType}=String, ::Val{whichlogprob}=Val(:both)
+    model::Model, chain, ::Type{KeyType}=VarName, ::Val{whichlogprob}=Val(:both)
 ) where {KeyType,whichlogprob}
     # Get the data by executing the model once
     vi = VarInfo(model)
@@ -283,7 +283,7 @@ including the likelihood terms.
 
 See also: [`pointwise_logdensities`](@ref), [`pointwise_prior_logdensities`](@ref).
 """
-function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=String) where {T}
+function pointwise_loglikelihoods(model::Model, chain, keytype::Type{T}=VarName) where {T}
     return pointwise_logdensities(model, chain, T, Val(:likelihood))
 end
 
@@ -301,7 +301,7 @@ including the prior terms.
 See also: [`pointwise_logdensities`](@ref), [`pointwise_loglikelihoods`](@ref).
 """
 function pointwise_prior_logdensities(
-    model::Model, chain, keytype::Type{T}=String
+    model::Model, chain, keytype::Type{T}=VarName
 ) where {T}
     return pointwise_logdensities(model, chain, T, Val(:prior))
 end

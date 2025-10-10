@@ -1,5 +1,91 @@
 # DynamicPPL Changelog
 
+## 0.38.0
+
+**Breaking changes**
+
+### Introduction of `InitContext`
+
+DynamicPPL 0.38 introduces a new evaluation context, `InitContext`.
+It is used to generate fresh values for random variables in a model.
+
+Evaluation contexts are stored inside a `DynamicPPL.Model` object, and control what happens with tilde-statements when a model is run.
+The two major leaf (basic) contexts are `DefaultContext` and, now, `InitContext`.
+`DefaultContext` is the default context, and it simply uses the values that are already stored in the `VarInfo` object passed to the model evaluation function.
+On the other hand, `InitContext` ignores values in the VarInfo object and inserts new values obtained from a specified source.
+(It follows also that the VarInfo being used may be empty, which means that `InitContext` is now also the way to obtain a fresh VarInfo for a model.)
+
+DynamicPPL 0.38 provides three flavours of _initialisation strategies_, which are specified as the second argument to `InitContext`:
+
+  - `InitContext(rng, InitFromPrior())`: New values are sampled from the prior distribution (on the right-hand side of the tilde).
+  - `InitContext(rng, InitFromUniform(a, b))`: New values are sampled uniformly from the interval `[a, b]`, and then invlinked to the support of the distribution on the right-hand side of the tilde.
+  - `InitContext(rng, InitFromParams(p, fallback))`: New values are obtained by indexing into the `p` object, which can be a `NamedTuple` or `Dict{<:VarName}`. If a variable is not found in `p`, then the `fallback` strategy is used, which is simply another of these strategies. In particular, `InitFromParams` enables the case where different variables are to be initialised from different sources.
+
+(It is possible to define your own initialisation strategy; users who wish to do so are referred to the DynamicPPL API documentation and source code.)
+
+**The main impact on the upcoming Turing.jl release** is that, instead of providing initial values for sampling, the user will be expected to provide an initialisation strategy instead.
+This is a more flexible approach, and not only solves a number of pre-existing issues with initialisation of Turing models, but also improves the clarity of user code.
+In particular:
+
+  - When providing a set of fixed parameters (i.e. `InitFromParams(p)`), `p` must now either be a NamedTuple or a Dict. Previously Vectors were allowed, which is error-prone because the ordering of variables in a VarInfo is not obvious.
+  - The parameters in `p` must now always be provided in unlinked space (i.e., in the space of the distribution on the right-hand side of the tilde). Previously, whether a parameter was expected to be in linked or unlinked space depended on whether the VarInfo was linked or not, which was confusing.
+
+### Removal of `SamplingContext`
+
+For developers working on DynamicPPL, `InitContext` now completely replaces what used to be `SamplingContext`, `SampleFromPrior`, and `SampleFromUniform`.
+Evaluating a model with `SamplingContext(SampleFromPrior())` (e.g. with `DynamicPPL.evaluate_and_sample!!(model, VarInfo(), SampleFromPrior())` has a direct one-to-one replacement in `DynamicPPL.init!!(model, VarInfo(), InitFromPrior())`.
+Please see the docstring of `init!!` for more details.
+Likewise `SampleFromUniform()` can be replaced with `InitFromUniform()`.
+`InitFromParams()` provides new functionality which was previously implemented in the roundabout way of manipulating the VarInfo (e.g. using `unflatten`, or even more hackily by directly modifying values in the VarInfo), and then evaluating using `DefaultContext`.
+
+The main change that this is likely to create is for those who are implementing samplers or inference algorithms.
+The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
+Broadly speaking, though, `SamplingContext(MySampler())` will be removed so if your sampler needs custom behaviour with the tilde-pipeline you will likely have to define your own context.
+
+### Simplification of the tilde-pipeline
+
+There are now only two functions in the tilde-pipeline that need to be overloaded to change the behaviour of tilde-statements, namely, `tilde_assume!!` and `tilde_observe!!`.
+Other functions such as `tilde_assume` and `assume` (and their `observe` counterparts) have been removed.
+
+Note that this was effectively already the case in DynamicPPL 0.37 (where they were just wrappers around each other).
+The separation of these functions was primarily implemented to avoid performing extra work where unneeded (e.g. to not calculate the log-likelihood when `PriorContext` was being used). This functionality has since been replaced with accumulators (see the 0.37 changelog for more details).
+
+### Removal of the `"del"` flag
+
+Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
+
+The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus the generic functions `set_flag!`, `unset_flag!` and `is_flagged!` have also been removed in favour of more specific ones. We've also used this opportunity to name the `"trans"` flag and the corresponding `istrans` function to be more explicit. The new, exported interface consists of the `is_transformed` and `set_transformed!!` functions.
+
+### Removal of `resume_from`
+
+The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
+`loadstate` is exported from DynamicPPL.
+
+### Change of default keytype of `pointwise_logdensities`
+
+The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` return dictionaries for which the keys are model variables, and the key type is either `VarName` or `String`. This release changes the default from `String` to `VarName`.
+
+**Other changes**
+
+### `predict(model, chain; include_all)`
+
+The `include_all` keyword argument for `predict` now works even when no RNG is specified (previously it would only work when an RNG was explicitly passed).
+
+### `setleafcontext(model, context)`
+
+This convenience method has been added to quickly modify the leaf context of a model.
+
+### Reimplementation of functions using `InitContext`
+
+A number of functions have been reimplemented and unified with the help of `InitContext`.
+In particular, this release brings substantial performance improvements for `returned` and `predict`.
+Their APIs are the same.
+
+### Upstreaming of VarName functionality
+
+The implementation of the `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
+Their behaviour is otherwise identical, and they are still accessible from the DynamicPPL module (though still not exported).
+
 ## 0.37.5
 
 A minor optimisation for Enzyme AD on DynamicPPL models.
