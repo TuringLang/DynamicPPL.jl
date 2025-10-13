@@ -504,25 +504,7 @@ DynamicPPL.AbstractInitStrategy
 DynamicPPL.init
 ```
 
-### Sampling
-
-`init_strategy(spl)` defines how parameters are to be initialised when performing MCMC sampling with `spl`.
-
-```@docs
-DynamicPPL.init_strategy
-```
-
-`loadstate` is used for resuming sampling from a previous chain.
-
-```@docs
-DynamicPPL.loadstate
-```
-
-Finally, to specify which varinfo type a sampler should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
-
-```@docs
-DynamicPPL.default_varinfo
-```
+### Choosing a suitable VarInfo
 
 There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
 
