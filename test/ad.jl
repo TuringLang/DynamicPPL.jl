@@ -82,16 +82,21 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
         t = 1:0.05:8
         σ = 0.3
         y = @. rand(sin(t) + Normal(0, σ))
-        @model function state_space(y, TT, ::Type{T}=Float64) where {T}
+        @model function state_space(y, TT)
             # Priors
             α ~ Normal(y[1], 0.001)
             τ ~ Exponential(1)
             η ~ filldist(Normal(0, 1), TT - 1)
             σ ~ Exponential(1)
-            # create latent variable
-            x = Vector{T}(undef, TT)
+            # create latent variable -- Have to use typeof(α) here to ensure that
+            # AD works fine. Not sure if this is a generally good workaround.
+            x = Vector{typeof(α)}(undef, TT)
+            # As an alternative to the above, we could do this:
+            # using Accessors
+            # x = Accessors.set(x, (Accessors.@optic _[1]), α)
             x[1] = α
             for t in 2:TT
+                # and likewise for this line -- use Accessors
                 x[t] = x[t - 1] + η[t - 1] * τ
             end
             # measurement model

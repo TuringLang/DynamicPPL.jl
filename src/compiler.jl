@@ -583,12 +583,6 @@ function add_return_to_last_statment(body::Expr)
     return Expr(body.head, new_args...)
 end
 
-const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
-hasmissing(::Type) = false
-hasmissing(::Type{>:Missing}) = true
-hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
-hasmissing(::Type{Union{}}) = false # issue #368
-
 """
     TypeWrap{T}
 
@@ -706,54 +700,4 @@ function warn_empty(body)
         @warn("Model definition seems empty, still continue.")
     end
     return nothing
-end
-
-# TODO(mhauru) matchingvalue has methods that can accept both types and values. Why?
-# TODO(mhauru) This function needs a more comprehensive docstring.
-"""
-    matchingvalue(vi, value)
-
-Convert the `value` to the correct type for the `vi` object.
-"""
-function matchingvalue(vi, value)
-    T = typeof(value)
-    if hasmissing(T)
-        _value = convert(get_matching_type(vi, T), value)
-        # TODO(mhauru) Why do we make a deepcopy, even though in the !hasmissing branch we
-        # are happy to return `value` as-is?
-        if _value === value
-            return deepcopy(_value)
-        else
-            return _value
-        end
-    else
-        return value
-    end
-end
-
-function matchingvalue(vi, value::FloatOrArrayType)
-    return get_matching_type(vi, value)
-end
-function matchingvalue(vi, ::TypeWrap{T}) where {T}
-    return TypeWrap{get_matching_type(vi, T)}()
-end
-
-# TODO(mhauru) This function needs a more comprehensive docstring. What is it for?
-"""
-    get_matching_type(vi, ::TypeWrap{T}) where {T}
-
-Get the specialized version of type `T` for `vi`.
-"""
-get_matching_type(_, ::Type{T}) where {T} = T
-function get_matching_type(vi, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,float_type_with_fallback(eltype(vi))}
-end
-function get_matching_type(vi, ::Type{<:AbstractFloat})
-    return float_type_with_fallback(eltype(vi))
-end
-function get_matching_type(vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(vi, T),N}
-end
-function get_matching_type(vi, ::Type{<:Array{T}}) where {T}
-    return Array{get_matching_type(vi, T)}
 end
