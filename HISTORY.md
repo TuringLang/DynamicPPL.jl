@@ -50,6 +50,7 @@ If you were using these, the corresponding replacements are:
   - `DynamicPPL.Sampler(S)`: just don't wrap `S`; but make sure `S` subtypes `AbstractMCMC.AbstractSampler`
   - `DynamicPPL.initialstep`: directly implement `AbstractMCMC.step` and `AbstractMCMC.step_warmup` as per the AbstractMCMC interface
   - `DynamicPPL.loadstate`: `Turing.loadstate` (will be introduced in the next version)
+  - `DynamicPPL.default_chain_type`: `Turing.default_chain_type` (will be introduced in the next version)
   - `DynamicPPL.initialsampler`: `Turing.init_strategy` (will be introduced in the next version; note that this function must return an `AbstractInitStrategy`, see above for explanation)
   - `DynamicPPL.default_varinfo`: `Turing.default_varinfo` (will be introduced in the next version)
 
