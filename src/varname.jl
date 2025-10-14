@@ -41,3 +41,24 @@ Possibly existing indices of `varname` are neglected.
 ) where {s,missings,_F,_a,_T}
     return s in missings
 end
+
+function remove_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
+    return if Optic === typeof(identity)
+        vn
+    elseif Optic isa IndexLens
+        VarName{sym}()
+    else
+        prefix(remove_trailing_index(unprefix(vn, sym)), sym)
+    end
+end
+
+function split_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
+    return if Optic === typeof(identity)
+        (vn, identity)
+    elseif Optic isa IndexLens
+        (VarName{sym}(), Optic.index)
+    else
+        (prefix, index) = split_trailing_index(unprefix(vn, sym))
+        (prefix(prefix, sym), index)
+    end
+end
