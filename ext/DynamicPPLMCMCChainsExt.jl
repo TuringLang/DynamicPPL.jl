@@ -296,6 +296,7 @@ end
     DynamicPPL.pointwise_logdensities(
         model::DynamicPPL.Model,
         chain::MCMCChains.Chains,
+        ::Type{Tout}=MCMCChains.Chains
         ::Val{whichlogprob}=Val(:both),
     )
 
@@ -305,7 +306,11 @@ the log-density of each variable at each sample is stored (rather than its value
 `whichlogprob` specifies which log-probabilities to compute. It can be `:both`, `:prior`, or
 `:likelihood`.
 
-See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
+You can pass `Tout=OrderedDict` to get the result as an `OrderedDict{VarName,
+Matrix{Float64}}` instead.
+
+See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref),
+[`DynamicPPL.pointwise_prior_logdensities`](@ref).
 
 # Examples
 
@@ -360,10 +365,23 @@ julia> # The above is the same as:
  -1.3822169643436162
  -2.0986122886681096
 ```
+
+julia> # Alternatively:
+       plds_dict = pointwise_logdensities(model, chain, OrderedDict)
+OrderedDict{VarName, Matrix{Float64}} with 6 entries:
+  s     => [-0.802775; -1.38222; -2.09861;;]
+  m     => [-8.91894; -7.51551; -7.46824;;]
+  xs[1] => [-5.41894; -5.26551; -5.63491;;]
+  xs[2] => [-2.91894; -3.51551; -4.13491;;]
+  xs[3] => [-1.41894; -2.26551; -2.96824;;]
+  y     => [-0.918939; -1.51551; -2.13491;;]
 """
 function DynamicPPL.pointwise_logdensities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains, ::Val{whichlogprob}=Val(:both)
-) where {whichlogprob}
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains,
+    ::Type{Tout}=MCMCChains.Chains,
+    ::Val{whichlogprob}=Val(:both),
+) where {whichlogprob,Tout}
     vi = DynamicPPL.VarInfo(model)
     acc = DynamicPPL.PointwiseLogProbAccumulator{whichlogprob}()
     accname = DynamicPPL.accumulator_name(acc)
@@ -384,7 +402,6 @@ function DynamicPPL.pointwise_logdensities(
         DynamicPPL.getacc(vi, Val(accname)).logps
     end
 
-    # pointwise_logps is a matrix of OrderedDicts -- we just need to convert to a Chains
     all_keys = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
     for d in pointwise_logps
         union!(all_keys, DynamicPPL.OrderedCollections.OrderedSet(keys(d)))
@@ -394,13 +411,22 @@ function DynamicPPL.pointwise_logdensities(
         iter in 1:size(pointwise_logps, 1), k in all_keys,
         chain in 1:size(pointwise_logps, 2)
     ]
-    return MCMCChains.Chains(new_data, Symbol.(collect(all_keys)))
+
+    if Tout == MCMCChains.Chains
+        # pointwise_logps is a matrix of OrderedDicts -- we just need to convert to a Chains
+        return MCMCChains.Chains(new_data, Symbol.(collect(all_keys)))
+    elseif Tout <: AbstractDict
+        return Tout{DynamicPPL.VarName,Matrix{Float64}}(
+            k => new_data[:, i, :] for (i, k) in enumerate(all_keys)
+        )
+    end
 end
 
 """
     DynamicPPL.pointwise_loglikelihoods(
         model::DynamicPPL.Model,
-        chain::MCMCChains.Chains
+        chain::MCMCChains.Chains,
+        ::Type{Tout}=MCMCChains.Chains
     )
 
 Compute the pointwise log-likelihoods of the model given the chain. This is the same as
@@ -409,9 +435,9 @@ Compute the pointwise log-likelihoods of the model given the chain. This is the 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 """
 function DynamicPPL.pointwise_loglikelihoods(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
-)
-    return DynamicPPL.pointwise_logdensities(model, chain, Val(:likelihood))
+    model::DynamicPPL.Model, chain::MCMCChains.Chains, ::Type{Tout}=MCMCChains.Chains
+) where {Tout}
+    return DynamicPPL.pointwise_logdensities(model, chain, Tout, Val(:likelihood))
 end
 
 """
@@ -426,9 +452,9 @@ Compute the pointwise log-prior-densities of the model given the chain. This is 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_loglikelihoods`](@ref).
 """
 function DynamicPPL.pointwise_prior_logdensities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
-)
-    return DynamicPPL.pointwise_logdensities(model, chain, Val(:prior))
+    model::DynamicPPL.Model, chain::MCMCChains.Chains, ::Type{Tout}=MCMCChains.Chains
+) where {Tout}
+    return DynamicPPL.pointwise_logdensities(model, chain, Tout, Val(:prior))
 end
 
 """
