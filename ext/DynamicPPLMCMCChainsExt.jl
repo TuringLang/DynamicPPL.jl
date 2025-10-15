@@ -386,9 +386,7 @@ function DynamicPPL.pointwise_logdensities(
     acc = DynamicPPL.PointwiseLogProbAccumulator{whichlogprob}()
     accname = DynamicPPL.accumulator_name(acc)
     vi = DynamicPPL.setaccs!!(vi, (acc,))
-
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     pointwise_logps = map(iters) do (sample_idx, chain_idx)
         # Extract values from the chain
@@ -402,10 +400,12 @@ function DynamicPPL.pointwise_logdensities(
         DynamicPPL.getacc(vi, Val(accname)).logps
     end
 
+    # pointwise_logps is a matrix of OrderedDicts
     all_keys = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
     for d in pointwise_logps
         union!(all_keys, DynamicPPL.OrderedCollections.OrderedSet(keys(d)))
     end
+    # this is a 3D array: (iterations, variables, chains)
     new_data = [
         get(pointwise_logps[iter, chain], k, missing) for
         iter in 1:size(pointwise_logps, 1), k in all_keys,
@@ -413,7 +413,6 @@ function DynamicPPL.pointwise_logdensities(
     ]
 
     if Tout == MCMCChains.Chains
-        # pointwise_logps is a matrix of OrderedDicts -- we just need to convert to a Chains
         return MCMCChains.Chains(new_data, Symbol.(collect(all_keys)))
     elseif Tout <: AbstractDict
         return Tout{DynamicPPL.VarName,Matrix{Float64}}(
