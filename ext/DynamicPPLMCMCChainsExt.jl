@@ -449,13 +449,13 @@ julia> # construct a chain of samples using MCMCChains
 julia> logjoint(demo_model([1., 2.]), chain);
 ```
 """
-function logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
+function DynamicPPL.logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
+            vn_parent => DynamicPPL.values_from_chain(
+                var_info, vn_parent, chain, chain_idx, iteration_idx
+            ) for vn_parent in keys(var_info)
         )
         DynamicPPL.logjoint(model, argvals_dict)
     end
@@ -485,13 +485,13 @@ julia> # construct a chain of samples using MCMCChains
 julia> loglikelihood(demo_model([1., 2.]), chain);
 ```
 """
-function Distributions.loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
+function DynamicPPL.loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict{DynamicPPL.VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
+            vn_parent => DynamicPPL.values_from_chain(
+                var_info, vn_parent, chain, chain_idx, iteration_idx
+            ) for vn_parent in keys(var_info)
         )
         DynamicPPL.loglikelihood(model, argvals_dict)
     end
@@ -521,13 +521,13 @@ julia> # construct a chain of samples using MCMCChains
 julia> logprior(demo_model([1., 2.]), chain);
 ```
 """
-function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
+function DynamicPPL.logprior(model::DynamicPPL.Model, chain::MCMCChains.Chains)
+    var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
         argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
+            vn_parent => DynamicPPL.values_from_chain(
+                var_info, vn_parent, chain, chain_idx, iteration_idx
+            ) for vn_parent in keys(var_info)
         )
         DynamicPPL.logprior(model, argvals_dict)
     end
