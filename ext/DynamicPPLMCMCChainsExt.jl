@@ -293,9 +293,9 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
 end
 
 """
-    pointwise_logdensities(
-        model::Model,
-        chain::Chains,
+    DynamicPPL.pointwise_logdensities(
+        model::DynamicPPL.Model,
+        chain::MCMCChains.Chains,
         ::Val{whichlogprob}=Val(:both),
     )
 
@@ -305,7 +305,7 @@ the log-density of each variable at each sample is stored (rather than its value
 `whichlogprob` specifies which log-probabilities to compute. It can be `:both`, `:prior`, or
 `:likelihood`.
 
-See also: [`pointwise_loglikelihoods`](@ref), [`pointwise_prior_logdensities`](@ref).
+See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 
 # Examples
 
@@ -398,12 +398,15 @@ function DynamicPPL.pointwise_logdensities(
 end
 
 """
-    pointwise_loglikelihoods(model, chain, ::Val{whichlogprob}=Val(:both))
+    DynamicPPL.pointwise_loglikelihoods(
+        model::DynamicPPL.Model,
+        chain::MCMCChains.Chains
+    )
 
 Compute the pointwise log-likelihoods of the model given the chain. This is the same as
 `pointwise_logdensities(model, chain)`, but only including the likelihood terms.
 
-See also: [`pointwise_logdensities`](@ref), [`pointwise_prior_logdensities`](@ref).
+See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 """
 function DynamicPPL.pointwise_loglikelihoods(
     model::DynamicPPL.Model, chain::MCMCChains.Chains
@@ -412,12 +415,15 @@ function DynamicPPL.pointwise_loglikelihoods(
 end
 
 """
-    pointwise_prior_logdensities(model, chain, ::Val{whichlogprob}=Val(:both))
+    DynamicPPL.pointwise_prior_logdensities(
+        model::DynamicPPL.Model,
+        chain::MCMCChains.Chains
+    )
 
 Compute the pointwise log-prior-densities of the model given the chain. This is the same as
 `pointwise_logdensities(model, chain)`, but only including the prior terms.
 
-See also: [`pointwise_logdensities`](@ref), [`pointwise_loglikelihoods`](@ref).
+See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_loglikelihoods`](@ref).
 """
 function DynamicPPL.pointwise_prior_logdensities(
     model::DynamicPPL.Model, chain::MCMCChains.Chains
