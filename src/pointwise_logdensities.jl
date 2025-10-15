@@ -50,7 +50,7 @@ function accumulate_assume!!(
     acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right
 ) where {whichlogprob}
     if whichlogprob == :both || whichlogprob == :prior
-        acc.logps[vn] = loglikelihood(right, val)
+        acc.logps[vn] = logpdf(right, val)
     end
     return acc
 end
