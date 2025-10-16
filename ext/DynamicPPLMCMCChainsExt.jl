@@ -483,7 +483,7 @@ julia> logjoint(demo_model([1., 2.]), chain);
 function DynamicPPL.logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{VarName,Any}(
+        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}(
             vn_parent => DynamicPPL.values_from_chain(
                 var_info, vn_parent, chain, chain_idx, iteration_idx
             ) for vn_parent in keys(var_info)
@@ -555,7 +555,7 @@ julia> logprior(demo_model([1., 2.]), chain);
 function DynamicPPL.logprior(model::DynamicPPL.Model, chain::MCMCChains.Chains)
     var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
     map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{VarName,Any}(
+        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}(
             vn_parent => DynamicPPL.values_from_chain(
                 var_info, vn_parent, chain, chain_idx, iteration_idx
             ) for vn_parent in keys(var_info)
