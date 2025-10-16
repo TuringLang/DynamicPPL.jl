@@ -13,8 +13,10 @@ which log-probabilities to store in the accumulator.
 struct PointwiseLogProbAccumulator{whichlogprob} <: AbstractAccumulator
     logps::OrderedDict{VarName,LogProbType}
 
-    function PointwiseLogProbAccumulator{whichlogprob}() where {whichlogprob}
-        return new{whichlogprob}(OrderedDict{VarName,LogProbType}())
+    function PointwiseLogProbAccumulator{whichlogprob}(
+        d::OrderedDict{VarName,LogProbType}=OrderedDict{VarName,LogProbType}()
+    ) where {whichlogprob}
+        return new{whichlogprob}(d)
     end
 end
 
