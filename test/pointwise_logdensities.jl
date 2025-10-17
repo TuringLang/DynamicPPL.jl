@@ -1,4 +1,4 @@
-@testset "logdensities_likelihoods.jl" begin
+@testset "pointwise_logdensities.jl" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
@@ -39,32 +39,35 @@
 end
 
 @testset "pointwise_logdensities chain" begin
-    # We'll just test one, since `pointwise_logdensities(::Model, ::AbstractVarInfo)` is tested extensively,
-    # and this is what is used to implement `pointwise_logdensities(::Model, ::Chains)`. This test suite is just
-    # to ensure that we don't accidentally break the version on `Chains`.
     model = DynamicPPL.TestUtils.demo_assume_index_observe()
-    # FIXME(torfjelde): Make use of `varname_and_value_leaves` once we've introduced
-    # an impl of this for containers.
-    # NOTE(torfjelde): This only returns the varnames of the _random_ variables, i.e. excl. observed.
     vns = DynamicPPL.TestUtils.varnames(model)
     # Get some random `NamedTuple` samples from the prior.
     num_iters = 3
     vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
     # Concatenate the vector representations and create a `Chains` from it.
     vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
-    chain = Chains(permutedims(vals_arr), map(Symbol, vns))
+    chain = Chains(
+        permutedims(vals_arr),
+        map(Symbol, vns);
+        info=(varname_to_symbol=Dict(vn => Symbol(vn) for vn in vns),),
+    )
 
     # Compute the different pointwise logdensities.
     logjoints_pointwise = pointwise_logdensities(model, chain)
     logpriors_pointwise = pointwise_prior_logdensities(model, chain)
     loglikelihoods_pointwise = pointwise_loglikelihoods(model, chain)
 
+    # Check output type
+    @test logjoints_pointwise isa MCMCChains.Chains
+    @test logpriors_pointwise isa MCMCChains.Chains
+    @test loglikelihoods_pointwise isa MCMCChains.Chains
+
     # Check that they contain the correct variables.
-    @test all(string(vn) in keys(logjoints_pointwise) for vn in vns)
-    @test all(string(vn) in keys(logpriors_pointwise) for vn in vns)
-    @test !any(Base.Fix2(startswith, "x"), keys(logpriors_pointwise))
-    @test !any(string(vn) in keys(loglikelihoods_pointwise) for vn in vns)
-    @test all(Base.Fix2(startswith, "x"), keys(loglikelihoods_pointwise))
+    @test all(Symbol(vn) in keys(logjoints_pointwise) for vn in vns)
+    @test all(Symbol(vn) in keys(logpriors_pointwise) for vn in vns)
+    @test !any(Base.Fix1(startswith, "x"), String.(keys(logpriors_pointwise)))
+    @test !any(Symbol(vn) in keys(loglikelihoods_pointwise) for vn in vns)
+    @test all(Base.Fix1(startswith, "x"), String.(keys(loglikelihoods_pointwise)))
 
     # Get the sum of the logjoints for each of the iterations.
     logjoints = [

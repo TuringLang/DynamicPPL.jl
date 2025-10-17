@@ -322,28 +322,28 @@ getrange(vnv::VarNamedVector, vn::VarName) = getrange(vnv, getidx(vnv, vn))
 gettransform(vnv::VarNamedVector, idx::Int) = vnv.transforms[idx]
 gettransform(vnv::VarNamedVector, vn::VarName) = gettransform(vnv, getidx(vnv, vn))
 
-# TODO(mhauru) Eventually I would like to rename the istrans function to is_unconstrained,
-# but that's significantly breaking.
+# TODO(mhauru) Eventually I would like to rename the is_transformed function to
+# is_unconstrained, but that's significantly breaking.
 """
-    istrans(vnv::VarNamedVector, vn::VarName)
+    is_transformed(vnv::VarNamedVector, vn::VarName)
 
 Return a boolean for whether `vn` is guaranteed to have been transformed so that its domain
 is all of Euclidean space.
 """
-istrans(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[getidx(vnv, vn)]
+is_transformed(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[getidx(vnv, vn)]
 
 """
-    settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
+    set_transformed!(vnv::VarNamedVector, val::Bool, vn::VarName)
 
 Set the value for whether `vn` is guaranteed to have been transformed so that all of
 Euclidean space is its domain.
 """
-function settrans!(vnv::VarNamedVector, val::Bool, vn::VarName)
+function set_transformed!(vnv::VarNamedVector, val::Bool, vn::VarName)
     return vnv.is_unconstrained[vnv.varname_to_index[vn]] = val
 end
 
-function settrans!!(vnv::VarNamedVector, val::Bool, vn::VarName)
-    settrans!(vnv, val, vn)
+function set_transformed!!(vnv::VarNamedVector, val::Bool, vn::VarName)
+    set_transformed!(vnv, val, vn)
     return vnv
 end
 
@@ -548,7 +548,7 @@ julia> vnv[@varname(x)]
 function reset!(vnv::VarNamedVector, val, vn::VarName)
     f = from_vec_transform(val)
     retval = setindex_internal!(vnv, tovec(val), vn, f)
-    settrans!(vnv, false, vn)
+    set_transformed!(vnv, false, vn)
     return retval
 end
 
@@ -766,6 +766,11 @@ function update_internal!(
     return nothing
 end
 
+function BangBang.push!(vnv::VarNamedVector, vn, val, dist)
+    f = from_vec_transform(dist)
+    return setindex_internal!(vnv, tovec(val), vn, f)
+end
+
 # BangBang versions of the above functions.
 # The only difference is that update_internal!! and insert_internal!! check whether the
 # container types of the VarNamedVector vector need to be expanded to accommodate the new
@@ -897,7 +902,7 @@ end
 function reset!!(vnv::VarNamedVector, val, vn::VarName)
     f = from_vec_transform(val)
     vnv = setindex_internal!!(vnv, tovec(val), vn, f)
-    vnv = settrans!!(vnv, false, vn)
+    vnv = set_transformed!!(vnv, false, vn)
     return vnv
 end
 
@@ -1093,13 +1098,13 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
             # `vn` is only in `left`.
             val = getindex_internal(left_vnv, vn)
             f = gettransform(left_vnv, vn)
-            is_unconstrained[idx] = istrans(left_vnv, vn)
+            is_unconstrained[idx] = is_transformed(left_vnv, vn)
         else
             # `vn` is either in both or just `right`.
             # Note that in a `merge` the right value has precedence.
             val = getindex_internal(right_vnv, vn)
             f = gettransform(right_vnv, vn)
-            is_unconstrained[idx] = istrans(right_vnv, vn)
+            is_unconstrained[idx] = is_transformed(right_vnv, vn)
         end
         n = length(val)
         r = (offset + 1):(offset + n)
@@ -1148,7 +1153,7 @@ function subset(vnv::VarNamedVector, vns_given::AbstractVector{<:VarName})
     for vn in vnv.varnames
         if any(subsumes(vn_given, vn) for vn_given in vns_given)
             insert_internal!(vnv_new, getindex_internal(vnv, vn), vn, gettransform(vnv, vn))
-            settrans!(vnv_new, istrans(vnv, vn), vn)
+            set_transformed!(vnv_new, is_transformed(vnv, vn), vn)
         end
     end
 

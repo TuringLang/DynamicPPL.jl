@@ -23,7 +23,7 @@ DynamicPPL = {path = "../"}
 ADTypes = "1.14.0"
 BenchmarkTools = "1.6.0"
 Distributions = "0.25.117"
-DynamicPPL = "0.37"
+DynamicPPL = "0.38"
 Enzyme = "0.13"
 ForwardDiff = "0.10.38, 1"
 LogDensityProblems = "2.1.2"

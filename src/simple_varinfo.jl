@@ -39,7 +39,7 @@ julia> rng = StableRNG(42);
 julia> # In the `NamedTuple` version we need to provide the place-holder values for
        # the variables which are using "containers", e.g. `Array`.
        # In this case, this means that we need to specify `x` but not `m`.
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo((x = ones(2), )));
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo((x = ones(2), )));
 
 julia> # (✓) Vroom, vroom! FAST!!!
        vi[@varname(x[1])]
@@ -57,12 +57,12 @@ julia> vi[@varname(x[1:2])]
  1.3736306979834252
 
 julia> # (×) If we don't provide the container...
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo()); vi
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo());
 ERROR: FieldError: type NamedTuple has no field `x`, available fields: `m`
 [...]
 
 julia> # If one does not know the varnames, we can use a `OrderedDict` instead.
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
+       _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}()));
 
 julia> # (✓) Sort of fast, but only possible at runtime.
        vi[@varname(x[1])]
@@ -91,28 +91,28 @@ demo_constrained (generic function with 2 methods)
 
 julia> m = demo_constrained();
 
-julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, SimpleVarInfo());
+julia> _, vi = DynamicPPL.init!!(rng, m, SimpleVarInfo());
 
 julia> vi[@varname(x)] # (✓) 0 ≤ x < ∞
 1.8632965762164932
 
-julia> _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true));
+julia> _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 -0.21080155351918753
 
-julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0)  # (✓) Positive probability mass on negative numbers!
 true
 
 julia> # And with `OrderedDict` of course!
-       _, vi = DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
+       _, vi = DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true));
 
 julia> vi[@varname(x)] # (✓) -∞ < x < ∞
 0.6225185067787314
 
-julia> xs = [last(DynamicPPL.evaluate_and_sample!!(rng, m, DynamicPPL.settrans!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
+julia> xs = [last(DynamicPPL.init!!(rng, m, DynamicPPL.set_transformed!!(SimpleVarInfo(), true)))[@varname(x)] for i = 1:10];
 
 julia> any(xs .< 0) # (✓) Positive probability mass on negative numbers!
 true
@@ -121,7 +121,7 @@ true
 Evaluation in transformed space of course also works:
 
 ```jldoctest simplevarinfo-general
-julia> vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), true)
+julia> vi = DynamicPPL.set_transformed!!(SimpleVarInfo((x = -1.0,)), true)
 Transformed SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) Positive probability mass on negative numbers!
@@ -129,7 +129,7 @@ julia> # (✓) Positive probability mass on negative numbers!
 -1.3678794411714423
 
 julia> # While if we forget to indicate that it's transformed:
-       vi = DynamicPPL.settrans!!(SimpleVarInfo((x = -1.0,)), false)
+       vi = DynamicPPL.set_transformed!!(SimpleVarInfo((x = -1.0,)), false)
 SimpleVarInfo((x = -1.0,), (LogPrior = LogPriorAccumulator(0.0), LogJacobian = LogJacobianAccumulator(0.0), LogLikelihood = LogLikelihoodAccumulator(0.0)))
 
 julia> # (✓) No probability mass on negative numbers!
@@ -232,24 +232,27 @@ end
 
 # Constructor from `Model`.
 function SimpleVarInfo{T}(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 ) where {T<:Real}
-    new_model = contextualize(model, SamplingContext(rng, sampler, model.context))
-    return last(evaluate!!(new_model, SimpleVarInfo{T}()))
+    return last(init!!(rng, model, SimpleVarInfo{T}(), init_strategy))
 end
 function SimpleVarInfo{T}(
-    model::Model, sampler::AbstractSampler=SampleFromPrior()
+    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
 ) where {T<:Real}
-    return SimpleVarInfo{T}(Random.default_rng(), model, sampler)
+    return SimpleVarInfo{T}(Random.default_rng(), model, init_strategy)
 end
 # Constructors without type param
 function SimpleVarInfo(
-    rng::Random.AbstractRNG, model::Model, sampler::AbstractSampler=SampleFromPrior()
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return SimpleVarInfo{LogProbType}(rng, model, sampler)
+    return SimpleVarInfo{LogProbType}(rng, model, init_strategy)
 end
-function SimpleVarInfo(model::Model, sampler::AbstractSampler=SampleFromPrior())
-    return SimpleVarInfo{LogProbType}(Random.default_rng(), model, sampler)
+function SimpleVarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return SimpleVarInfo{LogProbType}(Random.default_rng(), model, init_strategy)
 end
 
 # Constructor from `VarInfo`.
@@ -265,12 +268,12 @@ end
 
 function untyped_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo(OrderedDict{VarName,Any}())
-    return last(evaluate_and_sample!!(model, varinfo))
+    return last(init!!(model, varinfo))
 end
 
 function typed_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo{Float64}()
-    return last(evaluate_and_sample!!(model, varinfo))
+    return last(init!!(model, varinfo))
 end
 
 function unflatten(svi::SimpleVarInfo, x::AbstractVector)
@@ -463,42 +466,32 @@ function Base.merge(varinfo_left::SimpleVarInfo, varinfo_right::SimpleVarInfo)
     return SimpleVarInfo(values, accs, transformation)
 end
 
-# Context implementations
-# NOTE: Evaluations, i.e. those without `rng` are shared with other
-# implementations of `AbstractVarInfo`.
-function assume(
-    rng::Random.AbstractRNG,
-    sampler::Union{SampleFromPrior,SampleFromUniform},
-    dist::Distribution,
-    vn::VarName,
-    vi::SimpleOrThreadSafeSimple,
-)
-    value = init(rng, dist, sampler)
-    # Transform if we're working in unconstrained space.
-    f = to_maybe_linked_internal_transform(vi, vn, dist)
-    value_raw, logjac = with_logabsdet_jacobian(f, value)
-    vi = BangBang.push!!(vi, vn, value_raw, dist)
-    vi = accumulate_assume!!(vi, value, logjac, vn, dist)
-    return value, vi
+function set_transformed!!(vi::SimpleVarInfo, trans)
+    return set_transformed!!(vi, trans ? DynamicTransformation() : NoTransformation())
 end
-
-# NOTE: We don't implement `settrans!!(vi, trans, vn)`.
-function settrans!!(vi::SimpleVarInfo, trans)
-    return settrans!!(vi, trans ? DynamicTransformation() : NoTransformation())
-end
-function settrans!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
+function set_transformed!!(vi::SimpleVarInfo, transformation::AbstractTransformation)
     return Accessors.@set vi.transformation = transformation
 end
-function settrans!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
-    return Accessors.@set vi.varinfo = settrans!!(vi.varinfo, trans)
+function set_transformed!!(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, trans)
+    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, trans)
+end
+function set_transformed!!(vi::SimpleOrThreadSafeSimple, trans::Bool, ::VarName)
+    # We keep this method around just to obey the AbstractVarInfo interface.
+    # However, note that this would only be a valid operation if it would be a
+    # no-op, which we check here.
+    if trans != is_transformed(vi)
+        error(
+            "Individual variables in SimpleVarInfo cannot have different `set_transformed` statuses.",
+        )
+    end
 end
 
-istrans(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
-istrans(vi::SimpleVarInfo, ::VarName) = istrans(vi)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName) = istrans(vi.varinfo, vn)
-istrans(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = istrans(vi.varinfo)
-
-islinked(vi::SimpleVarInfo) = istrans(vi)
+is_transformed(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)
+is_transformed(vi::SimpleVarInfo, ::VarName) = is_transformed(vi)
+function is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}, vn::VarName)
+    return is_transformed(vi.varinfo, vn)
+end
+is_transformed(vi::ThreadSafeVarInfo{<:SimpleVarInfo}) = is_transformed(vi.varinfo)
 
 values_as(vi::SimpleVarInfo) = vi.values
 values_as(vi::SimpleVarInfo{<:T}, ::Type{T}) where {T} = vi.values
@@ -517,7 +510,7 @@ function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
 end
 
 """
-    logjoint(model::Model, θ)
+    logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log joint probability of variables `θ` for the probabilistic `model`.
 
@@ -546,10 +539,11 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-logjoint(model::Model, θ) = logjoint(model, SimpleVarInfo(θ))
+logjoint(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    logjoint(model, SimpleVarInfo(θ))
 
 """
-    logprior(model::Model, θ)
+    logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log prior probability of variables `θ` for the probabilistic `model`.
 
@@ -578,10 +572,11 @@ julia> # Truth.
 -5000.918938533205
 ```
 """
-logprior(model::Model, θ) = logprior(model, SimpleVarInfo(θ))
+logprior(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    logprior(model, SimpleVarInfo(θ))
 
 """
-    loglikelihood(model::Model, θ)
+    loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log likelihood of variables `θ` for the probabilistic `model`.
 
@@ -610,7 +605,8 @@ julia> # Truth.
 -4901.418938533205
 ```
 """
-Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+Distributions.loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    loglikelihood(model, SimpleVarInfo(θ))
 
 # Allow usage of `NamedBijector` too.
 function link!!(
@@ -625,7 +621,7 @@ function link!!(
     if hasacc(vi_new, Val(:LogJacobian))
         vi_new = acclogjac!!(vi_new, logjac)
     end
-    return settrans!!(vi_new, t)
+    return set_transformed!!(vi_new, t)
 end
 
 function invlink!!(
@@ -643,7 +639,7 @@ function invlink!!(
     if hasacc(vi_new, Val(:LogJacobian))
         vi_new = acclogjac!!(vi_new, inv_logjac)
     end
-    return settrans!!(vi_new, NoTransformation())
+    return set_transformed!!(vi_new, NoTransformation())
 end
 
 # With `SimpleVarInfo`, when we're not working with linked variables, there's no need to do anything.

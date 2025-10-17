@@ -570,9 +570,9 @@ end
         vn = @varname(t[1])
         vns = vcat(test_vns, [vn])
         vnv = DynamicPPL.setindex_internal!!(vnv, [2.0], vn, x -> x .^ 2)
-        DynamicPPL.settrans!(vnv, true, @varname(t[1]))
+        DynamicPPL.set_transformed!(vnv, true, @varname(t[1]))
         @test vnv[@varname(t[1])] == [4.0]
-        @test istrans(vnv, @varname(t[1]))
+        @test is_transformed(vnv, @varname(t[1]))
         @test subset(vnv, vns) == vnv
     end
 end
@@ -610,9 +610,7 @@ end
             DynamicPPL.TestUtils.test_values(varinfo_eval, value_true, vns)
 
             # Is sampling correct?
-            varinfo_sample = last(
-                DynamicPPL.evaluate_and_sample!!(model, deepcopy(varinfo))
-            )
+            varinfo_sample = last(DynamicPPL.init!!(model, deepcopy(varinfo)))
             # Log density should be different.
             @test getlogjoint(varinfo_sample) != getlogjoint(varinfo)
             # Values should be different.
