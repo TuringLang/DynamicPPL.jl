@@ -183,6 +183,8 @@ include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("sampler.jl")
 include("varname.jl")
+include("varnamedtuple.jl")
+using .VarNamedTuples: VarNamedTuple
 include("distribution_wrappers.jl")
 include("submodel.jl")
 include("varnamedvector.jl")
