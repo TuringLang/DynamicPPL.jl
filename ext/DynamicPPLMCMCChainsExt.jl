@@ -496,7 +496,6 @@ end
     loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
 
 Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
-n
 # Examples
 
 ```jldoctest
