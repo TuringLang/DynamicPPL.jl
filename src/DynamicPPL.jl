@@ -92,8 +92,6 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
-    # Samplers
-    Sampler,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
@@ -128,8 +126,6 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
-    # Chain save/resume
-    loadstate,
     # Convenience macros
     @addlogprob!,
     value_iterator_from_chain,
@@ -181,7 +177,6 @@ include("contexts/transformation.jl")
 include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("submodel.jl")
