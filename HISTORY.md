@@ -50,9 +50,10 @@ If you were using these, the corresponding replacements are:
   - `DynamicPPL.Sampler(S)`: just don't wrap `S`; but make sure `S` subtypes `AbstractMCMC.AbstractSampler`
   - `DynamicPPL.initialstep`: directly implement `AbstractMCMC.step` and `AbstractMCMC.step_warmup` as per the AbstractMCMC interface
   - `DynamicPPL.loadstate`: `Turing.loadstate` (will be introduced in the next version)
-  - `DynamicPPL.default_chain_type`: `Turing.default_chain_type` (will be introduced in the next version)
-  - `DynamicPPL.initialsampler`: `Turing.init_strategy` (will be introduced in the next version; note that this function must return an `AbstractInitStrategy`, see above for explanation)
-  - `DynamicPPL.default_varinfo`: `Turing.default_varinfo` (will be introduced in the next version)
+  - `DynamicPPL.default_chain_type`: removed, just use the `chain_type` keyword argument directly
+  - `DynamicPPL.initialsampler`: `Turing.Inference.init_strategy` (will be introduced in the next version; note that this function must return an `AbstractInitStrategy`, see above for explanation)
+  - `DynamicPPL.default_varinfo`: `Turing.Inference.default_varinfo` (will be introduced in the next version)
+  - `DynamicPPL.TestUtils.test_sampler` and related methods: removed, please implement your own testing utilities as needed
 
 ### Simplification of the tilde-pipeline
 
@@ -70,8 +71,8 @@ The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus t
 
 ### Removal of `resume_from`
 
-The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
-`loadstate` is exported from DynamicPPL.
+The `resume_from=chn` keyword argument to `sample` has been removed; please use the `initial_state` argument instead.
+`loadstate` will be exported from Turing in the next release of Turing.
 
 ### Change of default keytype of `pointwise_logdensities`
 
