@@ -474,10 +474,15 @@ julia> @model function demo_model(x)
            end
        end;
 
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
+julia> # Construct a chain of samples using MCMCChains.
+       # This sets s = 0.5 and m = 1.0 for all three samples.
+       chain = Chains(repeat([0.5 1.0;;;], 3, 1, 1), [:s, :m]);
 
-julia> logjoint(demo_model([1., 2.]), chain);
+julia> logjoint(demo_model([1., 2.]), chain)
+3×1 Matrix{Float64}:
+ -5.440428709758045
+ -5.440428709758045
+ -5.440428709758045
 ```
 """
 function DynamicPPL.logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
@@ -509,10 +514,15 @@ julia> @model function demo_model(x)
            end
        end;
 
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
+julia> # Construct a chain of samples using MCMCChains.
+       # This sets s = 0.5 and m = 1.0 for all three samples.
+       chain = Chains(repeat([0.5 1.0;;;], 3, 1, 1), [:s, :m]);
 
-julia> loglikelihood(demo_model([1., 2.]), chain);
+julia> loglikelihood(demo_model([1., 2.]), chain)
+3×1 Matrix{Float64}:
+ -2.1447298858494
+ -2.1447298858494
+ -2.1447298858494
 ```
 """
 function DynamicPPL.loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
@@ -545,10 +555,15 @@ julia> @model function demo_model(x)
            end
        end;
 
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
+julia> # Construct a chain of samples using MCMCChains.
+       # This sets s = 0.5 and m = 1.0 for all three samples.
+       chain = Chains(repeat([0.5 1.0;;;], 3, 1, 1), [:s, :m]);
 
-julia> logprior(demo_model([1., 2.]), chain);
+julia> logprior(demo_model([1., 2.]), chain)
+3×1 Matrix{Float64}:
+ -3.2956988239086447
+ -3.2956988239086447
+ -3.2956988239086447
 ```
 """
 function DynamicPPL.logprior(model::DynamicPPL.Model, chain::MCMCChains.Chains)

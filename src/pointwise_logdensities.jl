@@ -4,8 +4,7 @@
 An accumulator that stores the log-probabilities of each variable in a model.
 
 Internally this accumulator stores the log-probabilities in a dictionary, where the keys are
-the variable names and the values are vectors of log-probabilities. Each element in a vector
-corresponds to one execution of the model.
+the variable names and the values are log-probabilities.
 
 `whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
 which log-probabilities to store in the accumulator.
