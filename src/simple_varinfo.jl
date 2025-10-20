@@ -510,7 +510,7 @@ function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
 end
 
 """
-    logjoint(model::Model, θ)
+    logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log joint probability of variables `θ` for the probabilistic `model`.
 
@@ -539,10 +539,11 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-logjoint(model::Model, θ) = logjoint(model, SimpleVarInfo(θ))
+logjoint(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    logjoint(model, SimpleVarInfo(θ))
 
 """
-    logprior(model::Model, θ)
+    logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log prior probability of variables `θ` for the probabilistic `model`.
 
@@ -571,10 +572,11 @@ julia> # Truth.
 -5000.918938533205
 ```
 """
-logprior(model::Model, θ) = logprior(model, SimpleVarInfo(θ))
+logprior(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    logprior(model, SimpleVarInfo(θ))
 
 """
-    loglikelihood(model::Model, θ)
+    loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
 
 Return the log likelihood of variables `θ` for the probabilistic `model`.
 
@@ -603,7 +605,8 @@ julia> # Truth.
 -4901.418938533205
 ```
 """
-Distributions.loglikelihood(model::Model, θ) = loglikelihood(model, SimpleVarInfo(θ))
+Distributions.loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict}) =
+    loglikelihood(model, SimpleVarInfo(θ))
 
 # Allow usage of `NamedBijector` too.
 function link!!(

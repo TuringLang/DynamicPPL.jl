@@ -74,9 +74,11 @@ The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus t
 The `resume_from=chn` keyword argument to `sample` has been removed; please use the `initial_state` argument instead.
 `loadstate` will be exported from Turing in the next release of Turing.
 
-### Change of default keytype of `pointwise_logdensities`
+### Change of output type for `pointwise_logdensities`
 
-The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` return dictionaries for which the keys are model variables, and the key type is either `VarName` or `String`. This release changes the default from `String` to `VarName`.
+The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` when called on `MCMCChains.Chains` objects, now return new `MCMCChains.Chains` objects by default, instead of dictionaries of matrices.
+
+If you want the old behaviour, you can pass `OrderedDict` as the third argument, i.e., `pointwise_logdensities(model, chain, OrderedDict)`.
 
 **Other changes**
 

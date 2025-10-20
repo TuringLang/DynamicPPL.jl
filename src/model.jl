@@ -1059,42 +1059,6 @@ function logjoint(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> logjoint(demo_model([1., 2.]), chain);
-```
-"""
-function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        logjoint(model, argvals_dict)
-    end
-end
-
-"""
     logprior(model::Model, varinfo::AbstractVarInfo)
 
 Return the log prior probability of variables `varinfo` for the probabilistic `model`.
@@ -1117,42 +1081,6 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log prior probabilities evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> logprior(demo_model([1., 2.]), chain);
-```
-"""
-function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        logprior(model, argvals_dict)
-    end
-end
-
-"""
     loglikelihood(model::Model, varinfo::AbstractVarInfo)
 
 Return the log likelihood of variables `varinfo` for the probabilistic `model`.
@@ -1168,42 +1096,6 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     end
     varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
     return getloglikelihood(last(evaluate!!(model, varinfo)))
-end
-
-"""
-	loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> loglikelihood(demo_model([1., 2.]), chain);
-```
-"""
-function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        loglikelihood(model, argvals_dict)
-    end
 end
 
 # Implemented & documented in DynamicPPLMCMCChainsExt
