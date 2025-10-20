@@ -3,18 +3,6 @@ module DynamicPPLMCMCChainsExt
 using DynamicPPL: DynamicPPL, AbstractPPL
 using MCMCChains: MCMCChains
 
-# Load state from a `Chains`: By convention, it is stored in `:samplerstate` metadata
-function DynamicPPL.loadstate(chain::MCMCChains.Chains)
-    if !haskey(chain.info, :samplerstate)
-        throw(
-            ArgumentError(
-                "The chain object does not contain the final state of the sampler: Metadata `:samplerstate` missing.",
-            ),
-        )
-    end
-    return chain.info[:samplerstate]
-end
-
 _has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
 
 function DynamicPPL.supports_varname_indexing(chain::MCMCChains.Chains)

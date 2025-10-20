@@ -42,6 +42,19 @@ The main change that this is likely to create is for those who are implementing 
 The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
 Broadly speaking, though, `SamplingContext(MySampler())` will be removed so if your sampler needs custom behaviour with the tilde-pipeline you will likely have to define your own context.
 
+### Removal of `DynamicPPL.Sampler`
+
+`DynamicPPL.Sampler` and **all associated interface functions** have also been removed entirely.
+If you were using these, the corresponding replacements are:
+
+  - `DynamicPPL.Sampler(S)`: just don't wrap `S`; but make sure `S` subtypes `AbstractMCMC.AbstractSampler`
+  - `DynamicPPL.initialstep`: directly implement `AbstractMCMC.step` and `AbstractMCMC.step_warmup` as per the AbstractMCMC interface
+  - `DynamicPPL.loadstate`: `Turing.loadstate` (will be introduced in the next version)
+  - `DynamicPPL.default_chain_type`: removed, just use the `chain_type` keyword argument directly
+  - `DynamicPPL.initialsampler`: `Turing.Inference.init_strategy` (will be introduced in the next version; note that this function must return an `AbstractInitStrategy`, see above for explanation)
+  - `DynamicPPL.default_varinfo`: `Turing.Inference.default_varinfo` (will be introduced in the next version)
+  - `DynamicPPL.TestUtils.test_sampler` and related methods: removed, please implement your own testing utilities as needed
+
 ### Simplification of the tilde-pipeline
 
 There are now only two functions in the tilde-pipeline that need to be overloaded to change the behaviour of tilde-statements, namely, `tilde_assume!!` and `tilde_observe!!`.
@@ -58,8 +71,8 @@ The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus t
 
 ### Removal of `resume_from`
 
-The `resume_from=chn` keyword argument to `sample` has been removed; please use `initial_state=DynamicPPL.loadstate(chn)` instead.
-`loadstate` is exported from DynamicPPL.
+The `resume_from=chn` keyword argument to `sample` has been removed; please use the `initial_state` argument instead.
+`loadstate` will be exported from Turing in the next release of Turing.
 
 ### Change of output type for `pointwise_logdensities`
 

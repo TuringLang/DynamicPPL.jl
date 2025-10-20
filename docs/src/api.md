@@ -243,14 +243,7 @@ DynamicPPL.TestUtils.AD.ADIncorrectException
 
 ## Demo models
 
-DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
-
-```@docs
-DynamicPPL.TestUtils.test_sampler
-DynamicPPL.TestUtils.test_sampler_on_demo_models
-DynamicPPL.TestUtils.test_sampler_continuous
-DynamicPPL.TestUtils.marginal_mean_of_samples
-```
+DynamicPPL provides several demo models in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
 DynamicPPL.TestUtils.DEMO_MODELS
@@ -504,27 +497,7 @@ DynamicPPL.AbstractInitStrategy
 DynamicPPL.init
 ```
 
-### Samplers
-
-In DynamicPPL a generic sampler for inference is implemented.
-
-```@docs
-Sampler
-```
-
-The default implementation of [`Sampler`](@ref) uses the following unexported functions.
-
-```@docs
-DynamicPPL.initialstep
-DynamicPPL.loadstate
-DynamicPPL.init_strategy
-```
-
-Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
-
-```@docs
-DynamicPPL.default_varinfo
-```
+### Choosing a suitable VarInfo
 
 There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
 
