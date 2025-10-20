@@ -375,18 +375,27 @@ struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
         return new{names,typeof(d.dists)}(d.dists)
     end
 end
-function (trf::ProductNamedTupleUnvecTransform{names})(x::AbstractVector) where {names}
-    nt = NamedTuple()
-    offset = 1
-    for name in names
-        # Need to find out how many elements this component has in the flattened vector
-        this_dist = trf.dists[name]
-        this_name_size = _output_length(from_vec_transform(this_dist))
-        this_vec = @view x[offset:(offset + this_name_size - 1)]
-        nt = merge(nt, (name => from_vec_transform(this_dist)(this_vec),))
-        offset += this_name_size
+@generated function (trf::ProductNamedTupleUnvecTransform{names})(
+    x::AbstractVector
+) where {names}
+    expr = Expr(:block)
+    push!(expr.args, :(offset = 1))
+    for (i, name) in enumerate(names)
+        push!(expr.args, :(this_dist = trf.dists.$name))
+        push!(expr.args, :(this_name_size = _output_length(from_vec_transform(this_dist))))
+        push!(expr.args, :(this_vec = @view x[offset:(offset + this_name_size - 1)]))
+        if i == 1
+            push!(expr.args, :(nt = ($name=from_vec_transform(this_dist)(this_vec),)))
+        else
+            push!(
+                expr.args,
+                :(nt = merge(nt, ($name=from_vec_transform(this_dist)(this_vec),))),
+            )
+        end
+        push!(expr.args, :(offset += this_name_size))
     end
-    return nt
+    push!(expr.args, :(return NamedTuple(nt)))
+    return expr
 end
 function from_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return ProductNamedTupleUnvecTransform(dist)
@@ -444,9 +453,9 @@ function from_linked_vec_transform(dist::UnivariateDistribution)
     sz = Bijectors.output_size(f_combined, size(dist))
     return UnwrapSingletonTransform(sz) ∘ f_combined
 end
-# function from_linked_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
-#     invlink_transform(dist)
-# end
+function from_linked_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
+    return invlink_transform(dist)
+end
 # Specializations that circumvent the `from_vec_transform` machinery.
 function from_linked_vec_transform(dist::LKJCholesky)
     return inverse(Bijectors.VecCholeskyBijector(dist.uplo))
