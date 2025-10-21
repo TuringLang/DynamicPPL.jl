@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.37.6
+
+Set the default sparsity detector for the MarginalLogDensities extension to `DenseSparsityDetector` (as the new default, `TracerLocalSparsityDetector`, is incompatible with DynamicPPL).
+
 ## 0.37.5
 
 A minor optimisation for Enzyme AD on DynamicPPL models.

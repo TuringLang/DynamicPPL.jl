@@ -1,6 +1,6 @@
 module DynamicPPLMarginalLogDensitiesExt
 
-using DynamicPPL: DynamicPPL, LogDensityProblems, VarName
+using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, DifferentiationInterface
 using MarginalLogDensities: MarginalLogDensities
 
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
@@ -20,6 +20,7 @@ end
         varinfo::DynamicPPL.AbstractVarInfo=link(VarInfo(model), model),
         getlogprob=DynamicPPL.getlogjoint,
         method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
+        sparsity_detector=DifferentiationInterface.DenseSparsityDetector(method.adtype, atol=cbrt(eps())),
         kwargs...,
     )
 
@@ -43,6 +44,12 @@ log-density.
 - `method`: The marginalization method; defaults to a Laplace approximation. Please see [the
    MarginalLogDensities.jl package](https://github.com/ElOceanografo/MarginalLogDensities.jl/)
    for other options.
+
+- `sparsity_detector`: The sparsity detector to use for computing the Jacobian/Hessian. This
+  defaults to `DifferentiationInterface.DenseSparsityDetector`, which can be slow but works
+  reliably with DynamicPPL models. Other options from SparseConnectivityTracer.jl may be faster,
+  but TracerLocalSparsityDetector() is known to not work correctly on some Julia versions. (This
+  may change in the future; if it does, PRs to change this are welcome.)
 
 - Other keyword arguments are passed to the `MarginalLogDensities.MarginalLogDensity`
   constructor.
@@ -94,6 +101,12 @@ function DynamicPPL.marginalize(
     varinfo::DynamicPPL.AbstractVarInfo=DynamicPPL.link(DynamicPPL.VarInfo(model), model),
     getlogprob::Function=DynamicPPL.getlogjoint,
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
+    # MLD 0.4.5 changes the default sparsity detector to TracerLocalSparsityDetector(), but
+    # that doesn't work with DynamicPPL (for unknown reasons). DenseSparsityDetector is the
+    # default prior to 0.4.5 so we stick to that
+    sparsity_detector=DifferentiationInterface.DenseSparsityDetector(
+        method.adtype; atol=cbrt(eps())
+    ),
     kwargs...,
 )
     # Determine the indices for the variables to marginalise out.
@@ -101,7 +114,13 @@ function DynamicPPL.marginalize(
     # Construct the marginal log-density model.
     f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     mld = MarginalLogDensities.MarginalLogDensity(
-        LogDensityFunctionWrapper(f), varinfo[:], varindices, (), method; kwargs...
+        LogDensityFunctionWrapper(f),
+        varinfo[:],
+        varindices,
+        (),
+        method;
+        sparsity_detector=sparsity_detector,
+        kwargs...,
     )
     return mld
 end
