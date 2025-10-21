@@ -2,9 +2,9 @@
 
 ## 0.38.0
 
-**Breaking changes**
+### Breaking changes
 
-### Introduction of `InitContext`
+#### Introduction of `InitContext`
 
 DynamicPPL 0.38 introduces a new evaluation context, `InitContext`.
 It is used to generate fresh values for random variables in a model.
@@ -30,7 +30,7 @@ In particular:
   - When providing a set of fixed parameters (i.e. `InitFromParams(p)`), `p` must now either be a NamedTuple or a Dict. Previously Vectors were allowed, which is error-prone because the ordering of variables in a VarInfo is not obvious.
   - The parameters in `p` must now always be provided in unlinked space (i.e., in the space of the distribution on the right-hand side of the tilde). Previously, whether a parameter was expected to be in linked or unlinked space depended on whether the VarInfo was linked or not, which was confusing.
 
-### Removal of `SamplingContext`
+#### Removal of `SamplingContext`
 
 For developers working on DynamicPPL, `InitContext` now completely replaces what used to be `SamplingContext`, `SampleFromPrior`, and `SampleFromUniform`.
 Evaluating a model with `SamplingContext(SampleFromPrior())` (e.g. with `DynamicPPL.evaluate_and_sample!!(model, VarInfo(), SampleFromPrior())` has a direct one-to-one replacement in `DynamicPPL.init!!(model, VarInfo(), InitFromPrior())`.
@@ -42,7 +42,7 @@ The main change that this is likely to create is for those who are implementing 
 The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
 Broadly speaking, though, `SamplingContext(MySampler())` will be removed so if your sampler needs custom behaviour with the tilde-pipeline you will likely have to define your own context.
 
-### Removal of `DynamicPPL.Sampler`
+#### Removal of `DynamicPPL.Sampler`
 
 `DynamicPPL.Sampler` and **all associated interface functions** have also been removed entirely.
 If you were using these, the corresponding replacements are:
@@ -55,7 +55,7 @@ If you were using these, the corresponding replacements are:
   - `DynamicPPL.default_varinfo`: `Turing.Inference.default_varinfo` (will be introduced in the next version)
   - `DynamicPPL.TestUtils.test_sampler` and related methods: removed, please implement your own testing utilities as needed
 
-### Simplification of the tilde-pipeline
+#### Simplification of the tilde-pipeline
 
 There are now only two functions in the tilde-pipeline that need to be overloaded to change the behaviour of tilde-statements, namely, `tilde_assume!!` and `tilde_observe!!`.
 Other functions such as `tilde_assume` and `assume` (and their `observe` counterparts) have been removed.
@@ -63,40 +63,40 @@ Other functions such as `tilde_assume` and `assume` (and their `observe` counter
 Note that this was effectively already the case in DynamicPPL 0.37 (where they were just wrappers around each other).
 The separation of these functions was primarily implemented to avoid performing extra work where unneeded (e.g. to not calculate the log-likelihood when `PriorContext` was being used). This functionality has since been replaced with accumulators (see the 0.37 changelog for more details).
 
-### Removal of the `"del"` flag
+#### Removal of the `"del"` flag
 
 Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
 
 The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus the generic functions `set_flag!`, `unset_flag!` and `is_flagged!` have also been removed in favour of more specific ones. We've also used this opportunity to name the `"trans"` flag and the corresponding `istrans` function to be more explicit. The new, exported interface consists of the `is_transformed` and `set_transformed!!` functions.
 
-### Removal of `resume_from`
+#### Removal of `resume_from`
 
 The `resume_from=chn` keyword argument to `sample` has been removed; please use the `initial_state` argument instead.
 `loadstate` will be exported from Turing in the next release of Turing.
 
-### Change of output type for `pointwise_logdensities`
+#### Change of output type for `pointwise_logdensities`
 
 The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` when called on `MCMCChains.Chains` objects, now return new `MCMCChains.Chains` objects by default, instead of dictionaries of matrices.
 
 If you want the old behaviour, you can pass `OrderedDict` as the third argument, i.e., `pointwise_logdensities(model, chain, OrderedDict)`.
 
-**Other changes**
+### Other changes
 
-### `predict(model, chain; include_all)`
+#### `predict(model, chain; include_all)`
 
 The `include_all` keyword argument for `predict` now works even when no RNG is specified (previously it would only work when an RNG was explicitly passed).
 
-### `setleafcontext(model, context)`
+#### `DynamicPPL.setleafcontext(model, context)`
 
 This convenience method has been added to quickly modify the leaf context of a model.
 
-### Reimplementation of functions using `InitContext`
+#### Reimplementation of functions using `InitContext`
 
 A number of functions have been reimplemented and unified with the help of `InitContext`.
 In particular, this release brings substantial performance improvements for `returned` and `predict`.
 Their APIs are the same.
 
-### Upstreaming of VarName functionality
+#### Upstreaming of VarName functionality
 
 The implementation of the `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
 Their behaviour is otherwise identical, and they are still accessible from the DynamicPPL module (though still not exported).
