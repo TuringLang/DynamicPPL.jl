@@ -67,13 +67,14 @@ end
             @inferred DynamicPPL.from_vec_transform(dist)
             @inferred Bijectors.with_logabsdet_jacobian(from_vec_trfm, unlinked_vec)
 
-            b = Bijectors.bijector(dist)
-            @test b(unlinked) isa Any
+            # Typically the same as `bijector(dist)`, but technically a different
+            # function
+            b = DynamicPPL.link_transform(dist)
+            @test (b(unlinked); true)
             linked, logjac = Bijectors.with_logabsdet_jacobian(b, unlinked)
-            @test linked isa Any
             @test logjac isa Real
 
-            binv = Bijectors.inverse(b)
+            binv = DynamicPPL.invlink_transform(dist)
             unlinked_again, logjac_inv = Bijectors.with_logabsdet_jacobian(binv, linked)
             @test isapprox_nested(unlinked, unlinked_again)
             @test isapprox(logjac, -logjac_inv)
@@ -93,6 +94,19 @@ end
                     from_linked_vec_trfm, linked_vec
                 )
             end
+
+            # Create a model and check that we can evaluate it with both unlinked and linked
+            # VarInfo. This relies on the transformations working correctly so is more of an
+            # 'end to end' test
+            @model test() = x ~ dist
+            model = test()
+            vi_unlinked = VarInfo(model)
+            vi_linked = DynamicPPL.link!!(VarInfo(model), model)
+            @test (DynamicPPL.evaluate!!(model, vi_unlinked); true)
+            @test (DynamicPPL.evaluate!!(model, vi_linked); true)
+            model_init = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
+            @test (DynamicPPL.evaluate!!(model_init, vi_unlinked); true)
+            @test (DynamicPPL.evaluate!!(model_init, vi_linked); true)
         end
 
         # Unconstrained univariate
