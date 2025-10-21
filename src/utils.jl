@@ -354,7 +354,6 @@ Return the transformation from the vector representation of a realization of siz
 original representation.
 """
 from_vec_transform_for_size(sz::Tuple) = ReshapeTransform(sz)
-# TODO(mhauru) Is the below used? If not, this function can be removed.
 from_vec_transform_for_size(::Tuple{<:Any}) = identity
 
 """
