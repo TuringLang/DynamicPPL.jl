@@ -75,7 +75,7 @@ Unlike I said above, let's say that VNT isn't just nested NamedTuples with some 
 Our earlier example of `VarNamedTuple(@varname(x) => 1, @varname(y.z) => 2; make_leaf=f)` would be stored as a tree like
 
 ```
-         ==NT==
+         --NT--
       x /      \ y
 f(1, identity)  NT
                  \ z
