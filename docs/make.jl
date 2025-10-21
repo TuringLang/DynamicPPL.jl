@@ -34,7 +34,11 @@ makedocs(;
         Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt),
     ],
     pages=[
-        "Home" => "index.md", "API" => "api.md", "Internals" => ["internals/varinfo.md"]
+        "Home" => "index.md",
+        "API" => "api.md",
+        # TODO(mhauru) The varinfo.md has fallen badly out of date. Update it and add it
+        # back in.
+        #"Internals" => ["internals/varinfo.md"],
     ],
     checkdocs=:exports,
     doctest=false,

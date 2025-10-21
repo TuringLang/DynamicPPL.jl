@@ -22,17 +22,29 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
       - uses: julia-actions/setup-julia@v2
         with:
           version: 1
+
       - uses: julia-actions/julia-buildpkg@v1
+
       - name: Clone Downstream
         uses: actions/checkout@v5
         with:
           repository: ${{ matrix.package.user }}/${{ matrix.package.repo }}
           path: downstream
+
+      - name: Determine Julia version
+        shell: bash
+        id: julia-version
+        run: |
+          echo "julia=$(julia --version | cut -d' ' -f3)" >> $GITHUB_OUTPUT
+
       - name: Load this and run the downstream tests
         shell: julia --color=yes --project=downstream {0}
+        # Don't test Turing.jl on 1.12.0, it's broken because of Libtask
+        if: ${{ !(steps.julia-version.outputs.julia == '1.12.0' && matrix.package.repo == 'Turing.jl') }}
         run: |
           using Pkg
           try
