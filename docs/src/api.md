@@ -8,7 +8,7 @@ Part of the API of DynamicPPL is defined in the more lightweight interface packa
 
 A core component of DynamicPPL is the [`@model`](@ref) macro.
 It can be used to define probabilistic models in an intuitive way by specifying random variables and their distributions with `~` statements.
-These statements are rewritten by `@model` as calls of [internal functions](@ref model_internal) for sampling the variables and computing their log densities.
+These statements are rewritten by `@model` as calls of internal functions for sampling the variables and computing their log densities.
 
 ```@docs
 @model
@@ -243,14 +243,7 @@ DynamicPPL.TestUtils.AD.ADIncorrectException
 
 ## Demo models
 
-DynamicPPL provides several demo models and helpers for testing samplers in the `DynamicPPL.TestUtils` submodule.
-
-```@docs
-DynamicPPL.TestUtils.test_sampler
-DynamicPPL.TestUtils.test_sampler_on_demo_models
-DynamicPPL.TestUtils.test_sampler_continuous
-DynamicPPL.TestUtils.marginal_mean_of_samples
-```
+DynamicPPL provides several demo models in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
 DynamicPPL.TestUtils.DEMO_MODELS
@@ -345,9 +338,8 @@ The [Transformations section below](#Transformations) describes the methods used
 In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
 
 ```@docs
-set_flag!
-unset_flag!
-is_flagged
+is_transformed
+set_transformed!!
 ```
 
 ```@docs
@@ -358,6 +350,13 @@ Base.empty!
 
 ```@docs
 SimpleVarInfo
+```
+
+### Tilde-pipeline
+
+```@docs
+tilde_assume!!
+tilde_observe!!
 ```
 
 ### Accumulators
@@ -432,8 +431,6 @@ DynamicPPL.StaticTransformation
 ```
 
 ```@docs
-DynamicPPL.istrans
-DynamicPPL.settrans!!
 DynamicPPL.transformation
 DynamicPPL.link
 DynamicPPL.invlink
@@ -451,8 +448,6 @@ DynamicPPL.maybe_invlink_before_eval!!
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
 DynamicPPL.unflatten
-DynamicPPL.varname_leaves
-DynamicPPL.varname_and_value_leaves
 ```
 
 ### Evaluation Contexts
@@ -465,61 +460,48 @@ AbstractPPL.evaluate!!
 
 This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
-To perform sampling, you can either wrap `model.context` in a `SamplingContext`, or use this convenience method:
-
-```@docs
-DynamicPPL.evaluate_and_sample!!
-```
+If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
 The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
 Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
-SamplingContext
 DefaultContext
 PrefixContext
 ConditionContext
+InitContext
 ```
 
-### Samplers
+### VarInfo initialisation
 
-In DynamicPPL two samplers are defined that are used to initialize unobserved random variables:
-[`SampleFromPrior`](@ref) which samples from the prior distribution, and [`SampleFromUniform`](@ref) which samples from a uniform distribution.
+The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
+It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
 
 ```@docs
-SampleFromPrior
-SampleFromUniform
+DynamicPPL.init!!
 ```
 
-Additionally, a generic sampler for inference is implemented.
+To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.
+There are three concrete strategies provided in DynamicPPL:
 
 ```@docs
-Sampler
+InitFromPrior
+InitFromUniform
+InitFromParams
 ```
 
-The default implementation of [`Sampler`](@ref) uses the following unexported functions.
+If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.
 
 ```@docs
-DynamicPPL.initialstep
-DynamicPPL.loadstate
-DynamicPPL.initialsampler
+DynamicPPL.AbstractInitStrategy
+DynamicPPL.init
 ```
 
-Finally, to specify which varinfo type a [`Sampler`](@ref) should use for a given [`Model`](@ref), this is specified by [`DynamicPPL.default_varinfo`](@ref) and can thus be overloaded for each  `model`-`sampler` combination. This can be useful in cases where one has explicit knowledge that one type of varinfo will be more performant for the given `model` and `sampler`.
-
-```@docs
-DynamicPPL.default_varinfo
-```
+### Choosing a suitable VarInfo
 
 There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
 
 ```@docs
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
-```
-
-### [Model-Internal Functions](@id model_internal)
-
-```@docs
-tilde_assume
 ```

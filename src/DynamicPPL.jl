@@ -70,10 +70,8 @@ export AbstractVarInfo,
     acclogjac!!,
     acclogprior!!,
     accloglikelihood!!,
-    is_flagged,
-    set_flag!,
-    unset_flag!,
-    istrans,
+    is_transformed,
+    set_transformed!!,
     link,
     link!!,
     invlink,
@@ -94,20 +92,22 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
-    # Samplers
-    Sampler,
-    SampleFromPrior,
-    SampleFromUniform,
     # LogDensityFunction
     LogDensityFunction,
     # Contexts
     contextualize,
-    SamplingContext,
     DefaultContext,
     PrefixContext,
     ConditionContext,
-    assume,
-    tilde_assume,
+    # Tilde pipeline
+    tilde_assume!!,
+    tilde_observe!!,
+    # Initialisation
+    InitContext,
+    AbstractInitStrategy,
+    InitFromPrior,
+    InitFromUniform,
+    InitFromParams,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -170,11 +170,15 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 # Necessary forward declarations
 include("utils.jl")
 include("chains.jl")
+include("contexts.jl")
+include("contexts/default.jl")
+include("contexts/init.jl")
+include("contexts/transformation.jl")
+include("contexts/prefix.jl")
+include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("sampler.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
-include("contexts.jl")
 include("submodel.jl")
 include("varnamedvector.jl")
 include("accumulators.jl")
@@ -183,10 +187,8 @@ include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
-include("context_implementations.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("transforming.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")

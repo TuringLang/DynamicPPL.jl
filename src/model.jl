@@ -96,6 +96,16 @@ function contextualize(model::Model, context::AbstractContext)
 end
 
 """
+    setleafcontext(model::Model, context::AbstractContext)
+
+Return a new `Model` with its leaf context set to `context`. This is a convenience shortcut
+for `contextualize(model, setleafcontext(model.context, context)`).
+"""
+function setleafcontext(model::Model, context::AbstractContext)
+    return contextualize(model, setleafcontext(model.context, context))
+end
+
+"""
     model | (x = 1.0, ...)
 
 Return a `Model` which now treats variables on the right-hand side as observations.
@@ -800,6 +810,41 @@ julia> # Now `a.x` will be sampled.
 fixed(model::Model) = fixed(model.context)
 
 """
+    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::Val{sym})
+    prefix(model::Model, x::Any)
+
+Return `model` but with all random variables prefixed by `x`, where `x` is either:
+- a `VarName` (e.g. `@varname(a)`),
+- a `Val{sym}` (e.g. `Val(:a)`), or
+- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
+  this will introduce runtime overheads so is not recommended unless absolutely
+  necessary.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL: prefix
+
+julia> @model demo() = x ~ Dirac(1)
+demo (generic function with 2 methods)
+
+julia> rand(prefix(demo(), @varname(my_prefix)))
+(var"my_prefix.x" = 1,)
+
+julia> rand(prefix(demo(), Val(:my_prefix)))
+(var"my_prefix.x" = 1,)
+```
+"""
+prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::Val{sym}) where {sym}
+    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+end
+function prefix(model::Model, x)
+    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
+end
+
+"""
     (model::Model)([rng, varinfo])
 
 Sample from the prior of the `model` with random number generator `rng`.
@@ -815,7 +860,7 @@ end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
 function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
-    return first(evaluate_and_sample!!(rng, model, varinfo))
+    return first(init!!(rng, model, varinfo))
 end
 
 """
@@ -829,29 +874,37 @@ function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
 end
 
 """
-    evaluate_and_sample!!([rng::Random.AbstractRNG, ]model::Model, varinfo[, sampler])
+    init!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        varinfo::AbstractVarInfo,
+        [init_strategy::AbstractInitStrategy=InitFromPrior()]
+    )
 
-Evaluate the `model` with the given `varinfo`, but perform sampling during the
-evaluation using the given `sampler` by wrapping the model's context in a
-`SamplingContext`.
+Evaluate the `model` and replace the values of the model's random variables
+in the given `varinfo` with new values, using a specified initialisation strategy.
+If the values in `varinfo` are not set, they will be added
+using a specified initialisation strategy.
 
-If `sampler` is not provided, defaults to [`SampleFromPrior`](@ref).
+If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function evaluate_and_sample!!(
+function init!!(
     rng::Random.AbstractRNG,
     model::Model,
     varinfo::AbstractVarInfo,
-    sampler::AbstractSampler=SampleFromPrior(),
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    sampling_model = contextualize(model, SamplingContext(rng, sampler, model.context))
-    return evaluate!!(sampling_model, varinfo)
+    new_model = setleafcontext(model, InitContext(rng, init_strategy))
+    return evaluate!!(new_model, varinfo)
 end
-function evaluate_and_sample!!(
-    model::Model, varinfo::AbstractVarInfo, sampler::AbstractSampler=SampleFromPrior()
+function init!!(
+    model::Model,
+    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return evaluate_and_sample!!(Random.default_rng(), model, varinfo, sampler)
+    return init!!(Random.default_rng(), model, varinfo, init_strategy)
 end
 
 """
@@ -981,11 +1034,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(
-        evaluate_and_sample!!(
-            rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())
-        ),
-    )
+    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())))
     return values_as(x, T)
 end
 
@@ -1007,42 +1056,6 @@ See [`logprior`](@ref) and [`loglikelihood`](@ref).
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     return getlogjoint(last(evaluate!!(model, varinfo)))
-end
-
-"""
-	logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log joint probabilities evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> logjoint(demo_model([1., 2.]), chain);
-```
-"""
-function logjoint(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        logjoint(model, argvals_dict)
-    end
 end
 
 """
@@ -1068,42 +1081,6 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
 end
 
 """
-	logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log prior probabilities evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> logprior(demo_model([1., 2.]), chain);
-```
-"""
-function logprior(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        logprior(model, argvals_dict)
-    end
-end
-
-"""
     loglikelihood(model::Model, varinfo::AbstractVarInfo)
 
 Return the log likelihood of variables `varinfo` for the probabilistic `model`.
@@ -1121,61 +1098,8 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     return getloglikelihood(last(evaluate!!(model, varinfo)))
 end
 
-"""
-	loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-
-Return an array of log likelihoods evaluated at each sample in an MCMC `chain`.
-
-# Examples
-
-```jldoctest
-julia> using MCMCChains, Distributions
-
-julia> @model function demo_model(x)
-           s ~ InverseGamma(2, 3)
-           m ~ Normal(0, sqrt(s))
-           for i in eachindex(x)
-               x[i] ~ Normal(m, sqrt(s))
-           end
-       end;
-
-julia> # construct a chain of samples using MCMCChains
-       chain = Chains(rand(10, 2, 3), [:s, :m]);
-
-julia> loglikelihood(demo_model([1., 2.]), chain);
-```
-"""
-function Distributions.loglikelihood(model::Model, chain::AbstractMCMC.AbstractChains)
-    var_info = VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = OrderedDict{VarName,Any}(
-            vn_parent =>
-                values_from_chain(var_info, vn_parent, chain, chain_idx, iteration_idx) for
-            vn_parent in keys(var_info)
-        )
-        loglikelihood(model, argvals_dict)
-    end
-end
-
-"""
-    predict([rng::Random.AbstractRNG,] model::Model, chain::AbstractVector{<:AbstractVarInfo})
-
-Generate samples from the posterior predictive distribution by evaluating `model` at each set
-of parameter values provided in `chain`. The number of posterior predictive samples matches
-the length of `chain`. The returned `AbstractVarInfo`s will contain both the posterior parameter values
-and the predicted values.
-"""
-function predict(
-    rng::Random.AbstractRNG, model::Model, chain::AbstractArray{<:AbstractVarInfo}
-)
-    varinfo = DynamicPPL.VarInfo(model)
-    return map(chain) do params_varinfo
-        vi = deepcopy(varinfo)
-        DynamicPPL.setval_and_resample!(vi, values_as(params_varinfo, NamedTuple))
-        model(rng, vi)
-        return vi
-    end
-end
+# Implemented & documented in DynamicPPLMCMCChainsExt
+function predict end
 
 """
     returned(model::Model, parameters::NamedTuple)
