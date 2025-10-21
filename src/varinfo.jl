@@ -358,7 +358,7 @@ function typed_vector_varinfo(
 end
 
 function make_leaf_metadata((r, dist), optic)
-    md = Metadata()
+    md = Metadata(Float64)
     vn = VarName{:_}(optic)
     push!(md, vn, r, dist)
     return md
@@ -439,8 +439,8 @@ unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
 
 Construct an empty type unstable instance of `Metadata`.
 """
-function Metadata()
-    vals = Vector{Real}()
+function Metadata(eltype=Real)
+    vals = Vector{eltype}()
     is_transformed = BitVector()
 
     return Metadata(
