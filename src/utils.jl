@@ -368,33 +368,34 @@ from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(s
 
 struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
     dists::T
+    # The `i`-th input range corresponds to the segment of the input vector
+    # that belongs to the `i`-th distribution.
+    input_ranges::Vector{UnitRange}
     function ProductNamedTupleUnvecTransform(
         d::Distributions.ProductNamedTupleDistribution{names}
     ) where {names}
-        return new{names,typeof(d.dists)}(d.dists)
+        offset = 1
+        input_ranges = UnitRange[]
+        for name in names
+            this_dist = d.dists[name]
+            this_name_size = _input_length(from_vec_transform(this_dist))
+            push!(input_ranges, offset:(offset + this_name_size - 1))
+            offset += this_name_size
+        end
+        return new{names,typeof(d.dists)}(d.dists, input_ranges)
     end
 end
 
 @generated function (trf::ProductNamedTupleUnvecTransform{names})(
     x::AbstractVector
 ) where {names}
-    expr = Expr(:block)
-    push!(expr.args, :(offset = 1))
+    expr = Expr(:tuple)
     for (i, name) in enumerate(names)
-        push!(expr.args, :(this_dist = trf.dists.$name))
-        push!(expr.args, :(this_name_size = _input_length(from_vec_transform(this_dist))))
-        push!(expr.args, :(this_vec = @view x[offset:(offset + this_name_size - 1)]))
-        if i == 1
-            push!(expr.args, :(nt = ($name=from_vec_transform(this_dist)(this_vec),)))
-        else
-            push!(
-                expr.args,
-                :(nt = merge(nt, ($name=from_vec_transform(this_dist)(this_vec),))),
-            )
-        end
-        push!(expr.args, :(offset += this_name_size))
+        push!(
+            expr.args,
+            :($name = from_vec_transform(trf.dists.$name)(x[trf.input_ranges[$i]])),
+        )
     end
-    push!(expr.args, :(return NamedTuple(nt)))
     return expr
 end
 
