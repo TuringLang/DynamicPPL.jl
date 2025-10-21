@@ -381,7 +381,7 @@ end
     push!(expr.args, :(offset = 1))
     for (i, name) in enumerate(names)
         push!(expr.args, :(this_dist = trf.dists.$name))
-        push!(expr.args, :(this_name_size = _output_length(from_vec_transform(this_dist))))
+        push!(expr.args, :(this_name_size = _input_length(from_vec_transform(this_dist))))
         push!(expr.args, :(this_vec = @view x[offset:(offset + this_name_size - 1)]))
         if i == 1
             push!(expr.args, :(nt = ($name=from_vec_transform(this_dist)(this_vec),)))
@@ -402,16 +402,18 @@ end
 function Bijectors.with_logabsdet_jacobian(f::ProductNamedTupleUnvecTransform, x)
     return f(x), zero(LogProbType)
 end
-# get the output length of from_vec_transform
-_output_length(from_vec_trfm::UnwrapSingletonTransform) = 1
-_output_length(from_vec_trfm::ReshapeTransform) = prod(from_vec_trfm.output_size)
-function _output_length(trfm::ProductNamedTupleUnvecTransform)
-    return sum(_output_length ∘ from_vec_transform, values(trfm.dists))
+# This function returns the length of the vector that the function from_vec_transform
+# expects. This helps us determine which segment of a concatenated vector belongs to which
+# variable.
+_input_length(from_vec_trfm::UnwrapSingletonTransform) = 1
+_input_length(from_vec_trfm::ReshapeTransform) = prod(from_vec_trfm.output_size)
+function _input_length(trfm::ProductNamedTupleUnvecTransform)
+    return sum(_input_length ∘ from_vec_transform, values(trfm.dists))
 end
-function _output_length(
+function _input_length(
     c::ComposedFunction{<:DynamicPPL.ToChol,<:DynamicPPL.ReshapeTransform}
 )
-    return _output_length(c.inner)
+    return _input_length(c.inner)
 end
 
 """
