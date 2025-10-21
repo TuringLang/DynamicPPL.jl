@@ -1,6 +1,6 @@
 module DynamicPPLMarginalLogDensitiesExt
 
-using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, DifferentiationInterface
+using DynamicPPL: DynamicPPL, LogDensityProblems, VarName
 using MarginalLogDensities: MarginalLogDensities
 
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
@@ -103,8 +103,9 @@ function DynamicPPL.marginalize(
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
     # MLD 0.4.5 changes the default sparsity detector to TracerLocalSparsityDetector(), but
     # that doesn't work with DynamicPPL (for unknown reasons). DenseSparsityDetector is the
-    # default prior to 0.4.5 so we stick to that
-    sparsity_detector=DifferentiationInterface.DenseSparsityDetector(
+    # default prior to 0.4.5 so we stick to that. (It's defined in DifferentiationInterface,
+    # but MLD kindly re-exports it.)
+    sparsity_detector=MarginalLogDensities.DenseSparsityDetector(
         method.adtype; atol=cbrt(eps())
     ),
     kwargs...,
