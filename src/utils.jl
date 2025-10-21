@@ -374,6 +374,7 @@ struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
         return new{names,typeof(d.dists)}(d.dists)
     end
 end
+
 @generated function (trf::ProductNamedTupleUnvecTransform{names})(
     x::AbstractVector
 ) where {names}
@@ -396,12 +397,14 @@ end
     push!(expr.args, :(return NamedTuple(nt)))
     return expr
 end
+
 function from_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return ProductNamedTupleUnvecTransform(dist)
 end
 function Bijectors.with_logabsdet_jacobian(f::ProductNamedTupleUnvecTransform, x)
     return f(x), zero(LogProbType)
 end
+
 # This function returns the length of the vector that the function from_vec_transform
 # expects. This helps us determine which segment of a concatenated vector belongs to which
 # variable.
