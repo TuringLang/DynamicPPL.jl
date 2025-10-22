@@ -61,7 +61,7 @@ struct InitFromUniform{T<:AbstractFloat} <: AbstractInitStrategy
 end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFromUniform)
     b = Bijectors.bijector(dist)
-    sz = Bijectors.output_size(b, size(dist))
+    sz = Bijectors.output_size(b, dist)
     y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
     b_inv = Bijectors.inverse(b)
     x = b_inv(y)
@@ -166,12 +166,11 @@ function tilde_assume!!(
     # is_transformed(vi) returns true if vi is nonempty and all variables in vi
     # are linked.
     insert_transformed_value = in_varinfo ? is_transformed(vi, vn) : is_transformed(vi)
-    f = if insert_transformed_value
-        link_transform(dist)
+    y, logjac = if insert_transformed_value
+        with_logabsdet_jacobian(link_transform(dist), x)
     else
-        identity
+        x, zero(LogProbType)
     end
-    y, logjac = with_logabsdet_jacobian(f, x)
     # Add the new value to the VarInfo. `push!!` errors if the value already
     # exists, hence the need for setindex!!.
     if in_varinfo
