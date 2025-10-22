@@ -1916,8 +1916,13 @@ function from_linked_internal_transform(::VarNamedVector, ::VarName, dist)
 end
 
 function link(vi::TupleVarInfo, model::Model)
-    metadata = map(value -> link(value, model), vi.metadata)
+    metadata = link(vi.metadata, model)
     return VarInfo(metadata, vi.accs)
+end
+
+function link(vnt::VarNamedTuple, model::Model)
+    new_vnt = map(value -> link(value, model), vnt)
+    return new_vnt
 end
 
 function link(metadata::Metadata, model::Model)

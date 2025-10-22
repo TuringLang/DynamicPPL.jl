@@ -48,7 +48,9 @@ function remove_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
     elseif Optic <: Accessors.IndexLens
         VarName{sym}()
     else
-        prefix(remove_trailing_index(unprefix(vn, sym)), sym)
+        AbstractPPL.prefix(
+            remove_trailing_index(AbstractPPL.unprefix(vn, VarName{sym}())), VarName{sym}()
+        )
     end
 end
 
@@ -58,7 +60,7 @@ function split_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
     elseif Optic <: Accessors.IndexLens
         (VarName{sym}(), getoptic(vn))
     else
-        (prefix, index) = split_trailing_index(unprefix(vn, VarName{sym}()))
-        (prefix(prefix, sym), index)
+        (pref, index) = split_trailing_index(AbstractPPL.unprefix(vn, VarName{sym}()))
+        (AbstractPPL.prefix(pref, VarName{sym}()), index)
     end
 end
