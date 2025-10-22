@@ -45,7 +45,7 @@ end
 function remove_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
     return if Optic === typeof(identity)
         vn
-    elseif Optic isa IndexLens
+    elseif Optic <: Accessors.IndexLens
         VarName{sym}()
     else
         prefix(remove_trailing_index(unprefix(vn, sym)), sym)
@@ -55,10 +55,10 @@ end
 function split_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
     return if Optic === typeof(identity)
         (vn, identity)
-    elseif Optic isa IndexLens
-        (VarName{sym}(), Optic.index)
+    elseif Optic <: Accessors.IndexLens
+        (VarName{sym}(), getoptic(vn))
     else
-        (prefix, index) = split_trailing_index(unprefix(vn, sym))
+        (prefix, index) = split_trailing_index(unprefix(vn, VarName{sym}()))
         (prefix(prefix, sym), index)
     end
 end

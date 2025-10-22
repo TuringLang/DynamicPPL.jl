@@ -358,7 +358,7 @@ function typed_vector_varinfo(
 end
 
 function make_leaf_metadata((r, dist), optic)
-    md = Metadata(Float64)
+    md = Metadata(Float64, VarName{:_})
     vn = VarName{:_}(optic)
     push!(md, vn, r, dist)
     return md
@@ -439,13 +439,13 @@ unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
 
 Construct an empty type unstable instance of `Metadata`.
 """
-function Metadata(eltype=Real)
+function Metadata(eltype=Real, vntype=VarName)
     vals = Vector{eltype}()
     is_transformed = BitVector()
 
     return Metadata(
-        Dict{VarName,Int}(),
-        Vector{VarName}(),
+        Dict{vntype,Int}(),
+        Vector{vntype}(),
         Vector{UnitRange{Int}}(),
         vals,
         Vector{Distribution}(),
@@ -814,7 +814,7 @@ The values may or may not be transformed to Euclidean space.
 setval!(vi::VarInfo, val, vn::VarName) = setval!(getmetadata(vi, vn), val, vn)
 function setval!(vi::TupleVarInfo, val, vn::VarName)
     main_vn, optic = split_trailing_index(vn)
-    return setval!(getindex(vi.metadata, main_vn), VarName{:_}(optic))
+    return setval!(getindex(vi.metadata, main_vn), val, VarName{:_}(optic))
 end
 function setval!(md::Metadata, val::AbstractVector, vn::VarName)
     return md.vals[getrange(md, vn)] = val
@@ -1913,4 +1913,81 @@ function from_linked_internal_transform(::Metadata, ::VarName, dist)
 end
 function from_linked_internal_transform(::VarNamedVector, ::VarName, dist)
     return from_linked_vec_transform(dist)
+end
+
+function link(vi::TupleVarInfo, model::Model)
+    metadata = map(value -> link(value, model), vi.metadata)
+    return VarInfo(metadata, vi.accs)
+end
+
+function link(metadata::Metadata, model::Model)
+    vns = metadata.vns
+    cumulative_logjac = zero(LogProbType)
+
+    # Construct the new transformed values, and keep track of their lengths.
+    vals_new = map(vns) do vn
+        # Return early if we're already in unconstrained space.
+        # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
+        if is_transformed(metadata, vn)
+            return metadata.vals[getrange(metadata, vn)]
+        end
+
+        # Transform to constrained space.
+        x = getindex_internal(metadata, vn)
+        dist = getdist(metadata, vn)
+        f_from_internal = from_internal_transform(metadata, vn, dist)
+        f_to_linked_internal = inverse(from_linked_internal_transform(metadata, vn, dist))
+        f = f_to_linked_internal ∘ f_from_internal
+        y, logjac = with_logabsdet_jacobian(f, x)
+        # Vectorize value.
+        yvec = tovec(y)
+        # Accumulate the log-abs-det jacobian correction.
+        cumulative_logjac += logjac
+        # Return the vectorized transformed value.
+        return yvec
+    end
+
+    # Determine new ranges.
+    ranges_new = similar(metadata.ranges)
+    offset = 0
+    for (i, v) in enumerate(vals_new)
+        r_start, r_end = offset + 1, length(v) + offset
+        offset = r_end
+        ranges_new[i] = r_start:r_end
+    end
+
+    # Now we just create a new metadata with the new `vals` and `ranges`.
+    return Metadata(
+        metadata.idcs,
+        metadata.vns,
+        ranges_new,
+        reduce(vcat, vals_new),
+        metadata.dists,
+        BitVector(fill(true, length(metadata.vns))),
+    )
+end
+
+function Base.haskey(vi::TupleVarInfo, vn::VarName)
+    # TODO(mhauru) Fix this to account for the index.
+    main_vn, optic = split_trailing_index(vn)
+    haskey(vi.metadata, main_vn) || return false
+    value = getindex(vi.metadata, main_vn)
+    if value isa Metadata
+        return haskey(value, VarName{:_}(optic))
+    else
+        error("TODO(mhauru) Implement me")
+    end
+end
+
+function BangBang.setindex!!(metadata::Metadata, val, optic)
+    return setindex!!(metadata, val, VarName{:_}(optic))
+end
+
+function BangBang.setindex!!(metadata::Metadata, (r, dist), vn::VarName)
+    if haskey(metadata, vn)
+        setval!(metadata, r, vn)
+    else
+        push!(metadata, vn, r, dist)
+    end
+    return metadata
 end

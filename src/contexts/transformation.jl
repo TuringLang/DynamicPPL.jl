@@ -21,11 +21,12 @@ function tilde_assume!!(
     # vi[vn, right] always provides the value in unlinked space.
     x = vi[vn, right]
 
-    if is_transformed(vi, vn)
-        isinverse || @warn "Trying to link an already transformed variable ($vn)"
-    else
-        isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"
-    end
+    # TODO(mhauru) Warnings disabled for benchmarking purposes
+    # if is_transformed(vi, vn)
+    #     isinverse || @warn "Trying to link an already transformed variable ($vn)"
+    # else
+    #     isinverse && @warn "Trying to invlink a non-transformed variable ($vn)"
+    # end
 
     transform = isinverse ? identity : link_transform(right)
     y, logjac = with_logabsdet_jacobian(transform, x)
