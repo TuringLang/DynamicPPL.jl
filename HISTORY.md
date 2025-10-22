@@ -1,5 +1,7 @@
 # DynamicPPL Changelog
 
+## 0.39.0
+
 ## 0.38.1
 
 Added `from_linked_vec_transform` and `from_vec_transform` methods for `ProductNamedTupleDistribution`.
