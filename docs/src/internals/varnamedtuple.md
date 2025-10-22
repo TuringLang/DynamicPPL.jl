@@ -7,9 +7,9 @@ This document collects thoughts and ideas for how to unify our multitude of Abst
 We currently have the following AbstractVarInfo types:
 
   - A: VarInfo with Metadata
-  - B: VarInfo with VarNamedTuple
+  - B: VarInfo with VarNamedVector
   - C: VarInfo with NamedTuple, with values being Metadata
-  - D: VarInfo with NamedTuple, with values being VarNamedTuple
+  - D: VarInfo with NamedTuple, with values being VarNamedVector
   - E: SimpleVarInfo with NamedTuples
   - F: SimpleVarInfo with OrderedDict
 
