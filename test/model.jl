@@ -370,29 +370,27 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    if VERSION >= v"1.8"
-        @testset "Type stability of models" begin
-            models_to_test = [
-                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
-            ]
-            @testset "$(model.f)" for model in models_to_test
-                vns = DynamicPPL.TestUtils.varnames(model)
-                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-                varinfos = filter(
-                    is_type_stable_varinfo,
-                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
-                )
-                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo))
-                        true
-                    end
+    @testset "Type stability of models" begin
+        models_to_test = [
+            DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
+        ]
+        @testset "$(model.f)" for model in models_to_test
+            vns = DynamicPPL.TestUtils.varnames(model)
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = filter(
+                is_type_stable_varinfo,
+                DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
+            )
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @test begin
+                    @inferred(DynamicPPL.evaluate!!(model, varinfo))
+                    true
+                end
 
-                    varinfo_linked = DynamicPPL.link(varinfo, model)
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked))
-                        true
-                    end
+                varinfo_linked = DynamicPPL.link(varinfo, model)
+                @test begin
+                    @inferred(DynamicPPL.evaluate!!(model, varinfo_linked))
+                    true
                 end
             end
         end
