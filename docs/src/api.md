@@ -505,3 +505,13 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
 ```
+
+### Converting VarInfos to chains
+
+It is a fairly common operation to want to convert a collection of `VarInfo` objects into a chains object for downstream analysis.
+This can be accomplished with the following:
+
+```@docs
+DynamicPPL.ParamsWithStats
+DynamicPPL.to_chains
+```

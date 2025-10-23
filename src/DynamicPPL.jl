@@ -126,6 +126,9 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
+    # Chain construction
+    ParamsWithStats,
+    to_chains,
     # Convenience macros
     @addlogprob!,
     value_iterator_from_chain,
@@ -194,6 +197,7 @@ include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
 include("bijector.jl")
+include("to_chains.jl")
 
 include("debug_utils.jl")
 using .DebugUtils

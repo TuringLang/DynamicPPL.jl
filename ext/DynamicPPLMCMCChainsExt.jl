@@ -37,6 +37,76 @@ function chain_sample_to_varname_dict(
 end
 
 """
+    DynamicPPL.to_chains(
+        ::Type{MCMCChains.Chains},
+        params_and_stats::AbstractArray{<:ParamsWithStats}
+    )
+
+Convert an array of `DynamicPPL.ParamsWithStats` to an `MCMCChains.Chains` object.
+"""
+function DynamicPPL.to_chains(
+    ::Type{MCMCChains.Chains},
+    params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats},
+)
+    # Handle parameters
+    all_vn_leaves = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
+    split_dicts = map(params_and_stats) do ps
+        # Separate into individual VarNames.
+        vn_leaves_and_vals = if isempty(ps.params)
+            Tuple{DynamicPPL.VarName,Any}[]
+        else
+            iters = map(
+                AbstractPPL.varname_and_value_leaves,
+                keys(ps.params),
+                values(ps.params),
+            )
+            mapreduce(collect, vcat, iters)
+        end
+        vn_leaves = map(first, vn_leaves_and_vals)
+        vals = map(last, vn_leaves_and_vals)
+        for vn_leaf in vn_leaves
+            push!(all_vn_leaves, vn_leaf)
+        end
+        DynamicPPL.OrderedCollections.OrderedDict(zip(vn_leaves, vals))
+    end
+    vn_leaves = collect(all_vn_leaves)
+    param_vals = [
+        get(split_dicts[i, j], key, missing) for i in eachindex(axes(split_dicts, 1)),
+        key in vn_leaves, j in eachindex(axes(split_dicts, 2))
+    ]
+    param_symbols = map(Symbol, vn_leaves)
+    # Handle statistics
+    stat_keys = DynamicPPL.OrderedCollections.OrderedSet{Symbol}()
+    for ps in params_and_stats
+        for k in keys(ps.stats)
+            push!(stat_keys, k)
+        end
+    end
+    stat_keys = collect(stat_keys)
+    stat_vals = [
+        get(params_and_stats[i, j].stats, key, missing) for
+        i in eachindex(axes(params_and_stats, 1)), key in stat_keys,
+        j in eachindex(axes(params_and_stats, 2))
+    ]
+    # Construct name map and info
+    name_map = (internals=stat_keys,)
+    info = (
+        varname_to_symbol=DynamicPPL.OrderedCollections.OrderedDict(
+            zip(all_vn_leaves, param_symbols)
+        ),
+    )
+    # Concatenate parameter and statistic values
+    vals = cat(param_vals, stat_vals; dims=2)
+    symbols = vcat(param_symbols, stat_keys)
+    return MCMCChains.Chains(MCMCChains.concretize(vals), symbols, name_map; info=info)
+end
+function DynamicPPL.to_chains(
+    ::Type{MCMCChains.Chains}, ps::AbstractVector{<:DynamicPPL.ParamsWithStats}
+)
+    return DynamicPPL.to_chains(MCMCChains.Chains, hcat(ps))
+end
+
+"""
     predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
 
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
@@ -110,7 +180,6 @@ function DynamicPPL.predict(
         DynamicPPL.VarInfo(),
         (
             DynamicPPL.LogPriorAccumulator(),
-            DynamicPPL.LogJacobianAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.ValuesAsInModelAccumulator(false),
         ),
@@ -129,23 +198,9 @@ function DynamicPPL.predict(
             varinfo,
             DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
         )
-        vals = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
-        varname_vals = mapreduce(
-            collect,
-            vcat,
-            map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals)),
-        )
-
-        return (varname_and_values=varname_vals, logp=DynamicPPL.getlogjoint(varinfo))
+        DynamicPPL.ParamsWithStats(varinfo, nothing)
     end
-
-    chain_result = reduce(
-        MCMCChains.chainscat,
-        [
-            _predictive_samples_to_chains(predictive_samples[:, chain_idx]) for
-            chain_idx in 1:size(predictive_samples, 2)
-        ],
-    )
+    chain_result = DynamicPPL.to_chains(MCMCChains.Chains, predictive_samples)
     parameter_names = if include_all
         MCMCChains.names(chain_result, :parameters)
     else
@@ -161,45 +216,6 @@ function DynamicPPL.predict(
 )
     return DynamicPPL.predict(
         DynamicPPL.Random.default_rng(), model, chain; include_all=include_all
-    )
-end
-
-function _predictive_samples_to_arrays(predictive_samples)
-    variable_names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
-
-    sample_dicts = map(predictive_samples) do sample
-        varname_value_pairs = sample.varname_and_values
-        varnames = map(first, varname_value_pairs)
-        values = map(last, varname_value_pairs)
-        for varname in varnames
-            push!(variable_names_set, varname)
-        end
-
-        return DynamicPPL.OrderedCollections.OrderedDict(zip(varnames, values))
-    end
-
-    variable_names = collect(variable_names_set)
-    variable_values = [
-        get(sample_dicts[i], key, missing) for i in eachindex(sample_dicts),
-        key in variable_names
-    ]
-
-    return variable_names, variable_values
-end
-
-function _predictive_samples_to_chains(predictive_samples)
-    variable_names, variable_values = _predictive_samples_to_arrays(predictive_samples)
-    variable_names_symbols = map(Symbol, variable_names)
-
-    internal_parameters = [:lp]
-    log_probabilities = reshape([sample.logp for sample in predictive_samples], :, 1)
-
-    parameter_names = [variable_names_symbols; internal_parameters]
-    parameter_values = hcat(variable_values, log_probabilities)
-    parameter_values = MCMCChains.concretize(parameter_values)
-
-    return MCMCChains.Chains(
-        parameter_values, parameter_names, (internals=internal_parameters,)
     )
 end
 
