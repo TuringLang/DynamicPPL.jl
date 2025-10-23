@@ -777,11 +777,11 @@ end
 """
     float_type_with_fallback(T::DataType)
 
-Return `float(T)` if possible; otherwise return `float(Real)`.
+Return `T` if it is a Real; otherwise return `float(Real)`.
 """
 float_type_with_fallback(::Type) = float(Real)
 float_type_with_fallback(::Type{Union{}}) = float(Real)
-float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
+float_type_with_fallback(::Type{T}) where {T<:Real} = T
 
 """
     infer_nested_eltype(x::Type)
