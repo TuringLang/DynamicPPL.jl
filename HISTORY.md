@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.38.2
+
+Added a compatibility entry for JET@0.11.
+
 ## 0.38.1
 
 Added `from_linked_vec_transform` and `from_vec_transform` methods for `ProductNamedTupleDistribution`.
