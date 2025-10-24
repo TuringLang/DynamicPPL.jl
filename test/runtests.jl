@@ -73,6 +73,7 @@ include("test_util.jl")
         include("debug_utils.jl")
         include("submodels.jl")
         include("bijector.jl")
+        include("to_chains.jl")
     end
 
     if GROUP == "All" || GROUP == "Group2"
