@@ -53,6 +53,7 @@ struct ParamsWithStats{P<:OrderedDict{VarName,Any},S<:NamedTuple}
         include_colon_eq::Bool=true,
         include_log_probs::Bool=true,
     )
+        varinfo = maybe_to_typed_varinfo(varinfo)
         accs = if include_log_probs
             (
                 DynamicPPL.LogPriorAccumulator(),
@@ -101,6 +102,12 @@ struct ParamsWithStats{P<:OrderedDict{VarName,Any},S<:NamedTuple}
         return new{typeof(params),typeof(stats)}(params, stats)
     end
 end
+
+# Re-evaluating the model is unconscionably slow for untyped VarInfo. It's much faster to
+# convert it to a typed varinfo first, hence this method.
+# https://github.com/TuringLang/Turing.jl/issues/2604
+maybe_to_typed_varinfo(vi::VarInfo{<:Metadata}) = typed_varinfo(vi)
+maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
 
 """
     to_chains(
