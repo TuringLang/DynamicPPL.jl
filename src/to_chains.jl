@@ -42,9 +42,15 @@ present.
 `include_log_probs` controls whether log probabilities (log prior, log likelihood, and log
 joint) are added to the resulting statistics NamedTuple.
 """
-struct ParamsWithStats{P<:OrderedDict{VarName,Any},S<:NamedTuple}
+struct ParamsWithStats{P<:OrderedDict{<:VarName,<:Any},S<:NamedTuple}
     params::P
     stats::S
+
+    function ParamsWithStats(
+        params::P, stats::S
+    ) where {P<:OrderedDict{<:VarName,<:Any},S<:NamedTuple}
+        return new{P,S}(params, stats)
+    end
 
     function ParamsWithStats(
         varinfo::AbstractVarInfo,
@@ -113,7 +119,7 @@ maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
     to_chains(
         Tout::Type{<:AbstractChains},
         params_and_stats::AbstractArray{<:ParamsWithStats}
-    )
+    )::Tout
 
 Convert an array of `ParamsWithStats` to a chains object of type `Tout`.
 
@@ -121,3 +127,32 @@ This function is not implemented here but rather in package extensions for indiv
 packages.
 """
 function to_chains end
+
+"""
+    from_chains(
+        ::Type{Tout},
+        chain::AbstractChains
+    )::AbstractMatrix{<:Tout}
+
+Convert a chains object to an array of size (niters * nchains) with element type `Tout`.
+
+Note that even if `chain` contains only a single chain, this is still returned as a matrix,
+not a vector.
+
+This function is not implemented here but rather in package extensions for individual chains
+packages.
+
+Common implementations include:
+
+ - `Tout = ParamsWithStats`: obtain both parameters and statistics
+ - `Tout <: AbstractDict{<:VarName}`: obtain the parameters only (since stats are not stored
+   as `VarName`s
+ - `Tout = NamedTuple`: obtain both parameters and statistics as a NamedTuple
+
+!!! warning
+    Note that `Tout = NamedTuple` potentially causes a loss of information especially when
+    used with `MCMCChains.Chains`, since variable names are not preserved. This may lead to
+    bugs if the NamedTuple is later used for other purposes, such as evaluating a model. To
+    avoid this, you should always use something like `Tout = OrderedDict{VarName,Any}`.
+"""
+function from_chains end

@@ -106,6 +106,43 @@ function DynamicPPL.to_chains(
     return DynamicPPL.to_chains(MCMCChains.Chains, hcat(ps))
 end
 
+function DynamicPPL.from_chains(
+    ::Type{T}, chain::MCMCChains.Chains
+) where {T<:AbstractDict{<:DynamicPPL.VarName}}
+    idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    matrix = map(idxs) do (sample_idx, chain_idx)
+        d = T()
+        for vn in DynamicPPL.varnames(chain)
+            d[vn] = DynamicPPL.getindex_varname(chain, sample_idx, vn, chain_idx)
+        end
+        d
+    end
+    return matrix
+end
+function DynamicPPL.from_chains(::Type{NamedTuple}, chain::MCMCChains.Chains)
+    idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    matrix = map(idxs) do (sample_idx, chain_idx)
+        get(chain[sample_idx, :, chain_idx], keys(chain); flatten=true)
+    end
+    return matrix
+end
+function DynamicPPL.from_chains(
+    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains
+)
+    idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    internals_chain = MCMCChains.get_sections(chain, :internals)
+    params = DynamicPPL.from_chains(
+        DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,eltype(chain.value)},
+        chain,
+    )
+    stats = DynamicPPL.from_chains(NamedTuple, internals_chain)
+    return map(idxs) do (sample_idx, chain_idx)
+        DynamicPPL.ParamsWithStats(
+            params[sample_idx, chain_idx], stats[sample_idx, chain_idx]
+        )
+    end
+end
+
 """
     predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
 

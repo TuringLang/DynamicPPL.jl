@@ -515,3 +515,11 @@ This can be accomplished with the following:
 DynamicPPL.ParamsWithStats
 DynamicPPL.to_chains
 ```
+
+Furthermore, one can convert chains back into a collection of parameter dictionaries and/or stats with:
+
+```@docs
+DynamicPPL.from_chains
+```
+
+This is useful if you want to use the result of a chain in further model evaluations.
