@@ -1,4 +1,4 @@
-const CHECK_CONSISENCEY_DEFAULT = true
+const CHECK_CONSISTENCY_DEFAULT = true
 
 """
     VarNamedVector
@@ -192,7 +192,7 @@ struct VarNamedVector{
         transforms::TTrans,
         is_unconstrained=fill!(BitVector(undef, length(varnames)), 0),
         num_inactive=OrderedDict{Int,Int}();
-        check_consistency::Bool=CHECK_CONSISENCEY_DEFAULT,
+        check_consistency::Bool=CHECK_CONSISTENCY_DEFAULT,
     ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector}
         if check_consistency
             if length(varnames) != length(ranges) ||
@@ -281,13 +281,13 @@ end
 # making that change here opens some other cans of worms related to how VarInfo uses
 # BangBang, that I don't want to deal with right now.
 VarNamedVector() = VarNamedVector{VarName,Real}()
-function VarNamedVector(xs::Pair...; check_consistency=CHECK_CONSISENCEY_DEFAULT)
+function VarNamedVector(xs::Pair...; check_consistency=CHECK_CONSISTENCY_DEFAULT)
     return VarNamedVector(OrderedDict(xs...); check_consistency=check_consistency)
 end
-function VarNamedVector(x::AbstractDict; check_consistency=CHECK_CONSISENCEY_DEFAULT)
+function VarNamedVector(x::AbstractDict; check_consistency=CHECK_CONSISTENCY_DEFAULT)
     return VarNamedVector(keys(x), values(x); check_consistency=check_consistency)
 end
-function VarNamedVector(varnames, vals; check_consistency=CHECK_CONSISENCEY_DEFAULT)
+function VarNamedVector(varnames, vals; check_consistency=CHECK_CONSISTENCY_DEFAULT)
     return VarNamedVector(
         collect_maybe(varnames), collect_maybe(vals); check_consistency=check_consistency
     )
@@ -296,7 +296,7 @@ function VarNamedVector(
     varnames::AbstractVector,
     orig_vals::AbstractVector,
     transforms=fill(identity, length(varnames));
-    check_consistency=CHECK_CONSISENCEY_DEFAULT,
+    check_consistency=CHECK_CONSISTENCY_DEFAULT,
 )
     # Convert `vals` into a vector of vectors.
     vals_vecs = map(tovec, orig_vals)
