@@ -83,7 +83,7 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
     elseif varinfo_choice == :typed_vector
         DynamicPPL.typed_vector_varinfo(rng, model)
     elseif varinfo_choice == :untyped_vector
-        DynamicPPL.typed_vector_varinfo(rng, model)
+        DynamicPPL.untyped_vector_varinfo(rng, model)
     else
         error("Unknown varinfo choice: $varinfo_choice")
     end
