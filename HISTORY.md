@@ -1,9 +1,5 @@
 # DynamicPPL Changelog
 
-## 0.38.3
-
-Added a new exported struct, `DynamicPPL.ParamsWithStats`, and a corresponding function `DynamicPPL.to_chains`, which automatically converts a collection of `ParamsWithStats` to a given Chains type.
-
 ## 0.38.2
 
 Added a compatibility entry for JET@0.11.
