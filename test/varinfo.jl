@@ -37,8 +37,10 @@ end
         end
         model = gdemo(1.0, 2.0)
 
-        _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromUniform())
-        tvi = DynamicPPL.typed_varinfo(vi)
+        # TODO(mhauru) Make this test more generic. It currently explicitly relies on
+        # Metadata.
+        _, vi = DynamicPPL.init!!(model, VarInfo(DynamicPPL.Metadata()), InitFromUniform())
+        tvi = DynamicPPL.typed_legacy_varinfo(vi)
 
         meta = vi.metadata
         for f in fieldnames(typeof(tvi.metadata))
@@ -290,7 +292,7 @@ end
             dist = Normal(0, 1)
             r = rand(dist)
 
-            push!!(vi, vn_x, r, dist)
+            vi = push!!(vi, vn_x, r, dist)
 
             # is_transformed is set by default
             @test !is_transformed(vi, vn_x)
@@ -353,7 +355,9 @@ end
         # worth specifically checking that it can do this without having to
         # change the VarInfo object.
         # TODO(penelopeysm): Move this to InitFromUniform tests rather than here.
-        vi = VarInfo()
+        # TODO(mhauru) Make this test more generic. It currently explicitly relies on
+        # Metadata.
+        vi = VarInfo(DynamicPPL.Metadata())
         meta = vi.metadata
         _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
         @test all(x -> !is_transformed(vi, x), meta.vns)
@@ -367,7 +371,7 @@ end
         @test meta.vals ≈ v atol = 1e-10
 
         # Check that linking and invlinking preserves the values
-        vi = DynamicPPL.typed_varinfo(vi)
+        vi = DynamicPPL.typed_legacy_varinfo(vi)
         meta = vi.metadata
         v_s = copy(meta.s.vals)
         v_m = copy(meta.m.vals)

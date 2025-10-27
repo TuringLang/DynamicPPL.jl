@@ -76,8 +76,11 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
+            @test_throws "should not subsume each other" DynamicPPL.untyped_varinfo(
+                buggy_model
+            )
 
+            varinfo = DynamicPPL.untyped_legacy_varinfo(buggy_model)
             @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
             issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
@@ -94,8 +97,11 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
+            @test_throws "should not subsume each other" DynamicPPL.untyped_varinfo(
+                buggy_model
+            )
 
+            varinfo = DynamicPPL.untyped_legacy_varinfo(buggy_model)
             @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
             issuccess = check_model(buggy_model, varinfo)
             @test !issuccess
@@ -112,8 +118,11 @@
                 return nothing
             end
             buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
+            @test_throws "should not subsume each other" DynamicPPL.untyped_varinfo(
+                buggy_model
+            )
 
+            varinfo = DynamicPPL.untyped_legacy_varinfo(buggy_model)
             @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
             issuccess = check_model(buggy_model, varinfo)
             @test !issuccess

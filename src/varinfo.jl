@@ -107,7 +107,7 @@ struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
     metadata::Tmeta
     accs::Accs
 end
-function VarInfo(meta=Metadata())
+function VarInfo(meta=VarNamedVector())
     return VarInfo(meta, default_accumulators())
 end
 
@@ -194,8 +194,20 @@ end
 # VarInfo constructors #
 ########################
 
+function untyped_varinfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+)
+    return untyped_vector_varinfo(rng, model, init_strategy)
+end
+
+function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return untyped_vector_varinfo(Random.default_rng(), model, init_strategy)
+end
+
 """
-    untyped_varinfo([rng, ]model[, init_strategy])
+    untyped_legacy_varinfo([rng, ]model[, init_strategy])
 
 Construct a VarInfo object for the given `model`, which has just a single
 `Metadata` as its metadata field.
@@ -205,19 +217,21 @@ Construct a VarInfo object for the given `model`, which has just a single
 - `model::Model`: The model for which to create the varinfo object
 - `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
-function untyped_varinfo(
+function untyped_legacy_varinfo(
     rng::Random.AbstractRNG,
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
     return last(init!!(rng, model, VarInfo(Metadata()), init_strategy))
 end
-function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return untyped_varinfo(Random.default_rng(), model, init_strategy)
+function untyped_legacy_varinfo(
+    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
+)
+    return untyped_legacy_varinfo(Random.default_rng(), model, init_strategy)
 end
 
 """
-    typed_varinfo(vi::UntypedVarInfo)
+    typed_legacy_varinfo(vi::UntypedVarInfo)
 
 This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
 `vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
@@ -225,7 +239,7 @@ global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `meta
 a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
 symbol.
 """
-function typed_varinfo(vi::UntypedVarInfo)
+function typed_legacy_varinfo(vi::UntypedVarInfo)
     meta = vi.metadata
     new_metas = Metadata[]
     # Symbols of all instances of `VarName{sym}` in `vi.vns`
@@ -289,10 +303,14 @@ function typed_varinfo(
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return typed_varinfo(untyped_varinfo(rng, model, init_strategy))
+    return typed_vector_varinfo(rng, model, init_strategy)
 end
 function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
     return typed_varinfo(Random.default_rng(), model, init_strategy)
+end
+
+function typed_varinfo(vi::UntypedVectorVarInfo)
+    return typed_vector_varinfo(vi)
 end
 
 """
