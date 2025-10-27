@@ -41,6 +41,8 @@ chosen_combinations = [
     ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
+    ("Smorgasbord", smorgasbord_instance, :typed_vector, :forwarddiff, true),
+    ("Smorgasbord", smorgasbord_instance, :untyped_vector, :forwarddiff, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
     ("Smorgasbord", smorgasbord_instance, :typed, :enzyme, true),
