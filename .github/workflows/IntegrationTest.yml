@@ -25,7 +25,7 @@ jobs:
 
       - uses: julia-actions/setup-julia@v2
         with:
-          version: 1
+          version: 1.11
 
       - uses: julia-actions/julia-buildpkg@v1
 
@@ -43,8 +43,6 @@ jobs:
 
       - name: Load this and run the downstream tests
         shell: julia --color=yes --project=downstream {0}
-        # Don't test Turing.jl on 1.12.0, it's broken because of Libtask
-        if: ${{ !(steps.julia-version.outputs.julia == '1.12.0' && matrix.package.repo == 'Turing.jl') }}
         run: |
           using Pkg
           try
