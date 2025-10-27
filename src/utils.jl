@@ -777,7 +777,7 @@ end
 """
     float_type_with_fallback(T::DataType)
 
-Return `T` if it is a Real; otherwise return `float(Real)`.
+Return `T` if it is a non-integer Real, `float(T)` for integer types, and `float(Real)` otherwise.
 """
 float_type_with_fallback(::Type) = float(Real)
 float_type_with_fallback(::Type{Union{}}) = float(Real)
