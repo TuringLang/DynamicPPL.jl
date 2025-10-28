@@ -49,7 +49,7 @@ box:
 - [`getlogprior`](@ref): calculate the log prior in the model space, ignoring
   any effects of linking
 - [`getloglikelihood`](@ref): calculate the log likelihood (this is unaffected
-  by linking, since transforms are only applied to random variables) 
+  by linking, since transforms are only applied to random variables)
 
 !!! note
     By default, `LogDensityFunction` uses `getlogjoint_internal`, i.e., the

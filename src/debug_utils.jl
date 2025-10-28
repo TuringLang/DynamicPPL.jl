@@ -407,7 +407,7 @@ julia> @model function demo_incorrect()
        end
 demo_incorrect (generic function with 2 methods)
 
-julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't actually 
+julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't actually
        # alert us to the issue of `x` being sampled twice.
        model = demo_incorrect(); varinfo = VarInfo(model);
 

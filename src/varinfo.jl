@@ -983,7 +983,7 @@ function filter_subsumed(filter_vns, filtered_vns)
 end
 
 @generated function _link!!(
-    ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
+    ::NamedTuple{metadata_names}, vi, varnames::NamedTuple{vns_names}
 ) where {metadata_names,vns_names}
     expr = Expr(:block)
     for f in metadata_names
@@ -994,7 +994,7 @@ end
             expr.args,
             quote
                 f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
+                f_vns = filter_subsumed(varnames.$f, f_vns)
                 if !isempty(f_vns)
                     if !is_transformed(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
