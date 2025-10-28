@@ -148,7 +148,7 @@ end
         # Empty.
         vnv = DynamicPPL.VarNamedVector()
         @test isempty(vnv)
-        @test eltype(vnv) == Real
+        @test eltype(vnv) == Union{}
 
         # Empty with types.
         vnv = DynamicPPL.VarNamedVector{VarName,Float64,typeof(identity)}()
