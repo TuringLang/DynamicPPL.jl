@@ -107,7 +107,7 @@ julia> vnv.vals
   6
 
 julia> println(vnv.num_inactive);
-OrderedDict(1 => 2)
+Dict(1 => 2)
 ```
 
 This helps avoid unnecessary memory allocations for values that repeatedly change dimension.
@@ -138,7 +138,7 @@ struct VarNamedVector{
     """
     mapping from a `VarName` to its integer index in `varnames`, `ranges` and `transforms`
     """
-    varname_to_index::OrderedDict{K,Int}
+    varname_to_index::Dict{K,Int}
 
     """
     vector of `VarNames` for the variables, where `varnames[varname_to_index[vn]] == vn`
@@ -182,7 +182,7 @@ struct VarNamedVector{
     Inactive entries always come after the last active entry for the given variable.
     See the extended help with `??VarNamedVector` for more details.
     """
-    num_inactive::OrderedDict{Int,Int}
+    num_inactive::Dict{Int,Int}
 
     function VarNamedVector(
         varname_to_index,
@@ -191,7 +191,7 @@ struct VarNamedVector{
         vals::TVal,
         transforms::TTrans,
         is_unconstrained=fill!(BitVector(undef, length(varnames)), 0),
-        num_inactive=OrderedDict{Int,Int}();
+        num_inactive=Dict{Int,Int}();
         check_consistency::Bool=CHECK_CONSISTENCY_DEFAULT,
     ) where {K,V,TVN<:AbstractVector{K},TVal<:AbstractVector{V},TTrans<:AbstractVector}
         if check_consistency
@@ -307,7 +307,7 @@ function VarNamedVector(
     if !(eltype(varnames) <: VarName)
         varnames = convert(Vector{VarName}, varnames)
     end
-    varname_to_index = OrderedDict{eltype(varnames),Int}(
+    varname_to_index = Dict{eltype(varnames),Int}(
         vn => i for (i, vn) in enumerate(varnames)
     )
     vals = reduce(vcat, vals_vecs)
@@ -857,7 +857,7 @@ function loosen_types!!(
         vn_type = promote_type(K, KNew)
         transform_type = promote_type(Trans, TransNew)
         return VarNamedVector(
-            OrderedDict{vn_type,Int}(vnv.varname_to_index),
+            Dict{vn_type,Int}(vnv.varname_to_index),
             Vector{vn_type}(vnv.varnames),
             vnv.ranges,
             vnv.vals,
@@ -913,7 +913,7 @@ julia> vnv_tight.transforms
 """
 function tighten_types(vnv::VarNamedVector)
     return VarNamedVector(
-        OrderedDict(vnv.varname_to_index...),
+        Dict(vnv.varname_to_index...),
         map(identity, vnv.varnames),
         copy(vnv.ranges),
         map(identity, vnv.vals),
@@ -1150,7 +1150,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     F = promote_type(F_left, F_right)
 
     # Allocate.
-    varname_to_index = OrderedDict{V,Int}()
+    varname_to_index = Dict{V,Int}()
     ranges = UnitRange{Int}[]
     vals = T[]
     transforms = F[]
