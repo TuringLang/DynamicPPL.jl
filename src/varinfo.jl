@@ -789,10 +789,16 @@ function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
 end
 
-function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
-    set_transformed!!(getmetadata(vi, vn), val, vn)
-    return vi
+function set_transformed!!(vi::NTVarInfo, val::Bool, vn::VarName)
+    md = set_transformed!!(getmetadata(vi, vn), val, vn)
+    return Accessors.@set vi.metadata[getsym(vn)] = md
 end
+
+function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
+    md = set_transformed!!(getmetadata(vi, vn), val, vn)
+    return VarInfo(md, vi.accs)
+end
+
 function set_transformed!!(metadata::Metadata, val::Bool, vn::VarName)
     metadata.is_transformed[getidx(metadata, vn)] = val
     return metadata
@@ -800,7 +806,7 @@ end
 
 function set_transformed!!(vi::VarInfo, val::Bool)
     for vn in keys(vi)
-        set_transformed!!(vi, val, vn)
+        vi = set_transformed!!(vi, val, vn)
     end
 
     return vi
