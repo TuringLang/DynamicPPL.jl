@@ -2,6 +2,21 @@
 
 ## 0.39.0
 
+Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
+
+## 0.38.3
+
+Add an implementation of `returned(::Model, ::AbstractDict{<:VarName})`.
+Please note we generally recommend using Dict, as NamedTuples cannot correctly represent variables with indices / fields on the left-hand side of tildes, like `x[1]` or `x.a`.
+
+The generic method `returned(::Model, values, keys)` is deprecated and will be removed in the next minor version.
+
+## 0.38.2
+
+Added a compatibility entry for JET@0.11.
+
+> > > > > > > main
+
 ## 0.38.1
 
 Added `from_linked_vec_transform` and `from_vec_transform` methods for `ProductNamedTupleDistribution`.

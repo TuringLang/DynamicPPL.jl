@@ -1103,44 +1103,36 @@ function predict end
 
 """
     returned(model::Model, parameters::NamedTuple)
-    returned(model::Model, values, keys)
-    returned(model::Model, values, keys)
+    returned(model::Model, parameters::AbstractDict{<:VarName})
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
-
-If a `NamedTuple` is given, `keys=keys(parameters)` and `values=values(parameters)`.
 
 # Example
 ```jldoctest
 julia> using DynamicPPL, Distributions
 
-julia> @model function demo(xs)
-           s ~ InverseGamma(2, 3)
-           m_shifted ~ Normal(10, √s)
-           m = m_shifted - 10
-           for i in eachindex(xs)
-               xs[i] ~ Normal(m, √s)
-           end
-           return (m, )
+julia> @model function demo()
+           m ~ Normal()
+           return (mp1 = m + 1,)
        end
 demo (generic function with 2 methods)
 
-julia> model = demo(randn(10));
+julia> model = demo();
 
-julia> parameters = (; s = 1.0, m_shifted=10.0);
+julia> returned(model, (; m = 1.0))
+(mp1 = 2.0,)
 
-julia> returned(model, parameters)
-(0.0,)
-
-julia> returned(model, values(parameters), keys(parameters))
-(0.0,)
+julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
+(mp1 = 3.0,)
 ```
 """
-function returned(model::Model, parameters::NamedTuple)
-    fixed_model = fix(model, parameters)
-    return fixed_model()
-end
-
-function returned(model::Model, values, keys)
-    return returned(model, NamedTuple{keys}(values))
+function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
+    vi = DynamicPPL.setaccs!!(VarInfo(), ())
+    # Note: we can't use `fix(model, parameters)` because
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
+    # Use `nothing` as the fallback to ensure that any missing parameters cause an error
+    ctx = InitContext(Random.default_rng(), InitFromParams(parameters, nothing))
+    new_model = setleafcontext(model, ctx)
+    # We can't use new_model() because that overwrites it with an InitContext of its own.
+    return first(evaluate!!(new_model, vi))
 end
