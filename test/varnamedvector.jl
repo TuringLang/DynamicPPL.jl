@@ -151,7 +151,7 @@ end
         @test eltype(vnv) == Real
 
         # Empty with types.
-        vnv = DynamicPPL.VarNamedVector{VarName,Float64}()
+        vnv = DynamicPPL.VarNamedVector{VarName,Float64,typeof(identity)}()
         @test isempty(vnv)
         @test eltype(vnv) == Float64
     end
@@ -369,13 +369,13 @@ end
             # Explicitly setting the transformation.
             increment(x) = x .+ 10
             vnv = deepcopy(vnv_base)
-            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_left), typeof(increment))
+            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_left), eltype(vnv), typeof(increment))
             DynamicPPL.setindex_internal!(
                 vnv, to_vec_left(val_left .+ 100), vn_left, increment
             )
             @test vnv[vn_left] == to_vec_left(val_left .+ 110)
 
-            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_right), typeof(increment))
+            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_right), eltype(vnv), typeof(increment))
             DynamicPPL.setindex_internal!(
                 vnv, to_vec_right(val_right .+ 100), vn_right, increment
             )
