@@ -315,7 +315,7 @@ function untyped_vector_varinfo(
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return untyped_vector_varinfo(untyped_varinfo(rng, model, init_strategy))
+    return last(init!!(rng, model, VarInfo(VarNamedVector()), init_strategy))
 end
 function untyped_vector_varinfo(
     model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
