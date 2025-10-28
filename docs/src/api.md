@@ -176,11 +176,11 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples) or a single sample represented as a `NamedTuple`.
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples), or a single sample represented as a `NamedTuple` or a dictionary of VarNames.
 
 ```@docs
 returned(::DynamicPPL.Model, ::MCMCChains.Chains)
-returned(::DynamicPPL.Model, ::NamedTuple)
+returned(::DynamicPPL.Model, ::Union{NamedTuple,AbstractDict{<:VarName}})
 ```
 
 For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using

@@ -321,6 +321,38 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
+    @testset "returned() on NamedTuple / Dict" begin
+        @model function demo_returned()
+            a ~ Normal()
+            b ~ Normal()
+            return (asq=a^2, bsq=b^2)
+        end
+        model = demo_returned()
+
+        @testset "NamedTuple" begin
+            params = (a=1.0, b=2.0)
+            results = returned(model, params)
+            @test results.asq == params.a^2
+            @test results.bsq == params.b^2
+            # `returned` should error when not all parameters are provided
+            @test_throws ErrorException returned(model, (; a=1.0))
+            @test_throws ErrorException returned(model, (a=1.0, b=missing))
+        end
+        @testset "Dict" begin
+            params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
+            results = returned(model, params)
+            @test results.asq == params[@varname(a)]^2
+            @test results.bsq == params[@varname(b)]^2
+            # `returned` should error when not all parameters are provided
+            @test_throws ErrorException returned(
+                model, Dict{VarName,Float64}(@varname(a) => 1.0)
+            )
+            @test_throws ErrorException returned(
+                model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
+            )
+        end
+    end
+
     @testset "returned() on `LKJCholesky`" begin
         n = 10
         d = 2
