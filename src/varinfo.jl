@@ -1658,30 +1658,45 @@ end
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
 the `VarInfo` `vi`, mutating if it makes sense.
 """
-function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
-    if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
-    elseif vi isa NTVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
-    end
+function BangBang.push!!(vi::VarInfo, vn::VarName, val, dist::Distribution)
+    @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
+    md = push!!(getmetadata(vi, vn), vn, val, dist)
+    return VarInfo(md, vi.accs)
+end
 
+function BangBang.push!!(vi::NTVarInfo, vn::VarName, val, dist::Distribution)
+    @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
     sym = getsym(vn)
-    if vi isa NTVarInfo && ~haskey(vi.metadata, sym)
+    meta = if ~haskey(vi.metadata, sym)
         # The NamedTuple doesn't have an entry for this variable, let's add one.
-        val = tovec(r)
-        md = Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
-        vi = Accessors.@set vi.metadata[sym] = md
+        _new_submetadata(vi, vn, val, dist)
     else
-        meta = getmetadata(vi, vn)
-        push!(meta, vn, r, dist)
+        push!!(getmetadata(vi, vn), vn, val, dist)
     end
-
+    vi = Accessors.@set vi.metadata[sym] = meta
     return vi
 end
 
-function Base.push!(vi::UntypedVectorVarInfo, vn::VarName, val, args...)
-    push!(getmetadata(vi, vn), vn, val, args...)
-    return vi
+"""
+    _new_submetadata(vi::VarInfo{NamedTuple{Names,SubMetas}}, args...) where {Names,SubMetas}
+
+Create a new sub-metadata for an NTVarInfo. The type is chosen by the types of existing
+SubMetas.
+"""
+@generated function _new_submetadata(vi::VarInfo{NamedTuple{Names,SubMetas}}, vn, r, dist) where {Names,SubMetas}
+    has_vnv = any(s -> s <: VarNamedVector, SubMetas.parameters)
+    return if has_vnv
+        :(return _new_vnv_submetadata(vn, r, dist))
+    else
+        :(return _new_metadata_submetadata(vn, r, dist))
+    end
+end
+
+_new_vnv_submetadata(vn, r, _) = VarNamedVector([vn], [r])
+
+function _new_metadata_submetadata(vn, r, dist)
+    val = tovec(r)
+    return Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
 end
 
 function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
@@ -1703,6 +1718,11 @@ function Base.push!(meta::Metadata, vn, r, dist)
     append!(meta.vals, val)
     push!(meta.dists, dist)
     push!(meta.is_transformed, false)
+    return meta
+end
+
+function BangBang.push!!(meta::Metadata, vn, r, dist)
+    push!(meta, vn, r, dist)
     return meta
 end
 

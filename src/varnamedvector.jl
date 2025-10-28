@@ -803,9 +803,14 @@ function update_internal!(
     return nothing
 end
 
-function BangBang.push!(vnv::VarNamedVector, vn, val, dist)
+function Base.push!(vnv::VarNamedVector, vn, val, dist)
     f = from_vec_transform(dist)
     return setindex_internal!(vnv, tovec(val), vn, f)
+end
+
+function BangBang.push!!(vnv::VarNamedVector, vn, val, dist)
+    f = from_vec_transform(dist)
+    return setindex_internal!!(vnv, tovec(val), vn, f)
 end
 
 # BangBang versions of the above functions.
