@@ -146,7 +146,7 @@ struct LogDensityFunction{
             is_supported(adtype) ||
                 @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
             # Get a set of dummy params to use for prep
-            x = map(identity, varinfo[:])
+            x = [val for val in varinfo[:]]
             if use_closure(adtype)
                 prep = DI.prepare_gradient(
                     LogDensityAt(model, getlogdensity, varinfo), adtype, x
@@ -282,7 +282,7 @@ function LogDensityProblems.logdensity_and_gradient(
 ) where {M,F,V,AD<:ADTypes.AbstractADType}
     f.prep === nothing &&
         error("Gradient preparation not available; this should not happen")
-    x = map(identity, x)  # Concretise type
+    x = [val for val in  x]  # Concretise type
     # Make branching statically inferrable, i.e. type-stable (even if the two
     # branches happen to return different types)
     return if use_closure(f.adtype)

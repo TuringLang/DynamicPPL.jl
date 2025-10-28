@@ -260,7 +260,7 @@ function run_ad(
     if isnothing(params)
         params = varinfo[:]
     end
-    params = map(identity, params)  # Concretise
+    params = [p for p in params]  # Concretise
 
     # Calculate log-density and gradient with the backend of interest
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
