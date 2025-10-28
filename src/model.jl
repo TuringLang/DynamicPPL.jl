@@ -1128,7 +1128,7 @@ julia> returned(model, (; m = 1.0))
 (mp1 = 2.0,)
 
 julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
-(3.0,)
+(mp1 = 3.0,)
 ```
 """
 function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
