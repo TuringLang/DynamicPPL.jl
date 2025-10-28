@@ -1103,44 +1103,41 @@ function predict end
 
 """
     returned(model::Model, parameters::NamedTuple)
-    returned(model::Model, values, keys)
-    returned(model::Model, values, keys)
+    returned(model::Model, parameters::AbstractDict{<:VarName})
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
 
-If a `NamedTuple` is given, `keys=keys(parameters)` and `values=values(parameters)`.
+    returned(model::Model, values, keys)
+
+Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
+This method is deprecated; use the NamedTuple or AbstractDict version instead.
 
 # Example
 ```jldoctest
 julia> using DynamicPPL, Distributions
 
-julia> @model function demo(xs)
-           s ~ InverseGamma(2, 3)
-           m_shifted ~ Normal(10, √s)
-           m = m_shifted - 10
-           for i in eachindex(xs)
-               xs[i] ~ Normal(m, √s)
-           end
-           return (m, )
+julia> @model function demo()
+           m ~ Normal()
+           return (mp1 = m + 1,)
        end
 demo (generic function with 2 methods)
 
-julia> model = demo(randn(10));
+julia> model = demo();
 
-julia> parameters = (; s = 1.0, m_shifted=10.0);
+julia> returned(model, (; m = 1.0))
+(mp1 = 2.0,)
 
-julia> returned(model, parameters)
-(0.0,)
-
-julia> returned(model, values(parameters), keys(parameters))
-(0.0,)
+julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
+(3.0,)
 ```
 """
-function returned(model::Model, parameters::NamedTuple)
-    fixed_model = fix(model, parameters)
-    return fixed_model()
+function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
+    # use `nothing` as the fallback to ensure that any missing parameters cause an error
+    ctx = InitContext(Random.default_rng(), InitFromParams(parameters, nothing))
+    new_model = setleafcontext(model, ctx)
+    # We can't use new_model() because that overwrites it with an InitContext of its own.
+    return first(evaluate!!(new_model, VarInfo()))
 end
-
-function returned(model::Model, values, keys)
-    return returned(model, NamedTuple{keys}(values))
-end
+Base.@deprecate returned(model::Model, values, keys) returned(
+    model, NamedTuple{keys}(values)
+)

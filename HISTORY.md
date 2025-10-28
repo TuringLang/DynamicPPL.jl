@@ -1,5 +1,14 @@
 # DynamicPPL Changelog
 
+## 0.38.3
+
+Add an implementation of `returned(::Model, ::AbstractDict{<:VarName})`.
+Also tweaked the implementation of `returned(::Model, ::NamedTuple)` to accumulate log-probabilities correctly.
+
+Please note we generally recommend using Dict though, as NamedTuples cannot correctly represent variables with indices / fields on the left-hand side of tildes, like `x[1]` or `x.a`.
+
+The generic method `returned(::Model, values, keys)` is deprecated and will be removed in the next minor version.
+
 ## 0.38.2
 
 Added a compatibility entry for JET@0.11.
