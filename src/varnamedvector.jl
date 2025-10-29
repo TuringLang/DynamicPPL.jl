@@ -65,17 +65,17 @@ julia> vnv = setindex!!(vnv, [0.0, 0.0, 0.0, 0.0], @varname(x));
 julia> vnv = setindex!!(vnv, reshape(1:6, (2,3)), @varname(y));
 
 julia> vnv.vals
-10-element Vector{Float64}:
+10-element Vector{Real}:
  0.0
  0.0
  0.0
  0.0
- 1.0
- 2.0
- 3.0
- 4.0
- 5.0
- 6.0
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
 ```
 
 The `varnames`, `ranges`, and `varname_to_index` fields keep track of which value belongs to
@@ -94,17 +94,17 @@ value, rather than resizing `vnv.vals`, some elements in `vnv.vals` are marked a
 julia> vnv = update!!(vnv, [46.0, 48.0], @varname(x));
 
 julia> vnv.vals
-10-element Vector{Float64}:
+10-element Vector{Real}:
  46.0
  48.0
   0.0
   0.0
-  1.0
-  2.0
-  3.0
-  4.0
-  5.0
-  6.0
+  1
+  2
+  3
+  4
+  5
+  6
 
 julia> println(vnv.num_inactive);
 Dict(1 => 2)
@@ -116,20 +116,20 @@ like `setindex!` and `getindex!` rather than directly accessing `vnv.vals`.
 
 ```jldoctest varnamedvector-struct
 julia> vnv[@varname(x)]
-2-element Vector{Float64}:
+2-element Vector{Real}:
  46.0
  48.0
 
 julia> getindex_internal(vnv, :)
-8-element Vector{Float64}:
+8-element Vector{Real}:
  46.0
  48.0
-  1.0
-  2.0
-  3.0
-  4.0
-  5.0
-  6.0
+  1
+  2
+  3
+  4
+  5
+  6
 ```
 """
 struct VarNamedVector{
@@ -864,9 +864,15 @@ function loosen_types!!(
     if KNew <: K && VNew <: V && TNew <: T
         return vnv
     else
-        vn_type = promote_type(K, KNew)
-        val_type = promote_type(V, VNew)
-        transform_type = promote_type(T, TNew)
+        # We could use promote_type here, instead of typejoin. However, that would e.g.
+        # cause Ints to be converted to Float64s, since
+        # promote_type(Int, Float64) == Float64, which can cause problems. See
+        # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+        # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
+        # and Missing, rather than falling back on Any. However, it's not exported.
+        vn_type = typejoin(K, KNew)
+        val_type = typejoin(V, VNew)
+        transform_type = typejoin(T, TNew)
         # This function would work the same way if the first if statement a few lines above
         # was skipped, and we only checked for the below condition. However, the first one
         # is constant propagated away at compile time (at least on Julia v1.11.7), whereas
@@ -1171,12 +1177,12 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     # Determine `eltype` of `vals`.
     T_left = eltype(left_vnv.vals)
     T_right = eltype(right_vnv.vals)
-    T = promote_type(T_left, T_right)
+    T = typejoin(T_left, T_right)
 
     # Determine `eltype` of `varnames`.
     V_left = eltype(left_vnv.varnames)
     V_right = eltype(right_vnv.varnames)
-    V = promote_type(V_left, V_right)
+    V = typejoin(V_left, V_right)
     if !(V <: VarName)
         V = VarName
     end
@@ -1184,7 +1190,7 @@ function Base.merge(left_vnv::VarNamedVector, right_vnv::VarNamedVector)
     # Determine `eltype` of `transforms`.
     F_left = eltype(left_vnv.transforms)
     F_right = eltype(right_vnv.transforms)
-    F = promote_type(F_left, F_right)
+    F = typejoin(F_left, F_right)
 
     # Allocate.
     varname_to_index = Dict{V,Int}()
