@@ -18,7 +18,7 @@ function print_results(results_table)
         "t(eval)/t(ref)",
         "t(grad)/t(eval)",
     ]
-    pretty_table(
+    return pretty_table(
         table_matrix;
         column_labels=header,
         backend=:text,
