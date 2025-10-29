@@ -10,7 +10,13 @@ rng = StableRNG(23)
 function print_results(results_table)
     table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
     header = [
-        "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
+        "Model",
+        "Dim",
+        "AD Backend",
+        "VarInfo",
+        "Linked",
+        "t(eval)/t(ref)",
+        "t(grad)/t(eval)",
     ]
     pretty_table(
         table_matrix;
