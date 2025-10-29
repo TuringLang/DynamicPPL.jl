@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.38.4
+
+Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.
+
 ## 0.38.3
 
 Add an implementation of `returned(::Model, ::AbstractDict{<:VarName})`.
