@@ -41,3 +41,26 @@ Possibly existing indices of `varname` are neglected.
 ) where {s,missings,_F,_a,_T}
     return s in missings
 end
+
+function remove_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
+    return if Optic === typeof(identity)
+        vn
+    elseif Optic <: Accessors.IndexLens
+        VarName{sym}()
+    else
+        AbstractPPL.prefix(
+            remove_trailing_index(AbstractPPL.unprefix(vn, VarName{sym}())), VarName{sym}()
+        )
+    end
+end
+
+function split_trailing_index(vn::VarName{sym,Optic}) where {sym,Optic}
+    return if Optic === typeof(identity)
+        (vn, identity)
+    elseif Optic <: Accessors.IndexLens
+        (VarName{sym}(), getoptic(vn))
+    else
+        (pref, index) = split_trailing_index(AbstractPPL.unprefix(vn, VarName{sym}()))
+        (AbstractPPL.prefix(pref, VarName{sym}()), index)
+    end
+end
