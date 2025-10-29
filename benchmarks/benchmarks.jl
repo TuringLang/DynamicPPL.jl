@@ -7,6 +7,21 @@ using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
+function print_results(results_table)
+    table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
+    header = [
+        "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
+    ]
+    pretty_table(
+        table_matrix;
+        column_labels=header,
+        backend=:text,
+        formatters=[fmt__printf("%.1f", [6, 7])],
+        fit_table_in_display_horizontally=false,
+        fit_table_in_display_vertically=false,
+    )
+end
+
 # Create DynamicPPL.Model instances to run benchmarks on.
 smorgasbord_instance = Models.smorgasbord(randn(rng, 100), randn(rng, 100))
 loop_univariate1k, multivariate1k = begin
@@ -82,17 +97,9 @@ for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinati
             relative_ad_eval_time,
         ),
     )
+    println("Results so far:")
+    print_results(results_table)
 end
 
-table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
-header = [
-    "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
-]
-pretty_table(
-    table_matrix;
-    column_labels=header,
-    backend=:text,
-    formatters=[fmt__printf("%.1f", [6, 7])],
-    fit_table_in_display_horizontally=false,
-    fit_table_in_display_vertically=false,
-)
+println("Final results:")
+print_results(results_table)
