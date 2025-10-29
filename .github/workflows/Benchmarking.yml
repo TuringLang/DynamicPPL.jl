@@ -33,14 +33,19 @@ jobs:
           echo "$version_info" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Capture benchmark output into a variable
+          # Capture benchmark output into a variable. The sed and tail calls cut out anything but the
+          # final block of results.
           echo "Running Benchmarks..."
-          benchmark_output=$(julia --project=benchmarks benchmarks/benchmarks.jl)
-          
+          benchmark_output=$(\
+            julia --project=benchmarks benchmarks/benchmarks.jl \
+            | sed -n '/Final results:/,$p' \
+            | tail -n +2\
+          )
+
           # Print benchmark results directly to the workflow log
           echo "Benchmark Results:"
           echo "$benchmark_output"
-          
+
           # Set the benchmark output as an env var for later steps
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           echo "$benchmark_output" >> $GITHUB_ENV
