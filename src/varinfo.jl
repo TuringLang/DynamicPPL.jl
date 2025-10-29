@@ -315,7 +315,7 @@ function untyped_vector_varinfo(
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return untyped_vector_varinfo(untyped_varinfo(rng, model, init_strategy))
+    return last(init!!(rng, model, VarInfo(VarNamedVector()), init_strategy))
 end
 function untyped_vector_varinfo(
     model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
@@ -789,10 +789,16 @@ function setval!(md::Metadata, val, vn::VarName)
     return md.vals[getrange(md, vn)] = tovec(val)
 end
 
-function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
-    set_transformed!!(getmetadata(vi, vn), val, vn)
-    return vi
+function set_transformed!!(vi::NTVarInfo, val::Bool, vn::VarName)
+    md = set_transformed!!(getmetadata(vi, vn), val, vn)
+    return Accessors.@set vi.metadata[getsym(vn)] = md
 end
+
+function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
+    md = set_transformed!!(getmetadata(vi, vn), val, vn)
+    return VarInfo(md, vi.accs)
+end
+
 function set_transformed!!(metadata::Metadata, val::Bool, vn::VarName)
     metadata.is_transformed[getidx(metadata, vn)] = val
     return metadata
@@ -800,7 +806,7 @@ end
 
 function set_transformed!!(vi::VarInfo, val::Bool)
     for vn in keys(vi)
-        set_transformed!!(vi, val, vn)
+        vi = set_transformed!!(vi, val, vn)
     end
 
     return vi
@@ -977,7 +983,7 @@ function filter_subsumed(filter_vns, filtered_vns)
 end
 
 @generated function _link!!(
-    ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
+    ::NamedTuple{metadata_names}, vi, varnames::NamedTuple{vns_names}
 ) where {metadata_names,vns_names}
     expr = Expr(:block)
     for f in metadata_names
@@ -988,7 +994,7 @@ end
             expr.args,
             quote
                 f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
+                f_vns = filter_subsumed(varnames.$f, f_vns)
                 if !isempty(f_vns)
                     if !is_transformed(vi, f_vns[1])
                         # Iterate over all `f_vns` and transform
@@ -1652,30 +1658,47 @@ end
 Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
 the `VarInfo` `vi`, mutating if it makes sense.
 """
-function BangBang.push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
-    if vi isa UntypedVarInfo
-        @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
-    elseif vi isa NTVarInfo
-        @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
-    end
+function BangBang.push!!(vi::VarInfo, vn::VarName, val, dist::Distribution)
+    @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
+    md = push!!(getmetadata(vi, vn), vn, val, dist)
+    return VarInfo(md, vi.accs)
+end
 
+function BangBang.push!!(vi::NTVarInfo, vn::VarName, val, dist::Distribution)
+    @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
     sym = getsym(vn)
-    if vi isa NTVarInfo && ~haskey(vi.metadata, sym)
+    meta = if ~haskey(vi.metadata, sym)
         # The NamedTuple doesn't have an entry for this variable, let's add one.
-        val = tovec(r)
-        md = Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
-        vi = Accessors.@set vi.metadata[sym] = md
+        _new_submetadata(vi, vn, val, dist)
     else
-        meta = getmetadata(vi, vn)
-        push!(meta, vn, r, dist)
+        push!!(getmetadata(vi, vn), vn, val, dist)
     end
-
+    vi = Accessors.@set vi.metadata[sym] = meta
     return vi
 end
 
-function Base.push!(vi::UntypedVectorVarInfo, vn::VarName, val, args...)
-    push!(getmetadata(vi, vn), vn, val, args...)
-    return vi
+"""
+    _new_submetadata(vi::VarInfo{NamedTuple{Names,SubMetas}}, args...) where {Names,SubMetas}
+
+Create a new sub-metadata for an NTVarInfo. The type is chosen by the types of existing
+SubMetas.
+"""
+@generated function _new_submetadata(
+    vi::VarInfo{NamedTuple{Names,SubMetas}}, vn, r, dist
+) where {Names,SubMetas}
+    has_vnv = any(s -> s <: VarNamedVector, SubMetas.parameters)
+    return if has_vnv
+        :(return _new_vnv_submetadata(vn, r, dist))
+    else
+        :(return _new_metadata_submetadata(vn, r, dist))
+    end
+end
+
+_new_vnv_submetadata(vn, r, _) = VarNamedVector([vn], [r])
+
+function _new_metadata_submetadata(vn, r, dist)
+    val = tovec(r)
+    return Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
 end
 
 function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
@@ -1697,6 +1720,11 @@ function Base.push!(meta::Metadata, vn, r, dist)
     append!(meta.vals, val)
     push!(meta.dists, dist)
     push!(meta.is_transformed, false)
+    return meta
+end
+
+function BangBang.push!!(meta::Metadata, vn, r, dist)
+    push!(meta, vn, r, dist)
     return meta
 end
 

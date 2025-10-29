@@ -414,7 +414,7 @@ DynamicPPL.reset!
 DynamicPPL.update!
 DynamicPPL.insert!
 DynamicPPL.loosen_types!!
-DynamicPPL.tighten_types
+DynamicPPL.tighten_types!!
 ```
 
 ```@docs
