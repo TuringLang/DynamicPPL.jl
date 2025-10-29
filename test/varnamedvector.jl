@@ -369,13 +369,17 @@ end
             # Explicitly setting the transformation.
             increment(x) = x .+ 10
             vnv = deepcopy(vnv_base)
-            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_left), eltype(vnv), typeof(increment))
+            vnv = DynamicPPL.loosen_types!!(
+                vnv, typeof(vn_left), eltype(vnv), typeof(increment)
+            )
             DynamicPPL.setindex_internal!(
                 vnv, to_vec_left(val_left .+ 100), vn_left, increment
             )
             @test vnv[vn_left] == to_vec_left(val_left .+ 110)
 
-            vnv = DynamicPPL.loosen_types!!(vnv, typeof(vn_right), eltype(vnv), typeof(increment))
+            vnv = DynamicPPL.loosen_types!!(
+                vnv, typeof(vn_right), eltype(vnv), typeof(increment)
+            )
             DynamicPPL.setindex_internal!(
                 vnv, to_vec_right(val_right .+ 100), vn_right, increment
             )

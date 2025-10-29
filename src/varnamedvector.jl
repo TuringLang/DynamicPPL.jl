@@ -1006,7 +1006,9 @@ function setindex_internal!!(
     end
 end
 
-function insert_internal!!(vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing)
+function insert_internal!!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
     if transform === nothing
         transform = identity
     end
@@ -1015,7 +1017,9 @@ function insert_internal!!(vnv::VarNamedVector, val::AbstractVector, vn::VarName
     return vnv
 end
 
-function update_internal!!(vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing)
+function update_internal!!(
+    vnv::VarNamedVector, val::AbstractVector, vn::VarName, transform=nothing
+)
     transform_resolved = transform === nothing ? gettransform(vnv, vn) : transform
     vnv = loosen_types!!(vnv, typeof(vn), eltype(val), typeof(transform_resolved))
     update_internal!(vnv, val, vn, transform)

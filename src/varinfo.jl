@@ -1683,7 +1683,9 @@ end
 Create a new sub-metadata for an NTVarInfo. The type is chosen by the types of existing
 SubMetas.
 """
-@generated function _new_submetadata(vi::VarInfo{NamedTuple{Names,SubMetas}}, vn, r, dist) where {Names,SubMetas}
+@generated function _new_submetadata(
+    vi::VarInfo{NamedTuple{Names,SubMetas}}, vn, r, dist
+) where {Names,SubMetas}
     has_vnv = any(s -> s <: VarNamedVector, SubMetas.parameters)
     return if has_vnv
         :(return _new_vnv_submetadata(vn, r, dist))
