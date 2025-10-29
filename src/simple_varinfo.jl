@@ -484,6 +484,7 @@ function set_transformed!!(vi::SimpleOrThreadSafeSimple, trans::Bool, ::VarName)
             "Individual variables in SimpleVarInfo cannot have different `set_transformed` statuses.",
         )
     end
+    return vi
 end
 
 is_transformed(vi::SimpleVarInfo) = !(vi.transformation isa NoTransformation)

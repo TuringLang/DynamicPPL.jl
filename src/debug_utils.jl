@@ -27,7 +27,7 @@ add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
 show_varname(io::IO, varname::VarName) = print(io, varname)
 function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
     # Attempt to make the type concrete in case the symbol is shared.
-    return _show_varname(io, map(identity, varname))
+    return _show_varname(io, [vn for vn in varname])
 end
 function _show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
     # Print the first and last element of the array.
@@ -407,7 +407,7 @@ julia> @model function demo_incorrect()
        end
 demo_incorrect (generic function with 2 methods)
 
-julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't actually 
+julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't actually
        # alert us to the issue of `x` being sampled twice.
        model = demo_incorrect(); varinfo = VarInfo(model);
 

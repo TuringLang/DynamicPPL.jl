@@ -180,7 +180,9 @@ function tilde_assume!!(
     end
     # Neither of these set the `trans` flag so we have to do it manually if
     # necessary.
-    insert_transformed_value && set_transformed!!(vi, true, vn)
+    if insert_transformed_value
+        vi = set_transformed!!(vi, true, vn)
+    end
     # `accumulate_assume!!` wants untransformed values as the second argument.
     vi = accumulate_assume!!(vi, x, logjac, vn, dist)
     # We always return the untransformed value here, as that will determine

@@ -197,7 +197,7 @@ Everything else is optional, and can be categorised into several groups:
 1. _How to specify the results to compare against._
 
    Once logp and its gradient has been calculated with the specified `adtype`,
-   it can optionally be tested for correctness. The exact way this is tested 
+   it can optionally be tested for correctness. The exact way this is tested
    is specified in the `test` parameter.
 
    There are several options for this:
@@ -260,7 +260,7 @@ function run_ad(
     if isnothing(params)
         params = varinfo[:]
     end
-    params = map(identity, params)  # Concretise
+    params = [p for p in params]  # Concretise
 
     # Calculate log-density and gradient with the backend of interest
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
