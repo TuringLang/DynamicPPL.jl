@@ -581,7 +581,6 @@ end
     end
 
     @testset "loosen and tighten types" begin
-
         """
             test_tightenability(vnv::VarNamedVector)
 

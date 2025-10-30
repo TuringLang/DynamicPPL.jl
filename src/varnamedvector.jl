@@ -346,8 +346,8 @@ function is_tightly_typed(vnv::VarNamedVector)
     v = eltype(vnv.vals)
     t = eltype(vnv.transforms)
     return (isconcretetype(k) || k === Union{}) &&
-            (isconcretetype(v) || v === Union{}) &&
-            (isconcretetype(t) || t === Union{})
+           (isconcretetype(v) || v === Union{}) &&
+           (isconcretetype(t) || t === Union{})
 end
 
 getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
