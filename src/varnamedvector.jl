@@ -1020,6 +1020,7 @@ function insert_internal!!(
     end
     vnv = loosen_types!!(vnv, typeof(vn), eltype(val), typeof(transform))
     insert_internal!(vnv, val, vn, transform)
+    vnv = tighten_types!!(vnv)
     return vnv
 end
 
@@ -1029,6 +1030,7 @@ function update_internal!!(
     transform_resolved = transform === nothing ? gettransform(vnv, vn) : transform
     vnv = loosen_types!!(vnv, typeof(vn), eltype(val), typeof(transform_resolved))
     update_internal!(vnv, val, vn, transform)
+    vnv = tighten_types!!(vnv)
     return vnv
 end
 
