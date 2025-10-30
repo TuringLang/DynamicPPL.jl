@@ -79,7 +79,7 @@ function relax_container_types(vnv::DynamicPPL.VarNamedVector, vn::VarName, val)
 end
 function relax_container_types(vnv::DynamicPPL.VarNamedVector, vns, vals)
     if need_varnames_relaxation(vnv, vns, vals)
-        varname_to_index_new = convert(OrderedDict{VarName,Int}, vnv.varname_to_index)
+        varname_to_index_new = convert(Dict{VarName,Int}, vnv.varname_to_index)
         varnames_new = convert(Vector{VarName}, vnv.varnames)
     else
         varname_to_index_new = vnv.varname_to_index
@@ -517,7 +517,7 @@ end
         @testset "deterministic" begin
             n = 5
             vn = @varname(x)
-            vnv = DynamicPPL.VarNamedVector(OrderedDict(vn => [true]))
+            vnv = DynamicPPL.VarNamedVector(Dict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
             # Growing should not create inactive ranges.
             for i in 1:n
@@ -543,7 +543,7 @@ end
         @testset "random" begin
             n = 5
             vn = @varname(x)
-            vnv = DynamicPPL.VarNamedVector(OrderedDict(vn => [true]))
+            vnv = DynamicPPL.VarNamedVector(Dict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
 
             # Insert a bunch of random-length vectors.
