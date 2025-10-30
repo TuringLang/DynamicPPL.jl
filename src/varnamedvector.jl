@@ -341,10 +341,13 @@ function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
            vnv_left.num_inactive == vnv_right.num_inactive
 end
 
-function is_concretely_typed(vnv::VarNamedVector)
-    return isconcretetype(eltype(vnv.varnames)) &&
-           isconcretetype(eltype(vnv.vals)) &&
-           isconcretetype(eltype(vnv.transforms))
+function is_tightly_typed(vnv::VarNamedVector)
+    k = eltype(vnv.varnames)
+    v = eltype(vnv.vals)
+    t = eltype(vnv.transforms)
+    return (isconcretetype(k) || k === Union{}) &&
+            (isconcretetype(v) || v === Union{}) &&
+            (isconcretetype(t) || t === Union{})
 end
 
 getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
@@ -880,7 +883,16 @@ function loosen_types!!(
         return if vn_type == K && val_type == V && transform_type == T
             vnv
         elseif isempty(vnv)
-            VarNamedVector(vn_type[], val_type[], transform_type[])
+            VarNamedVector(
+                Dict{vn_type,Int}(),
+                Vector{vn_type}(),
+                UnitRange{Int}[],
+                Vector{val_type}(),
+                Vector{transform_type}(),
+                BitVector(),
+                Dict{Int,Int}();
+                check_consistency=false,
+            )
         else
             # TODO(mhauru) We allow a `vnv` to have any AbstractVector type as its vals, but
             # then here always revert to Vector.
@@ -944,7 +956,7 @@ julia> vnv_tight.transforms
 ```
 """
 function tighten_types!!(vnv::VarNamedVector)
-    return if is_concretely_typed(vnv)
+    return if is_tightly_typed(vnv)
         # There can not be anything to tighten, so short-circuit.
         vnv
     elseif isempty(vnv)
