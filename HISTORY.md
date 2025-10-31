@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.0
+
+Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
+
 ## 0.38.4
 
 Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.
@@ -14,6 +18,8 @@ The generic method `returned(::Model, values, keys)` is deprecated and will be r
 ## 0.38.2
 
 Added a compatibility entry for JET@0.11.
+
+> > > > > > > main
 
 ## 0.38.1
 
