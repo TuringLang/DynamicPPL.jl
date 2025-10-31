@@ -1118,6 +1118,9 @@ care about them.
 
 This is in a sense the reverse operation of `vnv[:]`.
 
+The return value may share memory with the input `vnv`, and thus one can not be mutated
+safely without affecting the other.
+
 Unflatten recontiguifies the internal storage, getting rid of any inactive entries.
 
 # Examples
@@ -1139,15 +1142,20 @@ function unflatten(vnv::VarNamedVector, vals::AbstractVector)
             ),
         )
     end
-    new_ranges = deepcopy(vnv.ranges)
-    recontiguify_ranges!(new_ranges)
+    new_ranges = vnv.ranges
+    num_inactive = vnv.num_inactive
+    if has_inactive(vnv)
+        new_ranges = recontiguify_ranges!(new_ranges)
+        num_inactive = Dict{Int,Int}()
+    end
     return VarNamedVector(
         vnv.varname_to_index,
         vnv.varnames,
         new_ranges,
         vals,
         vnv.transforms,
-        vnv.is_unconstrained;
+        vnv.is_unconstrained,
+        num_inactive;
         check_consistency=false,
     )
 end
@@ -1442,6 +1450,9 @@ julia> vnv[@varname(x)]  # All the values are still there.
 ```
 """
 function contiguify!(vnv::VarNamedVector)
+    if !has_inactive(vnv)
+        return vnv
+    end
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
     old_vals = copy(vnv.vals)
