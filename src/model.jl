@@ -1107,11 +1107,6 @@ function predict end
 
 Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
 
-    returned(model::Model, values, keys)
-
-Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
-This method is deprecated; use the NamedTuple or AbstractDict version instead.
-
 # Example
 ```jldoctest
 julia> using DynamicPPL, Distributions
@@ -1141,6 +1136,3 @@ function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarN
     # We can't use new_model() because that overwrites it with an InitContext of its own.
     return first(evaluate!!(new_model, vi))
 end
-Base.@deprecate returned(model::Model, values, keys) returned(
-    model, NamedTuple{keys}(values)
-)
