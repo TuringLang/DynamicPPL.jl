@@ -1585,9 +1585,15 @@ Set the current value(s) of the random variable `vn` in `vi` to `val`.
 The value(s) may or may not be transformed to Euclidean space.
 """
 setindex!(vi::VarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
+
 function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
-    setindex!(vi, val, vn)
-    return vi
+    md = setindex!!(getmetadata(vi, vn), val, vn)
+    return VarInfo(md, vi.accs)
+end
+
+function BangBang.setindex!!(vi::NTVarInfo, val, vn::VarName)
+    submd = setindex!!(getmetadata(vi, vn), val, vn)
+    return Accessors.@set vi.metadata[getsym(vn)] = submd
 end
 
 @inline function findvns(vi, f_vns)
