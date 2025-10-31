@@ -80,6 +80,10 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
         retvals = model(rng)
         vns = [VarName{k}() for k in keys(retvals)]
         SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
+    elseif varinfo_choice == :typed_vector
+        DynamicPPL.typed_vector_varinfo(rng, model)
+    elseif varinfo_choice == :untyped_vector
+        DynamicPPL.untyped_vector_varinfo(rng, model)
     else
         error("Unknown varinfo choice: $varinfo_choice")
     end
