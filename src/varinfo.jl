@@ -90,7 +90,7 @@ the left-hand side of tilde statements. For example, `x[1]` and `x[2]` both
 have the same symbol `x`.
 
 Several type aliases are provided for these forms of VarInfos:
-- `VarInfo{<:Metadata}` is `UntypedVarInfo`
+- `VarInfo{<:Metadata}` is `UntypedLegacyVarInfo`
 - `VarInfo{<:VarNamedVector}` is `UntypedVectorVarInfo`
 - `VarInfo{<:NamedTuple}` is `NTVarInfo`
 
@@ -143,7 +143,7 @@ function VarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior
 end
 
 const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
-const UntypedVarInfo = VarInfo{<:Metadata}
+const UntypedLegacyVarInfo = VarInfo{<:Metadata}
 # TODO: NTVarInfo carries no information about the type of the actual metadata
 # i.e. the elements of the NamedTuple. It could be Metadata or it could be
 # VarNamedVector.
@@ -154,6 +154,7 @@ const NTVarInfo = VarInfo{<:NamedTuple}
 const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
     VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
 }
+const UntypedVarInfo = UntypedVectorVarInfo
 
 function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
     return (vi1.metadata == vi2.metadata && vi1.accs == vi2.accs)
@@ -231,7 +232,7 @@ function untyped_legacy_varinfo(
 end
 
 """
-    typed_legacy_varinfo(vi::UntypedVarInfo)
+    typed_legacy_varinfo(vi::UntypedLegacyVarInfo)
 
 This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
 `vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
@@ -239,7 +240,7 @@ global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `meta
 a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
 symbol.
 """
-function typed_legacy_varinfo(vi::UntypedVarInfo)
+function typed_legacy_varinfo(vi::UntypedLegacyVarInfo)
     meta = vi.metadata
     new_metas = Metadata[]
     # Symbols of all instances of `VarName{sym}` in `vi.vns`
@@ -324,7 +325,7 @@ Return a VarInfo object for the given `model`, which has just a single
 - `model::Model`: The model for which to create the varinfo object
 - `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
 """
-function untyped_vector_varinfo(vi::UntypedVarInfo)
+function untyped_vector_varinfo(vi::UntypedLegacyVarInfo)
     md = metadata_to_varnamedvector(vi.metadata)
     return VarInfo(md, copy(vi.accs))
 end
@@ -644,11 +645,11 @@ end
 const VarView = Union{Int,UnitRange,Vector{Int}}
 
 """
-    setval!(vi::UntypedVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})
+    setval!(vi::UntypedLegacyVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})
 
 Set the value of `vi.vals[vview]` to `val`.
 """
-setval!(vi::UntypedVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
+setval!(vi::UntypedLegacyVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
 
 """
     getmetadata(vi::VarInfo, vn::VarName)
@@ -843,10 +844,10 @@ set_transformed!!(vi::VarInfo, ::AbstractTransformation) = set_transformed!!(vi,
 
 Returns a tuple of the unique symbols of random variables in `vi`.
 """
-syms(vi::UntypedVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
+syms(vi::UntypedLegacyVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
 syms(vi::NTVarInfo) = keys(vi.metadata)
 
-_getidcs(vi::UntypedVarInfo) = 1:length(vi.metadata.idcs)
+_getidcs(vi::UntypedLegacyVarInfo) = 1:length(vi.metadata.idcs)
 _getidcs(vi::NTVarInfo) = _getidcs(vi.metadata)
 
 @generated function _getidcs(metadata::NamedTuple{names}) where {names}
@@ -967,7 +968,7 @@ function link!!(
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
-function _link!!(vi::UntypedVarInfo, vns)
+function _link!!(vi::UntypedLegacyVarInfo, vns)
     # TODO: Change to a lazy iterator over `vns`
     if ~is_transformed(vi, vns[1])
         for vn in vns
@@ -1081,7 +1082,7 @@ function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
     return maybe_invlink_before_eval!!(t, vi, model)
 end
 
-function _invlink!!(vi::UntypedVarInfo, vns)
+function _invlink!!(vi::UntypedLegacyVarInfo, vns)
     if is_transformed(vi, vns[1])
         for vn in vns
             f = linked_internal_to_internal_transform(vi, vn)
@@ -1495,7 +1496,7 @@ function _invlink_metadata!!(
 end
 
 # TODO(mhauru) The treatment of the case when some variables are transformed and others are
-# not should be revised. It used to be the case that for UntypedVarInfo `is_transformed`
+# not should be revised. It used to be the case that for UntypedLegacyVarInfo `is_transformed`
 # returned whether the first variable was linked. For NTVarInfo we did an OR over the first
 # variables under each symbol. We now more consistently use OR, but I'm not convinced this
 # is really the right thing to do.
@@ -1618,7 +1619,7 @@ function Base.haskey(vi::NTVarInfo, vn::VarName)
     return any(md_haskey)
 end
 
-function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
+function Base.show(io::IO, ::MIME"text/plain", vi::UntypedLegacyVarInfo)
     lines = Tuple{String,Any}[
         ("VarNames", vi.metadata.vns),
         ("Range", vi.metadata.ranges),
@@ -1673,7 +1674,7 @@ function _show_varnames(io::IO, vi)
     end
 end
 
-function Base.show(io::IO, vi::UntypedVarInfo)
+function Base.show(io::IO, vi::UntypedLegacyVarInfo)
     print(io, "VarInfo (")
     _show_varnames(io, vi)
     print(io, "; accumulators: ")
@@ -1845,11 +1846,11 @@ end
 
 values_as(vi::VarInfo) = vi.metadata
 values_as(vi::VarInfo, ::Type{Vector}) = copy(getindex_internal(vi, Colon()))
-function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
+function values_as(vi::UntypedLegacyVarInfo, ::Type{NamedTuple})
     iter = values_from_metadata(vi.metadata)
     return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
 end
-function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
+function values_as(vi::UntypedLegacyVarInfo, ::Type{D}) where {D<:AbstractDict}
     return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
 end
 

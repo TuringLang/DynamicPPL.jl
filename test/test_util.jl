@@ -23,7 +23,7 @@ function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
         "TypedVarInfo"
     end
 end
-short_varinfo_name(::DynamicPPL.UntypedVarInfo) = "UntypedVarInfo"
+short_varinfo_name(::DynamicPPL.UntypedLegacyVarInfo) = "UntypedLegacyVarInfo"
 short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
 function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
     return "SimpleVarInfo{<:NamedTuple,<:Ref}"
