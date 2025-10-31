@@ -341,10 +341,13 @@ function ==(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
            vnv_left.num_inactive == vnv_right.num_inactive
 end
 
-function is_concretely_typed(vnv::VarNamedVector)
-    return isconcretetype(eltype(vnv.varnames)) &&
-           isconcretetype(eltype(vnv.vals)) &&
-           isconcretetype(eltype(vnv.transforms))
+function is_tightly_typed(vnv::VarNamedVector)
+    k = eltype(vnv.varnames)
+    v = eltype(vnv.vals)
+    t = eltype(vnv.transforms)
+    return (isconcretetype(k) || k === Union{}) &&
+           (isconcretetype(v) || v === Union{}) &&
+           (isconcretetype(t) || t === Union{})
 end
 
 getidx(vnv::VarNamedVector, vn::VarName) = vnv.varname_to_index[vn]
@@ -880,7 +883,16 @@ function loosen_types!!(
         return if vn_type == K && val_type == V && transform_type == T
             vnv
         elseif isempty(vnv)
-            VarNamedVector(vn_type[], val_type[], transform_type[])
+            VarNamedVector(
+                Dict{vn_type,Int}(),
+                Vector{vn_type}(),
+                UnitRange{Int}[],
+                Vector{val_type}(),
+                Vector{transform_type}(),
+                BitVector(),
+                Dict{Int,Int}();
+                check_consistency=false,
+            )
         else
             # TODO(mhauru) We allow a `vnv` to have any AbstractVector type as its vals, but
             # then here always revert to Vector.
@@ -944,7 +956,7 @@ julia> vnv_tight.transforms
 ```
 """
 function tighten_types!!(vnv::VarNamedVector)
-    return if is_concretely_typed(vnv)
+    return if is_tightly_typed(vnv)
         # There can not be anything to tighten, so short-circuit.
         vnv
     elseif isempty(vnv)
@@ -1020,6 +1032,7 @@ function insert_internal!!(
     end
     vnv = loosen_types!!(vnv, typeof(vn), eltype(val), typeof(transform))
     insert_internal!(vnv, val, vn, transform)
+    vnv = tighten_types!!(vnv)
     return vnv
 end
 
@@ -1029,6 +1042,7 @@ function update_internal!!(
     transform_resolved = transform === nothing ? gettransform(vnv, vn) : transform
     vnv = loosen_types!!(vnv, typeof(vn), eltype(val), typeof(transform_resolved))
     update_internal!(vnv, val, vn, transform)
+    vnv = tighten_types!!(vnv)
     return vnv
 end
 
@@ -1104,6 +1118,9 @@ care about them.
 
 This is in a sense the reverse operation of `vnv[:]`.
 
+The return value may share memory with the input `vnv`, and thus one can not be mutated
+safely without affecting the other.
+
 Unflatten recontiguifies the internal storage, getting rid of any inactive entries.
 
 # Examples
@@ -1125,15 +1142,20 @@ function unflatten(vnv::VarNamedVector, vals::AbstractVector)
             ),
         )
     end
-    new_ranges = deepcopy(vnv.ranges)
-    recontiguify_ranges!(new_ranges)
+    new_ranges = vnv.ranges
+    num_inactive = vnv.num_inactive
+    if has_inactive(vnv)
+        new_ranges = recontiguify_ranges!(new_ranges)
+        num_inactive = Dict{Int,Int}()
+    end
     return VarNamedVector(
         vnv.varname_to_index,
         vnv.varnames,
         new_ranges,
         vals,
         vnv.transforms,
-        vnv.is_unconstrained;
+        vnv.is_unconstrained,
+        num_inactive;
         check_consistency=false,
     )
 end
@@ -1428,6 +1450,9 @@ julia> vnv[@varname(x)]  # All the values are still there.
 ```
 """
 function contiguify!(vnv::VarNamedVector)
+    if !has_inactive(vnv)
+        return vnv
+    end
     # Extract the re-contiguified values.
     # NOTE: We need to do this before we update the ranges.
     old_vals = copy(vnv.vals)

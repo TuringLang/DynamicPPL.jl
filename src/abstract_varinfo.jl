@@ -595,7 +595,7 @@ OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
   m => 2.0
 
 julia> values_as(vi, Vector)
-2-element Vector{Real}:
+2-element Vector{Float64}:
  1.0
  2.0
 ```

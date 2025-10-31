@@ -40,7 +40,7 @@
             end
         end
         @test DynamicPPL.Experimental.determine_suitable_varinfo(demo4()) isa
-            DynamicPPL.UntypedVarInfo
+            DynamicPPL.NTVarInfo
 
         # In this model, the type error occurs in the user code rather than in DynamicPPL.
         @model function demo5()

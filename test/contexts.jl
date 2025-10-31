@@ -417,12 +417,15 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
     @testset "InitContext" begin
         empty_varinfos = [
-            ("untyped+metadata", VarInfo()),
-            ("typed+metadata", DynamicPPL.typed_varinfo(VarInfo())),
+            ("untyped+metadata", VarInfo(DynamicPPL.Metadata())),
+            (
+                "typed+metadata",
+                DynamicPPL.typed_legacy_varinfo(VarInfo(DynamicPPL.Metadata())),
+            ),
             ("untyped+VNV", VarInfo(DynamicPPL.VarNamedVector())),
             (
                 "typed+VNV",
-                DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
+                DynamicPPL.typed_vector_varinfo(VarInfo(DynamicPPL.VarNamedVector())),
             ),
             ("SVI+NamedTuple", SimpleVarInfo()),
             ("Svi+Dict", SimpleVarInfo(Dict{VarName,Any}())),
