@@ -16,7 +16,7 @@ Check if the `model` supports evaluation using the provided `varinfo`.
 - `varinfo`: The varinfo to verify the support for.
 
 # Keyword Arguments
-- `only_ddpl`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
+- `only_dppl`: If `true`, only consider error reports occuring in the tilde pipeline. Default: `true`.
 
 # Returns
 - `issuccess`: `true` if the model supports the varinfo, otherwise `false`.
@@ -28,7 +28,7 @@ function is_suitable_varinfo end
 function _determine_varinfo_jet end
 
 """
-    determine_suitable_varinfo(model; only_ddpl::Bool=true)
+    determine_suitable_varinfo(model; only_dppl::Bool=true)
 
 Return a suitable varinfo for the given `model`.
 
@@ -42,7 +42,7 @@ See also: [`DynamicPPL.Experimental.is_suitable_varinfo`](@ref).
 - `model`: The model for which to determine the varinfo.
 
 # Keyword Arguments
-- `only_ddpl`: If `true`, only consider error reports within DynamicPPL.jl.
+- `only_dppl`: If `true`, only consider error reports within DynamicPPL.jl.
 
 # Examples
 
@@ -83,10 +83,10 @@ julia> vi isa typeof(DynamicPPL.typed_varinfo(model_with_static_support()))
 true
 ```
 """
-function determine_suitable_varinfo(model::DynamicPPL.Model; only_ddpl::Bool=true)
+function determine_suitable_varinfo(model::DynamicPPL.Model; only_dppl::Bool=true)
     # If JET.jl has been loaded, and thus `determine_varinfo` has been defined, we use that.
     return if Base.get_extension(DynamicPPL, :DynamicPPLJETExt) !== nothing
-        _determine_varinfo_jet(model; only_ddpl)
+        _determine_varinfo_jet(model; only_dppl)
     else
         # Warn the user.
         @warn "JET.jl is not loaded. Assumes the model is compatible with typed varinfo."
