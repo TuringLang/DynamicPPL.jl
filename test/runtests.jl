@@ -3,6 +3,7 @@ using ADTypes
 using DynamicPPL
 using AbstractMCMC
 using AbstractPPL
+using BangBang: delete!!, setindex!!
 using Bijectors
 using DifferentiationInterface
 using Distributions
