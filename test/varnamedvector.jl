@@ -621,14 +621,14 @@ end
         vnv = DynamicPPL.VarNamedVector()
         vnv = setindex!!(vnv, 1.0, vn)
         vnv = setindex!!(vnv, 2, @varname(b))
-        @test ~DynamicPPL.is_tightly_typed(vnv)
+        @test !DynamicPPL.is_tightly_typed(vnv)
         test_tightenability(vnv)
         @inferred DynamicPPL.loosen_types!!(vnv, VarName, Any, Any)
         # Likewise when first mixed types are pushed, but then deleted.
         vnv = DynamicPPL.VarNamedVector()
         vnv = setindex!!(vnv, 1.0, vn)
         vnv = setindex!!(vnv, 2, @varname(b))
-        @test ~DynamicPPL.is_tightly_typed(vnv)
+        @test !DynamicPPL.is_tightly_typed(vnv)
         vnv = delete!!(vnv, vn)
         @test DynamicPPL.is_tightly_typed(vnv)
         test_tightenability(vnv)
@@ -646,17 +646,17 @@ end
         t = eltype(vnv.transforms)
         # Loosen key type.
         vnv = @inferred DynamicPPL.loosen_types!!(vnv, VarName, e, t)
-        @test ~DynamicPPL.is_tightly_typed(vnv)
+        @test !DynamicPPL.is_tightly_typed(vnv)
         vnv = DynamicPPL.tighten_types!!(vnv)
         @test DynamicPPL.is_tightly_typed(vnv)
         # Loosen element type
         vnv = @inferred DynamicPPL.loosen_types!!(vnv, k, Real, t)
-        @test ~DynamicPPL.is_tightly_typed(vnv)
+        @test !DynamicPPL.is_tightly_typed(vnv)
         vnv = DynamicPPL.tighten_types!!(vnv)
         @test DynamicPPL.is_tightly_typed(vnv)
         # Loosen transformation type
         vnv = @inferred DynamicPPL.loosen_types!!(vnv, k, e, Function)
-        @test ~DynamicPPL.is_tightly_typed(vnv)
+        @test !DynamicPPL.is_tightly_typed(vnv)
         vnv = DynamicPPL.tighten_types!!(vnv)
         @test DynamicPPL.is_tightly_typed(vnv)
         # Loosening to the same types as currently should do nothing.
