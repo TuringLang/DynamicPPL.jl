@@ -123,6 +123,7 @@ setleafcontext(::IsLeaf, ::IsLeaf, left::AbstractContext, right::AbstractContext
 """
     DynamicPPL.tilde_assume!!(
         context::AbstractContext,
+        prefix::Union{VarName,Nothing},
         right::Distribution,
         vn::VarName,
         vi::AbstractVarInfo
@@ -134,13 +135,21 @@ sampled value and updated `vi`.
 
 `vn` is the VarName on the left-hand side of the tilde statement.
 
+`prefix` is the currently active prefix; this is `nothing` if there is no active prefix.
+For example, in `a ~ to_submodel(inner_model)`, when executing `inner_model`, the active
+prefix will be `@varname(a)`.
+
 This function should return a tuple `(x, vi)`, where `x` is the sampled value (which
 must be in unlinked space!) and `vi` is the updated VarInfo.
 """
 function tilde_assume!!(
-    context::AbstractContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    context::AbstractContext,
+    prefix::Union{VarName,Nothing},
+    right::Distribution,
+    vn::VarName,
+    vi::AbstractVarInfo,
 )
-    return tilde_assume!!(childcontext(context), right, vn, vi)
+    return tilde_assume!!(childcontext(context), prefix, right, vn, vi)
 end
 
 """

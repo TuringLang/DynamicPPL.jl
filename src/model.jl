@@ -1,9 +1,10 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Tprefix<:Union{VarName,Nothing}}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
         context::Ctx=DefaultContext()
+        prefix::Tprefix=nothing
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
@@ -33,12 +34,21 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
-       AbstractProbabilisticProgram
+struct Model{
+    F,
+    argnames,
+    defaultnames,
+    missings,
+    Targs,
+    Tdefaults,
+    Ctx<:AbstractContext,
+    Tprefix<:Union{VarName,Nothing},
+} <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
+    prefix::Tprefix
 
     @doc """
         Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
@@ -51,9 +61,10 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractConte
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
-            f, args, defaults, context
+        prefix::Tprefix=nothing,
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Tprefix}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Tprefix}(
+            f, args, defaults, context, prefix
         )
     end
 end
@@ -71,6 +82,7 @@ model with different arguments.
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
+    prefix::Union{VarName,Nothing}=nothing,
 ) where {F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
@@ -78,11 +90,19 @@ model with different arguments.
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
+    return :(Model{$(missing_args..., missing_kwargs...)}(
+        f, args, defaults, context, prefix
+    ))
 end
 
-function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
-    return Model(f, args, NamedTuple(kwargs), context)
+function Model(
+    f,
+    args::NamedTuple,
+    context::AbstractContext=DefaultContext(),
+    prefix::Union{VarName,Nothing}=nothing;
+    kwargs...,
+)
+    return Model(f, args, NamedTuple(kwargs), context, prefix)
 end
 
 """
@@ -92,7 +112,7 @@ Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context)
+    return Model(model.f, model.args, model.defaults, context, model.prefix)
 end
 
 """
@@ -427,7 +447,7 @@ Return the conditioned values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: conditioned, contextualize
+julia> using DynamicPPL: conditioned
 
 julia> @model function demo()
            m ~ Normal()
@@ -437,36 +457,25 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have conditioned on + their values.
-       conditioned(condition(m, x=100.0, m=1.0))
+julia> # Condition on some values.
+       cm = m | (; x = 100.0, m = 1.0);
+
+julia> # Returns all the variables we have conditioned on, and their values.
+       conditioned(cm)
 (x = 100.0, m = 1.0)
 
-julia> # Nested ones also work.
-       # (Note that `PrefixContext` also prefixes the variables of any
-       # ConditionContext that is _inside_ it; because of this, the type of the
-       # container has to be broadened to a `Dict`.)
-       cm = condition(contextualize(m, PrefixContext(@varname(a), ConditionContext((m=1.0,)))), x=100.0);
+julia> # If we prefix the model, the conditioned variables will also be prefixed.
+       pm = prefix(cm, @varname(f)); conditioned(pm)
+Dict{VarName{:f}, Float64} with 2 entries:
+  f.x => 100.0
+  f.m => 1.0
 
-julia> Set(keys(conditioned(cm))) == Set([@varname(a.m), @varname(x)])
-true
+julia> # If we condition _after_ the prefix, the prefix is not applied.
+       pm2 = prefix(m, @varname(f)); cm2 = pm2 | (; x = 100.0, m = 1.0);
 
-julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
-       # However, `a.x` will still be a random variable.
-       keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
- a.x
-
-julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
-
-julia> conditioned(cm)
-Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
-  a.m => 1.0
-
-julia> # Now `a.x` will be sampled.
-       keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
- a.x
+julia> # When running this model, the variables inside are not treated as conditioned!
+       conditioned(cm2)
+(x = 100.0, m = 1.0)
 ```
 """
 conditioned(model::Model) = conditioned(model.context)
@@ -770,7 +779,7 @@ Return the fixed values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: fixed, contextualize
+julia> using DynamicPPL: fixed
 
 julia> @model function demo()
            m ~ Normal()
@@ -780,69 +789,28 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have fixed on + their values.
-       fixed(fix(m, x=100.0, m=1.0))
+julia> # Fix some values.
+       fm = fix(m, (; x = 100.0, m = 1.0));
+
+julia> # Returns all the variables we have fixed on, and their values.
+       fixed(fm)
 (x = 100.0, m = 1.0)
 
-julia> # The rest of this is the same as the `condition` example above.
-       cm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
+julia> # If we prefix the model, the fixed variables will also be prefixed.
+       pm = prefix(fm, @varname(f)); fixed(pm)
+Dict{VarName{:f}, Float64} with 2 entries:
+  f.x => 100.0
+  f.m => 1.0
 
-julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
-true
+julia> # If we fix _after_ the prefix, the prefix is not applied.
+       pm2 = prefix(m, @varname(f)); fm2 = fix(pm2, (; x = 100.0, m = 1.0));
 
-julia> keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
- a.x
-
-julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
-
-julia> fixed(cm)
-Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
-  a.m => 1.0
-
-julia> # Now `a.x` will be sampled.
-       keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
- a.x
+julia> # When running this model, the variables inside are not treated as fixed!
+       fixed(fm2)
+(x = 100.0, m = 1.0)
 ```
 """
 fixed(model::Model) = fixed(model.context)
-
-"""
-    prefix(model::Model, x::VarName)
-    prefix(model::Model, x::Val{sym})
-    prefix(model::Model, x::Any)
-
-Return `model` but with all random variables prefixed by `x`, where `x` is either:
-- a `VarName` (e.g. `@varname(a)`),
-- a `Val{sym}` (e.g. `Val(:a)`), or
-- for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
-  this will introduce runtime overheads so is not recommended unless absolutely
-  necessary.
-
-# Examples
-
-```jldoctest
-julia> using DynamicPPL: prefix
-
-julia> @model demo() = x ~ Dirac(1)
-demo (generic function with 2 methods)
-
-julia> rand(prefix(demo(), @varname(my_prefix)))
-(var"my_prefix.x" = 1,)
-
-julia> rand(prefix(demo(), Val(:my_prefix)))
-(var"my_prefix.x" = 1,)
-```
-"""
-prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
-function prefix(model::Model, x::Val{sym}) where {sym}
-    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
-end
-function prefix(model::Model, x)
-    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
-end
 
 """
     (model::Model)([rng, varinfo])

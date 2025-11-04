@@ -14,6 +14,7 @@ NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
 function tilde_assume!!(
     ::DynamicTransformationContext{isinverse},
+    ::Union{VarName,Nothing},
     right::Distribution,
     vn::VarName,
     vi::AbstractVarInfo,

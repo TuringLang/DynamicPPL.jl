@@ -163,6 +163,7 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 """
     DynamicPPL.tilde_assume!!(
         context::AbstractContext,
+        prefix::Union{VarName,Nothing},
         right::DynamicPPL.Submodel,
         vn::VarName,
         vi::AbstractVarInfo
@@ -171,9 +172,13 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 Evaluate the submodel with the given context.
 """
 function tilde_assume!!(
-    context::AbstractContext, right::DynamicPPL.Submodel, vn::VarName, vi::AbstractVarInfo
+    context::AbstractContext,
+    prefix::Union{VarName,Nothing},
+    right::DynamicPPL.Submodel,
+    vn::VarName,
+    vi::AbstractVarInfo,
 )
-    return _evaluate!!(right, vi, context, vn)
+    return _evaluate!!(right, vi, context, prefix, vn)
 end
 
 # When automatic prefixing is used, the submodel itself doesn't carry the
@@ -182,28 +187,31 @@ end
 # passed into this function.
 #
 # `parent_context` here refers to the context of the model that contains the
-# submodel.
+# submodel. `parent_prefix` is the prefix applied to the parent model.
 function _evaluate!!(
     submodel::Submodel{M,AutoPrefix},
     vi::AbstractVarInfo,
     parent_context::AbstractContext,
-    left_vn::VarName,
+    parent_prefix::Union{VarName,Nothing},
+    vn::VarName,
 ) where {M<:Model,AutoPrefix}
     # First, we construct the context to be used when evaluating the submodel. There
     # are several considerations here:
-    # (1) We need to apply an appropriate PrefixContext when evaluating the submodel, but
-    # _only_ if automatic prefixing is supposed to be applied.
-    submodel_context_prefixed = if AutoPrefix
-        PrefixContext(left_vn, submodel.model.context)
+    # (1) Before even touching the contexts, we need to make sure that we apply 
+    # automatic prefixing if it was requested. (If the prefix was manually applied, then
+    # `prefix()` will have been called by the user, and we don't need to do it again.)
+    submodel_prefix = if AutoPrefix
+        # Note that by the time we see it here (in `tilde_assume!!`), `vn`
+        # has already prefixed with `parent_prefix`, so no need to re-prefix it
+        vn
     else
-        submodel.model.context
+        parent_prefix
     end
+    submodel_model = DynamicPPL.prefix(submodel.model, submodel_prefix)
 
     # (2) We need to respect the leaf-context of the parent model. This, unfortunately,
     # means disregarding the leaf-context of the submodel.
-    submodel_context = setleafcontext(
-        submodel_context_prefixed, leafcontext(parent_context)
-    )
+    submodel_context = setleafcontext(submodel_model.context, leafcontext(parent_context))
 
     # (3) We need to use the parent model's context to wrap the whole thing, so that
     # e.g. if the user conditions the parent model, the conditioned variables will be
@@ -211,7 +219,7 @@ function _evaluate!!(
     eval_context = setleafcontext(parent_context, submodel_context)
 
     # (4) Finally, we need to store that context inside the submodel.
-    model = contextualize(submodel.model, eval_context)
+    model = contextualize(submodel_model, eval_context)
 
     # Once that's all set up nicely, we can just _evaluate!! the wrapped model. This
     # returns a tuple of submodel.model's return value and the new varinfo.
