@@ -42,7 +42,7 @@ function make_varname_expression(expr)
 end
 
 """
-    isassumption(expr[, vn])
+    isassumption(expr[, left_vn])
 
 Return an expression that can be evaluated to check if `expr` is an assumption in the
 model.
@@ -55,16 +55,19 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 
-If `vn` is specified, it will be assumed to refer to a expression which
+If `left_vn` is specified, it will be assumed to refer to a expression which
 evaluates to a `VarName`, and this will be used in the subsequent checks.
-If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
+If `left_vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
 used in its place.
 """
-function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
+function isassumption(expr::Union{Expr,Symbol}, left_vn=make_varname_expression(expr))
+    @gensym vn
     return quote
-        if $(DynamicPPL.contextual_isassumption)(
-            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-        )
+        # TODO(penelopeysm): This re-prefixing seems a bit wasteful. I'd really like
+        # the whole `isassumption` thing to be simplified, though, so I'll
+        # leave it till later.
+        $vn = $(DynamicPPL.maybe_prefix)($left_vn, __model__.prefix)
+        if $(DynamicPPL.contextual_isassumption)(__model__.context, $vn)
             # Considered an assumption by `__model__.context` which means either:
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
@@ -78,8 +81,8 @@ function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr)
             #    TODO: Support by adding context to model, and use `model.args`
             #    as the default conditioning. Then we no longer need to check `inargnames`
             #    since it will all be handled by `contextual_isassumption`.
-            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                $(DynamicPPL.inmissings)($vn, __model__)
+            if !($(DynamicPPL.inargnames)($left_vn, __model__)) ||
+                $(DynamicPPL.inmissings)($left_vn, __model__)
                 true
             else
                 $(maybe_view(expr)) === missing
@@ -99,7 +102,7 @@ isassumption(expr) = :(false)
 
 Return `true` if `vn` is considered an assumption by `context`.
 """
-function contextual_isassumption(context::AbstractContext, vn)
+function contextual_isassumption(context::AbstractContext, vn::VarName)
     if hasconditioned_nested(context, vn)
         val = getconditioned_nested(context, vn)
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
@@ -115,9 +118,7 @@ end
 
 isfixed(expr, vn) = false
 function isfixed(::Union{Symbol,Expr}, vn)
-    return :($(DynamicPPL.contextual_isfixed)(
-        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-    ))
+    return :($(DynamicPPL.contextual_isfixed)(__model__.context, $vn))
 end
 
 """
@@ -413,7 +414,9 @@ function generate_assign(left, right)
     return quote
         $right_val = $right
         if $(DynamicPPL.is_extracting_values)(__varinfo__)
-            $vn = $(DynamicPPL.prefix)(__model__.context, $(make_varname_expression(left)))
+            $vn = $(DynamicPPL.maybe_prefix)(
+                $(make_varname_expression(left)), __model__.prefix
+            )
             __varinfo__ = $(map_accumulator!!)(
                 $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
             )
@@ -448,24 +451,23 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption value dist
+    @gensym left_vn vn isassumption value dist
 
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
+        $left_vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
+        $vn = $(DynamicPPL.maybe_prefix)($left_vn, __model__.prefix)
+        $isassumption = $(DynamicPPL.isassumption(left, left_vn))
         if $(DynamicPPL.isfixed(left, vn))
-            $left = $(DynamicPPL.getfixed_nested)(
-                __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-            )
+            $left = $(DynamicPPL.getfixed_nested)(__model__.context, $vn)
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getconditioned_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )
+            # If `left_vn` is not in `argnames`, we need to make sure that the variable is defined.
+            # (Note: we use the unprefixed `left_vn` here rather than `vn` which will have had
+            # prefixes applied!)
+            if !$(DynamicPPL.inargnames)($left_vn, __model__)
+                $left = $(DynamicPPL.getconditioned_nested)(__model__.context, $vn)
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
@@ -495,6 +497,7 @@ function generate_tilde_assume(left, right, vn)
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__.context,
+            __model__.prefix,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             __varinfo__,
         )

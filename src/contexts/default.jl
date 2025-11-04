@@ -21,14 +21,22 @@ NodeTrait(::DefaultContext) = IsLeaf()
 
 """
     DynamicPPL.tilde_assume!!(
-        ::DefaultContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+        ::DefaultContext,
+        prefix::Union{VarName,Nothing},
+        right::Distribution,
+        vn::VarName,
+        vi::AbstractVarInfo
     )
 
 Handle assumed variables. For `DefaultContext`, this function extracts the value associated
 with `vn` from `vi`, If `vi` does not contain an appropriate value then this will error.
 """
 function tilde_assume!!(
-    ::DefaultContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    ::DefaultContext,
+    ::Union{VarName,Nothing},
+    right::Distribution,
+    vn::VarName,
+    vi::AbstractVarInfo,
 )
     y = getindex_internal(vi, vn)
     f = from_maybe_linked_internal_transform(vi, vn, right)

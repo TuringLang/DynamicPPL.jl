@@ -4,6 +4,10 @@
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
+### Breaking changes
+
+`PrefixContext` is removed, etc., etc.... (I'll write this if I actually have to)
+
 ## 0.38.4
 
 Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.

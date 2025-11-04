@@ -467,7 +467,6 @@ Contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 ```@docs
 DefaultContext
-PrefixContext
 ConditionContext
 InitContext
 ```
