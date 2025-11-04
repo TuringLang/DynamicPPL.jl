@@ -79,7 +79,7 @@ function relax_container_types(vnv::DynamicPPL.VarNamedVector, vn::VarName, val)
 end
 function relax_container_types(vnv::DynamicPPL.VarNamedVector, vns, vals)
     if need_varnames_relaxation(vnv, vns, vals)
-        varname_to_index_new = convert(OrderedDict{VarName,Int}, vnv.varname_to_index)
+        varname_to_index_new = convert(Dict{VarName,Int}, vnv.varname_to_index)
         varnames_new = convert(Vector{VarName}, vnv.varnames)
     else
         varname_to_index_new = vnv.varname_to_index
@@ -517,7 +517,7 @@ end
         @testset "deterministic" begin
             n = 5
             vn = @varname(x)
-            vnv = DynamicPPL.VarNamedVector(OrderedDict(vn => [true]))
+            vnv = DynamicPPL.VarNamedVector(Dict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
             # Growing should not create inactive ranges.
             for i in 1:n
@@ -543,7 +543,7 @@ end
         @testset "random" begin
             n = 5
             vn = @varname(x)
-            vnv = DynamicPPL.VarNamedVector(OrderedDict(vn => [true]))
+            vnv = DynamicPPL.VarNamedVector(Dict(vn => [true]))
             @test !DynamicPPL.has_inactive(vnv)
 
             # Insert a bunch of random-length vectors.
@@ -578,6 +578,91 @@ end
         @test vnv[@varname(t[1])] == [4.0]
         @test is_transformed(vnv, @varname(t[1]))
         @test subset(vnv, vns) == vnv
+    end
+
+    @testset "loosen and tighten types" begin
+        """
+            test_tightenability(vnv::VarNamedVector)
+
+        Test that tighten_types!! is a no-op on `vnv`.
+        """
+        function test_tightenability(vnv::DynamicPPL.VarNamedVector)
+            @test vnv == DynamicPPL.tighten_types!!(deepcopy(vnv))
+            # TODO(mhauru) We would like to check something more stringent here, namely that
+            # the operation is compiled to a direct no-op, with no instructions at all. I
+            # don't know how to do that though, so for now we just check that it doesn't
+            # allocate.
+            @allocations(DynamicPPL.tighten_types!!(vnv)) == 0
+            return nothing
+        end
+
+        vn = @varname(a[1])
+        # Test that tighten_types!! is a no-op on an empty VarNamedVector.
+        vnv = DynamicPPL.VarNamedVector()
+        @test DynamicPPL.is_tightly_typed(vnv)
+        test_tightenability(vnv)
+        # Also check that it literally returns the same object, and both tighten and loosen
+        # are type stable.
+        @test vnv === DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.loosen_types!!(vnv, VarName, Any, Any)
+        # Likewise for a VarNamedVector with something pushed into it.
+        vnv = DynamicPPL.VarNamedVector()
+        vnv = setindex!!(vnv, 1.0, vn)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        test_tightenability(vnv)
+        @test vnv === DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.loosen_types!!(vnv, VarName, Any, Any)
+        # Likewise for a VarNamedVector with abstract element-types, when that is needed for
+        # the current contents because mixed types have been pushed into it. However, this
+        # time, since the types are only as tight as they can be, but not actually concrete,
+        # tighten_types!! can't be type stable.
+        vnv = DynamicPPL.VarNamedVector()
+        vnv = setindex!!(vnv, 1.0, vn)
+        vnv = setindex!!(vnv, 2, @varname(b))
+        @test !DynamicPPL.is_tightly_typed(vnv)
+        test_tightenability(vnv)
+        @inferred DynamicPPL.loosen_types!!(vnv, VarName, Any, Any)
+        # Likewise when first mixed types are pushed, but then deleted.
+        vnv = DynamicPPL.VarNamedVector()
+        vnv = setindex!!(vnv, 1.0, vn)
+        vnv = setindex!!(vnv, 2, @varname(b))
+        @test !DynamicPPL.is_tightly_typed(vnv)
+        vnv = delete!!(vnv, vn)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        test_tightenability(vnv)
+        @test vnv === DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.tighten_types!!(vnv)
+        @inferred DynamicPPL.loosen_types!!(vnv, VarName, Any, Any)
+
+        # Test that loosen_types!! does really loosen them and that tighten_types!! reverts
+        # that.
+        vnv = DynamicPPL.VarNamedVector()
+        vnv = setindex!!(vnv, 1.0, vn)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        k = eltype(vnv.varnames)
+        e = eltype(vnv.vals)
+        t = eltype(vnv.transforms)
+        # Loosen key type.
+        vnv = @inferred DynamicPPL.loosen_types!!(vnv, VarName, e, t)
+        @test !DynamicPPL.is_tightly_typed(vnv)
+        vnv = DynamicPPL.tighten_types!!(vnv)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        # Loosen element type
+        vnv = @inferred DynamicPPL.loosen_types!!(vnv, k, Real, t)
+        @test !DynamicPPL.is_tightly_typed(vnv)
+        vnv = DynamicPPL.tighten_types!!(vnv)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        # Loosen transformation type
+        vnv = @inferred DynamicPPL.loosen_types!!(vnv, k, e, Function)
+        @test !DynamicPPL.is_tightly_typed(vnv)
+        vnv = DynamicPPL.tighten_types!!(vnv)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        # Loosening to the same types as currently should do nothing.
+        vnv = @inferred DynamicPPL.loosen_types!!(vnv, k, e, t)
+        @test DynamicPPL.is_tightly_typed(vnv)
+        @allocations(DynamicPPL.loosen_types!!(vnv, k, e, t)) == 0
     end
 end
 

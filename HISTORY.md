@@ -4,6 +4,8 @@
 Renamed keyword argument `only_ddpl` to `only_dppl`.
 Bumped patch version
 
+Improve performance of VarNamedVector, mostly by changing how it handles contiguification.
+
 ## 0.38.4
 
 Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.

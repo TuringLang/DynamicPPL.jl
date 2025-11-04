@@ -71,10 +71,10 @@ end
             r = rand(dist)
 
             @test isempty(vi)
-            @test ~haskey(vi, vn)
+            @test !haskey(vi, vn)
             @test !(vn in keys(vi))
             vi = push!!(vi, vn, r, dist)
-            @test ~isempty(vi)
+            @test !isempty(vi)
             @test haskey(vi, vn)
             @test vn in keys(vi)
 
@@ -95,7 +95,7 @@ end
             vi = empty!!(vi)
             @test isempty(vi)
             vi = push!!(vi, vn, r, dist)
-            @test ~isempty(vi)
+            @test !isempty(vi)
         end
 
         test_base(VarInfo())
