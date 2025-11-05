@@ -210,7 +210,6 @@ function DynamicPPL.predict(
         DynamicPPL.VarInfo(),
         (
             DynamicPPL.LogPriorAccumulator(),
-            DynamicPPL.LogJacobianAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.ValuesAsInModelAccumulator(false),
         ),
@@ -218,34 +217,17 @@ function DynamicPPL.predict(
     _, varinfo = DynamicPPL.init!!(model, varinfo)
     varinfo = DynamicPPL.typed_varinfo(varinfo)
 
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    predictive_samples = map(iters) do (sample_idx, chain_idx)
-        # Extract values from the chain
-        values_dict = chain_sample_to_varname_dict(parameter_only_chain, sample_idx, chain_idx)
-        # Resample any variables that are not present in `values_dict`
-        _, varinfo = DynamicPPL.init!!(
-            rng,
-            model,
-            varinfo,
-            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
-        )
-        vals = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
-        varname_vals = mapreduce(
-            collect,
-            vcat,
-            map(AbstractPPL.varname_and_value_leaves, keys(vals), values(vals)),
-        )
-
-        return (varname_and_values=varname_vals, logp=DynamicPPL.getlogjoint(varinfo))
-    end
-
-    chain_result = reduce(
-        MCMCChains.chainscat,
-        [
-            _predictive_samples_to_chains(predictive_samples[:, chain_idx]) for
-            chain_idx in 1:size(predictive_samples, 2)
-        ],
+    params_and_stats = AbstractMCMC.to_samples(
+        DynamicPPL.ParamsWithStats, parameter_only_chain
     )
+    predictions = map(params_and_stats) do ps
+        _, varinfo = DynamicPPL.init!!(
+            rng, model, varinfo, DynamicPPL.InitFromParams(ps.params)
+        )
+        DynamicPPL.ParamsWithStats(varinfo)
+    end
+    chain_result = AbstractMCMC.from_samples(MCMCChains.Chains, predictions)
+
     parameter_names = if include_all
         MCMCChains.names(chain_result, :parameters)
     else
@@ -261,45 +243,6 @@ function DynamicPPL.predict(
 )
     return DynamicPPL.predict(
         DynamicPPL.Random.default_rng(), model, chain; include_all=include_all
-    )
-end
-
-function _predictive_samples_to_arrays(predictive_samples)
-    variable_names_set = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
-
-    sample_dicts = map(predictive_samples) do sample
-        varname_value_pairs = sample.varname_and_values
-        varnames = map(first, varname_value_pairs)
-        values = map(last, varname_value_pairs)
-        for varname in varnames
-            push!(variable_names_set, varname)
-        end
-
-        return DynamicPPL.OrderedCollections.OrderedDict(zip(varnames, values))
-    end
-
-    variable_names = collect(variable_names_set)
-    variable_values = [
-        get(sample_dicts[i], key, missing) for i in eachindex(sample_dicts),
-        key in variable_names
-    ]
-
-    return variable_names, variable_values
-end
-
-function _predictive_samples_to_chains(predictive_samples)
-    variable_names, variable_values = _predictive_samples_to_arrays(predictive_samples)
-    variable_names_symbols = map(Symbol, variable_names)
-
-    internal_parameters = [:lp]
-    log_probabilities = reshape([sample.logp for sample in predictive_samples], :, 1)
-
-    parameter_names = [variable_names_symbols; internal_parameters]
-    parameter_values = hcat(variable_values, log_probabilities)
-    parameter_values = MCMCChains.concretize(parameter_values)
-
-    return MCMCChains.Chains(
-        parameter_values, parameter_names, (internals=internal_parameters,)
     )
 end
 
@@ -366,17 +309,15 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
     chain = MCMCChains.get_sections(chain_full, :parameters)
     varinfo = DynamicPPL.VarInfo(model)
     iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    return map(iters) do (sample_idx, chain_idx)
-        # Extract values from the chain
-        values_dict = chain_sample_to_varname_dict(chain, sample_idx, chain_idx)
-        # Resample any variables that are not present in `values_dict`, and
-        # return the model's retval.
-        retval, _ = DynamicPPL.init!!(
-            model,
-            varinfo,
-            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    return map(params_with_stats) do ps
+        first(
+            DynamicPPL.init!!(
+                model,
+                varinfo,
+                DynamicPPL.InitFromParams(ps.params, DynamicPPL.InitFromPrior()),
+            ),
         )
-        retval
     end
 end
 
