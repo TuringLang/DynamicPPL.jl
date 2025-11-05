@@ -11,6 +11,7 @@ using Distributions
 using DocumenterMermaid
 # load MCMCChains package extension to make `predict` available
 using MCMCChains
+using AbstractMCMC: AbstractMCMC
 using MarginalLogDensities: MarginalLogDensities
 
 # Need this to document a method which uses a type inside the extension...
