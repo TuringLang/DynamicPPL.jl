@@ -56,7 +56,7 @@
             DynamicPPL.NTVarInfo
         # Should fail if we're including errors in the model body.
         @test DynamicPPL.Experimental.determine_suitable_varinfo(
-            demo5(); only_ddpl=false
+            demo5(); only_dppl=false
         ) isa DynamicPPL.UntypedVarInfo
     end
 
