@@ -64,9 +64,7 @@ Construct an MCMCChains.Chains object by sampling from the prior of `model` for
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
     vi = VarInfo(model)
     vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
-    ps = [
-        ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi)), nothing) for _ in 1:n_iters
-    ]
+    ps = [ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for _ in 1:n_iters]
     return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end
 function make_chain_from_prior(model::Model, n_iters::Int)
