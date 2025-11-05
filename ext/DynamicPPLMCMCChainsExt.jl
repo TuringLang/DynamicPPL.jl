@@ -124,9 +124,13 @@ function AbstractMCMC.to_samples(
         d
     end
     # Statistics
-    internals_chain = MCMCChains.get_sections(chain, :internals)
-    stats_matrix = map(idxs) do (sample_idx, chain_idx)
-        get(internals_chain[sample_idx, :, chain_idx], keys(internals_chain); flatten=true)
+    stats_matrix = if :internals in MCMCChains.sections(chain)
+        internals_chain = MCMCChains.get_sections(chain, :internals)
+        map(idxs) do (sample_idx, chain_idx)
+            get(internals_chain[sample_idx, :, chain_idx], keys(internals_chain); flatten=true)
+        end
+    else
+        fill(NamedTuple(), size(idxs))
     end
     # Bundle them together
     return map(idxs) do (sample_idx, chain_idx)
