@@ -4,12 +4,12 @@ using DynamicPPL: DynamicPPL
 using JET: JET
 
 function DynamicPPL.Experimental.is_suitable_varinfo(
-    model::DynamicPPL.Model, varinfo::DynamicPPL.AbstractVarInfo; only_ddpl::Bool=true
+    model::DynamicPPL.Model, varinfo::DynamicPPL.AbstractVarInfo; only_dppl::Bool=true
 )
     f, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(model, varinfo)
     # If specified, we only check errors originating somewhere in the DynamicPPL.jl.
     # This way we don't just fall back to untyped if the user's code is the issue.
-    result = if only_ddpl
+    result = if only_dppl
         JET.report_call(f, argtypes; target_modules=(JET.AnyFrameModule(DynamicPPL),))
     else
         JET.report_call(f, argtypes)
@@ -18,7 +18,7 @@ function DynamicPPL.Experimental.is_suitable_varinfo(
 end
 
 function DynamicPPL.Experimental._determine_varinfo_jet(
-    model::DynamicPPL.Model; only_ddpl::Bool=true
+    model::DynamicPPL.Model; only_dppl::Bool=true
 )
     # Generate a typed varinfo to test model type stability with
     varinfo = DynamicPPL.typed_varinfo(model)
@@ -26,7 +26,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     # Check type stability of evaluation (i.e. DefaultContext)
     model = DynamicPPL.setleafcontext(model, DynamicPPL.DefaultContext())
     eval_issuccess, eval_result = DynamicPPL.Experimental.is_suitable_varinfo(
-        model, varinfo; only_ddpl
+        model, varinfo; only_dppl
     )
     if !eval_issuccess
         @debug "Evaluation with typed varinfo failed with the following issues:"
@@ -36,7 +36,7 @@ function DynamicPPL.Experimental._determine_varinfo_jet(
     # Check type stability of initialisation (i.e. InitContext)
     model = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
     init_issuccess, init_result = DynamicPPL.Experimental.is_suitable_varinfo(
-        model, varinfo; only_ddpl
+        model, varinfo; only_dppl
     )
     if !init_issuccess
         @debug "Initialisation with typed varinfo failed with the following issues:"
