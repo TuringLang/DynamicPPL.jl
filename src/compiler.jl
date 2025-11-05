@@ -461,9 +461,16 @@ function generate_tilde(left, right)
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
-            # If `vn` is not in `argnames`, we need to make sure that the variable is defined.
-            if !$(DynamicPPL.inargnames)($vn, __model__)
-                $left = $(DynamicPPL.getconditioned_nested)(
+            # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
+            # it's not in `argnames` and wasn't conditioned on, then `isassumption` would
+            # be true).
+            $left = if $(DynamicPPL.inargnames)($vn, __model__)
+                # This is a no-op and looks redundant, but defining the compiler output this
+                # way ensures that the variable `$left` is always defined. See
+                # https://github.com/TuringLang/DynamicPPL.jl/pull/1110.
+                $left
+            else
+                $(DynamicPPL.getconditioned_nested)(
                     __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )
             end
