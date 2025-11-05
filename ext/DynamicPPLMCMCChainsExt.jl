@@ -1,6 +1,6 @@
 module DynamicPPLMCMCChainsExt
 
-using DynamicPPL: DynamicPPL, AbstractPPL
+using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC
 using MCMCChains: MCMCChains
 
 _has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
@@ -34,6 +34,106 @@ function chain_sample_to_varname_dict(
         d[vn] = DynamicPPL.getindex_varname(c, sample_idx, vn, chain_idx)
     end
     return d
+end
+
+"""
+    AbstractMCMC.from_samples(
+        ::Type{MCMCChains.Chains},
+        params_and_stats::AbstractArray{<:ParamsWithStats}
+    )
+
+Convert an array of `DynamicPPL.ParamsWithStats` to an `MCMCChains.Chains` object.
+"""
+function AbstractMCMC.from_samples(
+    ::Type{MCMCChains.Chains},
+    params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats},
+)
+    # Handle parameters
+    all_vn_leaves = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
+    split_dicts = map(params_and_stats) do ps
+        # Separate into individual VarNames.
+        vn_leaves_and_vals = if isempty(ps.params)
+            Tuple{DynamicPPL.VarName,Any}[]
+        else
+            iters = map(
+                AbstractPPL.varname_and_value_leaves,
+                keys(ps.params),
+                values(ps.params),
+            )
+            mapreduce(collect, vcat, iters)
+        end
+        vn_leaves = map(first, vn_leaves_and_vals)
+        vals = map(last, vn_leaves_and_vals)
+        for vn_leaf in vn_leaves
+            push!(all_vn_leaves, vn_leaf)
+        end
+        DynamicPPL.OrderedCollections.OrderedDict(zip(vn_leaves, vals))
+    end
+    vn_leaves = collect(all_vn_leaves)
+    param_vals = [
+        get(split_dicts[i, j], key, missing) for i in eachindex(axes(split_dicts, 1)),
+        key in vn_leaves, j in eachindex(axes(split_dicts, 2))
+    ]
+    param_symbols = map(Symbol, vn_leaves)
+    # Handle statistics
+    stat_keys = DynamicPPL.OrderedCollections.OrderedSet{Symbol}()
+    for ps in params_and_stats
+        for k in keys(ps.stats)
+            push!(stat_keys, k)
+        end
+    end
+    stat_keys = collect(stat_keys)
+    stat_vals = [
+        get(params_and_stats[i, j].stats, key, missing) for
+        i in eachindex(axes(params_and_stats, 1)), key in stat_keys,
+        j in eachindex(axes(params_and_stats, 2))
+    ]
+    # Construct name map and info
+    name_map = (internals=stat_keys,)
+    info = (
+        varname_to_symbol=DynamicPPL.OrderedCollections.OrderedDict(
+            zip(all_vn_leaves, param_symbols)
+        ),
+    )
+    # Concatenate parameter and statistic values
+    vals = cat(param_vals, stat_vals; dims=2)
+    symbols = vcat(param_symbols, stat_keys)
+    return MCMCChains.Chains(MCMCChains.concretize(vals), symbols, name_map; info=info)
+end
+
+"""
+    AbstractMCMC.to_samples(
+        ::Type{DynamicPPL.ParamsWithStats},
+        chain::MCMCChains.Chains
+    )
+
+Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats`.
+
+For this to work, `chain` must contain the `varname_to_symbol` mapping in its `info` field.
+"""
+function AbstractMCMC.to_samples(
+    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains
+)
+    idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
+    # Get parameters
+    params_matrix = map(idxs) do (sample_idx, chain_idx)
+        d = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}()
+        for vn in DynamicPPL.varnames(chain)
+            d[vn] = DynamicPPL.getindex_varname(chain, sample_idx, vn, chain_idx)
+        end
+        d
+    end
+    # Statistics
+    internals_chain = MCMCChains.get_sections(chain, :internals)
+    stats_matrix = map(idxs) do (sample_idx, chain_idx)
+        get(internals_chain[sample_idx, :, chain_idx], keys(internals_chain); flatten=true)
+    end
+    # Bundle them together
+    return map(idxs) do (sample_idx, chain_idx)
+        DynamicPPL.ParamsWithStats(
+            params_matrix[sample_idx, chain_idx], stats_matrix[sample_idx, chain_idx]
+        )
+    end
 end
 
 """

@@ -126,6 +126,8 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
+    # Struct to hold model outputs
+    ParamsWithStats,
     # Convenience macros
     @addlogprob!,
     value_iterator_from_chain,
@@ -169,7 +171,6 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 
 # Necessary forward declarations
 include("utils.jl")
-include("chains.jl")
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
@@ -193,6 +194,7 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+include("chains.jl")
 include("bijector.jl")
 
 include("debug_utils.jl")
