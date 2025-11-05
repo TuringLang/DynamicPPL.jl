@@ -1,8 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.38.6
+
+Renamed keyword argument `only_ddpl` to `only_dppl` for `Experimental.is_suitable_varinfo`.
+
 ## 0.38.5
-Renamed keyword argument `only_ddpl` to `only_dppl`.
-Bumped patch version
 
 Improve performance of VarNamedVector, mostly by changing how it handles contiguification.
 
