@@ -505,3 +505,29 @@ There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_va
 DynamicPPL.Experimental.determine_suitable_varinfo
 DynamicPPL.Experimental.is_suitable_varinfo
 ```
+
+### Converting VarInfos to/from chains
+
+It is a fairly common operation to want to convert a collection of `VarInfo` objects into a chains object for downstream analysis.
+
+This can be accomplished by first converting each `VarInfo` into a `ParamsWithStats` object:
+
+```@docs
+DynamicPPL.ParamsWithStats
+```
+
+Once you have a **matrix** of these, you can convert them into a chains object using:
+
+```@docs
+AbstractMCMC.from_samples(::Type{MCMCChains.Chains}, ::AbstractMatrix{<:DynamicPPL.ParamsWithStats})
+```
+
+If you only have a vector you can use `hcat` to convert it into an `N×1` matrix first.
+
+Furthermore, one can convert chains back into a collection of parameter dictionaries and/or stats with:
+
+```@docs
+AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains)
+```
+
+With these, you can (for example) extract the parameter dictionaries and use `InitFromParams` to re-evaluate a model at each point in the chain.

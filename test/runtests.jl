@@ -73,6 +73,7 @@ include("test_util.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
         include("submodels.jl")
+        include("chains.jl")
         include("bijector.jl")
     end
 
