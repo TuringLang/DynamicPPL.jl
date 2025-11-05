@@ -117,7 +117,7 @@ using DynamicPPL:
             @test at_all64[:LogLikelihood] == ll_f64
 
             @test haskey(AccumulatorTuple(lp_f64), Val(:LogPrior))
-            @test ~haskey(AccumulatorTuple(lp_f64), Val(:LogLikelihood))
+            @test !haskey(AccumulatorTuple(lp_f64), Val(:LogLikelihood))
             @test length(AccumulatorTuple(lp_f64, ll_f64)) == 2
             @test keys(at_all64) == (:LogPrior, :LogLikelihood)
             @test collect(at_all64) == [lp_f64, ll_f64]

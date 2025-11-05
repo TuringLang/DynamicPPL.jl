@@ -4,6 +4,18 @@
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
+## 0.38.7
+
+Made a small tweak to DynamicPPL's compiler output to avoid potential undefined variables when resuming model functions midway through (e.g. with Libtask in Turing's SMC/PG samplers).
+
+## 0.38.6
+
+Renamed keyword argument `only_ddpl` to `only_dppl` for `Experimental.is_suitable_varinfo`.
+
+## 0.38.5
+
+Improve performance of VarNamedVector, mostly by changing how it handles contiguification.
+
 ## 0.38.4
 
 Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.

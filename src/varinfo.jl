@@ -1297,6 +1297,10 @@ function _link_metadata!!(
         metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
         set_transformed!(metadata, true, vn)
     end
+    # Linking can often change the sizes of variables, causing inactive elements. We don't
+    # want to keep them around, since typically linking is done once and then the VarInfo
+    # is evaluated multiple times. Hence we contiguify here.
+    metadata = contiguify!(metadata)
     return metadata, cumulative_logjac
 end
 
@@ -1465,6 +1469,10 @@ function _invlink_metadata!!(
         metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
         set_transformed!(metadata, false, vn)
     end
+    # Linking can often change the sizes of variables, causing inactive elements. We don't
+    # want to keep them around, since typically linking is done once and then the VarInfo
+    # is evaluated multiple times. Hence we contiguify here.
+    metadata = contiguify!(metadata)
     return metadata, cumulative_inv_logjac
 end
 
