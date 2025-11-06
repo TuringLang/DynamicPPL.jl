@@ -1,12 +1,15 @@
 module DynamicPPLFastLDFTests
 
+using AbstractPPL: AbstractPPL
 using DynamicPPL
 using Distributions
 using DistributionsAD: filldist
 using ADTypes
 using DynamicPPL.Experimental: FastLDF
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
+using LinearAlgebra: I
 using Test
+using LogDensityProblems: LogDensityProblems
 
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
@@ -17,7 +20,43 @@ using ReverseDiff: ReverseDiff
     using Mooncake: Mooncake
 end
 
-@testset "Automatic differentiation" begin
+@testset "get_ranges_and_linked" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$varinfo_func" for varinfo_func in [
+            DynamicPPL.untyped_varinfo,
+            DynamicPPL.typed_varinfo,
+            DynamicPPL.untyped_vector_varinfo,
+            DynamicPPL.typed_vector_varinfo,
+        ]
+            unlinked_vi = varinfo_func(m)
+            @testset "$islinked" for islinked in (false, true)
+                vi = if islinked
+                    DynamicPPL.link!!(unlinked_vi, m)
+                else
+                    unlinked_vi
+                end
+                nt_ranges, dict_ranges = DynamicPPL.Experimental.get_ranges_and_linked(vi)
+                params = vi[:]
+                # Iterate over all variables
+                for vn in keys(vi)
+                    # Check that `getindex_internal` returns the same thing as using the ranges
+                    # directly
+                    range_with_linked = if AbstractPPL.getoptic(vn) === identity
+                        nt_ranges[AbstractPPL.getsym(vn)]
+                    else
+                        dict_ranges[vn]
+                    end
+                    @test params[range_with_linked.range] ==
+                        DynamicPPL.getindex_internal(vi, vn)
+                    # Check that the link status is correct
+                    @test range_with_linked.is_linked == islinked
+                end
+            end
+        end
+    end
+end
+
+@testset "AD with FastLDF" begin
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
@@ -43,7 +82,7 @@ end
             ref_logp, ref_grad = ref_ad_result.value_actual, ref_ad_result.grad_actual
 
             @testset "$adtype" for adtype in test_adtypes
-                @info "Testing AD on: $(m.f) - $(short_varinfo_name(linked_varinfo)) - $adtype"
+                @info "Testing AD on: $(m.f) - $adtype"
 
                 @test run_ad(
                     m,

@@ -50,14 +50,10 @@ Fast evaluation has not yet been extended to NamedTuple and Dict parameters. Suc
 representations are capable of handling models with variable sizes and stochastic control
 flow.
 
-However, the path towards implementing these is straightforward:
-
-1. Currently, `FastLDFVectorContext` allows users to input a VarName and obtain the parameter
-   value, plus a boolean indicating whether the value is linked or unlinked. See the
-   `get_range_and_linked` function for details.
-
-2. We would need to implement similar contexts for NamedTuple and Dict parameters. The
-   functionality would be quite similar to `InitContext(InitFromParams(...))`.
+However, the path towards implementing these is straightforward: just make `InitContext` work
+correctly with `OnlyAccsVarInfo`. There will probably be a few functions that need to be
+overloaded to make this work: for example `push!!` on `OnlyAccsVarInfo` can just be defined
+as a no-op.
 """
 
 using DynamicPPL:
@@ -119,6 +115,13 @@ function DynamicPPL.get_param_eltype(
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
     else
+        # TODO(penelopeysm): In principle this can be done with InitContext{InitWithParams}.
+        # See also `src/simple_varinfo.jl` where `infer_nested_eltype` is used to try to
+        # figure out the parameter type from a NamedTuple or Dict. The benefit of
+        # implementing this for InitContext is that we could then use OnlyAccsVarInfo with
+        # it, which means fast evaluation with NamedTuple or Dict parameters! And I believe
+        # that Mooncake / Enzyme should be able to differentiate through that too and
+        # provide a NamedTuple of gradients (although I haven't tested this yet).
         error(
             "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
         )
@@ -188,7 +191,7 @@ function get_range_and_linked(ctx::FastEvalVectorContext, vn::VarName)
     return ctx.varname_ranges[vn]
 end
 
-function tilde_assume!!(
+function DynamicPPL.tilde_assume!!(
     ctx::FastEvalVectorContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     # Note that this function does not use the metadata field of `vi` at all.
@@ -204,7 +207,7 @@ function tilde_assume!!(
     return x, vi
 end
 
-function tilde_observe!!(
+function DynamicPPL.tilde_observe!!(
     ::FastEvalVectorContext,
     right::Distribution,
     left,
@@ -369,6 +372,9 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
     # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
     # here.
+    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
+    # it _should_ do, but this is wrong regardless.
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
     vi = if Threads.nthreads() > 1
         accs = map(
             acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
