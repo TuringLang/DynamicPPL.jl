@@ -20,7 +20,7 @@ using ReverseDiff: ReverseDiff
     using Mooncake: Mooncake
 end
 
-@testset "get_ranges_and_linked" begin
+@testset "FastLDF: Correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         @testset "$varinfo_func" for varinfo_func in [
             DynamicPPL.untyped_varinfo,
@@ -50,6 +50,26 @@ end
                         DynamicPPL.getindex_internal(vi, vn)
                     # Check that the link status is correct
                     @test range_with_linked.is_linked == islinked
+                end
+
+                # Compare results of FastLDF vs ordinary LogDensityFunction. These tests
+                # can eventually go once we replace LogDensityFunction with FastLDF, but
+                # for now it helps to have this check! (Eventually we should just check
+                # against manually computed log-densities).
+                #
+                # TODO(penelopeysm): I think we need to add tests for some really
+                # pathological models here.
+                @testset "$getlogdensity" for getlogdensity in (
+                    DynamicPPL.getlogjoint_internal,
+                    DynamicPPL.getlogjoint,
+                    DynamicPPL.getloglikelihood,
+                    DynamicPPL.getlogprior_internal,
+                    DynamicPPL.getlogprior,
+                )
+                    ldf = DynamicPPL.LogDensityFunction(m, getlogdensity, vi)
+                    fldf = FastLDF(m, getlogdensity, vi)
+                    @test LogDensityProblems.logdensity(ldf, params) ≈
+                        LogDensityProblems.logdensity(fldf, params)
                 end
             end
         end
