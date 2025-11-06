@@ -146,21 +146,11 @@ struct RangeAndLinked
 end
 
 """
-    AbstractFastEvalContext
-
-Abstract type representing fast evaluation contexts. This currently is only subtyped by
-`FastEvalVectorContext`. However, in the future, similar contexts may be implemented for
-NamedTuple and Dict parameters.
-"""
-abstract type AbstractFastEvalContext <: AbstractContext end
-DynamicPPL.NodeTrait(::AbstractFastEvalContext) = DynamicPPL.IsLeaf()
-
-"""
     FastEvalVectorContext(
         iden_varname_ranges::NamedTuple,
         varname_ranges::Dict{VarName,RangeAndLinked},
         params::AbstractVector{<:Real},
-    )
+    ) <: AbstractContext
 
 A context that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
@@ -173,8 +163,7 @@ non-identity-optic VarNames are stored in the `varname_ranges` Dict.
 It would be nice to unify the NamedTuple and Dict approach. See, e.g.
 https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <:
-       AbstractFastEvalContext
+struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <: AbstractContext
     # This NamedTuple stores the ranges for identity VarNames
     iden_varname_ranges::N
     # This Dict stores the ranges for all other VarNames
@@ -182,6 +171,8 @@ struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <:
     # The full parameter vector which we index into to get variable values
     params::T
 end
+DynamicPPL.NodeTrait(::FastEvalVectorContext) = DynamicPPL.IsLeaf()
+
 function get_range_and_linked(
     ctx::FastEvalVectorContext, ::VarName{sym,typeof(identity)}
 ) where {sym}
