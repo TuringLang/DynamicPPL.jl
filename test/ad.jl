@@ -1,6 +1,5 @@
-using DynamicPPL: FastLDF
+using DynamicPPL: LogDensityFunction
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
-using Random: Xoshiro
 
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
@@ -16,25 +15,64 @@ using Random: Xoshiro
         [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
     end
 
+    @testset "Unsupported backends" begin
+        @model demo() = x ~ Normal()
+        @test_logs (:warn, r"not officially supported") LogDensityFunction(
+            demo(); adtype=AutoZygote()
+        )
+    end
+
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = VarInfo(Xoshiro(468), m)
-            linked_varinfo = DynamicPPL.link(varinfo, m)
-            f = FastLDF(m, getlogjoint_internal, linked_varinfo)
-            x = linked_varinfo[:]
+            rand_param_values = DynamicPPL.TestUtils.rand_prior_true(m)
+            vns = DynamicPPL.TestUtils.varnames(m)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(m, rand_param_values, vns)
 
-            # Calculate reference logp + gradient of logp using ForwardDiff
-            ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
-            ref_logp, ref_grad = ref_ad_result.value_actual, ref_ad_result.grad_actual
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                linked_varinfo = DynamicPPL.link(varinfo, m)
+                f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
+                x = DynamicPPL.getparams(f)
 
-            @testset "$adtype" for adtype in test_adtypes
-                @info "Testing AD on: $(m.f) - $adtype"
-                @test run_ad(
-                    m,
-                    adtype;
-                    varinfo=linked_varinfo,
-                    test=WithExpectedResult(ref_logp, ref_grad),
-                ) isa Any
+                # Calculate reference logp + gradient of logp using ForwardDiff
+                ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
+                ref_logp, ref_grad = ref_ad_result.value_actual, ref_ad_result.grad_actual
+
+                @testset "$adtype" for adtype in test_adtypes
+                    @info "Testing AD on: $(m.f) - $(short_varinfo_name(linked_varinfo)) - $adtype"
+
+                    # Put predicates here to avoid long lines
+                    is_mooncake = adtype isa AutoMooncake
+                    is_1_10 = v"1.10" <= VERSION < v"1.11"
+                    is_1_11 = v"1.11" <= VERSION < v"1.12"
+                    is_svi_vnv =
+                        linked_varinfo isa SimpleVarInfo{<:DynamicPPL.VarNamedVector}
+                    is_svi_od = linked_varinfo isa SimpleVarInfo{<:OrderedDict}
+
+                    # Mooncake doesn't work with several combinations of SimpleVarInfo.
+                    if is_mooncake && is_1_11 && is_svi_vnv
+                        # https://github.com/compintell/Mooncake.jl/issues/470
+                        @test_throws ArgumentError DynamicPPL.LogDensityFunction(
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
+                        )
+                    elseif is_mooncake && is_1_10 && is_svi_vnv
+                        # TODO: report upstream
+                        @test_throws UndefRefError DynamicPPL.LogDensityFunction(
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
+                        )
+                    elseif is_mooncake && is_1_10 && is_svi_od
+                        # TODO: report upstream
+                        @test_throws Mooncake.MooncakeRuleCompilationError DynamicPPL.LogDensityFunction(
+                            m, getlogjoint_internal, linked_varinfo; adtype=adtype
+                        )
+                    else
+                        @test run_ad(
+                            m,
+                            adtype;
+                            varinfo=linked_varinfo,
+                            test=WithExpectedResult(ref_logp, ref_grad),
+                        ) isa Any
+                    end
+                end
             end
         end
     end
@@ -45,7 +83,7 @@ using Random: Xoshiro
         test_m = randn(2, 3)
 
         function eval_logp_and_grad(model, m, adtype)
-            ldf = FastLDF(model(); adtype=adtype)
+            ldf = LogDensityFunction(model(); adtype=adtype)
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
