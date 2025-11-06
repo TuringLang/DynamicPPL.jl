@@ -80,7 +80,7 @@ struct FastLDF{
         getlogdensity::Function,
         # This only works with typed Metadata-varinfo.
         # Obviously, this can be generalised later.
-        varinfo::VarInfo{<:NamedTuple{syms}};
+        varinfo::VarInfo{<:NamedTuple{syms}}=VarInfo(model);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     ) where {syms}
         # Figure out which variable corresponds to which index, and
