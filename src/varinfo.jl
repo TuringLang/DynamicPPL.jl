@@ -394,7 +394,9 @@ end
     for f in names
         mdf = :(metadata.$f)
         len = :(sum(length, $mdf.ranges))
-        push!(exprs, :($f = unflatten_metadata($mdf, x[($offset + 1):($offset + $len)])))
+        push!(
+            exprs, :($f = unflatten_metadata($mdf, @view x[($offset + 1):($offset + $len)]))
+        )
         offset = :($offset + $len)
     end
     length(exprs) == 0 && return :(NamedTuple())
@@ -755,7 +757,10 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, 
 # since then we might be returning a `SubArray` rather than an `Array`, which is typically
 # what a bijector would result in, even if the input is a view (`SubArray`).
 # TODO(torfjelde): An alternative is to implement `view` directly instead.
-getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
+function getindex_internal(md::Metadata, vn::VarName)
+    rng = getrange(md, vn)
+    return @view md.vals[rng]
+end
 function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
     return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
 end
@@ -1495,8 +1500,21 @@ space.
 If some but only some of the variables in `vi` are transformed, this function will return
 `true`. This behavior will likely change in the future.
 """
-function is_transformed(vi::VarInfo)
-    return any(is_transformed(vi, vn) for vn in keys(vi))
+function is_transformed(vi::NTVarInfo)
+    return is_transformed(vi.metadata)
+end
+
+@generated function is_transformed(nt::NamedTuple{names}) where {names}
+    expr = Expr(:block)
+    push!(expr.args, :(result = false))
+    for n in names
+        push!(expr.args, :(result = result || is_transformed(nt.$n)))
+    end
+    return expr
+end
+
+function is_transformed(md::Metadata)
+    return any(md.is_transformed)
 end
 
 # The default getindex & setindex!() for get & set values
@@ -1552,7 +1570,7 @@ end
 @generated function _getindex(metadata, ranges::NamedTuple{names}) where {names}
     expr = Expr(:tuple)
     for f in names
-        push!(expr.args, :(metadata.$f.vals[ranges.$f]))
+        push!(expr.args, :(@view metadata.$f.vals[ranges.$f]))
     end
     return expr
 end
