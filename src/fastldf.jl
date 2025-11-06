@@ -391,16 +391,13 @@ function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms
     offset = 1
     for sym in syms
         md = varinfo.metadata[sym]
-        this_md_iden, this_md_others, new_offset = get_ranges_and_linked_metadata(
-            md, offset
-        )
+        this_md_iden, this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
         all_iden_ranges = merge(all_iden_ranges, this_md_iden)
         all_ranges = merge(all_ranges, this_md_others)
-        offset = new_offset
     end
     return all_iden_ranges, all_ranges
 end
-function get_ranges_and_linked(varinfo::VarInfo{<:Metadata})
+function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
     all_iden, all_others, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
     return all_iden, all_others
 end
@@ -409,9 +406,8 @@ function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
     all_ranges = Dict{VarName,RangeAndLinked}()
     offset = start_offset
     for (vn, idx) in md.idcs
-        len = length(md.ranges[idx])
         is_linked = md.is_transformed[idx]
-        range = offset:(offset + len - 1)
+        range = md.ranges[idx] .+ (start_offset - 1)
         if AbstractPPL.getoptic(vn) === identity
             all_iden_ranges = merge(
                 all_iden_ranges,
@@ -420,7 +416,7 @@ function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
         else
             all_ranges[vn] = RangeAndLinked(range, is_linked)
         end
-        offset += len
+        offset += length(range)
     end
     return all_iden_ranges, all_ranges, offset
 end
@@ -429,9 +425,8 @@ function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
     all_ranges = Dict{VarName,RangeAndLinked}()
     offset = start_offset
     for (vn, idx) in vnv.varname_to_index
-        len = length(vnv.ranges[idx])
         is_linked = vnv.is_unconstrained[idx]
-        range = offset:(offset + len - 1)
+        range = vnv.ranges[idx] .+ (start_offset - 1)
         if AbstractPPL.getoptic(vn) === identity
             all_iden_ranges = merge(
                 all_iden_ranges,
@@ -440,7 +435,7 @@ function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
         else
             all_ranges[vn] = RangeAndLinked(range, is_linked)
         end
-        offset += len
+        offset += length(range)
     end
     return all_iden_ranges, all_ranges, offset
 end
