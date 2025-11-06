@@ -1,5 +1,6 @@
 using DynamicPPL: FastLDF
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
+using Random: Xoshiro
 
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
@@ -17,10 +18,10 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-            varinfo = VarInfo(m)
+            varinfo = VarInfo(Xoshiro(468), m)
             linked_varinfo = DynamicPPL.link(varinfo, m)
             f = FastLDF(m, getlogjoint_internal, linked_varinfo)
-            x = DynamicPPL.getparams(f)
+            x = linked_varinfo[:]
 
             # Calculate reference logp + gradient of logp using ForwardDiff
             ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
