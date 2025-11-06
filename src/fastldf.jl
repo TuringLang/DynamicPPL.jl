@@ -147,8 +147,19 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     accs = AccumulatorTuple((
         LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator()
     ))
-    _, vi = DynamicPPL._evaluate!!(model, OnlyAccsVarInfo(accs))
+    # _, vi = DynamicPPL._evaluate!!(model, OnlyAccsVarInfo(accs))
+    args = map(maybe_deepcopy, model.args)
+    _, vi = model.f(model, OnlyAccsVarInfo(accs), args...; model.defaults...)
     return f._getlogdensity(vi)
+end
+
+maybe_deepcopy(@nospecialize(x)) = x
+function maybe_deepcopy(x::AbstractArray{T}) where {T}
+    if T >: Missing
+        deepcopy(x)
+    else
+        x
+    end
 end
 
 function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
