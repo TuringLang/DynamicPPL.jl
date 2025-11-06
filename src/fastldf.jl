@@ -2,7 +2,6 @@ struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
 end
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
-DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
 
 struct RangeAndLinked
@@ -133,11 +132,13 @@ struct FastLDF{
     end
 end
 
-function _evaluate!!(
-    model::Model{F,A,D,M,TA,TD,<:FastLDFContext}, varinfo::OnlyAccsVarInfo
-) where {F,A,D,M,TA,TD}
-    args = map(maybe_deepcopy, model.args)
-    return model.f(model, varinfo, args...; model.defaults...)
+function _evaluate!!(model::Model, varinfo::OnlyAccsVarInfo)
+    if leafcontext(model.context) isa FastLDFContext
+        args = map(maybe_deepcopy, model.args)
+        return model.f(model, varinfo, args...; model.defaults...)
+    else
+        error("Shouldn't happen")
+    end
 end
 maybe_deepcopy(@nospecialize(x)) = x
 function maybe_deepcopy(x::AbstractArray{T}) where {T}
