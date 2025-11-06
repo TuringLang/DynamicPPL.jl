@@ -80,7 +80,9 @@ OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
 DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-function DynamicPPL.get_param_eltype(::OnlyAccsVarInfo, model::Model)
+function DynamicPPL.get_param_eltype(
+    ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}}, model::Model
+)
     # Because the VarInfo has no parameters stored in it, we need to get the eltype from the
     # model's leaf context. This is only possible if said leaf context is indeed a FastEval
     # context.
@@ -333,15 +335,16 @@ end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     ctx = FastEvalVectorContext(f._iden_varname_ranges, f._varname_ranges, params)
     model = DynamicPPL.setleafcontext(f._model, ctx)
-    only_accs_vi = OnlyAccsVarInfo(fast_ldf_accs(f._getlogdensity))
+    accs = fast_ldf_accs(f._getlogdensity)
     # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
     # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
     # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
     # here.
     vi = if Threads.nthreads() > 1
-        ThreadSafeVarInfo(only_accs_vi)
+        accs = map(acc -> convert_eltype(float_type_with_fallback(eltype(params)), acc), accs)
+        ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
     else
-        only_accs_vi
+        OnlyAccsVarInfo(accs)
     end
     _, vi = _evaluate!!(model, vi)
     return f._getlogdensity(vi)
