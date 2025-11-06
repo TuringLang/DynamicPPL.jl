@@ -986,9 +986,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue(varinfo, model.args.$var)...)
+            :($matchingvalue($get_param_eltype(varinfo, model), model.args.$var)...)
         else
-            :($matchingvalue(varinfo, model.args.$var))
+            :($matchingvalue($get_param_eltype(varinfo, model), model.args.$var))
         end for var in argnames
     ]
     return quote
@@ -1005,6 +1005,22 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
         return args, kwargs
     end
 end
+
+"""
+    get_param_eltype(varinfo::AbstractVarInfo, model::Model)
+
+Get the element type of the parameters being used to evaluate the `model` from the
+`varinfo`. For example, when performing AD with ForwardDiff, this should return
+`ForwardDiff.Dual`.
+
+By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on the fact
+that typically, before evaluation, the parameters will have been inserted into the VarInfo's
+metadata field.
+
+See `OnlyAccsVarInfo` for an example of where this is not true (the parameters are instead
+stored in the model's context).
+"""
+get_param_eltype(varinfo::AbstractVarInfo, ::Model) = eltype(varinfo)
 
 """
     getargnames(model::Model)
