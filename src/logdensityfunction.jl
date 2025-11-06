@@ -11,6 +11,7 @@ calculation; it is just that the DynamicPPL developers do not commit to
 maintaining compatibility with them.
 """
 is_supported(::ADTypes.AbstractADType) = false
+is_supported(::ADTypes.AutoEnzyme) = true
 is_supported(::ADTypes.AutoForwardDiff) = true
 is_supported(::ADTypes.AutoMooncake) = true
 is_supported(::ADTypes.AutoReverseDiff) = true
