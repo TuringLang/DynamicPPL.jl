@@ -77,7 +77,7 @@ struct FastLDF{
 
     function FastLDF(
         model::Model,
-        getlogdensity::Function,
+        getlogdensity::Function=getlogjoint_internal,
         # This only works with typed Metadata-varinfo.
         # Obviously, this can be generalised later.
         varinfo::VarInfo{<:NamedTuple{syms}}=VarInfo(model);
