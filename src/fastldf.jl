@@ -350,6 +350,25 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     return f._getlogdensity(vi)
 end
 
+function _evaluate!!(model::Model, varinfo::OnlyAccsVarInfo)
+    if leafcontext(model.context) isa FastEvalVectorContext
+        args = map(maybe_deepcopy, model.args)
+        return model.f(model, varinfo, args...; model.defaults...)
+    else
+        error("Shouldn't happen")
+    end
+end
+maybe_deepcopy(@nospecialize(x)) = x
+function maybe_deepcopy(x::AbstractArray{T}) where {T}
+    if T >: Missing
+        # avoid overwriting missing elements of model arguments when
+        # evaluating the model.
+        deepcopy(x)
+    else
+        x
+    end
+end
+
 function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
     return FastLogDensityAt(
         fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
