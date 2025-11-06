@@ -9,7 +9,7 @@ using EnzymeCore
     nothing
 # Likewise for get_range_and_linked.
 @inline EnzymeCore.EnzymeRules.inactive(
-    ::typeof(DynamicPPL.get_range_and_linked), args...
+    ::typeof(DynamicPPL.Experimental.get_range_and_linked), args...
 ) = nothing
 
 end

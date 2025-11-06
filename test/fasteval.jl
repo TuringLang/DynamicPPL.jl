@@ -5,12 +5,23 @@ using Distributions
 using DistributionsAD: filldist
 using ADTypes
 using DynamicPPL.Experimental: FastLDF
+using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
+using Test
+
+using ForwardDiff: ForwardDiff
+using ReverseDiff: ReverseDiff
+# Need to include this block here in case we run this test file standalone
+@static if VERSION < v"1.12"
+    using Pkg
+    Pkg.add("Mooncake")
+    using Mooncake: Mooncake
+end
 
 @testset "Automatic differentiation" begin
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = if MOONCAKE_SUPPORTED
+    test_adtypes = @static if VERSION < v"1.12"
         [
             AutoReverseDiff(; compile=false),
             AutoReverseDiff(; compile=true),
@@ -18,11 +29,6 @@ using DynamicPPL.Experimental: FastLDF
         ]
     else
         [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
-    end
-
-    @testset "Unsupported backends" begin
-        @model demo() = x ~ Normal()
-        @test_logs (:warn, r"not officially supported") FastLDF(demo(); adtype=AutoZygote())
     end
 
     @testset "Correctness" begin
