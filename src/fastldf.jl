@@ -133,6 +133,23 @@ struct FastLDF{
     end
 end
 
+function _evaluate!!(
+    model::Model{F,A,D,M,TA,TD,<:FastLDFContext}, varinfo::OnlyAccsVarInfo
+) where {F,A,D,M,TA,TD}
+    args = map(maybe_deepcopy, model.args)
+    return model.f(model, varinfo, args...; model.defaults...)
+end
+maybe_deepcopy(@nospecialize(x)) = x
+function maybe_deepcopy(x::AbstractArray{T}) where {T}
+    if T >: Missing
+        # avoid overwriting missing elements of model arguments when
+        # evaluating the model.
+        deepcopy(x)
+    else
+        x
+    end
+end
+
 struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
     _model::M
     _getlogdensity::F
@@ -147,19 +164,8 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     accs = AccumulatorTuple((
         LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator()
     ))
-    # _, vi = DynamicPPL._evaluate!!(model, OnlyAccsVarInfo(accs))
-    args = map(maybe_deepcopy, model.args)
-    _, vi = model.f(model, OnlyAccsVarInfo(accs), args...; model.defaults...)
+    _, vi = _evaluate!!(model, OnlyAccsVarInfo(accs))
     return f._getlogdensity(vi)
-end
-
-maybe_deepcopy(@nospecialize(x)) = x
-function maybe_deepcopy(x::AbstractArray{T}) where {T}
-    if T >: Missing
-        deepcopy(x)
-    else
-        x
-    end
 end
 
 function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
