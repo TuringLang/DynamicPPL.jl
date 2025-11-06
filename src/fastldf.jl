@@ -48,17 +48,25 @@ function tilde_observe!!(
     return left, vi
 end
 
-struct FastLDF{M<:Model,F<:Function}
+struct FastLDF{
+    M<:Model,
+    F<:Function,
+    AD<:Union{ADTypes.AbstractADType,Nothing},
+    ADP<:Union{Nothing,DI.GradientPrep},
+}
     _model::M
     _getlogdensity::F
     _varname_ranges::Dict{VarName,RangeAndLinked}
+    _adtype::AD
+    _adprep::ADP
 
     function FastLDF(
         model::Model,
         getlogdensity::Function,
         # This only works with typed Metadata-varinfo.
         # Obviously, this can be generalised later.
-        varinfo::VarInfo{<:NamedTuple{syms}},
+        varinfo::VarInfo{<:NamedTuple{syms}};
+        adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     ) where {syms}
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
@@ -74,18 +82,52 @@ struct FastLDF{M<:Model,F<:Function}
                 offset += len
             end
         end
-        return new{typeof(model),typeof(getlogdensity)}(model, getlogdensity, all_ranges)
+        # Do AD prep if needed
+        prep = if adtype === nothing
+            nothing
+        else
+            # Make backend-specific tweaks to the adtype
+            adtype = tweak_adtype(adtype, model, varinfo)
+            x = [val for val in varinfo[:]]
+            DI.prepare_gradient(
+                FastLogDensityAt(model, getlogdensity, all_ranges), adtype, x
+            )
+        end
+
+        return new{typeof(model),typeof(getlogdensity),typeof(adtype),typeof(prep)}(
+            model, getlogdensity, all_ranges, adtype, prep
+        )
     end
 end
 
-function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
-    ctx = FastLDFContext(fldf._varname_ranges, params)
-    model = DynamicPPL.setleafcontext(fldf._model, ctx)
+struct FastLogDensityAt{M<:Model,F<:Function}
+    _model::M
+    _getlogdensity::F
+    _varname_ranges::Dict{VarName,RangeAndLinked}
+end
+function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
+    ctx = FastLDFContext(f._varname_ranges, params)
+    model = DynamicPPL.setleafcontext(f._model, ctx)
     # This can obviously also be optimised for the case where not
     # all accumulators are needed.
     accs = AccumulatorTuple((
         LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator()
     ))
     _, vi = DynamicPPL._evaluate!!(model, OnlyAccsVarInfo(accs))
-    return fldf._getlogdensity(vi)
+    return f._getlogdensity(vi)
+end
+
+function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
+    return FastLogDensityAt(fldf._model, fldf._getlogdensity, fldf._varname_ranges)(params)
+end
+
+function LogDensityProblems.logdensity_and_gradient(
+    fldf::FastLDF, params::AbstractVector{<:Real}
+)
+    return DI.value_and_gradient(
+        FastLogDensityAt(fldf._model, fldf._getlogdensity, fldf._varname_ranges),
+        fldf._adprep,
+        fldf._adtype,
+        params,
+    )
 end
