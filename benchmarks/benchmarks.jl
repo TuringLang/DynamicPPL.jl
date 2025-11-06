@@ -87,18 +87,12 @@ results_table = Tuple{String,Int,String,String,Bool,Float64,Float64}[]
 
 for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
     @info "Running benchmark for $model_name"
-    try
-        suite = make_suite(model, varinfo_choice, adbackend, islinked)
-        results = run(suite)
-        eval_time = median(results["evaluation"]).time
-        relative_eval_time = eval_time / reference_time
-        ad_eval_time = median(results["gradient"]).time
-        relative_ad_eval_time = ad_eval_time / eval_time
-    catch e
-        @warn "Benchmark failed for $model_name with error: $e"
-        relative_eval_time = NaN
-        relative_ad_eval_time = NaN
-    end
+    suite = make_suite(model, varinfo_choice, adbackend, islinked)
+    results = run(suite)
+    eval_time = median(results["evaluation"]).time
+    relative_eval_time = eval_time / reference_time
+    ad_eval_time = median(results["gradient"]).time
+    relative_ad_eval_time = ad_eval_time / eval_time
     push!(
         results_table,
         (
