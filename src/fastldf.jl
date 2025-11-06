@@ -13,10 +13,8 @@ struct RangeAndLinked
 end
 
 struct FastLDFContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <: AbstractContext
-    # The ranges of identity VarNames are stored in a NamedTuple for performance
-    # reasons. For just plain evaluation this doesn't make _that_ much of a 
-    # difference (maybe 1.5x), but when doing AD with Mooncake this makes a HUGE
-    # difference (around 4x). Of course, the exact numbers depend on the model.
+    # The ranges of identity VarNames are stored in a NamedTuple for improved performance
+    # (it's around 1.5x faster).
     iden_varname_ranges::N
     # This Dict stores the ranges for all other VarNames
     varname_ranges::Dict{VarName,RangeAndLinked}
