@@ -77,13 +77,14 @@ struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
 end
 OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
+DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
 function DynamicPPL.get_param_eltype(::OnlyAccsVarInfo, model::Model)
     # Because the VarInfo has no parameters stored in it, we need to get the eltype from the
     # model's leaf context. This is only possible if said leaf context is indeed a FastEval
     # context.
-    leaf_ctx = DynamicPPL.leafcontext(model)
+    leaf_ctx = DynamicPPL.leafcontext(model.context)
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
     else
@@ -138,7 +139,8 @@ non-identity-optic VarNames are stored in the `varname_ranges` Dict.
 It would be nice to unify the NamedTuple and Dict approach. See, e.g.
 https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <: AbstractContext
+struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <:
+       AbstractFastEvalContext
     # This NamedTuple stores the ranges for identity VarNames
     iden_varname_ranges::N
     # This Dict stores the ranges for all other VarNames
@@ -331,7 +333,17 @@ end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     ctx = FastEvalVectorContext(f._iden_varname_ranges, f._varname_ranges, params)
     model = DynamicPPL.setleafcontext(f._model, ctx)
-    _, vi = _evaluate!!(model, OnlyAccsVarInfo(fast_ldf_accs(f._getlogdensity)))
+    only_accs_vi = OnlyAccsVarInfo(fast_ldf_accs(f._getlogdensity))
+    # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
+    # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
+    # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
+    # here.
+    vi = if Threads.nthreads() > 1
+        ThreadSafeVarInfo(only_accs_vi)
+    else
+        only_accs_vi
+    end
+    _, vi = _evaluate!!(model, vi)
     return f._getlogdensity(vi)
 end
 
@@ -360,30 +372,75 @@ end
 # Helper functions to extract ranges and link status #
 ######################################################
 
-# TODO: Fails for other VarInfo types.
+# TODO: Fails for SimpleVarInfo. Do I really care enough? Ehhh, honestly, debatable.
+
+"""
+    get_ranges_and_linked(varinfo::VarInfo)
+
+Given a `VarInfo`, extract the ranges of each variable in the vectorised parameter
+representation, along with whether each variable is linked or unlinked.
+
+This function should return a tuple containing:
+
+- A NamedTuple mapping VarNames with identity optics to their corresponding `RangeAndLinked`
+- A Dict mapping all other VarNames to their corresponding `RangeAndLinked`.
+"""
 function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
     all_iden_ranges = NamedTuple()
     all_ranges = Dict{VarName,RangeAndLinked}()
     offset = 1
     for sym in syms
         md = varinfo.metadata[sym]
-        # TODO: Fails for VarNamedVector.
-        for (vn, idx) in md.idcs
-            len = length(md.ranges[idx])
-            is_linked = md.is_transformed[idx]
-            range = offset:(offset + len - 1)
-            if AbstractPPL.getoptic(vn) === identity
-                all_iden_ranges = merge(
-                    all_iden_ranges,
-                    NamedTuple((
-                        AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),
-                    )),
-                )
-            else
-                all_ranges[vn] = RangeAndLinked(range, is_linked)
-            end
-            offset += len
-        end
+        this_md_iden, this_md_others, new_offset = get_ranges_and_linked_metadata(
+            md, offset
+        )
+        all_iden_ranges = merge(all_iden_ranges, this_md_iden)
+        all_ranges = merge(all_ranges, this_md_others)
+        offset = new_offset
     end
     return all_iden_ranges, all_ranges
+end
+function get_ranges_and_linked(varinfo::VarInfo{<:Metadata})
+    all_iden, all_others, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
+    return all_iden, all_others
+end
+function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
+    all_iden_ranges = NamedTuple()
+    all_ranges = Dict{VarName,RangeAndLinked}()
+    offset = start_offset
+    for (vn, idx) in md.idcs
+        len = length(md.ranges[idx])
+        is_linked = md.is_transformed[idx]
+        range = offset:(offset + len - 1)
+        if AbstractPPL.getoptic(vn) === identity
+            all_iden_ranges = merge(
+                all_iden_ranges,
+                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
+            )
+        else
+            all_ranges[vn] = RangeAndLinked(range, is_linked)
+        end
+        offset += len
+    end
+    return all_iden_ranges, all_ranges, offset
+end
+function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
+    all_iden_ranges = NamedTuple()
+    all_ranges = Dict{VarName,RangeAndLinked}()
+    offset = start_offset
+    for (vn, idx) in vnv.varname_to_index
+        len = length(vnv.ranges[idx])
+        is_linked = vnv.is_unconstrained[idx]
+        range = offset:(offset + len - 1)
+        if AbstractPPL.getoptic(vn) === identity
+            all_iden_ranges = merge(
+                all_iden_ranges,
+                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
+            )
+        else
+            all_ranges[vn] = RangeAndLinked(range, is_linked)
+        end
+        offset += len
+    end
+    return all_iden_ranges, all_ranges, offset
 end
