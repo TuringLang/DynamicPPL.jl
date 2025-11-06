@@ -753,10 +753,6 @@ function getdist(::VarNamedVector, ::VarName)
 end
 
 getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
-# TODO(torfjelde): Use `view` instead of `getindex`. Requires addressing type-stability issues though,
-# since then we might be returning a `SubArray` rather than an `Array`, which is typically
-# what a bijector would result in, even if the input is a view (`SubArray`).
-# TODO(torfjelde): An alternative is to implement `view` directly instead.
 function getindex_internal(md::Metadata, vn::VarName)
     rng = getrange(md, vn)
     return @view md.vals[rng]
