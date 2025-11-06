@@ -60,6 +60,35 @@ However, the path towards implementing these is straightforward:
    functionality would be quite similar to `InitContext(InitFromParams(...))`.
 """
 
+using DynamicPPL:
+    AbstractContext,
+    AbstractVarInfo,
+    AccumulatorTuple,
+    Metadata,
+    Model,
+    ThreadSafeVarInfo,
+    VarInfo,
+    VarNamedVector,
+    accumulate_assume!!,
+    accumulate_observe!!,
+    default_accumulators,
+    float_type_with_fallback,
+    from_linked_vec_transform,
+    from_vec_transform,
+    getlogjoint,
+    getlogjoint_internal,
+    getloglikelihood,
+    getlogprior,
+    getlogprior_internal,
+    leafcontext
+using ADTypes: ADTypes
+using Bijectors: with_logabsdet_jacobian
+using AbstractPPL: AbstractPPL, VarName
+using Distributions: Distribution
+using DocStringExtensions: TYPEDFIELDS
+using LogDensityProblems: LogDensityProblems
+import DifferentiationInterface as DI
+
 """
     OnlyAccsVarInfo
 
@@ -121,7 +150,7 @@ Abstract type representing fast evaluation contexts. This currently is only subt
 NamedTuple and Dict parameters.
 """
 abstract type AbstractFastEvalContext <: AbstractContext end
-DynamicPPL.NodeTrait(::AbstractFastEvalContext) = IsLeaf()
+DynamicPPL.NodeTrait(::AbstractFastEvalContext) = DynamicPPL.IsLeaf()
 
 """
     FastEvalVectorContext(
@@ -286,7 +315,7 @@ struct FastLDF{
             nothing
         else
             # Make backend-specific tweaks to the adtype
-            adtype = tweak_adtype(adtype, model, varinfo)
+            adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             x = [val for val in varinfo[:]]
             DI.prepare_gradient(
                 FastLogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
@@ -341,12 +370,15 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
     # here.
     vi = if Threads.nthreads() > 1
-        accs = map(acc -> convert_eltype(float_type_with_fallback(eltype(params)), acc), accs)
+        accs = map(
+            acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
+            accs,
+        )
         ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
     else
         OnlyAccsVarInfo(accs)
     end
-    _, vi = _evaluate!!(model, vi)
+    _, vi = DynamicPPL._evaluate!!(model, vi)
     return f._getlogdensity(vi)
 end
 
