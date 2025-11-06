@@ -2,7 +2,7 @@ module Experimental
 
 using DynamicPPL: DynamicPPL
 
-include("fastldf.jl")
+include("fasteval.jl")
 
 # This file only defines the names of the functions, and their docstrings. The actual implementations are in `ext/DynamicPPLJETExt.jl`, since we don't want to depend on JET.jl other than as a weak dependency.
 """
