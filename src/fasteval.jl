@@ -81,6 +81,7 @@ using DynamicPPL:
     getlogprior_internal,
     leafcontext
 using ADTypes: ADTypes
+using BangBang: BangBang
 using Bijectors: with_logabsdet_jacobian
 using AbstractPPL: AbstractPPL, VarName
 using Distributions: Distribution
@@ -108,6 +109,9 @@ OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
 DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
+@inline Base.haskey(::OnlyAccsVarInfo, ::VarName) = false
+@inline DynamicPPL.is_transformed(::OnlyAccsVarInfo) = false
+@inline BangBang.push!!(vi::OnlyAccsVarInfo, vn, y, dist) = vi
 function DynamicPPL.get_param_eltype(
     ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}}, model::Model
 )
@@ -117,14 +121,11 @@ function DynamicPPL.get_param_eltype(
     leaf_ctx = DynamicPPL.leafcontext(model.context)
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
+    elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
+        eltype = DynamicPPL.infer_nested_eltype(leaf_ctx.strategy.params)
+        @info "Inferring parameter eltype as $eltype from InitContext"
+        return eltype
     else
-        # TODO(penelopeysm): In principle this can be done with InitContext{InitWithParams}.
-        # See also `src/simple_varinfo.jl` where `infer_nested_eltype` is used to try to
-        # figure out the parameter type from a NamedTuple or Dict. The benefit of
-        # implementing this for InitContext is that we could then use OnlyAccsVarInfo with
-        # it, which means fast evaluation with NamedTuple or Dict parameters! And I believe
-        # that Mooncake / Enzyme should be able to differentiate through that too and
-        # provide a NamedTuple of gradients (although I haven't tested this yet).
         error(
             "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
         )
