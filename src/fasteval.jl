@@ -122,9 +122,7 @@ function DynamicPPL.get_param_eltype(
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
     elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
-        eltype = DynamicPPL.infer_nested_eltype(leaf_ctx.strategy.params)
-        @info "Inferring parameter eltype as $eltype from InitContext"
-        return eltype
+        return DynamicPPL.infer_nested_eltype(leaf_ctx.strategy.params)
     else
         error(
             "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
