@@ -227,7 +227,7 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    accs = DynamicPPL.AccumulatorTuple(
+    accs = (
         DynamicPPL.LogPriorAccumulator(),
         DynamicPPL.LogLikelihoodAccumulator(),
         DynamicPPL.ValuesAsInModelAccumulator(false),
