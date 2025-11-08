@@ -1,6 +1,6 @@
 module DynamicPPLMCMCChainsExt
 
-using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC
+using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC, Random
 using MCMCChains: MCMCChains
 
 function getindex_varname(
@@ -119,6 +119,47 @@ function AbstractMCMC.to_samples(
 end
 
 """
+    reevaluate_with(
+        rng::AbstractRNG,
+        model::Model,
+        chain::MCMCChains.Chains;
+        fallback=nothing,
+    )
+
+Re-evaluate `model` for each sample in `chain`, returning an matrix of (retval, varinfo)
+tuples.
+
+This loops over all entries in the chain and uses `DynamicPPL.InitFromParams` as the
+initialisation strategy when re-evaluating the model. For many usecases the fallback should
+not be provided (as we expect the chain to contain all necessary variables); but for
+`predict` this has to be `InitFromPrior()` to allow sampling new variables (i.e. generating
+the posterior predictions).
+"""
+function reevaluate_with_chain(
+    rng::Random.AbstractRNG,
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains,
+    accs::NTuple{N,DynamicPPL.AbstractAccumulator},
+    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
+) where {N}
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    return map(params_with_stats) do ps
+        varinfo = DynamicPPL.Experimental.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
+        DynamicPPL.init!!(
+            rng, model, varinfo, DynamicPPL.InitFromParams(ps.params, fallback)
+        )
+    end
+end
+function reevaluate_with_chain(
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains,
+    accs::NTuple{N,DynamicPPL.AbstractAccumulator},
+    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
+) where {N}
+    return reevaluate_with_chain(Random.default_rng(), model, chain, accs, fallback)
+end
+
+"""
     predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
 
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
@@ -186,25 +227,18 @@ function DynamicPPL.predict(
     include_all=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-
-    params_and_stats = AbstractMCMC.to_samples(
-        DynamicPPL.ParamsWithStats, parameter_only_chain
+    accs = DynamicPPL.AccumulatorTuple(
+        DynamicPPL.LogPriorAccumulator(),
+        DynamicPPL.LogLikelihoodAccumulator(),
+        DynamicPPL.ValuesAsInModelAccumulator(false),
     )
-    predictions = map(params_and_stats) do ps
-        varinfo = DynamicPPL.Experimental.OnlyAccsVarInfo(
-            DynamicPPL.AccumulatorTuple((
-                DynamicPPL.LogPriorAccumulator(),
-                DynamicPPL.LogLikelihoodAccumulator(),
-                DynamicPPL.ValuesAsInModelAccumulator(false),
-            )),
-        )
-        _, varinfo = DynamicPPL.init!!(
-            rng, model, varinfo, DynamicPPL.InitFromParams(ps.params)
-        )
-        DynamicPPL.ParamsWithStats(varinfo)
-    end
+    predictions = map(
+        DynamicPPL.ParamsWithStats ∘ last,
+        reevaluate_with_chain(
+            rng, model, parameter_only_chain, accs, DynamicPPL.InitFromPrior()
+        ),
+    )
     chain_result = AbstractMCMC.from_samples(MCMCChains.Chains, predictions)
-
     parameter_names = if include_all
         MCMCChains.names(chain_result, :parameters)
     else
@@ -284,13 +318,7 @@ julia> returned(model, chain)
 """
 function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Chains)
     chain = MCMCChains.get_sections(chain_full, :parameters)
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
-    return map(params_with_stats) do ps
-        varinfo = DynamicPPL.Experimental.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(()))
-        first(
-            DynamicPPL.init!!(model, varinfo, DynamicPPL.InitFromParams(ps.params, nothing))
-        )
-    end
+    return map(first, reevaluate_with_chain(model, chain, (), nothing))
 end
 
 """
@@ -386,14 +414,10 @@ function DynamicPPL.pointwise_logdensities(
     acc = DynamicPPL.PointwiseLogProbAccumulator{whichlogprob}()
     accname = DynamicPPL.accumulator_name(acc)
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
-    pointwise_logps = map(params_with_stats) do ps
-        accs = DynamicPPL.AccumulatorTuple((acc,))
-        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(accs)
-        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
-        DynamicPPL.getacc(vi, Val(accname)).logps
-    end
-
+    pointwise_logps =
+        map(reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)) do (_, vi)
+            DynamicPPL.getacc(vi, Val(accname)).logps
+        end
     # pointwise_logps is a matrix of OrderedDicts
     all_keys = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
     for d in pointwise_logps
@@ -480,16 +504,15 @@ julia> logjoint(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
-    return map(params_with_stats) do ps
-        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
-            DynamicPPL.AccumulatorTuple((
-                DynamicPPL.LogPriorAccumulator(), DynamicPPL.LogLikelihoodAccumulator()
-            )),
-        )
-        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
-        DynamicPPL.getlogjoint(vi)
-    end
+    return map(
+        DynamicPPL.getlogjoint ∘ last,
+        reevaluate_with_chain(
+            model,
+            chain,
+            (DynamicPPL.LogPriorAccumulator(), DynamicPPL.LogLikelihoodAccumulator()),
+            nothing,
+        ),
+    )
 end
 
 """
@@ -521,14 +544,12 @@ julia> loglikelihood(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
-    return map(params_with_stats) do ps
-        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
-            DynamicPPL.AccumulatorTuple((DynamicPPL.LogLikelihoodAccumulator()))
-        )
-        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
-        DynamicPPL.getloglikelihood(vi)
-    end
+    return map(
+        DynamicPPL.getloglikelihood ∘ last,
+        reevaluate_with_chain(
+            model, chain, (DynamicPPL.LogLikelihoodAccumulator(),), nothing
+        ),
+    )
 end
 
 """
@@ -561,14 +582,10 @@ julia> logprior(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.logprior(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
-    return map(params_with_stats) do ps
-        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
-            DynamicPPL.AccumulatorTuple((DynamicPPL.LogPriorAccumulator()))
-        )
-        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
-        DynamicPPL.getlogprior(vi)
-    end
+    return map(
+        DynamicPPL.getlogprior ∘ last,
+        reevaluate_with_chain(model, chain, (DynamicPPL.LogPriorAccumulator(),), nothing),
+    )
 end
 
 end
