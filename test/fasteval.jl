@@ -36,7 +36,7 @@ end
                     unlinked_vi
                 end
                 nt_ranges, dict_ranges = DynamicPPL.Experimental.get_ranges_and_linked(vi)
-                params = vi[:]
+                params = map(identity, vi[:])
                 # Iterate over all variables
                 for vn in keys(vi)
                     # Check that `getindex_internal` returns the same thing as using the ranges
@@ -95,7 +95,7 @@ end
             varinfo = VarInfo(m)
             linked_varinfo = DynamicPPL.link(varinfo, m)
             f = FastLDF(m, getlogjoint_internal, linked_varinfo)
-            x = linked_varinfo[:]
+            x = map(identity, linked_varinfo[:])
 
             # Calculate reference logp + gradient of logp using ForwardDiff
             ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
