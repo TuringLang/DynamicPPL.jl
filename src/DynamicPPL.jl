@@ -92,6 +92,7 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
+    set_threadsafe_eval!,
     # LogDensityFunction
     LogDensityFunction,
     # Leaf contexts
@@ -212,8 +213,12 @@ include("test_utils.jl")
 include("experimental.jl")
 include("deprecated.jl")
 
-if isdefined(Base.Experimental, :register_error_hint)
-    function __init__()
+function __init__()
+    # This has to be in the `__init__()` function, if it's placed at the top level it
+    # always evaluates to false.
+    DynamicPPL.set_threadsafe_eval!(Threads.nthreads() > 1)
+
+    if isdefined(Base.Experimental, :register_error_hint)
         # Better error message if users forget to load JET.jl
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_jet =

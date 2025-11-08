@@ -110,6 +110,12 @@ Similarly, we can revert this with [`DynamicPPL.unfix`](@ref), i.e. return the v
 DynamicPPL.unfix
 ```
 
+## Controlling threadsafe evaluation
+
+```@docs
+DynamicPPL.set_threadsafe_eval!
+```
+
 ## Predicting
 
 DynamicPPL provides functionality for generating samples from the posterior predictive distribution through the `predict` function. This allows you to use posterior parameter samples to generate predictions for unobserved data points.
