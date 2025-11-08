@@ -60,6 +60,10 @@ using DynamicPPL:
     AbstractContext,
     AbstractVarInfo,
     AccumulatorTuple,
+    InitContext,
+    InitFromParams,
+    InitFromPrior,
+    InitFromUniform,
     LogJacobianAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
@@ -123,6 +127,9 @@ function DynamicPPL.get_param_eltype(
         return eltype(leaf_ctx.params)
     elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
         return DynamicPPL.infer_nested_eltype(leaf_ctx.strategy.params)
+    elseif leaf_ctx isa InitContext{<:Any,<:Union{InitFromPrior,InitFromUniform}}
+        # No need to enforce any particular eltype here, since new parameters are sampled
+        return Any
     else
         error(
             "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
