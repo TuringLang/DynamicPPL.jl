@@ -126,7 +126,7 @@ function DynamicPPL.get_param_eltype(
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
     elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
-        return DynamicPPL.infer_nested_eltype(leaf_ctx.strategy.params)
+        return DynamicPPL.infer_nested_eltype(typeof(leaf_ctx.strategy.params))
     elseif leaf_ctx isa InitContext{<:Any,<:Union{InitFromPrior,InitFromUniform}}
         # No need to enforce any particular eltype here, since new parameters are sampled
         return Any
