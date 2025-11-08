@@ -60,6 +60,7 @@ using DynamicPPL:
     AbstractContext,
     AbstractVarInfo,
     AccumulatorTuple,
+    DynamicPPL,
     InitContext,
     InitFromParams,
     InitFromPrior,
@@ -125,17 +126,20 @@ function DynamicPPL.get_param_eltype(
     leaf_ctx = DynamicPPL.leafcontext(model.context)
     if leaf_ctx isa FastEvalVectorContext
         return eltype(leaf_ctx.params)
-    elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
-        return DynamicPPL.infer_nested_eltype(typeof(leaf_ctx.strategy.params))
-    elseif leaf_ctx isa InitContext{<:Any,<:Union{InitFromPrior,InitFromUniform}}
-        # No need to enforce any particular eltype here, since new parameters are sampled
-        return Any
+    elseif leaf_ctx isa InitContext
+        return _get_strategy_eltype(leaf_ctx.strategy)
     else
         error(
             "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
         )
     end
 end
+_get_strategy_eltype(s::InitFromParams) = DynamicPPL.infer_nested_eltype(typeof(s.params))
+# No need to enforce any particular eltype here, since new parameters are sampled
+_get_strategy_eltype(::InitFromPrior) = Any
+_get_strategy_eltype(::InitFromUniform) = Any
+# Default fallback
+_get_strategy_eltype(::DynamicPPL.AbstractInitStrategy) = Any
 
 """
     RangeAndLinked
