@@ -3,37 +3,15 @@ module DynamicPPLMCMCChainsExt
 using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC
 using MCMCChains: MCMCChains
 
-_has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
-
-function DynamicPPL.supports_varname_indexing(chain::MCMCChains.Chains)
-    return _has_varname_to_symbol(chain.info)
-end
-
-function _check_varname_indexing(c::MCMCChains.Chains)
-    return DynamicPPL.supports_varname_indexing(c) ||
-           error("This `Chains` object does not support indexing using `VarName`s.")
-end
-
-function DynamicPPL.getindex_varname(
+function getindex_varname(
     c::MCMCChains.Chains, sample_idx, vn::DynamicPPL.VarName, chain_idx
 )
-    _check_varname_indexing(c)
     return c[sample_idx, c.info.varname_to_symbol[vn], chain_idx]
 end
-function DynamicPPL.varnames(c::MCMCChains.Chains)
-    _check_varname_indexing(c)
+function get_varnames(c::MCMCChains.Chains)
+    haskey(c.info, :varname_to_symbol) ||
+        error("This `Chains` object does not support indexing using `VarName`s.")
     return keys(c.info.varname_to_symbol)
-end
-
-function chain_sample_to_varname_dict(
-    c::MCMCChains.Chains{Tval}, sample_idx, chain_idx
-) where {Tval}
-    _check_varname_indexing(c)
-    d = Dict{DynamicPPL.VarName,Tval}()
-    for vn in DynamicPPL.varnames(c)
-        d[vn] = DynamicPPL.getindex_varname(c, sample_idx, vn, chain_idx)
-    end
-    return d
 end
 
 """
@@ -118,8 +96,8 @@ function AbstractMCMC.to_samples(
     # Get parameters
     params_matrix = map(idxs) do (sample_idx, chain_idx)
         d = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}()
-        for vn in DynamicPPL.varnames(chain)
-            d[vn] = DynamicPPL.getindex_varname(chain, sample_idx, vn, chain_idx)
+        for vn in get_varnames(chain)
+            d[vn] = getindex_varname(chain, sample_idx, vn, chain_idx)
         end
         d
     end
@@ -209,22 +187,17 @@ function DynamicPPL.predict(
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
 
-    # Set up a VarInfo with the right accumulators
-    varinfo = DynamicPPL.setaccs!!(
-        DynamicPPL.VarInfo(),
-        (
-            DynamicPPL.LogPriorAccumulator(),
-            DynamicPPL.LogLikelihoodAccumulator(),
-            DynamicPPL.ValuesAsInModelAccumulator(false),
-        ),
-    )
-    _, varinfo = DynamicPPL.init!!(model, varinfo)
-    varinfo = DynamicPPL.typed_varinfo(varinfo)
-
     params_and_stats = AbstractMCMC.to_samples(
         DynamicPPL.ParamsWithStats, parameter_only_chain
     )
     predictions = map(params_and_stats) do ps
+        varinfo = DynamicPPL.Experimental.OnlyAccsVarInfo(
+            DynamicPPL.AccumulatorTuple((
+                DynamicPPL.LogPriorAccumulator(),
+                DynamicPPL.LogLikelihoodAccumulator(),
+                DynamicPPL.ValuesAsInModelAccumulator(false),
+            )),
+        )
         _, varinfo = DynamicPPL.init!!(
             rng, model, varinfo, DynamicPPL.InitFromParams(ps.params)
         )
@@ -311,16 +284,11 @@ julia> returned(model, chain)
 """
 function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Chains)
     chain = MCMCChains.get_sections(chain_full, :parameters)
-    varinfo = DynamicPPL.VarInfo(model)
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
     return map(params_with_stats) do ps
+        varinfo = DynamicPPL.Experimental.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(()))
         first(
-            DynamicPPL.init!!(
-                model,
-                varinfo,
-                DynamicPPL.InitFromParams(ps.params, DynamicPPL.InitFromPrior()),
-            ),
+            DynamicPPL.init!!(model, varinfo, DynamicPPL.InitFromParams(ps.params, nothing))
         )
     end
 end
@@ -415,21 +383,14 @@ function DynamicPPL.pointwise_logdensities(
     ::Type{Tout}=MCMCChains.Chains,
     ::Val{whichlogprob}=Val(:both),
 ) where {whichlogprob,Tout}
-    vi = DynamicPPL.VarInfo(model)
     acc = DynamicPPL.PointwiseLogProbAccumulator{whichlogprob}()
     accname = DynamicPPL.accumulator_name(acc)
-    vi = DynamicPPL.setaccs!!(vi, (acc,))
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    iters = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
-    pointwise_logps = map(iters) do (sample_idx, chain_idx)
-        # Extract values from the chain
-        values_dict = chain_sample_to_varname_dict(parameter_only_chain, sample_idx, chain_idx)
-        # Re-evaluate the model
-        _, vi = DynamicPPL.init!!(
-            model,
-            vi,
-            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
-        )
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    pointwise_logps = map(params_with_stats) do ps
+        accs = DynamicPPL.AccumulatorTuple((acc,))
+        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(accs)
+        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
         DynamicPPL.getacc(vi, Val(accname)).logps
     end
 
@@ -519,14 +480,15 @@ julia> logjoint(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.logjoint(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}(
-            vn_parent => DynamicPPL.values_from_chain(
-                var_info, vn_parent, chain, chain_idx, iteration_idx
-            ) for vn_parent in keys(var_info)
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    return map(params_with_stats) do ps
+        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
+            DynamicPPL.AccumulatorTuple((
+                DynamicPPL.LogPriorAccumulator(), DynamicPPL.LogLikelihoodAccumulator()
+            )),
         )
-        DynamicPPL.logjoint(model, argvals_dict)
+        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
+        DynamicPPL.getlogjoint(vi)
     end
 end
 
@@ -559,14 +521,13 @@ julia> loglikelihood(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.loglikelihood(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}(
-            vn_parent => DynamicPPL.values_from_chain(
-                var_info, vn_parent, chain, chain_idx, iteration_idx
-            ) for vn_parent in keys(var_info)
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    return map(params_with_stats) do ps
+        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
+            DynamicPPL.AccumulatorTuple((DynamicPPL.LogLikelihoodAccumulator()))
         )
-        DynamicPPL.loglikelihood(model, argvals_dict)
+        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
+        DynamicPPL.getloglikelihood(vi)
     end
 end
 
@@ -600,14 +561,13 @@ julia> logprior(demo_model([1., 2.]), chain)
 ```
 """
 function DynamicPPL.logprior(model::DynamicPPL.Model, chain::MCMCChains.Chains)
-    var_info = DynamicPPL.VarInfo(model) # extract variables info from the model
-    map(Iterators.product(1:size(chain, 1), 1:size(chain, 3))) do (iteration_idx, chain_idx)
-        argvals_dict = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}(
-            vn_parent => DynamicPPL.values_from_chain(
-                var_info, vn_parent, chain, chain_idx, iteration_idx
-            ) for vn_parent in keys(var_info)
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    return map(params_with_stats) do ps
+        vi = DynamicPPL.Experimental.OnlyAccsVarInfo(
+            DynamicPPL.AccumulatorTuple((DynamicPPL.LogPriorAccumulator()))
         )
-        DynamicPPL.logprior(model, argvals_dict)
+        _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromParams(ps.params, nothing))
+        DynamicPPL.getlogprior(vi)
     end
 end
 

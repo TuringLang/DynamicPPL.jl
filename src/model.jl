@@ -1148,7 +1148,7 @@ julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
 ```
 """
 function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
-    vi = DynamicPPL.setaccs!!(VarInfo(), ())
+    vi = DynamicPPL.Experimental.OnlyAccsVarInfo(AccumulatorTuple())
     # Note: we can't use `fix(model, parameters)` because
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
     # Use `nothing` as the fallback to ensure that any missing parameters cause an error
