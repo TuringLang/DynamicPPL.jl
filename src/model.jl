@@ -1181,12 +1181,15 @@ julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
 ```
 """
 function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
-    vi = DynamicPPL.setaccs!!(VarInfo(), ())
     # Note: we can't use `fix(model, parameters)` because
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
-    # Use `nothing` as the fallback to ensure that any missing parameters cause an error
-    ctx = InitContext(Random.default_rng(), InitFromParams(parameters, nothing))
-    new_model = setleafcontext(model, ctx)
-    # We can't use new_model() because that overwrites it with an InitContext of its own.
-    return first(evaluate!!(new_model, vi))
+    return first(
+        init!!(
+            model,
+            DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple()),
+            # Use `nothing` as the fallback to ensure that any missing parameters cause an
+            # error
+            InitFromParams(parameters, nothing),
+        ),
+    )
 end
