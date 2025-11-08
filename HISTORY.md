@@ -1,6 +1,6 @@
 # DynamicPPL Changelog
 
-## 0.38.9
+## 0.38.10
 
 Added `DynamicPPL.Experimental.FastLDF`, a version of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
 Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
@@ -9,6 +9,10 @@ Please note that `FastLDF` is currently considered internal and its API may chan
 We intend to replace `LogDensityFunction` with `FastLDF` in a release in the near future, but until then we recommend not using it.
 
 For more information about `FastLDF`, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
+
+## 0.38.9
+
+Remove warning when using Enzyme as the AD backend.
 
 ## 0.38.8
 
