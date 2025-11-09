@@ -78,30 +78,35 @@ end
 end
 
 @testset "FastLDF: performance" begin
-    # Evaluating these three models should not lead to any allocations.
-    @model function f()
-        x ~ Normal()
-        return 1.0 ~ Normal(x)
-    end
-    @model function submodel_inner()
-        m ~ Normal(0, 1)
-        s ~ Exponential()
-        return (m=m, s=s)
-    end
-    # Note that for the allocation tests to work on this one, `inner` has
-    # to be passed as an argument to `submodel_outer`, instead of just
-    # being called inside the model function itself
-    @model function submodel_outer(inner)
-        params ~ to_submodel(inner)
-        y ~ Normal(params.m, params.s)
-        return 1.0 ~ Normal(y)
-    end
-    @testset for model in (f(), submodel_inner(), submodel_outer(submodel_inner()))
-        vi = VarInfo(model)
-        fldf = DynamicPPL.Experimental.FastLDF(model, DynamicPPL.getlogjoint_internal, vi)
-        x = vi[:]
-        bench = median(@be LogDensityProblems.logdensity(fldf, x))
-        @test iszero(bench.allocs)
+    if Threads.nthreads() == 1
+        # Evaluating these three models should not lead to any allocations (but only when
+        # not using TSVI).
+        @model function f()
+            x ~ Normal()
+            return 1.0 ~ Normal(x)
+        end
+        @model function submodel_inner()
+            m ~ Normal(0, 1)
+            s ~ Exponential()
+            return (m=m, s=s)
+        end
+        # Note that for the allocation tests to work on this one, `inner` has
+        # to be passed as an argument to `submodel_outer`, instead of just
+        # being called inside the model function itself
+        @model function submodel_outer(inner)
+            params ~ to_submodel(inner)
+            y ~ Normal(params.m, params.s)
+            return 1.0 ~ Normal(y)
+        end
+        @testset for model in (f(), submodel_inner(), submodel_outer(submodel_inner()))
+            vi = VarInfo(model)
+            fldf = DynamicPPL.Experimental.FastLDF(
+                model, DynamicPPL.getlogjoint_internal, vi
+            )
+            x = vi[:]
+            bench = median(@be LogDensityProblems.logdensity(fldf, x))
+            @test iszero(bench.allocs)
+        end
     end
 end
 
