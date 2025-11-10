@@ -102,7 +102,7 @@ struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitS
     function InitFromParams(
         params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
     )
-        return InitFromParams(to_varname_dict(params), fallback)
+        return new{typeof(params),typeof(fallback)}(params, fallback)
     end
 end
 function init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams)
