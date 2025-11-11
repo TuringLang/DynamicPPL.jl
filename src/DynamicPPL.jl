@@ -94,16 +94,21 @@ export AbstractVarInfo,
     values_as_in_model,
     # LogDensityFunction
     LogDensityFunction,
-    # Contexts
+    # Leaf contexts
+    AbstractContext,
     contextualize,
     DefaultContext,
-    PrefixContext,
-    ConditionContext,
+    InitContext,
+    # Parent contexts
+    AbstractParentContext,
+    childcontext,
+    setchildcontext,
+    leafcontext,
+    setleafcontext,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
     # Initialisation
-    InitContext,
     AbstractInitStrategy,
     InitFromPrior,
     InitFromUniform,
