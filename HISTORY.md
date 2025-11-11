@@ -4,6 +4,10 @@
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
+## 0.38.9
+
+Remove warning when using Enzyme as the AD backend.
+
 ## 0.38.8
 
 Added a new exported struct, `DynamicPPL.ParamsWithStats`.
