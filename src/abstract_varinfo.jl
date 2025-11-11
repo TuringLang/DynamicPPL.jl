@@ -204,7 +204,7 @@ Jacobian here is taken with respect to the forward (link) transform.
 
 See also: [`setlogjac!!`](@ref).
 """
-getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logjac
+getlogjac(vi::AbstractVarInfo) = getacc(vi, Val(:LogJacobian)).logp
 
 """
     getloglikelihood(vi::AbstractVarInfo)
