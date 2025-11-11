@@ -15,7 +15,7 @@ There should generally be few reasons to define your own parent contexts (the on
 Leaf contexts require no changes, apart from a removal of the `NodeTrait` function.
 
 `ConditionContext` and `PrefixContext` are no longer exported.
-You should not need to use these directly, please use `condition(model, vals)` and `prefix(model, vals)` instead.
+You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
 
 #### Miscellaneous
 
