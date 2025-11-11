@@ -12,9 +12,6 @@ abstract type AbstractInitStrategy end
 """
     InitValue{T,F}
 
-A wrapper type representing a value of type `T`. The function `F` indicates what transform
-to apply to the value to convert it back to the unlinked space. If `value` is already in
-unlinked space, then `transform` can be `identity`.
 """
 struct InitValue{T,F}
     value::T
@@ -26,7 +23,11 @@ end
 
 Generate a new value for a random variable with the given distribution.
 
-This function must return a `InitValue`.
+This function must return a tuple of:
+
+- the generated value
+- a function that transforms the generated value back to the unlinked space. If the value is
+  already in unlinked space, then this should be `identity`.
 """
 function init end
 
@@ -37,7 +38,7 @@ Obtain new values by sampling from the prior distribution.
 """
 struct InitFromPrior <: AbstractInitStrategy end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
-    return InitValue(rand(rng, dist), identity)
+    return rand(rng, dist), identity
 end
 
 """
@@ -77,7 +78,7 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     if x isa Array{<:Any,0}
         x = x[]
     end
-    return InitValue(x, identity)
+    return x, identity
 end
 
 """
@@ -128,7 +129,7 @@ function init(
         else
             # TODO(penelopeysm): Since x is user-supplied, maybe we could also
             # check here that the type / size of x matches the dist?
-            InitValue(x, identity)
+            x, identity
         end
     else
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
@@ -201,7 +202,7 @@ function init(
     else
         from_vec_transform(dist)
     end
-    return InitValue((@view vr.vect[range_and_linked.range]), transform)
+    return (@view vr.vect[range_and_linked.range]), transform
 end
 
 """
@@ -232,8 +233,8 @@ function tilde_assume!!(
     ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     in_varinfo = haskey(vi, vn)
-    init_val = init(ctx.rng, vn, dist, ctx.strategy)
-    x, inv_logjac = with_logabsdet_jacobian(init_val.transform, init_val.value)
+    val, transform = init(ctx.rng, vn, dist, ctx.strategy)
+    x, inv_logjac = with_logabsdet_jacobian(transform, val)
     # Determine whether to insert a transformed value into the VarInfo.
     # If the VarInfo alrady had a value for this variable, we will
     # keep the same linked status as in the original VarInfo. If not, we
