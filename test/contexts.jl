@@ -27,6 +27,9 @@ using Random: Xoshiro
 function Base.iterate(context::AbstractParentContext)
     return context, childcontext(context)
 end
+function Base.iterate(context::AbstractContext)
+    return context, nothing
+end
 function Base.iterate(::AbstractContext, state::AbstractParentContext)
     return state, childcontext(state)
 end
