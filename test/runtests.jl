@@ -37,13 +37,6 @@ using DynamicPPL: getargs_dottilde, getargs_tilde
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
 
-# Skip Mooncake if it doesn't work
-const MOONCAKE_SUPPORTED = VERSION < v"1.12.0"
-if MOONCAKE_SUPPORTED
-    Pkg.add("Mooncake")
-    using Mooncake: Mooncake
-end
-
 Random.seed!(100)
 include("test_util.jl")
 
