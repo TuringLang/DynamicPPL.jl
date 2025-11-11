@@ -259,9 +259,9 @@ function tilde_assume!!(
         # but it's not clear right now how to do this. In my opinion, the most productive
         # way forward would be to standardise the behaviour of bijectors so that we can have
         # a clean separation between the linking and vectorisation parts of it.
-        y, inv_logjac + fwd_logjac
+        y, -inv_logjac + fwd_logjac
     else
-        x, inv_logjac
+        x, -inv_logjac
     end
     # Add the new value to the VarInfo. `push!!` errors if the value already
     # exists, hence the need for setindex!!.
