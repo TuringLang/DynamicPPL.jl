@@ -519,8 +519,8 @@ InitFromParams
 If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.
 
 ```@docs
-DynamicPPL.AbstractInitStrategy
-DynamicPPL.init
+AbstractInitStrategy
+init
 ```
 
 ### Choosing a suitable VarInfo

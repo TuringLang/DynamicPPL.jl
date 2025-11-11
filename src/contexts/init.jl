@@ -10,15 +10,6 @@ Any subtype of `AbstractInitStrategy` must implement the
 abstract type AbstractInitStrategy end
 
 """
-    InitValue{T,F}
-
-"""
-struct InitValue{T,F}
-    value::T
-    transform::F
-end
-
-"""
     init(rng::Random.AbstractRNG, vn::VarName, dist::Distribution, strategy::AbstractInitStrategy)
 
 Generate a new value for a random variable with the given distribution.
