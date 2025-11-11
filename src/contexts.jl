@@ -26,7 +26,7 @@ effectively updating the child context.
 
 # Examples
 ```jldoctest
-julia> using DynamicPPL: DynamicTransformationContext
+julia> using DynamicPPL: DynamicTransformationContext, ConditionContext
 
 julia> ctx = ConditionContext((; a = 1));
 

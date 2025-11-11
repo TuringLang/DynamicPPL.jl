@@ -427,7 +427,7 @@ Return the conditioned values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: conditioned, contextualize
+julia> using DynamicPPL: conditioned, contextualize, PrefixContext, ConditionContext
 
 julia> @model function demo()
            m ~ Normal()
@@ -770,7 +770,7 @@ Return the fixed values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: fixed, contextualize
+julia> using DynamicPPL: fixed, contextualize, PrefixContext
 
 julia> @model function demo()
            m ~ Normal()

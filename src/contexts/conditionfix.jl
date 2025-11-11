@@ -42,7 +42,9 @@ function Base.show(io::IO, context::ConditionContext)
 end
 
 childcontext(context::ConditionContext) = context.context
-setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
+function setchildcontext(parent::ConditionContext, child::AbstractContext)
+    return ConditionContext(parent.values, child)
+end
 
 """
     hasconditioned(context::AbstractContext, vn::VarName)
@@ -185,7 +187,9 @@ function Base.show(io::IO, context::FixedContext)
 end
 
 childcontext(context::FixedContext) = context.context
-setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
+function setchildcontext(parent::FixedContext, child::AbstractContext)
+    return FixedContext(parent.values, child)
+end
 
 """
     hasfixed(context::AbstractContext, vn::VarName)
@@ -350,7 +354,7 @@ topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_co
 which explains this in much more detail.
 
 ```jldoctest
-julia> using DynamicPPL: collapse_prefix_stack
+julia> using DynamicPPL: collapse_prefix_stack, PrefixContext, ConditionContext
 
 julia> c1 = PrefixContext(@varname(a), ConditionContext((x=1, )));
 
