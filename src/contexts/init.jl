@@ -317,12 +317,21 @@ function tilde_assume!!(
         # is that the transform used by `VectorWithRanges` is `from_linked_VEC_transform`,
         # which is NOT the same as `inverse(link_transform)` (because there is an additional
         # vectorisation step). We need `init` and `tilde_assume!!` to share this information
-        # but it's not clear right now how to do this. In my opinion, the most productive
-        # way forward would be to clean up the behaviour of bijectors so that we can have a
-        # clean separation between the linking and vectorisation parts of it. That way, `x`
-        # can either be unlinked, unlinked vectorised, linked, or linked vectorised, and
-        # regardless of which it is, we should only need to apply at most one linking and
-        # one vectorisation transform.
+        # but it's not clear right now how to do this. In my opinion, there are a couple of
+        # potential ways forward:
+        #
+        # 1. Just remove metadata entirely so that there is never any need to construct
+        # a linked vectorised value again. This would require us to use VAIMAcc as the only
+        # way of getting values. I consider this the best option, but it might take a long
+        # time.
+        #
+        # 2. Clean up the behaviour of bijectors so that we can have a complete separation
+        # between the linking and vectorisation parts of it. That way, `x` can either be
+        # unlinked, unlinked vectorised, linked, or linked vectorised, and regardless of
+        # which it is, we should only need to apply at most one linking and one
+        # vectorisation transform. Doing so would allow us to remove the first call to
+        # `with_logabsdet_jacobian`, and instead compose and/or uncompose the
+        # transformations before calling `with_logabsdet_jacobian` once.
         y, -inv_logjac + fwd_logjac
     else
         x, -inv_logjac
