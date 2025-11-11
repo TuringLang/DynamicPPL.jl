@@ -21,6 +21,9 @@ You should not need to use these directly, please use `AbstractPPL.condition` an
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
+The method `DynamicPPL.init` (for implementing `AbstractInitStrategy`) now has a different signature: it must return an `InitValue` struct, which holds both a value as well as a transform function that maps it back to unlinked space.
+This is a generalisation of the previous behaviour, where `init` would always return an unlinked value (in effect forcing the transform to be the identity function).
+
 ### Other changes
 
 #### FastLDF
