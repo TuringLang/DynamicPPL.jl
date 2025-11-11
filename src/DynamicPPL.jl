@@ -113,6 +113,7 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    init,
     # Pseudo distributions
     NamedDist,
     NoDist,
