@@ -1,65 +1,3 @@
-"""
-fasteval.jl
------------
-
-Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
-given set of parameters:
-
-1. With `unflatten` + `evaluate!!` with `DefaultContext`: this stores a vector of parameters
-   inside a VarInfo's metadata, then reads parameter values from the VarInfo during evaluation.
-
-2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and stores
-   them inside a VarInfo's metadata.
-
-In general, both of these approaches work fine, but the fact that they modify the VarInfo's
-metadata can often be quite wasteful. In particular, it is very common that the only outputs
-we care about from model evaluation are those which are stored in accumulators, such as log
-probability densities, or `ValuesAsInModel`.
-
-To avoid this issue, we implement here `OnlyAccsVarInfo`, which is a VarInfo that only
-contains accumulators. It implements enough of the `AbstractVarInfo` interface to not error
-during model evaluation.
-
-Because `OnlyAccsVarInfo` does not store any parameter values, when evaluating a model with
-it, it is mandatory that parameters are provided from outside the VarInfo, namely via
-`InitContext{<:InitFromParams}`.
-
-NamedTuple and Dict parameters
-------------------------------
-
-OnlyAccsVarInfo works out of the box with the existing `InitContext{<:InitFromParams{<:P}}`,
-functionality, where `P` is either a NamedTuple or a Dict.
-
-Vector parameters
------------------
-
-Vector parameters are more complicated, since it is not possible to directly implement
-`DynamicPPL.init(rng, vn, dist, strategy)` for `strategy::InitFromParams{<:AbstractVector}`.
-In particular, it is not clear:
-
- - which parts of the vector correspond to which random variables, and
- - whether the variables are linked or unlinked.
-
-Traditionally, this problem has been solved by `unflatten`, because that function would
-place values into the VarInfo's metadata alongside the information about ranges and linking.
-However, we want to avoid doing this. Thus, here, we _extract this information from the
-VarInfo_ a single time when constructing a `FastLDF` object.
-
-This creates a single struct, `ParamsWithRanges`, which contains:
-
- - the vector of parameters
- - a mapping from VarNames to ranges in that vector, along with link status
-
-When evaluating the model, we create a `FastEvalVectorContext`, which reads parameter
-
-Note that this assumes that the ranges and link status are static throughout the lifetime of
-the `FastLDF` object. Therefore, a `FastLDF` object cannot handle models which have variable
-numbers of parameters, or models which may visit random variables in different orders depending
-on stochastic control flow. **Indeed, silent errors may occur with such models.** This is a
-general limitation of vectorised parameters: the original `unflatten` + `evaluate!!`
-approach also fails with such models.
-"""
-
 using DynamicPPL:
     AbstractVarInfo,
     AccumulatorTuple,
@@ -146,15 +84,53 @@ Note that it is undefined behaviour to access any of a `FastLDF`'s fields, apart
 
 ## Extended help
 
-`FastLDF` uses `FastEvalVectorContext` internally to provide extremely rapid evaluation of
-the model given a vector of parameters.
+Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
+given set of parameters:
 
-Because it is common to call `LogDensityProblems.logdensity` and
-`LogDensityProblems.logdensity_and_gradient` within tight loops, it is beneficial for us to
-pre-compute as much of the information as possible when constructing the `FastLDF` object.
-In particular, we use the provided VarInfo's metadata to extract the mapping from VarNames
-to ranges and link status, and store this mapping inside the `FastLDF` object. We can later
-use this to construct a FastEvalVectorContext, without having to look into a metadata again.
+1. With `unflatten` + `evaluate!!` with `DefaultContext`: this stores a vector of parameters
+   inside a VarInfo's metadata, then reads parameter values from the VarInfo during evaluation.
+
+2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and stores
+   them inside a VarInfo's metadata.
+
+In general, both of these approaches work fine, but the fact that they modify the VarInfo's
+metadata can often be quite wasteful. In particular, it is very common that the only outputs
+we care about from model evaluation are those which are stored in accumulators, such as log
+probability densities, or `ValuesAsInModel`.
+
+To avoid this issue, we use `OnlyAccsVarInfo`, which is a VarInfo that only contains
+accumulators. It implements enough of the `AbstractVarInfo` interface to not error during
+model evaluation.
+
+Because `OnlyAccsVarInfo` does not store any parameter values, when evaluating a model with
+it, it is mandatory that parameters are provided from outside the VarInfo, namely via
+`InitContext{<:InitFromParams}`.
+
+The main problem that we face is that it is not possible to directly implement
+`DynamicPPL.init(rng, vn, dist, strategy)` for `strategy::InitFromParams{<:AbstractVector}`.
+In particular, it is not clear:
+
+ - which parts of the vector correspond to which random variables, and
+ - whether the variables are linked or unlinked.
+
+Traditionally, this problem has been solved by `unflatten`, because that function would
+place values into the VarInfo's metadata alongside the information about ranges and linking.
+That way, when we evaluate with `DefaultContext`, we can read this information out again.
+However, we want to avoid doing this. Thus, here, we _extract this information from the
+VarInfo_ a single time when constructing a `FastLDF` object. Inside the `FastLDF, we store:
+
+ - the vector of parameters
+ - a mapping from VarNames to ranges in that vector, along with link status
+
+When evaluating the model, this allows us to create an `InitFromParams{VectorWithRanges}`, which
+lets us very quickly read parameter values from the vector.
+
+Note that this assumes that the ranges and link status are static throughout the lifetime of
+the `FastLDF` object. Therefore, a `FastLDF` object cannot handle models which have variable
+numbers of parameters, or models which may visit random variables in different orders depending
+on stochastic control flow. **Indeed, silent errors may occur with such models.** This is a
+general limitation of vectorised parameters: the original `unflatten` + `evaluate!!`
+approach also fails with such models.
 """
 struct FastLDF{
     M<:Model,
@@ -285,8 +261,11 @@ end
 # Helper functions to extract ranges and link status #
 ######################################################
 
-# TODO: Fails for SimpleVarInfo. Do I really care enough? Ehhh, honestly, debatable.
-
+# This fails for SimpleVarInfo, but honestly there is no reason to support that here. The
+# fact is that evaluation doesn't use a VarInfo, it only uses it once to generate the ranges
+# and link status. So there is no motivation to use SimpleVarInfo inside a
+# LogDensityFunction any more, we can just always use typed VarInfo. In fact one could argue
+# that there is no purpose in supporting untyped VarInfo either.
 """
     get_ranges_and_linked(varinfo::VarInfo)
 
