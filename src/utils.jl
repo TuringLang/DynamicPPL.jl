@@ -16,6 +16,41 @@ This is Float64 on 64-bit systems and Float32 on 32-bit systems.
 const LogProbType = float(Real)
 
 """
+    _typed_identity(x)
+
+Identity function, but with an overload for `with_logabsdet_jacobian` to ensure
+that it returns a sensible zero logjac.
+
+The problem with plain old `identity` is that the default definition of
+`with_logabsdet_jacobian` for `identity` returns `zero(eltype(x))`:
+https://github.com/JuliaMath/ChangesOfVariables.jl/blob/d6a8115fc9b9419decbdb48e2c56ec9675b4c6a4/src/with_ladj.jl#L154
+
+This is fine for most samples `x`, but if `eltype(x)` doesn't return a sensible type (e.g.
+if it's `Any`), then using `identity` will error with `zero(Any)`. This can happen with,
+for example, `ProductNamedTupleDistribution`:
+
+```julia
+julia> using Distributions; d = product_distribution((a = Normal(), b = LKJCholesky(3, 0.5)));
+
+julia> eltype(rand(d))
+Any
+```
+
+The same problem precludes us from eventually broadening the scope of DynamicPPL.jl to
+support distributions with non-numeric samples.
+
+Furthermore, in principle, the type of the log-probability should be separate from the type
+of the sample. Thus, instead of using `zero(LogProbType)`, we should use the eltype of the
+LogJacobianAccumulator. There's no easy way to thread that through here, but if a way to do
+this is discovered, then `_typed_identity` is what will allow us to obtain that custom
+behaviour.
+"""
+function _typed_identity end
+@inline _typed_identity(x) = x
+@inline Bijectors.with_logabsdet_jacobian(::typeof(_typed_identity), x) =
+    (x, zero(LogProbType))
+
+"""
     @addlogprob!(ex)
 
 Add a term to the log joint.

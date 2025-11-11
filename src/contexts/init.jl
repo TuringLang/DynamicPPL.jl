@@ -29,7 +29,7 @@ Obtain new values by sampling from the prior distribution.
 """
 struct InitFromPrior <: AbstractInitStrategy end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
-    return rand(rng, dist), identity
+    return rand(rng, dist), _typed_identity
 end
 
 """
@@ -69,7 +69,7 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     if x isa Array{<:Any,0}
         x = x[]
     end
-    return x, identity
+    return x, _typed_identity
 end
 
 """
@@ -120,7 +120,7 @@ function init(
         else
             # TODO(penelopeysm): Since x is user-supplied, maybe we could also
             # check here that the type / size of x matches the dist?
-            x, identity
+            x, _typed_identity
         end
     else
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
@@ -238,19 +238,25 @@ function tilde_assume!!(
         y, fwd_logjac = with_logabsdet_jacobian(link_transform(dist), x)
         # Note that if we use VectorWithRanges with a full VarInfo, this double-Jacobian
         # calculation wastes a lot of time going from linked vectorised -> unlinked ->
-        # linked, and `inv_logjac` will also just be the negative of `fwd_logjac`. However,
-        # `VectorWithRanges` is only really used with `OnlyAccsVarInfo`, in which case this
-        # branch is never hit (since `in_varinfo` will always be false). So we can leave
-        # this branch in for full generality with other combinations of init strategies /
-        # VarInfo.
+        # linked, and `inv_logjac` will also just be the negative of `fwd_logjac`.
+        #
+        # However, `VectorWithRanges` is only really used with `OnlyAccsVarInfo`, in which
+        # case this branch is never hit (since `in_varinfo` will always be false). It does
+        # mean that the combination of InitFromParams{<:VectorWithRanges} with a full,
+        # linked, VarInfo will be very slow. That should never really be used, though. So
+        # (at least for now) we can leave this branch in for full generality with other
+        # combinations of init strategies / VarInfo.
         #
         # TODO(penelopeysm): Figure out one day how to refactor this. The crux of the issue
         # is that the transform used by `VectorWithRanges` is `from_linked_VEC_transform`,
         # which is NOT the same as `inverse(link_transform)` (because there is an additional
         # vectorisation step). We need `init` and `tilde_assume!!` to share this information
         # but it's not clear right now how to do this. In my opinion, the most productive
-        # way forward would be to standardise the behaviour of bijectors so that we can have
-        # a clean separation between the linking and vectorisation parts of it.
+        # way forward would be to clean up the behaviour of bijectors so that we can have a
+        # clean separation between the linking and vectorisation parts of it. That way, `x`
+        # can either be unlinked, unlinked vectorised, linked, or linked vectorised, and
+        # regardless of which it is, we should only need to apply at most one linking and
+        # one vectorisation transform.
         y, -inv_logjac + fwd_logjac
     else
         x, -inv_logjac
