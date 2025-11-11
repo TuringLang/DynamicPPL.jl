@@ -986,9 +986,13 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue($get_param_eltype(varinfo, model), model.args.$var)...)
+            :(
+                $matchingvalue(
+                    $get_param_eltype(varinfo, model.context), model.args.$var
+                )...
+            )
         else
-            :($matchingvalue($get_param_eltype(varinfo, model), model.args.$var))
+            :($matchingvalue($get_param_eltype(varinfo, model.context), model.args.$var))
         end for var in argnames
     ]
     return quote
@@ -1007,20 +1011,36 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 end
 
 """
-    get_param_eltype(varinfo::AbstractVarInfo, model::Model)
+    get_param_eltype(varinfo::AbstractVarInfo, context::AbstractContext)
 
-Get the element type of the parameters being used to evaluate the `model` from the
-`varinfo`. For example, when performing AD with ForwardDiff, this should return
-`ForwardDiff.Dual`.
+Get the element type of the parameters being used to evaluate a model, using a `varinfo`
+under the given `context`. For example, when evaluating a model with ForwardDiff AD, this
+should return `ForwardDiff.Dual`.
 
 By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on the fact
 that typically, before evaluation, the parameters will have been inserted into the VarInfo's
 metadata field.
 
-See `OnlyAccsVarInfo` for an example of where this is not true (the parameters are instead
-stored in the model's context).
+For InitContext, it's quite different: because InitContext is responsible for supplying the
+parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside it.
 """
-get_param_eltype(varinfo::AbstractVarInfo, ::Model) = eltype(varinfo)
+get_param_eltype(vi::AbstractVarInfo, ::DefaultContext) = eltype(vi)
+function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractContext)
+    return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
+end
+function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
+    return _get_strat_param_eltype(ctx.strategy)
+end
+function _get_strat_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
+    return eltype(strategy.params.vect)
+end
+function _get_strat_param_eltype(
+    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
+)
+    return infer_nested_eltype(typeof(strategy.params))
+end
+# No need to specify a type since new ones are generated
+_get_strat_param_eltype(::Union{InitFromPrior,InitFromUniform}) = Any
 
 """
     getargnames(model::Model)

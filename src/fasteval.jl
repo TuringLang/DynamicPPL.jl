@@ -17,16 +17,25 @@ we care about from model evaluation are those which are stored in accumulators, 
 probability densities, or `ValuesAsInModel`.
 
 To avoid this issue, we implement here `OnlyAccsVarInfo`, which is a VarInfo that only
-contains accumulators. When evaluating a model with `OnlyAccsVarInfo`, it is mandatory that
-the model's leaf context is a `FastEvalContext`, which provides extremely fast access to
-parameter values. No writing of values into VarInfo metadata is performed at all.
+contains accumulators. It implements enough of the `AbstractVarInfo` interface to not error
+during model evaluation.
+
+Because `OnlyAccsVarInfo` does not store any parameter values, when evaluating a model with
+it, it is mandatory that parameters are provided from outside the VarInfo, namely via
+`InitContext{<:InitFromParams}`.
+
+NamedTuple and Dict parameters
+------------------------------
+
+OnlyAccsVarInfo works out of the box with the existing `InitContext{<:InitFromParams{<:P}}`,
+functionality, where `P` is either a NamedTuple or a Dict.
 
 Vector parameters
 -----------------
 
-We first consider the case of parameter vectors, i.e., the case which would normally be
-handled by `unflatten` and `evaluate!!`. Unfortunately, it is not enough to just store
-the vector of parameters in the `FastEvalContext`, because it is not clear:
+Vector parameters are more complicated, since it is not possible to directly implement
+`DynamicPPL.init(rng, vn, dist, strategy)` for `strategy::InitFromParams{<:AbstractVector}`.
+In particular, it is not clear:
 
  - which parts of the vector correspond to which random variables, and
  - whether the variables are linked or unlinked.
@@ -36,192 +45,50 @@ place values into the VarInfo's metadata alongside the information about ranges 
 However, we want to avoid doing this. Thus, here, we _extract this information from the
 VarInfo_ a single time when constructing a `FastLDF` object.
 
+This creates a single struct, `ParamsWithRanges`, which contains:
+
+ - the vector of parameters
+ - a mapping from VarNames to ranges in that vector, along with link status
+
+When evaluating the model, we create a `FastEvalVectorContext`, which reads parameter
+
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `FastLDF` object. Therefore, a `FastLDF` object cannot handle models which have variable
 numbers of parameters, or models which may visit random variables in different orders depending
 on stochastic control flow. **Indeed, silent errors may occur with such models.** This is a
 general limitation of vectorised parameters: the original `unflatten` + `evaluate!!`
 approach also fails with such models.
-
-NamedTuple and Dict parameters
-------------------------------
-
-Fast evaluation has not yet been extended to NamedTuple and Dict parameters. Such
-representations are capable of handling models with variable sizes and stochastic control
-flow.
-
-However, the path towards implementing these is straightforward: just make `InitContext` work
-correctly with `OnlyAccsVarInfo`. There will probably be a few functions that need to be
-overloaded to make this work: for example `push!!` on `OnlyAccsVarInfo` can just be defined
-as a no-op.
 """
 
 using DynamicPPL:
-    AbstractContext,
     AbstractVarInfo,
     AccumulatorTuple,
     InitContext,
     InitFromParams,
-    InitFromPrior,
-    InitFromUniform,
     LogJacobianAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
-    Metadata,
     Model,
     ThreadSafeVarInfo,
     VarInfo,
+    OnlyAccsVarInfo,
+    RangeAndLinked,
+    VectorWithRanges,
+    Metadata,
     VarNamedVector,
-    accumulate_assume!!,
-    accumulate_observe!!,
     default_accumulators,
     float_type_with_fallback,
-    from_linked_vec_transform,
-    from_vec_transform,
     getlogjoint,
     getlogjoint_internal,
     getloglikelihood,
     getlogprior,
-    getlogprior_internal,
-    leafcontext
+    getlogprior_internal
 using ADTypes: ADTypes
 using BangBang: BangBang
-using Bijectors: with_logabsdet_jacobian
 using AbstractPPL: AbstractPPL, VarName
-using Distributions: Distribution
-using DocStringExtensions: TYPEDFIELDS
 using LogDensityProblems: LogDensityProblems
 import DifferentiationInterface as DI
-
-"""
-    OnlyAccsVarInfo
-
-This is a wrapper around an `AccumulatorTuple` that implements the minimal `AbstractVarInfo`
-interface to work with the `accumulate_assume!!` and `accumulate_observe!!` functions.
-
-Note that this does not implement almost every other AbstractVarInfo interface function, and
-so using this outside of FastLDF will lead to errors.
-
-Conceptually, one can also think of this as a VarInfo that doesn't contain a metadata field.
-That is because values for random variables are obtained by reading from a separate entity
-(such as a `FastLDFContext`), rather than from the VarInfo itself.
-"""
-struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
-    accs::Accs
-end
-OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
-DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
-DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
-DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-@inline Base.haskey(::OnlyAccsVarInfo, ::VarName) = false
-@inline DynamicPPL.is_transformed(::OnlyAccsVarInfo) = false
-@inline BangBang.push!!(vi::OnlyAccsVarInfo, vn, y, dist) = vi
-function DynamicPPL.get_param_eltype(
-    ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}}, model::Model
-)
-    # Because the VarInfo has no parameters stored in it, we need to get the eltype from the
-    # model's leaf context. This is only possible if said leaf context is indeed a FastEval
-    # context.
-    leaf_ctx = DynamicPPL.leafcontext(model.context)
-    if leaf_ctx isa FastEvalVectorContext
-        return eltype(leaf_ctx.params)
-    elseif leaf_ctx isa InitContext{<:Any,<:InitFromParams}
-        return DynamicPPL.infer_nested_eltype(typeof(leaf_ctx.strategy.params))
-    elseif leaf_ctx isa InitContext{<:Any,<:Union{InitFromPrior,InitFromUniform}}
-        # No need to enforce any particular eltype here, since new parameters are sampled
-        return Any
-    else
-        error(
-            "OnlyAccsVarInfo can only be used with FastEval contexts, found $(typeof(leaf_ctx))",
-        )
-    end
-end
-
-"""
-    RangeAndLinked
-
-Suppose we have vectorised parameters `params::AbstractVector{<:Real}`. Each random variable
-in the model will in general correspond to a sub-vector of `params`. This struct stores
-information about that range, as well as whether the sub-vector represents a linked value or
-an unlinked value.
-
-$(TYPEDFIELDS)
-"""
-struct RangeAndLinked
-    # indices that the variable corresponds to in the vectorised parameter
-    range::UnitRange{Int}
-    # whether it's linked
-    is_linked::Bool
-end
-
-"""
-    FastEvalVectorContext(
-        iden_varname_ranges::NamedTuple,
-        varname_ranges::Dict{VarName,RangeAndLinked},
-        params::AbstractVector{<:Real},
-    ) <: AbstractContext
-
-A context that wraps a vector of parameter values, plus information about how random
-variables map to ranges in that vector.
-
-In the simplest case, this could be accomplished only with a single dictionary mapping
-VarNames to ranges and link status. However, for performance reasons, we separate out
-VarNames with identity optics into a NamedTuple (`iden_varname_ranges`). All
-non-identity-optic VarNames are stored in the `varname_ranges` Dict.
-
-It would be nice to unify the NamedTuple and Dict approach. See, e.g.
-https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
-"""
-struct FastEvalVectorContext{N<:NamedTuple,T<:AbstractVector{<:Real}} <: AbstractContext
-    # This NamedTuple stores the ranges for identity VarNames
-    iden_varname_ranges::N
-    # This Dict stores the ranges for all other VarNames
-    varname_ranges::Dict{VarName,RangeAndLinked}
-    # The full parameter vector which we index into to get variable values
-    params::T
-end
-DynamicPPL.NodeTrait(::FastEvalVectorContext) = DynamicPPL.IsLeaf()
-
-function get_range_and_linked(
-    ctx::FastEvalVectorContext, ::VarName{sym,typeof(identity)}
-) where {sym}
-    return ctx.iden_varname_ranges[sym]
-end
-function get_range_and_linked(ctx::FastEvalVectorContext, vn::VarName)
-    return ctx.varname_ranges[vn]
-end
-
-function DynamicPPL.tilde_assume!!(
-    ctx::FastEvalVectorContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
-)
-    # Note that this function does not use the metadata field of `vi` at all.
-    range_and_linked = get_range_and_linked(ctx, vn)
-    y = @view ctx.params[range_and_linked.range]
-    f = if range_and_linked.is_linked
-        from_linked_vec_transform(right)
-    else
-        from_vec_transform(right)
-    end
-    x, inv_logjac = with_logabsdet_jacobian(f, y)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right)
-    return x, vi
-end
-
-function DynamicPPL.tilde_observe!!(
-    ::FastEvalVectorContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    vi::AbstractVarInfo,
-)
-    # This is the same as for DefaultContext
-    vi = accumulate_observe!!(vi, right, left, vn)
-    return left, vi
-end
-
-########################################
-# Log-density functions using FastEval #
-########################################
+using Random: Random
 
 """
     FastLDF(
@@ -365,7 +232,12 @@ struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
     _varname_ranges::Dict{VarName,RangeAndLinked}
 end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
-    ctx = FastEvalVectorContext(f._iden_varname_ranges, f._varname_ranges, params)
+    ctx = InitContext(
+        Random.default_rng(),
+        InitFromParams(
+            VectorWithRanges(f._iden_varname_ranges, f._varname_ranges, params), nothing
+        ),
+    )
     model = DynamicPPL.setleafcontext(f._model, ctx)
     accs = fast_ldf_accs(f._getlogdensity)
     # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
