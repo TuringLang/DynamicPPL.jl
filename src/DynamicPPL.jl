@@ -84,8 +84,8 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    init,
     OrderedDict,
+    typed_identity,
     # Model
     Model,
     getmissings,

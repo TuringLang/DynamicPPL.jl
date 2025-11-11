@@ -1021,27 +1021,18 @@ By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on
 that typically, before evaluation, the parameters will have been inserted into the VarInfo's
 metadata field.
 
-For InitContext, it's quite different: because InitContext is responsible for supplying the
-parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside it.
+For `InitContext`, it's quite different: because `InitContext` is responsible for supplying
+the parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside
+it. See the docstring of `get_param_eltype(strategy::AbstractInitStrategy)` for more
+explanation.
 """
 function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractParentContext)
     return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
 end
 get_param_eltype(vi::AbstractVarInfo, ::AbstractContext) = eltype(vi)
 function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
-    return _get_strat_param_eltype(ctx.strategy)
+    return get_param_eltype(ctx.strategy)
 end
-
-function _get_strat_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
-    return eltype(strategy.params.vect)
-end
-function _get_strat_param_eltype(
-    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
-)
-    return infer_nested_eltype(typeof(strategy.params))
-end
-# No need to specify a type since new ones are generated
-_get_strat_param_eltype(::Union{InitFromPrior,InitFromUniform}) = Any
 
 """
     getargnames(model::Model)

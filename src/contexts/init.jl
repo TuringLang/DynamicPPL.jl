@@ -1,11 +1,11 @@
 """
     AbstractInitStrategy
 
-Abstract type representing the possible ways of initialising new values for
-the random variables in a model (e.g., when creating a new VarInfo).
+Abstract type representing the possible ways of initialising new values for the random
+variables in a model (e.g., when creating a new VarInfo).
 
-Any subtype of `AbstractInitStrategy` must implement the
-[`DynamicPPL.init`](@ref) method.
+Any subtype of `AbstractInitStrategy` must implement the [`DynamicPPL.init`](@ref) method,
+and very rarely, [`DynamicPPL.get_param_eltype`](@ref).
 """
 abstract type AbstractInitStrategy end
 
@@ -14,13 +14,57 @@ abstract type AbstractInitStrategy end
 
 Generate a new value for a random variable with the given distribution.
 
-This function must return a tuple of:
+This function must return a tuple `(x, trf)`, where
 
-- the generated value
-- a function that transforms the generated value back to the unlinked space. If the value is
-  already in unlinked space, then this should be `identity`.
+- `x` is the generated value
+
+- `trf` is a function that transforms the generated value back to the unlinked space. If the
+  value is already in unlinked space, then this should be `DynamicPPL.typed_identity`. You
+  can also use `Base.identity`, but if you use this, you **must** be confident that
+  `zero(eltype(x))` will **never** error. See the docstring of `typed_identity` for more
+  information.
 """
 function init end
+
+"""
+    DynamicPPL.get_param_eltype(strategy::AbstractInitStrategy)
+
+Return the element type of the parameters generated from the given initialisation strategy.
+
+The default implementation returns `Any`. However, for `InitFromParams` which provides known
+parameters for evaluating the model, methods are implemented in order to return more specific
+types.
+
+For the most part, a return value of `Any` will actually suffice. However, there are a few
+edge cases in DynamicPPL where the element type is needed. These largely relate to
+determining the element type of accumulators ahead of time (_before_ evaluation), as well as
+promoting type parameters in model arguments. The classic case is when evaluating a model
+with ForwardDiff: the accumulators must be set to `Dual`s, and any `Vector{Float64}`
+arguments must be promoted to `Vector{Dual}`. Other tracer types, for example those in
+SparseConnectivityTracer.jl, also require similar treatment.
+
+If `AbstractInitStrategy` is never used in combination with tracer types, then it is
+perfectly safe to return `Any`. This does not lead to type instability downstream because
+the actual accumulators will still be created with concrete Float types (the `Any` is just
+used to determine whether the float type needs to be modified).
+
+(Detail: in fact, the above is not always true. Firstly, the accumulator argument is only
+true when evaluating with ThreadSafeVarInfo. See the comments in `DynamicPPL.unflatten` for
+more details. For non-threadsafe evaluation, Julia is capable of automatically promoting the
+types on its own. Secondly, the promotion only matters if you are trying to directly assign
+into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for example using
+`xs[i] = MyDual`. This doesn't actually apply to tilde-statements like `xs[i] ~ ...` because
+those use `Accessors.@set` under the hood, which also does the promotion for you.)
+"""
+get_param_eltype(::AbstractInitStrategy) = Any
+function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
+    return eltype(strategy.params.vect)
+end
+function get_param_eltype(
+    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
+)
+    return infer_nested_eltype(typeof(strategy.params))
+end
 
 """
     InitFromPrior()
@@ -74,21 +118,46 @@ end
 
 """
     InitFromParams(
-        params::Union{AbstractDict{<:VarName},NamedTuple},
+        params::Any
         fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
     )
 
-Obtain new values by extracting them from the given dictionary or NamedTuple.
+Obtain new values by extracting them from the given set of `params`.
 
-The parameter `fallback` specifies how new values are to be obtained if they
-cannot be found in `params`, or they are specified as `missing`. `fallback`
-can either be an initialisation strategy itself, in which case it will be
-used to obtain new values, or it can be `nothing`, in which case an error
-will be thrown. The default for `fallback` is `InitFromPrior()`.
+The most common use case is to provide a `NamedTuple` or `AbstractDict{<:VarName}`, which
+provides a mapping from variable names to values. However, we leave the type of `params`
+open in order to allow for custom parameter storage types.
 
-!!! note
-    The values in `params` must be provided in the space of the untransformed
-    distribution.
+## Custom parameter storage types
+
+For `InitFromParams` to work correctly with a custom `params::P`, you need to implement
+
+```julia
+DynamicPPL.init(rng, vn::VarName, dist::Distribution, p::InitFromParams{P}) where {P}
+```
+
+This tells you how to obtain values for the random variable `vn` from `p.params`. Note that
+the last argument is `InitFromParams(params)`, not just `params` itself. Please see the
+docstring of [`DynamicPPL.init`](@ref) for more information on the expected behaviour.
+
+If you only use `InitFromParams` with `DynamicPPL.OnlyAccsVarInfo`, as is usually the case,
+then you will not need to implement anything else. So far, this is the same as you would do
+for creating any new `AbstractInitStrategy` subtype.
+
+However, to use `InitFromParams` with a full `DynamicPPL.VarInfo`, you *may* also need to
+implement
+
+```julia
+DynamicPPL.get_param_eltype(p::InitFromParams{P}) where {P}
+```
+
+See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information on when this
+is needed.
+
+The argument `fallback` specifies how new values are to be obtained if they cannot be found
+in `params`, or they are specified as `missing`. `fallback` can either be an initialisation
+strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
+in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
 """
 struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
     params::P
@@ -102,11 +171,8 @@ struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitS
 end
 
 function init(
-    rng::Random.AbstractRNG,
-    vn::VarName,
-    dist::Distribution,
-    p::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}},
-)
+    rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams{P}
+) where {P<:Union{AbstractDict{<:VarName},NamedTuple}}
     # TODO(penelopeysm): It would be nice to do a check to make sure that all
     # of the parameters in `p.params` were actually used, and either warn or
     # error if they aren't. This is actually quite non-trivial though because
