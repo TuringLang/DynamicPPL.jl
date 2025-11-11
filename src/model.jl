@@ -1024,13 +1024,14 @@ metadata field.
 For InitContext, it's quite different: because InitContext is responsible for supplying the
 parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside it.
 """
-get_param_eltype(vi::AbstractVarInfo, ::DefaultContext) = eltype(vi)
-function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractContext)
+function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractParentContext)
     return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
 end
+get_param_eltype(vi::AbstractVarInfo, ::AbstractContext) = eltype(vi)
 function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
     return _get_strat_param_eltype(ctx.strategy)
 end
+
 function _get_strat_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
     return eltype(strategy.params.vect)
 end
