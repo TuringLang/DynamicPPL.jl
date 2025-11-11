@@ -2,6 +2,12 @@
     AbstractParentContext
 
 An abstract context that has a child context.
+
+Subtypes of `AbstractParentContext` must implement the following interface:
+
+- `DynamicPPL.childcontext(context::AbstractParentContext)`: Return the child context.
+- `DynamicPPL.setchildcontext(parent::AbstractParentContext, child::AbstractContext)`: Reconstruct
+  `parent` but now using `child` as its child context.
 """
 abstract type AbstractParentContext <: AbstractContext end
 
