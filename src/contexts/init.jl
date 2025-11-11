@@ -73,7 +73,7 @@ Obtain new values by sampling from the prior distribution.
 """
 struct InitFromPrior <: AbstractInitStrategy end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
-    return rand(rng, dist), _typed_identity
+    return rand(rng, dist), typed_identity
 end
 
 """
@@ -113,7 +113,7 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     if x isa Array{<:Any,0}
         x = x[]
     end
-    return x, _typed_identity
+    return x, typed_identity
 end
 
 """
@@ -186,7 +186,7 @@ function init(
         else
             # TODO(penelopeysm): Since x is user-supplied, maybe we could also
             # check here that the type / size of x matches the dist?
-            x, _typed_identity
+            x, typed_identity
         end
     else
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")

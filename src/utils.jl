@@ -16,7 +16,7 @@ This is Float64 on 64-bit systems and Float32 on 32-bit systems.
 const LogProbType = float(Real)
 
 """
-    _typed_identity(x)
+    typed_identity(x)
 
 Identity function, but with an overload for `with_logabsdet_jacobian` to ensure
 that it returns a sensible zero logjac.
@@ -42,12 +42,12 @@ support distributions with non-numeric samples.
 Furthermore, in principle, the type of the log-probability should be separate from the type
 of the sample. Thus, instead of using `zero(LogProbType)`, we should use the eltype of the
 LogJacobianAccumulator. There's no easy way to thread that through here, but if a way to do
-this is discovered, then `_typed_identity` is what will allow us to obtain that custom
+this is discovered, then `typed_identity` is what will allow us to obtain that custom
 behaviour.
 """
-function _typed_identity end
-@inline _typed_identity(x) = x
-@inline Bijectors.with_logabsdet_jacobian(::typeof(_typed_identity), x) =
+function typed_identity end
+@inline typed_identity(x) = x
+@inline Bijectors.with_logabsdet_jacobian(::typeof(typed_identity), x) =
     (x, zero(LogProbType))
 
 """
