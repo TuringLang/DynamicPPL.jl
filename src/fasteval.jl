@@ -142,7 +142,6 @@ struct FastLDF{
     model::M
     adtype::AD
     _getlogdensity::F
-    # See FastLDFContext for explanation of these two fields.
     _iden_varname_ranges::N
     _varname_ranges::Dict{VarName,RangeAndLinked}
     _adprep::ADP
