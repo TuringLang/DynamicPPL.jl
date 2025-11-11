@@ -75,6 +75,24 @@ end
             end
         end
     end
+
+    @testset "Threaded observe" begin
+        if Threads.nthreads() > 1
+            @model function threaded(y)
+                x ~ Normal()
+                Threads.@threads for i in eachindex(y)
+                    y[i] ~ Normal(x)
+                end
+            end
+            N = 100
+            model = threaded(zeros(N))
+            ldf = DynamicPPL.Experimental.FastLDF(model)
+
+            xs = [1.0]
+            @test LogDensityProblems.logdensity(ldf, xs) ≈
+                logpdf(Normal(), xs[1]) + N * logpdf(Normal(xs[1]), 0.0)
+        end
+    end
 end
 
 @testset "FastLDF: performance" begin
