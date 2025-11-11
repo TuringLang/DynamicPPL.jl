@@ -15,6 +15,7 @@ using MacroTools
 using MCMCChains
 using StableRNGs
 using ReverseDiff
+using Mooncake
 using Zygote
 
 using Distributed
