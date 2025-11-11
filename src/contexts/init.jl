@@ -57,14 +57,6 @@ into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for e
 those use `Accessors.@set` under the hood, which also does the promotion for you.)
 """
 get_param_eltype(::AbstractInitStrategy) = Any
-function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
-    return eltype(strategy.params.vect)
-end
-function get_param_eltype(
-    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
-)
-    return infer_nested_eltype(typeof(strategy.params))
-end
 
 """
     InitFromPrior()
@@ -193,6 +185,11 @@ function init(
         init(rng, vn, dist, p.fallback)
     end
 end
+function get_param_eltype(
+    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
+)
+    return infer_nested_eltype(typeof(strategy.params))
+end
 
 """
     RangeAndLinked
@@ -260,6 +257,9 @@ function init(
         from_vec_transform(dist)
     end
     return (@view vr.vect[range_and_linked.range]), transform
+end
+function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
+    return eltype(strategy.params.vect)
 end
 
 """
