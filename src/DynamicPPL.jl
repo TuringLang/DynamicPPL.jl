@@ -114,6 +114,7 @@ export AbstractVarInfo,
     InitFromUniform,
     InitFromParams,
     init,
+    get_param_eltype,
     # Pseudo distributions
     NamedDist,
     NoDist,
