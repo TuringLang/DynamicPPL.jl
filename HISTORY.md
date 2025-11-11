@@ -2,6 +2,23 @@
 
 ## 0.39.0
 
+### Breaking changes
+
+#### Parent and leaf contexts
+
+The `DynamicPPL.NodeTrait` function has been removed.
+Instead of implementing this, parent contexts should subtype `DynamicPPL.AbstractParentContext`.
+This is an abstract type which requires you to overload two functions, `DynamicPPL.childcontext` and `DynamicPPL.setchildcontext`.
+
+There should generally be few reasons to define your own parent contexts (the only one we are aware of, outside of DynamicPPL itself, is `Turing.Inference.GibbsContext`), so this change should not really affect users.
+
+Leaf contexts require no changes, apart from a removal of the `NodeTrait` function.
+
+`ConditionContext` and `PrefixContext` are no longer exported.
+You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
+
+#### Miscellaneous
+
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
 ## 0.38.9
