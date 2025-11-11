@@ -17,7 +17,6 @@ with `DefaultContext` means 'calculating the log-probability associated with the
 in the `AbstractVarInfo`'.
 """
 struct DefaultContext <: AbstractContext end
-NodeTrait(::DefaultContext) = IsLeaf()
 
 """
     DynamicPPL.tilde_assume!!(

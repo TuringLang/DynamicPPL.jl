@@ -1,41 +1,19 @@
 """
-    NodeTrait(context)
-    NodeTrait(f, context)
+    AbstractParentContext
 
-Specifies the role of `context` in the context-tree.
-
-The officially supported traits are:
-- `IsLeaf`: `context` does not have any decendants.
-- `IsParent`: `context` has a child context to which we often defer.
-  Expects the following methods to be implemented:
-  - [`childcontext`](@ref)
-  - [`setchildcontext`](@ref)
+An abstract context that has a child context.
 """
-abstract type NodeTrait end
-NodeTrait(_, context) = NodeTrait(context)
+abstract type AbstractParentContext <: AbstractContext end
 
 """
-    IsLeaf
-
-Specifies that the context is a leaf in the context-tree.
-"""
-struct IsLeaf <: NodeTrait end
-"""
-    IsParent
-
-Specifies that the context is a parent in the context-tree.
-"""
-struct IsParent <: NodeTrait end
-
-"""
-    childcontext(context)
+    childcontext(context::AbstractParentContext)
 
 Return the descendant context of `context`.
 """
 childcontext
 
 """
-    setchildcontext(parent::AbstractContext, child::AbstractContext)
+    setchildcontext(parent::AbstractParentContext, child::AbstractContext)
 
 Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
 effectively updating the child context.
@@ -60,12 +38,11 @@ setchildcontext
 """
     leafcontext(context::AbstractContext)
 
-Return the leaf of `context`, i.e. the first descendant context that `IsLeaf`.
+Return the leaf of `context`, i.e. the first descendant context that is not an
+`AbstractParentContext`.
 """
-leafcontext(context::AbstractContext) =
-    leafcontext(NodeTrait(leafcontext, context), context)
-leafcontext(::IsLeaf, context::AbstractContext) = context
-leafcontext(::IsParent, context::AbstractContext) = leafcontext(childcontext(context))
+leafcontext(context::AbstractContext) = context
+leafcontext(context::AbstractParentContext) = leafcontext(childcontext(context))
 
 """
     setleafcontext(left::AbstractContext, right::AbstractContext)
@@ -80,11 +57,9 @@ original leaf context of `left`.
 ```jldoctest
 julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext, DynamicTransformationContext
 
-julia> struct ParentContext{C} <: AbstractContext
+julia> struct ParentContext{C} <: AbstractParentContext
            context::C
        end
-
-julia> DynamicPPL.NodeTrait(::ParentContext) = DynamicPPL.IsParent()
 
 julia> DynamicPPL.childcontext(context::ParentContext) = context.context
 
@@ -104,21 +79,10 @@ julia> # Append another parent context.
 ParentContext(ParentContext(ParentContext(DefaultContext())))
 ```
 """
-function setleafcontext(left::AbstractContext, right::AbstractContext)
-    return setleafcontext(
-        NodeTrait(setleafcontext, left), NodeTrait(setleafcontext, right), left, right
-    )
-end
-function setleafcontext(
-    ::IsParent, ::IsParent, left::AbstractContext, right::AbstractContext
-)
+function setleafcontext(left::AbstractParentContext, right::AbstractParentContext)
     return setchildcontext(left, setleafcontext(childcontext(left), right))
 end
-function setleafcontext(::IsParent, ::IsLeaf, left::AbstractContext, right::AbstractContext)
-    return setchildcontext(left, setleafcontext(childcontext(left), right))
-end
-setleafcontext(::IsLeaf, ::IsParent, left::AbstractContext, right::AbstractContext) = right
-setleafcontext(::IsLeaf, ::IsLeaf, left::AbstractContext, right::AbstractContext) = right
+setleafcontext(::AbstractContext, right::AbstractContext) = right
 
 """
     DynamicPPL.tilde_assume!!(
@@ -138,9 +102,14 @@ This function should return a tuple `(x, vi)`, where `x` is the sampled value (w
 must be in unlinked space!) and `vi` is the updated VarInfo.
 """
 function tilde_assume!!(
-    context::AbstractContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    context::AbstractParentContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     return tilde_assume!!(childcontext(context), right, vn, vi)
+end
+function tilde_assume!!(
+    context::AbstractContext, ::Distribution, ::VarName, ::AbstractVarInfo
+)
+    return error("tilde_assume!! not implemented for context of type $(typeof(context))")
 end
 
 """
@@ -171,11 +140,20 @@ This function should return a tuple `(left, vi)`, where `left` is the same as th
 `vi` is the updated VarInfo.
 """
 function tilde_observe!!(
-    context::AbstractContext,
+    context::AbstractParentContext,
     right::Distribution,
     left,
     vn::Union{VarName,Nothing},
     vi::AbstractVarInfo,
 )
     return tilde_observe!!(childcontext(context), right, left, vn, vi)
+end
+function tilde_observe!!(
+    context::AbstractContext,
+    ::Distribution,
+    ::Any,
+    ::Union{VarName,Nothing},
+    ::AbstractVarInfo,
+)
+    return error("tilde_observe!! not implemented for context of type $(typeof(context))")
 end
