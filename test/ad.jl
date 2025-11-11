@@ -5,15 +5,11 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = if MOONCAKE_SUPPORTED
-        [
-            AutoReverseDiff(; compile=false),
-            AutoReverseDiff(; compile=true),
-            AutoMooncake(; config=nothing),
-        ]
-    else
-        [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
-    end
+    test_adtypes = [
+        AutoReverseDiff(; compile=false),
+        AutoReverseDiff(; compile=true),
+        AutoMooncake(; config=nothing),
+    ]
 
     @testset "Unsupported backends" begin
         @model demo() = x ~ Normal()
@@ -43,13 +39,13 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
                     # Put predicates here to avoid long lines
                     is_mooncake = adtype isa AutoMooncake
                     is_1_10 = v"1.10" <= VERSION < v"1.11"
-                    is_1_11 = v"1.11" <= VERSION < v"1.12"
+                    is_1_11_or_1_12 = v"1.11" <= VERSION < v"1.13"
                     is_svi_vnv =
                         linked_varinfo isa SimpleVarInfo{<:DynamicPPL.VarNamedVector}
                     is_svi_od = linked_varinfo isa SimpleVarInfo{<:OrderedDict}
 
                     # Mooncake doesn't work with several combinations of SimpleVarInfo.
-                    if is_mooncake && is_1_11 && is_svi_vnv
+                    if is_mooncake && is_1_11_or_1_12 && is_svi_vnv
                         # https://github.com/compintell/Mooncake.jl/issues/470
                         @test_throws ArgumentError DynamicPPL.LogDensityFunction(
                             m, getlogjoint_internal, linked_varinfo; adtype=adtype
