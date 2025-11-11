@@ -463,18 +463,19 @@ Contexts are split into two kinds:
 
 **Leaf contexts**: These are the most important contexts as they ultimately decide how model evaluation proceeds.
 For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
-
-To implement a leaf context, you just need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+DynamicPPL has more leaf contexts which are used for internal purposes, but these are the two that are exported.
 
 ```@docs
-AbstractPPL.AbstractContext
 DefaultContext
 InitContext
+```
+
+To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+
+```@docs
 tilde_assume!!
 tilde_observe!!
 ```
-
-DynamicPPL has more leaf contexts which are used for internal purposes, but these are the exported ones.
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
 For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `ConditionContext` marks certain variables as observed.
@@ -487,6 +488,14 @@ This is optional; the default implementation is to simply delegate to the child 
 AbstractParentContext
 childcontext
 setchildcontext
+```
+
+Since contexts form a tree structure, these functions are automatically defined for manipulating context stacks.
+They are mainly useful for modifying the fundamental behaviour (i.e. the leaf context), without affecting any of the modifiers (i.e. parent contexts).
+
+```@docs
+leafcontext
+setleafcontext
 ```
 
 ### VarInfo initialisation

@@ -6,7 +6,9 @@ using DynamicPPL:
     childcontext,
     setchildcontext,
     AbstractContext,
+    AbstractParentContext,
     contextual_isassumption,
+    PrefixContext,
     FixedContext,
     ConditionContext,
     decondition_context,
@@ -22,16 +24,16 @@ using LinearAlgebra: I
 using Random: Xoshiro
 
 # TODO: Should we maybe put this in DPPL itself?
-function Base.iterate(context::DynamicPPL.AbstractParentContext)
+function Base.iterate(context::AbstractParentContext)
     return context, childcontext(context)
 end
-function Base.iterate(::DynamicPPL.AbstractContext, state::DynamicPPL.AbstractParentContext)
+function Base.iterate(::AbstractContext, state::AbstractParentContext)
     return state, childcontext(state)
 end
-function Base.iterate(::DynamicPPL.AbstractContext, state::DynamicPPL.AbstractContext)
+function Base.iterate(::AbstractContext, state::AbstractContext)
     return state, nothing
 end
-function Base.iterate(::DynamicPPL.AbstractContext, state::Nothing)
+function Base.iterate(::AbstractContext, state::Nothing)
     return nothing
 end
 Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
@@ -340,8 +342,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         @testset "collapse_prefix_stack" begin
             # Utility function to make sure that there are no PrefixContexts in
             # the context stack.
+            has_no_prefixcontexts(::PrefixContext) = false
             function has_no_prefixcontexts(ctx::AbstractParentContext)
-                return !(ctx isa PrefixContext) && has_no_prefixcontexts(childcontext(ctx))
+                return has_no_prefixcontexts(childcontext(ctx))
             end
             has_no_prefixcontexts(::AbstractContext) = true
 

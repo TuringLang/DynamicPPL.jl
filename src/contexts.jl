@@ -85,7 +85,7 @@ julia> # Append another parent context.
 ParentContext(ParentContext(ParentContext(DefaultContext())))
 ```
 """
-function setleafcontext(left::AbstractParentContext, right::AbstractParentContext)
+function setleafcontext(left::AbstractParentContext, right::AbstractContext)
     return setchildcontext(left, setleafcontext(childcontext(left), right))
 end
 setleafcontext(::AbstractContext, right::AbstractContext) = right
