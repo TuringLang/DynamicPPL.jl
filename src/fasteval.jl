@@ -219,10 +219,7 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
     # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
     # here.
-    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
-    # it _should_ do, but this is wrong regardless.
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
-    vi = if Threads.nthreads() > 1
+    vi = if DynamicPPL.USE_THREADSAFE_EVAL[]
         accs = map(
             acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
             accs,

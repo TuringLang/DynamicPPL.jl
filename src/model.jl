@@ -1,3 +1,25 @@
+# This is overridden in the `__init__()` function (src/DynamicPPL.jl)
+USE_THREADSAFE_EVAL = Ref(true)
+
+"""
+    DynamicPPL.set_threadsafe_eval!(val::Bool)
+
+Enable or disable threadsafe model evaluation globally. By default, threadsafe evaluation is
+used whenever Julia is run with multiple threads.
+
+However, this is not necessary for the vast majority of DynamicPPL models. **In particular,
+use of threaded sampling with MCMCChains alone does NOT require threadsafe evaluation.**
+Threadsafe evaluation is only needed when manipulating `VarInfo` objects in parallel, e.g.
+when using `x ~ dist` statements inside `Threads.@threads` blocks.
+
+If you do not need threadsafe evaluation, disabling it can lead to significant performance
+improvements.
+"""
+function set_threadsafe_eval!(val::Bool)
+    USE_THREADSAFE_EVAL[] = val
+    return nothing
+end
+
 """
     struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
         f::F
@@ -864,16 +886,6 @@ function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInf
 end
 
 """
-    use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-
-Return `true` if evaluation of a model using `context` and `varinfo` should
-wrap `varinfo` in `ThreadSafeVarInfo`, i.e. threadsafe evaluation, and `false` otherwise.
-"""
-function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-    return Threads.nthreads() > 1
-end
-
-"""
     init!!(
         [rng::Random.AbstractRNG,]
         model::Model,
@@ -912,14 +924,14 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-If multiple threads are available, the varinfo provided will be wrapped in a
+If threadsafe evaluation is enabled, the varinfo provided will be wrapped in a
 `ThreadSafeVarInfo` before evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    return if use_threadsafe_eval(model.context, varinfo)
+    return if DynamicPPL.USE_THREADSAFE_EVAL[]
         evaluate_threadsafe!!(model, varinfo)
     else
         evaluate_threadunsafe!!(model, varinfo)

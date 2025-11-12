@@ -96,7 +96,7 @@ end
 end
 
 @testset "FastLDF: performance" begin
-    if Threads.nthreads() == 1
+    if !(DynamicPPL.USE_THREADSAFE_EVAL[])
         # Evaluating these three models should not lead to any allocations (but only when
         # not using TSVI).
         @model function f()

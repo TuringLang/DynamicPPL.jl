@@ -606,7 +606,7 @@ module Issue537 end
         @model demo() = return __varinfo__
         retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
         @test svi == SimpleVarInfo()
-        if Threads.nthreads() > 1
+        if DynamicPPL.USE_THREADSAFE_EVAL[]
             @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
             @test retval.varinfo == svi
         else

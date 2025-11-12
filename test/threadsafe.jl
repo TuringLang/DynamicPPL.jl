@@ -1,4 +1,26 @@
 @testset "threadsafe.jl" begin
+    @testset "set threadsafe eval" begin
+        # A dummy model that lets us see what type of VarInfo is being used for evaluation.
+        @model function find_out_varinfo_type()
+            x ~ Normal()
+            return typeof(__varinfo__)
+        end
+        model = find_out_varinfo_type()
+
+        # Check the default.
+        @test DynamicPPL.USE_THREADSAFE_EVAL[] == (Threads.nthreads() > 1)
+        # Disable it.
+        DynamicPPL.set_threadsafe_eval!(false)
+        @test DynamicPPL.USE_THREADSAFE_EVAL[] == false
+        @test !(model() <: DynamicPPL.ThreadSafeVarInfo)
+        # Enable it.
+        DynamicPPL.set_threadsafe_eval!(true)
+        @test DynamicPPL.USE_THREADSAFE_EVAL[] == true
+        @test model() <: DynamicPPL.ThreadSafeVarInfo
+        # Reset to default to avoid messing with other tests.
+        DynamicPPL.set_threadsafe_eval!(Threads.nthreads() > 1)
+    end
+
     @testset "constructor" begin
         vi = VarInfo(gdemo_default)
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
@@ -42,6 +64,7 @@
 
     @testset "model" begin
         println("Peforming threading tests with $(Threads.nthreads()) threads")
+        @show DynamicPPL.USE_THREADSAFE_EVAL[]
 
         x = rand(10_000)
 
@@ -57,10 +80,10 @@
         vi = VarInfo()
         model(vi)
         lp_w_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
+        if DynamicPPL.USE_THREADSAFE_EVAL[]
             @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        else
+            @test vi_ isa VarInfo
         end
 
         println("With `@threads`:")
@@ -90,10 +113,10 @@
         vi = VarInfo()
         model(vi)
         lp_wo_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
+        if DynamicPPL.USE_THREADSAFE_EVAL[]
             @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        else
+            @test vi_ isa VarInfo
         end
 
         println("Without `@threads`:")
