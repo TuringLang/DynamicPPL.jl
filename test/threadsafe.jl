@@ -64,6 +64,7 @@
 
     @testset "model" begin
         println("Peforming threading tests with $(Threads.nthreads()) threads")
+        @show DynamicPPL.USE_THREADSAFE_EVAL[]
 
         x = rand(10_000)
 
@@ -79,10 +80,10 @@
         vi = VarInfo()
         model(vi)
         lp_w_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
+        if DynamicPPL.USE_THREADSAFE_EVAL[]
             @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        else
+            @test vi_ isa VarInfo
         end
 
         println("With `@threads`:")
@@ -112,10 +113,10 @@
         vi = VarInfo()
         model(vi)
         lp_wo_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
+        if DynamicPPL.USE_THREADSAFE_EVAL[]
             @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        else
+            @test vi_ isa VarInfo
         end
 
         println("Without `@threads`:")
