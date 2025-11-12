@@ -33,12 +33,15 @@ using BangBang: setindex!!
     @test @inferred(getindex(vnt, @varname(d[4]))) == -2.0
 
     # These can't be @inferred because `d` now has an abstract element type. Note that this
-    # does not ruin type instability for other varnames that don't involve `d`.
+    # does not ruin type stability for other varnames that don't involve `d`.
     vnt = setindex!!(vnt, "a", @varname(d[5]))
     @test getindex(vnt, @varname(d[5])) == "a"
 
     vnt = @inferred(setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i)))
     @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
+
+    vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
+    @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
 end
 
 end

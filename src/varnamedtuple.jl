@@ -95,9 +95,11 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
     return BangBang.setindex!!(vnt, value, varname_to_lens(name))
 end
 
-function BangBang.setindex!!(vnt::VarNamedTuple, value, lens::ComposedFunction)
+function BangBang.setindex!!(
+    vnt::Union{VarNamedTuple,IndexDict}, value, lens::ComposedFunction
+)
     sub = if haskey(vnt, lens.inner)
-        BangBang.setindex!!(lens.inner(vnt.data), value, lens.outer)
+        BangBang.setindex!!(getindex(vnt, lens.inner), value, lens.outer)
     else
         vnt.make_leaf(value, lens.outer)
     end
