@@ -174,8 +174,8 @@ function init(
     # of the parameters in `p.params` were actually used, and either warn or
     # error if they aren't. This is actually quite non-trivial though because
     # the structure of Dicts in particular can have arbitrary nesting.
-    return if hasvalue(p.params, vn, dist)
-        x = getvalue(p.params, vn, dist)
+    return if hasvalue(p.params, vn)
+        x = getvalue(p.params, vn)
         if x === missing
             p.fallback === nothing &&
                 error("A `missing` value was provided for the variable `$(vn)`.")

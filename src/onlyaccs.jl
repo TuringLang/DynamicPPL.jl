@@ -24,6 +24,19 @@ end
 DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-Base.haskey(::OnlyAccsVarInfo, ::VarName) = false
-DynamicPPL.is_transformed(::OnlyAccsVarInfo) = false
-BangBang.push!!(vi::OnlyAccsVarInfo, vn, y, dist) = vi
+
+# Ideally, we'd define this together with InitContext, but alas that file comes way before
+# this one, and sorting out the include order is a pain.
+function tilde_assume!!(
+    ctx::InitContext,
+    dist::Distribution,
+    vn::VarName,
+    vi::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
+)
+    # For OnlyAccsVarInfo, since we don't need to write into the VarInfo, we can 
+    # cut out a lot of the code above.
+    val, transform = init(ctx.rng, vn, dist, ctx.strategy)
+    x, inv_logjac = with_logabsdet_jacobian(transform, val)
+    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, dist)
+    return x, vi
+end
