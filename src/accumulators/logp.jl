@@ -128,10 +128,10 @@ $(TYPEDFIELDS)
 """
 struct LogJacobianAccumulator{T<:Real} <: LogProbAccumulator{T}
     "the logabsdet of the link transform Jacobian"
-    logjac::T
+    logp::T
 end
 
-logp(acc::LogJacobianAccumulator) = acc.logjac
+logp(acc::LogJacobianAccumulator) = acc.logp
 
 accumulator_name(::Type{<:LogJacobianAccumulator}) = :LogJacobian
 

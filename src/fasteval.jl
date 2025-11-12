@@ -227,11 +227,8 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     # it _should_ do, but this is wrong regardless.
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
     vi = if Threads.nthreads() > 1
-        accs = map(
-            acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
-            accs,
-        )
-        ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
+        Tlogp = float_type_with_fallback(eltype(params))
+        OnlyAccsVarInfo(DynamicPPL.default_atomic_accumulators(Tlogp))
     else
         OnlyAccsVarInfo(accs)
     end
