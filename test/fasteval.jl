@@ -116,7 +116,7 @@ end
             y ~ Normal(params.m, params.s)
             return 1.0 ~ Normal(y)
         end
-        @testset for model in (f(), submodel_inner(), submodel_outer(submodel_inner()))
+        @testset for model in (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
             vi = VarInfo(model)
             fldf = DynamicPPL.Experimental.FastLDF(
                 model, DynamicPPL.getlogjoint_internal, vi
