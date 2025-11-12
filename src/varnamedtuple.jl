@@ -95,9 +95,7 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
     return BangBang.setindex!!(vnt, value, varname_to_lens(name))
 end
 
-function BangBang.setindex!!(
-    vnt::VarNamedTuple, value, lens::ComposedFunction{Outer,Inner}
-) where {Outer,Inner}
+function BangBang.setindex!!(vnt::VarNamedTuple, value, lens::ComposedFunction)
     sub = if haskey(vnt, lens.inner)
         BangBang.setindex!!(lens.inner(vnt.data), value, lens.outer)
     else
@@ -107,7 +105,11 @@ function BangBang.setindex!!(
 end
 
 function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S), vnt.make_leaf)
+    # I would like this to just read
+    # return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S), vnt.make_leaf)
+    # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
+    # below?
+    return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))), vnt.make_leaf)
 end
 
 function BangBang.setindex!!(id::IndexDict, value, lens::IndexLens)
