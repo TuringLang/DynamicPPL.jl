@@ -164,13 +164,8 @@ in which case an error will be thrown. The default for `fallback` is `InitFromPr
 struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
     params::P
     fallback::S
-
-    function InitFromParams(
-        params::P, fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
-    ) where {P}
-        return new{P,typeof(fallback)}(params, fallback)
-    end
 end
+InitFromParams(params) = InitFromParams(params, InitFromPrior())
 
 function init(
     rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams{P}
