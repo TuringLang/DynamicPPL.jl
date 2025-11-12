@@ -104,7 +104,7 @@ model evaluation.
 
 Because `OnlyAccsVarInfo` does not store any parameter values, when evaluating a model with
 it, it is mandatory that parameters are provided from outside the VarInfo, namely via
-`InitContext{<:InitFromParams}`.
+`InitContext`.
 
 The main problem that we face is that it is not possible to directly implement
 `DynamicPPL.init(rng, vn, dist, strategy)` for `strategy::InitFromParams{<:AbstractVector}`.
@@ -116,14 +116,18 @@ In particular, it is not clear:
 Traditionally, this problem has been solved by `unflatten`, because that function would
 place values into the VarInfo's metadata alongside the information about ranges and linking.
 That way, when we evaluate with `DefaultContext`, we can read this information out again.
-However, we want to avoid doing this. Thus, here, we _extract this information from the
-VarInfo_ a single time when constructing a `FastLDF` object. Inside the `FastLDF, we store:
+However, we want to avoid using a metadata. Thus, here, we _extract this information from
+the VarInfo_ a single time when constructing a `FastLDF` object. Inside the FastLDF, we
+store a mapping from VarNames to ranges in that vector, along with link status.
 
- - the vector of parameters
- - a mapping from VarNames to ranges in that vector, along with link status
+For VarNames with identity optics, this is stored in a NamedTuple for efficiency. For all
+other VarNames, this is stored in a Dict. The internal data structure used to represent this
+could almost certainly be optimised further. See e.g. the discussion in
+https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 
-When evaluating the model, this allows us to create an `InitFromParams{VectorWithRanges}`, which
-lets us very quickly read parameter values from the vector.
+When evaluating the model, this allows us to combine the parameter vector together with those
+ranges to create an `InitFromParams{VectorWithRanges}`, which lets us very quickly read
+parameter values from the vector.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `FastLDF` object. Therefore, a `FastLDF` object cannot handle models which have variable
