@@ -113,8 +113,7 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where
 end
 
 function BangBang.setindex!!(id::IndexDict, value, lens::IndexLens)
-    setindex!(id.data, value, lens.indices)
-    return id
+    return IndexDict(setindex!!(id.data, value, lens.indices), id.make_leaf)
 end
 
 function apply(func, vnt::VarNamedTuple, name::VarName)
