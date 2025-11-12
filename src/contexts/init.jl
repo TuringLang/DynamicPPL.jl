@@ -5,7 +5,7 @@ Abstract type representing the possible ways of initialising new values for the 
 variables in a model (e.g., when creating a new VarInfo).
 
 Any subtype of `AbstractInitStrategy` must implement the [`DynamicPPL.init`](@ref) method,
-and very rarely, [`DynamicPPL.get_param_eltype`](@ref).
+and in some cases, [`DynamicPPL.get_param_eltype`](@ref) (see its docstring for details).
 """
 abstract type AbstractInitStrategy end
 
@@ -17,7 +17,6 @@ Generate a new value for a random variable with the given distribution.
 This function must return a tuple `(x, trf)`, where
 
 - `x` is the generated value
-
 - `trf` is a function that transforms the generated value back to the unlinked space. If the
   value is already in unlinked space, then this should be `DynamicPPL.typed_identity`. You
   can also use `Base.identity`, but if you use this, you **must** be confident that
@@ -35,26 +34,37 @@ The default implementation returns `Any`. However, for `InitFromParams` which pr
 parameters for evaluating the model, methods are implemented in order to return more specific
 types.
 
-For the most part, a return value of `Any` will actually suffice. However, there are a few
-edge cases in DynamicPPL where the element type is needed. These largely relate to
-determining the element type of accumulators ahead of time (_before_ evaluation), as well as
-promoting type parameters in model arguments. The classic case is when evaluating a model
-with ForwardDiff: the accumulators must be set to `Dual`s, and any `Vector{Float64}`
+In general, if you are implementing a custom `AbstractInitStrategy`, correct behaviour can
+only be guaranteed if you implement this method as well. However, quite often, the default
+return value of `Any` will actually suffice. The cases where this does *not* suffice, and
+where you _do_ have to manually implement `get_param_eltype`, are explained in the extended
+help (see `??DynamicPPL.get_param_eltype` in the REPL).
+
+# Extended help
+
+There are a few edge cases in DynamicPPL where the element type is needed. These largely
+relate to determining the element type of accumulators ahead of time (_before_ evaluation),
+as well as promoting type parameters in model arguments. The classic case is when evaluating
+a model with ForwardDiff: the accumulators must be set to `Dual`s, and any `Vector{Float64}`
 arguments must be promoted to `Vector{Dual}`. Other tracer types, for example those in
 SparseConnectivityTracer.jl, also require similar treatment.
 
-If `AbstractInitStrategy` is never used in combination with tracer types, then it is
+If the `AbstractInitStrategy` is never used in combination with tracer types, then it is
 perfectly safe to return `Any`. This does not lead to type instability downstream because
 the actual accumulators will still be created with concrete Float types (the `Any` is just
 used to determine whether the float type needs to be modified).
 
-(Detail: in fact, the above is not always true. Firstly, the accumulator argument is only
-true when evaluating with ThreadSafeVarInfo. See the comments in `DynamicPPL.unflatten` for
-more details. For non-threadsafe evaluation, Julia is capable of automatically promoting the
-types on its own. Secondly, the promotion only matters if you are trying to directly assign
-into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for example using
-`xs[i] = MyDual`. This doesn't actually apply to tilde-statements like `xs[i] ~ ...` because
-those use `Accessors.@set` under the hood, which also does the promotion for you.)
+In case that wasn't enough: in fact, even the above is not always true. Firstly, the
+accumulator argument is only true when evaluating with ThreadSafeVarInfo. See the comments
+in `DynamicPPL.unflatten` for more details. For non-threadsafe evaluation, Julia is capable
+of automatically promoting the types on its own. Secondly, the promotion only matters if you
+are trying to directly assign into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar
+tracer type, for example using `xs[i] = MyDual`. This doesn't actually apply to
+tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set` under the hood, which
+also does the promotion for you. For the gory details, see the following issues:
+
+- https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
+- https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion
 """
 get_param_eltype(::AbstractInitStrategy) = Any
 

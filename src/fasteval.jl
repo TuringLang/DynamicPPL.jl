@@ -82,7 +82,7 @@ Note that it is undefined behaviour to access any of a `FastLDF`'s fields, apart
 - `fastldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
   type was provided.
 
-## Extended help
+# Extended help
 
 Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
 given set of parameters:
