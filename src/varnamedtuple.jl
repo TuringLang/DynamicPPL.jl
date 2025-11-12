@@ -1,3 +1,4 @@
+# TODO(mhauru) This module should probably be moved to AbstractPPL.
 module VarNamedTuples
 
 using AbstractPPL
@@ -6,28 +7,6 @@ using Accessors
 using DynamicPPL: _compose_no_identity
 
 export VarNamedTuple
-
-# @varname(a.b[3].c[:].d)
-#
-# VarNamedTuple(
-#   (; a=(; b=[
-#       (; c=[
-#           (; d=...),
-#           (; d=...),
-#           (; d=...),
-#       ]),
-#       (; c=[
-#           (; d=...),
-#           (; d=...),
-#           (; d=...),
-#       ]),
-#       (; c=[
-#           (; d=...),
-#           (; d=...),
-#           (; d=...),
-#       ]),
-#   ))
-#)
 
 struct VarNamedTuple{T<:Function,Names,Values}
     data::NamedTuple{Names,Values}
@@ -65,8 +44,8 @@ function Base.show(io::IO, vnt::VarNamedTuple)
     return print(io, ")")
 end
 
-function Base.show(io::IO, vnt::IndexDict)
-    return print(io, vnt.data)
+function Base.show(io::IO, id::IndexDict)
+    return print(io, id.data)
 end
 
 Base.getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
@@ -74,18 +53,19 @@ Base.getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 function varname_to_lens(name::VarName{S}) where {S}
     return _compose_no_identity(getoptic(name), PropertyLens{S}())
 end
+
 function Base.getindex(vnt::VarNamedTuple, name::VarName)
     return getindex(vnt, varname_to_lens(name))
 end
-function Base.getindex(vnt::VarNamedTuple, lens::ComposedFunction)
-    subdata = getindex(vnt, lens.inner)
+function Base.getindex(x::Union{VarNamedTuple,IndexDict}, lens::ComposedFunction)
+    subdata = getindex(x, lens.inner)
     return getindex(subdata, lens.outer)
 end
 function Base.getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
     return getindex(vnt.data, S)
 end
-function Base.getindex(vnt::IndexDict, lens::IndexLens)
-    return getindex(vnt.data, lens.indices)
+function Base.getindex(id::IndexDict, lens::IndexLens)
+    return getindex(id.data, lens.indices)
 end
 
 function Base.haskey(vnt::VarNamedTuple, name::VarName)
@@ -99,9 +79,9 @@ function Base.haskey(vnt::VarNamedTuple, lens::ComposedFunction)
 end
 
 Base.haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
-Base.haskey(vnt::IndexDict, lens::IndexLens) = haskey(vnt.data, lens.indices)
-Base.haskey(vnt::VarNamedTuple, lens::IndexLens) = false
-Base.haskey(vnt::IndexDict, lens::PropertyLens) = false
+Base.haskey(id::IndexDict, lens::IndexLens) = haskey(id.data, lens.indices)
+Base.haskey(::VarNamedTuple, ::IndexLens) = false
+Base.haskey(::IndexDict, ::PropertyLens) = false
 
 # TODO(mhauru) This is type piracy.
 Base.getindex(arr::AbstractArray, lens::IndexLens) = getindex(arr, lens.indices...)
@@ -130,44 +110,10 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where
     return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S), vnt.make_leaf)
 end
 
-function BangBang.setindex!!(vnt::IndexDict, value, lens::IndexLens)
-    return setindex!(vnt.data, value, lens.indices)
+function BangBang.setindex!!(id::IndexDict, value, lens::IndexLens)
+    setindex!(id.data, value, lens.indices)
+    return id
 end
-
-# function BangBang.setindex!!(
-#     vnt::VarNamedTuple, value, name::{S,Optic}
-# ) where {S,Optic}
-#     new_data = if haskey(vnt.data, S)
-#         if Optic === typeof(identity)
-#             BangBang.setindex!!(vnt.data, vnt.make_leaf(value, getoptic(name)), S)
-#         elseif Optic <: IndexLens
-#             new_subdata = BangBang.setindex!!(vnt.data[S], value, getoptic(name))
-#             BangBang.setindex!!(vnt.data, new_subdata, S)
-#         else
-#             new_subdata = BangBang.setindex!!(
-#                 vnt.data[S], value, AbstractPPL.unprefix(name, VarName{S}())
-#             )
-#             BangBang.setindex!!(vnt.data, new_subdata, S)
-#         end
-#     else
-#         new_subdata = if Optic === typeof(identity) || Optic <: IndexLens
-#             vnt.make_leaf(value, getoptic(name))
-#             # if Optic === typeof(identity)
-#             #     BangBang.setindex!!(vnt.data, value, S)
-#             # elseif Optic <: IndexLens
-#             #     new_subdata = BangBang.setindex!!(Dict{Union{},Union{}}(), value, getoptic(name).indices...)
-#             #     BangBang.setindex!!(vnt.data, new_subdata, S)
-#         else
-#             BangBang.setindex!!(
-#                 VarNamedTuple((;), vnt.make_leaf),
-#                 value,
-#                 AbstractPPL.unprefix(name, VarName{S}()),
-#             )
-#         end
-#         BangBang.setindex!!(vnt.data, new_subdata, S)
-#     end
-#     return VarNamedTuple(new_data, vnt.make_leaf)
-# end
 
 function apply(func, vnt::VarNamedTuple, name::VarName)
     if !haskey(vnt.data, name.name)
@@ -224,47 +170,3 @@ function Base.haskey(vnt::VarNamedTuple, name::VarName{S,Optic}) where {S,Optic}
 end
 
 end
-
-# module AdHocTests
-#
-# using DynamicPPL: VarNamedTuples, @varname
-# using BangBang
-#
-# vnt = VarNamedTuples.VarNamedTuple()
-# display(vnt)
-#
-# vnt = setindex!!(vnt, 32.0, @varname(a))
-# println("a = $(vnt[@varname(a)])")
-# display(vnt)
-#
-# vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
-# println("b[2] = $(vnt[@varname(b[2])])")
-# display(vnt)
-#
-# vnt = setindex!!(vnt, 64.0, @varname(a))
-# display(vnt)
-#
-# vnt = setindex!!(vnt, 15, @varname(b[2]))
-# display(vnt)
-#
-# vnt = setindex!!(vnt, [10], @varname(c.x.y))
-# println("c.x = $(vnt[@varname(c.x)])")
-# display(vnt)
-#
-# vnt = setindex!!(vnt, 11, @varname(c.x.y[1]))
-# display(vnt)
-#
-# vnt = setindex!!(vnt, -1.0, @varname(d[4]))
-# display(vnt)
-#
-# vnt = setindex!!(vnt, -2.0, @varname(d[4]))
-# display(vnt)
-#
-# vnt = setindex!!(vnt, -3.0, @varname(d[5]))
-# display(vnt)
-#
-# println("d = $(vnt[@varname(d)])")
-#
-# vnt = setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i))
-# display(vnt)
-# end
