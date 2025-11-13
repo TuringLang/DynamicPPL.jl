@@ -133,3 +133,60 @@ function ParamsWithStats(
     end
     return ParamsWithStats(params, stats)
 end
+
+"""
+    ParamsWithStats(
+        param_vector::AbstractVector,
+        ldf::DynamicPPL.Experimental.FastLDF,
+        stats::NamedTuple=NamedTuple();
+        include_colon_eq::Bool=true,
+        include_log_probs::Bool=true,
+    )
+
+Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
+`param_vector`.
+
+This method is intended to replace the old method of obtaining parameters and statistics
+via `unflatten` plus re-evaluation. It is faster for two reasons:
+
+1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
+   otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
+   MCMC iterations).
+2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+"""
+function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::DynamicPPL.Experimental.FastLDF,
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+)
+    strategy = InitFromParams(
+        VectorWithRanges(ldf._iden_varname_ranges, ldf._varname_ranges, param_vector),
+        nothing,
+    )
+    accs = if include_log_probs
+        (
+            DynamicPPL.LogPriorAccumulator(),
+            DynamicPPL.LogLikelihoodAccumulator(),
+            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+        )
+    else
+        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+    end
+    _, vi = DynamicPPL.Experimental.fast_evaluate!!(
+        ldf.model, strategy, AccumulatorTuple(accs)
+    )
+    params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
+    if include_log_probs
+        stats = merge(
+            stats,
+            (
+                logprior=DynamicPPL.getlogprior(vi),
+                loglikelihood=DynamicPPL.getloglikelihood(vi),
+                lp=DynamicPPL.getlogjoint(vi),
+            ),
+        )
+    end
+    return ParamsWithStats(params, stats)
+end

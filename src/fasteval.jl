@@ -3,6 +3,7 @@ using DynamicPPL:
     AccumulatorTuple,
     InitContext,
     InitFromParams,
+    AbstractInitStrategy,
     LogJacobianAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
@@ -27,6 +28,49 @@ using AbstractPPL: AbstractPPL, VarName
 using LogDensityProblems: LogDensityProblems
 import DifferentiationInterface as DI
 using Random: Random
+
+"""
+    DynamicPPL.Experimental.fast_evaluate!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        strategy::AbstractInitStrategy,
+        accs::AccumulatorTuple, params::AbstractVector{<:Real}
+    )
+
+Evaluate a model using parameters obtained via `strategy`, and only computing the results in
+the provided accumulators.
+"""
+@inline function fast_evaluate!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    strategy::AbstractInitStrategy,
+    accs::AccumulatorTuple,
+)
+    ctx = InitContext(rng, strategy)
+    model = DynamicPPL.setleafcontext(model, ctx)
+    # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
+    # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
+    # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
+    # here.
+    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
+    # it _should_ do, but this is wrong regardless.
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
+    vi = if Threads.nthreads() > 1
+        param_eltype = DynamicPPL.get_param_eltype(strategy)
+        accs = map(accs) do acc
+            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
+        end
+        ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
+    else
+        OnlyAccsVarInfo(accs)
+    end
+    return DynamicPPL._evaluate!!(model, vi)
+end
+@inline function fast_evaluate!!(
+    model::Model, strategy::AbstractInitStrategy, accs::AccumulatorTuple
+)
+    return fast_evaluate!!(Random.default_rng(), model, strategy, accs)
+end
 
 """
     FastLDF(
@@ -213,31 +257,11 @@ struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
     varname_ranges::Dict{VarName,RangeAndLinked}
 end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
-    ctx = InitContext(
-        Random.default_rng(),
-        InitFromParams(
-            VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
-        ),
+    strategy = InitFromParams(
+        VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
     )
-    model = DynamicPPL.setleafcontext(f.model, ctx)
     accs = fast_ldf_accs(f.getlogdensity)
-    # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
-    # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
-    # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
-    # here.
-    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
-    # it _should_ do, but this is wrong regardless.
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
-    vi = if Threads.nthreads() > 1
-        accs = map(
-            acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
-            accs,
-        )
-        ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
-    else
-        OnlyAccsVarInfo(accs)
-    end
-    _, vi = DynamicPPL._evaluate!!(model, vi)
+    _, vi = fast_evaluate!!(f.model, strategy, accs)
     return f.getlogdensity(vi)
 end
 
