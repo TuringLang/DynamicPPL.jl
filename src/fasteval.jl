@@ -39,8 +39,18 @@ using Random: Random
 
 Evaluate a model using parameters obtained via `strategy`, and only computing the results in
 the provided accumulators.
+
+It is assumed that the accumulators passed in have been initialised to appropriate values,
+as this function will not reset them. The default constructors for each accumulator will do
+this for you correctly.
+
+Returns a tuple of the model's return value, plus an `OnlyAccsVarInfo`. Note that the `accs`
+argument may be mutated (depending on how the accumulators are implemented); hence the `!!`
+in the function name.
 """
 @inline function fast_evaluate!!(
+    # Note that this `@inline` is mandatory for performance. If it's not inlined, it leads
+    # to extra allocations (even for trivial models) and much slower runtime.
     rng::Random.AbstractRNG,
     model::Model,
     strategy::AbstractInitStrategy,
@@ -69,6 +79,7 @@ end
 @inline function fast_evaluate!!(
     model::Model, strategy::AbstractInitStrategy, accs::AccumulatorTuple
 )
+    # This `@inline` is also mandatory for performance
     return fast_evaluate!!(Random.default_rng(), model, strategy, accs)
 end
 
