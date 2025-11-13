@@ -27,7 +27,6 @@ end
 
 is_type_stable_varinfo(::DynamicPPL.AbstractVarInfo) = false
 is_type_stable_varinfo(varinfo::DynamicPPL.NTVarInfo) = true
-is_type_stable_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
@@ -314,7 +313,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.init!!(model, SimpleVarInfo(OrderedDict{VarName,Any}())))
+            vi = last(DynamicPPL.init!!(model, VarInfo()))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -492,12 +491,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = product_dirichlet()
 
-        varinfos = [
-            DynamicPPL.untyped_varinfo(model),
-            DynamicPPL.typed_varinfo(model),
-            DynamicPPL.typed_simple_varinfo(model),
-            DynamicPPL.untyped_simple_varinfo(model),
-        ]
+        varinfos = [DynamicPPL.untyped_varinfo(model), DynamicPPL.typed_varinfo(model)]
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             logjoint = getlogjoint(varinfo) # unlinked space
             varinfo_linked = DynamicPPL.link(varinfo, model)

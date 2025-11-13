@@ -604,13 +604,13 @@ module Issue537 end
         # Even if the return-value is `AbstractVarInfo`, we should return
         # a `Tuple` with `AbstractVarInfo` in the second component too.
         @model demo() = return __varinfo__
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
-        @test svi == SimpleVarInfo()
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
+        @test vi == VarInfo()
         if Threads.nthreads() > 1
-            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
-            @test retval.varinfo == svi
+            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:VarInfo}
+            @test retval.varinfo == vi
         else
-            @test retval == svi
+            @test retval == vi
         end
 
         # We should not be altering return-values other than at top-level.
@@ -620,11 +620,11 @@ module Issue537 end
             f(x) = return x^2
             return f(1.0)
         end
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
         @test retval isa Float64
 
         @model demo() = x ~ Normal()
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
 
         # Return-value when using `to_submodel`
         @model inner() = x ~ Normal()

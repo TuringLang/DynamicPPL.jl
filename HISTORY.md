@@ -15,6 +15,9 @@ As a result of this change, `LogDensityFunction` no longer stores a VarInfo insi
 In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
 If you were previously relying on this behaviour, you will need to store a VarInfo separately.
 
+Along with this change, DynamicPPL now exposes the `fast_evaluate!!` method which allows you to hook into this 'fast evaluation' pipeline directly.
+Please see the documentation for details.
+
 #### Parent and leaf contexts
 
 The `DynamicPPL.NodeTrait` function has been removed.
@@ -27,6 +30,17 @@ Leaf contexts require no changes, apart from a removal of the `NodeTrait` functi
 
 `ConditionContext` and `PrefixContext` are no longer exported.
 You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
+
+#### SimpleVarInfo
+
+`SimpleVarInfo` has been removed.
+Its main purpose was for evaluating models rapidly.
+However, `fast_evaluate!!` provides a cleaner way of doing this.
+In particular, if you want to evaluate a model at a given set of parameters, you can do:
+
+```julia
+retval, vi = DynamicPPL.fast_evaluate!!(rng, model, InitFromParams(params), accs)
+```
 
 #### Miscellaneous
 
