@@ -502,52 +502,6 @@ If no `Type` is provided, return values as stored in `varinfo`.
 
 # Examples
 
-`SimpleVarInfo` with `NamedTuple`:
-
-```jldoctest
-julia> data = (x = 1.0, m = [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`SimpleVarInfo` with `OrderedDict`:
-
-```jldoctest
-julia> data = OrderedDict{Any,Any}(@varname(x) => 1.0, @varname(m) => [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
 `VarInfo` with `NamedTuple` of `Metadata`:
 
 ```jldoctest
@@ -828,8 +782,8 @@ function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
 end
 function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
+    # Note that VarInfo has a dedicated implementation so this is only a generic
+    # fallback (previously used for SimpleVarInfo)
     model = setleafcontext(model, DynamicTransformationContext{false}())
     vi = last(evaluate!!(model, vi))
     return set_transformed!!(vi, t)
@@ -890,8 +844,8 @@ function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
 end
 function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
+    # Note that VarInfo has a dedicated implementation so this is only a generic
+    # fallback (previously used for SimpleVarInfo)
     model = setleafcontext(model, DynamicTransformationContext{true}())
     vi = last(evaluate!!(model, vi))
     return set_transformed!!(vi, NoTransformation())
@@ -946,47 +900,6 @@ This will be called prior to `model` evaluation, allowing one to perform a singl
 basis as is done with [`DynamicTransformation`](@ref).
 
 See also: [`StaticTransformation`](@ref), [`DynamicTransformation`](@ref).
-
-# Examples
-```julia-repl
-julia> using DynamicPPL, Distributions, Bijectors
-
-julia> @model demo() = x ~ Normal()
-demo (generic function with 2 methods)
-
-julia> # By subtyping `Transform`, we inherit the `(inv)link!!`.
-       struct MyBijector <: Bijectors.Transform end
-
-julia> # Define some dummy `inverse` which will be used in the `link!!` call.
-       Bijectors.inverse(f::MyBijector) = identity
-
-julia> # We need to define `with_logabsdet_jacobian` for `MyBijector`
-       # (`identity` already has `with_logabsdet_jacobian` defined)
-       function Bijectors.with_logabsdet_jacobian(::MyBijector, x)
-           # Just using a large number of the logabsdet-jacobian term
-           # for demonstration purposes.
-           return (x, 1000)
-       end
-
-julia> # Change the `default_transformation` for our model to be a
-       # `StaticTransformation` using `MyBijector`.
-       function DynamicPPL.default_transformation(::Model{typeof(demo)})
-           return DynamicPPL.StaticTransformation(MyBijector())
-       end
-
-julia> model = demo();
-
-julia> vi = SimpleVarInfo(x=1.0)
-SimpleVarInfo((x = 1.0,), 0.0)
-
-julia> # Uses the `inverse` of `MyBijector`, which we have defined as `identity`
-       vi_linked = link!!(vi, model)
-Transformed SimpleVarInfo((x = 1.0,), 0.0)
-
-julia> # Now performs a single `invlink!!` before model evaluation.
-       logjoint(model, vi_linked)
--1001.4189385332047
-```
 """
 function maybe_invlink_before_eval!!(vi::AbstractVarInfo, model::Model)
     return maybe_invlink_before_eval!!(transformation(vi), vi, model)

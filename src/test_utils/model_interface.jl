@@ -89,10 +89,10 @@ function logprior_true_with_logabsdet_jacobian end
 Return a collection of `VarName` as they are expected to appear in the model.
 
 Even though it is recommended to implement this by hand for a particular `Model`,
-a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
+a default implementation using [`VarInfo`](@ref) is provided.
 """
 function varnames(model::Model)
-    return collect(keys(last(DynamicPPL.init!!(model, SimpleVarInfo(Dict())))))
+    return collect(keys(VarInfo(model)))
 end
 
 """

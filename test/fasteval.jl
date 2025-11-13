@@ -69,10 +69,10 @@ using Mooncake: Mooncake
     end
 end
 
-@testset "LogDensityFunction: performance" begin
+@testset "Fast evaluation: performance" begin
     if Threads.nthreads() == 1
-        # Evaluating these three models should not lead to any allocations (but only when
-        # not using TSVI).
+        # Evaluating these three models with OnlyAccsVarInfo should not lead to any
+        # allocations (but only when not using TSVI).
         @model function f()
             x ~ Normal()
             return 1.0 ~ Normal(x)
@@ -90,13 +90,37 @@ end
             y ~ Normal(params.m, params.s)
             return 1.0 ~ Normal(y)
         end
+
         @testset for model in
                      (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
-            vi = VarInfo(model)
-            fldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
-            x = vi[:]
-            bench = median(@be LogDensityProblems.logdensity(fldf, x))
-            @test iszero(bench.allocs)
+            @testset "LogDensityFunction" begin
+                # Performance tests on LogDensityFunction.
+                vi = VarInfo(model)
+                fldf = DynamicPPL.LogDensityFunction(
+                    model, DynamicPPL.getlogjoint_internal, vi
+                )
+                x = vi[:]
+                bench = median(@be LogDensityProblems.logdensity(fldf, x))
+                @test iszero(bench.allocs)
+            end
+
+            # And for returned/logp evaluation functions.
+            @testset "$func" for func in (returned, logprior, loglikelihood, logjoint)
+                if model.f !== submodel_outer
+                    # submodel_outer contains nested parameters, so the NamedTuple
+                    # representation doesn't work. One day, we'll fix rand(NamedTuple,
+                    # model) to 'work' with nested parameters. But this will require us to
+                    # figure out submodels properly...
+                    params_nt = rand(NamedTuple, model)
+                    bench = median(@be func(model, params_nt))
+                    @test iszero(bench.allocs)
+                end
+
+                # Thank goodness Dicts work...
+                params_dict = rand(Dict, model)
+                bench = median(@be func(model, params_dict))
+                @test iszero(bench.allocs)
+            end
         end
     end
 end

@@ -7,7 +7,7 @@ constrained space if `isinverse` or unconstrained if `!isinverse`.
 Note that some `AbstractVarInfo` types, must notably `VarInfo`, override the
 `DynamicTransformationContext` methods with more efficient implementations.
 `DynamicTransformationContext` is a fallback for when we need to evaluate the model to know
-how to do the transformation, used by e.g. `SimpleVarInfo`.
+how to do the transformation.
 """
 struct DynamicTransformationContext{isinverse} <: AbstractContext end
 

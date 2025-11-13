@@ -334,11 +334,6 @@ tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtyp
 # Helper functions to extract ranges and link status #
 ######################################################
 
-# This fails for SimpleVarInfo, but honestly there is no reason to support that here. The
-# fact is that evaluation doesn't use a VarInfo, it only uses it once to generate the ranges
-# and link status. So there is no motivation to use SimpleVarInfo inside a
-# LogDensityFunction any more, we can just always use typed VarInfo. In fact one could argue
-# that there is no purpose in supporting untyped VarInfo either.
 """
     get_ranges_and_linked(varinfo::VarInfo)
 
