@@ -84,8 +84,8 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    init,
     OrderedDict,
+    typed_identity,
     # Model
     Model,
     getmissings,
@@ -113,6 +113,8 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    init,
+    get_param_eltype,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -193,6 +195,7 @@ include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
+include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
 include("logdensityfunction.jl")

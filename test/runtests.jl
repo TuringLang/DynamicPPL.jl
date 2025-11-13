@@ -89,6 +89,7 @@ include("test_util.jl")
                 include("ext/DynamicPPLMooncakeExt.jl")
             end
             include("ad.jl")
+            include("fasteval.jl")
         end
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."

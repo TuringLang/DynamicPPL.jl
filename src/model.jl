@@ -986,9 +986,13 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :($matchingvalue(varinfo, model.args.$var)...)
+            :(
+                $matchingvalue(
+                    $get_param_eltype(varinfo, model.context), model.args.$var
+                )...
+            )
         else
-            :($matchingvalue(varinfo, model.args.$var))
+            :($matchingvalue($get_param_eltype(varinfo, model.context), model.args.$var))
         end for var in argnames
     ]
     return quote
@@ -1004,6 +1008,30 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
         kwargs = model.defaults
         return args, kwargs
     end
+end
+
+"""
+    get_param_eltype(varinfo::AbstractVarInfo, context::AbstractContext)
+
+Get the element type of the parameters being used to evaluate a model, using a `varinfo`
+under the given `context`. For example, when evaluating a model with ForwardDiff AD, this
+should return `ForwardDiff.Dual`.
+
+By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on the fact
+that typically, before evaluation, the parameters will have been inserted into the VarInfo's
+metadata field.
+
+For `InitContext`, it's quite different: because `InitContext` is responsible for supplying
+the parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside
+it. See the docstring of `get_param_eltype(strategy::AbstractInitStrategy)` for more
+explanation.
+"""
+function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractParentContext)
+    return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
+end
+get_param_eltype(vi::AbstractVarInfo, ::AbstractContext) = eltype(vi)
+function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
+    return get_param_eltype(ctx.strategy)
 end
 
 """

@@ -21,6 +21,21 @@ You should not need to use these directly, please use `AbstractPPL.condition` an
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
+The method `DynamicPPL.init` (for implementing `AbstractInitStrategy`) now has a different signature: it must return a tuple of the generated value, plus a transform function that maps it back to unlinked space.
+This is a generalisation of the previous behaviour, where `init` would always return an unlinked value (in effect forcing the transform to be the identity function).
+
+### Other changes
+
+#### FastLDF
+
+Added `DynamicPPL.Experimental.FastLDF`, a version of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
+Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
+
+Please note that `FastLDF` is currently considered internal and its API may change without warning.
+We intend to replace `LogDensityFunction` with `FastLDF` in a release in the near future, but until then we recommend not using it.
+
+For more information about `FastLDF`, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
+
 ## 0.38.9
 
 Remove warning when using Enzyme as the AD backend.

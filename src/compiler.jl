@@ -718,14 +718,15 @@ end
 # TODO(mhauru) matchingvalue has methods that can accept both types and values. Why?
 # TODO(mhauru) This function needs a more comprehensive docstring.
 """
-    matchingvalue(vi, value)
+    matchingvalue(param_eltype, value)
 
-Convert the `value` to the correct type for the `vi` object.
+Convert the `value` to the correct type, given the element type of the parameters
+being used to evaluate the model.
 """
-function matchingvalue(vi, value)
+function matchingvalue(param_eltype, value)
     T = typeof(value)
     if hasmissing(T)
-        _value = convert(get_matching_type(vi, T), value)
+        _value = convert(get_matching_type(param_eltype, T), value)
         # TODO(mhauru) Why do we make a deepcopy, even though in the !hasmissing branch we
         # are happy to return `value` as-is?
         if _value === value
@@ -738,29 +739,30 @@ function matchingvalue(vi, value)
     end
 end
 
-function matchingvalue(vi, value::FloatOrArrayType)
-    return get_matching_type(vi, value)
+function matchingvalue(param_eltype, value::FloatOrArrayType)
+    return get_matching_type(param_eltype, value)
 end
-function matchingvalue(vi, ::TypeWrap{T}) where {T}
-    return TypeWrap{get_matching_type(vi, T)}()
+function matchingvalue(param_eltype, ::TypeWrap{T}) where {T}
+    return TypeWrap{get_matching_type(param_eltype, T)}()
 end
 
 # TODO(mhauru) This function needs a more comprehensive docstring. What is it for?
 """
-    get_matching_type(vi, ::TypeWrap{T}) where {T}
+    get_matching_type(param_eltype, ::TypeWrap{T}) where {T}
 
-Get the specialized version of type `T` for `vi`.
+Get the specialized version of type `T`, given an element type of the parameters
+being used to evaluate the model.
 """
 get_matching_type(_, ::Type{T}) where {T} = T
-function get_matching_type(vi, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,float_type_with_fallback(eltype(vi))}
+function get_matching_type(param_eltype, ::Type{<:Union{Missing,AbstractFloat}})
+    return Union{Missing,float_type_with_fallback(param_eltype)}
 end
-function get_matching_type(vi, ::Type{<:AbstractFloat})
-    return float_type_with_fallback(eltype(vi))
+function get_matching_type(param_eltype, ::Type{<:AbstractFloat})
+    return float_type_with_fallback(param_eltype)
 end
-function get_matching_type(vi, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(vi, T),N}
+function get_matching_type(param_eltype, ::Type{<:Array{T,N}}) where {T,N}
+    return Array{get_matching_type(param_eltype, T),N}
 end
-function get_matching_type(vi, ::Type{<:Array{T}}) where {T}
-    return Array{get_matching_type(vi, T)}
+function get_matching_type(param_eltype, ::Type{<:Array{T}}) where {T}
+    return Array{get_matching_type(param_eltype, T)}
 end
