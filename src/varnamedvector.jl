@@ -367,6 +367,12 @@ Return a boolean for whether `vn` is guaranteed to have been transformed so that
 is all of Euclidean space.
 """
 is_transformed(vnv::VarNamedVector, vn::VarName) = vnv.is_unconstrained[getidx(vnv, vn)]
+"""
+    is_transformed(vnv::VarNamedVector)
+
+Return true if any variable in `vnv` is guaranteed to have been transformed.
+"""
+is_transformed(vnv::VarNamedVector) = any(vnv.is_unconstrained)
 
 """
     set_transformed!(vnv::VarNamedVector, val::Bool, vn::VarName)
