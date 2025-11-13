@@ -205,20 +205,20 @@ fast_ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),)
 fast_ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
 struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
-    _model::M
-    _getlogdensity::F
-    _iden_varname_ranges::N
-    _varname_ranges::Dict{VarName,RangeAndLinked}
+    model::M
+    getlogdensity::F
+    iden_varname_ranges::N
+    varname_ranges::Dict{VarName,RangeAndLinked}
 end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     ctx = InitContext(
         Random.default_rng(),
         InitFromParams(
-            VectorWithRanges(f._iden_varname_ranges, f._varname_ranges, params), nothing
+            VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
         ),
     )
-    model = DynamicPPL.setleafcontext(f._model, ctx)
-    accs = fast_ldf_accs(f._getlogdensity)
+    model = DynamicPPL.setleafcontext(f.model, ctx)
+    accs = fast_ldf_accs(f.getlogdensity)
     # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
     # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
     # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
@@ -236,7 +236,7 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
         OnlyAccsVarInfo(accs)
     end
     _, vi = DynamicPPL._evaluate!!(model, vi)
-    return f._getlogdensity(vi)
+    return f.getlogdensity(vi)
 end
 
 function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
