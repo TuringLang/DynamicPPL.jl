@@ -5,9 +5,6 @@ const NO_DEFAULT = NoDefault()
 # A short-hand for a type commonly used in type signatures for VarInfo methods.
 VarNameTuple = NTuple{N,VarName} where {N}
 
-# TODO(mhauru) This is currently used in the transformation functions of NoDist,
-# ReshapeTransform, and UnwrapSingletonTransform, and in VarInfo. We should also use it in
-# SimpleVarInfo and maybe other places.
 """
 The type for all log probability variables.
 

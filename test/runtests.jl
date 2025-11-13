@@ -55,14 +55,13 @@ include("test_util.jl")
         include("compiler.jl")
         include("varnamedvector.jl")
         include("varinfo.jl")
-        include("simple_varinfo.jl")
         include("model.jl")
         include("distribution_wrappers.jl")
+        include("linking.jl")
+        include("serialization.jl")
     end
 
     if GROUP == "All" || GROUP == "Group2"
-        include("linking.jl")
-        include("serialization.jl")
         include("pointwise_logdensities.jl")
         include("lkj.jl")
         include("contexts.jl")
