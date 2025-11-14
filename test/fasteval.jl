@@ -1,4 +1,4 @@
-module DynamicPPLFastLDFTests
+module DynamicPPLFastEvalTests
 
 using AbstractPPL: AbstractPPL
 using Chairmarks
@@ -6,7 +6,6 @@ using DynamicPPL
 using Distributions
 using DistributionsAD: filldist
 using ADTypes
-using DynamicPPL.Experimental: FastLDF
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I
 using Test
@@ -14,14 +13,9 @@ using LogDensityProblems: LogDensityProblems
 
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
-# Need to include this block here in case we run this test file standalone
-@static if VERSION < v"1.12"
-    using Pkg
-    Pkg.add("Mooncake")
-    using Mooncake: Mooncake
-end
+using Mooncake: Mooncake
 
-@testset "FastLDF: Correctness" begin
+@testset "LogDensityFunction: Correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         @testset "$varinfo_func" for varinfo_func in [
             DynamicPPL.untyped_varinfo,
@@ -36,7 +30,7 @@ end
                 else
                     unlinked_vi
                 end
-                nt_ranges, dict_ranges = DynamicPPL.Experimental.get_ranges_and_linked(vi)
+                nt_ranges, dict_ranges = DynamicPPL.get_ranges_and_linked(vi)
                 params = [x for x in vi[:]]
                 # Iterate over all variables
                 for vn in keys(vi)
@@ -52,26 +46,6 @@ end
                     # Check that the link status is correct
                     @test range_with_linked.is_linked == islinked
                 end
-
-                # Compare results of FastLDF vs ordinary LogDensityFunction. These tests
-                # can eventually go once we replace LogDensityFunction with FastLDF, but
-                # for now it helps to have this check! (Eventually we should just check
-                # against manually computed log-densities).
-                #
-                # TODO(penelopeysm): I think we need to add tests for some really
-                # pathological models here.
-                @testset "$getlogdensity" for getlogdensity in (
-                    DynamicPPL.getlogjoint_internal,
-                    DynamicPPL.getlogjoint,
-                    DynamicPPL.getloglikelihood,
-                    DynamicPPL.getlogprior_internal,
-                    DynamicPPL.getlogprior,
-                )
-                    ldf = DynamicPPL.LogDensityFunction(m, getlogdensity, vi)
-                    fldf = FastLDF(m, getlogdensity, vi)
-                    @test LogDensityProblems.logdensity(ldf, params) ≈
-                        LogDensityProblems.logdensity(fldf, params)
-                end
             end
         end
     end
@@ -86,7 +60,7 @@ end
             end
             N = 100
             model = threaded(zeros(N))
-            ldf = DynamicPPL.Experimental.FastLDF(model)
+            ldf = DynamicPPL.LogDensityFunction(model)
 
             xs = [1.0]
             @test LogDensityProblems.logdensity(ldf, xs) ≈
@@ -95,7 +69,7 @@ end
     end
 end
 
-@testset "FastLDF: performance" begin
+@testset "LogDensityFunction: performance" begin
     if Threads.nthreads() == 1
         # Evaluating these three models should not lead to any allocations (but only when
         # not using TSVI).
@@ -119,9 +93,7 @@ end
         @testset for model in
                      (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
             vi = VarInfo(model)
-            fldf = DynamicPPL.Experimental.FastLDF(
-                model, DynamicPPL.getlogjoint_internal, vi
-            )
+            fldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
             x = vi[:]
             bench = median(@be LogDensityProblems.logdensity(fldf, x))
             @test iszero(bench.allocs)
@@ -129,25 +101,21 @@ end
     end
 end
 
-@testset "AD with FastLDF" begin
+@testset "AD with LogDensityFunction" begin
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = @static if VERSION < v"1.12"
-        [
-            AutoReverseDiff(; compile=false),
-            AutoReverseDiff(; compile=true),
-            AutoMooncake(; config=nothing),
-        ]
-    else
-        [AutoReverseDiff(; compile=false), AutoReverseDiff(; compile=true)]
-    end
+    test_adtypes = [
+        AutoReverseDiff(; compile=false),
+        AutoReverseDiff(; compile=true),
+        AutoMooncake(; config=nothing),
+    ]
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
             varinfo = VarInfo(m)
             linked_varinfo = DynamicPPL.link(varinfo, m)
-            f = FastLDF(m, getlogjoint_internal, linked_varinfo)
+            f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
             x = [p for p in linked_varinfo[:]]
 
             # Calculate reference logp + gradient of logp using ForwardDiff
@@ -173,7 +141,7 @@ end
         test_m = randn(2, 3)
 
         function eval_logp_and_grad(model, m, adtype)
-            ldf = FastLDF(model(); adtype=adtype)
+            ldf = LogDensityFunction(model(); adtype=adtype)
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
