@@ -6,10 +6,9 @@ using DynamicPPL:
     childcontext,
     setchildcontext,
     AbstractContext,
-    NodeTrait,
-    IsLeaf,
-    IsParent,
+    AbstractParentContext,
     contextual_isassumption,
+    PrefixContext,
     FixedContext,
     ConditionContext,
     decondition_context,
@@ -25,22 +24,21 @@ using LinearAlgebra: I
 using Random: Xoshiro
 
 # TODO: Should we maybe put this in DPPL itself?
+function Base.iterate(context::AbstractParentContext)
+    return context, childcontext(context)
+end
 function Base.iterate(context::AbstractContext)
-    if NodeTrait(context) isa IsLeaf
-        return nothing
-    end
-
-    return context, context
+    return context, nothing
 end
-function Base.iterate(_::AbstractContext, context::AbstractContext)
-    return _iterate(NodeTrait(context), context)
+function Base.iterate(::AbstractContext, state::AbstractParentContext)
+    return state, childcontext(state)
 end
-_iterate(::IsLeaf, context) = nothing
-function _iterate(::IsParent, context)
-    child = childcontext(context)
-    return child, child
+function Base.iterate(::AbstractContext, state::AbstractContext)
+    return state, nothing
 end
-
+function Base.iterate(::AbstractContext, state::Nothing)
+    return nothing
+end
 Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 
@@ -347,11 +345,11 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         @testset "collapse_prefix_stack" begin
             # Utility function to make sure that there are no PrefixContexts in
             # the context stack.
-            function has_no_prefixcontexts(ctx::AbstractContext)
-                return !(ctx isa PrefixContext) && (
-                    NodeTrait(ctx) isa IsLeaf || has_no_prefixcontexts(childcontext(ctx))
-                )
+            has_no_prefixcontexts(::PrefixContext) = false
+            function has_no_prefixcontexts(ctx::AbstractParentContext)
+                return has_no_prefixcontexts(childcontext(ctx))
             end
+            has_no_prefixcontexts(::AbstractContext) = true
 
             # Prefix -> Condition
             c1 = PrefixContext(@varname(a), ConditionContext((c=1, d=2)))

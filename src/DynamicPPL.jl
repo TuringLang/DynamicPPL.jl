@@ -84,8 +84,8 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    init,
     OrderedDict,
+    typed_identity,
     # Model
     Model,
     getmissings,
@@ -94,20 +94,27 @@ export AbstractVarInfo,
     values_as_in_model,
     # LogDensityFunction
     LogDensityFunction,
-    # Contexts
+    # Leaf contexts
+    AbstractContext,
     contextualize,
     DefaultContext,
-    PrefixContext,
-    ConditionContext,
+    InitContext,
+    # Parent contexts
+    AbstractParentContext,
+    childcontext,
+    setchildcontext,
+    leafcontext,
+    setleafcontext,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
     # Initialisation
-    InitContext,
     AbstractInitStrategy,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    init,
+    get_param_eltype,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -188,6 +195,7 @@ include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
+include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
 include("logdensityfunction.jl")
