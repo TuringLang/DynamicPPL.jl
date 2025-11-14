@@ -13,6 +13,7 @@ using ForwardDiff
 using LogDensityProblems
 using MacroTools
 using MCMCChains
+using Mooncake
 using StableRNGs
 using ReverseDiff
 using Mooncake
@@ -57,7 +58,9 @@ include("test_util.jl")
         include("simple_varinfo.jl")
         include("model.jl")
         include("distribution_wrappers.jl")
-        include("logdensityfunction.jl")
+    end
+
+    if GROUP == "All" || GROUP == "Group2"
         include("linking.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
@@ -69,9 +72,7 @@ include("test_util.jl")
         include("submodels.jl")
         include("chains.jl")
         include("bijector.jl")
-    end
-
-    if GROUP == "All" || GROUP == "Group2"
+        include("fasteval.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLJETExt.jl")
@@ -80,8 +81,6 @@ include("test_util.jl")
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
-            include("ad.jl")
-            include("fasteval.jl")
         end
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."

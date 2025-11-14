@@ -66,6 +66,13 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 LogDensityFunction
 ```
 
+Internally, this is accomplished using:
+
+```@docs
+OnlyAccsVarInfo
+fast_evaluate!!
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).

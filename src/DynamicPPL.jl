@@ -92,8 +92,10 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
-    # LogDensityFunction
+    # LogDensityFunction and fasteval
     LogDensityFunction,
+    fast_evaluate!!,
+    OnlyAccsVarInfo,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -198,7 +200,7 @@ include("simple_varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("logdensityfunction.jl")
+include("fasteval.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
