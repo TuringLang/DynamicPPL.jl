@@ -149,6 +149,7 @@ struct FastLDF{
     _iden_varname_ranges::N
     _varname_ranges::Dict{VarName,RangeAndLinked}
     _adprep::ADP
+    _dim::Int
 
     function FastLDF(
         model::Model,
@@ -159,13 +160,14 @@ struct FastLDF{
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
         all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
+        x = [val for val in varinfo[:]]
+        dim = length(x)
         # Do AD prep if needed
         prep = if adtype === nothing
             nothing
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
-            x = [val for val in varinfo[:]]
             DI.prepare_gradient(
                 FastLogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
                 adtype,
@@ -179,7 +181,7 @@ struct FastLDF{
             typeof(all_iden_ranges),
             typeof(prep),
         }(
-            model, adtype, getlogdensity, all_iden_ranges, all_ranges, prep
+            model, adtype, getlogdensity, all_iden_ranges, all_ranges, prep, dim
         )
     end
 end
@@ -258,6 +260,10 @@ function LogDensityProblems.logdensity_and_gradient(
         fldf.adtype,
         params,
     )
+end
+
+function LogDensityProblems.dimension(fldf::FastLDF)
+    return fldf._dim
 end
 
 ######################################################
