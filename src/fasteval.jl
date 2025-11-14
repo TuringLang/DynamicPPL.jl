@@ -262,6 +262,16 @@ function LogDensityProblems.logdensity_and_gradient(
     )
 end
 
+function LogDensityProblems.capabilities(
+    ::Type{<:DynamicPPL.Experimental.FastLDF{M,Nothing}}
+) where {M}
+    return LogDensityProblems.LogDensityOrder{0}()
+end
+function LogDensityProblems.capabilities(
+    ::Type{<:DynamicPPL.Experimental.FastLDF{M,<:ADTypes.AbstractADType}}
+) where {M}
+    return LogDensityProblems.LogDensityOrder{1}()
+end
 function LogDensityProblems.dimension(fldf::FastLDF)
     return fldf._dim
 end
