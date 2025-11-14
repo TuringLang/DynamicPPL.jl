@@ -202,6 +202,7 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+include("experimental.jl")
 include("chains.jl")
 include("bijector.jl")
 
@@ -209,7 +210,6 @@ include("debug_utils.jl")
 using .DebugUtils
 include("test_utils.jl")
 
-include("experimental.jl")
 include("deprecated.jl")
 
 if isdefined(Base.Experimental, :register_error_hint)
