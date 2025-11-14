@@ -46,7 +46,6 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
-    SimpleVarInfo,
     AbstractAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
@@ -92,8 +91,10 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
-    # LogDensityFunction
+    # LogDensityFunction and fasteval
     LogDensityFunction,
+    fast_evaluate!!,
+    OnlyAccsVarInfo,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -172,7 +173,7 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
+See also: [`VarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
@@ -194,11 +195,10 @@ include("default_accumulators.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
-include("simple_varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("logdensityfunction.jl")
+include("fasteval.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")

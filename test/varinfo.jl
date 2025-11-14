@@ -1,17 +1,7 @@
 function check_varinfo_keys(varinfo, vns)
-    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
-        # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
-        # since `keys(varinfo_merged)` only contains `VarName` with `identity`.
-        # So we just check that the original keys are present.
-        for vn in vns
-            # Should have all the original keys.
-            @test haskey(varinfo, vn)
-        end
-    else
-        vns_varinfo = keys(varinfo)
-        # Should be equivalent.
-        @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
-    end
+    vns_varinfo = keys(varinfo)
+    # Should be equivalent.
+    @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
 end
 
 """
@@ -100,9 +90,6 @@ end
 
         test_base(VarInfo())
         test_base(DynamicPPL.typed_varinfo(VarInfo()))
-        test_base(SimpleVarInfo())
-        test_base(SimpleVarInfo(Dict{VarName,Any}()))
-        test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
     @testset "get/set/acclogp" begin
@@ -129,9 +116,6 @@ end
         vi = VarInfo()
         test_varinfo_logp!(vi)
         test_varinfo_logp!(DynamicPPL.typed_varinfo(vi))
-        test_varinfo_logp!(SimpleVarInfo())
-        test_varinfo_logp!(SimpleVarInfo(Dict()))
-        test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
     @testset "logp accumulators" begin
@@ -444,19 +428,6 @@ end
         vi = DynamicPPL.typed_varinfo(model)
         vi = DynamicPPL.set_transformed!!(vi, true, vn)
         test_linked_varinfo(model, vi)
-
-        ### `SimpleVarInfo`
-        ## `SimpleVarInfo{<:NamedTuple}`
-        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(), true)
-        test_linked_varinfo(model, vi)
-
-        ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(Dict{VarName,Any}()), true)
-        test_linked_varinfo(model, vi)
-
-        ## `SimpleVarInfo{<:VarNamedVector}`
-        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(DynamicPPL.VarNamedVector()), true)
-        test_linked_varinfo(model, vi)
     end
 
     @testset "values_as" begin
@@ -514,20 +485,6 @@ end
                     model, value_true, varnames; include_threadsafe=true
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
-                        # NOTE: this is broken since we'll end up trying to set
-                        #
-                        #    varinfo[@varname(x[4:5])] = [x[4],]
-                        #
-                        # upon linking (since `x[4:5]` will be projected onto a 1-dimensional
-                        # space). In the case of `SimpleVarInfo{<:NamedTuple}`, this results in
-                        # calling `setindex!!(varinfo.values, [x[4],], @varname(x[4:5]))`, which
-                        # in turn attempts to call `setindex!(varinfo.values.x, [x[4],], 4:5)`,
-                        # i.e. a vector of length 1 (`[x[4],]`) being assigned to 2 indices (`4:5`).
-                        @test_broken false
-                        continue
-                    end
-
                     if DynamicPPL.has_varnamedvector(varinfo) && mutating
                         # NOTE: Can't handle mutating `link!` and `invlink!` `VarNamedVector`.
                         @test_broken false
@@ -591,12 +548,6 @@ end
             model, (; x=1.0), (@varname(x),); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            # Skip the inconcrete `SimpleVarInfo` types, since checking for type
-            # stability for them doesn't make much sense anyway.
-            if varinfo isa SimpleVarInfo{<:AbstractDict} ||
-                varinfo isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo{<:AbstractDict}}
-                continue
-            end
             @inferred DynamicPPL.unflatten(varinfo, varinfo[:])
         end
     end
@@ -618,9 +569,6 @@ end
             model, model(), vns; include_threadsafe=true
         )
         varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
-        varinfos_simple = filter(
-            Base.Fix2(isa, DynamicPPL.SimpleOrThreadSafeSimple), varinfos
-        )
 
         # `VarInfo` supports subsetting using, basically, arbitrary varnames.
         vns_supported_standard = [
@@ -648,33 +596,18 @@ end
                 [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
-        # `SimpleVarInfo` only supports subsetting using the varnames as they appear
-        # in the model.
-        vns_supported_simple = filter(∈(vns), vns_supported_standard)
-
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # All variables.
             check_varinfo_keys(varinfo, vns)
 
-            # Added a `convert` to make the naming of the testsets a bit more readable.
-            # `SimpleVarInfo{<:NamedTuple}` only supports subsetting with "simple" varnames,
-            ## i.e. `VarName{sym}()` without any indexing, etc.
-            vns_supported =
-                if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple &&
-                    values_as(varinfo) isa NamedTuple
-                    vns_supported_simple
-                else
-                    vns_supported_standard
-                end
-
             @testset ("$(convert(Vector{VarName}, vns_subset)) empty") for vns_subset in
-                                                                           vns_supported
+                                                                           vns_supported_standard
                 varinfo_subset = subset(varinfo, VarName[])
                 @test isempty(varinfo_subset)
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset))" for vns_subset in
-                                                                   vns_supported
+                                                                   vns_supported_standard
                 varinfo_subset = subset(varinfo, vns_subset)
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_subset)
@@ -709,7 +642,7 @@ end
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
-                                                                         vns_supported
+                                                                         vns_supported_standard
                 varinfo_subset = subset(varinfo, vns_subset)
                 vns_subset_reversed = reverse(vns_subset)
                 varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
@@ -717,15 +650,6 @@ end
                 ground_truth = [varinfo[vn] for vn in vns_subset]
                 @test varinfo_subset[:] == ground_truth
             end
-        end
-
-        # For certain varinfos we should have errors.
-        # `SimpleVarInfo{<:NamedTuple}` can only handle varnames with `identity`.
-        varinfo = varinfos[findfirst(Base.Fix2(isa, SimpleVarInfo{<:NamedTuple}), varinfos)]
-        @testset "$(short_varinfo_name(varinfo)): failure cases" begin
-            @test_throws ArgumentError subset(
-                varinfo, [@varname(s), @varname(m), @varname(x[1])]
-            )
         end
     end
 

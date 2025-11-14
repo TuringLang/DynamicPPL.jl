@@ -4,6 +4,20 @@
 
 ### Breaking changes
 
+#### Fast Log Density Functions
+
+This version provides a reimplementation of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
+Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
+
+For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
+
+As a result of this change, `LogDensityFunction` no longer stores a VarInfo inside it.
+In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
+If you were previously relying on this behaviour, you will need to store a VarInfo separately.
+
+Along with this change, DynamicPPL now exposes the `fast_evaluate!!` method which allows you to hook into this 'fast evaluation' pipeline directly.
+Please see the documentation for details.
+
 #### Parent and leaf contexts
 
 The `DynamicPPL.NodeTrait` function has been removed.
@@ -17,24 +31,23 @@ Leaf contexts require no changes, apart from a removal of the `NodeTrait` functi
 `ConditionContext` and `PrefixContext` are no longer exported.
 You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
 
+#### SimpleVarInfo
+
+`SimpleVarInfo` has been removed.
+Its main purpose was for evaluating models rapidly.
+However, `fast_evaluate!!` provides a cleaner way of doing this.
+In particular, if you want to evaluate a model at a given set of parameters, you can do:
+
+```julia
+retval, vi = DynamicPPL.fast_evaluate!!(rng, model, InitFromParams(params), accs)
+```
+
 #### Miscellaneous
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
 The method `DynamicPPL.init` (for implementing `AbstractInitStrategy`) now has a different signature: it must return a tuple of the generated value, plus a transform function that maps it back to unlinked space.
 This is a generalisation of the previous behaviour, where `init` would always return an unlinked value (in effect forcing the transform to be the identity function).
-
-### Other changes
-
-#### FastLDF
-
-Added `DynamicPPL.Experimental.FastLDF`, a version of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
-Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
-
-Please note that `FastLDF` is currently considered internal and its API may change without warning.
-We intend to replace `LogDensityFunction` with `FastLDF` in a release in the near future, but until then we recommend not using it.
-
-For more information about `FastLDF`, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
 
 ## 0.38.9
 
