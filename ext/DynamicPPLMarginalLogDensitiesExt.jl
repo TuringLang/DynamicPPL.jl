@@ -6,8 +6,13 @@ using MarginalLogDensities: MarginalLogDensities
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
 # MarginalLogDensities. It's helpful to have a struct so that we can dispatch on its type
 # below.
-struct LogDensityFunctionWrapper{L<:DynamicPPL.LogDensityFunction}
+struct LogDensityFunctionWrapper{
+    L<:DynamicPPL.LogDensityFunction,V<:DynamicPPL.AbstractVarInfo
+}
     logdensity::L
+    # This field is used only to reconstruct the VarInfo later on; it's not needed for the
+    # actual log-density evaluation.
+    varinfo::V
 end
 function (lw::LogDensityFunctionWrapper)(x, _)
     return LogDensityProblems.logdensity(lw.logdensity, x)
@@ -101,7 +106,7 @@ function DynamicPPL.marginalize(
     # Construct the marginal log-density model.
     f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     mld = MarginalLogDensities.MarginalLogDensity(
-        LogDensityFunctionWrapper(f), varinfo[:], varindices, (), method; kwargs...
+        LogDensityFunctionWrapper(f, varinfo), varinfo[:], varindices, (), method; kwargs...
     )
     return mld
 end
@@ -190,7 +195,7 @@ function DynamicPPL.VarInfo(
     unmarginalized_params::Union{AbstractVector,Nothing}=nothing,
 )
     # Extract the original VarInfo. Its contents will in general be junk.
-    original_vi = mld.logdensity.logdensity.varinfo
+    original_vi = mld.logdensity.varinfo
     # Extract the stored parameters, which includes the modes for any marginalized
     # parameters
     full_params = MarginalLogDensities.cached_params(mld)

@@ -30,11 +30,11 @@ import DifferentiationInterface as DI
 using Random: Random
 
 """
-    DynamicPPL.Experimental.fast_evaluate!!(
+    DynamicPPL.fast_evaluate!!(
         [rng::Random.AbstractRNG,]
         model::Model,
         strategy::AbstractInitStrategy,
-        accs::AccumulatorTuple, params::AbstractVector{<:Real}
+        accs::AccumulatorTuple,
     )
 
 Evaluate a model using parameters obtained via `strategy`, and only computing the results in
@@ -84,7 +84,7 @@ end
 end
 
 """
-    FastLDF(
+    DynamicPPL.LogDensityFunction(
         model::Model,
         getlogdensity::Function=getlogjoint_internal,
         varinfo::AbstractVarInfo=VarInfo(model);
@@ -115,10 +115,10 @@ There are several options for `getlogdensity` that are 'supported' out of the bo
   since transforms are only applied to random variables)
 
 !!! note
-    By default, `FastLDF` uses `getlogjoint_internal`, i.e., the result of
-    `LogDensityProblems.logdensity(f, x)` will depend on whether the `FastLDF` was created
-    with a linked or unlinked VarInfo. This is done primarily to ease interoperability with
-    MCMC samplers.
+    By default, `LogDensityFunction` uses `getlogjoint_internal`, i.e., the result of
+    `LogDensityProblems.logdensity(f, x)` will depend on whether the `LogDensityFunction`
+    was created with a linked or unlinked VarInfo. This is done primarily to ease
+    interoperability with MCMC samplers.
 
 If you provide one of these functions, a `VarInfo` will be automatically created for you. If
 you provide a different function, you have to manually create a VarInfo and pass it as the
@@ -126,15 +126,16 @@ third argument.
 
 If the `adtype` keyword argument is provided, then this struct will also store the adtype
 along with other information for efficient calculation of the gradient of the log density.
-Note that preparing a `FastLDF` with an AD type `AutoBackend()` requires the AD backend
-itself to have been loaded (e.g. with `import Backend`).
+Note that preparing a `LogDensityFunction` with an AD type `AutoBackend()` requires the AD
+backend itself to have been loaded (e.g. with `import Backend`).
 
 ## Fields
 
-Note that it is undefined behaviour to access any of a `FastLDF`'s fields, apart from:
+Note that it is undefined behaviour to access any of a `LogDensityFunction`'s fields, apart
+from:
 
-- `fastldf.model`: The original model from which this `FastLDF` was constructed.
-- `fastldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
+- `ldf.model`: The original model from which this `LogDensityFunction` was constructed.
+- `ldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
   type was provided.
 
 # Extended help
@@ -172,8 +173,9 @@ Traditionally, this problem has been solved by `unflatten`, because that functio
 place values into the VarInfo's metadata alongside the information about ranges and linking.
 That way, when we evaluate with `DefaultContext`, we can read this information out again.
 However, we want to avoid using a metadata. Thus, here, we _extract this information from
-the VarInfo_ a single time when constructing a `FastLDF` object. Inside the FastLDF, we
-store a mapping from VarNames to ranges in that vector, along with link status.
+the VarInfo_ a single time when constructing a `LogDensityFunction` object. Inside the
+LogDensityFunction, we store a mapping from VarNames to ranges in that vector, along with
+link status.
 
 For VarNames with identity optics, this is stored in a NamedTuple for efficiency. For all
 other VarNames, this is stored in a Dict. The internal data structure used to represent this
@@ -185,13 +187,13 @@ ranges to create an `InitFromParams{VectorWithRanges}`, which lets us very quick
 parameter values from the vector.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
-the `FastLDF` object. Therefore, a `FastLDF` object cannot handle models which have variable
-numbers of parameters, or models which may visit random variables in different orders depending
-on stochastic control flow. **Indeed, silent errors may occur with such models.** This is a
-general limitation of vectorised parameters: the original `unflatten` + `evaluate!!`
-approach also fails with such models.
+the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot handle
+models which have variable numbers of parameters, or models which may visit random variables
+in different orders depending on stochastic control flow. **Indeed, silent errors may occur
+with such models.** This is a general limitation of vectorised parameters: the original
+`unflatten` + `evaluate!!` approach also fails with such models.
 """
-struct FastLDF{
+struct LogDensityFunction{
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F<:Function,
@@ -206,7 +208,7 @@ struct FastLDF{
     _adprep::ADP
     _dim::Int
 
-    function FastLDF(
+    function LogDensityFunction(
         model::Model,
         getlogdensity::Function=getlogjoint_internal,
         varinfo::AbstractVarInfo=VarInfo(model);
@@ -224,7 +226,7 @@ struct FastLDF{
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             DI.prepare_gradient(
-                FastLogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
+                LogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
                 adtype,
                 x,
             )
@@ -261,55 +263,72 @@ end
 fast_ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 fast_ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
+struct LogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
     model::M
     getlogdensity::F
     iden_varname_ranges::N
     varname_ranges::Dict{VarName,RangeAndLinked}
 end
-function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
+function (f::LogDensityAt)(params::AbstractVector{<:Real})
     strategy = InitFromParams(
         VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
     )
     accs = fast_ldf_accs(f.getlogdensity)
-    _, vi = fast_evaluate!!(f.model, strategy, accs)
+    _, vi = DynamicPPL.fast_evaluate!!(f.model, strategy, accs)
     return f.getlogdensity(vi)
 end
 
-function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
-    return FastLogDensityAt(
-        fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
+function LogDensityProblems.logdensity(
+    ldf::LogDensityFunction, params::AbstractVector{<:Real}
+)
+    return LogDensityAt(
+        ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
     )(
         params
     )
 end
 
 function LogDensityProblems.logdensity_and_gradient(
-    fldf::FastLDF, params::AbstractVector{<:Real}
+    ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
     return DI.value_and_gradient(
-        FastLogDensityAt(
-            fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
+        LogDensityAt(
+            ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
         ),
-        fldf._adprep,
-        fldf.adtype,
+        ldf._adprep,
+        ldf.adtype,
         params,
     )
 end
 
-function LogDensityProblems.capabilities(
-    ::Type{<:DynamicPPL.Experimental.FastLDF{M,Nothing}}
-) where {M}
+function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
     return LogDensityProblems.LogDensityOrder{0}()
 end
 function LogDensityProblems.capabilities(
-    ::Type{<:DynamicPPL.Experimental.FastLDF{M,<:ADTypes.AbstractADType}}
+    ::Type{<:LogDensityFunction{M,<:ADTypes.AbstractADType}}
 ) where {M}
     return LogDensityProblems.LogDensityOrder{1}()
 end
-function LogDensityProblems.dimension(fldf::FastLDF)
-    return fldf._dim
+function LogDensityProblems.dimension(ldf::LogDensityFunction)
+    return ldf._dim
 end
+
+"""
+    tweak_adtype(
+        adtype::ADTypes.AbstractADType,
+        model::Model,
+        varinfo::AbstractVarInfo,
+    )
+
+Return an 'optimised' form of the adtype. This is useful for doing
+backend-specific optimisation of the adtype (e.g., for ForwardDiff, calculating
+the chunk size: see the method override in `ext/DynamicPPLForwardDiffExt.jl`).
+The model is passed as a parameter in case the optimisation depends on the
+model.
+
+By default, this just returns the input unchanged.
+"""
+tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtype
 
 ######################################################
 # Helper functions to extract ranges and link status #
