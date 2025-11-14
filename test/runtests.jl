@@ -13,6 +13,7 @@ using ForwardDiff
 using LogDensityProblems
 using MacroTools
 using MCMCChains
+using Mooncake
 using StableRNGs
 using ReverseDiff
 using Zygote
@@ -37,13 +38,6 @@ using DynamicPPL: getargs_dottilde, getargs_tilde
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
 
-# Skip Mooncake if it doesn't work
-const MOONCAKE_SUPPORTED = VERSION < v"1.12.0"
-if MOONCAKE_SUPPORTED
-    Pkg.add("Mooncake")
-    using Mooncake: Mooncake
-end
-
 Random.seed!(100)
 include("test_util.jl")
 
@@ -63,7 +57,9 @@ include("test_util.jl")
         include("simple_varinfo.jl")
         include("model.jl")
         include("distribution_wrappers.jl")
-        include("logdensityfunction.jl")
+    end
+
+    if GROUP == "All" || GROUP == "Group2"
         include("linking.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
@@ -75,9 +71,7 @@ include("test_util.jl")
         include("submodels.jl")
         include("chains.jl")
         include("bijector.jl")
-    end
-
-    if GROUP == "All" || GROUP == "Group2"
+        include("fasteval.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLJETExt.jl")
@@ -85,11 +79,7 @@ include("test_util.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
-            if MOONCAKE_SUPPORTED
-                include("ext/DynamicPPLMooncakeExt.jl")
-            end
-            include("ad.jl")
-            include("fasteval.jl")
+            include("ext/DynamicPPLMooncakeExt.jl")
         end
         @testset "prob and logprob macro" begin
             @test_throws ErrorException prob"..."
