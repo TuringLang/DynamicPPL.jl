@@ -1,6 +1,8 @@
 using DynamicPPL:
+    DynamicPPL,
     AbstractVarInfo,
     AccumulatorTuple,
+    AbstractInitStrategy,
     InitContext,
     InitFromParams,
     LogJacobianAccumulator,
@@ -27,6 +29,65 @@ using AbstractPPL: AbstractPPL, VarName
 using LogDensityProblems: LogDensityProblems
 import DifferentiationInterface as DI
 using Random: Random
+
+"""
+    DynamicPPL.fast_evaluate!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        strategy::AbstractInitStrategy,
+        accs::AccumulatorTuple, params::AbstractVector{<:Real}
+    )
+
+Evaluate a model using parameters obtained via `strategy`, and only computing the results in
+the provided accumulators.
+
+It is assumed that the accumulators passed in have been initialised to appropriate values,
+as this function will not reset them. The default constructors for each accumulator will do
+this for you correctly.
+
+Returns a tuple of the model's return value, plus an `OnlyAccsVarInfo`. Note that the `accs`
+argument may be mutated (depending on how the accumulators are implemented); hence the `!!`
+in the function name.
+"""
+@inline function fast_evaluate!!(
+    # Note that this `@inline` is mandatory for performance. If it's not inlined, it leads
+    # to extra allocations (even for trivial models) and much slower runtime.
+    rng::Random.AbstractRNG,
+    model::Model,
+    strategy::AbstractInitStrategy,
+    accs::AccumulatorTuple,
+)
+    ctx = InitContext(rng, strategy)
+    model = DynamicPPL.setleafcontext(model, ctx)
+    # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
+    # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
+    # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
+    # here.
+    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
+    # it _should_ do, but this is wrong regardless.
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
+    return if Threads.nthreads() > 1
+        # WARNING: Do NOT move get_param_eltype(strategy) into an intermediate variable, it
+        # will cause type instabilities! See also unflatten in src/varinfo.jl.
+        accs = map(accs) do acc
+            DynamicPPL.convert_eltype(
+                float_type_with_fallback(DynamicPPL.get_param_eltype(strategy)), acc
+            )
+        end
+        tsvi = ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
+        retval, tsvi_new = DynamicPPL._evaluate!!(model, tsvi)
+        retval, DynamicPPL.setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
+    else
+        vi = OnlyAccsVarInfo(accs)
+        DynamicPPL._evaluate!!(model, vi)
+    end
+end
+@inline function fast_evaluate!!(
+    model::Model, strategy::AbstractInitStrategy, accs::AccumulatorTuple
+)
+    # This `@inline` is also mandatory for performance
+    return fast_evaluate!!(Random.default_rng(), model, strategy, accs)
+end
 
 """
     FastLDF(
@@ -137,6 +198,9 @@ general limitation of vectorised parameters: the original `unflatten` + `evaluat
 approach also fails with such models.
 """
 struct FastLDF{
+    # true if all variables are linked; false if all variables are unlinked; nothing if
+    # mixed
+    Tlink,
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F<:Function,
@@ -160,6 +224,21 @@ struct FastLDF{
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
         all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
+        # Figure out if all variables are linked, unlinked, or mixed
+        link_statuses = Bool[]
+        for ral in all_iden_ranges
+            push!(link_statuses, ral.is_linked)
+        end
+        for (_, ral) in all_ranges
+            push!(link_statuses, ral.is_linked)
+        end
+        Tlink = if all(link_statuses)
+            true
+        elseif all(!s for s in link_statuses)
+            false
+        else
+            nothing
+        end
         x = [val for val in varinfo[:]]
         dim = length(x)
         # Do AD prep if needed
@@ -169,12 +248,13 @@ struct FastLDF{
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             DI.prepare_gradient(
-                FastLogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
+                FastLogDensityAt{Tlink}(model, getlogdensity, all_iden_ranges, all_ranges),
                 adtype,
                 x,
             )
         end
         return new{
+            Tlink,
             typeof(model),
             typeof(adtype),
             typeof(getlogdensity),
@@ -206,70 +286,58 @@ end
 fast_ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 fast_ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
+struct FastLogDensityAt{Tlink,M<:Model,F<:Function,N<:NamedTuple}
     model::M
     getlogdensity::F
     iden_varname_ranges::N
     varname_ranges::Dict{VarName,RangeAndLinked}
-end
-function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
-    ctx = InitContext(
-        Random.default_rng(),
-        InitFromParams(
-            VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
-        ),
-    )
-    model = DynamicPPL.setleafcontext(f.model, ctx)
-    accs = fast_ldf_accs(f.getlogdensity)
-    # Calling `evaluate!!` would be fine, but would lead to an extra call to resetaccs!!,
-    # which is unnecessary. So we shortcircuit this by simply calling `_evaluate!!`
-    # directly. To preserve thread-safety we need to reproduce the ThreadSafeVarInfo logic
-    # here.
-    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
-    # it _should_ do, but this is wrong regardless.
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
-    vi = if Threads.nthreads() > 1
-        accs = map(
-            acc -> DynamicPPL.convert_eltype(float_type_with_fallback(eltype(params)), acc),
-            accs,
-        )
-        ThreadSafeVarInfo(OnlyAccsVarInfo(accs))
-    else
-        OnlyAccsVarInfo(accs)
+
+    function FastLogDensityAt{Tlink}(
+        model::M,
+        getlogdensity::F,
+        iden_varname_ranges::N,
+        varname_ranges::Dict{VarName,RangeAndLinked},
+    ) where {Tlink,M,F,N}
+        return new{Tlink,M,F,N}(model, getlogdensity, iden_varname_ranges, varname_ranges)
     end
-    _, vi = DynamicPPL._evaluate!!(model, vi)
+end
+function (f::FastLogDensityAt{Tlink})(params::AbstractVector{<:Real}) where {Tlink}
+    strategy = InitFromParams(
+        VectorWithRanges{Tlink}(f.iden_varname_ranges, f.varname_ranges, params), nothing
+    )
+    _, vi = fast_evaluate!!(f.model, strategy, fast_ldf_accs(f.getlogdensity))
     return f.getlogdensity(vi)
 end
 
-function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
-    return FastLogDensityAt(
-        fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
+function LogDensityProblems.logdensity(
+    ldf::FastLDF{Tlink}, params::AbstractVector{<:Real}
+) where {Tlink}
+    return FastLogDensityAt{Tlink}(
+        ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
     )(
         params
     )
 end
 
 function LogDensityProblems.logdensity_and_gradient(
-    fldf::FastLDF, params::AbstractVector{<:Real}
-)
+    ldf::FastLDF{Tlink}, params::AbstractVector{<:Real}
+) where {Tlink}
     return DI.value_and_gradient(
-        FastLogDensityAt(
-            fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
+        FastLogDensityAt{Tlink}(
+            ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
         ),
-        fldf._adprep,
-        fldf.adtype,
+        ldf._adprep,
+        ldf.adtype,
         params,
     )
 end
 
-function LogDensityProblems.capabilities(
-    ::Type{<:DynamicPPL.Experimental.FastLDF{M,Nothing}}
-) where {M}
+function LogDensityProblems.capabilities(::Type{<:FastLDF{T,M,Nothing}}) where {T,M}
     return LogDensityProblems.LogDensityOrder{0}()
 end
 function LogDensityProblems.capabilities(
-    ::Type{<:DynamicPPL.Experimental.FastLDF{M,<:ADTypes.AbstractADType}}
-) where {M}
+    ::Type{<:FastLDF{T,M,<:ADTypes.AbstractADType}}
+) where {T,M}
     return LogDensityProblems.LogDensityOrder{1}()
 end
 function LogDensityProblems.dimension(fldf::FastLDF)
