@@ -15,6 +15,7 @@ ADTYPES = OrderedDict(
 
 @testset "$ad_key" for (ad_key, ad_type) in ADTYPES
     @testset "$(model.f)" for model in DEMO_MODELS
+        GC.gc()
         @test run_ad(model, ad_type) isa Any
     end
 end
