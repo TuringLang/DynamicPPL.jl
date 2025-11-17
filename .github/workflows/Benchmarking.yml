@@ -51,7 +51,7 @@ jobs:
           # github output can't handle more than 1 line, hence the tail
           results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
           echo $results
-          echo "results=$results >> "$GITHUB_OUTPUT"
+          echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   combine-results:
