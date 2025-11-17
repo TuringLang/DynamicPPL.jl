@@ -31,14 +31,14 @@ jobs:
           ## Run the actual benchmarks
           # first switch to PR head
           git checkout ${{ github.event.pull_request.head.sha }}
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
           julia --project=. benchmarks.jl json-head
           # get the SHA of the PR head
           DPPL_HEAD_COMMIT_SHA=$(git rev-parse HEAD)
           echo "DPPL_HEAD_COMMIT_SHA=$DPPL_HEAD_COMMIT_SHA" >> $GITHUB_ENV
           # then switch to PR base
           git checkout ${{ github.base_ref }}
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
           julia --project=. benchmarks.jl json-base
           # get its SHA too
           DPPL_BASE_COMMIT_SHA=$(git rev-parse BASE)
