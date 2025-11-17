@@ -22,7 +22,8 @@ function print_results(results_table; to_file::Union{Nothing,String}=nothing)
             Dict(colnames[i] => results_table[j][i] for i in eachindex(colnames)) for
             j in eachindex(results_table)
         ]
-        JSON.json(to_file, results_array; pretty=true)
+        # do not use pretty=true, as GitHub Actions expects no linebreaks
+        JSON.json(to_file, results_array)
     else
         # Pretty-print to terminal
         table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
