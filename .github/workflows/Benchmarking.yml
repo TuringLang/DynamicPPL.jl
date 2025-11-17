@@ -43,14 +43,13 @@ jobs:
           julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
           julia --project=. benchmarks.jl json-base
           # get its SHA too
-          DPPL_BASE_COMMIT_SHA=$(git rev-parse BASE)
+          DPPL_BASE_COMMIT_SHA=$(git rev-parse HEAD)
           echo "DPPL_BASE_COMMIT_SHA=$DPPL_BASE_COMMIT_SHA" >> $GITHUB_ENV
 
           # combine them and save the output as an env var for later steps
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-
 
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v4
