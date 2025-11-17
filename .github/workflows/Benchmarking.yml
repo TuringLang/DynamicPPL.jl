@@ -28,6 +28,8 @@ jobs:
           echo "$version_info" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+          julia --project=. -e 'Pkg.Registry.add()'
+
           ## Run the actual benchmarks
           # first switch to PR head
           git checkout ${{ github.event.pull_request.head.sha }}
