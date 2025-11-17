@@ -62,6 +62,7 @@ jobs:
           version: '1.11'
       - uses: julia-actions/cache@v2
       - name: Get versioninfo
+        working-directory: ./benchmarks
         run: |
           version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
           echo "$version_info"
