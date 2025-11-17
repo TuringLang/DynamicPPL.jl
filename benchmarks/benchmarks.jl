@@ -133,8 +133,16 @@ struct TestCase
     TestCase(d::Dict{String,Any}) = new((d[c] for c in colnames[1:5])...)
 end
 function combine()
-    head_results = JSON.parsefile(head_filename, Vector{Dict{String,Any}})
-    base_results = JSON.parsefile(base_filename, Vector{Dict{String,Any}})
+    head_results = try
+        JSON.parsefile(head_filename, Vector{Dict{String,Any}})
+    catch
+        Dict{String,Any}[]
+    end
+    base_results = try
+        JSON.parsefile(base_filename, Vector{Dict{String,Any}})
+    catch
+        Dict{String,Any}[]
+    end
     # Identify unique combinations of (Model, Dim, AD Backend, VarInfo, Linked)
     head_testcases = Dict(
         TestCase(d) => (d[colnames[6]], d[colnames[7]]) for d in head_results
