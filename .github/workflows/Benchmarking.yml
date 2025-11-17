@@ -50,6 +50,7 @@ jobs:
           echo "DPPL_BASE_COMMIT_SHA=$DPPL_BASE_COMMIT_SHA" >> $GITHUB_ENV
 
           # combine them and save the output as an env var for later steps
+          git checkout ${{ github.event.pull_request.head.sha }}
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
