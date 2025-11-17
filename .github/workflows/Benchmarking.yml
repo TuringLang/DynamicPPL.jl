@@ -23,8 +23,8 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          # github output can't handle more than 1 line, hence the head
-          echo "results=$(julia --project=. benchmarks.jl json | head -n 1 || true)" >> "$GITHUB_OUTPUT"
+          # github output can't handle more than 1 line, hence the tail
+          echo "results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   benchmark-head:
@@ -46,8 +46,8 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          # github output can't handle more than 1 line, hence the head
-          echo "results=$(julia --project=. benchmarks.jl json | head -n 1 || true)" >> "$GITHUB_OUTPUT"
+          # github output can't handle more than 1 line, hence the tail
+          echo "results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   combine-results:
@@ -63,8 +63,8 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           # save outputs of previous jobs to json file
-          echo ${{needs.benchmark-base.outputs.results}} > base.json
-          echo ${{needs.benchmark-head.outputs.results}} > head.json
+          echo '${{needs.benchmark-base.outputs.results}}' > base.json
+          echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
           # combine them and save the output as an env var for later steps
           git checkout ${{ github.event.pull_request.head.sha }}
