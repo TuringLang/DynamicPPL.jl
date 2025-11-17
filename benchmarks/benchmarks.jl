@@ -15,15 +15,15 @@ base_filename = "benchmarks_result_base.json"
 colnames = [
     "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
 ]
-function print_results(results_table; to_file::Union{Nothing,String}=nothing)
-    if to_file isa String
+function print_results(results_table; to_json=false)
+    if to_json
         # Print to the given file as JSON
         results_array = [
             Dict(colnames[i] => results_table[j][i] for i in eachindex(colnames)) for
             j in eachindex(results_table)
         ]
         # do not use pretty=true, as GitHub Actions expects no linebreaks
-        JSON.json(to_file, results_array)
+        JSON.json(stdout, results_array)
     else
         # Pretty-print to terminal
         table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
@@ -38,7 +38,7 @@ function print_results(results_table; to_file::Union{Nothing,String}=nothing)
     end
 end
 
-function run(; to_file::Union{Nothing,String}=nothing)
+function run(; to_json=false)
     # Create DynamicPPL.Model instances to run benchmarks on.
     smorgasbord_instance = Models.smorgasbord(randn(rng, 100), randn(rng, 100))
     loop_univariate1k, multivariate1k = begin
@@ -120,9 +120,9 @@ function run(; to_file::Union{Nothing,String}=nothing)
                 relative_ad_eval_time,
             ),
         )
-        print_results(results_table; to_file=to_file)
+        print_results(results_table; to_json=to_json)
     end
-    return print_results(results_table; to_file=to_file)
+    return print_results(results_table; to_json=to_json)
 end
 
 struct TestCase
@@ -205,10 +205,8 @@ end
 # Run with `julia --project=. benchmarks.jl [combine|json-head|json-base]`
 if ARGS == ["combine"]
     combine()
-elseif ARGS == ["json-head"]
-    run(; to_file=head_filename)
-elseif ARGS == ["json-base"]
-    run(; to_file=base_filename)
+elseif ARGS == ["json"]
+    run(; to_json=true)
 elseif ARGS == []
     # When running locally just omit the argument and it will just benchmark and print to
     # terminal.

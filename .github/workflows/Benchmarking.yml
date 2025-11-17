@@ -23,7 +23,7 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          echo "results=$(julia --project=. benchmarks.jl json-base)" >> "$GITHUB_OUTPUT"
+          echo "results=$(julia --project=. benchmarks.jl json)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   benchmark-head:
@@ -45,7 +45,7 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          echo "results=$(julia --project=. benchmarks.jl json-base)" >> "$GITHUB_OUTPUT"
+          echo "results=$(julia --project=. benchmarks.jl json)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   combine-results:
