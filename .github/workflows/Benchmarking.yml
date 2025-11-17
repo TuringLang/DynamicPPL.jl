@@ -9,6 +9,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # need to fetch all commits, otherwise git checkout will fail
 
       - uses: julia-actions/setup-julia@v2
         with:
@@ -27,7 +29,7 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           ## Run the actual benchmarks
-          # checkout pr HEAD
+          # first switch to PR head
           git checkout ${{ github.event.pull_request.head.sha }}
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           julia --project=. benchmarks.jl json-head
