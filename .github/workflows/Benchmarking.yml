@@ -22,9 +22,10 @@ jobs:
         id: benchmark
         working-directory: ./benchmarks
         run: |
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the tail
-          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          # julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          results=$(hello)
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -47,9 +48,10 @@ jobs:
         id: benchmark
         working-directory: ./benchmarks
         run: |
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the tail
-          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          # julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          results=$(hello)
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
