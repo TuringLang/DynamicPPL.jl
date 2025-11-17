@@ -33,22 +33,22 @@ jobs:
           git checkout ${{ github.event.pull_request.head.sha }}
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           julia --project=. benchmarks.jl json-head
+          # get the SHA of the PR head
+          DPPL_HEAD_COMMIT_SHA=$(git rev-parse HEAD)
+          echo "DPPL_HEAD_COMMIT_SHA=$DPPL_HEAD_COMMIT_SHA" >> $GITHUB_ENV
           # then switch to PR base
           git checkout ${{ github.base_ref }}
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           julia --project=. benchmarks.jl json-base
+          # get its SHA too
+          DPPL_BASE_COMMIT_SHA=$(git rev-parse BASE)
+          echo "DPPL_BASE_COMMIT_SHA=$DPPL_BASE_COMMIT_SHA" >> $GITHUB_ENV
 
           # combine them and save the output as an env var for later steps
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Get the current commit SHA of DynamicPPL
-          DPPL_COMMIT_SHA=$(git rev-parse HEAD)
-          echo "DPPL_COMMIT_SHA=$DPPL_COMMIT_SHA" >> $GITHUB_ENV
-
-          COMMIT_URL="https://github.com/${{ github.repository }}/commit/$DPPL_COMMIT_SHA"
-          echo "DPPL_COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
 
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v4
@@ -62,7 +62,11 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Benchmark Report for Commit ${{ env.DPPL_COMMIT_SHA }}
+            ## Benchmark Report
+
+            - this PR's head: `${{ env.DPPL_HEAD_COMMIT_SHA }}`
+            - base branch: `${{ env.DPPL_BASE_COMMIT_SHA }}`
+
             ### Computer Information
             ```
             ${{ env.VERSION_INFO }}
