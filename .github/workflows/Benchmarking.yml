@@ -24,7 +24,9 @@ jobs:
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the tail
-          echo "results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)" >> "$GITHUB_OUTPUT"
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          echo $results
+          echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   benchmark-head:
@@ -47,7 +49,9 @@ jobs:
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the tail
-          echo "results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)" >> "$GITHUB_OUTPUT"
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          echo $results
+          echo "results=$results >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   combine-results:
@@ -71,13 +75,16 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           # save outputs of previous jobs to json file
+          echo '${{needs.benchmark-base.outputs.results}}'
           echo '${{needs.benchmark-base.outputs.results}}' > base.json
+          echo '${{needs.benchmark-head.outputs.results}}'
           echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
           # combine them and save the output as an env var for later steps
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine head.json base.json >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Find Existing Comment
@@ -94,8 +101,8 @@ jobs:
           body: |
             ## Benchmark Report
 
-            - this PR's head: `${{ env.DPPL_HEAD_COMMIT_SHA }}`
-            - base branch: `${{ env.DPPL_BASE_COMMIT_SHA }}`
+            - this PR's head: `${{ needs.benchmark-head.outputs.sha }}`
+            - base branch: `${{ needs.benchmark-base.outputs.sha }}`
 
             ### Computer Information
             ```
