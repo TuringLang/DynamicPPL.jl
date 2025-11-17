@@ -24,7 +24,7 @@ jobs:
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the head
-          echo "results=$(julia --project=. benchmarks.jl json | head -n 1)" >> "$GITHUB_OUTPUT"
+          echo "results=$(julia --project=. benchmarks.jl json | head -n 1 || true)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   benchmark-head:
@@ -47,7 +47,7 @@ jobs:
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # github output can't handle more than 1 line, hence the head
-          echo "results=$(julia --project=. benchmarks.jl json | head -n 1)" >> "$GITHUB_OUTPUT"
+          echo "results=$(julia --project=. benchmarks.jl json | head -n 1 || true)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   combine-results:
