@@ -3,7 +3,7 @@ using Pkg
 using Chairmarks: @be, median
 using DynamicPPLBenchmarks: Models, benchmark, model_dimension
 using JSON: JSON
-using PrettyTables: pretty_table, fmt__printf, EmptyCells, MultiColumn
+using PrettyTables: pretty_table, fmt__printf, EmptyCells, MultiColumn, TextTableFormat
 using Printf: @sprintf
 using StableRNGs: StableRNG
 
@@ -198,6 +198,7 @@ function combine()
         backend=:text,
         fit_table_in_display_horizontally=false,
         fit_table_in_display_vertically=false,
+        table_format=TextTableFormat(; horizontal_line_at_merged_column_labels=true),
     )
 end
 
