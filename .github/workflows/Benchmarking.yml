@@ -82,9 +82,11 @@ jobs:
 
           # combine them and save the output as an env var for later steps
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
-          julia --project=. benchmarks.jl combine head.json base.json
-          echo "EOF" >> $GITHUB_ENV
+          {
+            echo 'BENCHMARK_OUTPUT<<EOF'
+            julia --project=. benchmarks.jl combine head.json base.json
+            echo EOF
+          } >> "$GITHUB_ENV"
 
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v4
