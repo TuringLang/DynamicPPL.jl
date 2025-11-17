@@ -23,6 +23,7 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          # github output can't handle more than 1 line, hence the head
           echo "results=$(julia --project=. benchmarks.jl json | head -n 1)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -45,6 +46,7 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          # github output can't handle more than 1 line, hence the head
           echo "results=$(julia --project=. benchmarks.jl json | head -n 1)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -61,14 +63,13 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           # save outputs of previous jobs to json file
-          # TODO: fix hardcoding
-          echo ${{needs.benchmark-base.outputs.results}} > benchmarks_result_base.json
-          echo ${{needs.benchmark-head.outputs.results}} > benchmarks_result_head.json
+          echo ${{needs.benchmark-base.outputs.results}} > base.json
+          echo ${{needs.benchmark-head.outputs.results}} > head.json
 
           # combine them and save the output as an env var for later steps
           git checkout ${{ github.event.pull_request.head.sha }}
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
-          julia --project=. benchmarks.jl combine >> $GITHUB_ENV
+          julia --project=. benchmarks.jl combine head.json base.json >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Find Existing Comment
