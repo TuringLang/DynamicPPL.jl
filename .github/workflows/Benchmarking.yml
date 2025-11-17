@@ -17,6 +17,7 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - name: Run benchmarks
+        working-directory: ./benchmarks
         run: |
           # Capture version info into a variable, print it, and set it as an env var for later steps
           version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
@@ -34,17 +35,10 @@ jobs:
           git checkout ${{ github.base_ref }}
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           julia --project=. benchmarks.jl json-base
-          # then combine them. The sed and tail calls cut out anything but the
-          # final block of results.
-          benchmark_output=$(\
-            julia --project=. benchmarks.jl combine \
-            | sed -n '/Final results:/,$p' \
-            | tail -n +2\
-          )
 
-          # Set the benchmark output as an env var for later steps
+          # combine them and save the output as an env var for later steps
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
-          echo "$benchmark_output" >> $GITHUB_ENV
+          julia --project=. benchmarks.jl combine >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
           # Get the current commit SHA of DynamicPPL
@@ -53,8 +47,6 @@ jobs:
 
           COMMIT_URL="https://github.com/${{ github.repository }}/commit/$DPPL_COMMIT_SHA"
           echo "DPPL_COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
-        with:
-          working-directory: ./benchmarks
 
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v4
