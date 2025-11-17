@@ -28,7 +28,7 @@ jobs:
           echo "$version_info" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          julia --project=. -e 'Pkg.Registry.add()'
+          julia --project=. -e 'using Pkg; Pkg.Registry.add()'
 
           ## Run the actual benchmarks
           # first switch to PR head
