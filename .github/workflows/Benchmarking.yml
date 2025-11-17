@@ -54,6 +54,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [benchmark-base, benchmark-head]
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v2
       - name: Get versioninfo
         run: |
           version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
@@ -67,7 +74,6 @@ jobs:
           echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
           # combine them and save the output as an env var for later steps
-          git checkout ${{ github.event.pull_request.head.sha }}
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine head.json base.json >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
