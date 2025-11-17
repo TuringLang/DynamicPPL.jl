@@ -133,7 +133,7 @@ struct TestCase
     linked::Bool
     TestCase(d::Dict{String,Any}) = new((d[c] for c in colnames[1:5])...)
 end
-function combine()
+function combine(head_filename::String, base_filename::String)
     head_results = try
         JSON.parsefile(head_filename, Vector{Dict{String,Any}})
     catch
@@ -203,13 +203,18 @@ function combine()
 end
 
 # The command-line arguments are used on CI purposes.
-# Run with `julia --project=. benchmarks.jl [combine|json-head|json-base]`
-if ARGS == ["combine"]
-    combine()
+# Run with `julia --project=. benchmarks.jl json` to run benchmarks and output JSON to
+# stdout
+# Run with `julia --project=. benchmarks.jl combine head.json base.json` to combine two JSON
+# files
+if length(ARGS) == 3 && ARGS[1] == "combine"
+    combine(ARGS[2], ARGS[3])
 elseif ARGS == ["json"]
     run(; to_json=true)
 elseif ARGS == []
     # When running locally just omit the argument and it will just benchmark and print to
     # terminal.
     run()
+else
+    error("invalid arguments: $(ARGS)")
 end
