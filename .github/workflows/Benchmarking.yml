@@ -75,6 +75,7 @@ jobs:
           echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
           # combine them and save the output as an env var for later steps
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
           julia --project=. benchmarks.jl combine head.json base.json >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
