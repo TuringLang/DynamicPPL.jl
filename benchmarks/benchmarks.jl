@@ -106,7 +106,7 @@ function run(; to_json=false)
             (results.primal_time / reference_time),
             (results.grad_time / results.primal_time)
         catch e
-            @info "benchmark errored"
+            @info "benchmark errored: $e"
             missing, missing
         end
         push!(
