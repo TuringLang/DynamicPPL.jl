@@ -161,7 +161,20 @@ function combine(head_filename::String, base_filename::String)
         collect(all_testcases); by=(c -> (c.model_name, c.linked, c.varinfo, c.ad_backend))
     )
     results_table = Tuple{
-        String,Int,String,String,Bool,String,String,String,String,String,String
+        String,
+        Int,
+        String,
+        String,
+        Bool,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
     }[]
     sublabels = ["base", "this PR", "speedup"]
     results_colnames = [
