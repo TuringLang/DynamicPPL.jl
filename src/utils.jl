@@ -6,8 +6,8 @@ const NO_DEFAULT = NoDefault()
 VarNameTuple = NTuple{N,VarName} where {N}
 
 # TODO(mhauru) This is currently used in the transformation functions of NoDist,
-# ReshapeTransform, and UnwrapSingletonTransform, and in VarInfo. We should also use it in
-# SimpleVarInfo and maybe other places.
+# ReshapeTransform, and in VarInfo. We should also use it in SimpleVarInfo and maybe other
+# places.
 """
 The type for all log probability variables.
 
@@ -230,42 +230,6 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 """
-    UnwrapSingletonTransform(input_size::InSize)
-
-A transformation that unwraps a singleton array, returning a scalar.
-
-The `input_size` field is the expected size of the input. In practice this only determines
-the number of indices, since all dimensions must be 1 for a singleton. `input_size` is used
-to check the validity of the input, but also to determine the correct inverse operation.
-
-By default `input_size` is `(1,)`, in which case `tovec` is the inverse.
-"""
-struct UnwrapSingletonTransform{InSize} <: Bijectors.Bijector
-    input_size::InSize
-end
-
-UnwrapSingletonTransform() = UnwrapSingletonTransform((1,))
-
-function (f::UnwrapSingletonTransform)(x)
-    if size(x) != f.input_size
-        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
-    end
-    return only(x)
-end
-
-function Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x)
-    return f(x), zero(LogProbType)
-end
-
-function Bijectors.with_logabsdet_jacobian(
-    inv_f::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
-)
-    f = inv_f.orig
-    result = reshape([x], f.input_size)
-    return result, zero(LogProbType)
-end
-
-"""
     ReshapeTransform(input_size::InSize, output_size::OutSize)
 
 A `Bijector` that transforms arrays of size `input_size` to arrays of size `output_size`.
@@ -357,7 +321,7 @@ Return the transformation from the vector representation of `x` to original repr
 """
 from_vec_transform(x::AbstractArray) = from_vec_transform_for_size(size(x))
 from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ ReshapeTransform(size(C.UL))
-from_vec_transform(::Real) = UnwrapSingletonTransform()
+from_vec_transform(::Real) = Only()
 
 """
     from_vec_transform_for_size(sz::Tuple)
@@ -421,7 +385,6 @@ end
 # This function returns the length of the vector that the function from_vec_transform
 # expects. This helps us determine which segment of a concatenated vector belongs to which
 # variable.
-_input_length(::UnwrapSingletonTransform) = 1
 _input_length(::Only) = 1
 _input_length(from_vec_trfm::ReshapeTransform) = prod(from_vec_trfm.output_size)
 function _input_length(trfm::ProductNamedTupleUnvecTransform)
