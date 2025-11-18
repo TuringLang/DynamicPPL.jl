@@ -5,7 +5,13 @@ using Chairmarks: @be
 import DifferentiationInterface as DI
 using DocStringExtensions
 using DynamicPPL:
-    Model, LogDensityFunction, VarInfo, AbstractVarInfo, getlogjoint_internal, link
+    DynamicPPL,
+    Model,
+    LogDensityFunction,
+    VarInfo,
+    AbstractVarInfo,
+    getlogjoint_internal,
+    link
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: AbstractRNG, default_rng
 using Statistics: median
@@ -298,7 +304,9 @@ function run_ad(
 
     # Benchmark
     grad_time, primal_time = if benchmark
+        logdensity(ldf, params)  # Warm-up
         primal_benchmark = @be logdensity($ldf, $params)
+        logdensity_and_gradient(ldf, params)  # Warm-up
         grad_benchmark = @be logdensity_and_gradient($ldf, $params)
         median_primal = median(primal_benchmark).time
         median_grad = median(grad_benchmark).time
