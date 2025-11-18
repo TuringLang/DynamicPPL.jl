@@ -198,6 +198,7 @@ function combine(head_filename::String, base_filename::String)
         println("No benchmark results obtained.")
     else
         table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
+        println("```")
         pretty_table(
             table_matrix;
             column_labels=results_colnames,
@@ -206,6 +207,7 @@ function combine(head_filename::String, base_filename::String)
             fit_table_in_display_vertically=false,
             table_format=TextTableFormat(; horizontal_line_at_merged_column_labels=true),
         )
+        println("```")
     end
 end
 

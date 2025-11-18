@@ -23,9 +23,8 @@ jobs:
         working-directory: ./benchmarks
         run: |
           # github output can't handle more than 1 line, hence the tail
-          # julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          results="hello"
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -49,9 +48,8 @@ jobs:
         working-directory: ./benchmarks
         run: |
           # github output can't handle more than 1 line, hence the tail
-          # julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          results="hello"
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -67,7 +65,8 @@ jobs:
         with:
           version: '1.11'
       - uses: julia-actions/cache@v2
-      - name: Get versioninfo
+
+      - name: Combine benchmark results
         working-directory: ./benchmarks
         run: |
           version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
@@ -89,7 +88,6 @@ jobs:
           # combine them and save the output as an env var for later steps
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           results=$(julia --project=. benchmarks.jl combine head.json base.json)
-          echo $?
           echo "Combined results"
           echo "--------------------------------------------------------"
           echo "$results"
@@ -98,14 +96,14 @@ jobs:
           echo "$results" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Find Existing Comment
+      - name: Find existing benchmark comment
         uses: peter-evans/find-comment@v4
         id: find_comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: github-actions[bot]
 
-      - name: Post Benchmark Results as PR Comment
+      - name: Create or update benchmark comment
         uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.pull_request.number }}
@@ -120,8 +118,8 @@ jobs:
             ${{ env.VERSION_INFO }}
             ```
             ### Benchmark Results
-            ```
+
             ${{ env.BENCHMARK_OUTPUT }}
-            ```
+
           comment-id: ${{ steps.find_comment.outputs.comment-id }}
           edit-mode: replace
