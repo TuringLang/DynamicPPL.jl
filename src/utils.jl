@@ -262,42 +262,6 @@ invlink_transform(dist) = inverse(link_transform(dist))
 #####################################################
 
 """
-    UnwrapSingletonTransform(input_size::InSize)
-
-A transformation that unwraps a singleton array, returning a scalar.
-
-The `input_size` field is the expected size of the input. In practice this only determines
-the number of indices, since all dimensions must be 1 for a singleton. `input_size` is used
-to check the validity of the input, but also to determine the correct inverse operation.
-
-By default `input_size` is `(1,)`, in which case `tovec` is the inverse.
-"""
-struct UnwrapSingletonTransform{InSize} <: Bijectors.Bijector
-    input_size::InSize
-end
-
-UnwrapSingletonTransform() = UnwrapSingletonTransform((1,))
-
-function (f::UnwrapSingletonTransform)(x)
-    if size(x) != f.input_size
-        throw(DimensionMismatch("Expected input of size $(f.input_size), got $(size(x))"))
-    end
-    return only(x)
-end
-
-function Bijectors.with_logabsdet_jacobian(f::UnwrapSingletonTransform, x)
-    return f(x), zero(LogProbType)
-end
-
-function Bijectors.with_logabsdet_jacobian(
-    inv_f::Bijectors.Inverse{<:UnwrapSingletonTransform}, x
-)
-    f = inv_f.orig
-    result = reshape([x], f.input_size)
-    return result, zero(LogProbType)
-end
-
-"""
     ReshapeTransform(input_size::InSize, output_size::OutSize)
 
 A `Bijector` that transforms arrays of size `input_size` to arrays of size `output_size`.
@@ -370,6 +334,18 @@ function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)
     )
 end
 
+struct Only end
+struct NotOnly end
+(::Only)(x) = x[]
+(::NotOnly)(y) = [y]
+function Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector{T}) where {T<:Real}
+    return (x[], zero(T))
+end
+Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector) = (x[], zero(LogProbType))
+Bijectors.inverse(::Only) = NotOnly()
+Bijectors.with_logabsdet_jacobian(::NotOnly, y::T) where {T<:Real} = ([y], zero(T))
+Bijectors.with_logabsdet_jacobian(::NotOnly, y) = ([y], zero(LogProbType))
+
 """
     from_vec_transform(x)
 
@@ -377,7 +353,7 @@ Return the transformation from the vector representation of `x` to original repr
 """
 from_vec_transform(x::AbstractArray) = from_vec_transform_for_size(size(x))
 from_vec_transform(C::Cholesky) = ToChol(C.uplo) ∘ ReshapeTransform(size(C.UL))
-from_vec_transform(::Real) = UnwrapSingletonTransform()
+from_vec_transform(::Real) = Only()
 
 """
     from_vec_transform_for_size(sz::Tuple)
@@ -395,7 +371,7 @@ Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
-from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
+from_vec_transform(::UnivariateDistribution) = Only()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
@@ -441,7 +417,7 @@ end
 # This function returns the length of the vector that the function from_vec_transform
 # expects. This helps us determine which segment of a concatenated vector belongs to which
 # variable.
-_input_length(from_vec_trfm::UnwrapSingletonTransform) = 1
+_input_length(::Only) = 1
 _input_length(from_vec_trfm::ReshapeTransform) = prod(from_vec_trfm.output_size)
 function _input_length(trfm::ProductNamedTupleUnvecTransform)
     return sum(_input_length ∘ from_vec_transform, values(trfm.dists))
@@ -477,18 +453,9 @@ function from_linked_vec_transform(dist::Distribution)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
 end
-
-# UnivariateDistributions need to be handled as a special case, because size(dist) is (),
-# which makes the usual machinery think we are dealing with a 0-dim array, whereas in
-# actuality we are dealing with a scalar.
-# TODO(mhauru) Hopefully all this can go once the old Gibbs sampler is removed and
-# VarNamedVector takes over from Metadata.
 function from_linked_vec_transform(dist::UnivariateDistribution)
-    f_invlink = invlink_transform(dist)
-    f_vec = from_vec_transform(inverse(f_invlink), size(dist))
-    f_combined = f_invlink ∘ f_vec
-    sz = Bijectors.output_size(f_combined, size(dist))
-    return UnwrapSingletonTransform(sz) ∘ f_combined
+    # This is a performance optimisation
+    return Only() ∘ invlink_transform(dist)
 end
 function from_linked_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return invlink_transform(dist)

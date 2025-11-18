@@ -49,6 +49,8 @@ Removed the method `returned(::Model, values, keys)`; please use `returned(::Mod
 The method `DynamicPPL.init` (for implementing `AbstractInitStrategy`) now has a different signature: it must return a tuple of the generated value, plus a transform function that maps it back to unlinked space.
 This is a generalisation of the previous behaviour, where `init` would always return an unlinked value (in effect forcing the transform to be the identity function).
 
+Improved performance of transformations of univariate distributions' samples to and from their vectorised forms.
+
 ## 0.38.9
 
 Remove warning when using Enzyme as the AD backend.
