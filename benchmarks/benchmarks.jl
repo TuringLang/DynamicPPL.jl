@@ -73,16 +73,16 @@ function run(; to_json=false)
         ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
         ("Smorgasbord", smorgasbord_instance, :typed_vector, :forwarddiff, true),
         ("Smorgasbord", smorgasbord_instance, :untyped_vector, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :enzyme, true),
-        ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
-        ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
-        ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
-        ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
-        ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-        ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
-        ("LDA", lda_instance, :typed, :reversediff, true),
+        # ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
+        # ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
+        # ("Smorgasbord", smorgasbord_instance, :typed, :enzyme, true),
+        # ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
+        # ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
+        # ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
+        # ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
+        # ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
+        # ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
+        # ("LDA", lda_instance, :typed, :reversediff, true),
     ]
 
     # Time running a model-like function that does not use DynamicPPL, as a reference point.
@@ -98,12 +98,15 @@ function run(; to_json=false)
     }[]
 
     for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
-        @info "Running benchmark for $model_name"
+        @info "Running benchmark for $model_name, $varinfo_choice, $adbackend, $islinked"
         relative_eval_time, relative_ad_eval_time = try
             results = benchmark(model, varinfo_choice, adbackend, islinked)
+            @info " t(eval) = $(results.primal_time)"
+            @info " t(grad) = $(results.grad_time)"
             (results.primal_time / reference_time),
             (results.grad_time / results.primal_time)
         catch e
+            @info "benchmark errored"
             missing, missing
         end
         push!(
