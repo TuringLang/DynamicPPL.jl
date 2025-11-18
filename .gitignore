@@ -4,3 +4,5 @@
 .DS_Store
 Manifest.toml
 **.~undo-tree~
+
+benchmarks/*.json

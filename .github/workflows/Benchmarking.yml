@@ -4,80 +4,122 @@ on:
   pull_request:
 
 jobs:
-  benchmarks:
+  benchmark-base:
     runs-on: ubuntu-latest
-
+    outputs:
+      results: ${{ steps.benchmark.outputs.results }}
+      sha: ${{ steps.benchmark.outputs.sha }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Set up Julia
-        uses: julia-actions/setup-julia@v2
+          ref: ${{ github.base_ref }}
+      - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-
       - uses: julia-actions/cache@v2
 
-      - name: Install Dependencies
-        run: julia --project=benchmarks/ -e 'using Pkg; Pkg.instantiate()'
-
-      - name: Run Benchmarks
-        id: run_benchmarks
+      - name: Run benchmarks
+        id: benchmark
+        working-directory: ./benchmarks
         run: |
-          # Capture version info into a variable, print it, and set it as an env var for later steps
+          # github output can't handle more than 1 line, hence the tail
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          echo $results
+          echo "results=$results" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  benchmark-head:
+    runs-on: ubuntu-latest
+    outputs:
+      results: ${{ steps.benchmark.outputs.results }}
+      sha: ${{ steps.benchmark.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v2
+
+      - name: Run benchmarks
+        id: benchmark
+        working-directory: ./benchmarks
+        run: |
+          # github output can't handle more than 1 line, hence the tail
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
+          echo $results
+          echo "results=$results" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  combine-results:
+    runs-on: ubuntu-latest
+    needs: [benchmark-base, benchmark-head]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v2
+
+      - name: Combine benchmark results
+        working-directory: ./benchmarks
+        run: |
           version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
           echo "$version_info"
           echo "VERSION_INFO<<EOF" >> $GITHUB_ENV
           echo "$version_info" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Capture benchmark output into a variable. The sed and tail calls cut out anything but the
-          # final block of results.
-          echo "Running Benchmarks..."
-          benchmark_output=$(\
-            julia --project=benchmarks benchmarks/benchmarks.jl \
-            | sed -n '/Final results:/,$p' \
-            | tail -n +2\
-          )
+          # save outputs of previous jobs to json file
+          echo "Base results"
+          echo "--------------------------------------------------------"
+          echo '${{needs.benchmark-base.outputs.results}}'
+          echo '${{needs.benchmark-base.outputs.results}}' > base.json
+          echo "Head results"
+          echo "--------------------------------------------------------"
+          echo '${{needs.benchmark-head.outputs.results}}'
+          echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
-          # Print benchmark results directly to the workflow log
-          echo "Benchmark Results:"
-          echo "$benchmark_output"
+          # combine them and save the output as an env var for later steps
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          results=$(julia --project=. benchmarks.jl combine head.json base.json)
+          echo "Combined results"
+          echo "--------------------------------------------------------"
+          echo "$results"
 
-          # Set the benchmark output as an env var for later steps
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
-          echo "$benchmark_output" >> $GITHUB_ENV
+          echo "$results" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Get the current commit SHA of DynamicPPL
-          DPPL_COMMIT_SHA=$(git rev-parse HEAD)
-          echo "DPPL_COMMIT_SHA=$DPPL_COMMIT_SHA" >> $GITHUB_ENV
-
-          COMMIT_URL="https://github.com/${{ github.repository }}/commit/$DPPL_COMMIT_SHA"
-          echo "DPPL_COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
-
-      - name: Find Existing Comment
+      - name: Find existing benchmark comment
         uses: peter-evans/find-comment@v4
         id: find_comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: github-actions[bot]
 
-      - name: Post Benchmark Results as PR Comment
+      - name: Create or update benchmark comment
         uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Benchmark Report for Commit ${{ env.DPPL_COMMIT_SHA }}
+            ## Benchmark Report
+
+            - this PR's head: `${{ needs.benchmark-head.outputs.sha }}`
+            - base branch: `${{ needs.benchmark-base.outputs.sha }}`
+
             ### Computer Information
             ```
             ${{ env.VERSION_INFO }}
             ```
             ### Benchmark Results
-            ```
+
             ${{ env.BENCHMARK_OUTPUT }}
-            ```
+
           comment-id: ${{ steps.find_comment.outputs.comment-id }}
           edit-mode: replace

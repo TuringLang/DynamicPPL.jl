@@ -1,20 +1,20 @@
 module DynamicPPLBenchmarks
 
 using DynamicPPL: VarInfo, SimpleVarInfo, VarName
-using BenchmarkTools: BenchmarkGroup, @benchmarkable
 using DynamicPPL: DynamicPPL
+using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using ADTypes: ADTypes
 using LogDensityProblems: LogDensityProblems
 
 using ForwardDiff: ForwardDiff
-using Mooncake: Mooncake
 using ReverseDiff: ReverseDiff
+using Mooncake: Mooncake
+using Enzyme: Enzyme
 using StableRNGs: StableRNG
 
 include("./Models.jl")
 using .Models: Models
-using Enzyme: Enzyme
-export Models, make_suite, model_dimension
+export Models, benchmark, model_dimension
 
 """
     model_dimension(model, islinked)
@@ -52,9 +52,11 @@ function to_backend(x::Union{AbstractString,Symbol})
 end
 
 """
-    make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+    benchmark(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
 
-Create a benchmark suite for `model` using the selected varinfo type and AD backend.
+Benchmark evaluation and gradient calculation for `model` using the selected varinfo type
+and AD backend.
+
 Available varinfo choices:
   • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
   • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
@@ -65,10 +67,10 @@ The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversedi
 
 `islinked` determines whether to link the VarInfo for evaluation.
 """
-function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+function benchmark(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
     rng = StableRNG(23)
 
-    suite = BenchmarkGroup()
+    adbackend = to_backend(adbackend)
 
     vi = if varinfo_choice == :untyped
         DynamicPPL.untyped_varinfo(rng, model)
@@ -94,20 +96,9 @@ function make_suite(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::
         vi = DynamicPPL.link(vi, model)
     end
 
-    f = DynamicPPL.LogDensityFunction(
-        model, DynamicPPL.getlogjoint_internal, vi; adtype=adbackend
+    return run_ad(
+        model, adbackend; varinfo=vi, benchmark=true, test=NoTest(), verbose=false
     )
-    # The parameters at which we evaluate f.
-    θ = vi[:]
-
-    # Run once to trigger compilation.
-    LogDensityProblems.logdensity_and_gradient(f, θ)
-    suite["gradient"] = @benchmarkable $(LogDensityProblems.logdensity_and_gradient)($f, $θ)
-
-    # Also benchmark just standard model evaluation because why not.
-    suite["evaluation"] = @benchmarkable $(LogDensityProblems.logdensity)($f, $θ)
-
-    return suite
 end
 
 end # module
