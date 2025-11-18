@@ -163,13 +163,15 @@ function combine(head_filename::String, base_filename::String)
     results_table = Tuple{
         String,Int,String,String,Bool,String,String,String,String,String,String
     }[]
+    sublabels = ["base", "this PR", "speedup"]
     results_colnames = [
         [
             EmptyCells(5),
             MultiColumn(3, "t(eval) / t(ref)"),
             MultiColumn(3, "t(grad) / t(eval)"),
+            MultiColumn(3, "t(grad) / t(ref)"),
         ],
-        [colnames[1:5]..., "base", "this PR", "speedup", "base", "this PR", "speedup"],
+        [colnames[1:5]..., sublabels..., sublabels..., sublabels...],
     ]
     sprint_float(x::Float64) = @sprintf("%.2f", x)
     sprint_float(m::Missing) = "err"
@@ -186,6 +188,10 @@ function combine(head_filename::String, base_filename::String)
         # Finally that lets us do this division safely
         speedup_eval = base_eval / head_eval
         speedup_grad = base_grad / head_grad
+        # As well as this multiplication, which is t(grad) / t(ref)
+        head_grad_vs_ref = head_grad * head_eval
+        base_grad_vs_ref = base_grad * base_eval
+        speedup_grad_vs_ref = base_grad_vs_ref / head_grad_vs_ref
         push!(
             results_table,
             (
@@ -200,6 +206,9 @@ function combine(head_filename::String, base_filename::String)
                 sprint_float(base_grad),
                 sprint_float(head_grad),
                 sprint_float(speedup_grad),
+                sprint_float(base_grad_vs_ref),
+                sprint_float(head_grad_vs_ref),
+                sprint_float(speedup_grad_vs_ref),
             ),
         )
     end
