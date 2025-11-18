@@ -271,7 +271,7 @@ function run_ad(
     # Calculate log-density and gradient with the backend of interest
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
     verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model, getlogdensity, varinfo; adtype=adtype)
+    ldf = DynamicPPL.Experimental.FastLDF(model, getlogdensity, varinfo; adtype=adtype)
 
     value, grad = logdensity_and_gradient(ldf, params)
     # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
@@ -288,7 +288,7 @@ function run_ad(
             value_true = test.value
             grad_true = test.grad
         elseif test isa WithBackend
-            ldf_reference = LogDensityFunction(
+            ldf_reference = DynamicPPL.Experimental.FastLDF(
                 model, getlogdensity, varinfo; adtype=test.adtype
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
