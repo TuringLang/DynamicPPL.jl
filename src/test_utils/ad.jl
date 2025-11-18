@@ -298,8 +298,8 @@ function run_ad(
 
     # Benchmark
     grad_time, primal_time = if benchmark
-        primal_benchmark = @be (ldf, params) logdensity(_[1], _[2])
-        grad_benchmark = @be (ldf, params) logdensity_and_gradient(_[1], _[2])
+        primal_benchmark = @be logdensity($ldf, $params)
+        grad_benchmark = @be logdensity_and_gradient($ldf, $params)
         median_primal = median(primal_benchmark).time
         median_grad = median(grad_benchmark).time
         r(f) = round(f; sigdigits=4)
