@@ -9,9 +9,6 @@ using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
-head_filename = "benchmarks_result_head.json"
-base_filename = "benchmarks_result_base.json"
-
 colnames = [
     "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
 ]
@@ -176,6 +173,14 @@ function combine(head_filename::String, base_filename::String)
     for c in sorted_testcases
         head_eval, head_grad = get(head_testcases, c, (missing, missing))
         base_eval, base_grad = get(base_testcases, c, (missing, missing))
+        # If the benchmark errored, it will return `missing` in the `run()` function above.
+        # The issue with this is that JSON serialisation converts it to `null`, and then
+        # when reading back from JSON, it becomes `nothing` instead of `missing`!
+        head_eval = head_eval === nothing ? missing : head_eval
+        head_grad = head_grad === nothing ? missing : head_grad
+        base_eval = base_eval === nothing ? missing : base_eval
+        base_grad = base_grad === nothing ? missing : base_grad
+        # Finally that lets us do this division safely
         speedup_eval = base_eval / head_eval
         speedup_grad = base_grad / head_grad
         push!(
