@@ -24,6 +24,7 @@ function print_results(results_table; to_json=false)
         ]
         # do not use pretty=true, as GitHub Actions expects no linebreaks
         JSON.json(stdout, results_array)
+        println()
     else
         # Pretty-print to terminal
         table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
@@ -122,7 +123,8 @@ function run(; to_json=false)
         )
         print_results(results_table; to_json=to_json)
     end
-    return print_results(results_table; to_json=to_json)
+    print_results(results_table; to_json=to_json)
+    return nothing
 end
 
 struct TestCase
