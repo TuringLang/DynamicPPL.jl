@@ -158,7 +158,7 @@ function combine(head_filename::String, base_filename::String)
     all_testcases = union(Set(keys(head_testcases)), Set(keys(base_testcases)))
     @info "$(length(all_testcases)) unique test cases found"
     sorted_testcases = sort(
-        collect(all_testcases); by=(c -> (c.model_name, c.ad_backend, c.varinfo, c.linked))
+        collect(all_testcases); by=(c -> (c.model_name, c.linked, c.varinfo, c.ad_backend))
     )
     results_table = Tuple{
         String,Int,String,String,Bool,String,String,String,String,String,String
