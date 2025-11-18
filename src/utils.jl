@@ -338,6 +338,18 @@ function Bijectors.with_logabsdet_jacobian(::Bijectors.Inverse{<:ToChol}, y)
     )
 end
 
+struct Only end
+struct NotOnly end
+(::Only)(x) = x[]
+(::NotOnly)(y) = [y]
+function Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector{T}) where {T<:Real}
+    return (x[], zero(T))
+end
+Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector) = (x[], zero(LogProbType))
+Bijectors.inverse(::Only) = NotOnly()
+Bijectors.with_logabsdet_jacobian(::NotOnly, y::T) where {T<:Real} = ([y], zero(T))
+Bijectors.with_logabsdet_jacobian(::NotOnly, y) = ([y], zero(LogProbType))
+
 """
     from_vec_transform(x)
 
@@ -363,7 +375,7 @@ Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
-from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
+from_vec_transform(::UnivariateDistribution) = Only()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
@@ -445,18 +457,9 @@ function from_linked_vec_transform(dist::Distribution)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
 end
-
-# UnivariateDistributions need to be handled as a special case, because size(dist) is (),
-# which makes the usual machinery think we are dealing with a 0-dim array, whereas in
-# actuality we are dealing with a scalar.
-# TODO(mhauru) Hopefully all this can go once the old Gibbs sampler is removed and
-# VarNamedVector takes over from Metadata.
 function from_linked_vec_transform(dist::UnivariateDistribution)
-    f_invlink = invlink_transform(dist)
-    f_vec = from_vec_transform(inverse(f_invlink), size(dist))
-    f_combined = f_invlink ∘ f_vec
-    sz = Bijectors.output_size(f_combined, size(dist))
-    return UnwrapSingletonTransform(sz) ∘ f_combined
+    # This is a performance optimisation
+    return Only() ∘ invlink_transform(dist)
 end
 function from_linked_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return invlink_transform(dist)

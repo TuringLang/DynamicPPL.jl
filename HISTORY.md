@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.38.10
+
+Improved performance of transformations of univariate distributions' samples to and from their vectorised forms.
+
 ## 0.38.9
 
 Remove warning when using Enzyme as the AD backend.
