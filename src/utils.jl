@@ -421,7 +421,8 @@ end
 # This function returns the length of the vector that the function from_vec_transform
 # expects. This helps us determine which segment of a concatenated vector belongs to which
 # variable.
-_input_length(from_vec_trfm::UnwrapSingletonTransform) = 1
+_input_length(::UnwrapSingletonTransform) = 1
+_input_length(::Only) = 1
 _input_length(from_vec_trfm::ReshapeTransform) = prod(from_vec_trfm.output_size)
 function _input_length(trfm::ProductNamedTupleUnvecTransform)
     return sum(_input_length ∘ from_vec_transform, values(trfm.dists))
