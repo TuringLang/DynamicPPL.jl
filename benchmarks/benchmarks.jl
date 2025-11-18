@@ -215,7 +215,10 @@ function combine(head_filename::String, base_filename::String)
             backend=:text,
             fit_table_in_display_horizontally=false,
             fit_table_in_display_vertically=false,
-            table_format=TextTableFormat(; horizontal_line_at_merged_column_labels=true),
+            table_format=TextTableFormat(;
+                horizontal_line_at_merged_column_labels=true,
+                horizontal_lines_at_data_rows=collect(3:3:length(results_table)),
+            ),
         )
         println("```")
     end
