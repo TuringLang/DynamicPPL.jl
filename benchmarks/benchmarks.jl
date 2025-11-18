@@ -9,9 +9,6 @@ using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
-head_filename = "benchmarks_result_head.json"
-base_filename = "benchmarks_result_base.json"
-
 colnames = [
     "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
 ]
