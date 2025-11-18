@@ -139,11 +139,13 @@ function combine(head_filename::String, base_filename::String)
     catch
         Dict{String,Any}[]
     end
+    @info "Loaded $(length(head_results)) results from $head_filename"
     base_results = try
         JSON.parsefile(base_filename, Vector{Dict{String,Any}})
     catch
         Dict{String,Any}[]
     end
+    @info "Loaded $(length(base_results)) results from $base_filename"
     # Identify unique combinations of (Model, Dim, AD Backend, VarInfo, Linked)
     head_testcases = Dict(
         TestCase(d) => (d[colnames[6]], d[colnames[7]]) for d in head_results
@@ -152,6 +154,7 @@ function combine(head_filename::String, base_filename::String)
         TestCase(d) => (d[colnames[6]], d[colnames[7]]) for d in base_results
     )
     all_testcases = union(Set(keys(head_testcases)), Set(keys(base_testcases)))
+    @info "$(length(all_testcases)) unique test cases found"
     sorted_testcases = sort(
         collect(all_testcases); by=(c -> (c.model_name, c.ad_backend, c.varinfo, c.linked))
     )
@@ -191,15 +194,19 @@ function combine(head_filename::String, base_filename::String)
         )
     end
     # Pretty-print to terminal
-    table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
-    return pretty_table(
-        table_matrix;
-        column_labels=results_colnames,
-        backend=:text,
-        fit_table_in_display_horizontally=false,
-        fit_table_in_display_vertically=false,
-        table_format=TextTableFormat(; horizontal_line_at_merged_column_labels=true),
-    )
+    if isempty(results_table)
+        println("No benchmark results obtained.")
+    else
+        table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
+        pretty_table(
+            table_matrix;
+            column_labels=results_colnames,
+            backend=:text,
+            fit_table_in_display_horizontally=false,
+            fit_table_in_display_vertically=false,
+            table_format=TextTableFormat(; horizontal_line_at_merged_column_labels=true),
+        )
+    end
 end
 
 # The command-line arguments are used on CI purposes.

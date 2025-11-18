@@ -25,7 +25,7 @@ jobs:
           # github output can't handle more than 1 line, hence the tail
           # julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          results=$(hello)
+          results="hello"
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -51,7 +51,7 @@ jobs:
           # github output can't handle more than 1 line, hence the tail
           # julia --project=. -e 'using Pkg; Pkg.instantiate()'
           # results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          results=$(hello)
+          results="hello"
           echo $results
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -77,18 +77,26 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           # save outputs of previous jobs to json file
+          echo "Base results"
+          echo "--------------------------------------------------------"
           echo '${{needs.benchmark-base.outputs.results}}'
           echo '${{needs.benchmark-base.outputs.results}}' > base.json
+          echo "Head results"
+          echo "--------------------------------------------------------"
           echo '${{needs.benchmark-head.outputs.results}}'
           echo '${{needs.benchmark-head.outputs.results}}' > head.json
 
           # combine them and save the output as an env var for later steps
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
-          {
-            echo 'BENCHMARK_OUTPUT<<EOF'
-            julia --project=. benchmarks.jl combine head.json base.json
-            echo EOF
-          } >> "$GITHUB_ENV"
+          results=$(julia --project=. benchmarks.jl combine head.json base.json)
+          echo $?
+          echo "Combined results"
+          echo "--------------------------------------------------------"
+          echo "$results"
+
+          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$results" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Find Existing Comment
         uses: peter-evans/find-comment@v4
