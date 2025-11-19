@@ -18,19 +18,91 @@ struct IndexDict{T<:Function,Keys,Values}
     make_leaf::T
 end
 
-function make_leaf_raw(value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(NamedTuple{(S,)}((value,)), make_leaf_raw)
-end
-make_leaf_raw(value, ::typeof(identity)) = value
-function make_leaf_raw(value, optic::IndexLens)
-    return IndexDict(Dict(optic.indices => value), make_leaf_raw)
-end
-function make_leaf_raw(value, optic::ComposedFunction)
-    sub = make_leaf_raw(value, optic.outer)
-    return make_leaf_raw(sub, optic.inner)
+struct IndexArray{T<:Function,ElType,numdims}
+    data::Array{ElType,numdims}
+    mask::Array{Bool,numdims}
+    make_leaf::T
 end
 
-VarNamedTuple() = VarNamedTuple((;), make_leaf_raw)
+function IndexArray(eltype, num_dims, make_leaf)
+    dims = ntuple(_ -> 0, num_dims)
+    data = Array{eltype,num_dims}(undef, dims)
+    mask = fill(false, dims)
+    return IndexArray(data, mask, make_leaf)
+end
+
+_length_needed(i::Integer) = i
+_length_needed(r::UnitRange) = last(r)
+_length_needed(::Colon) = 0
+
+function _resize_indexarray(iarr::IndexArray, inds)
+    # Resize arrays to accommodate new indices.
+    new_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
+    # Generic multidimensional Arrays can not be resized, so we need to make a new one.
+    # See https://github.com/JuliaLang/julia/issues/37900
+    new_data = Array{eltype(iarr.data),ndims(iarr.data)}(undef, new_sizes)
+    new_mask = fill(false, new_sizes)
+    for i in eachindex(iarr.data)
+        @inbounds new_data[i] = iarr.data[i]
+        @inbounds new_mask[i] = iarr.mask[i]
+    end
+    return IndexArray(new_data, new_mask, iarr.make_leaf)
+end
+
+function BangBang.setindex!!(iarr::IndexArray, value, lens::IndexLens)
+    inds = lens.indices
+    iarr = if checkbounds(Bool, iarr.mask, inds...)
+        iarr
+    else
+        _resize_indexarray(iarr, inds)
+    end
+    new_data = setindex!!(iarr.data, value, inds...)
+    new_mask = setindex!!(iarr.mask, true, inds...)
+    return IndexArray(new_data, new_mask, iarr.make_leaf)
+end
+
+function Base.getindex(iarr::IndexArray, lens::IndexLens)
+    if !haskey(iarr, lens)
+        throw(BoundsError("No value set at indices $(lens)"))
+    end
+    inds = lens.indices
+    return getindex(iarr.data, inds...)
+end
+
+function Base.haskey(iarr::IndexArray, lens::IndexLens)
+    inds = lens.indices
+    return checkbounds(Bool, iarr.mask, inds...) &&
+           all(@inbounds(getindex(iarr.mask, inds...)))
+end
+
+function make_leaf_array(value, ::PropertyLens{S}) where {S}
+    return VarNamedTuple(NamedTuple{(S,)}((value,)), make_leaf_array)
+end
+make_leaf_array(value, ::typeof(identity)) = value
+function make_leaf_array(value, optic::ComposedFunction)
+    sub = make_leaf_array(value, optic.outer)
+    return make_leaf_array(sub, optic.inner)
+end
+
+function make_leaf_array(value, optic::IndexLens)
+    num_inds = length(optic.indices)
+    iarr = IndexArray(typeof(value), num_inds, make_leaf_array)
+    return setindex!!(iarr, value, optic)
+end
+
+function make_leaf_dict(value, ::PropertyLens{S}) where {S}
+    return VarNamedTuple(NamedTuple{(S,)}((value,)), make_leaf_dict)
+end
+make_leaf_dict(value, ::typeof(identity)) = value
+function make_leaf_dict(value, optic::ComposedFunction)
+    sub = make_leaf_dict(value, optic.outer)
+    return make_leaf_dict(sub, optic.inner)
+end
+function make_leaf_dict(value, optic::IndexLens)
+    return IndexDict(Dict(optic.indices => value), make_leaf_dict)
+end
+
+VarNamedTuple() = VarNamedTuple((;), make_leaf_array)
 
 function Base.show(io::IO, vnt::VarNamedTuple)
     print(io, "(")
@@ -57,7 +129,7 @@ end
 function Base.getindex(vnt::VarNamedTuple, name::VarName)
     return getindex(vnt, varname_to_lens(name))
 end
-function Base.getindex(x::Union{VarNamedTuple,IndexDict}, lens::ComposedFunction)
+function Base.getindex(x::Union{VarNamedTuple,IndexDict,IndexArray}, lens::ComposedFunction)
     subdata = getindex(x, lens.inner)
     return getindex(subdata, lens.outer)
 end
@@ -96,7 +168,7 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
 end
 
 function BangBang.setindex!!(
-    vnt::Union{VarNamedTuple,IndexDict}, value, lens::ComposedFunction
+    vnt::Union{VarNamedTuple,IndexDict,IndexArray}, value, lens::ComposedFunction
 )
     sub = if haskey(vnt, lens.inner)
         BangBang.setindex!!(getindex(vnt, lens.inner), value, lens.outer)
