@@ -8,6 +8,9 @@ using DynamicPPL: _compose_no_identity
 
 export VarNamedTuple
 
+"""The factor by which we increase the dimensions of PartialArrays when resizing them."""
+const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
+
 _has_colon(::IndexLens{T}) where {T} = any(x <: Colon for x in T.parameters)
 
 function _is_multiindex(::IndexLens{T}) where {T}
@@ -31,7 +34,7 @@ struct PartialArray{T<:Function,ElType,numdims}
 end
 
 function PartialArray(eltype, num_dims, make_leaf)
-    dims = ntuple(_ -> 0, num_dims)
+    dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
     data = Array{eltype,num_dims}(undef, dims)
     mask = fill(false, dims)
     return PartialArray(data, mask, make_leaf)
@@ -41,8 +44,19 @@ _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
 _length_needed(::Colon) = 0
 
+"""Take the minimum size that a dimension of a PartialArray needs to be, and return the size
+we choose it to be. This size will be the smallest possible power of
+PARTIAL_ARRAY_DIM_GROWTH_FACTOR. Growing PartialArrays in big jumps like this helps reduce
+data copying, as resizes aren't needed as often.
+"""
+function _partial_array_dim_size(min_dim)
+    factor = PARTIAL_ARRAY_DIM_GROWTH_FACTOR
+    return factor^(Int(ceil(log(factor, min_dim))))
+end
+
 function _resize_partialarray(iarr::PartialArray, inds)
-    new_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
+    min_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
+    new_sizes = map(_partial_array_dim_size, min_sizes)
     # Generic multidimensional Arrays can not be resized, so we need to make a new one.
     # See https://github.com/JuliaLang/julia/issues/37900
     new_data = Array{eltype(iarr.data),ndims(iarr.data)}(undef, new_sizes)
@@ -63,7 +77,8 @@ end
 function _resize_partialarray(iarr::PartialArray{T,Eltype,1}, (ind,)) where {T,Eltype}
     # Resize arrays to accommodate new indices.
     old_size = size(iarr.data, 1)
-    new_size = max(old_size, _length_needed(ind))
+    min_size = max(old_size, _length_needed(ind))
+    new_size = _partial_array_dim_size(min_size)
     resize!(iarr.data, new_size)
     resize!(iarr.mask, new_size)
     @inbounds iarr.mask[(old_size + 1):new_size] .= false
