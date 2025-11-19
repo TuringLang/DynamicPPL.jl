@@ -1,3 +1,6 @@
+using LogExpFunctions: LogExpFunctions
+using InverseFunctions: InverseFunctions, inverse
+
 # singleton for indicating if no default arguments are present
 struct NoDefault end
 const NO_DEFAULT = NoDefault()
@@ -342,9 +345,169 @@ function Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector{T}) where {
     return (x[], zero(T))
 end
 Bijectors.with_logabsdet_jacobian(::Only, x::AbstractVector) = (x[], zero(LogProbType))
-Bijectors.inverse(::Only) = NotOnly()
+InverseFunctions.inverse(::Only) = NotOnly()
+InverseFunctions.inverse(::NotOnly) = Only()
 Bijectors.with_logabsdet_jacobian(::NotOnly, y::T) where {T<:Real} = ([y], zero(T))
 Bijectors.with_logabsdet_jacobian(::NotOnly, y) = ([y], zero(LogProbType))
+struct ExpOnly{L<:Real}
+    lower::L
+end
+(e::ExpOnly)(y::AbstractVector{<:Real}) = exp(y[]) + e.lower
+function Bijectors.with_logabsdet_jacobian(e::ExpOnly, y::AbstractVector{<:Real})
+    yi = y[]
+    x = exp(yi)
+    return (x + e.lower, yi)
+end
+InverseFunctions.inverse(e::ExpOnly) = LogVect(e.lower)
+struct LogVect{L<:Real}
+    lower::L
+end
+(l::LogVect)(x::Real) = [log(x - l.lower)]
+function Bijectors.with_logabsdet_jacobian(l::LogVect, x::Real)
+    logx = log(x - l.lower)
+    return ([logx], -logx)
+end
+InverseFunctions.inverse(l::LogVect) = ExpOnly(l.lower)
+struct TruncateOnly{L<:Real,U<:Real}
+    lower::L
+    upper::U
+end
+function (t::TruncateOnly)(y::AbstractVector{<:Real})
+    lbounded, ubounded = isfinite(t.lower), isfinite(t.upper)
+    return if lbounded && ubounded
+        ((t.upper - t.lower) * LogExpFunctions.logistic(y[])) + t.lower
+    elseif lbounded
+        exp(y[]) + t.lower
+    elseif ubounded
+        t.upper - exp(y[])
+    else
+        y[]
+    end
+end
+function Bijectors.with_logabsdet_jacobian(
+    t::TruncateOnly, y::AbstractVector{T}
+) where {T<:Real}
+    lbounded, ubounded = isfinite(t.lower), isfinite(t.upper)
+    return if lbounded && ubounded
+        bma = t.upper - t.lower
+        yi = y[]
+        res = (bma * LogExpFunctions.logistic(yi)) + t.lower
+        # TODO: Bijectors uses this:
+        #    absy = abs(yi)
+        #    return log(bma) - absy - (2 * log1pexp(-absy))
+        # Check if it's more numerically stable. Don't immediately see a reason why, but I
+        # assume there's a reason for it.
+        logjac = log(bma) + yi - (2 * LogExpFunctions.log1pexp(yi))
+        res, logjac
+    elseif lbounded
+        yi = y[]
+        exp(yi) + t.lower, yi
+    elseif ubounded
+        yi = y[]
+        t.upper - exp(yi), yi
+    else
+        y[], zero(T)
+    end
+end
+InverseFunctions.inverse(t::TruncateOnly) = UntruncateVect(t.lower, t.upper)
+
+struct UntruncateVect{L<:Real,U<:Real}
+    lower::L
+    upper::U
+end
+function (u::UntruncateVect)(x::Real)
+    lbounded, ubounded = isfinite(u.lower), isfinite(u.upper)
+    return [
+        if lbounded && ubounded
+            LogExpFunctions.logit((x - u.lower) / (u.upper - u.lower))
+        elseif lbounded
+            log(x - u.lower)
+        elseif ubounded
+            log(u.upper - x)
+        else
+            x
+        end,
+    ]
+end
+function Bijectors.with_logabsdet_jacobian(u::UntruncateVect, x::Real)
+    lbounded, ubounded = isfinite(u.lower), isfinite(u.upper)
+    return if lbounded && ubounded
+        bma = u.upper - u.lower
+        xma = x - u.lower
+        xma_over_bma = xma / bma
+        [LogExpFunctions.logit(xma_over_bma)], -log(xma_over_bma * (u.upper - x))
+    elseif lbounded
+        log_xma = log(x - u.lower)
+        [log_xma], -log_xma
+    elseif ubounded
+        log_bmx = log(u.upper - x)
+        [log_bmx], -log_bmx
+    else
+        return zero(x)
+    end
+end
+InverseFunctions.inverse(u::UntruncateVect) = TruncateOnly(u.lower, u.upper)
+
+for dist_type in [
+    Distributions.Cauchy,
+    Distributions.Chernoff,
+    Distributions.Gumbel,
+    Distributions.JohnsonSU,
+    Distributions.Laplace,
+    Distributions.Logistic,
+    Distributions.NoncentralT,
+    Distributions.Normal,
+    Distributions.NormalCanon,
+    Distributions.NormalInverseGaussian,
+    Distributions.PGeneralizedGaussian,
+    Distributions.SkewedExponentialPower,
+    Distributions.SkewNormal,
+    Distributions.TDist,
+]
+    @eval begin
+        from_linked_vec_transform(::$dist_type) = Only()
+        to_linked_vec_transform(::$dist_type) = NotOnly()
+    end
+end
+for dist_type in [
+    Distributions.BetaPrime,
+    Distributions.Chi,
+    Distributions.Chisq,
+    Distributions.Erlang,
+    Distributions.Exponential,
+    Distributions.FDist,
+    # Wikipedia's definition of the Frechet distribution allows for a location parameter,
+    # which could cause its minimum to be nonzero. However, Distributionsistributions.jl's `Frechet`
+    # does not implement this, so we can lump it in here.
+    Distributions.Frechet,
+    Distributions.Gamma,
+    Distributions.InverseGamma,
+    Distributions.InverseGaussian,
+    Distributions.Kolmogorov,
+    Distributions.Lindley,
+    Distributions.LogNormal,
+    Distributions.NoncentralChisq,
+    Distributions.NoncentralF,
+    Distributions.Rayleigh,
+    Distributions.Rician,
+    Distributions.StudentizedRange,
+    Distributions.Weibull,
+]
+    @eval begin
+        from_linked_vec_transform(d::$dist_type) = ExpOnly(minimum(d))
+        to_linked_vec_transform(d::$dist_type) = LogVect(minimum(d))
+    end
+end
+function to_linked_vec_transform(d::Distributions.ContinuousUnivariateDistribution)
+    return UntruncateVect(minimum(d), maximum(d))
+end
+function from_linked_vec_transform(d::Distributions.ContinuousUnivariateDistribution)
+    return TruncateOnly(minimum(d), maximum(d))
+end
+from_vec_transform(::Distributions.UnivariateDistribution) = Only()
+to_vec_transform(::Distributions.UnivariateDistribution) = NotOnly()
+from_linked_vec_transform(::DiscreteUnivariateDistribution) = Only()
+to_linked_vec_transform(::DiscreteUnivariateDistribution) = NotOnly()
 
 """
     from_vec_transform(x)
@@ -371,7 +534,6 @@ Return the transformation from the vector representation of a realization from
 distribution `dist` to the original representation compatible with `dist`.
 """
 from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
-from_vec_transform(::UnivariateDistribution) = Only()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
 struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
@@ -452,10 +614,6 @@ function from_linked_vec_transform(dist::Distribution)
     f_invlink = invlink_transform(dist)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
     return f_invlink ∘ f_vec
-end
-function from_linked_vec_transform(dist::UnivariateDistribution)
-    # This is a performance optimisation
-    return Only() ∘ invlink_transform(dist)
 end
 function from_linked_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return invlink_transform(dist)
