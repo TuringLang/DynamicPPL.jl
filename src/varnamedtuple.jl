@@ -8,6 +8,12 @@ using DynamicPPL: _compose_no_identity
 
 export VarNamedTuple
 
+_has_colon(::IndexLens{T}) where {T} = any(x <: Colon for x in T.parameters)
+
+function _is_multiindex(::IndexLens{T}) where {T}
+    return any(x <: UnitRange || x <: Colon for x in T.parameters)
+end
+
 struct VarNamedTuple{T<:Function,Names,Values}
     data::NamedTuple{Names,Values}
     make_leaf::T
@@ -35,6 +41,7 @@ _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
 _length_needed(::Colon) = 0
 
+# TODO(mhauru) Implement a simpler version of this for Vectors as a performance optimization.
 function _resize_indexarray(iarr::IndexArray, inds)
     # Resize arrays to accommodate new indices.
     new_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
@@ -49,28 +56,42 @@ function _resize_indexarray(iarr::IndexArray, inds)
     return IndexArray(new_data, new_mask, iarr.make_leaf)
 end
 
-function BangBang.setindex!!(iarr::IndexArray, value, lens::IndexLens)
-    inds = lens.indices
+function BangBang.setindex!!(iarr::IndexArray, value, optic::IndexLens)
+    if _has_colon(optic)
+        # TODO(mhauru) This could be implemented, by getting size information from `value`.
+        throw(ArgumentError("Indexing with colons is not supported"))
+    end
+    inds = optic.indices
     iarr = if checkbounds(Bool, iarr.mask, inds...)
         iarr
     else
         _resize_indexarray(iarr, inds)
     end
     new_data = setindex!!(iarr.data, value, inds...)
-    new_mask = setindex!!(iarr.mask, true, inds...)
-    return IndexArray(new_data, new_mask, iarr.make_leaf)
+    if _is_multiindex(optic)
+        iarr.mask[inds...] .= true
+    else
+        iarr.mask[inds...] = true
+    end
+    return IndexArray(new_data, iarr.mask, iarr.make_leaf)
 end
 
-function Base.getindex(iarr::IndexArray, lens::IndexLens)
-    if !haskey(iarr, lens)
-        throw(BoundsError("No value set at indices $(lens)"))
+function Base.getindex(iarr::IndexArray, optic::IndexLens)
+    if _has_colon(optic)
+        throw(ArgumentError("Indexing with colons is not supported"))
     end
-    inds = lens.indices
+    if !haskey(iarr, optic)
+        throw(BoundsError("No value set at indices $(optic)"))
+    end
+    inds = optic.indices
     return getindex(iarr.data, inds...)
 end
 
-function Base.haskey(iarr::IndexArray, lens::IndexLens)
-    inds = lens.indices
+function Base.haskey(iarr::IndexArray, optic::IndexLens)
+    if _has_colon(optic)
+        throw(ArgumentError("Indexing with colons is not supported"))
+    end
+    inds = optic.indices
     return checkbounds(Bool, iarr.mask, inds...) &&
            all(@inbounds(getindex(iarr.mask, inds...)))
 end
@@ -84,9 +105,13 @@ function make_leaf_array(value, optic::ComposedFunction)
     return make_leaf_array(sub, optic.inner)
 end
 
-function make_leaf_array(value, optic::IndexLens)
-    num_inds = length(optic.indices)
-    iarr = IndexArray(typeof(value), num_inds, make_leaf_array)
+function make_leaf_array(value, optic::IndexLens{T}) where {T}
+    inds = optic.indices
+    num_inds = length(inds)
+    # Check if any of the indices are ranges or colons. If yes, value needs to be an
+    # AbstractArray. Otherwise it needs to be an individual value.
+    et = _is_multiindex(optic) ? eltype(value) : typeof(value)
+    iarr = IndexArray(et, num_inds, make_leaf_array)
     return setindex!!(iarr, value, optic)
 end
 
@@ -129,15 +154,17 @@ end
 function Base.getindex(vnt::VarNamedTuple, name::VarName)
     return getindex(vnt, varname_to_lens(name))
 end
-function Base.getindex(x::Union{VarNamedTuple,IndexDict,IndexArray}, lens::ComposedFunction)
-    subdata = getindex(x, lens.inner)
-    return getindex(subdata, lens.outer)
+function Base.getindex(
+    x::Union{VarNamedTuple,IndexDict,IndexArray}, optic::ComposedFunction
+)
+    subdata = getindex(x, optic.inner)
+    return getindex(subdata, optic.outer)
 end
 function Base.getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
     return getindex(vnt.data, S)
 end
-function Base.getindex(id::IndexDict, lens::IndexLens)
-    return getindex(id.data, lens.indices)
+function Base.getindex(id::IndexDict, optic::IndexLens)
+    return getindex(id.data, optic.indices)
 end
 
 function Base.haskey(vnt::VarNamedTuple, name::VarName)
@@ -146,21 +173,21 @@ end
 
 Base.haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 
-function Base.haskey(vnt::VarNamedTuple, lens::ComposedFunction)
-    return haskey(vnt, lens.inner) && haskey(getindex(vnt, lens.inner), lens.outer)
+function Base.haskey(vnt::VarNamedTuple, optic::ComposedFunction)
+    return haskey(vnt, optic.inner) && haskey(getindex(vnt, optic.inner), optic.outer)
 end
 
 Base.haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
-Base.haskey(id::IndexDict, lens::IndexLens) = haskey(id.data, lens.indices)
+Base.haskey(id::IndexDict, optic::IndexLens) = haskey(id.data, optic.indices)
 Base.haskey(::VarNamedTuple, ::IndexLens) = false
 Base.haskey(::IndexDict, ::PropertyLens) = false
 
 # TODO(mhauru) This is type piracy.
-Base.getindex(arr::AbstractArray, lens::IndexLens) = getindex(arr, lens.indices...)
+Base.getindex(arr::AbstractArray, optic::IndexLens) = getindex(arr, optic.indices...)
 
 # TODO(mhauru) This is type piracy.
-function BangBang.setindex!!(arr::AbstractArray, value, lens::IndexLens)
-    return BangBang.setindex!!(arr, value, lens.indices...)
+function BangBang.setindex!!(arr::AbstractArray, value, optic::IndexLens)
+    return BangBang.setindex!!(arr, value, optic.indices...)
 end
 
 function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
@@ -168,14 +195,14 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
 end
 
 function BangBang.setindex!!(
-    vnt::Union{VarNamedTuple,IndexDict,IndexArray}, value, lens::ComposedFunction
+    vnt::Union{VarNamedTuple,IndexDict,IndexArray}, value, optic::ComposedFunction
 )
-    sub = if haskey(vnt, lens.inner)
-        BangBang.setindex!!(getindex(vnt, lens.inner), value, lens.outer)
+    sub = if haskey(vnt, optic.inner)
+        BangBang.setindex!!(getindex(vnt, optic.inner), value, optic.outer)
     else
-        vnt.make_leaf(value, lens.outer)
+        vnt.make_leaf(value, optic.outer)
     end
-    return BangBang.setindex!!(vnt, sub, lens.inner)
+    return BangBang.setindex!!(vnt, sub, optic.inner)
 end
 
 function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
@@ -186,8 +213,8 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))), vnt.make_leaf)
 end
 
-function BangBang.setindex!!(id::IndexDict, value, lens::IndexLens)
-    return IndexDict(setindex!!(id.data, value, lens.indices), id.make_leaf)
+function BangBang.setindex!!(id::IndexDict, value, optic::IndexLens)
+    return IndexDict(setindex!!(id.data, value, optic.indices), id.make_leaf)
 end
 
 function apply(func, vnt::VarNamedTuple, name::VarName)

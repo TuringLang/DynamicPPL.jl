@@ -42,6 +42,26 @@ using BangBang: setindex!!
 
     vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
     @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
+
+    vec = fill(1.0, 4)
+    vnt = @inferred(setindex!!(vnt, vec, @varname(j[1:4])))
+    @test @inferred(getindex(vnt, @varname(j[1:4]))) == vec
+
+    vec = fill(2.0, 4)
+    vnt = @inferred(setindex!!(vnt, vec, @varname(j[2:5])))
+    @test @inferred(getindex(vnt, @varname(j[1]))) == 1.0
+    @test @inferred(getindex(vnt, @varname(j[2:5]))) == vec
+
+    arr = fill(2.0, (4, 2))
+    vn = @varname(k.l[2:5, 3, 1:2, 10])
+    vnt = @inferred(setindex!!(vnt, arr, vn))
+    @test @inferred(getindex(vnt, vn)) == arr
+    @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 10]))) == fill(2.0, 2)
+
+    vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[2])))
+    vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[3])))
+    @test @inferred(getindex(vnt, @varname(m[2:3]))) == [1.0, 1.0]
+    @test !haskey(vnt, @varname(m[1]))
 end
 
 end
