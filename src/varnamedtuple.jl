@@ -41,27 +41,45 @@ _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
 _length_needed(::Colon) = 0
 
-# TODO(mhauru) Implement a simpler version of this for Vectors as a performance optimization.
 function _resize_indexarray(iarr::IndexArray, inds)
-    # Resize arrays to accommodate new indices.
     new_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
     # Generic multidimensional Arrays can not be resized, so we need to make a new one.
     # See https://github.com/JuliaLang/julia/issues/37900
     new_data = Array{eltype(iarr.data),ndims(iarr.data)}(undef, new_sizes)
     new_mask = fill(false, new_sizes)
-    for i in eachindex(iarr.data)
-        @inbounds new_data[i] = iarr.data[i]
-        @inbounds new_mask[i] = iarr.mask[i]
+    # Note that we have to use CartesianIndices instead of eachindex, because the latter
+    # may use a linear index that does not match between the old and the new arrays.
+    for i in CartesianIndices(iarr.data)
+        mask_val = iarr.mask[i]
+        @inbounds new_mask[i] = mask_val
+        if mask_val
+            @inbounds new_data[i] = iarr.data[i]
+        end
     end
     return IndexArray(new_data, new_mask, iarr.make_leaf)
 end
 
+# The below implements the same functionality as above, but more performantly for 1D arrays.
+function _resize_indexarray(iarr::IndexArray{T,Eltype,1}, (ind,)) where {T,Eltype}
+    # Resize arrays to accommodate new indices.
+    old_size = size(iarr.data, 1)
+    new_size = max(old_size, _length_needed(ind))
+    resize!(iarr.data, new_size)
+    resize!(iarr.mask, new_size)
+    @inbounds iarr.mask[(old_size + 1):new_size] .= false
+    return iarr
+end
+
 function BangBang.setindex!!(iarr::IndexArray, value, optic::IndexLens)
     if _has_colon(optic)
-        # TODO(mhauru) This could be implemented, by getting size information from `value`.
+        # TODO(mhauru) This could be implemented by getting size information from `value`.
+        # However, the corresponding getindex is more fundamentally ill-defined.
         throw(ArgumentError("Indexing with colons is not supported"))
     end
     inds = optic.indices
+    if length(inds) != ndims(iarr.data)
+        throw(ArgumentError("Invalid index $(inds)"))
+    end
     iarr = if checkbounds(Bool, iarr.mask, inds...)
         iarr
     else
@@ -80,10 +98,13 @@ function Base.getindex(iarr::IndexArray, optic::IndexLens)
     if _has_colon(optic)
         throw(ArgumentError("Indexing with colons is not supported"))
     end
-    if !haskey(iarr, optic)
-        throw(BoundsError("No value set at indices $(optic)"))
-    end
     inds = optic.indices
+    if length(inds) != ndims(iarr.data)
+        throw(ArgumentError("Invalid index $(inds)"))
+    end
+    if !haskey(iarr, optic)
+        throw(BoundsError(iarr, inds))
+    end
     return getindex(iarr.data, inds...)
 end
 
