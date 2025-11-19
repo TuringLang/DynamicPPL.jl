@@ -24,24 +24,24 @@ struct IndexDict{T<:Function,Keys,Values}
     make_leaf::T
 end
 
-struct IndexArray{T<:Function,ElType,numdims}
+struct PartialArray{T<:Function,ElType,numdims}
     data::Array{ElType,numdims}
     mask::Array{Bool,numdims}
     make_leaf::T
 end
 
-function IndexArray(eltype, num_dims, make_leaf)
+function PartialArray(eltype, num_dims, make_leaf)
     dims = ntuple(_ -> 0, num_dims)
     data = Array{eltype,num_dims}(undef, dims)
     mask = fill(false, dims)
-    return IndexArray(data, mask, make_leaf)
+    return PartialArray(data, mask, make_leaf)
 end
 
 _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
 _length_needed(::Colon) = 0
 
-function _resize_indexarray(iarr::IndexArray, inds)
+function _resize_partialarray(iarr::PartialArray, inds)
     new_sizes = ntuple(i -> max(size(iarr.data, i), _length_needed(inds[i])), length(inds))
     # Generic multidimensional Arrays can not be resized, so we need to make a new one.
     # See https://github.com/JuliaLang/julia/issues/37900
@@ -56,11 +56,11 @@ function _resize_indexarray(iarr::IndexArray, inds)
             @inbounds new_data[i] = iarr.data[i]
         end
     end
-    return IndexArray(new_data, new_mask, iarr.make_leaf)
+    return PartialArray(new_data, new_mask, iarr.make_leaf)
 end
 
 # The below implements the same functionality as above, but more performantly for 1D arrays.
-function _resize_indexarray(iarr::IndexArray{T,Eltype,1}, (ind,)) where {T,Eltype}
+function _resize_partialarray(iarr::PartialArray{T,Eltype,1}, (ind,)) where {T,Eltype}
     # Resize arrays to accommodate new indices.
     old_size = size(iarr.data, 1)
     new_size = max(old_size, _length_needed(ind))
@@ -70,7 +70,7 @@ function _resize_indexarray(iarr::IndexArray{T,Eltype,1}, (ind,)) where {T,Eltyp
     return iarr
 end
 
-function BangBang.setindex!!(iarr::IndexArray, value, optic::IndexLens)
+function BangBang.setindex!!(iarr::PartialArray, value, optic::IndexLens)
     if _has_colon(optic)
         # TODO(mhauru) This could be implemented by getting size information from `value`.
         # However, the corresponding getindex is more fundamentally ill-defined.
@@ -83,7 +83,7 @@ function BangBang.setindex!!(iarr::IndexArray, value, optic::IndexLens)
     iarr = if checkbounds(Bool, iarr.mask, inds...)
         iarr
     else
-        _resize_indexarray(iarr, inds)
+        _resize_partialarray(iarr, inds)
     end
     new_data = setindex!!(iarr.data, value, inds...)
     if _is_multiindex(optic)
@@ -91,10 +91,10 @@ function BangBang.setindex!!(iarr::IndexArray, value, optic::IndexLens)
     else
         iarr.mask[inds...] = true
     end
-    return IndexArray(new_data, iarr.mask, iarr.make_leaf)
+    return PartialArray(new_data, iarr.mask, iarr.make_leaf)
 end
 
-function Base.getindex(iarr::IndexArray, optic::IndexLens)
+function Base.getindex(iarr::PartialArray, optic::IndexLens)
     if _has_colon(optic)
         throw(ArgumentError("Indexing with colons is not supported"))
     end
@@ -108,7 +108,7 @@ function Base.getindex(iarr::IndexArray, optic::IndexLens)
     return getindex(iarr.data, inds...)
 end
 
-function Base.haskey(iarr::IndexArray, optic::IndexLens)
+function Base.haskey(iarr::PartialArray, optic::IndexLens)
     if _has_colon(optic)
         throw(ArgumentError("Indexing with colons is not supported"))
     end
@@ -132,7 +132,7 @@ function make_leaf_array(value, optic::IndexLens{T}) where {T}
     # Check if any of the indices are ranges or colons. If yes, value needs to be an
     # AbstractArray. Otherwise it needs to be an individual value.
     et = _is_multiindex(optic) ? eltype(value) : typeof(value)
-    iarr = IndexArray(et, num_inds, make_leaf_array)
+    iarr = PartialArray(et, num_inds, make_leaf_array)
     return setindex!!(iarr, value, optic)
 end
 
@@ -176,7 +176,7 @@ function Base.getindex(vnt::VarNamedTuple, name::VarName)
     return getindex(vnt, varname_to_lens(name))
 end
 function Base.getindex(
-    x::Union{VarNamedTuple,IndexDict,IndexArray}, optic::ComposedFunction
+    x::Union{VarNamedTuple,IndexDict,PartialArray}, optic::ComposedFunction
 )
     subdata = getindex(x, optic.inner)
     return getindex(subdata, optic.outer)
@@ -216,7 +216,7 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
 end
 
 function BangBang.setindex!!(
-    vnt::Union{VarNamedTuple,IndexDict,IndexArray}, value, optic::ComposedFunction
+    vnt::Union{VarNamedTuple,IndexDict,PartialArray}, value, optic::ComposedFunction
 )
     sub = if haskey(vnt, optic.inner)
         BangBang.setindex!!(getindex(vnt, optic.inner), value, optic.outer)
