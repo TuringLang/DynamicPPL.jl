@@ -606,12 +606,7 @@ module Issue537 end
         @model demo() = return __varinfo__
         retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
         @test svi == SimpleVarInfo()
-        if Threads.nthreads() > 1
-            @test retval isa DynamicPPL.ThreadSafeVarInfo{<:SimpleVarInfo}
-            @test retval.varinfo == svi
-        else
-            @test retval == svi
-        end
+        @test retval == svi
 
         # We should not be altering return-values other than at top-level.
         @model function demo()
@@ -792,5 +787,40 @@ module Issue537 end
         model = demo_typewrap(1; c=2)
         res = model()
         @test res == (a=1, b=1, c=2, d=2, t=DynamicPPL.TypeWrap{Int}())
+    end
+
+    @testset "Threads.@threads detection" begin
+        # Check that the compiler detects when `Threads.@threads` is used inside a model
+
+        e1 = quote
+            @model function f1()
+                Threads.@threads for i in 1:10
+                    x[i] ~ Normal()
+                end
+            end
+        end
+        @test_logs (:warn, r"threadsafe evaluation") eval(e1)
+
+        e2 = quote
+            @model function f2()
+                for j in 1:10
+                    Threads.@threads for i in 1:10
+                        x[i] ~ Normal()
+                    end
+                end
+            end
+        end
+        @test_logs (:warn, r"threadsafe evaluation") eval(e2)
+
+        e3 = quote
+            @model function f3()
+                begin
+                    Threads.@threads for i in 1:10
+                        x[i] ~ Normal()
+                    end
+                end
+            end
+        end
+        @test_logs (:warn, r"threadsafe evaluation") eval(e3)
     end
 end

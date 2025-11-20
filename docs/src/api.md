@@ -42,6 +42,13 @@ The context of a model can be set using [`contextualize`](@ref):
 contextualize
 ```
 
+Some models require threadsafe evaluation (see https://turinglang.org/docs/THIS_DOESNT_EXIST_YET for more information on when this is necessary).
+If this is the case, one must enable threadsafe evaluation for a model:
+
+```@docs
+setthreadsafe
+```
+
 ## Evaluation
 
 With [`rand`](@ref) one can draw samples from the prior distribution of a [`Model`](@ref).

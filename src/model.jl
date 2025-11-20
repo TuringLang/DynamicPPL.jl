@@ -1,5 +1,5 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -17,6 +17,10 @@ An argument with a type of `Missing` will be in `missings` by default. However, 
 non-traditional use-cases `missings` can be defined differently. All variables in `missings`
 are treated as random variables rather than observations.
 
+The `Threaded` type parameter indicates whether the model requires threadsafe evaluation
+(i.e., whether the model contains statements which modify the internal VarInfo that are
+executed in parallel). By default, this is set to `false`.
+
 The default arguments are used internally when constructing instances of the same model with
 different arguments.
 
@@ -33,8 +37,9 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
-       AbstractProbabilisticProgram
+struct Model{
+    F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded
+} <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
@@ -46,13 +51,13 @@ struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractConte
     Create a model with evaluation function `f` and missing arguments overwritten by
     `missings`.
     """
-    function Model{missings}(
+    function Model{missings,Threaded}(
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Threaded}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Threaded}(
             f, args, defaults, context
         )
     end
@@ -71,6 +76,7 @@ model with different arguments.
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
+    threadsafe::Bool=false,
 ) where {F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
@@ -78,11 +84,19 @@ model with different arguments.
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
+    return :(Model{$(missing_args..., missing_kwargs...),threadsafe}(
+        f, args, defaults, context
+    ))
 end
 
-function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
-    return Model(f, args, NamedTuple(kwargs), context)
+function Model(
+    f,
+    args::NamedTuple,
+    context::AbstractContext=DefaultContext(),
+    threadsafe=false;
+    kwargs...,
+)
+    return Model(f, args, NamedTuple(kwargs), context, threadsafe)
 end
 
 """
@@ -91,8 +105,10 @@ end
 Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
-function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context)
+function contextualize(
+    model::Model{F,A,D,M,Ta,Td,Ctx,Threaded}, context::AbstractContext
+) where {F,A,D,M,Ta,Td,Ctx,Threaded}
+    return Model(model.f, model.args, model.defaults, context, Threaded)
 end
 
 """
@@ -103,6 +119,31 @@ for `contextualize(model, setleafcontext(model.context, context)`).
 """
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
+end
+
+"""
+    setthreadsafe(model::Model, threadsafe::Bool)
+
+Returns a new `Model` with its threadsafe flag set to `threadsafe`.
+
+Threadsafe evaluation allows for parallel execution of model statements that mutate the
+internal `VarInfo` object. For example, this is needed if tilde-statements are nested inside
+`Threads.@threads` or similar constructs.
+
+It is not needed for generic multithreaded operations that don't involve VarInfo. For
+example, calculating a log-likelihood term in parallel and then calling `@addlogprob!`
+outside of the parallel region is safe without needing to set `threadsafe=true`.
+
+It is also not needed for multithreaded sampling with AbstractMCMC's `MCMCThreads()`.
+"""
+function setthreadsafe(
+    model::Model{F,A,D,M,Ta,Td,Ctx,Threaded}, threadsafe::Bool
+) where {F,A,D,M,Ta,Td,Ctx,Threaded}
+    return if Threaded == threadsafe
+        model
+    else
+        Model{M,threadsafe}(model.f, model.args, model.defaults, model.context)
+    end
 end
 
 """
@@ -864,16 +905,6 @@ function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInf
 end
 
 """
-    use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-
-Return `true` if evaluation of a model using `context` and `varinfo` should
-wrap `varinfo` in `ThreadSafeVarInfo`, i.e. threadsafe evaluation, and `false` otherwise.
-"""
-function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-    return Threads.nthreads() > 1
-end
-
-"""
     init!!(
         [rng::Random.AbstractRNG,]
         model::Model,
@@ -944,40 +975,14 @@ If multiple threads are available, the varinfo provided will be wrapped in a
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
-function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    return if use_threadsafe_eval(model.context, varinfo)
-        evaluate_threadsafe!!(model, varinfo)
-    else
-        evaluate_threadunsafe!!(model, varinfo)
-    end
-end
-
-"""
-    evaluate_threadunsafe!!(model, varinfo)
-
-Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
-
-If the `model` makes use of Julia's multithreading this will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadsafe!!`](@ref)
-"""
-function evaluate_threadunsafe!!(model, varinfo)
+function AbstractPPL.evaluate!!(
+    model::Model{F,A,D,M,Ta,Td,Ctx,false}, varinfo::AbstractVarInfo
+) where {F,A,D,M,Ta,Td,Ctx}
     return _evaluate!!(model, resetaccs!!(varinfo))
 end
-
-"""
-    evaluate_threadsafe!!(model, varinfo, context)
-
-Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
-
-With the wrapper, Julia's multithreading can be used for observe statements in the `model`
-but parallel sampling will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadunsafe!!`](@ref)
-"""
-function evaluate_threadsafe!!(model, varinfo)
+function AbstractPPL.evaluate!!(
+    model::Model{F,A,D,M,Ta,Td,Ctx,true}, varinfo::AbstractVarInfo
+) where {F,A,D,M,Ta,Td,Ctx}
     wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
     result, wrapper_new = _evaluate!!(model, wrapper)
     # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it

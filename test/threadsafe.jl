@@ -52,63 +52,24 @@
                 x[i] ~ Normal(x[i - 1], 1)
             end
         end
-        model = wthreads(x)
+        model = setthreadsafe(wthreads(x), true)
 
-        vi = VarInfo()
-        model(vi)
-        lp_w_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
-            @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        function correct_lp(x)
+            lp = logpdf(Normal(0, 1), x[1])
+            for i in 2:length(x)
+                lp += logpdf(Normal(x[i - 1], 1), x[i])
+            end
+            return lp
         end
 
-        println("With `@threads`:")
-        println("  default:")
-        @time model(vi)
+        vi = VarInfo()
+        _, vi = DynamicPPL.evaluate!!(model, vi)
 
-        # Ensure that we use `ThreadSafeVarInfo` to handle multithreaded observe statements.
-        DynamicPPL.evaluate_threadsafe!!(model, vi)
-        @test getlogjoint(vi) ≈ lp_w_threads
-        # check that it's wrapped during the model evaluation
+        # check that logp is correct
+        @test getlogjoint(vi) ≈ correct_lp(x)
+        # check that varinfo was wrapped during the model evaluation
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         # ensure that it's unwrapped after evaluation finishes
         @test vi isa VarInfo
-
-        println("  evaluate_threadsafe!!:")
-        @time DynamicPPL.evaluate_threadsafe!!(model, vi)
-
-        @model function wothreads(x)
-            global vi_ = __varinfo__
-            x[1] ~ Normal(0, 1)
-            for i in 2:length(x)
-                x[i] ~ Normal(x[i - 1], 1)
-            end
-        end
-        model = wothreads(x)
-
-        vi = VarInfo()
-        model(vi)
-        lp_wo_threads = getlogjoint(vi)
-        if Threads.nthreads() == 1
-            @test vi_ isa VarInfo
-        else
-            @test vi_ isa DynamicPPL.ThreadSafeVarInfo
-        end
-
-        println("Without `@threads`:")
-        println("  default:")
-        @time model(vi)
-
-        @test lp_w_threads ≈ lp_wo_threads
-
-        # Ensure that we use `VarInfo`.
-        DynamicPPL.evaluate_threadunsafe!!(model, vi)
-        @test getlogjoint(vi) ≈ lp_w_threads
-        @test vi_ isa VarInfo
-        @test vi isa VarInfo
-
-        println("  evaluate_threadunsafe!!:")
-        @time DynamicPPL.evaluate_threadunsafe!!(model, vi)
     end
 end

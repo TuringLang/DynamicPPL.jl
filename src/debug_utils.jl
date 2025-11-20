@@ -424,8 +424,11 @@ function check_model_and_trace(
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
 
-    # Force single-threaded execution.
-    _, varinfo = DynamicPPL.evaluate_threadunsafe!!(model, varinfo)
+    # TODO(penelopeysm): Implement merge, etc. for DebugAccumulator, and then perform a
+    # check on the merged accumulator, rather than checking it in the accumulate_assume
+    # calls. That way we can also support multi-threaded evaluation and use `evaluate!!`
+    # here instead of `_evaluate!!`.
+    _, varinfo = DynamicPPL._evaluate!!(model, varinfo)
 
     # Perform checks after evaluating the model.
     debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))

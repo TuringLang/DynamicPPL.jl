@@ -9,11 +9,40 @@
 This version provides a reimplementation of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
 Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
 
-For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
+For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/logdensityfunction.jl` file, which contains extensive comments.
 
 As a result of this change, `LogDensityFunction` no longer stores a VarInfo inside it.
 In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
 If you were previously relying on this behaviour, you will need to store a VarInfo separately.
+
+#### Threadsafe evaluation
+
+DynamicPPL models are by default no longer thread-safe.
+If you have threading in a model, you **must** now manually mark it as so, using:
+
+```julia
+@model f() = ...
+model = f()
+model = setthreadsafe(model, true)
+```
+
+It used to be that DynamicPPL would 'automatically' enable thread-safe evaluation if Julia was launched with more than one thread (i.e., by checking `Threads.nthreads() > 1`).
+
+The problem with this approach is that it sacrifices a huge amount of performance.
+Furthermore, it is not actually the correct approach: just because Julia has multiple threads does not mean that a particular model actually requires threadsafe evaluation.
+
+**A model requires threadsafe evaluation if, and only if, the VarInfo object used inside the model is manipulated in parallel.**
+This can occur if any of the following are inside `Threads.@threads` or other concurrency functions / macros:
+
+  - tilde-statements
+  - calls to `@addlogprob!`
+  - any direct manipulation of the special `__varinfo__` variable
+
+If you have none of these inside threaded blocks, then you do not need to mark your model as threadsafe.
+**Notably, the following do not require threadsafe evaluation:**
+
+  - Using threading for anything that does not involve VarInfo. For example, you can calculate a log-probability in parallel, and then add it using `@addlogprob!` outside of the threaded block. This does not require threadsafe evaluation.
+  - Sampling with `AbstractMCMC.MCMCThreads()`.
 
 #### Parent and leaf contexts
 
