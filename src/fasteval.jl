@@ -13,6 +13,7 @@ using DynamicPPL:
     RangeAndLinked,
     VectorWithRanges,
     Metadata,
+    VarNamedTuple,
     VarNamedVector,
     default_accumulators,
     float_type_with_fallback,
@@ -140,14 +141,13 @@ struct FastLDF{
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F<:Function,
-    N<:NamedTuple,
+    VNT<:VarNamedTuple,
     ADP<:Union{Nothing,DI.GradientPrep},
 }
     model::M
     adtype::AD
     _getlogdensity::F
-    _iden_varname_ranges::N
-    _varname_ranges::Dict{VarName,RangeAndLinked}
+    _varname_ranges::VNT
     _adprep::ADP
     _dim::Int
 
@@ -159,7 +159,7 @@ struct FastLDF{
     )
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
-        all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
+        all_ranges = get_ranges_and_linked(varinfo)
         x = [val for val in varinfo[:]]
         dim = length(x)
         # Do AD prep if needed
@@ -169,19 +169,17 @@ struct FastLDF{
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             DI.prepare_gradient(
-                FastLogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
-                adtype,
-                x,
+                FastLogDensityAt(model, getlogdensity, all_ranges), adtype, x
             )
         end
         return new{
             typeof(model),
             typeof(adtype),
             typeof(getlogdensity),
-            typeof(all_iden_ranges),
+            typeof(all_ranges),
             typeof(prep),
         }(
-            model, adtype, getlogdensity, all_iden_ranges, all_ranges, prep, dim
+            model, adtype, getlogdensity, all_ranges, prep, dim
         )
     end
 end
@@ -206,18 +204,15 @@ end
 fast_ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 fast_ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct FastLogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
+struct FastLogDensityAt{M<:Model,F<:Function,VNT<:VarNamedTuple}
     model::M
     getlogdensity::F
-    iden_varname_ranges::N
-    varname_ranges::Dict{VarName,RangeAndLinked}
+    varname_ranges::VNT
 end
 function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
     ctx = InitContext(
         Random.default_rng(),
-        InitFromParams(
-            VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
-        ),
+        InitFromParams(VectorWithRanges(f.varname_ranges, params), nothing),
     )
     model = DynamicPPL.setleafcontext(f.model, ctx)
     accs = fast_ldf_accs(f.getlogdensity)
@@ -242,20 +237,14 @@ function (f::FastLogDensityAt)(params::AbstractVector{<:Real})
 end
 
 function LogDensityProblems.logdensity(fldf::FastLDF, params::AbstractVector{<:Real})
-    return FastLogDensityAt(
-        fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
-    )(
-        params
-    )
+    return FastLogDensityAt(fldf.model, fldf._getlogdensity, fldf._varname_ranges)(params)
 end
 
 function LogDensityProblems.logdensity_and_gradient(
     fldf::FastLDF, params::AbstractVector{<:Real}
 )
     return DI.value_and_gradient(
-        FastLogDensityAt(
-            fldf.model, fldf._getlogdensity, fldf._iden_varname_ranges, fldf._varname_ranges
-        ),
+        FastLogDensityAt(fldf.model, fldf._getlogdensity, fldf._varname_ranges),
         fldf._adprep,
         fldf.adtype,
         params,
@@ -291,62 +280,42 @@ end
 Given a `VarInfo`, extract the ranges of each variable in the vectorised parameter
 representation, along with whether each variable is linked or unlinked.
 
-This function should return a tuple containing:
-
-- A NamedTuple mapping VarNames with identity optics to their corresponding `RangeAndLinked`
-- A Dict mapping all other VarNames to their corresponding `RangeAndLinked`.
+This function returns a VarNamedTuple mapping all VarNames to their corresponding
+`RangeAndLinked`.
 """
 function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
+    all_ranges = VarNamedTuple()
     offset = 1
     for sym in syms
         md = varinfo.metadata[sym]
-        this_md_iden, this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
-        all_iden_ranges = merge(all_iden_ranges, this_md_iden)
+        this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
         all_ranges = merge(all_ranges, this_md_others)
     end
-    return all_iden_ranges, all_ranges
+    return all_ranges
 end
 function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
-    all_iden, all_others, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
-    return all_iden, all_others
+    all_ranges, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
+    return all_ranges
 end
 function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
+    all_ranges = VarNamedTuple()
     offset = start_offset
     for (vn, idx) in md.idcs
         is_linked = md.is_transformed[idx]
         range = md.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
+        all_ranges = BangBang.setindex!!(all_ranges, RangeAndLinked(range, is_linked), vn)
         offset += length(range)
     end
-    return all_iden_ranges, all_ranges, offset
+    return all_ranges, offset
 end
 function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
+    all_ranges = VarNamedTuple()
     offset = start_offset
     for (vn, idx) in vnv.varname_to_index
         is_linked = vnv.is_unconstrained[idx]
         range = vnv.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
+        all_ranges = BangBang.setindex!!(all_ranges, RangeAndLinked(range, is_linked), vn)
         offset += length(range)
     end
-    return all_iden_ranges, all_ranges, offset
+    return all_ranges, offset
 end

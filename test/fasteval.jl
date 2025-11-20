@@ -36,17 +36,13 @@ end
                 else
                     unlinked_vi
                 end
-                nt_ranges, dict_ranges = DynamicPPL.Experimental.get_ranges_and_linked(vi)
+                ranges = DynamicPPL.Experimental.get_ranges_and_linked(vi)
                 params = [x for x in vi[:]]
                 # Iterate over all variables
                 for vn in keys(vi)
                     # Check that `getindex_internal` returns the same thing as using the ranges
                     # directly
-                    range_with_linked = if AbstractPPL.getoptic(vn) === identity
-                        nt_ranges[AbstractPPL.getsym(vn)]
-                    else
-                        dict_ranges[vn]
-                    end
+                    range_with_linked = ranges[vn]
                     @test params[range_with_linked.range] ==
                         DynamicPPL.getindex_internal(vi, vn)
                     # Check that the link status is correct

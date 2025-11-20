@@ -215,8 +215,7 @@ end
 
 """
     VectorWithRanges(
-        iden_varname_ranges::NamedTuple,
-        varname_ranges::Dict{VarName,RangeAndLinked},
+        varname_ranges::VarNamedTuple,
         vect::AbstractVector{<:Real},
     )
 
@@ -231,20 +230,13 @@ non-identity-optic VarNames are stored in the `varname_ranges` Dict.
 It would be nice to improve the NamedTuple and Dict approach. See, e.g.
 https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct VectorWithRanges{N<:NamedTuple,T<:AbstractVector{<:Real}}
-    # This NamedTuple stores the ranges for identity VarNames
-    iden_varname_ranges::N
-    # This Dict stores the ranges for all other VarNames
-    varname_ranges::Dict{VarName,RangeAndLinked}
+struct VectorWithRanges{VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
+    # Ranges for all VarNames
+    varname_ranges::VNT
     # The full parameter vector which we index into to get variable values
     vect::T
 end
 
-function _get_range_and_linked(
-    vr::VectorWithRanges, ::VarName{sym,typeof(identity)}
-) where {sym}
-    return vr.iden_varname_ranges[sym]
-end
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
     return vr.varname_ranges[vn]
 end
