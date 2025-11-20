@@ -86,4 +86,124 @@ using BangBang: setindex!!
     @test !haskey(vnt, @varname(m[1]))
 end
 
+@testset "equality" begin
+    vnt1 = VarNamedTuple()
+    vnt2 = VarNamedTuple()
+    @test vnt1 == vnt2
+
+    vnt1 = setindex!!(vnt1, 1.0, @varname(a))
+    @test vnt1 != vnt2
+
+    vnt2 = setindex!!(vnt2, 1.0, @varname(a))
+    @test vnt1 == vnt2
+
+    vnt1 = setindex!!(vnt1, [1, 2], @varname(b))
+    vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
+    @test vnt1 == vnt2
+
+    vnt2 = setindex!!(vnt2, [1, 3], @varname(b))
+    @test vnt1 != vnt2
+    vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
+
+    # Try with index lenses too
+    vnt1 = setindex!!(vnt1, 2, @varname(c[2]))
+    vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
+    @test vnt1 == vnt2
+
+    vnt2 = setindex!!(vnt2, 3, @varname(c[2]))
+    @test vnt1 != vnt2
+    vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
+
+    vnt1 = setindex!!(vnt1, ["a", "b"], @varname(d.e[1:2]))
+    vnt2 = setindex!!(vnt2, ["a", "b"], @varname(d.e[1:2]))
+    @test vnt1 == vnt2
+
+    vnt2 = setindex!!(vnt2, :b, @varname(d.e[2]))
+    @test vnt1 != vnt2
+end
+
+@testset "merge" begin
+    vnt1 = VarNamedTuple()
+    vnt2 = VarNamedTuple()
+    expected_merge = VarNamedTuple()
+    # TODO(mhauru) Wrap this merge in @inferred, likewise other merges where it makes sense.
+    @test merge(vnt1, vnt2) == expected_merge
+
+    vnt1 = setindex!!(vnt1, 1.0, @varname(a))
+    vnt2 = setindex!!(vnt2, 2.0, @varname(b))
+    vnt1 = setindex!!(vnt1, 1, @varname(c))
+    vnt2 = setindex!!(vnt2, 2, @varname(c))
+    expected_merge = setindex!!(expected_merge, 1.0, @varname(a))
+    expected_merge = setindex!!(expected_merge, 2, @varname(c))
+    expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
+    @test merge(vnt1, vnt2) == expected_merge
+
+    vnt1 = VarNamedTuple()
+    vnt2 = VarNamedTuple()
+    expected_merge = VarNamedTuple()
+    vnt1 = setindex!!(vnt1, [1], @varname(d.a))
+    vnt2 = setindex!!(vnt2, [2, 2], @varname(d.b))
+    vnt1 = setindex!!(vnt1, [1], @varname(d.c))
+    vnt2 = setindex!!(vnt2, [2, 2], @varname(d.c))
+    expected_merge = setindex!!(expected_merge, [1], @varname(d.a))
+    expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.c))
+    expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.b))
+    @test merge(vnt1, vnt2) == expected_merge
+
+    vnt1 = setindex!!(vnt1, 1, @varname(e.a[1]))
+    vnt2 = setindex!!(vnt2, 2, @varname(e.a[2]))
+    expected_merge = setindex!!(expected_merge, 1, @varname(e.a[1]))
+    expected_merge = setindex!!(expected_merge, 2, @varname(e.a[2]))
+    vnt1 = setindex!!(vnt1, 1, @varname(e.a[3]))
+    vnt2 = setindex!!(vnt2, 2, @varname(e.a[3]))
+    expected_merge = setindex!!(expected_merge, 2, @varname(e.a[3]))
+    @test merge(vnt1, vnt2) == expected_merge
+
+    vnt1 = setindex!!(vnt1, fill(1, 4), @varname(e.a[7:10]))
+    vnt2 = setindex!!(vnt2, fill(2, 4), @varname(e.a[8:11]))
+    expected_merge = setindex!!(expected_merge, 1, @varname(e.a[7]))
+    expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
+    @test merge(vnt1, vnt2) == expected_merge
+
+    vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
+    vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
+    expected_merge = setindex!!(
+        expected_merge, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4])
+    )
+    vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
+    vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+    expected_merge = setindex!!(expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
+    expected_merge = setindex!!(expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+    @test merge(vnt1, vnt2) == expected_merge
+
+    # PartialArrays with different sizes.
+    vnt1 = VarNamedTuple()
+    vnt2 = VarNamedTuple()
+    vnt1 = setindex!!(vnt1, 1, @varname(a[1]))
+    vnt1 = setindex!!(vnt1, 1, @varname(a[1025]))
+    vnt2 = setindex!!(vnt2, 2, @varname(a[1]))
+    vnt2 = setindex!!(vnt2, 2, @varname(a[2]))
+    expected_merge_12 = VarNamedTuple()
+    expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[1025]))
+    expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[1]))
+    expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[2]))
+    @test merge(vnt1, vnt2) == expected_merge_12
+    expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
+    @test merge(vnt2, vnt1) == expected_merge_21
+
+    vnt1 = VarNamedTuple()
+    vnt2 = VarNamedTuple()
+    vnt1 = setindex!!(vnt1, 1, @varname(a[1, 1]))
+    vnt1 = setindex!!(vnt1, 1, @varname(a[1025, 1]))
+    vnt2 = setindex!!(vnt2, :2, @varname(a[1, 1]))
+    vnt2 = setindex!!(vnt2, :2, @varname(a[1, 1025]))
+    expected_merge_12 = VarNamedTuple()
+    expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 1]))
+    expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[1025, 1]))
+    expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 1025]))
+    @test merge(vnt1, vnt2) == expected_merge_12
+    expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
+    @test merge(vnt2, vnt1) == expected_merge_21
+end
+
 end
