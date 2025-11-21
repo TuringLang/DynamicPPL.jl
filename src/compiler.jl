@@ -346,11 +346,11 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warned_about_threads_threads) =
-    generate_mainbody!(mod, Symbol[], expr, warn, warned_about_threads_threads)
+generate_mainbody(mod, expr, warn, warn_threads) =
+    generate_mainbody!(mod, Symbol[], expr, warn, warn_threads)
 
-generate_mainbody!(mod, found, x, warn, warned_about_threads_threads) = x
-function generate_mainbody!(mod, found, sym::Symbol, warn, warned_about_threads_threads)
+generate_mainbody!(mod, found, x, warn, warn_threads) = x
+function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
     if warn && sym in INTERNALNAMES && sym ∉ found
         @warn "you are using the internal variable `$sym`"
         push!(found, sym)
@@ -358,7 +358,7 @@ function generate_mainbody!(mod, found, sym::Symbol, warn, warned_about_threads_
 
     return sym
 end
-function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_threads)
+function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     # Do not touch interpolated expressions
     expr.head === :$ && return expr.args[1]
 
@@ -369,15 +369,14 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_t
 
     # Do we don't want escaped expressions because we unfortunately
     # escape the entire body afterwards.
-    Meta.isexpr(expr, :escape) && return generate_mainbody(
-        mod, found, expr.args[1], warn, warned_about_threads_threads
-    )
+    Meta.isexpr(expr, :escape) &&
+        return generate_mainbody(mod, found, expr.args[1], warn, warn_threads)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
         if expr.args[1] == Expr(:., :Threads, QuoteNode(Symbol("@threads"))) &&
-            !warned_about_threads_threads
-            warned_about_threads_threads = true
+            !warn_threads
+            warn_threads = true
             @warn (
                 "It looks like you are using `Threads.@threads` in your model definition." *
                 "\n\nNote that since version 0.39 of DynamicPPL, threadsafe evaluation of models is disabled by default." *
@@ -386,11 +385,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_t
             )
         end
         return generate_mainbody!(
-            mod,
-            found,
-            macroexpand(mod, expr; recursive=true),
-            warn,
-            warned_about_threads_threads,
+            mod, found, macroexpand(mod, expr; recursive=true), warn, warn_threads
         )
     end
 
@@ -399,11 +394,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_t
     if args_dottilde !== nothing
         L, R = args_dottilde
         return generate_mainbody!(
-            mod,
-            found,
-            Base.remove_linenums!(generate_dot_tilde(L, R)),
-            warn,
-            warned_about_threads_threads,
+            mod, found, Base.remove_linenums!(generate_dot_tilde(L, R)), warn, warn_threads
         )
     end
 
@@ -413,8 +404,8 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_t
         L, R = args_tilde
         return Base.remove_linenums!(
             generate_tilde(
-                generate_mainbody!(mod, found, L, warn, warned_about_threads_threads),
-                generate_mainbody!(mod, found, R, warn, warned_about_threads_threads),
+                generate_mainbody!(mod, found, L, warn, warn_threads),
+                generate_mainbody!(mod, found, R, warn, warn_threads),
             ),
         )
     end
@@ -425,18 +416,15 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warned_about_threads_t
         L, R = args_assign
         return Base.remove_linenums!(
             generate_assign(
-                generate_mainbody!(mod, found, L, warn, warned_about_threads_threads),
-                generate_mainbody!(mod, found, R, warn, warned_about_threads_threads),
+                generate_mainbody!(mod, found, L, warn, warn_threads),
+                generate_mainbody!(mod, found, R, warn, warn_threads),
             ),
         )
     end
 
     return Expr(
         expr.head,
-        map(
-            x -> generate_mainbody!(mod, found, x, warn, warned_about_threads_threads),
-            expr.args,
-        )...,
+        map(x -> generate_mainbody!(mod, found, x, warn, warn_threads), expr.args)...,
     )
 end
 
