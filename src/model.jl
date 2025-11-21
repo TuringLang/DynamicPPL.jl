@@ -130,15 +130,19 @@ end
 
 Returns a new `Model` with its threadsafe flag set to `threadsafe`.
 
-Threadsafe evaluation allows for parallel execution of model statements that mutate the
-internal `VarInfo` object. For example, this is needed if tilde-statements are nested inside
-`Threads.@threads` or similar constructs.
+Threadsafe evaluation ensures correctness when executing model statements that mutate the
+internal `VarInfo` object in parallel. For example, this is needed if tilde-statements are
+nested inside `Threads.@threads` or similar constructs.
 
 It is not needed for generic multithreaded operations that don't involve VarInfo. For
 example, calculating a log-likelihood term in parallel and then calling `@addlogprob!`
 outside of the parallel region is safe without needing to set `threadsafe=true`.
 
 It is also not needed for multithreaded sampling with AbstractMCMC's `MCMCThreads()`.
+
+Setting `threadsafe` to `true` increases the overhead in evaluating the model. See
+(https://turinglang.org/docs/THIS_DOESNT_EXIST_YET)[https://turinglang.org/docs/THIS_DOESNT_EXIST_YET]
+for more details.
 """
 function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
     return if _requires_threadsafe(model) == threadsafe
