@@ -154,7 +154,6 @@ function AbstractMCMC.bundle_samples(
     thinning=1,
     kwargs...,
 )
-    # Construct the 'bare' chain first
     bare_chain = AbstractMCMC.from_samples(MCMCChains.Chains, reshape(ts, :, 1))
 
     # Add additional MCMC-specific info
