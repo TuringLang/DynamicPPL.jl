@@ -41,7 +41,7 @@ DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
 DynamicPPLJETExt = ["JET"]
-DynamicPPLMCMCChainsExt = ["MCMCChains", "Statistics"]
+DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMarginalLogDensitiesExt = ["MarginalLogDensities"]
 DynamicPPLMooncakeExt = ["Mooncake"]
 

@@ -2,7 +2,6 @@ module DynamicPPLMCMCChainsExt
 
 using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC
 using MCMCChains: MCMCChains
-using Statistics: mean
 
 _has_varname_to_symbol(info::NamedTuple{names}) where {names} = :varname_to_symbol in names
 
