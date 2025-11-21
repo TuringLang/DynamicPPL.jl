@@ -374,8 +374,11 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
-        if expr.args[1] == Expr(:., :Threads, QuoteNode(Symbol("@threads"))) &&
+        if (
+            expr.args[1] == Symbol("@threads") ||
+            expr.args[1] == Expr(:., :Threads, QuoteNode(Symbol("@threads"))) &&
             !warn_threads
+        )
             warn_threads = true
             @warn (
                 "It looks like you are using `Threads.@threads` in your model definition." *
