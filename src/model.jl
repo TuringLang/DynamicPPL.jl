@@ -99,16 +99,20 @@ function Model(
     return Model(f, args, NamedTuple(kwargs), context, threadsafe)
 end
 
+function _requires_threadsafe(
+    ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
+) where {F,A,D,M,Ta,Td,Ctx,Threaded}
+    return Threaded
+end
+
 """
     contextualize(model::Model, context::AbstractContext)
 
 Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
-function contextualize(
-    model::Model{F,A,D,M,Ta,Td,Ctx,Threaded}, context::AbstractContext
-) where {F,A,D,M,Ta,Td,Ctx,Threaded}
-    return Model(model.f, model.args, model.defaults, context, Threaded)
+function contextualize(model::Model, context::AbstractContext)
+    return Model(model.f, model.args, model.defaults, context, _requires_threadsafe(model))
 end
 
 """
@@ -136,10 +140,8 @@ outside of the parallel region is safe without needing to set `threadsafe=true`.
 
 It is also not needed for multithreaded sampling with AbstractMCMC's `MCMCThreads()`.
 """
-function setthreadsafe(
-    model::Model{F,A,D,M,Ta,Td,Ctx,Threaded}, threadsafe::Bool
-) where {F,A,D,M,Ta,Td,Ctx,Threaded}
-    return if Threaded == threadsafe
+function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
+    return if _requires_threadsafe(model) == threadsafe
         model
     else
         Model{M,threadsafe}(model.f, model.args, model.defaults, model.context)
@@ -969,27 +971,24 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-If multiple threads are available, the varinfo provided will be wrapped in a
-`ThreadSafeVarInfo` before evaluation.
+If the model has been marked as requiring threadsafe evaluation, are available, the varinfo
+provided will be wrapped in a `ThreadSafeVarInfo` before evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
-function AbstractPPL.evaluate!!(
-    model::Model{F,A,D,M,Ta,Td,Ctx,false}, varinfo::AbstractVarInfo
-) where {F,A,D,M,Ta,Td,Ctx}
-    return _evaluate!!(model, resetaccs!!(varinfo))
-end
-function AbstractPPL.evaluate!!(
-    model::Model{F,A,D,M,Ta,Td,Ctx,true}, varinfo::AbstractVarInfo
-) where {F,A,D,M,Ta,Td,Ctx}
-    wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
-    result, wrapper_new = _evaluate!!(model, wrapper)
-    # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
-    # will return the underlying VI, which is a bit counterintuitive (because
-    # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
-    # again).
-    return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
+function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
+    return if _requires_threadsafe(model)
+        wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
+        result, wrapper_new = _evaluate!!(model, wrapper)
+        # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
+        # will return the underlying VI, which is a bit counterintuitive (because
+        # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
+        # again).
+        return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
+    else
+        _evaluate!!(model, resetaccs!!(varinfo))
+    end
 end
 
 """
