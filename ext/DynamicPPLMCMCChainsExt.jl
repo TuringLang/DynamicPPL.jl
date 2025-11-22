@@ -140,6 +140,43 @@ function AbstractMCMC.to_samples(
     end
 end
 
+function AbstractMCMC.bundle_samples(
+    ts::Vector{<:DynamicPPL.ParamsWithStats},
+    model::DynamicPPL.Model,
+    spl::AbstractMCMC.AbstractSampler,
+    state,
+    chain_type::Type{MCMCChains.Chains};
+    save_state=false,
+    stats=missing,
+    sort_chain=false,
+    discard_initial=0,
+    thinning=1,
+    kwargs...,
+)
+    bare_chain = AbstractMCMC.from_samples(MCMCChains.Chains, reshape(ts, :, 1))
+
+    # Add additional MCMC-specific info
+    info = bare_chain.info
+    if save_state
+        info = merge(info, (model=model, sampler=spl, samplerstate=state))
+    end
+    if !ismissing(stats)
+        info = merge(info, (start_time=stats.start, stop_time=stats.stop))
+    end
+
+    # Reconstruct the chain with the extra information
+    # Yeah, this is quite ugly. Blame MCMCChains.
+    chain = MCMCChains.Chains(
+        bare_chain.value.data,
+        names(bare_chain),
+        bare_chain.name_map;
+        info=info,
+        start=discard_initial + 1,
+        thin=thinning,
+    )
+    return sort_chain ? sort(chain) : chain
+end
+
 """
     predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
 
