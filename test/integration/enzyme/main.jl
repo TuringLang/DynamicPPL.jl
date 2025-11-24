@@ -1,11 +1,12 @@
 using DynamicPPL.TestUtils: DEMO_MODELS
 using DynamicPPL.TestUtils.AD: run_ad
+using DynamicPPL: OrderedDict
 using ADTypes: AutoEnzyme
 using Test: @test, @testset
 import Enzyme: set_runtime_activity, Forward, Reverse, Const
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 
-ADTYPES = Dict(
+ADTYPES = OrderedDict(
     "EnzymeForward" =>
         AutoEnzyme(; mode=set_runtime_activity(Forward), function_annotation=Const),
     "EnzymeReverse" =>

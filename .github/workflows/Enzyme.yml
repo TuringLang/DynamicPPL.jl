@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   enzyme:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -27,9 +27,19 @@ jobs:
           version: "1.11"
 
       - uses: julia-actions/cache@v2
+        id: julia-cache
 
       - name: Run AD with Enzyme on demo models
         working-directory: test/integration/enzyme
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
           julia --project=. --color=yes main.jl
+
+      - name: Save Julia depot cache on cancel or failure
+        id: julia-cache-save
+        if: cancelled() || failure()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ steps.julia-cache.outputs.cache-paths }}
+          key: ${{ steps.julia-cache.outputs.cache-key }}

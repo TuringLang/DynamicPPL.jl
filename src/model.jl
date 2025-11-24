@@ -1062,8 +1062,11 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())))
-    return values_as(x, T)
+    # TODO(penelopeysm): This can be done with an accumulator instead. For
+    # T = Dict, ValuesAsInModelAcc can already do it. For T = NamedTuple we
+    # would just need a similar accumulator that collects into a NamedTuple
+    # rather than a Dict.
+    return values_as(VarInfo(rng, model), T)
 end
 
 # Default RNG and type
@@ -1155,12 +1158,115 @@ julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
 ```
 """
 function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
-    vi = DynamicPPL.setaccs!!(VarInfo(), ())
-    # Note: we can't use `fix(model, parameters)` because
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
-    # Use `nothing` as the fallback to ensure that any missing parameters cause an error
-    ctx = InitContext(Random.default_rng(), InitFromParams(parameters, nothing))
-    new_model = setleafcontext(model, ctx)
-    # We can't use new_model() because that overwrites it with an InitContext of its own.
-    return first(evaluate!!(new_model, vi))
+    accs = AccumulatorTuple()
+    retval, _ = DynamicPPL.fast_evaluate!!(model, InitFromParams(parameters, nothing), accs)
+    return retval
+end
+
+"""
+    logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
+
+Return the log joint probability of variables `θ` for the probabilistic `model`.
+
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logjoint(demo([1.0]), (m = 100.0, ))
+-9902.33787706641
+
+julia> # Using a `OrderedDict`.
+       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-9902.33787706641
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
+-9902.33787706641
+```
+"""
+function logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
+    _, vi = DynamicPPL.fast_evaluate!!(model, InitFromParams(θ, nothing), accs)
+    return getlogjoint(vi)
+end
+
+"""
+    logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
+
+Return the log prior probability of variables `θ` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logprior(demo([1.0]), (m = 100.0, ))
+-5000.918938533205
+
+julia> # Using a `OrderedDict`.
+       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-5000.918938533205
+
+julia> # Truth.
+       logpdf(Normal(), 100.0)
+-5000.918938533205
+```
+"""
+function logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogPriorAccumulator(),))
+    _, vi = DynamicPPL.fast_evaluate!!(model, InitFromParams(θ, nothing), accs)
+    return getlogprior(vi)
+end
+
+"""
+    loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
+
+Return the log likelihood of variables `θ` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`logprior`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       loglikelihood(demo([1.0]), (m = 100.0, ))
+-4901.418938533205
+
+julia> # Using a `OrderedDict`.
+       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-4901.418938533205
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0)
+-4901.418938533205
+```
+"""
+function Distributions.loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogLikelihoodAccumulator(),))
+    _, vi = DynamicPPL.fast_evaluate!!(model, InitFromParams(θ, nothing), accs)
+    return getloglikelihood(vi)
 end
