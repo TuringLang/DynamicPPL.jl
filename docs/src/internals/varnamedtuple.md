@@ -1,112 +1,137 @@
-# VarNamedTuple as the basis of VarInfo
+# VarNamedTuple
 
-This document collects thoughts and ideas for how to unify our multitude of AbstractVarInfo types using a VarNamedTuple type. It may eventually turn into a draft design document, but for now it is more raw than that.
+In DynamicPPL there is often a need to store data keyed by `VarName`s.
+This comes up when getting conditioned variable values from the user, when tracking values of random variables in the model outputs or inputs, etc.
+Historically we've had several different approaches to this: Dictionaries, NamedTuples, vectors with subranges corresponding to different `VarName`s, and various combinations thereof.
 
-## The current situation
+To unify the treatment of these use cases, and handle them all in a robust and performant way, is the purpose of `VarNamedTuple`, aka VNT.
+It's a data structure that can store arbitrary data, indexed by (nearly) arbitrary `VarName`s, in a type stable and performant manner.
 
-We currently have the following AbstractVarInfo types:
-
-  - A: VarInfo with Metadata
-  - B: VarInfo with VarNamedVector
-  - C: VarInfo with NamedTuple, with values being Metadata
-  - D: VarInfo with NamedTuple, with values being VarNamedVector
-  - E: SimpleVarInfo with NamedTuples
-  - F: SimpleVarInfo with OrderedDict
-
-A and C are the classic ones, and the defaults. C wraps groups the Metadata objects by the lead Symbol of the VarName of a variable, e.g. `x` in `@varname(x.y[1].z)`, which allows different lead Symbols to have different element types and for the VarInfo to still be type stable. B and D were created to simplify A and C, give them a nicer interface, and make them deal better with changing variable sizes, but according to recent (Oct 2025) benchmarks are quite a lot slower, which needs work.
-
-E and F are entirely distinct in implementation from the others. E is simply a mapping from Symbols to values, with each VarName being converted to a single symbol, e.g. `Symbol("a[1]")`. F is a mapping from VarNames to values as an OrderedDict, with VarName as the key type.
-
-A-D carry within them values for variables, but also their bijectors/distributions, and store all values vectorised, using the bijectors to map to the original values. They also store for each variable a flag for whether the variable has been linked. E-F store only the raw values, and a global flag for the whole SimpleVarInfo for whether it's linked. The link transform itself is implicit.
-
-TODO: Write a better summary of pros and cons of each approach.
-
-## VarNamedTuple
-
-VarNamedTuple has been discussed as a possible data structure to generalise the structure used in VarInfo to achieve type stability, i.e. grouping VarNames by their lead Symbol. The same NamedTuple structure has been used elsewhere, too, e.g. in Turing.GibbsContext. The idea was to encapsulate this structure into its own type, reducing code duplication and making the design more robust and powerful. See https://github.com/TuringLang/DynamicPPL.jl/issues/900 for the discussion.
-
-An AbstractVarInfo type could be only one application of VarNamedTuple, but here I'll focus on it exclusively. If we can make VarNamedTuple work for an AbstractVarInfo, I bet we can make it work for other purposes (condition, fix, Gibbs) as well.
-
-Without going into full detail, here's @mhauru's current proposal for what it would look like. This proposal remains in constant flux as I develop the code.
-
-A VarNamedTuple is a mapping of VarNames to values. Values can be anything. In the case of using VarNamedTuple to implement an AbstractVarInfo, the values would be random samples for random variables. However, they could hold with them extra information. For instance, we might use a value that is a tuple of a vectorised value, a bijector, and a flag for whether the variable is linked.
-
-I sometimes shorten VarNamedTuple to VNT.
-
-Internally, a VarNamedTuple consists of nested NamedTuples. For instance, the mapping `@varname(x) => 1, @varname(y.z) => 2` would be stored as
+`VarNamedTuple` consists of nested `NamedTuple`s and `PartialArray`.
+Let's first talk about the `NamedTuple` part.
+This is what is needed for handling `PropertyLens`es in `VarName`s, that is, `VarName`s consisting of nested symbols, like in `@varname(a.b.c)`.
+In a `VarNamedTuple` each level of such nesting of `PropertyLens`es corresponds to a level of nested `NamedTuple`s, with the `Symbol`s of the lens as the keys.
+For instance, the `VarNamedTuple` mapping `@varname(x) => 1, @varname(y.z) => 2` would be stored as
 
 ```
-(; x=1, y=(; z=2))
+VarNamedTuple(; x=1, y=VarNamedTuple(; z=2))
 ```
 
-(This is a slight simplification, really it would be nested VarNamedTuples rather than NamedTuples, but I omit this detail.)
-This forms a tree, with each node being a NamedTuple, like so:
+where `VarNamedTuple(; x=a, y=b)` is just a thin wrapper around the `NamedTuple` `(; x=a, y=b)`.
+
+It's often handy to think of this as a tree, with each node being a `VarNamedTuple`, like so:
 
 ```
-   NT
-x /  \ y
- 1    NT
-       \ z
-        2
+   VNT
+x /   \ y
+ 1     VNT
+         \ z
+          2
 ```
 
-Each `NT` marks a NamedTuple, and the labels on the edges its keys. Here the root node has the keys `x` and `y`. This is like with the type stable VarInfo in our current design, except with possibly more levels (our current one only has the root node). Each nested `PropertyLens`, i.e. each `.` in a VarName like `@varname(a.b.c.e)`, creates a new layer of the tree.
+If all `VarName`s consisted of only `PropertyLens`es we would be done designing the data structure.
+However, recall that VarNames allow three different kinds of lenses: `PropertyLens`es, `IndexLens`es, and `identity` (the trivial lens).
+The `identity` lens presents no complications, and in fact in the above example there was an implicit identity lens in e.g. `@varname(x) => 1`.
+It is the `IndexLenses` that require more structure.
 
-For simplicity, at least for now, we ban any VarNames where an `IndexLens` precedes a `PropertyLens`. That is, we ban any VarNames like `@varname(a.b[1].c)`. Recall that VarNames allow three different kinds of lenses: `PropertyLens`es, `IndexLens`es, and `identity` (the trivial lens). Thus the only allowed VarName types are `@varname(a.b.c.d)` and `@varname(a.b.c.d[i,j,k])`.
+An `IndexLens` is the indexing layer in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
+`VarNamedTuple` can not deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
+Instead we restrict ourselves to `IndexLens`es where the indices are integers, explicit ranges with end points, like `1:5`, or tuples thereof.
 
-This means that we can add levels to the NamedTuple tree until all `PropertyLenses` have been covered. The leaves of the tree are then of two kinds: They are either the raw value itself if the last lens of the VarName is an `identity`, or otherwise they are something that can be indexed with an `IndexLens`, such as an `Array`.
+When storing data in a `VarNamedTuple`, we recursively go through the nested lenses in the `VarName`, inserting a new `VarNamedTuple` for every `PropertyLens`.
+When we meet an `IndexLens`, we instead instert into the tree something called a `PartialArray`.
 
-To get a value from a VarNamedTuple is very simple: For `getindex(vnt::VNT, vn::VarName{S})` (`S` being the lead Symbol) you recurse into `getindex(vnt[S], unprefix(vn, S))`. If the last lens of `vn` is an `IndexLens`, we assume that the leaf of the NamedTuple tree we've reached contains something that can be indexed with it.
+A `PartialArray` is like a regular `Base.Array`, but with some elements possibly unset.
+It is a data structure we define ourselves for use within `VarNamedTuple`s.
+A `PartialArray` has an element type and a number of dimensions, and they are known at compile time, but it does not have a size, and this thus not an `AbstractArray`.
+This is because if we set the elements `x[1,2]` and `x[14,10]` in a `PartialArray` called `x`, this does not mean that 14 and 10 are the ends of their respective dimensions.
+The typical use of this structure in DynamicPPL is that the user may define values for elements in an array-like structure one by one, and we do not always know how large these arrays are.
 
-Setting values in a VNT is equally simple if there are no `IndexLenses`: For `setindex!!(vnt::VNT, value::Any, vn::VarName)` one simply finds the leaf of the `vnt` tree corresponding to `vn` and sets its value to `value`.
+This is also the reason why `PartialArray`, and by extension `VarNamedTuple`, do not support indexing by `Colon()`, i.e. `:`, as in `x[:]`.
+A `Colon()` says that we should get or set all the values along that dimension, but a `PartialArray` does not know how many values there may be.
+If `x[1]` and `x[4]` have been set, asking for `x[:]` is not a well-posed question.
 
-The tricky part is what to do when setting values with `IndexLenses`. There are three possible situations. Say one calls `setindex!!(vnt, 3.0, @varname(a.b[3]))`.
+`PartialArray`s have other restrictions, compared to the full indexing syntax of Julia, as well:
+They do not support linearly indexing into multidimemensional arrays (as in `rand(3,3)[8]`), nor indexing with arrays of indices (as in `rand(4)[[1,3]]`), nor indexing with boolean mask arrays as in `rand(4)[[true, false, true, false]]`).
+This is mostly because we haven't seen a need to support them, and implementing would complicate the codebase for little gain.
+We may add support for them later if needed.
 
- 1. If `getindex(vnt, @varname(a.b))` is already a vector of length at least 3, this is easy: Just set the third element.
- 2. If `getindex(vnt, @varname(a.b))` is a vector of length less than 3, what should we do? Do we error? Do we extend that vector?
- 3. If `getindex(vnt, @varname(a.b))` isn't even set, what do we do? Say for instance that `vnt` is currently empty. We should set `vnt` to be something like `(; a=(; b=x))`, where `x` is such that `x[3] = 3.0`, but what exactly should `x` be? Is it a dictionary? A vector of length 3? If the latter, what are `x[2]` and `x[1]`? Or should this `setindex!!` call simply error?
+`PartialArray`s can hold any values, just like `Base.Array`s, and in particular they can hold `VarNamedTuple`s.
+Thus we nest them with `VarNamedTuple`s to support storing `VarName`s with arbitrary combinations of `PropertyLens`es and `IndexLens`es.
+A code example illustrates this the best:
 
-A note at this point: VarNamedTuples must always use `setindex!!`, the `!!` version that may or may not operate in place. The NamedTuples can't be modified in place, but the values at the leaves may be. Always using a `!!` function makes type stability easier, and makes structures like the type unstable old VarInfo with Metadata unnecessary: Any value can be set into any VarNamedTuple. The type parameters of the VNT will simply expand as necessary.
+```julia
+julia> vnt = VarNamedTuple();
 
-To solve the problem of points 2. and 3. above I propose expanding the definition of VNT a bit. This will also help make VNT more flexible, which may help performance or allow more use cases. The modification is this:
+julia> vnt = setindex!!(vnt, 1.0, @varname(a));
 
-Unlike I said above, let's say that VNT isn't just nested NamedTuples with some values at the leaves. Let's say it also has a field called `make_leaf`. `make_leaf(value, lens)` is a function that takes any value, and a lens that is either `identity` or an `IndexLens`, and returns the value wrapped in some suitable struct that can be stored in the leaf of the NamedTuple tree. The values should always be such that `make_leaf(value, lens)[lens] == value`.
+julia> vnt = setindex!!(vnt, [2.0, 3.0], @varname(b.c));
 
-Our earlier example of `VarNamedTuple(@varname(x) => 1, @varname(y.z) => 2; make_leaf=f)` would be stored as a tree like
+julia> vnt = setindex!!(vnt, [:hip, :hop], @varname(d.e[2].f[3:4]));
 
+julia> print(vnt)
+VarNamedTuple(; a=1.0, b=VarNamedTuple(; c=[2.0, 3.0]), d=VarNamedTuple(; e=PartialArray{VarNamedTuple{(:f,), Tuple{DynamicPPL.VarNamedTuples.PartialArray{Symbol, 1}}},1}((2,) => VarNamedTuple(; f=PartialArray{Symbol,1}((3,) => hip, (4,) => hop)))))
 ```
-         --NT--
-      x /      \ y
-f(1, identity)  NT
-                 \ z
-            f(2, identity)
+
+The output there may be a bit hard bit hard to parse, so to illustrate:
+
+```julia
+julia> vnt[@varname(b)]
+VarNamedTuple(; c=[2.0, 3.0])
+
+julia> vnt[@varname(b.c[1])]
+2.0
+
+julia> vnt[@varname(d.e)]
+PartialArray{VarNamedTuple{(:f,), Tuple{DynamicPPL.VarNamedTuples.PartialArray{Symbol, 1}}},1}((2,) => VarNamedTuple(; f=PartialArray{Symbol,1}((3,) => hip, (4,) => hop)))
+
+julia> vnt[@varname(d.e[2].f)]
+PartialArray{Symbol,1}((3,) => hip, (4,) => hop)
 ```
 
-The above, first draft of VNT which did not include `make_leaf` is equivalent to the trivial choice `make_leaf(value, lens) = lens === identity ? value : error("Don't know how to deal IndexLenses")`. The problems 2. and 3. above are "solved" by making it `make_leaf`'s problem to figure out what to do. For instance, `make_leaf` can always return a `Dict` that maps lenses to values. This is probably slow, but works for any lens. Or it can initialise a vector type, that can grow as needed when indexed into.
+The above example also highlights how setting indices in a `VarNamedTuple` is done using `BangBang.setindex!!`.
+We do not define a method for `Base.setindex!` at all, the `setindex!!` is the only way.
+This is because `VarNamedTuple` mixes mutable an immutable data structures.
+It is also for user convenience:
+One does not ever have to think about whether the value that one is inserting into a `VarNamedTuple` is of the right type to fit in.
+Rather the containers will flex to fit it, keeping element types concrete when possible, but making them abstract if needed.
+`VarNamedTuple`, or more precisely `PartialArray`, even explicitly concretises element types whenever possible.
+For instance, one can make an abstractly typed `VarNamedTuple` like so:
 
-The idea would be to use `make_leaf` to try out different ways of implementing a VarInfo, find a good default, and ,if necessary, leave the option for power users to customise behaviour. The first ones to implement would be
+```julia
+julia> vnt = VarNamedTuple();
 
-  - `make_leaf` that returns a Metadata object. This would be a direct replacement for type stable VarInfo that uses Metadata, except now with more nested levels of NamedTuple.
-  - `make_leaf` that returns an `OrderedDict`. This would be a direct replacement for SimpleVarInfo with OrderedDict.
+julia> vnt = setindex!!(vnt, 1.0, @varname(a[1]));
 
-You may ask, have we simple gone from too many VarInfo types to too many `make_leaf` functions. Yes we have. But hopefully we have gained something in the process:
+julia> vnt = setindex!!(vnt, "hello", @varname(a[2]));
 
-  - The leaf types can be simpler. They do not need to deal with VarNames any more, they only need to deal with `identity` lenses and `IndexLenses`.
-  - All AbstactVarInfos are as type stable as their leaf types allow. There is no more notion of an untyped VarInfo being converted to a typed one.
-  - Type stability is maintained even with nested `PropertyLenses` like `@varname(a.b)`, which happens a lot with submodels.
-  - Many functions that are currently implemented individually for each AbstactVarInfo type would now have a single implementation for the VarNamedTuple-based AbstactVarInfo type, reducing code duplication. I would also hope to get ride of most of the generated functions for in `varinfo.jl`.
+julia> print(vnt)
+VarNamedTuple(; a=PartialArray{Any,1}((1,) => 1.0, (2,) => hello))
+```
 
-My guess is that the eventual One AbstractVarInfo To Rule Them All would have a `make_leaf` function that stores the raw values when the lens is an `identity`, and uses a flexible Vector, a lot like VarNamedVector, when the lens is an IndexLens. However, I could be wrong on that being the best option. Implementing and benchmarking is the only way to know.
+Note the element type of `PartialArray{Any}`.
+But if one changes the values to make them homogeneous, the element type is automatically made concrete again:
 
-I think the two big questions are:
+```julia
+julia> vnt = setindex!!(vnt, "me here", @varname(a[1]));
 
-  - Will we run into some big, unanticipated blockers when we start to implement this.
-  - Will the nesting of NamedTuples cause performance regressions, if the compiler either chokes or gives up.
+julia> print(vnt)
+VarNamedTuple(; a=PartialArray{String,1}((1,) => me here, (2,) => hello))
+```
 
-I'll try to derisk these early on in this PR.
+This approach is at the core of why `VarNamedTuple` is performant:
+As long as one does not store inhomogeneous types within a single `PartialArray`, by assigning different types to `VarName`s like `@varname(a[1])` and `@varname(a[2])`, different variables in a `VarNamedTuple` can have different types, and all `getindex` and `setindex!!` operations remain type stable.
+Note that assigning a value to `@varname(a[1].b)` but not to `@varname(a[2].b)` has the same effect as assigning values of different types to `@varname(a[1])` and `@varname(a[2])`, and also causes a loss of type stability for for `getindex` and `setindex!!`.
+Although, this only affects `getindex` and `setindex!!` on sub-`VarName`s of `@varname(a)`, you can still use the same `VarNamedTuple` to store information about an unrelated `@varname(c)` with stability.
 
-## Questions / issues
+Some miscellaneous notes
 
-  - People might really need IndexLenses in the middle of VarNames. The one place this comes up is submodels within a loop. I'm still inclined to keep designing without allowing for that, for now, but should keep in mind that that needs to be relaxed eventually. If it makes it easier, we can require that users explicitly tell us the size of any arrays for which this is done.
-  - When storing values for nested NamedTuples, the actual variable may be a struct. Do we need to be able to reconstruct the struct from the NamedTuple? If so, how do we do that?
-  - Do `Colon` indices cause any extra trouble for the leafnodes?
+## Limitations
+
+This design has a several of benefits, for performance and generality, but it also has limitations:
+
+ 1. The lack of support for `Colon`s in `VarName`s.
+ 2. The lack of support for some other indexing syntaxes supported by Julia, such as linear indexing and boolean indexing.
+ 3. An assymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
+    The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
+    The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
