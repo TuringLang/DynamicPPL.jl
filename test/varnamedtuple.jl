@@ -374,7 +374,7 @@ using BangBang: setindex!!
         show(io, vnt)
         output = String(take!(io))
         @test output == """
-            VarNamedTuple(; a=1.0, b=[1, 2, 3], c=PartialArray{Int64,1}((2,) => 15)"""
+            VarNamedTuple(; a=1.0, b=[1, 2, 3], c=PartialArray{Int64,1}((2,) => 15))"""
 
         vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
         io = IOBuffer()
@@ -382,13 +382,13 @@ using BangBang: setindex!!
         output = String(take!(io))
         @test output == """
             VarNamedTuple(; a=1.0, b=[1, 2, 3], \
-            c=PartialArray{Int64,1}((2,) => 15, \
+            c=PartialArray{Int64,1}((2,) => 15), \
             d=VarNamedTuple(; \
-            e=PartialArray{DynamicPPL.VarNamedTuples.VarNamedTuple{(:f,), \
-            Tuple{DynamicPPL.VarNamedTuples.VarNamedTuple{(:g,), \
-            Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
-            VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => \
-            16.0(2,) => 17.0))))"""
+            e=PartialArray{VarNamedTuple{(:f,), \
+            Tuple{VarNamedTuple{(:g,), \
+            Tuple{DynamicPPL.VarNamedTuples.PartialArray{Float64, 1}}}}},1}((3,) => \
+            VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => 16.0, \
+            (2,) => 17.0))))))"""
     end
 end
 

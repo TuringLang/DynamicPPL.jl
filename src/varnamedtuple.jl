@@ -151,12 +151,13 @@ function Base.show(io::IO, pa::PartialArray)
         end
         if !is_first
             print(io, ", ")
+        else
             is_first = false
         end
         val = @inbounds(pa.data[inds])
         print(io, Tuple(inds), " => ", val)
     end
-    print(")")
+    print(io, ")")
     return nothing
 end
 
