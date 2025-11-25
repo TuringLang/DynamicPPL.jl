@@ -130,13 +130,15 @@ via `unflatten` plus re-evaluation. It is faster for two reasons:
 """
 function ParamsWithStats(
     param_vector::AbstractVector,
-    ldf::DynamicPPL.LogDensityFunction,
+    ldf::DynamicPPL.LogDensityFunction{Tlink},
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
-)
+) where {Tlink}
     strategy = InitFromParams(
-        VectorWithRanges(ldf._iden_varname_ranges, ldf._varname_ranges, param_vector),
+        VectorWithRanges{Tlink}(
+            ldf._iden_varname_ranges, ldf._varname_ranges, param_vector
+        ),
         nothing,
     )
     accs = if include_log_probs

@@ -8,12 +8,8 @@ use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff) = false
 
 function DynamicPPL.tweak_adtype(
-    ad::ADTypes.AutoForwardDiff{chunk_size},
-    ::DynamicPPL.Model,
-    vi::DynamicPPL.AbstractVarInfo,
+    ad::ADTypes.AutoForwardDiff{chunk_size}, ::DynamicPPL.Model, params::AbstractVector
 ) where {chunk_size}
-    params = vi[:]
-
     # Use DynamicPPL tag to improve stack traces
     # https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
     # NOTE: DifferentiationInterface disables tag checking if the
