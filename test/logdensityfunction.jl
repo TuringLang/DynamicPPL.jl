@@ -1,4 +1,4 @@
-module DynamicPPLFastEvalTests
+module DynamicPPLLDFTests
 
 using AbstractPPL: AbstractPPL
 using Chairmarks

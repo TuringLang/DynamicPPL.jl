@@ -58,9 +58,6 @@ include("test_util.jl")
         include("simple_varinfo.jl")
         include("model.jl")
         include("distribution_wrappers.jl")
-    end
-
-    if GROUP == "All" || GROUP == "Group2"
         include("linking.jl")
         include("serialization.jl")
         include("pointwise_logdensities.jl")
@@ -71,8 +68,11 @@ include("test_util.jl")
         include("debug_utils.jl")
         include("submodels.jl")
         include("chains.jl")
+    end
+
+    if GROUP == "All" || GROUP == "Group2"
         include("bijector.jl")
-        include("fasteval.jl")
+        include("logdensityfunction.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLJETExt.jl")

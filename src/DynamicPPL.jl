@@ -95,7 +95,7 @@ export AbstractVarInfo,
     # evaluation
     evaluate!!,
     init!!,
-    # LogDensityFunction and fasteval
+    # LogDensityFunction
     LogDensityFunction,
     OnlyAccsVarInfo,
     # Leaf contexts
@@ -202,7 +202,7 @@ include("simple_varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
-include("fasteval.jl")
+include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
