@@ -30,11 +30,6 @@ function Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
     return vnt1.make_leaf === vnt2.make_leaf && vnt1.data == vnt2.data
 end
 
-struct IndexDict{T<:Function,Keys,Values}
-    data::Dict{Keys,Values}
-    make_leaf::T
-end
-
 struct PartialArray{T<:Function,ElType,numdims}
     data::Array{ElType,numdims}
     mask::Array{Bool,numdims}
@@ -273,18 +268,6 @@ function make_leaf_array(value, optic::IndexLens{T}) where {T}
     return setindex!!(iarr, value, optic)
 end
 
-function make_leaf_dict(value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(NamedTuple{(S,)}((value,)), make_leaf_dict)
-end
-make_leaf_dict(value, ::typeof(identity)) = value
-function make_leaf_dict(value, optic::ComposedFunction)
-    sub = make_leaf_dict(value, optic.outer)
-    return make_leaf_dict(sub, optic.inner)
-end
-function make_leaf_dict(value, optic::IndexLens)
-    return IndexDict(Dict(optic.indices => value), make_leaf_dict)
-end
-
 VarNamedTuple() = VarNamedTuple((;), make_leaf_array)
 
 function Base.show(io::IO, vnt::VarNamedTuple)
@@ -299,10 +282,6 @@ function Base.show(io::IO, vnt::VarNamedTuple)
     return print(io, ")")
 end
 
-function Base.show(io::IO, id::IndexDict)
-    return print(io, id.data)
-end
-
 Base.getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 
 function varname_to_lens(name::VarName{S}) where {S}
@@ -312,17 +291,12 @@ end
 function Base.getindex(vnt::VarNamedTuple, name::VarName)
     return getindex(vnt, varname_to_lens(name))
 end
-function Base.getindex(
-    x::Union{VarNamedTuple,IndexDict,PartialArray}, optic::ComposedFunction
-)
+function Base.getindex(x::Union{VarNamedTuple,PartialArray}, optic::ComposedFunction)
     subdata = getindex(x, optic.inner)
     return getindex(subdata, optic.outer)
 end
 function Base.getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
     return getindex(vnt.data, S)
-end
-function Base.getindex(id::IndexDict, optic::IndexLens)
-    return getindex(id.data, optic.indices)
 end
 
 function Base.haskey(vnt::VarNamedTuple, name::VarName)
@@ -336,9 +310,7 @@ function Base.haskey(vnt::VarNamedTuple, optic::ComposedFunction)
 end
 
 Base.haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
-Base.haskey(id::IndexDict, optic::IndexLens) = haskey(id.data, optic.indices)
 Base.haskey(::VarNamedTuple, ::IndexLens) = false
-Base.haskey(::IndexDict, ::PropertyLens) = false
 
 # TODO(mhauru) This is type piracy.
 Base.getindex(arr::AbstractArray, optic::IndexLens) = getindex(arr, optic.indices...)
@@ -353,7 +325,7 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
 end
 
 function BangBang.setindex!!(
-    vnt::Union{VarNamedTuple,IndexDict,PartialArray}, value, optic::ComposedFunction
+    vnt::Union{VarNamedTuple,PartialArray}, value, optic::ComposedFunction
 )
     sub = if haskey(vnt, optic.inner)
         BangBang.setindex!!(getindex(vnt, optic.inner), value, optic.outer)
@@ -369,10 +341,6 @@ function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where
     # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
     # below?
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))), vnt.make_leaf)
-end
-
-function BangBang.setindex!!(id::IndexDict, value, optic::IndexLens)
-    return IndexDict(setindex!!(id.data, value, optic.indices), id.make_leaf)
 end
 
 function apply(func, vnt::VarNamedTuple, name::VarName)
