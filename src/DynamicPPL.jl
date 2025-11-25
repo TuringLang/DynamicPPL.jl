@@ -92,9 +92,11 @@ export AbstractVarInfo,
     getargnames,
     extract_priors,
     values_as_in_model,
+    # evaluation
+    evaluate!!,
+    init!!,
     # LogDensityFunction and fasteval
     LogDensityFunction,
-    fast_evaluate!!,
     OnlyAccsVarInfo,
     # Leaf contexts
     AbstractContext,

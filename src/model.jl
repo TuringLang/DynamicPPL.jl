@@ -881,30 +881,56 @@ end
         [init_strategy::AbstractInitStrategy=InitFromPrior()]
     )
 
-Evaluate the `model` and replace the values of the model's random variables
-in the given `varinfo` with new values, using a specified initialisation strategy.
-If the values in `varinfo` are not set, they will be added
-using a specified initialisation strategy.
+Evaluate the `model` and replace the values of the model's random variables in the given
+`varinfo` with new values, using a specified initialisation strategy. If the values in
+`varinfo` are not set, they will be added using a specified initialisation strategy.
 
 If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-function init!!(
+@inline function init!!(
+    # Note that this `@inline` is mandatory for performance, especially for
+    # LogDensityFunction. If it's not inlined, it leads to extra allocations (even for
+    # trivial models) and much slower runtime.
     rng::Random.AbstractRNG,
     model::Model,
-    varinfo::AbstractVarInfo,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
+    vi::AbstractVarInfo,
+    strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    new_model = setleafcontext(model, InitContext(rng, init_strategy))
-    return evaluate!!(new_model, varinfo)
+    ctx = InitContext(rng, strategy)
+    model = DynamicPPL.setleafcontext(model, ctx)
+    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
+    # it _should_ do, but this is wrong regardless.
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
+    return if Threads.nthreads() > 1
+        # TODO(penelopeysm): The logic for setting eltype of accs is very similar to that
+        # used in `unflatten`. The reason why we need it here is because the VarInfo `vi`
+        # won't have been filled with parameters prior to `init!!` being called.
+        #
+        # Note that this eltype promotion is only needed for threadsafe evaluation. In an
+        # ideal world, this code should be handled inside `evaluate_threadsafe!!` or a
+        # similar method. In other words, it should not be here, and it should not be inside
+        # `unflatten` either. The problem is performance. Shifting this code around can have
+        # massive, inexplicable, impacts on performance. This should be investigated
+        # properly.
+        param_eltype = DynamicPPL.get_param_eltype(strategy)
+        accs = map(vi.accs) do acc
+            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
+        end
+        vi = DynamicPPL.setaccs!!(vi, accs)
+        tsvi = ThreadSafeVarInfo(resetaccs!!(vi))
+        retval, tsvi_new = DynamicPPL._evaluate!!(model, tsvi)
+        return retval, setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
+    else
+        return DynamicPPL._evaluate!!(model, resetaccs!!(vi))
+    end
 end
-function init!!(
-    model::Model,
-    varinfo::AbstractVarInfo,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
+@inline function init!!(
+    model::Model, vi::AbstractVarInfo, strategy::AbstractInitStrategy=InitFromPrior()
 )
-    return init!!(Random.default_rng(), model, varinfo, init_strategy)
+    # This `@inline` is also mandatory for performance
+    return init!!(Random.default_rng(), model, vi, strategy)
 end
 
 """
