@@ -193,21 +193,21 @@ end
 # LogDensityProblems.jl interface #
 ###################################
 """
-    fast_ldf_accs(getlogdensity::Function)
+    ldf_accs(getlogdensity::Function)
 
 Determine which accumulators are needed for fast evaluation with the given
 `getlogdensity` function.
 """
-fast_ldf_accs(::Function) = default_accumulators()
-fast_ldf_accs(::typeof(getlogjoint_internal)) = default_accumulators()
-function fast_ldf_accs(::typeof(getlogjoint))
+ldf_accs(::Function) = default_accumulators()
+ldf_accs(::typeof(getlogjoint_internal)) = default_accumulators()
+function ldf_accs(::typeof(getlogjoint))
     return AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
 end
-function fast_ldf_accs(::typeof(getlogprior_internal))
+function ldf_accs(::typeof(getlogprior_internal))
     return AccumulatorTuple((LogPriorAccumulator(), LogJacobianAccumulator()))
 end
-fast_ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
-fast_ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
+ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
+ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
 struct LogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
     model::M
@@ -219,7 +219,7 @@ function (f::LogDensityAt)(params::AbstractVector{<:Real})
     strategy = InitFromParams(
         VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
     )
-    accs = fast_ldf_accs(f.getlogdensity)
+    accs = ldf_accs(f.getlogdensity)
     _, vi = DynamicPPL.init!!(f.model, OnlyAccsVarInfo(accs), strategy)
     return f.getlogdensity(vi)
 end
