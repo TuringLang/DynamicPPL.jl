@@ -93,15 +93,17 @@ function _partial_array_dim_size(min_dim)
     return factor^(Int(ceil(log(factor, min_dim))))
 end
 
+function _min_size(iarr::PartialArray, inds)
+    return ntuple(i -> max(_internal_size(iarr, i), _length_needed(inds[i])), length(inds))
+end
+
 function _resize_partialarray(iarr::PartialArray, inds)
-    min_sizes = ntuple(
-        i -> max(_internal_size(iarr, i), _length_needed(inds[i])), length(inds)
-    )
-    new_sizes = map(_partial_array_dim_size, min_sizes)
+    min_size = _min_size(iarr, inds)
+    new_size = map(_partial_array_dim_size, min_size)
     # Generic multidimensional Arrays can not be resized, so we need to make a new one.
     # See https://github.com/JuliaLang/julia/issues/37900
-    new_data = Array{eltype(iarr.data),ndims(iarr)}(undef, new_sizes)
-    new_mask = fill(false, new_sizes)
+    new_data = Array{eltype(iarr.data),ndims(iarr)}(undef, new_size)
+    new_mask = fill(false, new_size)
     # Note that we have to use CartesianIndices instead of eachindex, because the latter
     # may use a linear index that does not match between the old and the new arrays.
     for i in CartesianIndices(iarr.data)
@@ -133,13 +135,11 @@ Base.getindex(pa::PartialArray, optic::IndexLens) = Base.getindex(pa, optic.indi
 Base.haskey(pa::PartialArray, optic::IndexLens) = Base.haskey(pa, optic.indices)
 
 function BangBang.setindex!!(iarr::PartialArray, value, inds::Vararg{INDEX_TYPES})
-    if _has_colon(inds)
-        # TODO(mhauru) This could be implemented by getting size information from `value`.
-        # However, the corresponding getindex is more fundamentally ill-defined.
-        throw(ArgumentError("Indexing with colons is not supported"))
-    end
     if length(inds) != ndims(iarr)
-        throw(ArgumentError("Invalid index $(inds)"))
+        throw(BoundsError(iarr, inds))
+    end
+    if _has_colon(inds)
+        throw(ArgumentError("Indexing with colons is not supported"))
     end
     iarr = if checkbounds(Bool, iarr.mask, inds...)
         iarr
@@ -156,11 +156,11 @@ function BangBang.setindex!!(iarr::PartialArray, value, inds::Vararg{INDEX_TYPES
 end
 
 function Base.getindex(iarr::PartialArray, inds::Vararg{INDEX_TYPES})
-    if _has_colon(inds)
-        throw(ArgumentError("Indexing with colons is not supported"))
-    end
     if length(inds) != ndims(iarr)
         throw(ArgumentError("Invalid index $(inds)"))
+    end
+    if _has_colon(inds)
+        throw(ArgumentError("Indexing with colons is not supported"))
     end
     if !haskey(iarr, inds)
         throw(BoundsError(iarr, inds))

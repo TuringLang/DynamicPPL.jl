@@ -4,206 +4,208 @@ using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: @varname, VarNamedTuple
 using BangBang: setindex!!
 
-@testset "Basic sets and gets" begin
-    vnt = VarNamedTuple()
-    vnt = @inferred(setindex!!(vnt, 32.0, @varname(a)))
-    @test @inferred(getindex(vnt, @varname(a))) == 32.0
+@testset "VarNamedTuple" begin
+    @testset "Basic sets and gets" begin
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 32.0, @varname(a)))
+        @test @inferred(getindex(vnt, @varname(a))) == 32.0
 
-    vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(b)))
-    @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
-    @test @inferred(getindex(vnt, @varname(b[2]))) == 2
+        vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(b)))
+        @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
+        @test @inferred(getindex(vnt, @varname(b[2]))) == 2
 
-    vnt = @inferred(setindex!!(vnt, 64.0, @varname(a)))
-    @test @inferred(getindex(vnt, @varname(a))) == 64.0
-    @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
+        vnt = @inferred(setindex!!(vnt, 64.0, @varname(a)))
+        @test @inferred(getindex(vnt, @varname(a))) == 64.0
+        @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
 
-    vnt = @inferred(setindex!!(vnt, 15, @varname(b[2])))
-    @test @inferred(getindex(vnt, @varname(b))) == [1, 15, 3]
-    @test @inferred(getindex(vnt, @varname(b[2]))) == 15
+        vnt = @inferred(setindex!!(vnt, 15, @varname(b[2])))
+        @test @inferred(getindex(vnt, @varname(b))) == [1, 15, 3]
+        @test @inferred(getindex(vnt, @varname(b[2]))) == 15
 
-    vnt = @inferred(setindex!!(vnt, [10], @varname(c.x.y)))
-    @test @inferred(getindex(vnt, @varname(c.x.y))) == [10]
+        vnt = @inferred(setindex!!(vnt, [10], @varname(c.x.y)))
+        @test @inferred(getindex(vnt, @varname(c.x.y))) == [10]
 
-    vnt = @inferred(setindex!!(vnt, 11, @varname(c.x.y[1])))
-    @test @inferred(getindex(vnt, @varname(c.x.y))) == [11]
-    @test @inferred(getindex(vnt, @varname(c.x.y[1]))) == 11
+        vnt = @inferred(setindex!!(vnt, 11, @varname(c.x.y[1])))
+        @test @inferred(getindex(vnt, @varname(c.x.y))) == [11]
+        @test @inferred(getindex(vnt, @varname(c.x.y[1]))) == 11
 
-    vnt = @inferred(setindex!!(vnt, -1.0, @varname(d[4])))
-    @test @inferred(getindex(vnt, @varname(d[4]))) == -1.0
+        vnt = @inferred(setindex!!(vnt, -1.0, @varname(d[4])))
+        @test @inferred(getindex(vnt, @varname(d[4]))) == -1.0
 
-    vnt = @inferred(setindex!!(vnt, -2.0, @varname(d[4])))
-    @test @inferred(getindex(vnt, @varname(d[4]))) == -2.0
+        vnt = @inferred(setindex!!(vnt, -2.0, @varname(d[4])))
+        @test @inferred(getindex(vnt, @varname(d[4]))) == -2.0
 
-    # These can't be @inferred because `d` now has an abstract element type. Note that this
-    # does not ruin type stability for other varnames that don't involve `d`.
-    vnt = setindex!!(vnt, "a", @varname(d[5]))
-    @test getindex(vnt, @varname(d[5])) == "a"
+        # These can't be @inferred because `d` now has an abstract element type. Note that this
+        # does not ruin type stability for other varnames that don't involve `d`.
+        vnt = setindex!!(vnt, "a", @varname(d[5]))
+        @test getindex(vnt, @varname(d[5])) == "a"
 
-    vnt = @inferred(setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i)))
-    @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i)))
+        @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
 
-    vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
-    @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
+        vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
+        @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
 
-    vec = fill(1.0, 4)
-    vnt = @inferred(setindex!!(vnt, vec, @varname(j[1:4])))
-    @test @inferred(getindex(vnt, @varname(j[1:4]))) == vec
-    @test @inferred(getindex(vnt, @varname(j[2]))) == vec[2]
-    @test haskey(vnt, @varname(j[4]))
-    @test !haskey(vnt, @varname(j[5]))
-    @test_throws BoundsError getindex(vnt, @varname(j[5]))
+        vec = fill(1.0, 4)
+        vnt = @inferred(setindex!!(vnt, vec, @varname(j[1:4])))
+        @test @inferred(getindex(vnt, @varname(j[1:4]))) == vec
+        @test @inferred(getindex(vnt, @varname(j[2]))) == vec[2]
+        @test haskey(vnt, @varname(j[4]))
+        @test !haskey(vnt, @varname(j[5]))
+        @test_throws BoundsError getindex(vnt, @varname(j[5]))
 
-    vec = fill(2.0, 4)
-    vnt = @inferred(setindex!!(vnt, vec, @varname(j[2:5])))
-    @test @inferred(getindex(vnt, @varname(j[1]))) == 1.0
-    @test @inferred(getindex(vnt, @varname(j[2:5]))) == vec
-    @test haskey(vnt, @varname(j[5]))
+        vec = fill(2.0, 4)
+        vnt = @inferred(setindex!!(vnt, vec, @varname(j[2:5])))
+        @test @inferred(getindex(vnt, @varname(j[1]))) == 1.0
+        @test @inferred(getindex(vnt, @varname(j[2:5]))) == vec
+        @test haskey(vnt, @varname(j[5]))
 
-    arr = fill(2.0, (4, 2))
-    vn = @varname(k.l[2:5, 3, 1:2, 2])
-    vnt = @inferred(setindex!!(vnt, arr, vn))
-    @test @inferred(getindex(vnt, vn)) == arr
-    # A subset of the elements set just now.
-    @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
+        arr = fill(2.0, (4, 2))
+        vn = @varname(k.l[2:5, 3, 1:2, 2])
+        vnt = @inferred(setindex!!(vnt, arr, vn))
+        @test @inferred(getindex(vnt, vn)) == arr
+        # A subset of the elements set just now.
+        @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
 
-    # Not enough, or too many, indices.
-    @test_throws "Invalid index" setindex!!(vnt, 0.0, @varname(k.l[1, 2, 3]))
-    @test_throws "Invalid index" setindex!!(vnt, 0.0, @varname(k.l[1, 2, 3, 4, 5]))
+        # Not enough, or too many, indices.
+        @test_throws BoundsError setindex!!(vnt, 0.0, @varname(k.l[1, 2, 3]))
+        @test_throws BoundsError setindex!!(vnt, 0.0, @varname(k.l[1, 2, 3, 4, 5]))
 
-    arr = fill(3.0, (3, 3))
-    vn = @varname(k.l[1, 1:3, 1:3, 1])
-    vnt = @inferred(setindex!!(vnt, arr, vn))
-    @test @inferred(getindex(vnt, vn)) == arr
-    # A subset of the elements set just now.
-    @test @inferred(getindex(vnt, @varname(k.l[1, 1:2, 1:2, 1]))) == fill(3.0, 2, 2)
-    # A subset of the elements set previously.
-    @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
-    @test !haskey(vnt, @varname(k.l[2, 3, 3, 2]))
+        arr = fill(3.0, (3, 3))
+        vn = @varname(k.l[1, 1:3, 1:3, 1])
+        vnt = @inferred(setindex!!(vnt, arr, vn))
+        @test @inferred(getindex(vnt, vn)) == arr
+        # A subset of the elements set just now.
+        @test @inferred(getindex(vnt, @varname(k.l[1, 1:2, 1:2, 1]))) == fill(3.0, 2, 2)
+        # A subset of the elements set previously.
+        @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
+        @test !haskey(vnt, @varname(k.l[2, 3, 3, 2]))
 
-    vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[2])))
-    vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[3])))
-    @test @inferred(getindex(vnt, @varname(m[2:3]))) == [1.0, 1.0]
-    @test !haskey(vnt, @varname(m[1]))
-end
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[2])))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[3])))
+        @test @inferred(getindex(vnt, @varname(m[2:3]))) == [1.0, 1.0]
+        @test !haskey(vnt, @varname(m[1]))
+    end
 
-@testset "equality" begin
-    vnt1 = VarNamedTuple()
-    vnt2 = VarNamedTuple()
-    @test vnt1 == vnt2
+    @testset "equality" begin
+        vnt1 = VarNamedTuple()
+        vnt2 = VarNamedTuple()
+        @test vnt1 == vnt2
 
-    vnt1 = setindex!!(vnt1, 1.0, @varname(a))
-    @test vnt1 != vnt2
+        vnt1 = setindex!!(vnt1, 1.0, @varname(a))
+        @test vnt1 != vnt2
 
-    vnt2 = setindex!!(vnt2, 1.0, @varname(a))
-    @test vnt1 == vnt2
+        vnt2 = setindex!!(vnt2, 1.0, @varname(a))
+        @test vnt1 == vnt2
 
-    vnt1 = setindex!!(vnt1, [1, 2], @varname(b))
-    vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
-    @test vnt1 == vnt2
+        vnt1 = setindex!!(vnt1, [1, 2], @varname(b))
+        vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
+        @test vnt1 == vnt2
 
-    vnt2 = setindex!!(vnt2, [1, 3], @varname(b))
-    @test vnt1 != vnt2
-    vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
+        vnt2 = setindex!!(vnt2, [1, 3], @varname(b))
+        @test vnt1 != vnt2
+        vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
 
-    # Try with index lenses too
-    vnt1 = setindex!!(vnt1, 2, @varname(c[2]))
-    vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
-    @test vnt1 == vnt2
+        # Try with index lenses too
+        vnt1 = setindex!!(vnt1, 2, @varname(c[2]))
+        vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
+        @test vnt1 == vnt2
 
-    vnt2 = setindex!!(vnt2, 3, @varname(c[2]))
-    @test vnt1 != vnt2
-    vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
+        vnt2 = setindex!!(vnt2, 3, @varname(c[2]))
+        @test vnt1 != vnt2
+        vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
 
-    vnt1 = setindex!!(vnt1, ["a", "b"], @varname(d.e[1:2]))
-    vnt2 = setindex!!(vnt2, ["a", "b"], @varname(d.e[1:2]))
-    @test vnt1 == vnt2
+        vnt1 = setindex!!(vnt1, ["a", "b"], @varname(d.e[1:2]))
+        vnt2 = setindex!!(vnt2, ["a", "b"], @varname(d.e[1:2]))
+        @test vnt1 == vnt2
 
-    vnt2 = setindex!!(vnt2, :b, @varname(d.e[2]))
-    @test vnt1 != vnt2
-end
+        vnt2 = setindex!!(vnt2, :b, @varname(d.e[2]))
+        @test vnt1 != vnt2
+    end
 
-@testset "merge" begin
-    vnt1 = VarNamedTuple()
-    vnt2 = VarNamedTuple()
-    expected_merge = VarNamedTuple()
-    # TODO(mhauru) Wrap this merge in @inferred, likewise other merges where it makes sense.
-    @test merge(vnt1, vnt2) == expected_merge
+    @testset "merge" begin
+        vnt1 = VarNamedTuple()
+        vnt2 = VarNamedTuple()
+        expected_merge = VarNamedTuple()
+        # TODO(mhauru) Wrap this merge in @inferred, likewise other merges where it makes sense.
+        @test merge(vnt1, vnt2) == expected_merge
 
-    vnt1 = setindex!!(vnt1, 1.0, @varname(a))
-    vnt2 = setindex!!(vnt2, 2.0, @varname(b))
-    vnt1 = setindex!!(vnt1, 1, @varname(c))
-    vnt2 = setindex!!(vnt2, 2, @varname(c))
-    expected_merge = setindex!!(expected_merge, 1.0, @varname(a))
-    expected_merge = setindex!!(expected_merge, 2, @varname(c))
-    expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
-    @test merge(vnt1, vnt2) == expected_merge
+        vnt1 = setindex!!(vnt1, 1.0, @varname(a))
+        vnt2 = setindex!!(vnt2, 2.0, @varname(b))
+        vnt1 = setindex!!(vnt1, 1, @varname(c))
+        vnt2 = setindex!!(vnt2, 2, @varname(c))
+        expected_merge = setindex!!(expected_merge, 1.0, @varname(a))
+        expected_merge = setindex!!(expected_merge, 2, @varname(c))
+        expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
+        @test merge(vnt1, vnt2) == expected_merge
 
-    vnt1 = VarNamedTuple()
-    vnt2 = VarNamedTuple()
-    expected_merge = VarNamedTuple()
-    vnt1 = setindex!!(vnt1, [1], @varname(d.a))
-    vnt2 = setindex!!(vnt2, [2, 2], @varname(d.b))
-    vnt1 = setindex!!(vnt1, [1], @varname(d.c))
-    vnt2 = setindex!!(vnt2, [2, 2], @varname(d.c))
-    expected_merge = setindex!!(expected_merge, [1], @varname(d.a))
-    expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.c))
-    expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.b))
-    @test merge(vnt1, vnt2) == expected_merge
+        vnt1 = VarNamedTuple()
+        vnt2 = VarNamedTuple()
+        expected_merge = VarNamedTuple()
+        vnt1 = setindex!!(vnt1, [1], @varname(d.a))
+        vnt2 = setindex!!(vnt2, [2, 2], @varname(d.b))
+        vnt1 = setindex!!(vnt1, [1], @varname(d.c))
+        vnt2 = setindex!!(vnt2, [2, 2], @varname(d.c))
+        expected_merge = setindex!!(expected_merge, [1], @varname(d.a))
+        expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.c))
+        expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.b))
+        @test merge(vnt1, vnt2) == expected_merge
 
-    vnt1 = setindex!!(vnt1, 1, @varname(e.a[1]))
-    vnt2 = setindex!!(vnt2, 2, @varname(e.a[2]))
-    expected_merge = setindex!!(expected_merge, 1, @varname(e.a[1]))
-    expected_merge = setindex!!(expected_merge, 2, @varname(e.a[2]))
-    vnt1 = setindex!!(vnt1, 1, @varname(e.a[3]))
-    vnt2 = setindex!!(vnt2, 2, @varname(e.a[3]))
-    expected_merge = setindex!!(expected_merge, 2, @varname(e.a[3]))
-    @test merge(vnt1, vnt2) == expected_merge
+        vnt1 = setindex!!(vnt1, 1, @varname(e.a[1]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.a[2]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.a[1]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.a[2]))
+        vnt1 = setindex!!(vnt1, 1, @varname(e.a[3]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.a[3]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.a[3]))
+        @test merge(vnt1, vnt2) == expected_merge
 
-    vnt1 = setindex!!(vnt1, fill(1, 4), @varname(e.a[7:10]))
-    vnt2 = setindex!!(vnt2, fill(2, 4), @varname(e.a[8:11]))
-    expected_merge = setindex!!(expected_merge, 1, @varname(e.a[7]))
-    expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
-    @test merge(vnt1, vnt2) == expected_merge
+        vnt1 = setindex!!(vnt1, fill(1, 4), @varname(e.a[7:10]))
+        vnt2 = setindex!!(vnt2, fill(2, 4), @varname(e.a[8:11]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.a[7]))
+        expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
+        @test merge(vnt1, vnt2) == expected_merge
 
-    vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
-    vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
-    expected_merge = setindex!!(
-        expected_merge, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4])
-    )
-    vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-    vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
-    expected_merge = setindex!!(expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-    expected_merge = setindex!!(expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
-    @test merge(vnt1, vnt2) == expected_merge
+        vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
+        vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
+        expected_merge = setindex!!(
+            expected_merge, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4])
+        )
+        vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
+        vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+        expected_merge = setindex!!(expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
+        expected_merge = setindex!!(expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+        @test merge(vnt1, vnt2) == expected_merge
 
-    # PartialArrays with different sizes.
-    vnt1 = VarNamedTuple()
-    vnt2 = VarNamedTuple()
-    vnt1 = setindex!!(vnt1, 1, @varname(a[1]))
-    vnt1 = setindex!!(vnt1, 1, @varname(a[257]))
-    vnt2 = setindex!!(vnt2, 2, @varname(a[1]))
-    vnt2 = setindex!!(vnt2, 2, @varname(a[2]))
-    expected_merge_12 = VarNamedTuple()
-    expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[257]))
-    expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[1]))
-    expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[2]))
-    @test merge(vnt1, vnt2) == expected_merge_12
-    expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
-    @test merge(vnt2, vnt1) == expected_merge_21
+        # PartialArrays with different sizes.
+        vnt1 = VarNamedTuple()
+        vnt2 = VarNamedTuple()
+        vnt1 = setindex!!(vnt1, 1, @varname(a[1]))
+        vnt1 = setindex!!(vnt1, 1, @varname(a[257]))
+        vnt2 = setindex!!(vnt2, 2, @varname(a[1]))
+        vnt2 = setindex!!(vnt2, 2, @varname(a[2]))
+        expected_merge_12 = VarNamedTuple()
+        expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[257]))
+        expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[1]))
+        expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[2]))
+        @test merge(vnt1, vnt2) == expected_merge_12
+        expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
+        @test merge(vnt2, vnt1) == expected_merge_21
 
-    vnt1 = VarNamedTuple()
-    vnt2 = VarNamedTuple()
-    vnt1 = setindex!!(vnt1, 1, @varname(a[1, 1]))
-    vnt1 = setindex!!(vnt1, 1, @varname(a[257, 1]))
-    vnt2 = setindex!!(vnt2, :2, @varname(a[1, 1]))
-    vnt2 = setindex!!(vnt2, :2, @varname(a[1, 257]))
-    expected_merge_12 = VarNamedTuple()
-    expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 1]))
-    expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[257, 1]))
-    expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 257]))
-    @test merge(vnt1, vnt2) == expected_merge_12
-    expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
-    @test merge(vnt2, vnt1) == expected_merge_21
+        vnt1 = VarNamedTuple()
+        vnt2 = VarNamedTuple()
+        vnt1 = setindex!!(vnt1, 1, @varname(a[1, 1]))
+        vnt1 = setindex!!(vnt1, 1, @varname(a[257, 1]))
+        vnt2 = setindex!!(vnt2, :2, @varname(a[1, 1]))
+        vnt2 = setindex!!(vnt2, :2, @varname(a[1, 257]))
+        expected_merge_12 = VarNamedTuple()
+        expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 1]))
+        expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[257, 1]))
+        expected_merge_12 = setindex!!(expected_merge_12, :2, @varname(a[1, 257]))
+        @test merge(vnt1, vnt2) == expected_merge_12
+        expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
+        @test merge(vnt2, vnt1) == expected_merge_21
+    end
 end
 
 end
