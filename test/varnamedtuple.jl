@@ -6,11 +6,43 @@ using BangBang: setindex!!
 
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
+        vnt1 = VarNamedTuple()
+        vnt1 = setindex!!(vnt1, 1.0, @varname(a))
+        vnt1 = setindex!!(vnt1, [1, 2, 3], @varname(b))
+        vnt1 = setindex!!(vnt1, "a", @varname(c.d.e))
+        vnt2 = VarNamedTuple(;
+            a=1.0, b=[1, 2, 3], c=VarNamedTuple(; d=VarNamedTuple(; e="a"))
+        )
+        @test vnt1 == vnt2
+
         pa1 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}()
         pa1 = setindex!!(pa1, 1.0, 16)
-        pa2 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}((16,))
+        pa2 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}(; min_size=(16,))
         pa2 = setindex!!(pa2, 1.0, 16)
+        pa3 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}(16 => 1.0)
+        pa4 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}((16,) => 1.0)
         @test pa1 == pa2
+        @test pa1 == pa3
+        @test pa1 == pa4
+
+        pa1 = DynamicPPL.VarNamedTuples.PartialArray{String,3}()
+        pa1 = setindex!!(pa1, "a", 2, 3, 4)
+        pa1 = setindex!!(pa1, "b", 1, 2, 4)
+        pa2 = DynamicPPL.VarNamedTuples.PartialArray{String,3}(; min_size=(16, 16, 16))
+        pa2 = setindex!!(pa2, "a", 2, 3, 4)
+        pa2 = setindex!!(pa2, "b", 1, 2, 4)
+        pa3 = DynamicPPL.VarNamedTuples.PartialArray{String,3}(
+            (2, 3, 4) => "a", (1, 2, 4) => "b"
+        )
+        @test pa1 == pa2
+        @test pa1 == pa3
+
+        @test_throws BoundsError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((0,) => 1)
+        @test_throws BoundsError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((1, 2) => 1)
+        @test_throws MethodError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((1,) => "a")
+        @test_throws MethodError DynamicPPL.VarNamedTuples.PartialArray{Int,1}(
+            (1,) => 1; min_size=(2, 2)
+        )
     end
 
     @testset "Basic sets and gets" begin
@@ -316,6 +348,47 @@ using BangBang: setindex!!
             @varname(n[2].a),
         )
         @test all(x -> haskey(vnt, x), keys(vnt))
+    end
+
+    @testset "printing" begin
+        vnt = VarNamedTuple()
+        io = IOBuffer()
+        show(io, vnt)
+        output = String(take!(io))
+        @test output == "VarNamedTuple(;)"
+
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        io = IOBuffer()
+        show(io, vnt)
+        output = String(take!(io))
+        @test output == "VarNamedTuple(; a=1.0)"
+
+        vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
+        io = IOBuffer()
+        show(io, vnt)
+        output = String(take!(io))
+        @test output == "VarNamedTuple(; a=1.0, b=[1, 2, 3])"
+
+        vnt = setindex!!(vnt, 15, @varname(c[2]))
+        io = IOBuffer()
+        show(io, vnt)
+        output = String(take!(io))
+        @test output == """
+            VarNamedTuple(; a=1.0, b=[1, 2, 3], c=PartialArray{Int64,1}((2,) => 15)"""
+
+        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
+        io = IOBuffer()
+        show(io, vnt)
+        output = String(take!(io))
+        @test output == """
+            VarNamedTuple(; a=1.0, b=[1, 2, 3], \
+            c=PartialArray{Int64,1}((2,) => 15, \
+            d=VarNamedTuple(; \
+            e=PartialArray{DynamicPPL.VarNamedTuples.VarNamedTuple{(:f,), \
+            Tuple{DynamicPPL.VarNamedTuples.VarNamedTuple{(:g,), \
+            Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
+            VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => \
+            16.0(2,) => 17.0))))"""
     end
 end
 

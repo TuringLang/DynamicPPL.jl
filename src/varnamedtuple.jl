@@ -8,23 +8,23 @@ using ..DynamicPPL: _compose_no_identity
 
 export VarNamedTuple
 
-# We define our own getindex, setindex!!, and haskey functions to be able to override their
-# behaviour for some types exported from elsewhere without type piracy. This is needed
-# because
-# 1. We want to index into things with lenses (from Accessors.jl) using getindex and
-# setindex!!.
-# 2. We want to use getindex, setindex!!, and haskey as the universal functions for getting,
-# setting, checking. This includes e.g. checking whether an index is valid for an Array,
-# which would normally be done with checkbounds.
-_haskey(x, key) = Base.haskey(x, key)
-_getindex(x, inds...) = Base.getindex(x, inds...)
-_setindex!!(x, value, inds...) = BangBang.setindex!!(x, value, inds...)
-_getindex(arr::AbstractArray, optic::IndexLens) = _getindex(arr, optic.indices...)
+# We define our own getindex, setindex!!, and haskey functions, which we use to
+# get/set/check values in VarNamedTuple and PartialArray. We do this because we want to be
+# able to override their behaviour for some types exported from elsewhere without type
+# piracy. This is needed because
+# 1. We would want to index into things with lenses (from Accessors.jl) using getindex and
+# setindex!!, but Accessors does not define these methods.
+# 2. We would want `haskey` to fall back onto `checkbounds` when called on Base.Arrays.
+function _getindex end
+function _haskey end
+function _setindex!! end
+
+_getindex(arr::AbstractArray, optic::IndexLens) = getindex(arr, optic.indices...)
 _haskey(arr::AbstractArray, optic::IndexLens) = _haskey(arr, optic.indices)
-function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
-    return _setindex!!(arr, value, optic.indices...)
-end
 _haskey(arr::AbstractArray, inds) = checkbounds(Bool, arr, inds...)
+function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
+    return setindex!!(arr, value, optic.indices...)
+end
 
 # Some utilities for checking what sort of indices we are dealing with.
 _has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
@@ -122,21 +122,43 @@ purely a performance optimisation, to avoid resizing if the eventual size is kno
 time.
 """
 function PartialArray{ElType,num_dims}(
-    min_size::Union{Tuple,Nothing}=nothing
+    args::Vararg{Pair}; min_size::Union{Tuple,Nothing}=nothing
 ) where {ElType,num_dims}
-    if min_size === nothing
-        dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
+    dims = if min_size === nothing
+        ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
     else
-        dims = map(_partial_array_dim_size, min_size)
+        map(_partial_array_dim_size, min_size)
     end
-    dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
     data = Array{ElType,num_dims}(undef, dims)
     mask = fill(false, dims)
-    return PartialArray(data, mask)
+    pa = PartialArray(data, mask)
+
+    for (inds, value) in args
+        pa = _setindex!!(pa, convert(ElType, value), inds...)
+    end
+    return pa
 end
 
 Base.ndims(::PartialArray{ElType,num_dims}) where {ElType,num_dims} = num_dims
 Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
+
+function Base.show(io::IO, pa::PartialArray)
+    print(io, "PartialArray{", eltype(pa), ",", ndims(pa), "}(")
+    is_first = true
+    for inds in CartesianIndices(pa.mask)
+        if @inbounds(!pa.mask[inds])
+            continue
+        end
+        if !is_first
+            print(io, ", ")
+            is_first = false
+        end
+        val = @inbounds(pa.data[inds])
+        print(io, Tuple(inds), " => ", val)
+    end
+    print(")")
+    return nothing
+end
 
 # We deliberately don't define Base.size for PartialArray, because it is ill-defined.
 # The size of the .data field is an implementation detail.
@@ -420,9 +442,10 @@ efficient and type stable manner. It is mainly used through `getindex`, `setinde
 `haskey`, all of which accept `VarName`s and only `VarName`s as keys. Other notable methods
 are `merge`, which recursively merges two `VarNamedTuple`s.
 
-The one major limitation is that indexing by `VarName`s with `Colon`s, (e.g. `a[:]`) is not
-supported. This is because the meaning of `a[:]` is ambiguous if only some elements of `a`,
-say `a[1]` and `a[3]`, are defined.
+The there are two major limitations to indexing by VarNamedTuples:
+
+* `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
+* Any `VarNames` with IndexLenses` must have a consistent number of indices. That is, one cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
 
 `setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
 heterogeneous data under different indices of the same symbol. That is, if one either
@@ -436,20 +459,18 @@ struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
 end
 
-VarNamedTuple() = VarNamedTuple((;))
+VarNamedTuple(; kwargs...) = VarNamedTuple((; kwargs...))
 
 Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.hash(vnt::VarNamedTuple, h::UInt) = hash(vnt.data, h)
 
-# TODO(mhauru) Rework this printing.
 function Base.show(io::IO, vnt::VarNamedTuple)
-    print(io, "(")
+    print(io, "VarNamedTuple(;")
     for (i, (name, value)) in enumerate(pairs(vnt.data))
         if i > 1
-            print(io, ", ")
+            print(io, ",")
         end
-        print(io, name, " -> ")
-        print(io, value)
+        print(io, " ", name, "=", value)
     end
     return print(io, ")")
 end
@@ -464,11 +485,11 @@ function varname_to_lens(name::VarName{S}) where {S}
 end
 
 _getindex(vnt::VarNamedTuple, name::VarName) = _getindex(vnt, varname_to_lens(name))
-_getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = _getindex(vnt.data, S)
+_getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = getindex(vnt.data, S)
 _getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 
 _haskey(vnt::VarNamedTuple, name::VarName) = _haskey(vnt, varname_to_lens(name))
-_haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = _haskey(vnt.data, S)
+_haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
 _haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 _haskey(::VarNamedTuple, ::IndexLens) = false
 
@@ -572,14 +593,24 @@ end
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
 Base.getindex(vnt::VarNamedTuple, vn::VarName) = _getindex(vnt, vn)
 BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName) = _setindex!!(vnt, value, vn)
+
 Base.haskey(vnt::PartialArray, key) = _haskey(vnt, key)
 Base.getindex(vnt::PartialArray, inds...) = _getindex(vnt, inds...)
 BangBang.setindex!!(vnt::PartialArray, value, inds...) = _setindex!!(vnt, value, inds...)
 
-function make_leaf(value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(NamedTuple{(S,)}((value,)))
-end
+"""
+    make_leaf(value, optic)
+
+Make a new leaf node for a VarNamedTuple.
+
+This is the function that sets any `optic` that is a `PropertyLens` to be stored as a
+`VarNamedTuple`, any `IndexLens` to be stored as a `PartialArray`, and other `identity`
+optics to be stored as raw values. It is the link that joins `VarNamedTuple` and
+`PartialArray` together.
+"""
 make_leaf(value, ::typeof(identity)) = value
+make_leaf(value, ::PropertyLens{S}) where {S} = VarNamedTuple(NamedTuple{(S,)}((value,)))
+
 function make_leaf(value, optic::ComposedFunction)
     sub = make_leaf(value, optic.outer)
     return make_leaf(sub, optic.inner)
@@ -591,8 +622,8 @@ function make_leaf(value, optic::IndexLens{T}) where {T}
     # Check if any of the indices are ranges or colons. If yes, value needs to be an
     # AbstractArray. Otherwise it needs to be an individual value.
     et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
-    iarr = PartialArray{et,num_inds}()
-    return setindex!!(iarr, value, optic)
+    pa = PartialArray{et,num_inds}()
+    return _setindex!!(pa, value, optic)
 end
 
 end
