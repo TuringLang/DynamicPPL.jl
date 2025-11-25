@@ -8,42 +8,139 @@ using ..DynamicPPL: _compose_no_identity
 
 export VarNamedTuple
 
-"""The factor by which we increase the dimensions of PartialArrays when resizing them."""
-const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
+# We define our own getindex, setindex!!, and haskey functions to be able to override their
+# behaviour for some types exported from elsewhere without type piracy. This is needed
+# because
+# 1. We want to index into things with lenses (from Accessors.jl) using getindex and
+# setindex!!.
+# 2. We want to use getindex, setindex!!, and haskey as the universal functions for getting,
+# setting, checking. This includes e.g. checking whether an index is valid for an Array,
+# which would normally be done with checkbounds.
+_haskey(x, key) = Base.haskey(x, key)
+_getindex(x, inds...) = Base.getindex(x, inds...)
+_setindex!!(x, value, inds...) = BangBang.setindex!!(x, value, inds...)
+_getindex(arr::AbstractArray, optic::IndexLens) = _getindex(arr, optic.indices...)
+_haskey(arr::AbstractArray, optic::IndexLens) = _haskey(arr, optic.indices)
+function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
+    return _setindex!!(arr, value, optic.indices...)
+end
+_haskey(arr::AbstractArray, inds) = checkbounds(Bool, arr, inds...)
 
-const INDEX_TYPES = Union{Integer,UnitRange,Colon}
-
+# Some utilities for checking what sort of indices we are dealing with.
 _has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
-
 function _is_multiindex(::T) where {T<:Tuple}
     return any(x <: UnitRange || x <: Colon for x in T.parameters)
 end
 
-struct VarNamedTuple{Names,Values}
-    data::NamedTuple{Names,Values}
+"""
+    _merge_recursive(x1, x2)
+
+Recursively merge two values `x1` and `x2`.
+
+Unlike `Base.merge`, this function is defined for all types, and by default returns the
+second argument. It is overridden for `PartialArray` and `VarNamedTuple`, since they are
+nested containers, and calls itself recursively on all elements that are found in both
+`x1` and `x2`.
+
+In other words, if both `x` and `y` are collections with the key `a`, `Base.merge(x, y)[a]`
+is `y[a]`, whereas `_merge_recursive(x, y)[a]` be `_merge_recursive(x[a], y[a])`, unless
+no specific method is defined for the type of `x` and `y`, in which case
+`_merge_recursive(x, y) === y`
+"""
+_merge_recursive(_, x2) = x2
+
+"""The factor by which we increase the dimensions of PartialArrays when resizing them."""
+const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
+
+"""A convenience for defining method argument type bounds."""
+const INDEX_TYPES = Union{Integer,UnitRange,Colon}
+
+"""
+    PartialArray{ElType,numdims}
+
+An array-like like structure that may only have some of its elements defined.
+
+A `PartialArray` is like a `Base.Array,` except not all of its elements are necessarily
+defined. That is to say, one can create an empty `PartialArray` `arr` and e.g. set
+`arr[3,2] = 5`, but asking for `arr[1,1]` may throw a `BoundsError` if `[1, 1]` has not been
+explicitly set yet.
+
+`PartialArray`s can be indexed with integer indices and ranges. Indexing is always 1-based.
+Other types of indexing allowed by `Base.Array` are not supported. Some of these are simply
+because we haven't seen a need and haven't bothered to implement them, namely boolean
+indexing, linear indexing into multidimensional arrays, and indexing with arrays. However,
+notably, indexing with colons (i.e. `:`) is not supported for more fundamental reasons.
+
+To understand this, note that a `PartialArray` has no well-defined size. For example, if one
+creates an empty array and sets `arr[3,2]`, it is unclear if that should be taken to mean
+that the array has size `(3,2)`: It could be larger, and saying that the size is `(3,2)`
+would also misleadingly suggest that all elements within `1:3,1:2` are set. This is also why
+colon indexing is ill-defined: If one would e.g. set `arr[2,:] = [1,2,3]`, we would have no
+way of saying whether the right hand side is of an acceptable size or not.
+
+The fact that its size is ill-defined also means that `PartialArray` is not a subtype of
+`AbstractArray`.
+
+All indexing into `PartialArray`s are done with `getindex` and `setindex!!`. `setindex!`,
+`push!`, etc. are not defined. The element type of a `PartialArray` will change as needed
+under `setindex!!` to accomoddate the new values.
+
+Like `Base.Array`s, `PartialArray`s have a well-defined, compile-time-known element type
+`ElType` and number of dimensions `numdims`.
+
+The internal implementation of an `PartialArray` consists of two arrays: one holding the
+data and the other one being a boolean mask indicating which elements are defined. These
+internal arrays may need resizing when new elements are set that have index ranges larger
+than the current internal arrays. To avoid resizing too often, the internal arrays are
+resized in exponentially increasing steps. This means that most `setindex!!` calls are very
+fast, but some may incur substantial overhead due to resizing and copying data. It also
+means that the largest index set so far determines the memory usage of the `PartialArray`.
+`PartialArray`s are thus well-suited when most values in it will eventually be set. If only
+a few scattered values are set, a structure like `SparseArray` may be more appropriate.
+"""
+struct PartialArray{ElType,num_dims}
+    data::Array{ElType,num_dims}
+    mask::Array{Bool,num_dims}
+
+    function PartialArray(
+        data::Array{ElType,num_dims}, mask::Array{Bool,num_dims}
+    ) where {ElType,num_dims}
+        if size(data) != size(mask)
+            throw(ArgumentError("Data and mask arrays must have the same size"))
+        end
+        return new{ElType,num_dims}(data, mask)
+    end
 end
 
-# TODO(mhauru) Since I define this, should I also define `isequal` and `hash`? Same for
-# PartialArrays.
-Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
+"""
+    PartialArray{ElType,num_dims}(min_size=nothing)
 
-struct PartialArray{ElType,numdims}
-    data::Array{ElType,numdims}
-    mask::Array{Bool,numdims}
-end
+Create a new empty `PartialArray` with set element type and number of dimensions.
 
-function PartialArray(eltype, num_dims)
+The optional argument `min_size` can be used to specify the minimum initial size. This is
+purely a performance optimisation, to avoid resizing if the eventual size is known ahead of
+time.
+"""
+function PartialArray{ElType,num_dims}(
+    min_size::Union{Tuple,Nothing}=nothing
+) where {ElType,num_dims}
+    if min_size === nothing
+        dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
+    else
+        dims = map(_partial_array_dim_size, min_size)
+    end
     dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
-    data = Array{eltype,num_dims}(undef, dims)
+    data = Array{ElType,num_dims}(undef, dims)
     mask = fill(false, dims)
     return PartialArray(data, mask)
 end
 
-Base.ndims(iarr::PartialArray) = ndims(iarr.data)
+Base.ndims(::PartialArray{ElType,num_dims}) where {ElType,num_dims} = num_dims
+Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
 
 # We deliberately don't define Base.size for PartialArray, because it is ill-defined.
 # The size of the .data field is an implementation detail.
-_internal_size(iarr::PartialArray, args...) = size(iarr.data, args...)
+_internal_size(pa::PartialArray, args...) = size(pa.data, args...)
 
 function Base.copy(pa::PartialArray)
     return PartialArray(copy(pa.data), copy(pa.mask))
@@ -55,7 +152,8 @@ function Base.:(==)(pa1::PartialArray, pa2::PartialArray)
     end
     size1 = _internal_size(pa1)
     size2 = _internal_size(pa2)
-    # TODO(mhauru) This could be optimised, but not sure it's worth it.
+    # TODO(mhauru) This could be optimised by not calling checkbounds on all elements
+    # outside the size of an array, but not sure it's worth it.
     merge_size = ntuple(i -> max(size1[i], size2[i]), ndims(pa1))
     for i in CartesianIndices(merge_size)
         m1 = checkbounds(Bool, pa1.mask, Tuple(i)...) ? pa1.mask[i] : false
@@ -70,9 +168,20 @@ function Base.:(==)(pa1::PartialArray, pa2::PartialArray)
     return true
 end
 
+function Base.hash(pa::PartialArray, h::UInt)
+    h = hash(ndims(pa), h)
+    for i in eachindex(pa.mask)
+        @inbounds if pa.mask[i]
+            h = hash(i, h)
+            h = hash(pa.data[i], h)
+        end
+    end
+    return h
+end
+
+"""Return the length needed in a dimension given an index."""
 _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
-_length_needed(::Colon) = 0
 
 """Take the minimum size that a dimension of a PartialArray needs to be, and return the size
 we choose it to be. This size will be the smallest possible power of
@@ -84,92 +193,100 @@ function _partial_array_dim_size(min_dim)
     return factor^(Int(ceil(log(factor, min_dim))))
 end
 
-function _min_size(iarr::PartialArray, inds)
-    return ntuple(i -> max(_internal_size(iarr, i), _length_needed(inds[i])), length(inds))
+"""Return the minimum internal size needed for a `PartialArray` to be able set the value
+at inds.
+"""
+function _min_size(pa::PartialArray, inds)
+    return ntuple(i -> max(_internal_size(pa, i), _length_needed(inds[i])), length(inds))
 end
 
-function _resize_partialarray(iarr::PartialArray, inds)
-    min_size = _min_size(iarr, inds)
+"""Resize a PartialArray to be able to accommodate the index inds. This operates in place
+for vectors, but makes a copy for higher-dimensional arrays, unless no resizing is
+necessary, in which case this is a no-op."""
+function _resize_partialarray!!(pa::PartialArray, inds)
+    min_size = _min_size(pa, inds)
     new_size = map(_partial_array_dim_size, min_size)
+    if new_size == _internal_size(pa)
+        return pa
+    end
     # Generic multidimensional Arrays can not be resized, so we need to make a new one.
     # See https://github.com/JuliaLang/julia/issues/37900
-    new_data = Array{eltype(iarr.data),ndims(iarr)}(undef, new_size)
+    new_data = Array{eltype(pa),ndims(pa)}(undef, new_size)
     new_mask = fill(false, new_size)
     # Note that we have to use CartesianIndices instead of eachindex, because the latter
     # may use a linear index that does not match between the old and the new arrays.
-    for i in CartesianIndices(iarr.data)
-        mask_val = iarr.mask[i]
-        @inbounds new_mask[i] = mask_val
+    @inbounds for i in CartesianIndices(pa.data)
+        mask_val = pa.mask[i]
+        new_mask[i] = mask_val
         if mask_val
-            @inbounds new_data[i] = iarr.data[i]
+            new_data[i] = pa.data[i]
         end
     end
     return PartialArray(new_data, new_mask)
 end
 
 # The below implements the same functionality as above, but more performantly for 1D arrays.
-function _resize_partialarray(iarr::PartialArray{Eltype,1}, (ind,)) where {Eltype}
+function _resize_partialarray!!(pa::PartialArray{Eltype,1}, (ind,)) where {Eltype}
     # Resize arrays to accommodate new indices.
-    old_size = _internal_size(iarr, 1)
+    old_size = _internal_size(pa, 1)
     min_size = max(old_size, _length_needed(ind))
     new_size = _partial_array_dim_size(min_size)
-    resize!(iarr.data, new_size)
-    resize!(iarr.mask, new_size)
-    @inbounds iarr.mask[(old_size + 1):new_size] .= false
-    return iarr
+    if new_size == old_size
+        return pa
+    end
+    resize!(pa.data, new_size)
+    resize!(pa.mask, new_size)
+    @inbounds pa.mask[(old_size + 1):new_size] .= false
+    return pa
 end
 
-function BangBang.setindex!!(pa::PartialArray, value, optic::IndexLens)
-    return BangBang.setindex!!(pa, value, optic.indices...)
+_getindex(pa::PartialArray, optic::IndexLens) = _getindex(pa, optic.indices...)
+_haskey(pa::PartialArray, optic::IndexLens) = _haskey(pa, optic.indices)
+function _setindex!!(pa::PartialArray, value, optic::IndexLens)
+    return _setindex!!(pa, value, optic.indices...)
 end
-Base.getindex(pa::PartialArray, optic::IndexLens) = Base.getindex(pa, optic.indices...)
-Base.haskey(pa::PartialArray, optic::IndexLens) = Base.haskey(pa, optic.indices)
 
-function BangBang.setindex!!(iarr::PartialArray, value, inds::Vararg{INDEX_TYPES})
-    if length(inds) != ndims(iarr)
-        throw(BoundsError(iarr, inds))
+"""Throw an appropriate error if the given indices are invalid for `pa`."""
+function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
+    if length(inds) != ndims(pa)
+        throw(BoundsError(pa, inds))
     end
     if _has_colon(inds)
-        throw(ArgumentError("Indexing with colons is not supported"))
+        throw(ArgumentError("Indexing PartialArrays with Colon is not supported"))
     end
-    iarr = if checkbounds(Bool, iarr.mask, inds...)
-        iarr
+    return nothing
+end
+
+function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    _check_index_validity(pa, inds)
+    if !_haskey(pa, inds)
+        throw(BoundsError(pa, inds))
+    end
+    return getindex(pa.data, inds...)
+end
+
+function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
+    _check_index_validity(pa, inds)
+    return checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
+end
+
+function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
+    _check_index_validity(pa, inds)
+    pa = if checkbounds(Bool, pa.mask, inds...)
+        pa
     else
-        _resize_partialarray(iarr, inds)
+        _resize_partialarray!!(pa, inds)
     end
-    new_data = setindex!!(iarr.data, value, inds...)
+    new_data = setindex!!(pa.data, value, inds...)
     if _is_multiindex(inds)
-        iarr.mask[inds...] .= true
+        pa.mask[inds...] .= true
     else
-        iarr.mask[inds...] = true
+        pa.mask[inds...] = true
     end
-    return PartialArray(new_data, iarr.mask)
-end
-
-function Base.getindex(iarr::PartialArray, inds::Vararg{INDEX_TYPES})
-    if length(inds) != ndims(iarr)
-        throw(ArgumentError("Invalid index $(inds)"))
-    end
-    if _has_colon(inds)
-        throw(ArgumentError("Indexing with colons is not supported"))
-    end
-    if !haskey(iarr, inds)
-        throw(BoundsError(iarr, inds))
-    end
-    return getindex(iarr.data, inds...)
-end
-
-function Base.haskey(iarr::PartialArray, inds)
-    if _has_colon(inds)
-        throw(ArgumentError("Indexing with colons is not supported"))
-    end
-    return checkbounds(Bool, iarr.mask, inds...) &&
-           all(@inbounds(getindex(iarr.mask, inds...)))
+    return PartialArray(new_data, pa.mask)
 end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge_recursive(x1, x2)
-Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
-_merge_recursive(_, x2) = x2
 
 function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind::CartesianIndex)
     m1 = x1.mask[ind]
@@ -193,7 +310,7 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     num_dims = ndims(pa1)
     merge_size = ntuple(i -> max(_internal_size(pa1, i), _internal_size(pa2, i)), num_dims)
     result = if merge_size == _internal_size(pa2)
-        # Either pa2 is strictly bigger than pa1, or they are equal in size.
+        # Either pa2 is strictly bigger than pa1 or they are equal in size.
         result = copy(pa2)
         for i in CartesianIndices(pa1.data)
             @inbounds if pa1.mask[i]
@@ -240,6 +357,16 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     return result
 end
 
+struct VarNamedTuple{Names,Values}
+    data::NamedTuple{Names,Values}
+end
+
+# TODO(mhauru) Since I define this, should I also define `isequal` and `hash`? Same for
+# PartialArrays.
+Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
+
+Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
+
 function make_leaf(value, ::PropertyLens{S}) where {S}
     return VarNamedTuple(NamedTuple{(S,)}((value,)))
 end
@@ -255,7 +382,7 @@ function make_leaf(value, optic::IndexLens{T}) where {T}
     # Check if any of the indices are ranges or colons. If yes, value needs to be an
     # AbstractArray. Otherwise it needs to be an individual value.
     et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
-    iarr = PartialArray(et, num_inds)
+    iarr = PartialArray{et,num_inds}()
     return setindex!!(iarr, value, optic)
 end
 
@@ -273,62 +400,35 @@ function Base.show(io::IO, vnt::VarNamedTuple)
     return print(io, ")")
 end
 
-Base.getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
+_getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 
 function varname_to_lens(name::VarName{S}) where {S}
     return _compose_no_identity(getoptic(name), PropertyLens{S}())
 end
 
-function Base.getindex(vnt::VarNamedTuple, name::VarName)
-    return getindex(vnt, varname_to_lens(name))
+function _getindex(vnt::VarNamedTuple, name::VarName)
+    return _getindex(vnt, varname_to_lens(name))
 end
-function Base.getindex(x::Union{VarNamedTuple,PartialArray}, optic::ComposedFunction)
-    subdata = getindex(x, optic.inner)
-    return getindex(subdata, optic.outer)
-end
-function Base.getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
-    return getindex(vnt.data, S)
+function _getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
+    return _getindex(vnt.data, S)
 end
 
-function Base.haskey(vnt::VarNamedTuple, name::VarName)
-    return haskey(vnt, varname_to_lens(name))
+function _haskey(vnt::VarNamedTuple, name::VarName)
+    return _haskey(vnt, varname_to_lens(name))
 end
 
-Base.haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
+_haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 
-function Base.haskey(vnt::VarNamedTuple, optic::ComposedFunction)
-    return haskey(vnt, optic.inner) && haskey(getindex(vnt, optic.inner), optic.outer)
+_haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = _haskey(vnt.data, S)
+_haskey(::VarNamedTuple, ::IndexLens) = false
+
+function _setindex!!(vnt::VarNamedTuple, value, name::VarName)
+    return _setindex!!(vnt, value, varname_to_lens(name))
 end
 
-Base.haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
-Base.haskey(::VarNamedTuple, ::IndexLens) = false
-
-# TODO(mhauru) This is type piracy.
-Base.getindex(arr::AbstractArray, optic::IndexLens) = getindex(arr, optic.indices...)
-
-# TODO(mhauru) This is type piracy.
-function BangBang.setindex!!(arr::AbstractArray, value, optic::IndexLens)
-    return BangBang.setindex!!(arr, value, optic.indices...)
-end
-
-function BangBang.setindex!!(vnt::VarNamedTuple, value, name::VarName)
-    return BangBang.setindex!!(vnt, value, varname_to_lens(name))
-end
-
-function BangBang.setindex!!(
-    vnt::Union{VarNamedTuple,PartialArray}, value, optic::ComposedFunction
-)
-    sub = if haskey(vnt, optic.inner)
-        BangBang.setindex!!(getindex(vnt, optic.inner), value, optic.outer)
-    else
-        make_leaf(value, optic.outer)
-    end
-    return BangBang.setindex!!(vnt, sub, optic.inner)
-end
-
-function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
+function _setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
     # I would like this to just read
-    # return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S))
+    # return VarNamedTuple(_setindex!!(vnt.data, value, S))
     # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
     # below?
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))))
@@ -338,9 +438,9 @@ function apply(func, vnt::VarNamedTuple, name::VarName)
     if !haskey(vnt.data, name.name)
         throw(KeyError(repr(name)))
     end
-    subdata = getindex(vnt, name)
+    subdata = _getindex(vnt, name)
     new_subdata = func(subdata)
-    return BangBang.setindex!!(vnt, new_subdata, name)
+    return _setindex!!(vnt, new_subdata, name)
 end
 
 function Base.map(func, vnt::VarNamedTuple)
@@ -365,7 +465,7 @@ function Base.keys(vnt::VarNamedTuple)
     return result
 end
 
-function Base.haskey(vnt::VarNamedTuple, name::VarName{S,Optic}) where {S,Optic}
+function _haskey(vnt::VarNamedTuple, name::VarName{S,Optic}) where {S,Optic}
     if !haskey(vnt.data, S)
         return false
     end
@@ -402,5 +502,36 @@ function _merge_recursive(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
     end
     return VarNamedTuple(result_data)
 end
+
+# The following methods, indexing with ComposedFunction, are exactly the same for
+# VarNamedTuple and PartialArray, since they just fall back on indexing with the outer and
+# inner lenses.
+const VNT_OR_PA = Union{VarNamedTuple,PartialArray}
+
+function _getindex(x::VNT_OR_PA, optic::ComposedFunction)
+    subdata = _getindex(x, optic.inner)
+    return _getindex(subdata, optic.outer)
+end
+
+function _setindex!!(vnt::VNT_OR_PA, value, optic::ComposedFunction)
+    sub = if _haskey(vnt, optic.inner)
+        _setindex!!(_getindex(vnt, optic.inner), value, optic.outer)
+    else
+        make_leaf(value, optic.outer)
+    end
+    return _setindex!!(vnt, sub, optic.inner)
+end
+
+function _haskey(vnt::VNT_OR_PA, optic::ComposedFunction)
+    return _haskey(vnt, optic.inner) && _haskey(_getindex(vnt, optic.inner), optic.outer)
+end
+
+# The entry points for getting, setting, and checking, using the familiar functions.
+Base.haskey(vnt::VarNamedTuple, key) = _haskey(vnt, key)
+Base.getindex(vnt::VarNamedTuple, inds...) = _getindex(vnt, inds...)
+BangBang.setindex!!(vnt::VarNamedTuple, value, inds...) = _setindex!!(vnt, value, inds...)
+Base.haskey(vnt::PartialArray, key) = _haskey(vnt, key)
+Base.getindex(vnt::PartialArray, inds...) = _getindex(vnt, inds...)
+BangBang.setindex!!(vnt::PartialArray, value, inds...) = _setindex!!(vnt, value, inds...)
 
 end

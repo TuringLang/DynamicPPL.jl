@@ -1,18 +1,32 @@
 module VarNamedTupleTests
 
 using Test: @inferred, @test, @test_throws, @testset
-using DynamicPPL: @varname, VarNamedTuple
+using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using BangBang: setindex!!
 
 @testset "VarNamedTuple" begin
+    @testset "Construction" begin
+        pa1 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}()
+        pa1 = setindex!!(pa1, 1.0, 16)
+        pa2 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}((16,))
+        pa2 = setindex!!(pa2, 1.0, 16)
+        @test pa1 == pa2
+    end
+
     @testset "Basic sets and gets" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 32.0, @varname(a)))
         @test @inferred(getindex(vnt, @varname(a))) == 32.0
+        @test haskey(vnt, @varname(a))
+        @test !haskey(vnt, @varname(b))
 
         vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(b)))
         @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
         @test @inferred(getindex(vnt, @varname(b[2]))) == 2
+        @test haskey(vnt, @varname(b))
+        @test haskey(vnt, @varname(b[1]))
+        @test haskey(vnt, @varname(b[1:3]))
+        @test !haskey(vnt, @varname(b[4]))
 
         vnt = @inferred(setindex!!(vnt, 64.0, @varname(a)))
         @test @inferred(getindex(vnt, @varname(a))) == 64.0
@@ -42,6 +56,8 @@ using BangBang: setindex!!
 
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i)))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
+        @test haskey(vnt, @varname(e.f[3].g.h[2].i))
+        @test !haskey(vnt, @varname(e.f[2].g.h[2].i))
 
         vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
