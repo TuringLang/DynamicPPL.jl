@@ -19,28 +19,24 @@ function _is_multiindex(::T) where {T<:Tuple}
     return any(x <: UnitRange || x <: Colon for x in T.parameters)
 end
 
-struct VarNamedTuple{T<:Function,Names,Values}
+struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
-    make_leaf::T
 end
 
 # TODO(mhauru) Since I define this, should I also define `isequal` and `hash`? Same for
 # PartialArrays.
-function Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
-    return vnt1.make_leaf === vnt2.make_leaf && vnt1.data == vnt2.data
-end
+Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 
-struct PartialArray{T<:Function,ElType,numdims}
+struct PartialArray{ElType,numdims}
     data::Array{ElType,numdims}
     mask::Array{Bool,numdims}
-    make_leaf::T
 end
 
-function PartialArray(eltype, num_dims, make_leaf=make_leaf_array)
+function PartialArray(eltype, num_dims)
     dims = ntuple(_ -> PARTIAL_ARRAY_DIM_GROWTH_FACTOR, num_dims)
     data = Array{eltype,num_dims}(undef, dims)
     mask = fill(false, dims)
-    return PartialArray(data, mask, make_leaf)
+    return PartialArray(data, mask)
 end
 
 Base.ndims(iarr::PartialArray) = ndims(iarr.data)
@@ -50,11 +46,11 @@ Base.ndims(iarr::PartialArray) = ndims(iarr.data)
 _internal_size(iarr::PartialArray, args...) = size(iarr.data, args...)
 
 function Base.copy(pa::PartialArray)
-    return PartialArray(copy(pa.data), copy(pa.mask), pa.make_leaf)
+    return PartialArray(copy(pa.data), copy(pa.mask))
 end
 
 function Base.:(==)(pa1::PartialArray, pa2::PartialArray)
-    if (pa1.make_leaf !== pa2.make_leaf) || (ndims(pa1) != ndims(pa2))
+    if ndims(pa1) != ndims(pa2)
         return false
     end
     size1 = _internal_size(pa1)
@@ -108,11 +104,11 @@ function _resize_partialarray(iarr::PartialArray, inds)
             @inbounds new_data[i] = iarr.data[i]
         end
     end
-    return PartialArray(new_data, new_mask, iarr.make_leaf)
+    return PartialArray(new_data, new_mask)
 end
 
 # The below implements the same functionality as above, but more performantly for 1D arrays.
-function _resize_partialarray(iarr::PartialArray{T,Eltype,1}, (ind,)) where {T,Eltype}
+function _resize_partialarray(iarr::PartialArray{Eltype,1}, (ind,)) where {Eltype}
     # Resize arrays to accommodate new indices.
     old_size = _internal_size(iarr, 1)
     min_size = max(old_size, _length_needed(ind))
@@ -147,7 +143,7 @@ function BangBang.setindex!!(iarr::PartialArray, value, inds::Vararg{INDEX_TYPES
     else
         iarr.mask[inds...] = true
     end
-    return PartialArray(new_data, iarr.mask, iarr.make_leaf)
+    return PartialArray(new_data, iarr.mask)
 end
 
 function Base.getindex(iarr::PartialArray, inds::Vararg{INDEX_TYPES})
@@ -194,11 +190,6 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
             ArgumentError("Cannot merge PartialArrays with different number of dimensions")
         )
     end
-    if pa1.make_leaf !== pa2.make_leaf
-        throw(
-            ArgumentError("Cannot merge PartialArrays with different make_leaf functions")
-        )
-    end
     num_dims = ndims(pa1)
     merge_size = ntuple(i -> max(_internal_size(pa1, i), _internal_size(pa2, i)), num_dims)
     result = if merge_size == _internal_size(pa2)
@@ -229,7 +220,7 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
             et = promote_type(eltype(pa1), eltype(pa2))
             new_data = Array{et,num_dims}(undef, merge_size)
             new_mask = fill(false, merge_size)
-            result = PartialArray(new_data, new_mask, pa2.make_leaf)
+            result = PartialArray(new_data, new_mask)
             for i in CartesianIndices(pa2.data)
                 @inbounds if pa2.mask[i]
                     result.mask[i] = true
@@ -249,26 +240,26 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     return result
 end
 
-function make_leaf_array(value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(NamedTuple{(S,)}((value,)), make_leaf_array)
+function make_leaf(value, ::PropertyLens{S}) where {S}
+    return VarNamedTuple(NamedTuple{(S,)}((value,)))
 end
-make_leaf_array(value, ::typeof(identity)) = value
-function make_leaf_array(value, optic::ComposedFunction)
-    sub = make_leaf_array(value, optic.outer)
-    return make_leaf_array(sub, optic.inner)
+make_leaf(value, ::typeof(identity)) = value
+function make_leaf(value, optic::ComposedFunction)
+    sub = make_leaf(value, optic.outer)
+    return make_leaf(sub, optic.inner)
 end
 
-function make_leaf_array(value, optic::IndexLens{T}) where {T}
+function make_leaf(value, optic::IndexLens{T}) where {T}
     inds = optic.indices
     num_inds = length(inds)
     # Check if any of the indices are ranges or colons. If yes, value needs to be an
     # AbstractArray. Otherwise it needs to be an individual value.
     et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
-    iarr = PartialArray(et, num_inds, make_leaf_array)
+    iarr = PartialArray(et, num_inds)
     return setindex!!(iarr, value, optic)
 end
 
-VarNamedTuple() = VarNamedTuple((;), make_leaf_array)
+VarNamedTuple() = VarNamedTuple((;))
 
 function Base.show(io::IO, vnt::VarNamedTuple)
     print(io, "(")
@@ -330,17 +321,17 @@ function BangBang.setindex!!(
     sub = if haskey(vnt, optic.inner)
         BangBang.setindex!!(getindex(vnt, optic.inner), value, optic.outer)
     else
-        vnt.make_leaf(value, optic.outer)
+        make_leaf(value, optic.outer)
     end
     return BangBang.setindex!!(vnt, sub, optic.inner)
 end
 
 function BangBang.setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
     # I would like this to just read
-    # return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S), vnt.make_leaf)
+    # return VarNamedTuple(BangBang.setindex!!(vnt.data, value, S))
     # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
     # below?
-    return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))), vnt.make_leaf)
+    return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))))
 end
 
 function apply(func, vnt::VarNamedTuple, name::VarName)
@@ -354,7 +345,7 @@ end
 
 function Base.map(func, vnt::VarNamedTuple)
     new_data = NamedTuple{keys(vnt.data)}(map(func, values(vnt.data)))
-    return VarNamedTuple(new_data, vnt.make_leaf)
+    return VarNamedTuple(new_data)
 end
 
 function Base.keys(vnt::VarNamedTuple)
@@ -409,7 +400,7 @@ function _merge_recursive(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
         end
         Accessors.@reset result_data[k] = val
     end
-    return VarNamedTuple(result_data, vnt2.make_leaf)
+    return VarNamedTuple(result_data)
 end
 
 end
