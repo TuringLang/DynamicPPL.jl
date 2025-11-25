@@ -101,6 +101,20 @@ using BangBang: setindex!!
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[3])))
         @test @inferred(getindex(vnt, @varname(m[2:3]))) == [1.0, 1.0]
         @test !haskey(vnt, @varname(m[1]))
+
+        # The below tests are mostly significant for the type stability aspect. For the last
+        # test to pass, PartialArray needs to actively tighten its eltype when possible.
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(n[1].a)))
+        @test @inferred(getindex(vnt, @varname(n[1].a))) == 1.0
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(n[2].a)))
+        @test @inferred(getindex(vnt, @varname(n[2].a))) == 1.0
+        # This can't be type stable, because n[1] has inhomogeneous types.
+        vnt = setindex!!(vnt, 1.0, @varname(n[1].b))
+        @test getindex(vnt, @varname(n[1].b)) == 1.0
+        # The setindex!! call can't be type stable either, but it should return a
+        # VarNamedTuple with a concrete element type, and hence getindex can be inferred.
+        vnt = setindex!!(vnt, 1.0, @varname(n[2].b))
+        @test @inferred(getindex(vnt, @varname(n[2].b))) == 1.0
     end
 
     @testset "equality" begin

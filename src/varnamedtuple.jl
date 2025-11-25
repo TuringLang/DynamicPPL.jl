@@ -179,6 +179,40 @@ function Base.hash(pa::PartialArray, h::UInt)
     return h
 end
 
+"""
+    _concretise_eltype!!(pa::PartialArray)
+
+Concretise the element type of a `PartialArray`.
+
+Returns a new `PartialArray` with the same data and mask as `pa`, but with its element type
+concretised to the most specific type that can hold all currently defined elements.
+
+Note that this function is fundamentally type unstable if the current element type of `pa`
+is not already concrete.
+
+The name has a `!!` not because it mutates its argument, but because the return value
+aliases memory with the argument, and is thus not independent of it.
+"""
+function _concretise_eltype!!(pa::PartialArray)
+    if isconcretetype(eltype(pa))
+        return pa
+    end
+    new_et = promote_type((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
+    # In other words, does it help to be more concrete, even if we aren't fully concrete?
+    if new_et === eltype(pa)
+        # The types of the elements do not allow for concretisation.
+        return pa
+    end
+    new_data = Array{new_et,ndims(pa)}(undef, _internal_size(pa))
+    @inbounds for i in eachindex(pa.mask)
+        if pa.mask[i]
+            new_data[i] = pa.data[i]
+        end
+    end
+    return PartialArray(new_data, pa.mask)
+end
+
 """Return the length needed in a dimension given an index."""
 _length_needed(i::Integer) = i
 _length_needed(r::UnitRange) = last(r)
@@ -283,7 +317,7 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     else
         pa.mask[inds...] = true
     end
-    return PartialArray(new_data, pa.mask)
+    return _concretise_eltype!!(PartialArray(new_data, pa.mask))
 end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge_recursive(x1, x2)
