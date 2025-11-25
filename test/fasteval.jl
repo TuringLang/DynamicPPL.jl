@@ -69,6 +69,45 @@ using Mooncake: Mooncake
     end
 end
 
+@testset "LogDensityFunction: interface" begin
+    # miscellaneous parts of the LogDensityProblems interface
+    @testset "dimensions" begin
+        @model function m1()
+            x ~ Normal()
+            y ~ Normal()
+            return nothing
+        end
+        model = m1()
+        ldf = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.dimension(ldf) == 2
+
+        @model function m2()
+            x ~ Dirichlet(ones(4))
+            y ~ Categorical(x)
+            return nothing
+        end
+        model = m2()
+        ldf = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.dimension(ldf) == 5
+        linked_vi = DynamicPPL.link!!(VarInfo(model), model)
+        ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, linked_vi)
+        @test LogDensityProblems.dimension(ldf) == 4
+    end
+
+    @testset "capabilities" begin
+        @model f() = x ~ Normal()
+        model = f()
+        # No adtype
+        ldf = DynamicPPL.LogDensityFunction(model)
+        @test LogDensityProblems.capabilities(typeof(ldf)) ==
+            LogDensityProblems.LogDensityOrder{0}()
+        # With adtype
+        ldf = DynamicPPL.LogDensityFunction(model; adtype=AutoForwardDiff())
+        @test LogDensityProblems.capabilities(typeof(ldf)) ==
+            LogDensityProblems.LogDensityOrder{1}()
+    end
+end
+
 @testset "LogDensityFunction: performance" begin
     if Threads.nthreads() == 1
         # Evaluating these three models should not lead to any allocations (but only when
