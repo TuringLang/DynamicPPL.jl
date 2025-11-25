@@ -157,38 +157,44 @@ struct LogDensityFunction{
     _adprep::ADP
     _dim::Int
 
+    """
+        function LogDensityFunction(
+            model::Model,
+            getlogdensity::Function=getlogjoint_internal,
+            link::Union{Bool,Set{VarName}}=false;
+            adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        )
+
+    Generate a `LogDensityFunction` for the given model.
+
+    The `link` argument specifies which VarNames in the model should be linked. This can
+    either be a Bool (if `link=true` all variables are linked; if `link=false` all variables
+    are unlinked); or a `Set{VarName}` specifying exactly which variables should be linked.
+    Any sub-variables of the set's elements will be linked.
+    """
     function LogDensityFunction(
         model::Model,
         getlogdensity::Function=getlogjoint_internal,
-        varinfo::AbstractVarInfo=VarInfo(model);
+        link::Union{Bool,Set{VarName}}=false;
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
-        # Figure out which variable corresponds to which index, and
-        # which variables are linked.
-        all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
-        # Figure out if all variables are linked, unlinked, or mixed
-        link_statuses = Bool[]
-        for ral in all_iden_ranges
-            push!(link_statuses, ral.is_linked)
-        end
-        for (_, ral) in all_ranges
-            push!(link_statuses, ral.is_linked)
-        end
-        Tlink = if all(link_statuses)
-            true
-        elseif all(!s for s in link_statuses)
-            false
-        else
-            nothing
-        end
-        x = [val for val in varinfo[:]]
+        # Run the model once to determine variable ranges and linking. Because the
+        # parameters stored in the LogDensityFunction are never used, we can just use
+        # InitFromPrior to create new values. The actual values don't matter, only the
+        # length, since that's used for gradient prep.
+        vi = OnlyAccsVarInfo(AccumulatorTuple((RangeLinkedValueAcc(link),)))
+        _, vi = DynamicPPL.init!!(model, vi, InitFromPrior())
+        rlvacc = first(vi.accs)
+        Tlink, all_iden_ranges, all_ranges, x = get_data(rlvacc)
+        @info Tlink, all_iden_ranges, all_ranges, x
+        # That gives us all the information we need to create the LogDensityFunction.
         dim = length(x)
         # Do AD prep if needed
         prep = if adtype === nothing
             nothing
         else
             # Make backend-specific tweaks to the adtype
-            adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
+            adtype = DynamicPPL.tweak_adtype(adtype, model, x)
             DI.prepare_gradient(
                 LogDensityAt{Tlink}(model, getlogdensity, all_iden_ranges, all_ranges),
                 adtype,
@@ -293,7 +299,7 @@ end
     tweak_adtype(
         adtype::ADTypes.AbstractADType,
         model::Model,
-        varinfo::AbstractVarInfo,
+        params::AbstractVector
     )
 
 Return an 'optimised' form of the adtype. This is useful for doing
@@ -304,79 +310,108 @@ model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtype
+tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVector) = adtype
 
-######################################################
-# Helper functions to extract ranges and link status #
-######################################################
+##############################
+# RangeLinkedVal accumulator #
+##############################
 
-# This fails for SimpleVarInfo, but honestly there is no reason to support that here. The
-# fact is that evaluation doesn't use a VarInfo, it only uses it once to generate the ranges
-# and link status. So there is no motivation to use SimpleVarInfo inside a
-# LogDensityFunction any more, we can just always use typed VarInfo. In fact one could argue
-# that there is no purpose in supporting untyped VarInfo either.
-"""
-    get_ranges_and_linked(varinfo::VarInfo)
-
-Given a `VarInfo`, extract the ranges of each variable in the vectorised parameter
-representation, along with whether each variable is linked or unlinked.
-
-This function should return a tuple containing:
-
-- A NamedTuple mapping VarNames with identity optics to their corresponding `RangeAndLinked`
-- A Dict mapping all other VarNames to their corresponding `RangeAndLinked`.
-"""
-function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = 1
-    for sym in syms
-        md = varinfo.metadata[sym]
-        this_md_iden, this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
-        all_iden_ranges = merge(all_iden_ranges, this_md_iden)
-        all_ranges = merge(all_ranges, this_md_others)
-    end
-    return all_iden_ranges, all_ranges
+struct RangeLinkedValueAcc{L<:Union{Bool,Set{VarName}},N<:NamedTuple} <: AbstractAccumulator
+    should_link::L
+    current_index::Int
+    iden_varname_ranges::N
+    varname_ranges::Dict{VarName,RangeAndLinked}
+    values::Vector{Any}
 end
-function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
-    all_iden, all_others, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
-    return all_iden, all_others
+function RangeLinkedValueAcc(should_link::Union{Bool,Set{VarName}})
+    return RangeLinkedValueAcc(should_link, 1, (;), Dict{VarName,RangeAndLinked}(), Any[])
 end
-function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = start_offset
-    for (vn, idx) in md.idcs
-        is_linked = md.is_transformed[idx]
-        range = md.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
-        offset += length(range)
+
+function get_data(rlvacc::RangeLinkedValueAcc)
+    link_statuses = Bool[]
+    for ral in rlvacc.iden_varname_ranges
+        push!(link_statuses, ral.is_linked)
     end
-    return all_iden_ranges, all_ranges, offset
+    for (_, ral) in rlvacc.varname_ranges
+        push!(link_statuses, ral.is_linked)
+    end
+    Tlink = if all(link_statuses)
+        true
+    elseif all(!s for s in link_statuses)
+        false
+    else
+        nothing
+    end
+    return (
+        Tlink, rlvacc.iden_varname_ranges, rlvacc.varname_ranges, [v for v in rlvacc.values]
+    )
 end
-function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = start_offset
-    for (vn, idx) in vnv.varname_to_index
-        is_linked = vnv.is_unconstrained[idx]
-        range = vnv.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
-        offset += length(range)
+
+accumulator_name(::Type{<:RangeLinkedValueAcc}) = :RangeLinkedValueAcc
+accumulate_observe!!(acc::RangeLinkedValueAcc, dist, val, vn) = acc
+function accumulate_assume!!(
+    acc::RangeLinkedValueAcc, val, logjac, vn::VarName{sym}, dist::Distribution
+) where {sym}
+    link_this_vn = if acc.should_link isa Bool
+        acc.should_link
+    else
+        # Set{VarName}
+        any(should_link_vn -> subsumes(should_link_vn, vn), acc.should_link)
     end
-    return all_iden_ranges, all_ranges, offset
+    val = if link_this_vn
+        to_linked_vec_transform(dist)(val)
+    else
+        to_vec_transform(dist)(val)
+    end
+    new_values = vcat(acc.values, val)
+    len = length(val)
+    range = (acc.current_index):(acc.current_index + len - 1)
+    ral = RangeAndLinked(range, link_this_vn)
+    iden_varnames, other_varnames = if getoptic(vn) === identity
+        merge(acc.iden_varname_ranges, (sym => ral,)), acc.varname_ranges
+    else
+        acc.varname_ranges[vn] = ral
+        acc.iden_varname_ranges, acc.varname_ranges
+    end
+    return RangeLinkedValueAcc(
+        acc.should_link, acc.current_index + len, iden_varnames, other_varnames, new_values
+    )
+end
+function Base.copy(acc::RangeLinkedValueAcc)
+    return RangeLinkedValueAcc(
+        acc.should_link,
+        acc.current_index,
+        acc.iden_varname_ranges,
+        copy(acc.varname_ranges),
+        copy(acc.values),
+    )
+end
+_zero(acc::RangeLinkedValueAcc) = RangeLinkedValueAcc(acc.should_link)
+reset(acc::RangeLinkedValueAcc) = _zero(acc)
+split(acc::RangeLinkedValueAcc) = _zero(acc)
+function combine(acc1::RangeLinkedValueAcc, acc2::RangeLinkedValueAcc)
+    new_values = vcat(acc1.values, acc2.values)
+    new_current_index = acc1.current_index + acc2.current_index - 1
+    acc2_iden_varnames_shifted = NamedTuple(
+        k => RangeAndLinked((ral.range .+ (acc1.current_index - 1)), ral.is_linked) for
+        (k, ral) in pairs(acc2.iden_varname_ranges)
+    )
+    new_iden_varname_ranges = merge(acc1.iden_varname_ranges, acc2_iden_varnames_shifted)
+    acc2_varname_ranges_shifted = Dict{VarName,RangeAndLinked}()
+    for (k, ral) in acc2.varname_ranges
+        acc2_varname_ranges_shifted[k] = RangeAndLinked(
+            (ral.range .+ (acc1.current_index - 1)), ral.is_linked
+        )
+    end
+    new_varname_ranges = merge(acc1.varname_ranges, acc2_varname_ranges_shifted)
+    return RangeLinkedValueAcc(
+        # TODO: using acc1.should_link is not really 'correct', but `should_link` only
+        # affects model evaluation and `combine` only runs at the end of model evaluation,
+        # so it shouldn't matter
+        acc1.should_link,
+        new_current_index,
+        new_iden_varname_ranges,
+        new_varname_ranges,
+        new_values,
+    )
 end
