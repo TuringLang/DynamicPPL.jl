@@ -137,7 +137,7 @@ end
 """
     ParamsWithStats(
         param_vector::AbstractVector,
-        ldf::DynamicPPL.Experimental.FastLDF,
+        ldf::DynamicPPL.LogDensityFunction,
         stats::NamedTuple=NamedTuple();
         include_colon_eq::Bool=true,
         include_log_probs::Bool=true,
@@ -156,7 +156,7 @@ via `unflatten` plus re-evaluation. It is faster for two reasons:
 """
 function ParamsWithStats(
     param_vector::AbstractVector,
-    ldf::DynamicPPL.Experimental.FastLDF,
+    ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
@@ -174,9 +174,7 @@ function ParamsWithStats(
     else
         (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
     end
-    _, vi = DynamicPPL.Experimental.fast_evaluate!!(
-        ldf.model, strategy, AccumulatorTuple(accs)
-    )
+    _, vi = DynamicPPL.init!!(ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy)
     params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
     if include_log_probs
         stats = merge(

@@ -66,7 +66,7 @@ using Test
     end
 end
 
-@testset "ParamsWithStats from FastLDF" begin
+@testset "ParamsWithStats from LogDensityFunction" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         unlinked_vi = VarInfo(m)
         @testset "$islinked" for islinked in (false, true)
@@ -77,9 +77,9 @@ end
             end
             params = [x for x in vi[:]]
 
-            # Get the ParamsWithStats using FastLDF
-            fldf = DynamicPPL.Experimental.FastLDF(m, getlogjoint, vi)
-            ps = ParamsWithStats(params, fldf)
+            # Get the ParamsWithStats using LogDensityFunction
+            ldf = DynamicPPL.LogDensityFunction(m, getlogjoint, vi)
+            ps = ParamsWithStats(params, ldf)
 
             # Check that length of parameters is as expected
             @test length(ps.params) == length(keys(vi))
