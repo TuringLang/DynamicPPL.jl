@@ -391,37 +391,57 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     return result
 end
 
+function Base.keys(pa::PartialArray)
+    inds = findall(pa.mask)
+    lenses = map(x -> IndexLens(Tuple(x)), inds)
+    ks = Any[]
+    for l in lenses
+        val = getindex(pa.data, l.indices...)
+        if val isa VarNamedTuple
+            subkeys = keys(val)
+            for vn in subkeys
+                lens = varname_to_lens(vn)
+                push!(ks, _compose_no_identity(lens, l))
+            end
+        else
+            push!(ks, l)
+        end
+    end
+    return ks
+end
+
+"""
+    VarNamedTuple{Names,Values}
+
+A `NamedTuple`-like structure with `VarName` keys.
+
+`VarNamedTuple` is a data structure for storing arbitrary data, keyed by `VarName`s, in an
+efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`, and
+`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Other notable methods
+are `merge`, which recursively merges two `VarNamedTuple`s.
+
+The one major limitation is that indexing by `VarName`s with `Colon`s, (e.g. `a[:]`) is not
+supported. This is because the meaning of `a[:]` is ambiguous if only some elements of `a`,
+say `a[1]` and `a[3]`, are defined.
+
+`setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
+heterogeneous data under different indices of the same symbol. That is, if one either
+
+* sets `a[1]` and `a[2]` to be of different types, or
+* sets `a[1].b` and `a[2].c`, without setting `a[1].c`. or `a[2].b`,
+
+then getting values for `a[1]` or `a[2]` will not be type stable.
+"""
 struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
 end
 
-# TODO(mhauru) Since I define this, should I also define `isequal` and `hash`? Same for
-# PartialArrays.
-Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
-
-Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
-
-function make_leaf(value, ::PropertyLens{S}) where {S}
-    return VarNamedTuple(NamedTuple{(S,)}((value,)))
-end
-make_leaf(value, ::typeof(identity)) = value
-function make_leaf(value, optic::ComposedFunction)
-    sub = make_leaf(value, optic.outer)
-    return make_leaf(sub, optic.inner)
-end
-
-function make_leaf(value, optic::IndexLens{T}) where {T}
-    inds = optic.indices
-    num_inds = length(inds)
-    # Check if any of the indices are ranges or colons. If yes, value needs to be an
-    # AbstractArray. Otherwise it needs to be an individual value.
-    et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
-    iarr = PartialArray{et,num_inds}()
-    return setindex!!(iarr, value, optic)
-end
-
 VarNamedTuple() = VarNamedTuple((;))
 
+Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
+Base.hash(vnt::VarNamedTuple, h::UInt) = hash(vnt.data, h)
+
+# TODO(mhauru) Rework this printing.
 function Base.show(io::IO, vnt::VarNamedTuple)
     print(io, "(")
     for (i, (name, value)) in enumerate(pairs(vnt.data))
@@ -434,26 +454,22 @@ function Base.show(io::IO, vnt::VarNamedTuple)
     return print(io, ")")
 end
 
-_getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
+"""
+    varname_to_lens(name::VarName{S}) where {S}
 
+Convert a `VarName` to an `Accessor` lens, wrapping the first symdol in a `PropertyLens`.
+"""
 function varname_to_lens(name::VarName{S}) where {S}
     return _compose_no_identity(getoptic(name), PropertyLens{S}())
 end
 
-function _getindex(vnt::VarNamedTuple, name::VarName)
-    return _getindex(vnt, varname_to_lens(name))
-end
-function _getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S}
-    return _getindex(vnt.data, S)
-end
+_getindex(vnt::VarNamedTuple, name::VarName) = _getindex(vnt, varname_to_lens(name))
+_getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = _getindex(vnt.data, S)
+_getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 
-function _haskey(vnt::VarNamedTuple, name::VarName)
-    return _haskey(vnt, varname_to_lens(name))
-end
-
-_haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
-
+_haskey(vnt::VarNamedTuple, name::VarName) = _haskey(vnt, varname_to_lens(name))
 _haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = _haskey(vnt.data, S)
+_haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 _haskey(::VarNamedTuple, ::IndexLens) = false
 
 function _setindex!!(vnt::VarNamedTuple, value, name::VarName)
@@ -468,59 +484,7 @@ function _setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((value,))))
 end
 
-function apply(func, vnt::VarNamedTuple, name::VarName)
-    if !haskey(vnt.data, name.name)
-        throw(KeyError(repr(name)))
-    end
-    subdata = _getindex(vnt, name)
-    new_subdata = func(subdata)
-    return _setindex!!(vnt, new_subdata, name)
-end
-
-function Base.map(func, vnt::VarNamedTuple)
-    new_data = NamedTuple{keys(vnt.data)}(map(func, values(vnt.data)))
-    return VarNamedTuple(new_data)
-end
-
-function Base.keys(vnt::VarNamedTuple)
-    result = ()
-    for sym in keys(vnt.data)
-        subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            subkeys = keys(subdata)
-            result = (
-                (AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys)..., result...
-            )
-        else
-            result = (VarName{sym}(), result...)
-        end
-        subkeys = keys(vnt.data[sym])
-    end
-    return result
-end
-
-function _haskey(vnt::VarNamedTuple, name::VarName{S,Optic}) where {S,Optic}
-    if !haskey(vnt.data, S)
-        return false
-    end
-    subdata = vnt.data[S]
-    return if Optic === typeof(identity)
-        true
-    elseif Optic <: IndexLens
-        try
-            AbstractPPL.getoptic(name)(subdata)
-            true
-        catch e
-            if e isa BoundsError || e isa KeyError
-                false
-            else
-                rethrow(e)
-            end
-        end
-    else
-        haskey(subdata, AbstractPPL.unprefix(name, VarName{S}()))
-    end
-end
+Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
 
 # TODO(mhauru) Check the performance of this, and make it into a generated function if
 # necessary.
@@ -535,6 +499,50 @@ function _merge_recursive(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
         Accessors.@reset result_data[k] = val
     end
     return VarNamedTuple(result_data)
+end
+
+"""
+    apply!!(func, vnt::VarNamedTuple, name::VarName)
+
+Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name`.
+
+```jldoctest
+julia> vnt = VarNamedTuple()
+()
+
+julia> vnt = setindex!!(vnt, [1,2,3], @varname(a))
+(a -> [1, 2, 3])
+
+julia> VarNamedTuples.apply!!(x -> x .+ 1, vnt, @varname(a))
+(a -> [2, 3, 4])
+```
+"""
+function apply!!(func, vnt::VarNamedTuple, name::VarName)
+    if !haskey(vnt, name)
+        throw(KeyError(repr(name)))
+    end
+    subdata = _getindex(vnt, name)
+    new_subdata = func(subdata)
+    return _setindex!!(vnt, new_subdata, name)
+end
+
+function Base.keys(vnt::VarNamedTuple)
+    result = ()
+    for sym in keys(vnt.data)
+        subdata = vnt.data[sym]
+        if subdata isa VarNamedTuple
+            subkeys = keys(subdata)
+            result = (
+                result..., (AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys)...
+            )
+        elseif subdata isa PartialArray
+            subkeys = keys(subdata)
+            result = (result..., (VarName{sym}(lens) for lens in subkeys)...)
+        else
+            result = (result..., VarName{sym}())
+        end
+    end
+    return result
 end
 
 # The following methods, indexing with ComposedFunction, are exactly the same for
@@ -561,11 +569,30 @@ function _haskey(vnt::VNT_OR_PA, optic::ComposedFunction)
 end
 
 # The entry points for getting, setting, and checking, using the familiar functions.
-Base.haskey(vnt::VarNamedTuple, key) = _haskey(vnt, key)
-Base.getindex(vnt::VarNamedTuple, inds...) = _getindex(vnt, inds...)
-BangBang.setindex!!(vnt::VarNamedTuple, value, inds...) = _setindex!!(vnt, value, inds...)
+Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
+Base.getindex(vnt::VarNamedTuple, vn::VarName) = _getindex(vnt, vn)
+BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName) = _setindex!!(vnt, value, vn)
 Base.haskey(vnt::PartialArray, key) = _haskey(vnt, key)
 Base.getindex(vnt::PartialArray, inds...) = _getindex(vnt, inds...)
 BangBang.setindex!!(vnt::PartialArray, value, inds...) = _setindex!!(vnt, value, inds...)
+
+function make_leaf(value, ::PropertyLens{S}) where {S}
+    return VarNamedTuple(NamedTuple{(S,)}((value,)))
+end
+make_leaf(value, ::typeof(identity)) = value
+function make_leaf(value, optic::ComposedFunction)
+    sub = make_leaf(value, optic.outer)
+    return make_leaf(sub, optic.inner)
+end
+
+function make_leaf(value, optic::IndexLens{T}) where {T}
+    inds = optic.indices
+    num_inds = length(inds)
+    # Check if any of the indices are ranges or colons. If yes, value needs to be an
+    # AbstractArray. Otherwise it needs to be an individual value.
+    et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
+    iarr = PartialArray{et,num_inds}()
+    return setindex!!(iarr, value, optic)
+end
 
 end

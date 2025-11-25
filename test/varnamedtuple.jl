@@ -236,6 +236,87 @@ using BangBang: setindex!!
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
         @test merge(vnt2, vnt1) == expected_merge_21
     end
+
+    @testset "keys" begin
+        vnt = VarNamedTuple()
+        @test keys(vnt) == ()
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        @test keys(vnt) == (@varname(a),)
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
+        @test keys(vnt) == (@varname(a), @varname(b))
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, 15, @varname(b[2]))
+        @test keys(vnt) == (@varname(a), @varname(b))
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, [10], @varname(c.x.y))
+        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y))
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, -1.0, @varname(d[4]))
+        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y), @varname(d[4]))
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
+        @test keys(vnt) == (
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+        )
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
+        @test keys(vnt) == (
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+        )
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, 1.0, @varname(j[6]))
+        @test keys(vnt) == (
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+        )
+        @test all(x -> haskey(vnt, x), keys(vnt))
+
+        vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
+        @test keys(vnt) == (
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+            @varname(n[2].a),
+        )
+        @test all(x -> haskey(vnt, x), keys(vnt))
+    end
 end
 
 end
