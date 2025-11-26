@@ -937,10 +937,7 @@ Returns a tuple of the model's return value, plus the updated `varinfo` object.
 )
     ctx = InitContext(rng, strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
-    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
-    # it _should_ do, but this is wrong regardless.
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
-    return if Threads.nthreads() > 1
+    return if _requires_threadsafe(model)
         # TODO(penelopeysm): The logic for setting eltype of accs is very similar to that
         # used in `unflatten`. The reason why we need it here is because the VarInfo `vi`
         # won't have been filled with parameters prior to `init!!` being called.
