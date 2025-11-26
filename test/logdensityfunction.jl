@@ -147,7 +147,7 @@ end
         vi = VarInfo(model)
         ldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
         x = vi[:]
-        bench = median(@be LogDensityProblems.logdensity(ldf, x))
+        bench = median(@be LogDensityProblems.logdensity($ldf, $x))
         @test iszero(bench.allocs)
     end
 end

@@ -724,7 +724,7 @@ function build_output(modeldef, linenumbernode)
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model)($name, $args_nt; $(kwargs_inclusion...))
+        return $(DynamicPPL.Model){false}($name, $args_nt; $(kwargs_inclusion...))
     end
 
     return MacroTools.@q begin

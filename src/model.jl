@@ -46,12 +46,12 @@ struct Model{
     context::Ctx
 
     @doc """
-        Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
+        Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
 
     Create a model with evaluation function `f` and missing arguments overwritten by
     `missings`.
     """
-    function Model{missings,Threaded}(
+    function Model{Threaded,missings}(
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
@@ -71,32 +71,27 @@ Create a model with evaluation function `f` and missing arguments deduced from `
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-@generated function Model(
+@generated function Model{Threaded}(
     f::F,
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-    threadsafe::Bool=false,
-) where {F,argnames,Targs,kwargnames,Tkwargs}
+) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
     )
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...),threadsafe}(
+    return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
         f, args, defaults, context
     ))
 end
 
-function Model(
-    f,
-    args::NamedTuple,
-    context::AbstractContext=DefaultContext(),
-    threadsafe=false;
-    kwargs...,
-)
-    return Model(f, args, NamedTuple(kwargs), context, threadsafe)
+function Model{Threaded}(
+    f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
+) where {Threaded}
+    return Model{Threaded}(f, args, NamedTuple(kwargs), context)
 end
 
 function _requires_threadsafe(
@@ -112,7 +107,7 @@ Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context, _requires_threadsafe(model))
+    return Model{_requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
 end
 
 """
@@ -148,7 +143,7 @@ function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
     return if _requires_threadsafe(model) == threadsafe
         model
     else
-        Model{M,threadsafe}(model.f, model.args, model.defaults, model.context)
+        Model{threadsafe,M}(model.f, model.args, model.defaults, model.context)
     end
 end
 
@@ -955,9 +950,9 @@ Returns a tuple of the model's return value, plus the updated `varinfo` object.
         vi = DynamicPPL.setaccs!!(vi, accs)
         tsvi = ThreadSafeVarInfo(resetaccs!!(vi))
         retval, tsvi_new = DynamicPPL._evaluate!!(model, tsvi)
-        return retval, setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
+        retval, setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
     else
-        return DynamicPPL._evaluate!!(model, resetaccs!!(vi))
+        DynamicPPL._evaluate!!(model, resetaccs!!(vi))
     end
 end
 @inline function init!!(
