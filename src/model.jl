@@ -921,7 +921,7 @@ If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-@inline function init!!(
+function init!!(
     # Note that this `@inline` is mandatory for performance, especially for
     # LogDensityFunction. If it's not inlined, it leads to extra allocations (even for
     # trivial models) and much slower runtime.
@@ -932,30 +932,9 @@ Returns a tuple of the model's return value, plus the updated `varinfo` object.
 )
     ctx = InitContext(rng, strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
-    return if _requires_threadsafe(model)
-        # TODO(penelopeysm): The logic for setting eltype of accs is very similar to that
-        # used in `unflatten`. The reason why we need it here is because the VarInfo `vi`
-        # won't have been filled with parameters prior to `init!!` being called.
-        #
-        # Note that this eltype promotion is only needed for threadsafe evaluation. In an
-        # ideal world, this code should be handled inside `evaluate_threadsafe!!` or a
-        # similar method. In other words, it should not be here, and it should not be inside
-        # `unflatten` either. The problem is performance. Shifting this code around can have
-        # massive, inexplicable, impacts on performance. This should be investigated
-        # properly.
-        param_eltype = DynamicPPL.get_param_eltype(strategy)
-        accs = map(vi.accs) do acc
-            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
-        end
-        vi = DynamicPPL.setaccs!!(vi, accs)
-        tsvi = ThreadSafeVarInfo(resetaccs!!(vi))
-        retval, tsvi_new = DynamicPPL._evaluate!!(model, tsvi)
-        retval, setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
-    else
-        DynamicPPL._evaluate!!(model, resetaccs!!(vi))
-    end
+    return DynamicPPL.evaluate!!(model, vi)
 end
-@inline function init!!(
+function init!!(
     model::Model, vi::AbstractVarInfo, strategy::AbstractInitStrategy=InitFromPrior()
 )
     # This `@inline` is also mandatory for performance
@@ -975,6 +954,22 @@ Returns a tuple of the model's return value, plus the updated `varinfo`
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return if _requires_threadsafe(model)
+        # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
+        # a gradient type of some AD backend.
+        # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!
+        # for ThreadSafeVarInfo. In that one, if the map produces e.g a ForwardDiff.Dual, but
+        # the accumulators in the VarInfo are plain floats, we error since we can't change the
+        # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
+        # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
+        # plain ugly and hacky.
+        # The below line is finicky for type stability. For instance, assigning the eltype to
+        # convert to into an intermediate variable makes this unstable (constant propagation)
+        # fails. Take care when editing.
+        param_eltype = DynamicPPL.get_param_eltype(varinfo, model.context)
+        accs = map(DynamicPPL.getaccs(varinfo)) do acc
+            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
+        end
+        varinfo = DynamicPPL.setaccs!!(varinfo, accs)
         wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
         result, wrapper_new = _evaluate!!(model, wrapper)
         # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
