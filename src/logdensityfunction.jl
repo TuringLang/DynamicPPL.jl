@@ -106,42 +106,42 @@ struct LogDensityFunction{
     adtype::AD
     "(internal use only) gradient preparation object for the model"
     prep::Union{Nothing,DI.GradientPrep}
+end
 
-    function LogDensityFunction(
-        model::Model,
-        varinfo::AbstractVarInfo=VarInfo(model),
-        context::AbstractContext=leafcontext(model.context);
-        adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
-    )
-        if adtype === nothing
-            prep = nothing
+function LogDensityFunction(
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model),
+    context::AbstractContext=leafcontext(model.context);
+    adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+)
+    if adtype === nothing
+        prep = nothing
+    else
+        # Make backend-specific tweaks to the adtype
+        adtype = tweak_adtype(adtype, model, varinfo, context)
+        # Check whether it is supported
+        is_supported(adtype) ||
+            @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
+        # Get a set of dummy params to use for prep
+        x = map(identity, varinfo[:])
+        if use_closure(adtype)
+            prep = DI.prepare_gradient(
+                x -> logdensity_at(x, model, varinfo, context), adtype, x
+            )
         else
-            # Make backend-specific tweaks to the adtype
-            adtype = tweak_adtype(adtype, model, varinfo, context)
-            # Check whether it is supported
-            is_supported(adtype) ||
-                @warn "The AD backend $adtype is not officially supported by DynamicPPL. Gradient calculations may still work, but compatibility is not guaranteed."
-            # Get a set of dummy params to use for prep
-            x = map(identity, varinfo[:])
-            if use_closure(adtype)
-                prep = DI.prepare_gradient(
-                    x -> logdensity_at(x, model, varinfo, context), adtype, x
-                )
-            else
-                prep = DI.prepare_gradient(
-                    logdensity_at,
-                    adtype,
-                    x,
-                    DI.Constant(model),
-                    DI.Constant(varinfo),
-                    DI.Constant(context),
-                )
-            end
+            prep = DI.prepare_gradient(
+                logdensity_at,
+                adtype,
+                x,
+                DI.Constant(model),
+                DI.Constant(varinfo),
+                DI.Constant(context),
+            )
         end
-        return new{typeof(model),typeof(varinfo),typeof(context),typeof(adtype)}(
-            model, varinfo, context, adtype, prep
-        )
     end
+    return LogDensityFunction{typeof(model),typeof(varinfo),typeof(context),typeof(adtype)}(
+        model, varinfo, context, adtype, prep
+    )
 end
 
 """
@@ -245,9 +245,11 @@ model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(
+function tweak_adtype(
     adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo, ::AbstractContext
-) = adtype
+)
+    adtype
+end
 
 """
     use_closure(adtype::ADTypes.AbstractADType)
