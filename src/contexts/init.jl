@@ -223,6 +223,12 @@ end
 A struct that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
 
+The type parameter `Tlink` can be either `true` or `false`, to mark that the variables in
+this `VectorWithRanges` are linked/not linked, or `nothing` if either the linking status is
+not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
+affect functionality or correctness, but causes more work to be done at runtime, with
+possible impacts on type stability and performance.
+
 In the simplest case, this could be accomplished only with a single dictionary mapping
 VarNames to ranges and link status. However, for performance reasons, we separate out
 VarNames with identity optics into a NamedTuple (`iden_varname_ranges`). All
@@ -242,6 +248,13 @@ struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
     function VectorWithRanges{Tlink}(
         iden_varname_ranges::N, varname_ranges::Dict{VarName,RangeAndLinked}, vect::T
     ) where {Tlink,N,T}
+        if !(Tlink isa Union{Bool,Nothing})
+            throw(
+                ArgumentError(
+                    "VectorWithRanges type parameter has to be one of `true`, `false`, or `nothing`.",
+                ),
+            )
+        end
         return new{Tlink,N,T}(iden_varname_ranges, varname_ranges, vect)
     end
 end
