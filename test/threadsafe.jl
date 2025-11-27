@@ -12,6 +12,16 @@
         @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
+    @testset "setthreadsafe" begin
+        @model f() = x ~ Normal()
+        model = f()
+        @test !DynamicPPL._requires_threadsafe(model)
+        model = setthreadsafe(model, true)
+        @test DynamicPPL._requires_threadsafe(model)
+        model = setthreadsafe(model, false)
+        @test !DynamicPPL._requires_threadsafe(model)
+    end
+
     # TODO: Add more tests of the public API
     @testset "API" begin
         vi = VarInfo(gdemo_default)
@@ -41,8 +51,6 @@
     end
 
     @testset "model" begin
-        println("Peforming threading tests with $(Threads.nthreads()) threads")
-
         x = rand(10_000)
 
         @model function wthreads(x)
