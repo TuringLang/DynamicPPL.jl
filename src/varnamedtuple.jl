@@ -43,8 +43,8 @@ nested containers, and calls itself recursively on all elements that are found i
 `x1` and `x2`.
 
 In other words, if both `x` and `y` are collections with the key `a`, `Base.merge(x, y)[a]`
-is `y[a]`, whereas `_merge_recursive(x, y)[a]` be `_merge_recursive(x[a], y[a])`, unless
-no specific method is defined for the type of `x` and `y`, in which case
+is `y[a]`, whereas `_merge_recursive(x, y)[a]` will be `_merge_recursive(x[a], y[a])`,
+unless no specific method is defined for the type of `x` and `y`, in which case
 `_merge_recursive(x, y) === y`
 """
 _merge_recursive(_, x2) = x2
@@ -81,12 +81,18 @@ way of saying whether the right hand side is of an acceptable size or not.
 The fact that its size is ill-defined also means that `PartialArray` is not a subtype of
 `AbstractArray`.
 
-All indexing into `PartialArray`s are done with `getindex` and `setindex!!`. `setindex!`,
+All indexing into `PartialArray`s is done with `getindex` and `setindex!!`. `setindex!`,
 `push!`, etc. are not defined. The element type of a `PartialArray` will change as needed
 under `setindex!!` to accomoddate the new values.
 
 Like `Base.Array`s, `PartialArray`s have a well-defined, compile-time-known element type
-`ElType` and number of dimensions `numdims`.
+`ElType` and number of dimensions `numdims`. Indices into a `PartialArray` must have exactly
+`numdims` elements.
+
+If the element type of a `PartialArray` is not concrete, any call to `setindex!!` will check
+if, after the new value has been set, the element type can be made more concrete. If so,
+a new `PartialArray` with a more concrete element type is returned. Thus the element type
+of any `PartialArray` should always be as concrete as is allowed by the elements in it.
 
 The internal implementation of an `PartialArray` consists of two arrays: one holding the
 data and the other one being a boolean mask indicating which elements are defined. These
@@ -113,13 +119,20 @@ struct PartialArray{ElType,num_dims}
 end
 
 """
-    PartialArray{ElType,num_dims}(min_size=nothing)
+    PartialArray{ElType,num_dims}(args::Vararg{Pair}; min_size=nothing)
 
-Create a new empty `PartialArray` with set element type and number of dimensions.
+Create a new `PartialArray`.
 
-The optional argument `min_size` can be used to specify the minimum initial size. This is
-purely a performance optimisation, to avoid resizing if the eventual size is known ahead of
-time.
+The element type and number of dimensions have to be specified explicitly as type
+parameters. The positional arguments can be `Pair`s of indices and values. For example,
+```jldoctest
+julia> pa = PartialArray{Int,2}((1,2) => 5, (3,4) => 10)
+PartialArray{Int,2}((1, 2) => 5, (3, 4) => 10)
+```
+
+The optional keywoard argument `min_size` can be used to specify the minimum initial size.
+This is purely a performance optimisation, to avoid resizing if the eventual size is known
+ahead of time.
 """
 function PartialArray{ElType,num_dims}(
     args::Vararg{Pair}; min_size::Union{Tuple,Nothing}=nothing
@@ -376,12 +389,12 @@ end
 function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     if ndims(pa1) != ndims(pa2)
         throw(
-            ArgumentError("Cannot merge PartialArrays with different number of dimensions")
+            ArgumentError("Cannot merge PartialArrays with different numbers of dimensions")
         )
     end
     num_dims = ndims(pa1)
     merge_size = ntuple(i -> max(_internal_size(pa1, i), _internal_size(pa2, i)), num_dims)
-    result = if merge_size == _internal_size(pa2)
+    return if merge_size == _internal_size(pa2)
         # Either pa2 is strictly bigger than pa1 or they are equal in size.
         result = copy(pa2)
         for i in CartesianIndices(pa1.data)
@@ -426,23 +439,22 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
             result
         end
     end
-    return result
 end
 
 function Base.keys(pa::PartialArray)
     inds = findall(pa.mask)
     lenses = map(x -> IndexLens(Tuple(x)), inds)
     ks = Any[]
-    for l in lenses
-        val = getindex(pa.data, l.indices...)
+    for lens in lenses
+        val = getindex(pa.data, lens.indices...)
         if val isa VarNamedTuple
             subkeys = keys(val)
             for vn in subkeys
-                lens = varname_to_lens(vn)
-                push!(ks, _compose_no_identity(lens, l))
+                sublens = _varname_to_lens(vn)
+                push!(ks, _compose_no_identity(sublens, lens))
             end
         else
-            push!(ks, l)
+            push!(ks, lens)
         end
     end
     return ks
@@ -455,8 +467,8 @@ A `NamedTuple`-like structure with `VarName` keys.
 
 `VarNamedTuple` is a data structure for storing arbitrary data, keyed by `VarName`s, in an
 efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`, and
-`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Other notable methods
-are `merge`, which recursively merges two `VarNamedTuple`s.
+`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Anther notable methods
+is `merge`, which recursively merges two `VarNamedTuple`s.
 
 The there are two major limitations to indexing by VarNamedTuples:
 
@@ -470,6 +482,9 @@ heterogeneous data under different indices of the same symbol. That is, if one e
 * sets `a[1].b` and `a[2].c`, without setting `a[1].c`. or `a[2].b`,
 
 then getting values for `a[1]` or `a[2]` will not be type stable.
+
+`VarNamedTuple` is intrinsically linked to `PartialArray`, which it'll use to store data
+related to `VarName`s with `IndexLens` components.
 """
 struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
@@ -513,26 +528,29 @@ end
     varname_to_lens(name::VarName{S}) where {S}
 
 Convert a `VarName` to an `Accessor` lens, wrapping the first symdol in a `PropertyLens`.
+
+This is used to simplify method dispatch for `_getindx`, `_setindex!!`, and `_haskey`, by
+considering `VarName`s to just be a special case of lenses.
 """
-function varname_to_lens(name::VarName{S}) where {S}
+function _varname_to_lens(name::VarName{S}) where {S}
     return _compose_no_identity(getoptic(name), PropertyLens{S}())
 end
 
-_getindex(vnt::VarNamedTuple, name::VarName) = _getindex(vnt, varname_to_lens(name))
+_getindex(vnt::VarNamedTuple, name::VarName) = _getindex(vnt, _varname_to_lens(name))
 _getindex(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = getindex(vnt.data, S)
 _getindex(vnt::VarNamedTuple, name::Symbol) = vnt.data[name]
 
-_haskey(vnt::VarNamedTuple, name::VarName) = _haskey(vnt, varname_to_lens(name))
+_haskey(vnt::VarNamedTuple, name::VarName) = _haskey(vnt, _varname_to_lens(name))
 _haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
 _haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 _haskey(::VarNamedTuple, ::IndexLens) = false
 
 function _setindex!!(vnt::VarNamedTuple, value, name::VarName)
-    return _setindex!!(vnt, value, varname_to_lens(name))
+    return _setindex!!(vnt, value, _varname_to_lens(name))
 end
 
 function _setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
-    # I would like this to just read
+    # I would like for this to just read
     # return VarNamedTuple(_setindex!!(vnt.data, value, S))
     # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
     # below?
@@ -556,6 +574,8 @@ function _merge_recursive(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
     return VarNamedTuple(result_data)
 end
 
+# TODO(mhauru) The below remains unfinished an undertested. I think it's incorrect for more
+# complex VarNames. It is unexported though.
 """
     apply!!(func, vnt::VarNamedTuple, name::VarName)
 
@@ -565,7 +585,7 @@ Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name
 julia> vnt = VarNamedTuple()
 ()
 
-julia> vnt = setindex!!(vnt, [1,2,3], @varname(a))
+julia> vnt = setindex!!(vnt, [1, 2, 3], @varname(a))
 (a -> [1, 2, 3])
 
 julia> VarNamedTuples.apply!!(x -> x .+ 1, vnt, @varname(a))
@@ -650,12 +670,12 @@ function make_leaf(value, optic::ComposedFunction)
     return make_leaf(sub, optic.inner)
 end
 
-function make_leaf(value, optic::IndexLens{T}) where {T}
+function make_leaf(value, optic::IndexLens)
     inds = optic.indices
     num_inds = length(inds)
     # Check if any of the indices are ranges or colons. If yes, value needs to be an
     # AbstractArray. Otherwise it needs to be an individual value.
-    et = _is_multiindex(optic.indices) ? eltype(value) : typeof(value)
+    et = _is_multiindex(inds) ? eltype(value) : typeof(value)
     pa = PartialArray{et,num_inds}()
     return _setindex!!(pa, value, optic)
 end

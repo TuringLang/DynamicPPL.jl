@@ -19,10 +19,12 @@ function test_invariants(vnt::VarNamedTuple)
         v = getindex(vnt, k)
         vnt2 = setindex!!(copy(vnt), v, k)
         @test vnt == vnt2
+        @test hash(vnt) == hash(vnt2)
     end
     # Check that the printed representation can be parsed back to an equal VarNamedTuple.
     vnt3 = eval(Meta.parse(repr(vnt)))
     @test vnt == vnt3
+    @test hash(vnt) == hash(vnt3)
 end
 
 @testset "VarNamedTuple" begin
@@ -417,13 +419,17 @@ end
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
+        # Depending on what's in scope, and maybe sometimes even the Julia version,
+        # sometimes types in the output are fully qualified, sometimes not. To avoid
+        # brittle tests, we normalise the output:
+        output = replace(output, "DynamicPPL." => "", "VarNamedTuples." => "")
         @test output == """
             VarNamedTuple(; a="s", b=[1, 2, 3], \
             c=PartialArray{Symbol,1}((2,) => :dada), \
             d=VarNamedTuple(; \
             e=PartialArray{VarNamedTuple{(:f,), \
             Tuple{VarNamedTuple{(:g,), \
-            Tuple{DynamicPPL.VarNamedTuples.PartialArray{Float64, 1}}}}},1}((3,) => \
+            Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
             VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => 16.0, \
             (2,) => 17.0))))))"""
     end
