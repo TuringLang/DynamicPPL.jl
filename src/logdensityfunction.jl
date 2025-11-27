@@ -140,6 +140,9 @@ with such models.** This is a general limitation of vectorised parameters: the o
 `unflatten` + `evaluate!!` approach also fails with such models.
 """
 struct LogDensityFunction{
+    # true if all variables are linked; false if all variables are unlinked; nothing if
+    # mixed
+    Tlink,
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F<:Function,
@@ -163,6 +166,21 @@ struct LogDensityFunction{
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
         all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
+        # Figure out if all variables are linked, unlinked, or mixed
+        link_statuses = Bool[]
+        for ral in all_iden_ranges
+            push!(link_statuses, ral.is_linked)
+        end
+        for (_, ral) in all_ranges
+            push!(link_statuses, ral.is_linked)
+        end
+        Tlink = if all(link_statuses)
+            true
+        elseif all(!s for s in link_statuses)
+            false
+        else
+            nothing
+        end
         x = [val for val in varinfo[:]]
         dim = length(x)
         # Do AD prep if needed
@@ -172,12 +190,13 @@ struct LogDensityFunction{
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             DI.prepare_gradient(
-                LogDensityAt(model, getlogdensity, all_iden_ranges, all_ranges),
+                LogDensityAt{Tlink}(model, getlogdensity, all_iden_ranges, all_ranges),
                 adtype,
                 x,
             )
         end
         return new{
+            Tlink,
             typeof(model),
             typeof(adtype),
             typeof(getlogdensity),
@@ -209,15 +228,24 @@ end
 ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct LogDensityAt{M<:Model,F<:Function,N<:NamedTuple}
+struct LogDensityAt{Tlink,M<:Model,F<:Function,N<:NamedTuple}
     model::M
     getlogdensity::F
     iden_varname_ranges::N
     varname_ranges::Dict{VarName,RangeAndLinked}
+
+    function LogDensityAt{Tlink}(
+        model::M,
+        getlogdensity::F,
+        iden_varname_ranges::N,
+        varname_ranges::Dict{VarName,RangeAndLinked},
+    ) where {Tlink,M,F,N}
+        return new{Tlink,M,F,N}(model, getlogdensity, iden_varname_ranges, varname_ranges)
+    end
 end
-function (f::LogDensityAt)(params::AbstractVector{<:Real})
+function (f::LogDensityAt{Tlink})(params::AbstractVector{<:Real}) where {Tlink}
     strategy = InitFromParams(
-        VectorWithRanges(f.iden_varname_ranges, f.varname_ranges, params), nothing
+        VectorWithRanges{Tlink}(f.iden_varname_ranges, f.varname_ranges, params), nothing
     )
     accs = ldf_accs(f.getlogdensity)
     _, vi = DynamicPPL.init!!(f.model, OnlyAccsVarInfo(accs), strategy)
@@ -225,9 +253,9 @@ function (f::LogDensityAt)(params::AbstractVector{<:Real})
 end
 
 function LogDensityProblems.logdensity(
-    ldf::LogDensityFunction, params::AbstractVector{<:Real}
-)
-    return LogDensityAt(
+    ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
+) where {Tlink}
+    return LogDensityAt{Tlink}(
         ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
     )(
         params
@@ -235,10 +263,10 @@ function LogDensityProblems.logdensity(
 end
 
 function LogDensityProblems.logdensity_and_gradient(
-    ldf::LogDensityFunction, params::AbstractVector{<:Real}
-)
+    ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
+) where {Tlink}
     return DI.value_and_gradient(
-        LogDensityAt(
+        LogDensityAt{Tlink}(
             ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
         ),
         ldf._adprep,
@@ -247,12 +275,14 @@ function LogDensityProblems.logdensity_and_gradient(
     )
 end
 
-function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
+function LogDensityProblems.capabilities(
+    ::Type{<:LogDensityFunction{T,M,Nothing}}
+) where {T,M}
     return LogDensityProblems.LogDensityOrder{0}()
 end
 function LogDensityProblems.capabilities(
-    ::Type{<:LogDensityFunction{M,<:ADTypes.AbstractADType}}
-) where {M}
+    ::Type{<:LogDensityFunction{T,M,<:ADTypes.AbstractADType}}
+) where {T,M}
     return LogDensityProblems.LogDensityOrder{1}()
 end
 function LogDensityProblems.dimension(ldf::LogDensityFunction)

@@ -214,7 +214,7 @@ struct RangeAndLinked
 end
 
 """
-    VectorWithRanges(
+    VectorWithRanges{Tlink}(
         iden_varname_ranges::NamedTuple,
         varname_ranges::Dict{VarName,RangeAndLinked},
         vect::AbstractVector{<:Real},
@@ -222,6 +222,12 @@ end
 
 A struct that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
+
+The type parameter `Tlink` can be either `true` or `false`, to mark that the variables in
+this `VectorWithRanges` are linked/not linked, or `nothing` if either the linking status is
+not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
+affect functionality or correctness, but causes more work to be done at runtime, with
+possible impacts on type stability and performance.
 
 In the simplest case, this could be accomplished only with a single dictionary mapping
 VarNames to ranges and link status. However, for performance reasons, we separate out
@@ -231,13 +237,26 @@ non-identity-optic VarNames are stored in the `varname_ranges` Dict.
 It would be nice to improve the NamedTuple and Dict approach. See, e.g.
 https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct VectorWithRanges{N<:NamedTuple,T<:AbstractVector{<:Real}}
+struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
     # This NamedTuple stores the ranges for identity VarNames
     iden_varname_ranges::N
     # This Dict stores the ranges for all other VarNames
     varname_ranges::Dict{VarName,RangeAndLinked}
     # The full parameter vector which we index into to get variable values
     vect::T
+
+    function VectorWithRanges{Tlink}(
+        iden_varname_ranges::N, varname_ranges::Dict{VarName,RangeAndLinked}, vect::T
+    ) where {Tlink,N,T}
+        if !(Tlink isa Union{Bool,Nothing})
+            throw(
+                ArgumentError(
+                    "VectorWithRanges type parameter has to be one of `true`, `false`, or `nothing`.",
+                ),
+            )
+        end
+        return new{Tlink,N,T}(iden_varname_ranges, varname_ranges, vect)
+    end
 end
 
 function _get_range_and_linked(
@@ -252,11 +271,15 @@ function init(
     ::Random.AbstractRNG,
     vn::VarName,
     dist::Distribution,
-    p::InitFromParams{<:VectorWithRanges},
-)
+    p::InitFromParams{<:VectorWithRanges{T}},
+) where {T}
     vr = p.params
     range_and_linked = _get_range_and_linked(vr, vn)
-    transform = if range_and_linked.is_linked
+    # T can either be `nothing` (i.e., link status is mixed, in which
+    # case we use the stored link status), or `true` / `false`, which
+    # indicates that all variables are linked / unlinked.
+    linked = isnothing(T) ? range_and_linked.is_linked : T
+    transform = if linked
         from_linked_vec_transform(dist)
     else
         from_vec_transform(dist)

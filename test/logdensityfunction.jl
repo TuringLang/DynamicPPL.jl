@@ -108,6 +108,22 @@ end
     end
 end
 
+@testset "LogDensityFunction: Type stability" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        unlinked_vi = DynamicPPL.VarInfo(m)
+        @testset "$islinked" for islinked in (false, true)
+            vi = if islinked
+                DynamicPPL.link!!(unlinked_vi, m)
+            else
+                unlinked_vi
+            end
+            ldf = DynamicPPL.LogDensityFunction(m, DynamicPPL.getlogjoint_internal, vi)
+            x = vi[:]
+            @inferred LogDensityProblems.logdensity(ldf, x)
+        end
+    end
+end
+
 @testset "LogDensityFunction: performance" begin
     if Threads.nthreads() == 1
         # Evaluating these three models should not lead to any allocations (but only when
