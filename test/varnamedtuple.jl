@@ -384,8 +384,8 @@ using BangBang: setindex!!
             VarNamedTuple(; a=1.0, b=[1, 2, 3], \
             c=PartialArray{Int64,1}((2,) => 15), \
             d=VarNamedTuple(; \
-            e=PartialArray{VarNamedTuple{(:f,), \
-            Tuple{VarNamedTuple{(:g,), \
+            e=PartialArray{DynamicPPL.VarNamedTuples.VarNamedTuple{(:f,), \
+            Tuple{DynamicPPL.VarNamedTuples.VarNamedTuple{(:g,), \
             Tuple{DynamicPPL.VarNamedTuples.PartialArray{Float64, 1}}}}},1}((3,) => \
             VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => 16.0, \
             (2,) => 17.0))))))"""
