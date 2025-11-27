@@ -367,7 +367,7 @@ SimpleVarInfo
 #### `VarNamedTuple`
 
 ```@docs
-VarNamedTuple
+DynamicPPL.VarNamedTuples.VarNamedTuple
 ```
 
 ### Accumulators
