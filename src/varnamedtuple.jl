@@ -126,8 +126,10 @@ Create a new `PartialArray`.
 The element type and number of dimensions have to be specified explicitly as type
 parameters. The positional arguments can be `Pair`s of indices and values. For example,
 ```jldoctest
+julia> using DynamicPPL.VarNamedTuples: PartialArray
+
 julia> pa = PartialArray{Int,2}((1,2) => 5, (3,4) => 10)
-PartialArray{Int,2}((1, 2) => 5, (3, 4) => 10)
+PartialArray{Int64,2}((1, 2) => 5, (3, 4) => 10)
 ```
 
 The optional keywoard argument `min_size` can be used to specify the minimum initial size.
@@ -580,14 +582,18 @@ end
 Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name`.
 
 ```jldoctest
+julia> using DynamicPPL: VarNamedTuple, setindex!!
+
+julia> using DynamicPPL.VarNamedTuples: apply!!
+
 julia> vnt = VarNamedTuple()
-()
+VarNamedTuple()
 
 julia> vnt = setindex!!(vnt, [1, 2, 3], @varname(a))
-(a -> [1, 2, 3])
+VarNamedTuple(a = [1, 2, 3],)
 
-julia> VarNamedTuples.apply!!(x -> x .+ 1, vnt, @varname(a))
-(a -> [2, 3, 4])
+julia> apply!!(x -> x .+ 1, vnt, @varname(a))
+VarNamedTuple(a = [2, 3, 4],)
 ```
 """
 function apply!!(func, vnt::VarNamedTuple, name::VarName)
