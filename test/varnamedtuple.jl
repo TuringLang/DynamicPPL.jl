@@ -2,47 +2,67 @@ module VarNamedTupleTests
 
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
+using DynamicPPL.VarNamedTuples: PartialArray
 using BangBang: setindex!!
+
+"""
+    test_invariants(vnt::VarNamedTuple)
+
+Test properties that should hold for all VarNamedTuples.
+
+Uses @test for all the tests. Intended to be called inside a @testset.
+"""
+function test_invariants(vnt::VarNamedTuple)
+    # Check that for all keys in vnt, haskey is true, and resetting the value is a no-op.
+    for k in keys(vnt)
+        @test haskey(vnt, k)
+        v = getindex(vnt, k)
+        vnt2 = setindex!!(copy(vnt), v, k)
+        @test vnt == vnt2
+    end
+    # Check that the printed representation can be parsed back to an equal VarNamedTuple.
+    vnt3 = eval(Meta.parse(repr(vnt)))
+    @test vnt == vnt3
+end
 
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
+        test_invariants(vnt1)
         vnt1 = setindex!!(vnt1, 1.0, @varname(a))
         vnt1 = setindex!!(vnt1, [1, 2, 3], @varname(b))
         vnt1 = setindex!!(vnt1, "a", @varname(c.d.e))
+        test_invariants(vnt1)
         vnt2 = VarNamedTuple(;
             a=1.0, b=[1, 2, 3], c=VarNamedTuple(; d=VarNamedTuple(; e="a"))
         )
+        test_invariants(vnt2)
         @test vnt1 == vnt2
 
-        pa1 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}()
+        pa1 = PartialArray{Float64,1}()
         pa1 = setindex!!(pa1, 1.0, 16)
-        pa2 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}(; min_size=(16,))
+        pa2 = PartialArray{Float64,1}(; min_size=(16,))
         pa2 = setindex!!(pa2, 1.0, 16)
-        pa3 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}(16 => 1.0)
-        pa4 = DynamicPPL.VarNamedTuples.PartialArray{Float64,1}((16,) => 1.0)
+        pa3 = PartialArray{Float64,1}(16 => 1.0)
+        pa4 = PartialArray{Float64,1}((16,) => 1.0)
         @test pa1 == pa2
         @test pa1 == pa3
         @test pa1 == pa4
 
-        pa1 = DynamicPPL.VarNamedTuples.PartialArray{String,3}()
+        pa1 = PartialArray{String,3}()
         pa1 = setindex!!(pa1, "a", 2, 3, 4)
         pa1 = setindex!!(pa1, "b", 1, 2, 4)
-        pa2 = DynamicPPL.VarNamedTuples.PartialArray{String,3}(; min_size=(16, 16, 16))
+        pa2 = PartialArray{String,3}(; min_size=(16, 16, 16))
         pa2 = setindex!!(pa2, "a", 2, 3, 4)
         pa2 = setindex!!(pa2, "b", 1, 2, 4)
-        pa3 = DynamicPPL.VarNamedTuples.PartialArray{String,3}(
-            (2, 3, 4) => "a", (1, 2, 4) => "b"
-        )
+        pa3 = PartialArray{String,3}((2, 3, 4) => "a", (1, 2, 4) => "b")
         @test pa1 == pa2
         @test pa1 == pa3
 
-        @test_throws BoundsError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((0,) => 1)
-        @test_throws BoundsError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((1, 2) => 1)
-        @test_throws MethodError DynamicPPL.VarNamedTuples.PartialArray{Int,1}((1,) => "a")
-        @test_throws MethodError DynamicPPL.VarNamedTuples.PartialArray{Int,1}(
-            (1,) => 1; min_size=(2, 2)
-        )
+        @test_throws BoundsError PartialArray{Int,1}((0,) => 1)
+        @test_throws BoundsError PartialArray{Int,1}((1, 2) => 1)
+        @test_throws MethodError PartialArray{Int,1}((1,) => "a")
+        @test_throws MethodError PartialArray{Int,1}((1,) => 1; min_size=(2, 2))
     end
 
     @testset "Basic sets and gets" begin
@@ -51,6 +71,7 @@ using BangBang: setindex!!
         @test @inferred(getindex(vnt, @varname(a))) == 32.0
         @test haskey(vnt, @varname(a))
         @test !haskey(vnt, @varname(b))
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(b)))
         @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
@@ -59,40 +80,50 @@ using BangBang: setindex!!
         @test haskey(vnt, @varname(b[1]))
         @test haskey(vnt, @varname(b[1:3]))
         @test !haskey(vnt, @varname(b[4]))
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 64.0, @varname(a)))
         @test @inferred(getindex(vnt, @varname(a))) == 64.0
         @test @inferred(getindex(vnt, @varname(b))) == [1, 2, 3]
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 15, @varname(b[2])))
         @test @inferred(getindex(vnt, @varname(b))) == [1, 15, 3]
         @test @inferred(getindex(vnt, @varname(b[2]))) == 15
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, [10], @varname(c.x.y)))
         @test @inferred(getindex(vnt, @varname(c.x.y))) == [10]
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 11, @varname(c.x.y[1])))
         @test @inferred(getindex(vnt, @varname(c.x.y))) == [11]
         @test @inferred(getindex(vnt, @varname(c.x.y[1]))) == 11
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, -1.0, @varname(d[4])))
         @test @inferred(getindex(vnt, @varname(d[4]))) == -1.0
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, -2.0, @varname(d[4])))
         @test @inferred(getindex(vnt, @varname(d[4]))) == -2.0
+        test_invariants(vnt)
 
         # These can't be @inferred because `d` now has an abstract element type. Note that this
         # does not ruin type stability for other varnames that don't involve `d`.
         vnt = setindex!!(vnt, "a", @varname(d[5]))
         @test getindex(vnt, @varname(d[5])) == "a"
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i)))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
         @test haskey(vnt, @varname(e.f[3].g.h[2].i))
         @test !haskey(vnt, @varname(e.f[2].g.h[2].i))
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
+        test_invariants(vnt)
 
         vec = fill(1.0, 4)
         vnt = @inferred(setindex!!(vnt, vec, @varname(j[1:4])))
@@ -101,12 +132,14 @@ using BangBang: setindex!!
         @test haskey(vnt, @varname(j[4]))
         @test !haskey(vnt, @varname(j[5]))
         @test_throws BoundsError getindex(vnt, @varname(j[5]))
+        test_invariants(vnt)
 
         vec = fill(2.0, 4)
         vnt = @inferred(setindex!!(vnt, vec, @varname(j[2:5])))
         @test @inferred(getindex(vnt, @varname(j[1]))) == 1.0
         @test @inferred(getindex(vnt, @varname(j[2:5]))) == vec
         @test haskey(vnt, @varname(j[5]))
+        test_invariants(vnt)
 
         arr = fill(2.0, (4, 2))
         vn = @varname(k.l[2:5, 3, 1:2, 2])
@@ -114,6 +147,7 @@ using BangBang: setindex!!
         @test @inferred(getindex(vnt, vn)) == arr
         # A subset of the elements set just now.
         @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
+        test_invariants(vnt)
 
         # Not enough, or too many, indices.
         @test_throws BoundsError setindex!!(vnt, 0.0, @varname(k.l[1, 2, 3]))
@@ -128,11 +162,13 @@ using BangBang: setindex!!
         # A subset of the elements set previously.
         @test @inferred(getindex(vnt, @varname(k.l[2, 3, 1:2, 2]))) == fill(2.0, 2)
         @test !haskey(vnt, @varname(k.l[2, 3, 3, 2]))
+        test_invariants(vnt)
 
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[2])))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(m[3])))
         @test @inferred(getindex(vnt, @varname(m[2:3]))) == [1.0, 1.0]
         @test !haskey(vnt, @varname(m[1]))
+        test_invariants(vnt)
 
         # The below tests are mostly significant for the type stability aspect. For the last
         # test to pass, PartialArray needs to actively tighten its eltype when possible.
@@ -147,6 +183,7 @@ using BangBang: setindex!!
         # VarNamedTuple with a concrete element type, and hence getindex can be inferred.
         vnt = setindex!!(vnt, 1.0, @varname(n[2].b))
         @test @inferred(getindex(vnt, @varname(n[2].b))) == 1.0
+        test_invariants(vnt)
     end
 
     @testset "equality" begin
