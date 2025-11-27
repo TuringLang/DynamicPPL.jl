@@ -461,7 +461,7 @@ function Base.keys(pa::PartialArray)
 end
 
 """
-    VarNamedTuple{Names,Values}
+    VarNamedTuple{names,Values}
 
 A `NamedTuple`-like structure with `VarName` keys.
 
@@ -496,27 +496,19 @@ Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.hash(vnt::VarNamedTuple, h::UInt) = hash(vnt.data, h)
 
 function Base.show(io::IO, vnt::VarNamedTuple)
-    print(io, "VarNamedTuple(;")
-    for (i, (name, value)) in enumerate(pairs(vnt.data))
-        if i > 1
-            print(io, ",")
-        end
-        print(io, " ")
-        print(io, name)
-        print(io, "=")
-        # Note the distinction: The raw strings that form part of the structure of the print
-        # out are `print`ed, whereas the value itself is `show`n. The latter ensures that
-        # strings are quoted, Symbols are prefixed with :, etc.
-        show(io, value)
+    if isempty(vnt.data)
+        return print(io, "VarNamedTuple()")
     end
-    return print(io, ")")
+    print(io, "VarNamedTuple")
+    show(io, vnt.data)
+    return nothing
 end
 
-function Base.copy(vnt::VarNamedTuple{Names}) where {Names}
+function Base.copy(vnt::VarNamedTuple{names}) where {names}
     # Make a shallow copy of vnt, except for any VarNamedTuple or PartialArray elements,
     # which we recursively copy.
     return VarNamedTuple(
-        NamedTuple{Names}(
+        NamedTuple{names}(
             map(
                 x -> x isa Union{VarNamedTuple,PartialArray} ? copy(x) : x, values(vnt.data)
             ),
@@ -559,19 +551,25 @@ end
 
 Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
 
-# TODO(mhauru) Check the performance of this, and make it into a generated function if
-# necessary.
-function _merge_recursive(vnt1::VarNamedTuple, vnt2::VarNamedTuple)
-    result_data = vnt1.data
-    for k in keys(vnt2.data)
-        val = if haskey(result_data, k)
-            _merge_recursive(result_data[k], vnt2.data[k])
+# This needs to be a generated function for type stability.
+@generated function _merge_recursive(
+    vnt1::VarNamedTuple{names1}, vnt2::VarNamedTuple{names2}
+) where {names1,names2}
+    all_names = union(names1, names2)
+    exs = Expr[]
+    push!(exs, :(data = (;)))
+    for name in all_names
+        val_expr = if name in names1 && name in names2
+            :(_merge_recursive(vnt1.data[$(QuoteNode(name))], vnt2.data[$(QuoteNode(name))]))
+        elseif name in names1
+            :(vnt1.data[$(QuoteNode(name))])
         else
-            vnt2.data[k]
+            :(vnt2.data[$(QuoteNode(name))])
         end
-        Accessors.@reset result_data[k] = val
+        push!(exs, :(data = merge(data, NamedTuple{($(QuoteNode(name)),)}(($val_expr,)))))
     end
-    return VarNamedTuple(result_data)
+    push!(exs, :(return VarNamedTuple(data)))
+    return Expr(:block, exs...)
 end
 
 # TODO(mhauru) The below remains unfinished an undertested. I think it's incorrect for more
@@ -601,6 +599,11 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     return _setindex!!(vnt, new_subdata, name)
 end
 
+# TODO(mhauru) Should this return tuples, like it does now? That makes sense for
+# VarNamedTuple itself, but if there is a nested PartialArray the tuple might get very big.
+# Also, this is not very type stable, it fails even in basic cases. A generated function
+# would help, but I failed to make one. Might be something to do with a recursive
+# generated function.
 function Base.keys(vnt::VarNamedTuple)
     result = ()
     for sym in keys(vnt.data)

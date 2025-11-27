@@ -3,6 +3,7 @@ module VarNamedTupleTests
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples: PartialArray
+using AbstractPPL: VarName, prefix
 using BangBang: setindex!!
 
 """
@@ -25,6 +26,9 @@ function test_invariants(vnt::VarNamedTuple)
     vnt3 = eval(Meta.parse(repr(vnt)))
     @test vnt == vnt3
     @test hash(vnt) == hash(vnt3)
+    # Check that merge with an empty VarNamedTuple is a no-op.
+    @test merge(vnt, VarNamedTuple()) == vnt
+    @test merge(VarNamedTuple(), vnt) == vnt
 end
 
 @testset "VarNamedTuple" begin
@@ -186,6 +190,32 @@ end
         vnt = setindex!!(vnt, 1.0, @varname(n[2].b))
         @test @inferred(getindex(vnt, @varname(n[2].b))) == 1.0
         test_invariants(vnt)
+
+        # Some funky Symbols in VarNames
+        # TODO(mhauru) This still isn't as robust as it should be, for instance Symbol(":")
+        # fails the eval(Meta.parse(print(vnt))) == vnt test because NamedTuple show doesn't
+        # respect the eval-property.
+        vn1 = VarName{Symbol("a b c")}()
+        vnt = @inferred(setindex!!(vnt, 2, vn1))
+        @test @inferred(getindex(vnt, vn1)) == 2
+        test_invariants(vnt)
+        vn2 = VarName{Symbol("1")}()
+        vnt = @inferred(setindex!!(vnt, 3, vn2))
+        @test @inferred(getindex(vnt, vn2)) == 3
+        test_invariants(vnt)
+        vn3 = VarName{Symbol("?!")}()
+        vnt = @inferred(setindex!!(vnt, 4, vn3))
+        @test @inferred(getindex(vnt, vn3)) == 4
+        test_invariants(vnt)
+        vnt = VarNamedTuple()
+        vn4 = prefix(prefix(vn1, vn2), vn3)
+        vnt = @inferred(setindex!!(vnt, 5, vn4))
+        @test @inferred(getindex(vnt, vn4)) == 5
+        test_invariants(vnt)
+        vn5 = prefix(prefix(vn3, vn2), vn1)
+        vnt = @inferred(setindex!!(vnt, 6, vn5))
+        @test @inferred(getindex(vnt, vn5)) == 6
+        test_invariants(vnt)
     end
 
     @testset "equality" begin
@@ -229,7 +259,7 @@ end
         vnt2 = VarNamedTuple()
         expected_merge = VarNamedTuple()
         # TODO(mhauru) Wrap this merge in @inferred, likewise other merges where it makes sense.
-        @test merge(vnt1, vnt2) == expected_merge
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = setindex!!(vnt1, 1.0, @varname(a))
         vnt2 = setindex!!(vnt2, 2.0, @varname(b))
@@ -238,7 +268,7 @@ end
         expected_merge = setindex!!(expected_merge, 1.0, @varname(a))
         expected_merge = setindex!!(expected_merge, 2, @varname(c))
         expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
-        @test merge(vnt1, vnt2) == expected_merge
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -250,7 +280,7 @@ end
         expected_merge = setindex!!(expected_merge, [1], @varname(d.a))
         expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.c))
         expected_merge = setindex!!(expected_merge, [2, 2], @varname(d.b))
-        @test merge(vnt1, vnt2) == expected_merge
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = setindex!!(vnt1, 1, @varname(e.a[1]))
         vnt2 = setindex!!(vnt2, 2, @varname(e.a[2]))
@@ -259,13 +289,13 @@ end
         vnt1 = setindex!!(vnt1, 1, @varname(e.a[3]))
         vnt2 = setindex!!(vnt2, 2, @varname(e.a[3]))
         expected_merge = setindex!!(expected_merge, 2, @varname(e.a[3]))
-        @test merge(vnt1, vnt2) == expected_merge
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = setindex!!(vnt1, fill(1, 4), @varname(e.a[7:10]))
         vnt2 = setindex!!(vnt2, fill(2, 4), @varname(e.a[8:11]))
         expected_merge = setindex!!(expected_merge, 1, @varname(e.a[7]))
         expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
-        @test merge(vnt1, vnt2) == expected_merge
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
         vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
@@ -289,9 +319,9 @@ end
         expected_merge_12 = setindex!!(expected_merge_12, 1, @varname(a[257]))
         expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[1]))
         expected_merge_12 = setindex!!(expected_merge_12, 2, @varname(a[2]))
-        @test merge(vnt1, vnt2) == expected_merge_12
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge_12
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
-        @test merge(vnt2, vnt1) == expected_merge_21
+        @test @inferred(merge(vnt2, vnt1)) == expected_merge_21
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -310,11 +340,13 @@ end
 
     @testset "keys" begin
         vnt = VarNamedTuple()
-        @test keys(vnt) == ()
+        @test @inferred(keys(vnt)) == ()
         @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 1.0, @varname(a))
-        @test keys(vnt) == (@varname(a),)
+        # TODO(mhauru) that the below passes @inferred, but any of the later ones don't.
+        # We should improve type stability of keys().
+        @test @inferred(keys(vnt)) == (@varname(a),)
         @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
@@ -394,26 +426,26 @@ end
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
-        @test output == "VarNamedTuple(;)"
+        @test output == "VarNamedTuple()"
 
         vnt = setindex!!(vnt, "s", @varname(a))
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
-        @test output == """VarNamedTuple(; a="s")"""
+        @test output == """VarNamedTuple(a = "s",)"""
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
-        @test output == """VarNamedTuple(; a="s", b=[1, 2, 3])"""
+        @test output == """VarNamedTuple(a = "s", b = [1, 2, 3])"""
 
         vnt = setindex!!(vnt, :dada, @varname(c[2]))
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
         @test output == """
-            VarNamedTuple(; a="s", b=[1, 2, 3], c=PartialArray{Symbol,1}((2,) => :dada))"""
+            VarNamedTuple(a = "s", b = [1, 2, 3], c = PartialArray{Symbol,1}((2,) => :dada))"""
 
         vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
         io = IOBuffer()
@@ -424,14 +456,14 @@ end
         # brittle tests, we normalise the output:
         output = replace(output, "DynamicPPL." => "", "VarNamedTuples." => "")
         @test output == """
-            VarNamedTuple(; a="s", b=[1, 2, 3], \
-            c=PartialArray{Symbol,1}((2,) => :dada), \
-            d=VarNamedTuple(; \
-            e=PartialArray{VarNamedTuple{(:f,), \
+            VarNamedTuple(a = "s", b = [1, 2, 3], \
+            c = PartialArray{Symbol,1}((2,) => :dada), \
+            d = VarNamedTuple(\
+            e = PartialArray{VarNamedTuple{(:f,), \
             Tuple{VarNamedTuple{(:g,), \
             Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
-            VarNamedTuple(; f=VarNamedTuple(; g=PartialArray{Float64,1}((1,) => 16.0, \
-            (2,) => 17.0))))))"""
+            VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
+            (2,) => 17.0),),)),))"""
     end
 end
 
