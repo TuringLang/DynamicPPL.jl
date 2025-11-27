@@ -227,14 +227,6 @@ this `VectorWithRanges` are linked/not linked, or `nothing` if either the linkin
 not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
 affect functionality or correctness, but causes more work to be done at runtime, with
 possible impacts on type stability and performance.
-
-In the simplest case, this could be accomplished only with a single dictionary mapping
-VarNames to ranges and link status. However, for performance reasons, we separate out
-VarNames with identity optics into a NamedTuple (`iden_varname_ranges`). All
-non-identity-optic VarNames are stored in the `varname_ranges` Dict.
-
-It would be nice to improve the NamedTuple and Dict approach. See, e.g.
-https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
 struct VectorWithRanges{Tlink,VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
     # Ranges for all VarNames
