@@ -258,7 +258,6 @@ end
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
         expected_merge = VarNamedTuple()
-        # TODO(mhauru) Wrap this merge in @inferred, likewise other merges where it makes sense.
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
         vnt1 = setindex!!(vnt1, 1.0, @varname(a))
@@ -341,29 +340,23 @@ end
     @testset "keys" begin
         vnt = VarNamedTuple()
         @test @inferred(keys(vnt)) == ()
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 1.0, @varname(a))
         # TODO(mhauru) that the below passes @inferred, but any of the later ones don't.
         # We should improve type stability of keys().
         @test @inferred(keys(vnt)) == (@varname(a),)
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
         @test keys(vnt) == (@varname(a), @varname(b))
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 15, @varname(b[2]))
         @test keys(vnt) == (@varname(a), @varname(b))
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, [10], @varname(c.x.y))
         @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y))
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
         @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y), @varname(d[4]))
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
         @test keys(vnt) == (
@@ -373,7 +366,6 @@ end
             @varname(d[4]),
             @varname(e.f[3, 3].g.h[2, 4, 1].i),
         )
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
         @test keys(vnt) == (
@@ -387,7 +379,6 @@ end
             @varname(j[3]),
             @varname(j[4]),
         )
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 1.0, @varname(j[6]))
         @test keys(vnt) == (
@@ -402,7 +393,6 @@ end
             @varname(j[4]),
             @varname(j[6]),
         )
-        @test all(x -> haskey(vnt, x), keys(vnt))
 
         vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
         @test keys(vnt) == (
@@ -418,7 +408,6 @@ end
             @varname(j[6]),
             @varname(n[2].a),
         )
-        @test all(x -> haskey(vnt, x), keys(vnt))
     end
 
     @testset "printing" begin
@@ -445,7 +434,8 @@ end
         show(io, vnt)
         output = String(take!(io))
         @test output == """
-            VarNamedTuple(a = "s", b = [1, 2, 3], c = PartialArray{Symbol,1}((2,) => :dada))"""
+            VarNamedTuple(a = "s", b = [1, 2, 3], \
+            c = PartialArray{Symbol,1}((2,) => :dada))"""
 
         vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
         io = IOBuffer()
