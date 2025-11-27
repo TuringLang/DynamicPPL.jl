@@ -155,7 +155,12 @@ function Base.show(io::IO, pa::PartialArray)
             is_first = false
         end
         val = @inbounds(pa.data[inds])
-        print(io, Tuple(inds), " => ", val)
+        # Note the distinction: The raw strings that form part of the structure of the print
+        # out are `print`ed, whereas the keys and values are `show`n. The latter ensures
+        # that strings are quoted, Symbols are prefixed with :, etc.
+        show(io, Tuple(inds))
+        print(io, " => ")
+        show(io, val)
     end
     print(io, ")")
     return nothing
@@ -166,7 +171,17 @@ end
 _internal_size(pa::PartialArray, args...) = size(pa.data, args...)
 
 function Base.copy(pa::PartialArray)
-    return PartialArray(copy(pa.data), copy(pa.mask))
+    # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
+    # copy.
+    pa_copy = PartialArray(copy(pa.data), copy(pa.mask))
+    if VarNamedTuple <: eltype(pa) || eltype(pa) <: VarNamedTuple
+        @inbounds for i in eachindex(pa.mask)
+            if pa.mask[i] && pa_copy.data[i] isa VarNamedTuple
+                pa_copy.data[i] = copy(pa.data[i])
+            end
+        end
+    end
+    return pa_copy
 end
 
 function Base.:(==)(pa1::PartialArray, pa2::PartialArray)
@@ -471,9 +486,27 @@ function Base.show(io::IO, vnt::VarNamedTuple)
         if i > 1
             print(io, ",")
         end
-        print(io, " ", name, "=", value)
+        print(io, " ")
+        print(io, name)
+        print(io, "=")
+        # Note the distinction: The raw strings that form part of the structure of the print
+        # out are `print`ed, whereas the value itself is `show`n. The latter ensures that
+        # strings are quoted, Symbols are prefixed with :, etc.
+        show(io, value)
     end
     return print(io, ")")
+end
+
+function Base.copy(vnt::VarNamedTuple{Names}) where {Names}
+    # Make a shallow copy of vnt, except for any VarNamedTuple or PartialArray elements,
+    # which we recursively copy.
+    return VarNamedTuple(
+        NamedTuple{Names}(
+            map(
+                x -> x isa Union{VarNamedTuple,PartialArray} ? copy(x) : x, values(vnt.data)
+            ),
+        ),
+    )
 end
 
 """
