@@ -1,16 +1,16 @@
-# VarNamedTuple
+# `VarNamedTuple`
 
 In DynamicPPL there is often a need to store data keyed by `VarName`s.
 This comes up when getting conditioned variable values from the user, when tracking values of random variables in the model outputs or inputs, etc.
-Historically we've had several different approaches to this: Dictionaries, NamedTuples, vectors with subranges corresponding to different `VarName`s, and various combinations thereof.
+Historically we've had several different approaches to this: Dictionaries, `NamedTuple`s, vectors with subranges corresponding to different `VarName`s, and various combinations thereof.
 
 To unify the treatment of these use cases, and handle them all in a robust and performant way, is the purpose of `VarNamedTuple`, aka VNT.
 It's a data structure that can store arbitrary data, indexed by (nearly) arbitrary `VarName`s, in a type stable and performant manner.
 
-`VarNamedTuple` consists of nested `NamedTuple`s and `PartialArray`.
+`VarNamedTuple` consists of nested `NamedTuple`s and `PartialArray`s.
 Let's first talk about the `NamedTuple` part.
 This is what is needed for handling `PropertyLens`es in `VarName`s, that is, `VarName`s consisting of nested symbols, like in `@varname(a.b.c)`.
-In a `VarNamedTuple` each level of such nesting of `PropertyLens`es corresponds to a level of nested `NamedTuple`s, with the `Symbol`s of the lens as the keys.
+In a `VarNamedTuple` each level of such nesting of `PropertyLens`es corresponds to a level of nested `NamedTuple`s, with the `Symbol`s of the lenses as keys.
 For instance, the `VarNamedTuple` mapping `@varname(x) => 1, @varname(y.z) => 2` would be stored as
 
 ```
@@ -30,11 +30,11 @@ x /   \ y
 ```
 
 If all `VarName`s consisted of only `PropertyLens`es we would be done designing the data structure.
-However, recall that VarNames allow three different kinds of lenses: `PropertyLens`es, `IndexLens`es, and `identity` (the trivial lens).
+However, recall that `VarName`s allow three different kinds of lenses: `PropertyLens`es, `IndexLens`es, and `identity` (the trivial lens).
 The `identity` lens presents no complications, and in fact in the above example there was an implicit identity lens in e.g. `@varname(x) => 1`.
 It is the `IndexLenses` that require more structure.
 
-An `IndexLens` is the indexing layer in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
+An `IndexLens` is the square bracket indexing part in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
 `VarNamedTuple` can not deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
 Instead we restrict ourselves to `IndexLens`es where the indices are integers, explicit ranges with end points, like `1:5`, or tuples thereof.
 
@@ -43,7 +43,7 @@ When we meet an `IndexLens`, we instead instert into the tree something called a
 
 A `PartialArray` is like a regular `Base.Array`, but with some elements possibly unset.
 It is a data structure we define ourselves for use within `VarNamedTuple`s.
-A `PartialArray` has an element type and a number of dimensions, and they are known at compile time, but it does not have a size, and this thus not an `AbstractArray`.
+A `PartialArray` has an element type and a number of dimensions, and they are known at compile time, but it does not have a size, and thus is not an `AbstractArray`.
 This is because if we set the elements `x[1,2]` and `x[14,10]` in a `PartialArray` called `x`, this does not mean that 14 and 10 are the ends of their respective dimensions.
 The typical use of this structure in DynamicPPL is that the user may define values for elements in an array-like structure one by one, and we do not always know how large these arrays are.
 
@@ -52,8 +52,8 @@ A `Colon()` says that we should get or set all the values along that dimension, 
 If `x[1]` and `x[4]` have been set, asking for `x[:]` is not a well-posed question.
 
 `PartialArray`s have other restrictions, compared to the full indexing syntax of Julia, as well:
-They do not support linearly indexing into multidimemensional arrays (as in `rand(3,3)[8]`), nor indexing with arrays of indices (as in `rand(4)[[1,3]]`), nor indexing with boolean mask arrays as in `rand(4)[[true, false, true, false]]`).
-This is mostly because we haven't seen a need to support them, and implementing would complicate the codebase for little gain.
+They do not support linearly indexing into multidimemensional arrays (as in `rand(3,3)[8]`), nor indexing with arrays of indices (as in `rand(4)[[1,3]]`), nor indexing with boolean mask arrays (as in `rand(4)[[true, false, true, false]]`).
+This is mostly because we haven't seen a need to support them, and implementing them would complicate the codebase for little gain.
 We may add support for them later if needed.
 
 `PartialArray`s can hold any values, just like `Base.Array`s, and in particular they can hold `VarNamedTuple`s.
@@ -89,8 +89,20 @@ julia> vnt[@varname(d.e[2].f)]
 PartialArray{Symbol,1}((3,) => hip, (4,) => hop)
 ```
 
-The above example also highlights how setting indices in a `VarNamedTuple` is done using `BangBang.setindex!!`.
-We do not define a method for `Base.setindex!` at all, the `setindex!!` is the only way.
+Or as a tree drawing, where `PA` marks a `PartialArray`:
+
+```
+   /----VNT------\
+a /      | b      \ d
+ 1   [2.0, 3.0]   VNT
+                   | e
+                  PA(2 => VNT)
+                           | f
+                          PA(3 => :hip, 4 => :hop)
+```
+
+The above code also highlights how setting indices in a `VarNamedTuple` is done using `BangBang.setindex!!`.
+We do not define a method for `Base.setindex!` at all, `setindex!!` is the only way.
 This is because `VarNamedTuple` mixes mutable an immutable data structures.
 It is also for user convenience:
 One does not ever have to think about whether the value that one is inserting into a `VarNamedTuple` is of the right type to fit in.
@@ -122,9 +134,15 @@ VarNamedTuple(; a=PartialArray{String,1}((1,) => me here, (2,) => hello))
 This approach is at the core of why `VarNamedTuple` is performant:
 As long as one does not store inhomogeneous types within a single `PartialArray`, by assigning different types to `VarName`s like `@varname(a[1])` and `@varname(a[2])`, different variables in a `VarNamedTuple` can have different types, and all `getindex` and `setindex!!` operations remain type stable.
 Note that assigning a value to `@varname(a[1].b)` but not to `@varname(a[2].b)` has the same effect as assigning values of different types to `@varname(a[1])` and `@varname(a[2])`, and also causes a loss of type stability for for `getindex` and `setindex!!`.
-Although, this only affects `getindex` and `setindex!!` on sub-`VarName`s of `@varname(a)`, you can still use the same `VarNamedTuple` to store information about an unrelated `@varname(c)` with stability.
+Although, this only affects `getindex` and `setindex!!` on sub-`VarName`s of `@varname(a)`;
+You can still use the same `VarNamedTuple` to store information about an unrelated `@varname(c)` with stability.
 
-Some miscellaneous notes
+Note that if you `setindex!!` a new value into a `VarNamedTuple` with an `IndexLens`, this causes a `PartialArray` to be created.
+However, if there already is a regular `Base.Array` stored in a `VarNamedTuple`, you can index into it with `IndexLens`es without involving `PartialArray`s.
+That is, if you do `vnt = setindex!!(vnt, @varname(a), [1.0, 2.0])`, you can then either get the values with e.g. `vnt[@varname(a[1])`, which returns 1.0.
+You can also set the elements with `vnt = setindex!!(vnt, @varname(a[1]), 3.0)`, and this will modify the existing `Base.Array`.
+At this point you can not set any new values in that array that would be outside of its range, with something like `vnt = setindex!!(vnt, @varname(a[5]), 5.0)`.
+The philosophy here is that once a `Base.Array` has been attached to a `VarName`, that takes precedence, and a `PartialArray` is only used as a fallback when we are told to store a value for `@varname(a[i])` without having any previous knowledge about what `@varname(a)` is.
 
 ## Limitations
 
@@ -132,6 +150,7 @@ This design has a several of benefits, for performance and generality, but it al
 
  1. The lack of support for `Colon`s in `VarName`s.
  2. The lack of support for some other indexing syntaxes supported by Julia, such as linear indexing and boolean indexing.
- 3. An assymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
+ 3. `VarNamedTuple` can not store indices with different numbers of dimensions in the same value, so for instance `@varname(a[1])` and `@varname(a[1,1])` can not be stored in the same `VarNamedTuple`.
+ 4. There is an assymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
     The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
     The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
