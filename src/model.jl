@@ -135,9 +135,9 @@ outside of the parallel region is safe without needing to set `threadsafe=true`.
 
 It is also not needed for multithreaded sampling with AbstractMCMC's `MCMCThreads()`.
 
-Setting `threadsafe` to `true` increases the overhead in evaluating the model. See
-(https://turinglang.org/docs/THIS_DOESNT_EXIST_YET)[https://turinglang.org/docs/THIS_DOESNT_EXIST_YET]
-for more details.
+Setting `threadsafe` to `true` increases the overhead in evaluating the model. Please see
+[the Turing.jl docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more
+details.
 """
 function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
     return if _requires_threadsafe(model) == threadsafe

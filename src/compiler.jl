@@ -384,7 +384,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
                 "It looks like you are using `Threads.@threads` in your model definition." *
                 "\n\nNote that since version 0.39 of DynamicPPL, threadsafe evaluation of models is disabled by default." *
                 " If you need it, you will need to explicitly enable it by creating the model, and then running `model = setthreadsafe(model, true)`." *
-                "\n\nAvoiding threadsafe evaluation can often lead to significant performance improvements. Please see https://turinglang.org/docs/THIS_PAGE_DOESNT_EXIST_YET for more details of when threadsafe evaluation is actually required."
+                "\n\nAvoiding threadsafe evaluation can often lead to significant performance improvements. Please see https://turinglang.org/docs/usage/threadsafe-evaluation/ for more details of when threadsafe evaluation is actually required."
             )
         end
         return generate_mainbody!(

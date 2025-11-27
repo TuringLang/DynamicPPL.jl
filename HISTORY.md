@@ -17,8 +17,11 @@ If you were previously relying on this behaviour, you will need to store a VarIn
 
 #### Threadsafe evaluation
 
-DynamicPPL models are by default no longer thread-safe.
-If you have threading in a model, you **must** now manually mark it as so, using:
+DynamicPPL models have traditionally supported running some probabilistic statements (e.g. tilde-statements, or `@addlogprob!`) in parallel.
+Prior to DynamicPPL 0.39, thread safety for such models used to be enabled by default if Julia was launched with more than one thread.
+
+In DynamicPPL 0.39, **thread-safe evaluation is now disabled by default**.
+If you need it (see below for more discussion of when you _do_ need it), you **must** now manually mark it as so, using:
 
 ```julia
 @model f() = ...
@@ -26,9 +29,8 @@ model = f()
 model = setthreadsafe(model, true)
 ```
 
-It used to be that DynamicPPL would 'automatically' enable thread-safe evaluation if Julia was launched with more than one thread (i.e., by checking `Threads.nthreads() > 1`).
-
-The problem with this approach is that it sacrifices a huge amount of performance.
+The problem with the previous on-by-default is that it can sacrifice a huge amount of performance when thread safety is not needed.
+This is especially true when running Julia in a notebook, where multiple threads are often enabled by default.
 Furthermore, it is not actually the correct approach: just because Julia has multiple threads does not mean that a particular model actually requires threadsafe evaluation.
 
 **A model requires threadsafe evaluation if, and only if, the VarInfo object used inside the model is manipulated in parallel.**
@@ -41,8 +43,10 @@ This can occur if any of the following are inside `Threads.@threads` or other co
 If you have none of these inside threaded blocks, then you do not need to mark your model as threadsafe.
 **Notably, the following do not require threadsafe evaluation:**
 
-  - Using threading for anything that does not involve VarInfo. For example, you can calculate a log-probability in parallel, and then add it using `@addlogprob!` outside of the threaded block. This does not require threadsafe evaluation.
+  - Using threading for any computation that does not involve VarInfo. For example, you can calculate a log-probability in parallel, and then add it using `@addlogprob!` outside of the threaded block. This does not require threadsafe evaluation.
   - Sampling with `AbstractMCMC.MCMCThreads()`.
+
+For more information about threadsafe evaluation, please see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/).
 
 #### Parent and leaf contexts
 
