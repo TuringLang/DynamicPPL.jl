@@ -66,6 +66,12 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 LogDensityFunction
 ```
 
+Internally, this is accomplished using [`init!!`](@ref) on:
+
+```@docs
+OnlyAccsVarInfo
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
@@ -510,7 +516,7 @@ The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
 It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
 
 ```@docs
-DynamicPPL.init!!
+init!!
 ```
 
 To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.

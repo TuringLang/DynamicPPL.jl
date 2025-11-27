@@ -1,30 +1,4 @@
 """
-    supports_varname_indexing(chain::AbstractChains)
-
-Return `true` if `chain` supports indexing using `VarName` in place of the
-variable name index.
-"""
-supports_varname_indexing(::AbstractChains) = false
-
-"""
-    getindex_varname(chain::AbstractChains, sample_idx, varname::VarName, chain_idx)
-
-Return the value of `varname` in `chain` at `sample_idx` and `chain_idx`.
-
-Whether this method is implemented for `chains` is indicated by [`supports_varname_indexing`](@ref).
-"""
-function getindex_varname end
-
-"""
-    varnames(chains::AbstractChains)
-
-Return an iterator over the varnames present in `chains`.
-
-Whether this method is implemented for `chains` is indicated by [`supports_varname_indexing`](@ref).
-"""
-function varnames end
-
-"""
     ParamsWithStats
 
 A struct which contains parameter values extracted from a `VarInfo`, along with any
@@ -130,6 +104,63 @@ function ParamsWithStats(
         if has_prior_acc && has_likelihood_acc
             stats = merge(stats, (logjoint=DynamicPPL.getlogjoint(varinfo),))
         end
+    end
+    return ParamsWithStats(params, stats)
+end
+
+"""
+    ParamsWithStats(
+        param_vector::AbstractVector,
+        ldf::DynamicPPL.LogDensityFunction,
+        stats::NamedTuple=NamedTuple();
+        include_colon_eq::Bool=true,
+        include_log_probs::Bool=true,
+    )
+
+Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
+`param_vector`.
+
+This method is intended to replace the old method of obtaining parameters and statistics
+via `unflatten` plus re-evaluation. It is faster for two reasons:
+
+1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
+   otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
+   MCMC iterations).
+2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+"""
+function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::DynamicPPL.LogDensityFunction{Tlink},
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+) where {Tlink}
+    strategy = InitFromParams(
+        VectorWithRanges{Tlink}(
+            ldf._iden_varname_ranges, ldf._varname_ranges, param_vector
+        ),
+        nothing,
+    )
+    accs = if include_log_probs
+        (
+            DynamicPPL.LogPriorAccumulator(),
+            DynamicPPL.LogLikelihoodAccumulator(),
+            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+        )
+    else
+        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+    end
+    _, vi = DynamicPPL.init!!(ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy)
+    params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
+    if include_log_probs
+        stats = merge(
+            stats,
+            (
+                logprior=DynamicPPL.getlogprior(vi),
+                loglikelihood=DynamicPPL.getloglikelihood(vi),
+                lp=DynamicPPL.getlogjoint(vi),
+            ),
+        )
     end
     return ParamsWithStats(params, stats)
 end

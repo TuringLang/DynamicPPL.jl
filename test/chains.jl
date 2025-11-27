@@ -4,7 +4,7 @@ using DynamicPPL
 using Distributions
 using Test
 
-@testset "ParamsWithStats" begin
+@testset "ParamsWithStats from VarInfo" begin
     @model function f(z)
         x ~ Normal()
         y := x + 1
@@ -63,6 +63,32 @@ using Test
         @test length(ps.params) == 2
         # Because we didn't evaluate with log prob accumulators, there should be no stats
         @test isempty(ps.stats)
+    end
+end
+
+@testset "ParamsWithStats from LogDensityFunction" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        unlinked_vi = VarInfo(m)
+        @testset "$islinked" for islinked in (false, true)
+            vi = if islinked
+                DynamicPPL.link!!(unlinked_vi, m)
+            else
+                unlinked_vi
+            end
+            params = [x for x in vi[:]]
+
+            # Get the ParamsWithStats using LogDensityFunction
+            ldf = DynamicPPL.LogDensityFunction(m, getlogjoint, vi)
+            ps = ParamsWithStats(params, ldf)
+
+            # Check that length of parameters is as expected
+            @test length(ps.params) == length(keys(vi))
+
+            # Iterate over all variables to check that their values match
+            for vn in keys(vi)
+                @test ps.params[vn] == vi[vn]
+            end
+        end
     end
 end
 
