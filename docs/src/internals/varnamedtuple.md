@@ -35,7 +35,7 @@ The `identity` lens presents no complications, and in fact in the above example 
 It is the `IndexLenses` that require more structure.
 
 An `IndexLens` is the square bracket indexing part in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
-`VarNamedTuple` can not deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
+`VarNamedTuple` cannot deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
 Instead we restrict ourselves to `IndexLens`es where the indices are integers, explicit ranges with end points, like `1:5`, or tuples thereof.
 
 When storing data in a `VarNamedTuple`, we recursively go through the nested lenses in the `VarName`, inserting a new `VarNamedTuple` for every `PropertyLens`.
@@ -73,7 +73,7 @@ julia> print(vnt)
 VarNamedTuple(; a=1.0, b=VarNamedTuple(; c=[2.0, 3.0]), d=VarNamedTuple(; e=PartialArray{VarNamedTuple{(:f,), Tuple{DynamicPPL.VarNamedTuples.PartialArray{Symbol, 1}}},1}((2,) => VarNamedTuple(; f=PartialArray{Symbol,1}((3,) => hip, (4,) => hop)))))
 ```
 
-The output there may be a bit hard bit hard to parse, so to illustrate:
+The output there may be a bit hard to parse, so to illustrate:
 
 ```julia
 julia> vnt[@varname(b)]
@@ -103,7 +103,7 @@ a /      | b      \ d
 
 The above code also highlights how setting indices in a `VarNamedTuple` is done using `BangBang.setindex!!`.
 We do not define a method for `Base.setindex!` at all, `setindex!!` is the only way.
-This is because `VarNamedTuple` mixes mutable an immutable data structures.
+This is because `VarNamedTuple` mixes mutable and immutable data structures.
 It is also for user convenience:
 One does not ever have to think about whether the value that one is inserting into a `VarNamedTuple` is of the right type to fit in.
 Rather the containers will flex to fit it, keeping element types concrete when possible, but making them abstract if needed.
@@ -150,7 +150,7 @@ This design has a several of benefits, for performance and generality, but it al
 
  1. The lack of support for `Colon`s in `VarName`s.
  2. The lack of support for some other indexing syntaxes supported by Julia, such as linear indexing and boolean indexing.
- 3. `VarNamedTuple` can not store indices with different numbers of dimensions in the same value, so for instance `@varname(a[1])` and `@varname(a[1,1])` can not be stored in the same `VarNamedTuple`.
- 4. There is an assymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
+ 3. `VarNamedTuple` cannot store indices with different numbers of dimensions in the same value, so for instance `@varname(a[1])` and `@varname(a[1,1])` cannot be stored in the same `VarNamedTuple`.
+ 4. There is an asymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
     The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
     The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
