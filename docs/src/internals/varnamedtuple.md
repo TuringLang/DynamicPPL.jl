@@ -94,9 +94,9 @@ Or as a tree drawing, where `PA` marks a `PartialArray`:
 ```
    /----VNT------\
 a /      | b      \ d
- 1   [2.0, 3.0]   VNT
-                   | e
-                  PA(2 => VNT)
+ 1      VNT       VNT
+         | c       | e
+    [2.0, 3.0]    PA(2 => VNT)
                            | f
                           PA(3 => :hip, 4 => :hop)
 ```
