@@ -9,11 +9,48 @@
 This version provides a reimplementation of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
 Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
 
-For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/fasteval.jl` file, which contains extensive comments.
+For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/logdensityfunction.jl` file, which contains extensive comments.
 
 As a result of this change, `LogDensityFunction` no longer stores a VarInfo inside it.
 In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
 If you were previously relying on this behaviour, you will need to store a VarInfo separately.
+
+#### Threadsafe evaluation
+
+DynamicPPL models have traditionally supported running some probabilistic statements (e.g. tilde-statements, or `@addlogprob!`) in parallel.
+Prior to DynamicPPL 0.39, thread safety for such models used to be enabled by default if Julia was launched with more than one thread.
+
+In DynamicPPL 0.39, **thread-safe evaluation is now disabled by default**.
+If you need it (see below for more discussion of when you _do_ need it), you **must** now manually mark it as so, using:
+
+```julia
+@model f() = ...
+model = f()
+model = setthreadsafe(model, true)
+```
+
+The problem with the previous on-by-default is that it can sacrifice a huge amount of performance when thread safety is not needed.
+This is especially true when running Julia in a notebook, where multiple threads are often enabled by default.
+Furthermore, it is not actually the correct approach: just because Julia has multiple threads does not mean that a particular model actually requires threadsafe evaluation.
+
+**A model requires threadsafe evaluation if, and only if, the VarInfo object used inside the model is manipulated in parallel.**
+This can occur if any of the following are inside `Threads.@threads` or other concurrency functions / macros:
+
+  - tilde-statements
+  - calls to `@addlogprob!`
+  - any direct manipulation of the special `__varinfo__` variable
+
+If you have none of these inside threaded blocks, then you do not need to mark your model as threadsafe.
+**Notably, the following do not require threadsafe evaluation:**
+
+  - Using threading for any computation that does not involve VarInfo. For example, you can calculate a log-probability in parallel, and then add it using `@addlogprob!` outside of the threaded block. This does not require threadsafe evaluation.
+  - Sampling with `AbstractMCMC.MCMCThreads()`.
+
+For more information about threadsafe evaluation, please see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/).
+
+When threadsafe evaluation is enabled for a model, an internal flag is set on the model.
+The value of this flag can be queried using `DynamicPPL.requires_threadsafe(model)`, which returns a boolean.
+This function is newly exported in this version of DynamicPPL.
 
 #### Parent and leaf contexts
 
