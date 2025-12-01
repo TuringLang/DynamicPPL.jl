@@ -804,6 +804,13 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
     )
 end
 
+# TODO(mhauru) Should this recur to PartialArray?
+Base.isempty(vnt::VarNamedTuple) = isempty(vnt.data)
+
+# TODO(mhauru) Should this in fact keep the PartialArrays in place, but set them all to have
+# mask = fill(false, size(pa.mask))? That might save some allocations.
+Base.empty(::VarNamedTuple) = VarNamedTuple()
+
 """
     varname_to_lens(name::VarName{S}) where {S}
 
