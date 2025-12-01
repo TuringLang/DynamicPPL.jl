@@ -20,7 +20,7 @@ using DynamicPPL, Distributions, MCMCChains, Test, AbstractMCMC
             @test size(c, 1) == 50
             @test size(c, 3) == 3
             @test Set(c.name_map.parameters) == Set([:x, :y])
-            @test Set(c.name_map.internals) == Set([:logprior, :loglikelihood, :lp])
+            @test Set(c.name_map.internals) == Set([:logprior, :loglikelihood, :logjoint])
             @test logpdf.(Normal(), c[:x]) ≈ c[:logprior]
             @test c.info.varname_to_symbol[@varname(x)] == :x
             @test c.info.varname_to_symbol[@varname(y)] == :y
