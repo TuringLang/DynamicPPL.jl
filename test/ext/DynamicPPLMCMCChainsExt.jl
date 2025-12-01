@@ -3,19 +3,6 @@ module DynamicPPLMCMCChainsExtTests
 using DynamicPPL, Distributions, MCMCChains, Test, AbstractMCMC
 
 @testset "DynamicPPLMCMCChainsExt" begin
-    @model demo() = x ~ Normal()
-    model = demo()
-
-    chain = MCMCChains.Chains(
-        randn(1000, 2, 1),
-        [:x, :y],
-        Dict(:internals => [:y]);
-        info=(; varname_to_symbol=Dict(@varname(x) => :x)),
-    )
-    chain_generated = @test_nowarn returned(model, chain)
-    @test size(chain_generated) == (1000, 1)
-    @test mean(chain_generated) ≈ 0 atol = 0.1
-
     @testset "from_samples" begin
         @model function f(z)
             x ~ Normal()
@@ -60,6 +47,42 @@ using DynamicPPL, Distributions, MCMCChains, Test, AbstractMCMC
             @test new_p.params == p.params
             @test new_p.stats == p.stats
         end
+    end
+
+    @testset "returned (basic)" begin
+        @model demo() = x ~ Normal()
+        model = demo()
+
+        chain = MCMCChains.Chains(
+            randn(1000, 2, 1),
+            [:x, :y],
+            Dict(:internals => [:y]);
+            info=(; varname_to_symbol=Dict(@varname(x) => :x)),
+        )
+        chain_generated = @test_nowarn returned(model, chain)
+        @test size(chain_generated) == (1000, 1)
+        @test mean(chain_generated) ≈ 0 atol = 0.1
+    end
+
+    @testset "returned: errors on missing variable" begin
+        # Create a chain that only has `m`.
+        @model function m_only()
+            return m ~ Normal()
+        end
+        model_m_only = m_only()
+        chain_m_only = AbstractMCMC.from_samples(
+            MCMCChains.Chains,
+            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+        )
+
+        # Define a model that needs both `m` and `s`.
+        @model function f()
+            m ~ Normal()
+            s ~ Exponential()
+            return y ~ Normal(m, s)
+        end
+        model = f() | (; y=1.0)
+        @test_throws "No value was provided" returned(model, chain_m_only)
     end
 end
 
