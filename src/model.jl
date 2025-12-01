@@ -94,6 +94,12 @@ function Model{Threaded}(
     return Model{Threaded}(f, args, NamedTuple(kwargs), context)
 end
 
+"""
+    requires_threadsafe(model::Model)
+
+Return whether `model` has been marked as needing threadsafe evaluation (using
+`setthreadsafe`).
+"""
 function requires_threadsafe(
     ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
 ) where {F,A,D,M,Ta,Td,Ctx,Threaded}
