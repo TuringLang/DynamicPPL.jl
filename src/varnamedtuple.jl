@@ -715,7 +715,7 @@ function Base.keys(pa::PartialArray)
             subkeys = keys(val)
             for vn in subkeys
                 sublens = _varname_to_lens(vn)
-                push!(ks, _compose_no_identity(sublens, lens))
+                ks = push!!(ks, _compose_no_identity(sublens, lens))
             end
         elseif val isa ArrayLikeBlock
             if !(val.inds in alb_inds_seen)
@@ -723,7 +723,7 @@ function Base.keys(pa::PartialArray)
                 push!(alb_inds_seen, val.inds)
             end
         else
-            push!(ks, lens)
+            ks = push!!(ks, lens)
         end
     end
     return ks
