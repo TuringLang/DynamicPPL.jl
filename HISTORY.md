@@ -65,6 +65,10 @@ Leaf contexts require no changes, apart from a removal of the `NodeTrait` functi
 `ConditionContext` and `PrefixContext` are no longer exported.
 You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
 
+#### ParamsWithStats
+
+In the 'stats' part of `DynamicPPL.ParamsWithStats`, the log-joint is now consistently represented with the key `logjoint` instead of `lp`.
+
 #### Miscellaneous
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.

@@ -57,7 +57,7 @@ function ParamsWithStats(
             (
                 logprior=DynamicPPL.getlogprior(varinfo),
                 loglikelihood=DynamicPPL.getloglikelihood(varinfo),
-                lp=DynamicPPL.getlogjoint(varinfo),
+                logjoint=DynamicPPL.getlogjoint(varinfo),
             ),
         )
     end
@@ -158,7 +158,7 @@ function ParamsWithStats(
             (
                 logprior=DynamicPPL.getlogprior(vi),
                 loglikelihood=DynamicPPL.getloglikelihood(vi),
-                lp=DynamicPPL.getlogjoint(vi),
+                logjoint=DynamicPPL.getlogjoint(vi),
             ),
         )
     end
