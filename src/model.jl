@@ -922,9 +922,6 @@ If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
 function init!!(
-    # Note that this `@inline` is mandatory for performance, especially for
-    # LogDensityFunction. If it's not inlined, it leads to extra allocations (even for
-    # trivial models) and much slower runtime.
     rng::Random.AbstractRNG,
     model::Model,
     vi::AbstractVarInfo,
@@ -937,7 +934,6 @@ end
 function init!!(
     model::Model, vi::AbstractVarInfo, strategy::AbstractInitStrategy=InitFromPrior()
 )
-    # This `@inline` is also mandatory for performance
     return init!!(Random.default_rng(), model, vi, strategy)
 end
 
@@ -963,8 +959,8 @@ function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
         # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
         # plain ugly and hacky.
         # The below line is finicky for type stability. For instance, assigning the eltype to
-        # convert to into an intermediate variable makes this unstable (constant propagation)
-        # fails. Take care when editing.
+        # convert to into an intermediate variable makes this unstable (constant propagation
+        # fails). Take care when editing.
         param_eltype = DynamicPPL.get_param_eltype(varinfo, model.context)
         accs = map(DynamicPPL.getaccs(varinfo)) do acc
             DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
