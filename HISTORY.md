@@ -77,6 +77,14 @@ This is a generalisation of the previous behaviour, where `init` would always re
 The family of functions `returned(model, chain)`, along with the same signatures of `pointwise_logdensities`, `logjoint`, `loglikelihood`, and `logprior`, have been changed such that if the chain does not contain all variables in the model, an error is thrown.
 Previously the behaviour would have been to sample missing variables.
 
+## 0.38.10
+
+`returned(model, chain)` and `pointwise_logdensities(model, chain)` will now error if a value for a random variable cannot be found in the chain.
+(Previously, they would instead resample such variables, which could lead to silent mistakes.)
+
+If you encounter this error and it is accompanied by a warning about `hasvalue` not being implemented, you should be able to fix this by [using FlexiChains instead of MCMCChains](https://github.com/penelopeysm/FlexiChains.jl).
+(Alternatively, implementations of `hasvalue` for unsupported distributions are more than welcome; these must be provided in the Distributions extension of AbstractPPL.jl.)
+
 ## 0.38.9
 
 Remove warning when using Enzyme as the AD backend.
