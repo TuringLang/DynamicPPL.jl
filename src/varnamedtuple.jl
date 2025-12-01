@@ -729,6 +729,21 @@ function Base.keys(pa::PartialArray)
     return ks
 end
 
+function Base.values(pa::PartialArray)
+    inds = findall(pa.mask)
+    vs = Union{}[]
+    for ind in inds
+        val = getindex(pa.data, ind...)
+        if val isa VarNamedTuple
+            subvalues = values(val)
+            vs = push!!(vs, subvalues...)
+        else
+            vs = push!!(vs, val)
+        end
+    end
+    return vs
+end
+
 """
     VarNamedTuple{names,Values}
 
@@ -888,6 +903,24 @@ function Base.keys(vnt::VarNamedTuple)
             append!(result, [VarName{sym}(lens) for lens in subkeys])
         else
             push!(result, VarName{sym}())
+        end
+    end
+    return result
+end
+
+# TODO(mhauru) Same comments as for keys.
+function Base.values(vnt::VarNamedTuple)
+    result = ()
+    for sym in keys(vnt.data)
+        subdata = vnt.data[sym]
+        if subdata isa VarNamedTuple
+            subvalues = values(subdata)
+            result = (result..., subvalues...)
+        elseif subdata isa PartialArray
+            subvalues = values(subdata)
+            result = (result..., subvalues...)
+        else
+            result = (result..., subdata)
         end
     end
     return result
