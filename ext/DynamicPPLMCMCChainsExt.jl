@@ -226,7 +226,10 @@ function DynamicPPL.predict(
     )
     predictions = map(params_and_stats) do ps
         _, varinfo = DynamicPPL.init!!(
-            rng, model, varinfo, DynamicPPL.InitFromParams(ps.params)
+            rng,
+            model,
+            varinfo,
+            DynamicPPL.InitFromParams(ps.params, DynamicPPL.InitFromPrior()),
         )
         DynamicPPL.ParamsWithStats(varinfo)
     end
@@ -316,11 +319,7 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
     return map(params_with_stats) do ps
         first(
-            DynamicPPL.init!!(
-                model,
-                varinfo,
-                DynamicPPL.InitFromParams(ps.params, DynamicPPL.InitFromPrior()),
-            ),
+            DynamicPPL.init!!(model, varinfo, DynamicPPL.InitFromParams(ps.params, nothing))
         )
     end
 end
@@ -426,9 +425,7 @@ function DynamicPPL.pointwise_logdensities(
         values_dict = chain_sample_to_varname_dict(parameter_only_chain, sample_idx, chain_idx)
         # Re-evaluate the model
         _, vi = DynamicPPL.init!!(
-            model,
-            vi,
-            DynamicPPL.InitFromParams(values_dict, DynamicPPL.InitFromPrior()),
+            model, vi, DynamicPPL.InitFromParams(values_dict, nothing)
         )
         DynamicPPL.getacc(vi, Val(accname)).logps
     end
