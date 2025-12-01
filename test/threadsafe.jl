@@ -15,11 +15,11 @@
     @testset "setthreadsafe" begin
         @model f() = x ~ Normal()
         model = f()
-        @test !DynamicPPL._requires_threadsafe(model)
+        @test !DynamicPPL.requires_threadsafe(model)
         model = setthreadsafe(model, true)
-        @test DynamicPPL._requires_threadsafe(model)
+        @test DynamicPPL.requires_threadsafe(model)
         model = setthreadsafe(model, false)
-        @test !DynamicPPL._requires_threadsafe(model)
+        @test !DynamicPPL.requires_threadsafe(model)
     end
 
     # TODO: Add more tests of the public API

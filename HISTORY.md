@@ -48,6 +48,10 @@ If you have none of these inside threaded blocks, then you do not need to mark y
 
 For more information about threadsafe evaluation, please see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/).
 
+When threadsafe evaluation is enabled for a model, an internal flag is set on the model.
+The value of this flag can be queried using `DynamicPPL.requires_threadsafe(model)`, which returns a boolean.
+This function is newly exported in this version of DynamicPPL.
+
 #### Parent and leaf contexts
 
 The `DynamicPPL.NodeTrait` function has been removed.

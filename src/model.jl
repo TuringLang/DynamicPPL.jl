@@ -94,7 +94,7 @@ function Model{Threaded}(
     return Model{Threaded}(f, args, NamedTuple(kwargs), context)
 end
 
-function _requires_threadsafe(
+function requires_threadsafe(
     ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
 ) where {F,A,D,M,Ta,Td,Ctx,Threaded}
     return Threaded
@@ -107,7 +107,7 @@ Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    return Model{_requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
+    return Model{requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
 end
 
 """
@@ -140,7 +140,7 @@ Setting `threadsafe` to `true` increases the overhead in evaluating the model. P
 details.
 """
 function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
-    return if _requires_threadsafe(model) == threadsafe
+    return if requires_threadsafe(model) == threadsafe
         model
     else
         Model{threadsafe,M}(model.f, model.args, model.defaults, model.context)
@@ -949,7 +949,7 @@ Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    return if _requires_threadsafe(model)
+    return if requires_threadsafe(model)
         # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
         # a gradient type of some AD backend.
         # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!

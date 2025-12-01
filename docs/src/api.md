@@ -47,6 +47,7 @@ If this is the case, one must enable threadsafe evaluation for a model:
 
 ```@docs
 setthreadsafe
+requires_threadsafe
 ```
 
 ## Evaluation
