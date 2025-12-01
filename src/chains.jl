@@ -5,7 +5,7 @@ A struct which contains parameter values extracted from a `VarInfo`, along with 
 statistics associated with the VarInfo. The statistics are provided as a NamedTuple and are
 optional.
 """
-struct ParamsWithStats{P<:OrderedDict{<:VarName,<:Any},S<:NamedTuple}
+struct ParamsWithStats{P<:Union{OrderedDict{<:VarName,<:Any},VarNamedTuple},S<:NamedTuple}
     params::P
     stats::S
 end

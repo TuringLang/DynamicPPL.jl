@@ -10,14 +10,14 @@ wants to extract the realization of a model in a constrained space.
 # Fields
 $(TYPEDFIELDS)
 """
-struct ValuesAsInModelAccumulator <: AbstractAccumulator
+struct ValuesAsInModelAccumulator{VNT<:VarNamedTuple} <: AbstractAccumulator
     "values that are extracted from the model"
-    values::OrderedDict{<:VarName}
+    values::VNT
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
 end
 function ValuesAsInModelAccumulator(include_colon_eq)
-    return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
+    return ValuesAsInModelAccumulator(VarNamedTuple(), include_colon_eq)
 end
 
 function Base.:(==)(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
@@ -45,8 +45,9 @@ function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumula
     )
 end
 
-function Base.push!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
-    setindex!(acc.values, deepcopy(val), vn)
+function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
+    # TODO(mhauru) Why do we deepcopy here?
+    Accessors.@reset acc.values = setindex!!(acc.values, deepcopy(val), vn)
     return acc
 end
 
@@ -56,7 +57,7 @@ function is_extracting_values(vi::AbstractVarInfo)
 end
 
 function accumulate_assume!!(acc::ValuesAsInModelAccumulator, val, logjac, vn, right)
-    return push!(acc, vn, val)
+    return push!!(acc, vn, val)
 end
 
 accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc
@@ -74,6 +75,8 @@ working in unconstrained space.
 
 Hence this method is a "safe" way of obtaining realizations in constrained
 space at the cost of additional model evaluations.
+
+Returns a `VarNamedTuple`.
 
 # Arguments
 - `model::Model`: model to extract realizations from.
