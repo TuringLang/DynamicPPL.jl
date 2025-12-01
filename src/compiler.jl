@@ -301,7 +301,7 @@ function model(mod, linenumbernode, expr, warn)
     modeldef = build_model_definition(expr)
 
     # Generate main body
-    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, false)
+    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true)
 
     return build_output(modeldef, linenumbernode)
 end
@@ -377,14 +377,15 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         if (
             expr.args[1] == Symbol("@threads") ||
             expr.args[1] == Expr(:., :Threads, QuoteNode(Symbol("@threads"))) &&
-            !warn_threads
+            warn_threads
         )
-            warn_threads = true
+            warn_threads = false
             @warn (
                 "It looks like you are using `Threads.@threads` in your model definition." *
                 "\n\nNote that since version 0.39 of DynamicPPL, threadsafe evaluation of models is disabled by default." *
                 " If you need it, you will need to explicitly enable it by creating the model, and then running `model = setthreadsafe(model, true)`." *
-                "\n\nAvoiding threadsafe evaluation can often lead to significant performance improvements. Please see https://turinglang.org/docs/usage/threadsafe-evaluation/ for more details of when threadsafe evaluation is actually required."
+                "\n\nThreadsafe model evaluation is only needed when parallelising tilde-statements (not arbitrary Julia code), and avoiding it can often lead to significant performance improvements." *
+                "\n\nPlease see https://turinglang.org/docs/usage/threadsafe-evaluation/ for more details of when threadsafe evaluation is actually required."
             )
         end
         return generate_mainbody!(
