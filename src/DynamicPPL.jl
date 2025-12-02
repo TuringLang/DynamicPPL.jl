@@ -84,30 +84,43 @@ export AbstractVarInfo,
     # Compiler
     @model,
     # Utilities
-    init,
     OrderedDict,
+    typed_identity,
     # Model
     Model,
     getmissings,
     getargnames,
+    setthreadsafe,
+    requires_threadsafe,
     extract_priors,
     values_as_in_model,
+    # evaluation
+    evaluate!!,
+    init!!,
     # LogDensityFunction
     LogDensityFunction,
-    # Contexts
+    OnlyAccsVarInfo,
+    # Leaf contexts
+    AbstractContext,
     contextualize,
     DefaultContext,
-    PrefixContext,
-    ConditionContext,
+    InitContext,
+    # Parent contexts
+    AbstractParentContext,
+    childcontext,
+    setchildcontext,
+    leafcontext,
+    setleafcontext,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
     # Initialisation
-    InitContext,
     AbstractInitStrategy,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    init,
+    get_param_eltype,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -188,12 +201,14 @@ include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
 include("simple_varinfo.jl")
+include("onlyaccs.jl")
 include("compiler.jl")
 include("pointwise_logdensities.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
+include("experimental.jl")
 include("chains.jl")
 include("bijector.jl")
 
@@ -201,7 +216,6 @@ include("debug_utils.jl")
 using .DebugUtils
 include("test_utils.jl")
 
-include("experimental.jl")
 include("deprecated.jl")
 
 if isdefined(Base.Experimental, :register_error_hint)

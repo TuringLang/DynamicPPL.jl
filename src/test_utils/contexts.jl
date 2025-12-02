@@ -4,11 +4,10 @@
 # Utilities for testing contexts.
 
 # Dummy context to test nested behaviors.
-struct TestParentContext{C<:DynamicPPL.AbstractContext} <: DynamicPPL.AbstractContext
+struct TestParentContext{C<:DynamicPPL.AbstractContext} <: DynamicPPL.AbstractParentContext
     context::C
 end
 TestParentContext() = TestParentContext(DefaultContext())
-DynamicPPL.NodeTrait(::TestParentContext) = DynamicPPL.IsParent()
 DynamicPPL.childcontext(context::TestParentContext) = context.context
 DynamicPPL.setchildcontext(::TestParentContext, child) = TestParentContext(child)
 function Base.show(io::IO, c::TestParentContext)
@@ -25,19 +24,13 @@ This method ensures that `context`
 - Correctly implements the tilde-pipeline.
 """
 function test_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
-    node_trait = DynamicPPL.NodeTrait(context)
-    if node_trait isa DynamicPPL.IsLeaf
-        test_leaf_context(context, model)
-    elseif node_trait isa DynamicPPL.IsParent
-        test_parent_context(context, model)
-    else
-        error("Invalid NodeTrait: $node_trait")
-    end
+    return test_leaf_context(context, model)
+end
+function test_context(context::DynamicPPL.AbstractParentContext, model::DynamicPPL.Model)
+    return test_parent_context(context, model)
 end
 
 function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
-    @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsLeaf
-
     # Note that for a leaf context we can't assume that it will work with an
     # empty VarInfo. (For example, DefaultContext will error with empty
     # varinfos.) Thus we only test evaluation with VarInfos that are already
@@ -57,8 +50,6 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
 end
 
 function test_parent_context(context::DynamicPPL.AbstractContext, model::DynamicPPL.Model)
-    @test DynamicPPL.NodeTrait(context) isa DynamicPPL.IsParent
-
     @testset "get/set leaf and child contexts" begin
         # Ensure we're using a different leaf context than the current.
         leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext

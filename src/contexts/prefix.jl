@@ -13,7 +13,7 @@ unique.
 
 See also: [`to_submodel`](@ref)
 """
-struct PrefixContext{Tvn<:VarName,C<:AbstractContext} <: AbstractContext
+struct PrefixContext{Tvn<:VarName,C<:AbstractContext} <: AbstractParentContext
     vn_prefix::Tvn
     context::C
 end
@@ -23,7 +23,6 @@ function PrefixContext(::Val{sym}, context::AbstractContext) where {sym}
 end
 PrefixContext(::Val{sym}) where {sym} = PrefixContext(VarName{sym}())
 
-NodeTrait(::PrefixContext) = IsParent()
 childcontext(context::PrefixContext) = context.context
 function setchildcontext(ctx::PrefixContext, child::AbstractContext)
     return PrefixContext(ctx.vn_prefix, child)
@@ -37,11 +36,8 @@ Apply the prefixes in the context `ctx` to the variable name `vn`.
 function prefix(ctx::PrefixContext, vn::VarName)
     return AbstractPPL.prefix(prefix(childcontext(ctx), vn), ctx.vn_prefix)
 end
-function prefix(ctx::AbstractContext, vn::VarName)
-    return prefix(NodeTrait(ctx), ctx, vn)
-end
-prefix(::IsLeaf, ::AbstractContext, vn::VarName) = vn
-function prefix(::IsParent, ctx::AbstractContext, vn::VarName)
+prefix(::AbstractContext, vn::VarName) = vn
+function prefix(ctx::AbstractParentContext, vn::VarName)
     return prefix(childcontext(ctx), vn)
 end
 
@@ -72,11 +68,8 @@ function prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
     )
     return AbstractPPL.prefix(vn_prefixed, ctx.vn_prefix), child_context_without_prefixes
 end
-function prefix_and_strip_contexts(ctx::AbstractContext, vn::VarName)
-    return prefix_and_strip_contexts(NodeTrait(ctx), ctx, vn)
-end
-prefix_and_strip_contexts(::IsLeaf, ctx::AbstractContext, vn::VarName) = (vn, ctx)
-function prefix_and_strip_contexts(::IsParent, ctx::AbstractContext, vn::VarName)
+prefix_and_strip_contexts(ctx::AbstractContext, vn::VarName) = (vn, ctx)
+function prefix_and_strip_contexts(ctx::AbstractParentContext, vn::VarName)
     vn, new_ctx = prefix_and_strip_contexts(childcontext(ctx), vn)
     return vn, setchildcontext(ctx, new_ctx)
 end

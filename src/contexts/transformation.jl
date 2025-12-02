@@ -10,7 +10,6 @@ Note that some `AbstractVarInfo` types, must notably `VarInfo`, override the
 how to do the transformation, used by e.g. `SimpleVarInfo`.
 """
 struct DynamicTransformationContext{isinverse} <: AbstractContext end
-NodeTrait(::DynamicTransformationContext) = IsLeaf()
 
 function tilde_assume!!(
     ::DynamicTransformationContext{isinverse},

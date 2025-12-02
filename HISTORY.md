@@ -1,5 +1,86 @@
 # DynamicPPL Changelog
 
+## 0.39.0
+
+### Breaking changes
+
+#### Fast Log Density Functions
+
+This version provides a reimplementation of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
+Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
+
+For more information about how this is accomplished, please see https://github.com/TuringLang/DynamicPPL.jl/pull/1113 as well as the `src/logdensityfunction.jl` file, which contains extensive comments.
+
+As a result of this change, `LogDensityFunction` no longer stores a VarInfo inside it.
+In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
+If you were previously relying on this behaviour, you will need to store a VarInfo separately.
+
+#### Threadsafe evaluation
+
+DynamicPPL models have traditionally supported running some probabilistic statements (e.g. tilde-statements, or `@addlogprob!`) in parallel.
+Prior to DynamicPPL 0.39, thread safety for such models used to be enabled by default if Julia was launched with more than one thread.
+
+In DynamicPPL 0.39, **thread-safe evaluation is now disabled by default**.
+If you need it (see below for more discussion of when you _do_ need it), you **must** now manually mark it as so, using:
+
+```julia
+@model f() = ...
+model = f()
+model = setthreadsafe(model, true)
+```
+
+The problem with the previous on-by-default is that it can sacrifice a huge amount of performance when thread safety is not needed.
+This is especially true when running Julia in a notebook, where multiple threads are often enabled by default.
+Furthermore, it is not actually the correct approach: just because Julia has multiple threads does not mean that a particular model actually requires threadsafe evaluation.
+
+**A model requires threadsafe evaluation if, and only if, the VarInfo object used inside the model is manipulated in parallel.**
+This can occur if any of the following are inside `Threads.@threads` or other concurrency functions / macros:
+
+  - tilde-statements
+  - calls to `@addlogprob!`
+  - any direct manipulation of the special `__varinfo__` variable
+
+If you have none of these inside threaded blocks, then you do not need to mark your model as threadsafe.
+**Notably, the following do not require threadsafe evaluation:**
+
+  - Using threading for any computation that does not involve VarInfo. For example, you can calculate a log-probability in parallel, and then add it using `@addlogprob!` outside of the threaded block. This does not require threadsafe evaluation.
+  - Sampling with `AbstractMCMC.MCMCThreads()`.
+
+For more information about threadsafe evaluation, please see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/).
+
+When threadsafe evaluation is enabled for a model, an internal flag is set on the model.
+The value of this flag can be queried using `DynamicPPL.requires_threadsafe(model)`, which returns a boolean.
+This function is newly exported in this version of DynamicPPL.
+
+#### Parent and leaf contexts
+
+The `DynamicPPL.NodeTrait` function has been removed.
+Instead of implementing this, parent contexts should subtype `DynamicPPL.AbstractParentContext`.
+This is an abstract type which requires you to overload two functions, `DynamicPPL.childcontext` and `DynamicPPL.setchildcontext`.
+
+There should generally be few reasons to define your own parent contexts (the only one we are aware of, outside of DynamicPPL itself, is `Turing.Inference.GibbsContext`), so this change should not really affect users.
+
+Leaf contexts require no changes, apart from a removal of the `NodeTrait` function.
+
+`ConditionContext` and `PrefixContext` are no longer exported.
+You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
+
+#### ParamsWithStats
+
+In the 'stats' part of `DynamicPPL.ParamsWithStats`, the log-joint is now consistently represented with the key `logjoint` instead of `lp`.
+
+#### Miscellaneous
+
+Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
+
+The unexported functions `supports_varname_indexing(chain)`, `getindex_varname(chain)`, and `varnames(chain)` have been removed.
+
+The method `DynamicPPL.init` (for implementing `AbstractInitStrategy`) now has a different signature: it must return a tuple of the generated value, plus a transform function that maps it back to unlinked space.
+This is a generalisation of the previous behaviour, where `init` would always return an unlinked value (in effect forcing the transform to be the identity function).
+
+The family of functions `returned(model, chain)`, along with the same signatures of `pointwise_logdensities`, `logjoint`, `loglikelihood`, and `logprior`, have been changed such that if the chain does not contain all variables in the model, an error is thrown.
+Previously the behaviour would have been to sample missing variables.
+
 ## 0.38.10
 
 `returned(model, chain)` and `pointwise_logdensities(model, chain)` will now error if a value for a random variable cannot be found in the chain.

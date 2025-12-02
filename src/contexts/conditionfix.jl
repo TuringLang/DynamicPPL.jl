@@ -11,7 +11,7 @@ when there are varnames that cannot be represented as symbols, e.g.
 """
 struct ConditionContext{
     Values<:Union{NamedTuple,AbstractDict{<:VarName}},Ctx<:AbstractContext
-} <: AbstractContext
+} <: AbstractParentContext
     values::Values
     context::Ctx
 end
@@ -41,9 +41,10 @@ function Base.show(io::IO, context::ConditionContext)
     return print(io, "ConditionContext($(context.values), $(childcontext(context)))")
 end
 
-NodeTrait(::ConditionContext) = IsParent()
 childcontext(context::ConditionContext) = context.context
-setchildcontext(parent::ConditionContext, child) = ConditionContext(parent.values, child)
+function setchildcontext(parent::ConditionContext, child::AbstractContext)
+    return ConditionContext(parent.values, child)
+end
 
 """
     hasconditioned(context::AbstractContext, vn::VarName)
@@ -76,11 +77,8 @@ Return `true` if `vn` is found in `context` or any of its descendants.
 This is contrast to [`hasconditioned(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-function hasconditioned_nested(context::AbstractContext, vn)
-    return hasconditioned_nested(NodeTrait(hasconditioned_nested, context), context, vn)
-end
-hasconditioned_nested(::IsLeaf, context, vn) = hasconditioned(context, vn)
-function hasconditioned_nested(::IsParent, context, vn)
+hasconditioned_nested(context::AbstractContext, vn) = hasconditioned(context, vn)
+function hasconditioned_nested(context::AbstractParentContext, vn)
     return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
 end
 function hasconditioned_nested(context::PrefixContext, vn)
@@ -96,15 +94,12 @@ This is contrast to [`getconditioned`](@ref) which only returns the value `vn` i
 not recursively looking into its descendants.
 """
 function getconditioned_nested(context::AbstractContext, vn)
-    return getconditioned_nested(NodeTrait(getconditioned_nested, context), context, vn)
-end
-function getconditioned_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getconditioned_nested(context::PrefixContext, vn)
     return getconditioned_nested(collapse_prefix_stack(context), vn)
 end
-function getconditioned_nested(::IsParent, context, vn)
+function getconditioned_nested(context::AbstractParentContext, vn)
     return if hasconditioned(context, vn)
         getconditioned(context, vn)
     else
@@ -113,7 +108,7 @@ function getconditioned_nested(::IsParent, context, vn)
 end
 
 """
-    decondition(context::AbstractContext, syms...)
+    decondition_context(context::AbstractContext, syms...)
 
 Return `context` but with `syms` no longer conditioned on.
 
@@ -121,12 +116,9 @@ Note that this recursively traverses contexts, deconditioning all along the way.
 
 See also: [`condition`](@ref)
 """
-decondition_context(::IsLeaf, context, args...) = context
-function decondition_context(::IsParent, context, args...)
+decondition_context(context::AbstractContext, args...) = context
+function decondition_context(context::AbstractParentContext, args...)
     return setchildcontext(context, decondition_context(childcontext(context), args...))
-end
-function decondition_context(context, args...)
-    return decondition_context(NodeTrait(context), context, args...)
 end
 function decondition_context(context::ConditionContext)
     return decondition_context(childcontext(context))
@@ -160,11 +152,8 @@ Return `NamedTuple` of values that are conditioned on under context`.
 Note that this will recursively traverse the context stack and return
 a merged version of the condition values.
 """
-function conditioned(context::AbstractContext)
-    return conditioned(NodeTrait(conditioned, context), context)
-end
-conditioned(::IsLeaf, context) = NamedTuple()
-conditioned(::IsParent, context) = conditioned(childcontext(context))
+conditioned(::AbstractContext) = NamedTuple()
+conditioned(context::AbstractParentContext) = conditioned(childcontext(context))
 function conditioned(context::ConditionContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
@@ -176,7 +165,7 @@ function conditioned(context::PrefixContext)
     return conditioned(collapse_prefix_stack(context))
 end
 
-struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractContext
+struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractParentContext
     values::Values
     context::Ctx
 end
@@ -197,16 +186,17 @@ function Base.show(io::IO, context::FixedContext)
     return print(io, "FixedContext($(context.values), $(childcontext(context)))")
 end
 
-NodeTrait(::FixedContext) = IsParent()
 childcontext(context::FixedContext) = context.context
-setchildcontext(parent::FixedContext, child) = FixedContext(parent.values, child)
+function setchildcontext(parent::FixedContext, child::AbstractContext)
+    return FixedContext(parent.values, child)
+end
 
 """
     hasfixed(context::AbstractContext, vn::VarName)
 
 Return `true` if a fixed value for `vn` is found in `context`.
 """
-hasfixed(context::AbstractContext, vn::VarName) = false
+hasfixed(::AbstractContext, ::VarName) = false
 hasfixed(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
 function hasfixed(context::FixedContext, vns::AbstractArray{<:VarName})
     return all(Base.Fix1(hasvalue, context.values), vns)
@@ -230,11 +220,8 @@ Return `true` if a fixed value for `vn` is found in `context` or any of its desc
 This is contrast to [`hasfixed(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-function hasfixed_nested(context::AbstractContext, vn)
-    return hasfixed_nested(NodeTrait(hasfixed_nested, context), context, vn)
-end
-hasfixed_nested(::IsLeaf, context, vn) = hasfixed(context, vn)
-function hasfixed_nested(::IsParent, context, vn)
+hasfixed_nested(context::AbstractContext, vn) = hasfixed(context, vn)
+function hasfixed_nested(context::AbstractParentContext, vn)
     return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
 end
 function hasfixed_nested(context::PrefixContext, vn)
@@ -250,15 +237,12 @@ This is contrast to [`getfixed`](@ref) which only returns the value `vn` in `con
 not recursively looking into its descendants.
 """
 function getfixed_nested(context::AbstractContext, vn)
-    return getfixed_nested(NodeTrait(getfixed_nested, context), context, vn)
-end
-function getfixed_nested(::IsLeaf, context, vn)
     return error("context $(context) does not contain value for $vn")
 end
 function getfixed_nested(context::PrefixContext, vn)
     return getfixed_nested(collapse_prefix_stack(context), vn)
 end
-function getfixed_nested(::IsParent, context, vn)
+function getfixed_nested(context::AbstractParentContext, vn)
     return if hasfixed(context, vn)
         getfixed(context, vn)
     else
@@ -283,7 +267,7 @@ end
 function fix(values::NTuple{<:Any,<:Pair{<:VarName}})
     return fix(DefaultContext(), values)
 end
-fix(context::AbstractContext, values::NamedTuple{()}) = context
+fix(context::AbstractContext, ::NamedTuple{()}) = context
 function fix(context::AbstractContext, values::Union{AbstractDict,NamedTuple})
     return FixedContext(values, context)
 end
@@ -306,12 +290,9 @@ Note that this recursively traverses contexts, unfixing all along the way.
 
 See also: [`fix`](@ref)
 """
-unfix(::IsLeaf, context, args...) = context
-function unfix(::IsParent, context, args...)
+unfix(context::AbstractContext, args...) = context
+function unfix(context::AbstractParentContext, args...)
     return setchildcontext(context, unfix(childcontext(context), args...))
-end
-function unfix(context, args...)
-    return unfix(NodeTrait(context), context, args...)
 end
 function unfix(context::FixedContext)
     return unfix(childcontext(context))
@@ -341,9 +322,8 @@ Return the values that are fixed under `context`.
 Note that this will recursively traverse the context stack and return
 a merged version of the fix values.
 """
-fixed(context::AbstractContext) = fixed(NodeTrait(fixed, context), context)
-fixed(::IsLeaf, context) = NamedTuple()
-fixed(::IsParent, context) = fixed(childcontext(context))
+fixed(::AbstractContext) = NamedTuple()
+fixed(context::AbstractParentContext) = fixed(childcontext(context))
 function fixed(context::FixedContext)
     # Note the order of arguments to `merge`. The behavior of the rest of DPPL
     # is that the outermost `context` takes precendence, hence when resolving
@@ -374,7 +354,7 @@ topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_co
 which explains this in much more detail.
 
 ```jldoctest
-julia> using DynamicPPL: collapse_prefix_stack
+julia> using DynamicPPL: collapse_prefix_stack, PrefixContext, ConditionContext
 
 julia> c1 = PrefixContext(@varname(a), ConditionContext((x=1, )));
 
@@ -403,11 +383,8 @@ function collapse_prefix_stack(context::PrefixContext)
     # depth of the context stack.
     return prefix_cond_and_fixed_variables(collapsed, context.vn_prefix)
 end
-function collapse_prefix_stack(context::AbstractContext)
-    return collapse_prefix_stack(NodeTrait(collapse_prefix_stack, context), context)
-end
-collapse_prefix_stack(::IsLeaf, context) = context
-function collapse_prefix_stack(::IsParent, context)
+collapse_prefix_stack(context::AbstractContext) = context
+function collapse_prefix_stack(context::AbstractParentContext)
     new_child_context = collapse_prefix_stack(childcontext(context))
     return setchildcontext(context, new_child_context)
 end
@@ -448,19 +425,10 @@ function prefix_cond_and_fixed_variables(ctx::FixedContext, prefix::VarName)
     prefixed_child_ctx = prefix_cond_and_fixed_variables(childcontext(ctx), prefix)
     return FixedContext(prefixed_vn_dict, prefixed_child_ctx)
 end
-function prefix_cond_and_fixed_variables(c::AbstractContext, prefix::VarName)
-    return prefix_cond_and_fixed_variables(
-        NodeTrait(prefix_cond_and_fixed_variables, c), c, prefix
-    )
-end
-function prefix_cond_and_fixed_variables(
-    ::IsLeaf, context::AbstractContext, prefix::VarName
-)
+function prefix_cond_and_fixed_variables(context::AbstractContext, ::VarName)
     return context
 end
-function prefix_cond_and_fixed_variables(
-    ::IsParent, context::AbstractContext, prefix::VarName
-)
+function prefix_cond_and_fixed_variables(context::AbstractParentContext, prefix::VarName)
     return setchildcontext(
         context, prefix_cond_and_fixed_variables(childcontext(context), prefix)
     )

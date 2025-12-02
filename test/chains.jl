@@ -4,7 +4,7 @@ using DynamicPPL
 using Distributions
 using Test
 
-@testset "ParamsWithStats" begin
+@testset "ParamsWithStats from VarInfo" begin
     @model function f(z)
         x ~ Normal()
         y := x + 1
@@ -20,9 +20,9 @@ using Test
         @test length(ps.params) == 2
         @test haskey(ps.stats, :logprior)
         @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :lp)
+        @test haskey(ps.stats, :logjoint)
         @test length(ps.stats) == 3
-        @test ps.stats.lp ≈ ps.stats.logprior + ps.stats.loglikelihood
+        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
         @test ps.params[@varname(y)] ≈ ps.params[@varname(x)] + 1
         @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
         @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(y)]), z)
@@ -34,9 +34,9 @@ using Test
         @test length(ps.params) == 1
         @test haskey(ps.stats, :logprior)
         @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :lp)
+        @test haskey(ps.stats, :logjoint)
         @test length(ps.stats) == 3
-        @test ps.stats.lp ≈ ps.stats.logprior + ps.stats.loglikelihood
+        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
         @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
         @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(x)] + 1), z)
     end
@@ -63,6 +63,32 @@ using Test
         @test length(ps.params) == 2
         # Because we didn't evaluate with log prob accumulators, there should be no stats
         @test isempty(ps.stats)
+    end
+end
+
+@testset "ParamsWithStats from LogDensityFunction" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        unlinked_vi = VarInfo(m)
+        @testset "$islinked" for islinked in (false, true)
+            vi = if islinked
+                DynamicPPL.link!!(unlinked_vi, m)
+            else
+                unlinked_vi
+            end
+            params = [x for x in vi[:]]
+
+            # Get the ParamsWithStats using LogDensityFunction
+            ldf = DynamicPPL.LogDensityFunction(m, getlogjoint, vi)
+            ps = ParamsWithStats(params, ldf)
+
+            # Check that length of parameters is as expected
+            @test length(ps.params) == length(keys(vi))
+
+            # Iterate over all variables to check that their values match
+            for vn in keys(vi)
+                @test ps.params[vn] == vi[vn]
+            end
+        end
     end
 end
 

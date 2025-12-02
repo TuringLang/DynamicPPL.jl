@@ -5,9 +5,15 @@ using Test: @test, @testset
 import Enzyme: set_runtime_activity, Forward, Reverse, Const
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 
-ADTYPES = Dict(
-    "EnzymeForward" => AutoEnzyme(; mode=set_runtime_activity(Forward)),
-    "EnzymeReverse" => AutoEnzyme(; mode=set_runtime_activity(Reverse)),
+ADTYPES = (
+    (
+        "EnzymeForward",
+        AutoEnzyme(; mode=set_runtime_activity(Forward), function_annotation=Const),
+    ),
+    (
+        "EnzymeReverse",
+        AutoEnzyme(; mode=set_runtime_activity(Reverse), function_annotation=Const),
+    ),
 )
 
 @testset "$ad_key" for (ad_key, ad_type) in ADTYPES

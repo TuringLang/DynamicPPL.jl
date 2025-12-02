@@ -367,21 +367,7 @@ vector_length(md::Metadata) = sum(length, md.ranges)
 
 function unflatten(vi::VarInfo, x::AbstractVector)
     md = unflatten_metadata(vi.metadata, x)
-    # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
-    # a gradient type of some AD backend.
-    # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!
-    # for ThreadSafeVarInfo. In that one, if the map produces e.g a ForwardDiff.Dual, but
-    # the accumulators in the VarInfo are plain floats, we error since we can't change the
-    # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
-    # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
-    # plain ugly and hacky.
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation)
-    # fails. Take care when editing.
-    accs = map(
-        acc -> convert_eltype(float_type_with_fallback(eltype(x)), acc), copy(getaccs(vi))
-    )
-    return VarInfo(md, accs)
+    return VarInfo(md, vi.accs)
 end
 
 # We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
