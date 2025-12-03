@@ -474,14 +474,16 @@ is `merge`, which recursively merges two `VarNamedTuple`s.
 
 The there are two major limitations to indexing by VarNamedTuples:
 
-* `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
-* Any `VarNames` with IndexLenses` must have a consistent number of indices. That is, one cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
+* `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of
+  `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
+* Any `VarNames` with IndexLenses` must have a consistent number of indices. That is, one
+  cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
 
 `setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
-heterogeneous data under different indices of the same symbol. That is, if one either
+heterogeneous data under different indices of the same symbol. That is, if either
 
-* sets `a[1]` and `a[2]` to be of different types, or
-* sets `a[1].b` and `a[2].c`, without setting `a[1].c`. or `a[2].b`,
+* one sets `a[1]` and `a[2]` to be of different types, or
+* if `a[1]` and `a[2]` both exist, one sets `a[1].b` without setting `a[2].b`,
 
 then getting values for `a[1]` or `a[2]` will not be type stable.
 
