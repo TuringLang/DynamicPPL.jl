@@ -304,8 +304,8 @@ function _resize_partialarray!!(pa::PartialArray, inds)
     # may use a linear index that does not match between the old and the new arrays.
     @inbounds for i in CartesianIndices(pa.data)
         mask_val = pa.mask[i]
-        new_mask[i] = mask_val
         if mask_val
+            new_mask[i] = mask_val
             new_data[i] = pa.data[i]
         end
     end
