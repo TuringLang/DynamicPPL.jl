@@ -1,5 +1,11 @@
 # DynamicPPL Changelog
 
+## 0.40
+
+## 0.39.1
+
+`LogDensityFunction` now allows you to call `logdensity_and_gradient(ldf, x)` with `AbstractVector`s `x` that are not plain Vectors (they will be converted internally before calculating the gradient).
+
 ## 0.39.0
 
 ### Breaking changes

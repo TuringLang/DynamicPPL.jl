@@ -144,6 +144,8 @@ struct LogDensityFunction{
     F<:Function,
     VNT<:VarNamedTuple,
     ADP<:Union{Nothing,DI.GradientPrep},
+    # type of the vector passed to logdensity functions
+    X<:AbstractVector,
 }
     model::M
     adtype::AD
@@ -192,10 +194,15 @@ struct LogDensityFunction{
             typeof(getlogdensity),
             typeof(all_ranges),
             typeof(prep),
+            typeof(x),
         }(
             model, adtype, getlogdensity, all_ranges, prep, dim
         )
     end
+end
+
+function _get_input_vector_type(::LogDensityFunction{T,M,A,G,I,P,X}) where {T,M,A,G,I,P,X}
+    return X
 end
 
 ###################################
@@ -245,6 +252,7 @@ end
 function LogDensityProblems.logdensity_and_gradient(
     ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
 ) where {Tlink}
+    params = convert(_get_input_vector_type(ldf), params)
     return DI.value_and_gradient(
         LogDensityAt{Tlink}(ldf.model, ldf._getlogdensity, ldf._varname_ranges),
         ldf._adprep,
