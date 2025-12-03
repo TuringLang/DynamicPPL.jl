@@ -1,5 +1,5 @@
 """
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext}
+    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded}
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
@@ -17,6 +17,10 @@ An argument with a type of `Missing` will be in `missings` by default. However, 
 non-traditional use-cases `missings` can be defined differently. All variables in `missings`
 are treated as random variables rather than observations.
 
+The `Threaded` type parameter indicates whether the model requires threadsafe evaluation
+(i.e., whether the model contains statements which modify the internal VarInfo that are
+executed in parallel). By default, this is set to `false`.
+
 The default arguments are used internally when constructing instances of the same model with
 different arguments.
 
@@ -33,26 +37,27 @@ julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition 
 Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
 ```
 """
-struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext} <:
-       AbstractProbabilisticProgram
+struct Model{
+    F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded
+} <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
 
     @doc """
-        Model{missings}(f, args::NamedTuple, defaults::NamedTuple)
+        Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
 
     Create a model with evaluation function `f` and missing arguments overwritten by
     `missings`.
     """
-    function Model{missings}(
+    function Model{Threaded,missings}(
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx}(
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Threaded}
+        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Threaded}(
             f, args, defaults, context
         )
     end
@@ -66,23 +71,39 @@ Create a model with evaluation function `f` and missing arguments deduced from `
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-@generated function Model(
+@generated function Model{Threaded}(
     f::F,
     args::NamedTuple{argnames,Targs},
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
-) where {F,argnames,Targs,kwargnames,Tkwargs}
+) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
     )
     missing_kwargs = Tuple(
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
-    return :(Model{$(missing_args..., missing_kwargs...)}(f, args, defaults, context))
+    return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
+        f, args, defaults, context
+    ))
 end
 
-function Model(f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...)
-    return Model(f, args, NamedTuple(kwargs), context)
+function Model{Threaded}(
+    f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
+) where {Threaded}
+    return Model{Threaded}(f, args, NamedTuple(kwargs), context)
+end
+
+"""
+    requires_threadsafe(model::Model)
+
+Return whether `model` has been marked as needing threadsafe evaluation (using
+`setthreadsafe`).
+"""
+function requires_threadsafe(
+    ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
+) where {F,A,D,M,Ta,Td,Ctx,Threaded}
+    return Threaded
 end
 
 """
@@ -92,7 +113,7 @@ Return a new `Model` with the same evaluation function and other arguments, but
 with its underlying context set to `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    return Model(model.f, model.args, model.defaults, context)
+    return Model{requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
 end
 
 """
@@ -103,6 +124,33 @@ for `contextualize(model, setleafcontext(model.context, context)`).
 """
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
+end
+
+"""
+    setthreadsafe(model::Model, threadsafe::Bool)
+
+Returns a new `Model` with its threadsafe flag set to `threadsafe`.
+
+Threadsafe evaluation ensures correctness when executing model statements that mutate the
+internal `VarInfo` object in parallel. For example, this is needed if tilde-statements are
+nested inside `Threads.@threads` or similar constructs.
+
+It is not needed for generic multithreaded operations that don't involve VarInfo. For
+example, calculating a log-likelihood term in parallel and then calling `@addlogprob!`
+outside of the parallel region is safe without needing to set `threadsafe=true`.
+
+It is also not needed for multithreaded sampling with AbstractMCMC's `MCMCThreads()`.
+
+Setting `threadsafe` to `true` increases the overhead in evaluating the model. Please see
+[the Turing.jl docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more
+details.
+"""
+function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
+    return if requires_threadsafe(model) == threadsafe
+        model
+    else
+        Model{threadsafe,M}(model.f, model.args, model.defaults, model.context)
+    end
 end
 
 """
@@ -864,16 +912,6 @@ function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInf
 end
 
 """
-    use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-
-Return `true` if evaluation of a model using `context` and `varinfo` should
-wrap `varinfo` in `ThreadSafeVarInfo`, i.e. threadsafe evaluation, and `false` otherwise.
-"""
-function use_threadsafe_eval(context::AbstractContext, varinfo::AbstractVarInfo)
-    return Threads.nthreads() > 1
-end
-
-"""
     init!!(
         [rng::Random.AbstractRNG,]
         model::Model,
@@ -889,10 +927,7 @@ If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
-@inline function init!!(
-    # Note that this `@inline` is mandatory for performance, especially for
-    # LogDensityFunction. If it's not inlined, it leads to extra allocations (even for
-    # trivial models) and much slower runtime.
+function init!!(
     rng::Random.AbstractRNG,
     model::Model,
     vi::AbstractVarInfo,
@@ -900,36 +935,11 @@ Returns a tuple of the model's return value, plus the updated `varinfo` object.
 )
     ctx = InitContext(rng, strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
-    # TODO(penelopeysm): This should _not_ check Threads.nthreads(). I still don't know what
-    # it _should_ do, but this is wrong regardless.
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1086
-    return if Threads.nthreads() > 1
-        # TODO(penelopeysm): The logic for setting eltype of accs is very similar to that
-        # used in `unflatten`. The reason why we need it here is because the VarInfo `vi`
-        # won't have been filled with parameters prior to `init!!` being called.
-        #
-        # Note that this eltype promotion is only needed for threadsafe evaluation. In an
-        # ideal world, this code should be handled inside `evaluate_threadsafe!!` or a
-        # similar method. In other words, it should not be here, and it should not be inside
-        # `unflatten` either. The problem is performance. Shifting this code around can have
-        # massive, inexplicable, impacts on performance. This should be investigated
-        # properly.
-        param_eltype = DynamicPPL.get_param_eltype(strategy)
-        accs = map(vi.accs) do acc
-            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
-        end
-        vi = DynamicPPL.setaccs!!(vi, accs)
-        tsvi = ThreadSafeVarInfo(resetaccs!!(vi))
-        retval, tsvi_new = DynamicPPL._evaluate!!(model, tsvi)
-        return retval, setaccs!!(tsvi_new.varinfo, DynamicPPL.getaccs(tsvi_new))
-    else
-        return DynamicPPL._evaluate!!(model, resetaccs!!(vi))
-    end
+    return DynamicPPL.evaluate!!(model, vi)
 end
-@inline function init!!(
+function init!!(
     model::Model, vi::AbstractVarInfo, strategy::AbstractInitStrategy=InitFromPrior()
 )
-    # This `@inline` is also mandatory for performance
     return init!!(Random.default_rng(), model, vi, strategy)
 end
 
@@ -938,53 +948,40 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-If multiple threads are available, the varinfo provided will be wrapped in a
-`ThreadSafeVarInfo` before evaluation.
+If the model has been marked as requiring threadsafe evaluation, are available, the varinfo
+provided will be wrapped in a `ThreadSafeVarInfo` before evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo`
 (unwrapped if necessary).
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    return if use_threadsafe_eval(model.context, varinfo)
-        evaluate_threadsafe!!(model, varinfo)
+    return if requires_threadsafe(model)
+        # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
+        # a gradient type of some AD backend.
+        # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!
+        # for ThreadSafeVarInfo. In that one, if the map produces e.g a ForwardDiff.Dual, but
+        # the accumulators in the VarInfo are plain floats, we error since we can't change the
+        # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
+        # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
+        # plain ugly and hacky.
+        # The below line is finicky for type stability. For instance, assigning the eltype to
+        # convert to into an intermediate variable makes this unstable (constant propagation
+        # fails). Take care when editing.
+        param_eltype = DynamicPPL.get_param_eltype(varinfo, model.context)
+        accs = map(DynamicPPL.getaccs(varinfo)) do acc
+            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
+        end
+        varinfo = DynamicPPL.setaccs!!(varinfo, accs)
+        wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
+        result, wrapper_new = _evaluate!!(model, wrapper)
+        # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
+        # will return the underlying VI, which is a bit counterintuitive (because
+        # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
+        # again).
+        return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
     else
-        evaluate_threadunsafe!!(model, varinfo)
+        _evaluate!!(model, resetaccs!!(varinfo))
     end
-end
-
-"""
-    evaluate_threadunsafe!!(model, varinfo)
-
-Evaluate the `model` without wrapping `varinfo` inside a `ThreadSafeVarInfo`.
-
-If the `model` makes use of Julia's multithreading this will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadsafe!!`](@ref)
-"""
-function evaluate_threadunsafe!!(model, varinfo)
-    return _evaluate!!(model, resetaccs!!(varinfo))
-end
-
-"""
-    evaluate_threadsafe!!(model, varinfo, context)
-
-Evaluate the `model` with `varinfo` wrapped inside a `ThreadSafeVarInfo`.
-
-With the wrapper, Julia's multithreading can be used for observe statements in the `model`
-but parallel sampling will lead to undefined behaviour.
-This method is not exposed and supposed to be used only internally in DynamicPPL.
-
-See also: [`evaluate_threadunsafe!!`](@ref)
-"""
-function evaluate_threadsafe!!(model, varinfo)
-    wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
-    result, wrapper_new = _evaluate!!(model, wrapper)
-    # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
-    # will return the underlying VI, which is a bit counterintuitive (because
-    # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
-    # again).
-    return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
 end
 
 """

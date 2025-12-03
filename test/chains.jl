@@ -20,9 +20,9 @@ using Test
         @test length(ps.params) == 2
         @test haskey(ps.stats, :logprior)
         @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :lp)
+        @test haskey(ps.stats, :logjoint)
         @test length(ps.stats) == 3
-        @test ps.stats.lp ≈ ps.stats.logprior + ps.stats.loglikelihood
+        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
         @test ps.params[@varname(y)] ≈ ps.params[@varname(x)] + 1
         @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
         @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(y)]), z)
@@ -34,9 +34,9 @@ using Test
         @test length(ps.params) == 1
         @test haskey(ps.stats, :logprior)
         @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :lp)
+        @test haskey(ps.stats, :logjoint)
         @test length(ps.stats) == 3
-        @test ps.stats.lp ≈ ps.stats.logprior + ps.stats.loglikelihood
+        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
         @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
         @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(x)] + 1), z)
     end

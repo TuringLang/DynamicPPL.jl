@@ -94,4 +94,29 @@ end
         @test logprior ≈ logprior_true
         @test loglikelihood ≈ loglikelihood_true
     end
+
+    @testset "errors when variables are missing" begin
+        # Create a chain that only has `m`.
+        @model function m_only()
+            return m ~ Normal()
+        end
+        model_m_only = m_only()
+        chain_m_only = AbstractMCMC.from_samples(
+            MCMCChains.Chains,
+            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+        )
+
+        # Define a model that needs both `m` and `s`.
+        @model function f()
+            m ~ Normal()
+            s ~ Exponential()
+            return y ~ Normal(m, s)
+        end
+        model = f() | (; y=1.0)
+        @test_throws "No value was provided" pointwise_logdensities(model, chain_m_only)
+        @test_throws "No value was provided" pointwise_loglikelihoods(model, chain_m_only)
+        @test_throws "No value was provided" pointwise_prior_logdensities(
+            model, chain_m_only
+        )
+    end
 end

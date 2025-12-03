@@ -47,21 +47,19 @@ using Mooncake: Mooncake
     end
 
     @testset "Threaded observe" begin
-        if Threads.nthreads() > 1
-            @model function threaded(y)
-                x ~ Normal()
-                Threads.@threads for i in eachindex(y)
-                    y[i] ~ Normal(x)
-                end
+        @model function threaded(y)
+            x ~ Normal()
+            Threads.@threads for i in eachindex(y)
+                y[i] ~ Normal(x)
             end
-            N = 100
-            model = threaded(zeros(N))
-            ldf = DynamicPPL.LogDensityFunction(model)
-
-            xs = [1.0]
-            @test LogDensityProblems.logdensity(ldf, xs) ≈
-                logpdf(Normal(), xs[1]) + N * logpdf(Normal(xs[1]), 0.0)
         end
+        N = 100
+        model = setthreadsafe(threaded(zeros(N)), true)
+        ldf = DynamicPPL.LogDensityFunction(model)
+
+        xs = [1.0]
+        @test LogDensityProblems.logdensity(ldf, xs) ≈
+            logpdf(Normal(), xs[1]) + N * logpdf(Normal(xs[1]), 0.0)
     end
 end
 
@@ -121,34 +119,32 @@ end
 end
 
 @testset "LogDensityFunction: performance" begin
-    if Threads.nthreads() == 1
-        # Evaluating these three models should not lead to any allocations (but only when
-        # not using TSVI).
-        @model function f()
-            x ~ Normal()
-            return 1.0 ~ Normal(x)
-        end
-        @model function submodel_inner()
-            m ~ Normal(0, 1)
-            s ~ Exponential()
-            return (m=m, s=s)
-        end
-        # Note that for the allocation tests to work on this one, `inner` has
-        # to be passed as an argument to `submodel_outer`, instead of just
-        # being called inside the model function itself
-        @model function submodel_outer(inner)
-            params ~ to_submodel(inner)
-            y ~ Normal(params.m, params.s)
-            return 1.0 ~ Normal(y)
-        end
-        @testset for model in
-                     (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
-            vi = VarInfo(model)
-            ldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
-            x = vi[:]
-            bench = median(@be LogDensityProblems.logdensity(ldf, x))
-            @test iszero(bench.allocs)
-        end
+    # Evaluating these three models should not lead to any allocations (but only when
+    # not using TSVI).
+    @model function f()
+        x ~ Normal()
+        return 1.0 ~ Normal(x)
+    end
+    @model function submodel_inner()
+        m ~ Normal(0, 1)
+        s ~ Exponential()
+        return (m=m, s=s)
+    end
+    # Note that for the allocation tests to work on this one, `inner` has
+    # to be passed as an argument to `submodel_outer`, instead of just
+    # being called inside the model function itself
+    @model function submodel_outer(inner)
+        params ~ to_submodel(inner)
+        y ~ Normal(params.m, params.s)
+        return 1.0 ~ Normal(y)
+    end
+    @testset for model in
+                 (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
+        vi = VarInfo(model)
+        ldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
+        x = vi[:]
+        bench = median(@be LogDensityProblems.logdensity($ldf, $x))
+        @test iszero(bench.allocs)
     end
 end
 

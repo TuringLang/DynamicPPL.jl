@@ -90,6 +90,8 @@ export AbstractVarInfo,
     Model,
     getmissings,
     getargnames,
+    setthreadsafe,
+    requires_threadsafe,
     extract_priors,
     values_as_in_model,
     # evaluation
