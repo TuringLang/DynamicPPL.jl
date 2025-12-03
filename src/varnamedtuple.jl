@@ -564,11 +564,11 @@ Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
     push!(exs, :(data = (;)))
     for name in all_names
         val_expr = if name in names1 && name in names2
-            :(_merge_recursive(vnt1.data[$(QuoteNode(name))], vnt2.data[$(QuoteNode(name))]))
+            :(_merge_recursive(vnt1.data.$name, vnt2.data.$name))
         elseif name in names1
-            :(vnt1.data[$(QuoteNode(name))])
+            :(vnt1.data.$name)
         else
-            :(vnt2.data[$(QuoteNode(name))])
+            :(vnt2.data.$name)
         end
         push!(exs, :(data = merge(data, NamedTuple{($(QuoteNode(name)),)}(($val_expr,)))))
     end
