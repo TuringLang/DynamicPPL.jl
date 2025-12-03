@@ -337,6 +337,13 @@ function Base.hash(pa::PartialArray, h::UInt)
     return h
 end
 
+function BangBang.empty!!(pa::PartialArray)
+    for i in eachindex(pa.mask)
+        @inbounds pa.mask[i] = false
+    end
+    return pa
+end
+
 """
     _concretise_eltype!!(pa::PartialArray)
 
@@ -804,12 +811,48 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
     )
 end
 
+_has_partial_array(::Type{T}) where {T} = false
+_has_partial_array(::Type{<:PartialArray}) = true
+
+@generated function _has_partial_array(
+    ::Type{VarNamedTuple{Names,Values}}
+) where {Names,Values}
+    exs = Expr[]
+    for T in Values.parameters
+        if _has_partial_array(T)
+            push!(exs, :(return true))
+        end
+    end
+    push!(exs, :(return false))
+    return Expr(:block, exs...)
+end
+
 # TODO(mhauru) Should this recur to PartialArray?
 Base.isempty(vnt::VarNamedTuple) = isempty(vnt.data)
 
 # TODO(mhauru) Should this in fact keep the PartialArrays in place, but set them all to have
 # mask = fill(false, size(pa.mask))? That might save some allocations.
-Base.empty(::VarNamedTuple) = VarNamedTuple()
+Base.empty(vnt::VarNamedTuple) = VarNamedTuple()
+
+@generated function BangBang.empty!!(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
+    if !_has_partial_array(VarNamedTuple{Names,Values})
+        return :(return VarNamedTuple())
+    end
+    new_names = ()
+    new_values = ()
+    for (name, ValType) in zip(Names, Values.parameters)
+        if _has_partial_array(ValType)
+            new_values = (new_values..., :(BangBang.empty!!(vnt.data[$(QuoteNode(name))])))
+            new_names = (new_names..., name)
+        end
+    end
+    if length(new_names) != length(new_values)
+        error(new_values)
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{$new_names}(($(new_values...),)))
+    end
+end
 
 """
     varname_to_lens(name::VarName{S}) where {S}
