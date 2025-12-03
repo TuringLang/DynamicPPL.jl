@@ -186,6 +186,25 @@ end
         end
     end
 
+    @testset "logdensity_and_gradient with views" begin
+        # This test ensures that you can call `logdensity_and_gradient` with an array 
+        # type that isn't the same as the one used in the gradient preparation.
+        @model function f()
+            x ~ Normal()
+            return y ~ Normal()
+        end
+        @testset "$adtype" for adtype in test_adtypes
+            x = randn(2)
+            ldf = LogDensityFunction(f(); adtype)
+            logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, x)
+            logp_view, grad_view = LogDensityProblems.logdensity_and_gradient(
+                ldf, (@view x[:])
+            )
+            @test logp == logp_view
+            @test grad == grad_view
+        end
+    end
+
     # Test that various different ways of specifying array types as arguments work with all
     # ADTypes.
     @testset "Array argument types" begin
