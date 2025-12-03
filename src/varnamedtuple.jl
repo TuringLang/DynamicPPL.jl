@@ -132,7 +132,7 @@ julia> pa = PartialArray{Int,2}((1,2) => 5, (3,4) => 10)
 PartialArray{Int64,2}((1, 2) => 5, (3, 4) => 10)
 ```
 
-The optional keywoard argument `min_size` can be used to specify the minimum initial size.
+The optional keyword argument `min_size` can be used to specify the minimum initial size.
 This is purely a performance optimisation, to avoid resizing if the eventual size is known
 ahead of time.
 """
@@ -521,9 +521,9 @@ end
 """
     varname_to_lens(name::VarName{S}) where {S}
 
-Convert a `VarName` to an `Accessor` lens, wrapping the first symdol in a `PropertyLens`.
+Convert a `VarName` to an `Accessor` lens, wrapping the first symbol in a `PropertyLens`.
 
-This is used to simplify method dispatch for `_getindx`, `_setindex!!`, and `_haskey`, by
+This is used to simplify method dispatch for `_getindex`, `_setindex!!`, and `_haskey`, by
 considering `VarName`s to just be a special case of lenses.
 """
 function _varname_to_lens(name::VarName{S}) where {S}
