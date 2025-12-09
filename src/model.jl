@@ -1183,7 +1183,7 @@ julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
 (mp1 = 3.0,)
 ```
 """
-function returned(model::Model, parameters::Any)
+function returned(model::Model, parameters...)
     # Note: we can't use `fix(model, parameters)` because
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
     return first(
