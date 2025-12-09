@@ -1153,10 +1153,16 @@ end
 function predict end
 
 """
-    returned(model::Model, parameters::NamedTuple)
-    returned(model::Model, parameters::AbstractDict{<:VarName})
+    returned(model::Model, parameters...)
 
-Execute `model` with variables `keys` set to `values` and return the values returned by the `model`.
+Initialise a `model` using the given `parameters` and return the model's return value. The
+parameters must be provided in a format that can be wrapped in an `InitFromParams`, i.e.,
+`InitFromParams(parameters..., nothing)` must be a valid `AbstractInitStrategy` (where
+`nothing` is the fallback strategy to use if parameters are not provided).
+
+As far as DynamicPPL is concerned, `parameters` can be either a singular `NamedTuple` or an
+`AbstractDict{<:VarName}`; however this method is left flexible to allow for other packages
+that wish to extend `InitFromParams`.
 
 # Example
 ```jldoctest
@@ -1177,7 +1183,7 @@ julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
 (mp1 = 3.0,)
 ```
 """
-function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarName}})
+function returned(model::Model, parameters::Any)
     # Note: we can't use `fix(model, parameters)` because
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
     return first(
@@ -1186,7 +1192,7 @@ function returned(model::Model, parameters::Union{NamedTuple,AbstractDict{<:VarN
             DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple()),
             # Use `nothing` as the fallback to ensure that any missing parameters cause an
             # error
-            InitFromParams(parameters, nothing),
+            InitFromParams(parameters..., nothing),
         ),
     )
 end
