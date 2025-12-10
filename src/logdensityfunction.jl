@@ -388,30 +388,27 @@ tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtyp
 """
     _use_closure(adtype::ADTypes.AbstractADType)
 
-In LogDensityProblems, we want to calculate the derivative of logdensity(f, x)
-with respect to x, where f is the model (in our case LogDensityFunction) and is
-a constant. However, DifferentiationInterface generally expects a
-single-argument function g(x) to differentiate.
+In LogDensityProblems, we want to calculate the derivative of `logdensity(f, x)` with
+respect to x, where f is the model (in our case LogDensityFunction or its arguments ) and is
+a constant. However, DifferentiationInterface generally expects a single-argument function
+g(x) to differentiate.
 
 There are two ways of dealing with this:
 
 1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
 
-2. Use a constant DI.Context. This lets us pass a two-argument function to DI,
-   as long as we also give it the 'inactive argument' (i.e. the model) wrapped
-   in `DI.Constant`.
+2. Use a constant DI.Context. This lets us pass a two-argument function to DI, as long as we
+   also give it the 'inactive argument' (i.e. the model) wrapped in `DI.Constant`.
 
-The relative performance of the two approaches, however, depends on the AD
-backend used. Some benchmarks are provided here:
-https://github.com/TuringLang/DynamicPPL.jl/issues/946#issuecomment-2931604829
+The relative performance of the two approaches, however, depends on the AD backend used.
+Some benchmarks are provided here: https://github.com/TuringLang/DynamicPPL.jl/pull/1172
 
-This function is used to determine whether a given AD backend should use a
-closure or a constant. If `use_closure(adtype)` returns `true`, then the
-closure approach will be used. By default, this function returns `false`, i.e.
-the constant approach will be used.
+This function is used to determine whether a given AD backend should use a closure or a
+constant. If `use_closure(adtype)` returns `true`, then the closure approach will be used.
+By default, this function returns `false`, i.e. the constant approach will be used.
 """
 # For these AD backends both closure and no closure work, but it is just faster to not use a
-# closure 
+# closure (see link in the docstring).
 _use_closure(::ADTypes.AutoForwardDiff) = false
 _use_closure(::ADTypes.AutoMooncake) = false
 _use_closure(::ADTypes.AutoMooncakeForward) = false
