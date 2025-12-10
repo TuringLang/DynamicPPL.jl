@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.2
+
+The internals of `LogDensityFunction` have been changed slightly so that you do not need to specify `function_annotation` when performing AD with Enzyme.jl.
+
 ## 0.39.1
 
 `LogDensityFunction` now allows you to call `logdensity_and_gradient(ldf, x)` with `AbstractVector`s `x` that are not plain Vectors (they will be converted internally before calculating the gradient).
