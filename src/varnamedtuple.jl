@@ -208,13 +208,44 @@ function Base.:(==)(pa1::PartialArray, pa2::PartialArray)
     # TODO(mhauru) This could be optimised by not calling checkbounds on all elements
     # outside the size of an array, but not sure it's worth it.
     merge_size = ntuple(i -> max(size1[i], size2[i]), ndims(pa1))
+    result = true
     for i in CartesianIndices(merge_size)
         m1 = checkbounds(Bool, pa1.mask, Tuple(i)...) ? pa1.mask[i] : false
         m2 = checkbounds(Bool, pa2.mask, Tuple(i)...) ? pa2.mask[i] : false
         if m1 != m2
             return false
         end
-        if m1 && (pa1.data[i] != pa2.data[i])
+        if m1
+            elements_equal = pa1.data[i] == pa2.data[i]
+            if elements_equal === false
+                return false
+            elseif elements_equal === missing
+                # This branch can't short-circuit and just return missing, because some
+                # later values may be straight-up not equal.
+                result = missing
+            end
+        end
+    end
+    return result
+end
+
+# Exactly as == above, except the comparison of the data elements uses isequal.
+function Base.isequal(pa1::PartialArray, pa2::PartialArray)
+    if ndims(pa1) != ndims(pa2)
+        return false
+    end
+    size1 = _internal_size(pa1)
+    size2 = _internal_size(pa2)
+    # TODO(mhauru) This could be optimised by not calling checkbounds on all elements
+    # outside the size of an array, but not sure it's worth it.
+    merge_size = ntuple(i -> max(size1[i], size2[i]), ndims(pa1))
+    for i in CartesianIndices(merge_size)
+        m1 = checkbounds(Bool, pa1.mask, Tuple(i)...) ? pa1.mask[i] : false
+        m2 = checkbounds(Bool, pa2.mask, Tuple(i)...) ? pa2.mask[i] : false
+        if m1 != m2
+            return false
+        end
+        if m1 && !isequal(pa1.data[i], pa2.data[i])
             return false
         end
     end
@@ -497,6 +528,7 @@ end
 VarNamedTuple(; kwargs...) = VarNamedTuple((; kwargs...))
 
 Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
+Base.isequal(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = isequal(vnt1.data, vnt2.data)
 Base.hash(vnt::VarNamedTuple, h::UInt) = hash(vnt.data, h)
 
 function Base.show(io::IO, vnt::VarNamedTuple)

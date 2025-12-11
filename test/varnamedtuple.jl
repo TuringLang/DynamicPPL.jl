@@ -1,5 +1,6 @@
 module VarNamedTupleTests
 
+using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples: PartialArray
@@ -20,11 +21,13 @@ function test_invariants(vnt::VarNamedTuple)
         v = getindex(vnt, k)
         vnt2 = setindex!!(copy(vnt), v, k)
         @test vnt == vnt2
+        @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
     # Check that the printed representation can be parsed back to an equal VarNamedTuple.
     vnt3 = eval(Meta.parse(repr(vnt)))
     @test vnt == vnt3
+    @test isequal(vnt, vnt3)
     @test hash(vnt) == hash(vnt3)
     # Check that merge with an empty VarNamedTuple is a no-op.
     @test merge(vnt, VarNamedTuple()) == vnt
@@ -218,40 +221,40 @@ end
         test_invariants(vnt)
     end
 
-    @testset "equality" begin
-        vnt1 = VarNamedTuple()
-        vnt2 = VarNamedTuple()
-        @test vnt1 == vnt2
-
-        vnt1 = setindex!!(vnt1, 1.0, @varname(a))
-        @test vnt1 != vnt2
-
-        vnt2 = setindex!!(vnt2, 1.0, @varname(a))
-        @test vnt1 == vnt2
-
-        vnt1 = setindex!!(vnt1, [1, 2], @varname(b))
-        vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
-        @test vnt1 == vnt2
-
-        vnt2 = setindex!!(vnt2, [1, 3], @varname(b))
-        @test vnt1 != vnt2
-        vnt2 = setindex!!(vnt2, [1, 2], @varname(b))
-
-        # Try with index lenses too
-        vnt1 = setindex!!(vnt1, 2, @varname(c[2]))
-        vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
-        @test vnt1 == vnt2
-
-        vnt2 = setindex!!(vnt2, 3, @varname(c[2]))
-        @test vnt1 != vnt2
-        vnt2 = setindex!!(vnt2, 2, @varname(c[2]))
-
-        vnt1 = setindex!!(vnt1, ["a", "b"], @varname(d.e[1:2]))
-        vnt2 = setindex!!(vnt2, ["a", "b"], @varname(d.e[1:2]))
-        @test vnt1 == vnt2
-
-        vnt2 = setindex!!(vnt2, :b, @varname(d.e[2]))
-        @test vnt1 != vnt2
+    @testset "equality and hash" begin
+        # Test all combinations of having or not having the below values set, and having
+        # them set to any of the possible_values, and check that isequal and == return the
+        # expected value.
+        # NOTE: Be very careful adding new values to these sets. The below test has three
+        # nested loops over Combinatorics.combinations, the run time can explode very, very
+        # quickly.
+        varnames = (@varname(b[1]), @varname(b[3]), @varname(c.d[2].e))
+        possible_values = (missing, 1, -0.0, 0.0)
+        for vn_set in Combinatorics.combinations(varnames)
+            valuesets1 = Combinatorics.with_replacement_combinations(
+                possible_values, length(vn_set)
+            )
+            valuesets2 = Combinatorics.with_replacement_combinations(
+                possible_values, length(vn_set)
+            )
+            for vset1 in valuesets1, vset2 in valuesets2
+                vnt1 = VarNamedTuple()
+                vnt2 = VarNamedTuple()
+                expected_isequal = true
+                expected_doubleequal = true
+                for (vn, v1, v2) in zip(vn_set, vset1, vset2)
+                    vnt1 = setindex!!(vnt1, v1, vn)
+                    vnt2 = setindex!!(vnt2, v2, vn)
+                    expected_isequal = expected_isequal & isequal(v1, v2)
+                    expected_doubleequal = expected_doubleequal & (v1 == v2)
+                end
+                @test isequal(vnt1, vnt2) == expected_isequal
+                @test (vnt1 == vnt2) === expected_doubleequal
+                if expected_isequal
+                    @test hash(vnt1) == hash(vnt2)
+                end
+            end
+        end
     end
 
     @testset "merge" begin
