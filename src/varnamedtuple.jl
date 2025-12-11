@@ -55,6 +55,11 @@ const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
 """A convenience for defining method argument type bounds."""
 const INDEX_TYPES = Union{Integer,UnitRange,Colon}
 
+struct ArrayLikeBlock{T,I}
+    block::T
+    inds::I
+end
+
 """
     PartialArray{ElType,numdims}
 
@@ -105,6 +110,9 @@ means that the largest index set so far determines the memory usage of the `Part
 a few scattered values are set, a structure like `SparseArray` may be more appropriate.
 """
 struct PartialArray{ElType,num_dims}
+    # TODO(mhauru) Consider trying FixedSizeArrays instead, see how it would change
+    # performance. We reallocate new Arrays every time when resizing anyway, except for
+    # Vectors, which can be extended in place.
     data::Array{ElType,num_dims}
     mask::Array{Bool,num_dims}
 
@@ -395,7 +403,34 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     else
         _resize_partialarray!!(pa, inds)
     end
-    new_data = setindex!!(pa.data, value, inds...)
+
+    new_data = pa.data
+    if _is_multiindex(inds) && !(isa(value, AbstractArray))
+        if !hasmethod(size, value)
+            throw(ArgumentError("Cannot assign a scalar value to a range."))
+        end
+        if size(value) != map(x -> _length_needed(x), inds)
+            throw(
+                DimensionMismatch(
+                    "Assigned value has size $(size(value)), which does not match the size " *
+                    "implied by the indices $(map(x -> _length_needed(x), inds)).",
+                ),
+            )
+        end
+        # At this point we know we have a value that is not an AbstractArray, but it has
+        # some notion of size, and that size matches the indices that are being set. In this
+        # case we wrap the value in a ArrayLikeBlock, and set all the individual indices
+        # point to that, with the right subindices.
+        first_index = first.(inds)
+        # Iterate over all the subindices of inds.
+        for ind in CartesianIndices(map(x -> _length_needed(x), inds))
+            subinds = ntuple(i -> first_index[i] + ind[i] - 1, length(inds))
+            new_data = _setindex!!(new_data, ArrayLikeBlock(value, Tuple(ind)), subinds...)
+        end
+    else
+        new_data = setindex!!(new_data, value, inds...)
+    end
+
     if _is_multiindex(inds)
         pa.mask[inds...] .= true
     else
