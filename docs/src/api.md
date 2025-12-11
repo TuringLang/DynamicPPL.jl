@@ -372,6 +372,12 @@ Base.empty!
 SimpleVarInfo
 ```
 
+#### `VarNamedTuple`
+
+```@docs
+DynamicPPL.VarNamedTuples.VarNamedTuple
+```
+
 ### Accumulators
 
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
