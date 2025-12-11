@@ -87,7 +87,7 @@
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
-                                                          DynamicPPL.TestUtils.DEMO_MODELS
+                                                          DynamicPPL.TestUtils.ALL_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$name" for (name, vi) in (
             ("SVI{Dict}", SimpleVarInfo(Dict{VarName,Any}())),
@@ -134,7 +134,7 @@
     end
 
     @testset "SimpleVarInfo on $(nameof(model))" for model in
-                                                     DynamicPPL.TestUtils.DEMO_MODELS
+                                                     DynamicPPL.TestUtils.ALL_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))

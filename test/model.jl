@@ -57,7 +57,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test ljoint ≈ lp
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             N = 200
             chain = make_chain_from_prior(model, N)
             logpriors = logprior(model, chain)
@@ -290,7 +290,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     end
 
     @testset "TestUtils" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             x = DynamicPPL.TestUtils.rand_prior_true(model)
             # `rand_prior_true` should return a `NamedTuple`.
             @test x isa NamedTuple
@@ -431,7 +431,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     end
 
     @testset "values_as_in_model" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)

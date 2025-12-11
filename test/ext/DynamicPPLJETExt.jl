@@ -61,7 +61,7 @@
     end
 
     @testset "demo models" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
             # Check that the inferred varinfo is indeed suitable for evaluation

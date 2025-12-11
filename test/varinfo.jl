@@ -318,7 +318,7 @@ end
     end
 
     @testset "returned on MCMCChains.Chains" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             chain = make_chain_from_prior(model, 10)
             # A simple way of checking that the computation is determinstic: run twice and compare.
             res1 = returned(model, MCMCChains.get_sections(chain, :parameters))
@@ -460,7 +460,7 @@ end
     end
 
     @testset "values_as" begin
-        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.ALL_MODELS
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             vns = DynamicPPL.TestUtils.varnames(model)
 
@@ -730,7 +730,7 @@ end
     end
 
     @testset "merge" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
                 model,
@@ -827,7 +827,7 @@ end
     # NOTE: It is not yet clear if this is something we want from all varinfo types.
     # Hence, we only test the `VarInfo` types here.
     @testset "vector_getranges for `VarInfo`" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             nt = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
@@ -867,7 +867,7 @@ end
     end
 
     @testset "issue #842" begin
-        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        model = DynamicPPL.TestUtils.ALL_MODELS[1]
         varinfo = VarInfo(model)
 
         n = length(varinfo[:])

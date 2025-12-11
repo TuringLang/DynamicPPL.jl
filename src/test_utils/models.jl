@@ -34,6 +34,11 @@ function logprior_true_with_logabsdet_jacobian(
     x_unconstrained, Δlogp = Bijectors.with_logabsdet_jacobian(b_x, x)
     return (m=m, x=x_unconstrained), logprior_true(model, m, x) - Δlogp
 end
+function rand_prior_true(rng::Random.AbstractRNG, ::Model{typeof(demo_dynamic_constraint)})
+    m = rand(rng, Normal())
+    x = rand(rng, truncated(Normal(); lower=m))
+    return (m=m, x=x)
+end
 
 """
     demo_one_variable_multiple_constraints()
@@ -162,6 +167,9 @@ function logprior_true(::Model{typeof(demo_static_transformation)}, s, m)
 end
 function loglikelihood_true(::Model{typeof(demo_static_transformation)}, s, m)
     return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
+end
+function varnames(::Model{typeof(demo_static_transformation)})
+    return [@varname(s), @varname(m)]
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_static_transformation)}, s, m
@@ -557,22 +565,6 @@ function varnames(model::Model{typeof(demo_assume_matrix_observe_matrix_index)})
     return [@varname(s), @varname(m)]
 end
 
-const DemoModels = Union{
-    Model{typeof(demo_dot_assume_observe)},
-    Model{typeof(demo_assume_index_observe)},
-    Model{typeof(demo_assume_multivariate_observe)},
-    Model{typeof(demo_dot_assume_observe_index)},
-    Model{typeof(demo_assume_dot_observe)},
-    Model{typeof(demo_assume_dot_observe_literal)},
-    Model{typeof(demo_assume_observe_literal)},
-    Model{typeof(demo_assume_multivariate_observe_literal)},
-    Model{typeof(demo_dot_assume_observe_index_literal)},
-    Model{typeof(demo_assume_submodel_observe_index_literal)},
-    Model{typeof(demo_dot_assume_observe_submodel)},
-    Model{typeof(demo_dot_assume_observe_matrix_index)},
-    Model{typeof(demo_assume_matrix_observe_matrix_index)},
-}
-
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},
     Model{typeof(demo_assume_dot_observe_literal)},
@@ -757,4 +749,15 @@ const DEMO_MODELS = (
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_observe_matrix_index(),
     demo_assume_matrix_observe_matrix_index(),
+)
+
+"""
+A tuple of all models defined in DynamicPPL.TestUtils.
+"""
+const ALL_MODELS = (
+    DEMO_MODELS...,
+    demo_dynamic_constraint(),
+    demo_one_variable_multiple_constraints(),
+    demo_lkjchol(),
+    demo_static_transformation(),
 )

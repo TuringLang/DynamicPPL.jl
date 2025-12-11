@@ -59,7 +59,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     )
 
     @testset "$(name)" for (name, context) in contexts
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             DynamicPPL.TestUtils.test_context(context, model)
         end
     end
@@ -179,7 +179,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_ctx == FixedContext((b=4,), ConditionContext((a=1,)))
         end
 
-        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             prefix_vn = @varname(my_prefix)
             context = DynamicPPL.PrefixContext(prefix_vn, DefaultContext())
             new_model = contextualize(model, context)
