@@ -62,6 +62,20 @@
 
     @testset "demo models" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+            if model.f === DynamicPPL.TestUtils.demo_lkjchol
+                # TODO(mhauru)
+                # The LKJCholesky model fails with JET. The problem is not with Turing but
+                # with Distributions, and ultimately this in LinearAlgebra:
+                # julia> v = @view rand(2,2)[:,1];
+                #
+                # julia> JET.@report_call norm(v)
+                # ═════ 2 possible errors found ═════
+                # blahblah
+                # The below trivial call to @test is just marking that there's something
+                # broken here.
+                @test false broken = true
+                continue
+            end
             # Use debug logging below.
             varinfo = DynamicPPL.Experimental.determine_suitable_varinfo(model)
             # Check that the inferred varinfo is indeed suitable for evaluation
