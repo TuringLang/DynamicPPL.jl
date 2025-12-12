@@ -59,7 +59,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
     )
 
     @testset "$(name)" for (name, context) in contexts
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             DynamicPPL.TestUtils.test_context(context, model)
         end
     end

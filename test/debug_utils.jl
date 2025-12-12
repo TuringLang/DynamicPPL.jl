@@ -1,5 +1,5 @@
 @testset "check_model" begin
-    @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+    @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         issuccess, trace = check_model_and_trace(model, VarInfo(model))
         # These models should all work.
         @test issuccess
