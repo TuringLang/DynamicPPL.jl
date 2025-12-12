@@ -222,7 +222,15 @@
 
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test svi_eval[vn] == get(values_eval, vn)
+                # TODO(mhauru) Workaround for
+                # https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+                # Remove once the fix is all Julia versions we support.
+                val = get(values_eval, vn)
+                if val isa Cholesky
+                    @test svi_eval[vn].L == val.L
+                else
+                    @test svi_eval[vn] == val
+                end
             end
 
             # Compare log-probability computations.
