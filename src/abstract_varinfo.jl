@@ -869,6 +869,9 @@ end
 function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
     return link!!(t, deepcopy(vi), model)
 end
+function link(t::StaticTransformation, vi::AbstractVarInfo, model::Model)
+    return link!!(t, deepcopy(vi), model)
+end
 
 """
     invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
@@ -933,6 +936,9 @@ function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
 end
 function invlink(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+    return invlink!!(t, deepcopy(vi), model)
+end
+function invlink(t::StaticTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
 end
 
