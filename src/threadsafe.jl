@@ -155,10 +155,6 @@ function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:
 end
 
 vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)
-vector_getrange(vi::ThreadSafeVarInfo, vn::VarName) = vector_getrange(vi.varinfo, vn)
-function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
-    return vector_getranges(vi.varinfo, vns)
-end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)

@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.4
+
+Removed the internal functions `DynamicPPL.getranges`, `DynamicPPL.vector_getrange`, and `DynamicPPL.vector_getranges` (the new LogDensityFunction construction does exactly the same thing, so this specialised function was not needed).
+
 ## 0.39.3
 
 `DynamicPPL.TestUtils.AD.run_ad` now generates much prettier output.
