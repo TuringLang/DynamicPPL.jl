@@ -667,7 +667,7 @@ end
 end
 
 @testset "VarInfo + VarNamedVector" begin
-    models = DynamicPPL.TestUtils.DEMO_MODELS
+    models = DynamicPPL.TestUtils.ALL_MODELS
     @testset "$(model.f)" for model in models
         # NOTE: Need to set random seed explicitly to avoid using the same seed
         # for initialization as for sampling in the inner testset below.

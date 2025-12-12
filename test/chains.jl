@@ -67,7 +67,7 @@ using Test
 end
 
 @testset "ParamsWithStats from LogDensityFunction" begin
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
         unlinked_vi = VarInfo(m)
         @testset "$islinked" for islinked in (false, true)
             vi = if islinked

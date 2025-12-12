@@ -85,12 +85,24 @@ function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
 
-function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, args...)
+function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, model)
 end
 
-function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, args...)
+function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, model)
+end
+
+function link(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
+)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, vns, model)
+end
+
+function invlink(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
+)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, vns, model)
 end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.

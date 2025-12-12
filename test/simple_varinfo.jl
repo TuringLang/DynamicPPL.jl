@@ -87,7 +87,7 @@
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
-                                                          DynamicPPL.TestUtils.DEMO_MODELS
+                                                          DynamicPPL.TestUtils.ALL_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$name" for (name, vi) in (
             ("SVI{Dict}", SimpleVarInfo(Dict{VarName,Any}())),
@@ -95,6 +95,15 @@
             ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
             ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),
         )
+            if name == "SVI{NamedTuple}" &&
+                model.f === DynamicPPL.TestUtils.demo_one_variable_multiple_constraints
+                # TODO(mhauru) There's a bug in SimpleVarInfo{<:NamedTuple} for cases where
+                # a variable set with IndexLenses changes dimension under linking. This
+                # makes the link!! call crash. The below call to @test just marks the fact
+                # that there's something broken here.
+                @test false broken = true
+                continue
+            end
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
@@ -134,7 +143,7 @@
     end
 
     @testset "SimpleVarInfo on $(nameof(model))" for model in
-                                                     DynamicPPL.TestUtils.DEMO_MODELS
+                                                     DynamicPPL.TestUtils.ALL_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
@@ -213,7 +222,15 @@
 
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test svi_eval[vn] == get(values_eval, vn)
+                # TODO(mhauru) Workaround for
+                # https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+                # Remove once the fix is all Julia versions we support.
+                val = get(values_eval, vn)
+                if val isa Cholesky
+                    @test svi_eval[vn].L == val.L
+                else
+                    @test svi_eval[vn] == val
+                end
             end
 
             # Compare log-probability computations.
