@@ -114,12 +114,12 @@ x ~ LKJCholesky(d, 1.0)
 ```
 """
 @model function demo_lkjchol(d::Int=2)
-    x ~ LKJCholesky(d, 1.0)
+    x ~ LKJCholesky(d, 1.5)
     return (x=x,)
 end
 
 function logprior_true(model::Model{typeof(demo_lkjchol)}, x)
-    return logpdf(LKJCholesky(model.args.d, 1.0), x)
+    return logpdf(LKJCholesky(model.args.d, 1.5), x)
 end
 
 function loglikelihood_true(model::Model{typeof(demo_lkjchol)}, x)
