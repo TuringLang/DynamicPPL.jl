@@ -58,6 +58,13 @@ const INDEX_TYPES = Union{Integer,UnitRange,Colon}
 struct ArrayLikeBlock{T,I}
     block::T
     inds::I
+
+    function ArrayLikeBlock(block::T, inds::I) where {T,I}
+        if !_is_multiindex(inds)
+            throw(ArgumentError("ArrayLikeBlock must be constructed with a multi-index"))
+        end
+        return new{T,I}(block, inds)
+    end
 end
 
 """
@@ -385,15 +392,102 @@ end
 
 function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     _check_index_validity(pa, inds)
-    if !_haskey(pa, inds)
+    if !(checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...))))
         throw(BoundsError(pa, inds))
     end
-    return getindex(pa.data, inds...)
+    val = getindex(pa.data, inds...)
+
+    # If not for ArrayLikeBlocks, at this point we could just return val directly. However,
+    # we need to check if val contains any ArrayLikeBlocks, and if so, make sure that that
+    # we are retrieving exactly that block and nothing else.
+
+    # The error we'll throw if the retrieval is invalid.
+    err = ArgumentError("""
+        A non-Array value set with a range of indices must be retrieved with the same
+        range of indices.
+        """)
+    if val isa ArrayLikeBlock
+        # Tried to get a single value, but it's an ArrayLikeBlock.
+        throw(err)
+    elseif val isa Array && (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
+        # Tried to get a range of values, and at least some of them may be ArrayLikeBlocks.
+        # The below isempty check is deliberately kept separate from the outer elseif,
+        # because the outer one can be resolved at compile time.
+        if isempty(val)
+            return val
+        end
+        first_elem = first(val)
+        if !(first_elem isa ArrayLikeBlock)
+            throw(err)
+        end
+        if inds != first_elem.inds
+            # The requested indices do not match the ones used to set the value.
+            throw(err)
+        end
+        # If _setindex!! works correctly, we should only be able to reach this point if all
+        # the elements in `val` are identical to first_elem. Thus we just return that one.
+        return first(val).block
+    else
+        return val
+    end
 end
 
 function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
     _check_index_validity(pa, inds)
-    return checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
+    hasall =
+        checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
+
+    # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
+    # check that if any ArrayLikeBlocks are included, they are fully included.
+    et = eltype(pa)
+    if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
+        # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
+        return hasall
+    end
+
+    if !hasall
+        return false
+    end
+    # From this point on we can assume that all the requested elements are set, and the only
+    # thing to check is that we are not partially indexing into any ArrayLikeBlocks.
+    # We've already checked checkbounds at the top of the function, and returned if it
+    # wasn't true, so @inbounds is safe.
+    subdata = @inbounds getindex(pa.data, inds...)
+    if !_is_multiindex(inds)
+        return !(subdata isa ArrayLikeBlock)
+    end
+    return !any(elem -> elem isa ArrayLikeBlock && elem.inds != inds, subdata)
+end
+
+function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    _check_index_validity(pa, inds)
+    if _is_multiindex(inds)
+        pa.mask[inds...] .= false
+    else
+        pa.mask[inds...] = false
+    end
+    return _concretise_eltype!!(pa)
+end
+
+_ensure_range(r::UnitRange) = r
+_ensure_range(i::Integer) = i:i
+
+function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    et = eltype(pa)
+    if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
+        # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
+        return pa
+    end
+
+    for i in CartesianIndices(map(_ensure_range, inds))
+        if pa.mask[i]
+            val = @inbounds pa.data[i]
+            if val isa ArrayLikeBlock
+                pa = delete!!(pa, val.inds...)
+            end
+        end
+    end
+    return pa
 end
 
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
@@ -403,13 +497,15 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     else
         _resize_partialarray!!(pa, inds)
     end
+    pa = _remove_partial_blocks!!(pa, inds...)
 
     new_data = pa.data
     if _is_multiindex(inds) && !(isa(value, AbstractArray))
-        if !hasmethod(size, value)
+        if !hasmethod(size, Tuple{typeof(value)})
             throw(ArgumentError("Cannot assign a scalar value to a range."))
         end
-        if size(value) != map(x -> _length_needed(x), inds)
+        inds_size = reduce((x, y) -> tuple(x..., y...), map(size, inds))
+        if size(value) != inds_size
             throw(
                 DimensionMismatch(
                     "Assigned value has size $(size(value)), which does not match the size " *
@@ -419,14 +515,10 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
         end
         # At this point we know we have a value that is not an AbstractArray, but it has
         # some notion of size, and that size matches the indices that are being set. In this
-        # case we wrap the value in a ArrayLikeBlock, and set all the individual indices
-        # point to that, with the right subindices.
-        first_index = first.(inds)
-        # Iterate over all the subindices of inds.
-        for ind in CartesianIndices(map(x -> _length_needed(x), inds))
-            subinds = ntuple(i -> first_index[i] + ind[i] - 1, length(inds))
-            new_data = _setindex!!(new_data, ArrayLikeBlock(value, Tuple(ind)), subinds...)
-        end
+        # case we wrap the value in an ArrayLikeBlock, and set all the individual indices
+        # point to that.
+        alb = ArrayLikeBlock(value, inds)
+        new_data = setindex!!(new_data, fill(alb, inds_size...), inds...)
     else
         new_data = setindex!!(new_data, value, inds...)
     end

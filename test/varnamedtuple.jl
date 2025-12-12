@@ -2,6 +2,7 @@ module VarNamedTupleTests
 
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
+using Distributions: Dirichlet
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples: PartialArray
 using AbstractPPL: VarName, prefix
@@ -457,6 +458,55 @@ end
             Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
             VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
             (2,) => 17.0),),)),))"""
+    end
+
+    @testset "block variables" begin
+        # Tests for setting and getting block variables, i.e. variables that have a non-zero
+        # size in a PartialArray, but are not Arrays themselves.
+        expected_err = ArgumentError("""
+            A non-Array value set with a range of indices must be retrieved with the same
+            range of indices.
+            """)
+        vnt = VarNamedTuple()
+        vnt = setindex!!(vnt, Dirichlet(3, 1.0), @varname(x[2:4]))
+        @test haskey(vnt, @varname(x[2:4]))
+        @test getindex(vnt, @varname(x[2:4])) == Dirichlet(3, 1.0)
+        @test !haskey(vnt, @varname(x[2:3]))
+        @test_throws expected_err getindex(vnt, @varname(x[2:3]))
+        @test !haskey(vnt, @varname(x[3]))
+        @test_throws expected_err getindex(vnt, @varname(x[3]))
+        @test !haskey(vnt, @varname(x[1]))
+        @test !haskey(vnt, @varname(x[5]))
+        vnt = setindex!!(vnt, 1.0, @varname(x[1]))
+        vnt = setindex!!(vnt, 1.0, @varname(x[5]))
+        @test haskey(vnt, @varname(x[1]))
+        @test haskey(vnt, @varname(x[5]))
+        @test_throws expected_err getindex(vnt, @varname(x[1:4]))
+        @test_throws expected_err getindex(vnt, @varname(x[2:5]))
+
+        # Setting any of these indices should remove the block variable x[2:4].
+        @testset "index = $index" for index in (2, 3, 4, 2:3, 3:5)
+            # Test setting different types of values.
+            vals = if index isa Int
+                (2.0,)
+            else
+                (fill(2.0, length(index)), Dirichlet(length(index), 2.0))
+            end
+            @testset "val = $val" for val in vals
+                vn = @varname(x[index])
+                vnt2 = copy(vnt)
+                vnt2 = setindex!!(vnt2, val, vn)
+                @test !haskey(vnt2, @varname(x[2:4]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[2:4]))
+                other_index = index in (2, 2:3) ? 4 : 2
+                @test !haskey(vnt2, @varname(x[other_index]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[other_index]))
+                @test haskey(vnt2, vn)
+                @test getindex(vnt2, vn) == val
+                @test haskey(vnt2, @varname(x[1]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[1:4]))
+            end
+        end
     end
 end
 
