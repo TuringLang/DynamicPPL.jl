@@ -867,7 +867,7 @@ end
     end
 
     @testset "issue #842" begin
-        model = DynamicPPL.TestUtils.ALL_MODELS[1]
+        model = DynamicPPL.TestUtils.demo_dot_assume_observe()
         varinfo = VarInfo(model)
 
         n = length(varinfo[:])
