@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.39.3
+
+`DynamicPPL.TestUtils.AD.run_ad` now generates much prettier output.
+In particular, when a test fails, it also tells you the tolerances needed to make it pass.
+
 ## 0.39.2
 
 `returned(model, parameters...)` now accepts any arguments that can be wrapped in `InitFromParams` (previously it would only accept `NamedTuple`, `AbstractDict{<:VarName}`, or a chain).
