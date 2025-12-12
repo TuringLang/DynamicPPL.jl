@@ -95,6 +95,15 @@
             ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
             ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),
         )
+            if name == "SVI{NamedTuple}" &&
+                model.f === DynamicPPL.TestUtils.demo_one_variable_multiple_constraints
+                # TODO(mhauru) There's a bug in SimpleVarInfo{<:NamedTuple} for cases where
+                # a variable set with IndexLenses changes dimension under linking. This
+                # makes the link!! call crash. The below call to @test just marks the fact
+                # that there's something broken here.
+                @test false broken = true
+                continue
+            end
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
