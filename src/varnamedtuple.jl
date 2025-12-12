@@ -67,6 +67,8 @@ struct ArrayLikeBlock{T,I}
     end
 end
 
+_blocktype(::Type{ArrayLikeBlock{T}}) where {T} = T
+
 """
     PartialArray{ElType,numdims}
 
@@ -414,7 +416,13 @@ function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
         # The below isempty check is deliberately kept separate from the outer elseif,
         # because the outer one can be resolved at compile time.
         if isempty(val)
-            return val
+            # We need to return an empty array, but for type stability, we want to unwrap
+            # any ArrayLikeBlock types in the element type.
+            return if eltype(val) <: ArrayLikeBlock
+                Array{_blocktype(eltype(val)),ndims(val)}()
+            else
+                val
+            end
         end
         first_elem = first(val)
         if !(first_elem isa ArrayLikeBlock)
@@ -490,6 +498,12 @@ function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     return pa
 end
 
+function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
+    return _is_multiindex(inds) &&
+           !isa(value, AbstractArray) &&
+           hasmethod(size, Tuple{typeof(value)})
+end
+
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     _check_index_validity(pa, inds)
     pa = if checkbounds(Bool, pa.mask, inds...)
@@ -500,7 +514,7 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     pa = _remove_partial_blocks!!(pa, inds...)
 
     new_data = pa.data
-    if _is_multiindex(inds) && !(isa(value, AbstractArray))
+    if _needs_arraylikeblock(value, inds...)
         if !hasmethod(size, Tuple{typeof(value)})
             throw(ArgumentError("Cannot assign a scalar value to a range."))
         end
@@ -843,9 +857,15 @@ end
 function make_leaf(value, optic::IndexLens)
     inds = optic.indices
     num_inds = length(inds)
-    # Check if any of the indices are ranges or colons. If yes, value needs to be an
-    # AbstractArray. Otherwise it needs to be an individual value.
-    et = _is_multiindex(inds) ? eltype(value) : typeof(value)
+    # The element type of the PartialArray depends on whether we are setting a single value
+    # or a range of values.
+    et = if !_is_multiindex(inds)
+        typeof(value)
+    elseif _needs_arraylikeblock(value, inds...)
+        ArrayLikeBlock{typeof(value),typeof(inds)}
+    else
+        eltype(value)
+    end
     pa = PartialArray{et,num_inds}()
     return _setindex!!(pa, value, optic)
 end

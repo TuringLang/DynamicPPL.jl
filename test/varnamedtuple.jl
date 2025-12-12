@@ -468,9 +468,9 @@ end
             range of indices.
             """)
         vnt = VarNamedTuple()
-        vnt = setindex!!(vnt, Dirichlet(3, 1.0), @varname(x[2:4]))
+        vnt = @inferred(setindex!!(vnt, Dirichlet(3, 1.0), @varname(x[2:4])))
         @test haskey(vnt, @varname(x[2:4]))
-        @test getindex(vnt, @varname(x[2:4])) == Dirichlet(3, 1.0)
+        @test @inferred(getindex(vnt, @varname(x[2:4]))) == Dirichlet(3, 1.0)
         @test !haskey(vnt, @varname(x[2:3]))
         @test_throws expected_err getindex(vnt, @varname(x[2:3]))
         @test !haskey(vnt, @varname(x[3]))
@@ -507,6 +507,30 @@ end
                 @test_throws BoundsError getindex(vnt2, @varname(x[1:4]))
             end
         end
+
+        # Extra checks, mostly for type stability and to confirm that multidimensional
+        # blocks work too.
+        struct TwoByTwoBlock end
+        Base.size(::TwoByTwoBlock) = (2, 2)
+        val = TwoByTwoBlock()
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[1:2, 1:2])))
+        @test haskey(vnt, @varname(y.z[1:2, 1:2]))
+        @test @inferred(getindex(vnt, @varname(y.z[1:2, 1:2]))) == val
+        @test !haskey(vnt, @varname(y.z[1, 1]))
+        @test_throws expected_err getindex(vnt, @varname(y.z[1, 1]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2:3, 2:3])))
+        @test haskey(vnt, @varname(y.z[2:3, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
+        @test !haskey(vnt, @varname(y.z[1:2, 1:2]))
+        @test_throws BoundsError getindex(vnt, @varname(y.z[1:2, 1:2]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[4:5, 2:3])))
+        @test haskey(vnt, @varname(y.z[2:3, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
+        @test haskey(vnt, @varname(y.z[4:5, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[4:5, 2:3]))) == val
     end
 end
 
