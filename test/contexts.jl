@@ -312,6 +312,22 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test model_fixed().m != m
             @test logprior(model_fixed, (; m)) == logprior(condition(model; s=s), (; m))
         end
+
+        @testset "Can fix immutable data safely" begin
+            # https://github.com/TuringLang/DynamicPPL.jl/issues/1176#issuecomment-3648871018
+            @model function ntfix()
+                m ~ Normal()
+                data = (; x=undef)
+                data.x ~ Normal(m, 1.0)
+                return data.x
+            end
+            fixm = DynamicPPL.fix(ntfix(), (; data=(; x=5.0)))
+            retval, vi = DynamicPPL.init!!(fixm, VarInfo())
+            # The fixed data should overwrite the NamedTuple that came before it
+            @test retval == 5.0
+            @test vi isa VarInfo
+            @test vi[@varname(m)] isa Real
+        end
     end
 
     @testset "PrefixContext + Condition/FixedContext interactions" begin

@@ -463,6 +463,11 @@ function generate_tilde_literal(left, right)
     end
 end
 
+assign_or_set!!(lhs::Symbol, rhs) = AbstractPPL.drop_escape(:($lhs = $rhs))
+function assign_or_set!!(lhs::Expr, rhs)
+    return AbstractPPL.drop_escape(:($BangBang.@set!! $lhs = $rhs))
+end
+
 """
     generate_tilde(left, right)
 
@@ -474,27 +479,36 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption value dist
+    @gensym vn isassumption value dist supplied_val
 
     return quote
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
-            $left = $(DynamicPPL.getfixed_nested)(
-                __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-            )
+            # $left may not be a simple varname, it might be x.a or x[1], hence we need to
+            # use Accessors.@set to safely set it.
+            # We need overwrite=true to make sure that the parent value `x` is overwritten
+            # after this statement.
+            $(assign_or_set!!(
+                left,
+                :($(DynamicPPL.getfixed_nested)(
+                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
+                )),
+            ))
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
             # it's not in `argnames` and wasn't conditioned on, then `isassumption` would
             # be true).
-            $left = if $(DynamicPPL.inargnames)($vn, __model__)
-                # This is a no-op and looks redundant, but defining the compiler output this
-                # way ensures that the variable `$left` is always defined. See
-                # https://github.com/TuringLang/DynamicPPL.jl/pull/1110.
-                $left
+            # Note that it's important to always make sure that the variable `$supplied_val`
+            # is defined (by putting $supplied_val outside the if/else block), otherwise
+            # Libtask can trip up with variables that are only defined in one branch. See
+            # eg. https://github.com/TuringLang/DynamicPPL.jl/pull/1110 for a discussion of
+            # this.
+            $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
+                $(maybe_view(left))
             else
                 $(DynamicPPL.getconditioned_nested)(
                     __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
@@ -504,10 +518,11 @@ function generate_tilde(left, right)
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __model__.context,
                 $(DynamicPPL.check_tilde_rhs)($dist),
-                $(maybe_view(left)),
+                $supplied_val,
                 $vn,
                 __varinfo__,
             )
+            $(assign_or_set!!(left, value))
             $value
         end
     end
