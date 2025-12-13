@@ -823,4 +823,17 @@ module Issue537 end
         end
         @test_logs (:warn, r"threadsafe evaluation") eval(e3)
     end
+
+    @testset "Immutable data as model arguments" begin
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/1176
+        @model function nt(data)
+            m ~ Normal()
+            return data.x ~ Normal(m, 1.0)
+        end
+        data = (; x=5.0)
+        retval, vi = DynamicPPL.init!!(nt(data), VarInfo())
+        @test retval == 5.0
+        @test vi isa VarInfo
+        @test vi[@varname(m)] isa Real
+    end
 end
