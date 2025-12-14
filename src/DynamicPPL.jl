@@ -100,6 +100,7 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     OnlyAccsVarInfo,
+    rand_with_logdensity,
     # Leaf contexts
     AbstractContext,
     contextualize,

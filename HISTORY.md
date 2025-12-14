@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.39.6
+
+Introduces a new function, `DynamicPPL.rand_with_logpdf([rng,] ldf[, strategy])`, which allows generating new trial parameter values from a `LogDensityFunction`.
+Previously this would have been accomplished using the `ldf.varinfo` object, but since v0.39 there is no longer a `VarInfo` inside a `LogDensityFunction`, so this function is a direct replacement for that pattern.
+
 ## 0.39.5
 
 Fixed a bug which prevented passing immutable data (such as NamedTuples or ordinary structs) as arguments to DynamicPPL models, or fixing the model on such data.

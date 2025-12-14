@@ -80,6 +80,13 @@ Internally, this is accomplished using [`init!!`](@ref) on:
 OnlyAccsVarInfo
 ```
 
+When given a `LogDensityFunction` (and only a `LogDensityFunction`!) it is often useful to be able to sample new parameters from the prior of the model, for example, when searching for initial points for MCMC sampling.
+This can be done with:
+
+```@docs
+rand_with_logdensity
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
