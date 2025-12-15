@@ -423,7 +423,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
             ),
             ("SVI+NamedTuple", SimpleVarInfo()),
-            ("Svi+Dict", SimpleVarInfo(Dict{VarName,Any}())),
+            ("Svi+Dict", SimpleVarInfo(OrderedDict{VarName,Any}())),
         ]
 
         @model function test_init_model()

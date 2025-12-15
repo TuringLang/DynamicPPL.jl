@@ -29,26 +29,26 @@
         end
 
         @testset "Dict" begin
-            svi = SimpleVarInfo(Dict(@varname(m) => 1.0))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => 1.0))
             @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
-            svi = SimpleVarInfo(Dict(@varname(m) => [1.0]))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => [1.0]))
             @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
             @test svi[@varname(m)][1] == svi[@varname(m[1])]
 
-            svi = SimpleVarInfo(Dict(@varname(m) => (a=[1.0],)))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => (a=[1.0],)))
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m.a))
             @test haskey(svi, @varname(m.a[1]))
             @test !haskey(svi, @varname(m.a[2]))
             @test !haskey(svi, @varname(m.a.b))
 
-            svi = SimpleVarInfo(Dict(@varname(m.a) => [1.0]))
+            svi = SimpleVarInfo(OrderedDict(@varname(m.a) => [1.0]))
             # Now we only have a variable `m.a` which is subsumed by `m`,
             # but we can't guarantee that we have the "entire" `m`.
             @test !haskey(svi, @varname(m))
@@ -90,7 +90,7 @@
                                                           DynamicPPL.TestUtils.ALL_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$name" for (name, vi) in (
-            ("SVI{Dict}", SimpleVarInfo(Dict{VarName,Any}())),
+            ("SVI{Dict}", SimpleVarInfo(OrderedDict{VarName,Any}())),
             ("SVI{NamedTuple}", SimpleVarInfo(values_constrained)),
             ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
             ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),

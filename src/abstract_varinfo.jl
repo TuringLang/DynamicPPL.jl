@@ -837,6 +837,10 @@ end
 function link!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
+    # TODO(mhauru) This assumes that the user has defined the bijector using the same
+    # variable ordering as what `vi[:]` and `unflatten(vi, x)` use. This is a bad user
+    # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
+    # a particular ordering, such as SimpleVarInfo{Dict}.
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)

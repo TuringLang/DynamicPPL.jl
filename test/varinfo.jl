@@ -101,7 +101,7 @@ end
         test_base(VarInfo())
         test_base(DynamicPPL.typed_varinfo(VarInfo()))
         test_base(SimpleVarInfo())
-        test_base(SimpleVarInfo(Dict{VarName,Any}()))
+        test_base(SimpleVarInfo(OrderedDict{VarName,Any}()))
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
@@ -130,7 +130,7 @@ end
         test_varinfo_logp!(vi)
         test_varinfo_logp!(DynamicPPL.typed_varinfo(vi))
         test_varinfo_logp!(SimpleVarInfo())
-        test_varinfo_logp!(SimpleVarInfo(Dict()))
+        test_varinfo_logp!(SimpleVarInfo(OrderedDict()))
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
@@ -451,7 +451,7 @@ end
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
