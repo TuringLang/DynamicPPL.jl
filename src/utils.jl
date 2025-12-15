@@ -949,3 +949,19 @@ end
 Return `typeof(x)` stripped of its type parameters.
 """
 basetypeof(x::T) where {T} = Base.typename(T).wrapper
+
+# TODO(mhauru) Might add another specialisation to _compose_no_identity, where if
+# ReshapeTransforms are composed with each other or with a an UnwrapSingeltonTransform, only
+# the latter one would be kept.
+"""
+    _compose_no_identity(f, g)
+
+Like `f ∘ g`, but if `f` or `g` is `identity` it is omitted.
+
+This helps avoid trivial cases of `ComposedFunction` that would cause unnecessary type
+conflicts.
+"""
+_compose_no_identity(f, g) = f ∘ g
+_compose_no_identity(::typeof(identity), g) = g
+_compose_no_identity(f, ::typeof(identity)) = f
+_compose_no_identity(::typeof(identity), ::typeof(identity)) = identity

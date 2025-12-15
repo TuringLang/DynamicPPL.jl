@@ -136,10 +136,7 @@ function ParamsWithStats(
     include_log_probs::Bool=true,
 ) where {Tlink}
     strategy = InitFromParams(
-        VectorWithRanges{Tlink}(
-            ldf._iden_varname_ranges, ldf._varname_ranges, param_vector
-        ),
-        nothing,
+        VectorWithRanges{Tlink}(ldf._varname_ranges, param_vector), nothing
     )
     accs = if include_log_probs
         (
