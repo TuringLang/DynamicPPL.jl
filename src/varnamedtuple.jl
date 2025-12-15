@@ -67,6 +67,18 @@ struct ArrayLikeBlock{T,I}
     end
 end
 
+function Base.show(io::IO, alb::ArrayLikeBlock)
+    # Note the distinction: The raw strings that form part of the structure of the print
+    # out are `print`ed, whereas the keys and values are `show`n. The latter ensures
+    # that strings are quoted, Symbols are prefixed with :, etc.
+    print(io, "ArrayLikeBlock(")
+    show(io, alb.block)
+    print(io, ", ")
+    show(io, alb.inds)
+    print(io, ")")
+    return nothing
+end
+
 _blocktype(::Type{ArrayLikeBlock{T}}) where {T} = T
 
 """
