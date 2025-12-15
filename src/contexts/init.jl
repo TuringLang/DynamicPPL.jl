@@ -206,14 +206,16 @@ an unlinked value.
 
 $(TYPEDFIELDS)
 """
-struct RangeAndLinked
+struct RangeAndLinked{T<:Tuple}
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
     # whether it's linked
     is_linked::Bool
+    # original size of the variable before vectorisation
+    original_size::T
 end
 
-Base.size(ral::RangeAndLinked) = size(ral.range)
+Base.size(ral::RangeAndLinked) = ral.original_size
 
 """
     VectorWithRanges{Tlink}(
@@ -249,7 +251,12 @@ struct VectorWithRanges{Tlink,VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
 end
 
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
-    return vr.varname_ranges[vn]
+    # The type assertion does nothing if VectorWithRanges has concrete element types, as is
+    # the case for all type stable models. However, if the model is not type stable,
+    # vr.varname_ranges[vn] may infer to have type `Any`. In this case it is helpful to
+    # assert that it is a RangeAndLinked, because even though it remains non-concrete,
+    # it'll allow the compiler to infer the types of `range` and `is_linked`.
+    return vr.varname_ranges[vn]::RangeAndLinked
 end
 function init(
     ::Random.AbstractRNG,

@@ -352,7 +352,13 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    new_et = promote_type((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    # We could use promote_type here, instead of typejoin. However, that would e.g.
+    # cause Ints to be converted to Float64s, since
+    # promote_type(Int, Float64) == Float64, which can cause problems. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
+    # and Missing, rather than falling back on Any. However, it's not exported.
+    new_et = typejoin((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === eltype(pa)
@@ -588,8 +594,8 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
         if size(value) != inds_size
             throw(
                 DimensionMismatch(
-                    "Assigned value has size $(size(value)), which does not match the size " *
-                    "implied by the indices $(map(x -> _length_needed(x), inds)).",
+                    "Assigned value has size $(size(value)), which does not match the " *
+                    "size implied by the indices $(map(x -> _length_needed(x), inds)).",
                 ),
             )
         end
@@ -659,7 +665,14 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
             result
         else
             # Neither is strictly bigger than the other.
-            et = promote_type(eltype(pa1), eltype(pa2))
+            # We could use promote_type here, instead of typejoin. However, that would e.g.
+            # cause Ints to be converted to Float64s, since
+            # promote_type(Int, Float64) == Float64, which can cause problems. See
+            # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+            # Base.promote_typejoin would be like typejoin, but creates Unions out of
+            # Nothing and Missing, rather than falling back on Any. However, it's not
+            # exported.
+            et = typejoin(eltype(pa1), eltype(pa2))
             new_data = Array{et,num_dims}(undef, merge_size)
             new_mask = fill(false, merge_size)
             result = PartialArray(new_data, new_mask)
