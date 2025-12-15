@@ -792,25 +792,18 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     return _setindex!!(vnt, new_subdata, name)
 end
 
-# TODO(mhauru) Should this return tuples, like it does now? That makes sense for
-# VarNamedTuple itself, but if there is a nested PartialArray the tuple might get very big.
-# Also, this is not very type stable, it fails even in basic cases. A generated function
-# would help, but I failed to make one. Might be something to do with a recursive
-# generated function.
 function Base.keys(vnt::VarNamedTuple)
-    result = ()
+    result = VarName[]
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
         if subdata isa VarNamedTuple
             subkeys = keys(subdata)
-            result = (
-                result..., (AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys)...
-            )
+            append!(result, [AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys])
         elseif subdata isa PartialArray
             subkeys = keys(subdata)
-            result = (result..., (VarName{sym}(lens) for lens in subkeys)...)
+            append!(result, [VarName{sym}(lens) for lens in subkeys])
         else
-            result = (result..., VarName{sym}())
+            push!(result, VarName{sym}())
         end
     end
     return result

@@ -343,36 +343,36 @@ end
 
     @testset "keys" begin
         vnt = VarNamedTuple()
-        @test @inferred(keys(vnt)) == ()
+        @test @inferred(keys(vnt)) == VarName[]
 
         vnt = setindex!!(vnt, 1.0, @varname(a))
         # TODO(mhauru) that the below passes @inferred, but any of the later ones don't.
         # We should improve type stability of keys().
-        @test @inferred(keys(vnt)) == (@varname(a),)
+        @test @inferred(keys(vnt)) == [@varname(a)]
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
-        @test keys(vnt) == (@varname(a), @varname(b))
+        @test keys(vnt) == [@varname(a), @varname(b)]
 
         vnt = setindex!!(vnt, 15, @varname(b[2]))
-        @test keys(vnt) == (@varname(a), @varname(b))
+        @test keys(vnt) == [@varname(a), @varname(b)]
 
         vnt = setindex!!(vnt, [10], @varname(c.x.y))
-        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y))
+        @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y)]
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
-        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y), @varname(d[4]))
+        @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y), @varname(d[4])]
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
             @varname(d[4]),
             @varname(e.f[3, 3].g.h[2, 4, 1].i),
-        )
+        ]
 
         vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -382,10 +382,10 @@ end
             @varname(j[2]),
             @varname(j[3]),
             @varname(j[4]),
-        )
+        ]
 
         vnt = setindex!!(vnt, 1.0, @varname(j[6]))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -396,10 +396,10 @@ end
             @varname(j[3]),
             @varname(j[4]),
             @varname(j[6]),
-        )
+        ]
 
         vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -411,7 +411,7 @@ end
             @varname(j[4]),
             @varname(j[6]),
             @varname(n[2].a),
-        )
+        ]
     end
 
     @testset "printing" begin
