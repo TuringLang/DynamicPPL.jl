@@ -179,7 +179,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_ctx == FixedContext((b=4,), ConditionContext((a=1,)))
         end
 
-        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             prefix_vn = @varname(my_prefix)
             context = DynamicPPL.PrefixContext(prefix_vn, DefaultContext())
             new_model = contextualize(model, context)
@@ -423,7 +423,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 DynamicPPL.typed_vector_varinfo(DynamicPPL.typed_varinfo(VarInfo())),
             ),
             ("SVI+NamedTuple", SimpleVarInfo()),
-            ("Svi+Dict", SimpleVarInfo(Dict{VarName,Any}())),
+            ("Svi+Dict", SimpleVarInfo(OrderedDict{VarName,Any}())),
         ]
 
         @model function test_init_model()

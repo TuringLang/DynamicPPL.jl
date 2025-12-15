@@ -101,7 +101,7 @@ end
         test_base(VarInfo())
         test_base(DynamicPPL.typed_varinfo(VarInfo()))
         test_base(SimpleVarInfo())
-        test_base(SimpleVarInfo(Dict{VarName,Any}()))
+        test_base(SimpleVarInfo(OrderedDict{VarName,Any}()))
         test_base(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
@@ -130,7 +130,7 @@ end
         test_varinfo_logp!(vi)
         test_varinfo_logp!(DynamicPPL.typed_varinfo(vi))
         test_varinfo_logp!(SimpleVarInfo())
-        test_varinfo_logp!(SimpleVarInfo(Dict()))
+        test_varinfo_logp!(SimpleVarInfo(OrderedDict()))
         test_varinfo_logp!(SimpleVarInfo(DynamicPPL.VarNamedVector()))
     end
 
@@ -318,7 +318,7 @@ end
     end
 
     @testset "returned on MCMCChains.Chains" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             chain = make_chain_from_prior(model, 10)
             # A simple way of checking that the computation is determinstic: run twice and compare.
             res1 = returned(model, MCMCChains.get_sections(chain, :parameters))
@@ -451,7 +451,7 @@ end
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:Dict}`
-        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(Dict{VarName,Any}()), true)
+        vi = DynamicPPL.set_transformed!!(SimpleVarInfo(OrderedDict{VarName,Any}()), true)
         test_linked_varinfo(model, vi)
 
         ## `SimpleVarInfo{<:VarNamedVector}`
@@ -460,7 +460,7 @@ end
     end
 
     @testset "values_as" begin
-        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.ALL_MODELS
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             vns = DynamicPPL.TestUtils.varnames(model)
 
@@ -730,7 +730,7 @@ end
     end
 
     @testset "merge" begin
-        @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
                 model,
@@ -825,7 +825,7 @@ end
     end
 
     @testset "issue #842" begin
-        model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+        model = DynamicPPL.TestUtils.demo_dot_assume_observe()
         varinfo = VarInfo(model)
 
         n = length(varinfo[:])
