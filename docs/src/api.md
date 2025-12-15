@@ -267,6 +267,7 @@ DynamicPPL provides several demo models in the `DynamicPPL.TestUtils` submodule.
 
 ```@docs
 DynamicPPL.TestUtils.DEMO_MODELS
+DynamicPPL.TestUtils.ALL_MODELS
 ```
 
 For every demo model, one can define the true log prior, log likelihood, and log joint probabilities.

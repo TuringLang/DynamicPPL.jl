@@ -101,12 +101,23 @@ function DynamicPPL.marginalize(
     method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
     kwargs...,
 )
-    # Determine the indices for the variables to marginalise out.
-    varindices = reduce(vcat, DynamicPPL.vector_getranges(varinfo, marginalized_varnames))
     # Construct the marginal log-density model.
-    f = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
+    ldf = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
+    # Determine the indices for the variables to marginalise out.
+    varindices = mapreduce(vcat, marginalized_varnames) do vn
+        if DynamicPPL.getoptic(vn) === identity
+            ldf._iden_varname_ranges[DynamicPPL.getsym(vn)].range
+        else
+            ldf._varname_ranges[vn].range
+        end
+    end
     mld = MarginalLogDensities.MarginalLogDensity(
-        LogDensityFunctionWrapper(f, varinfo), varinfo[:], varindices, (), method; kwargs...
+        LogDensityFunctionWrapper(ldf, varinfo),
+        varinfo[:],
+        varindices,
+        (),
+        method;
+        kwargs...,
     )
     return mld
 end

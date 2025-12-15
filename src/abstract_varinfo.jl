@@ -837,6 +837,10 @@ end
 function link!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
+    # TODO(mhauru) This assumes that the user has defined the bijector using the same
+    # variable ordering as what `vi[:]` and `unflatten(vi, x)` use. This is a bad user
+    # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
+    # a particular ordering, such as SimpleVarInfo{Dict}.
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
@@ -866,7 +870,7 @@ end
 function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
 end
-function link(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return link!!(t, deepcopy(vi), model)
 end
 
@@ -932,7 +936,7 @@ end
 function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
 end
-function invlink(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
+function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
 end
 

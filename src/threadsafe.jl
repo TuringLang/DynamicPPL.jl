@@ -85,12 +85,24 @@ function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
 
-function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, args...)
+function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, model)
 end
 
-function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, args...)
+function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, model)
+end
+
+function link(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
+)
+    return Accessors.@set vi.varinfo = link(t, vi.varinfo, vns, model)
+end
+
+function invlink(
+    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
+)
+    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, vns, model)
 end
 
 # Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
@@ -155,10 +167,6 @@ function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:
 end
 
 vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)
-vector_getrange(vi::ThreadSafeVarInfo, vn::VarName) = vector_getrange(vi.varinfo, vn)
-function vector_getranges(vi::ThreadSafeVarInfo, vns::Vector{<:VarName})
-    return vector_getranges(vi.varinfo, vns)
-end
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
