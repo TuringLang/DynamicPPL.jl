@@ -3,7 +3,7 @@ module VarNamedTupleTests
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
-using DynamicPPL.VarNamedTuples: PartialArray
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
 using AbstractPPL: VarName, prefix
 using BangBang: setindex!!
 
@@ -19,12 +19,18 @@ function test_invariants(vnt::VarNamedTuple)
     for k in keys(vnt)
         @test haskey(vnt, k)
         v = getindex(vnt, k)
+        # ArrayLikeBlocks are an implementation detail, and should not be exposed through
+        # getindex.
+        @test !(v isa ArrayLikeBlock)
         vnt2 = setindex!!(copy(vnt), v, k)
         @test vnt == vnt2
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
     # Check that the printed representation can be parsed back to an equal VarNamedTuple.
+    # The below eval test is a bit fragile: If any elements in vnt don't respect the same
+    # reconstructability-from-repr property, this will fail. Likewise if any element uses
+    # in its repr print out types that are not in scope in this module, it will fail.
     vnt3 = eval(Meta.parse(repr(vnt)))
     @test vnt == vnt3
     @test isequal(vnt, vnt3)
@@ -33,6 +39,12 @@ function test_invariants(vnt::VarNamedTuple)
     @test merge(vnt, VarNamedTuple()) == vnt
     @test merge(VarNamedTuple(), vnt) == vnt
 end
+
+""" A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
+struct SizedThing{T<:Tuple}
+    size::T
+end
+Base.size(st::SizedThing) = st.size
 
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
@@ -342,36 +354,36 @@ end
 
     @testset "keys" begin
         vnt = VarNamedTuple()
-        @test @inferred(keys(vnt)) == ()
+        @test @inferred(keys(vnt)) == VarName[]
 
         vnt = setindex!!(vnt, 1.0, @varname(a))
         # TODO(mhauru) that the below passes @inferred, but any of the later ones don't.
         # We should improve type stability of keys().
-        @test @inferred(keys(vnt)) == (@varname(a),)
+        @test @inferred(keys(vnt)) == [@varname(a)]
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
-        @test keys(vnt) == (@varname(a), @varname(b))
+        @test keys(vnt) == [@varname(a), @varname(b)]
 
         vnt = setindex!!(vnt, 15, @varname(b[2]))
-        @test keys(vnt) == (@varname(a), @varname(b))
+        @test keys(vnt) == [@varname(a), @varname(b)]
 
         vnt = setindex!!(vnt, [10], @varname(c.x.y))
-        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y))
+        @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y)]
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
-        @test keys(vnt) == (@varname(a), @varname(b), @varname(c.x.y), @varname(d[4]))
+        @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y), @varname(d[4])]
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
             @varname(d[4]),
             @varname(e.f[3, 3].g.h[2, 4, 1].i),
-        )
+        ]
 
         vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -381,10 +393,10 @@ end
             @varname(j[2]),
             @varname(j[3]),
             @varname(j[4]),
-        )
+        ]
 
         vnt = setindex!!(vnt, 1.0, @varname(j[6]))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -395,10 +407,10 @@ end
             @varname(j[3]),
             @varname(j[4]),
             @varname(j[6]),
-        )
+        ]
 
         vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
-        @test keys(vnt) == (
+        @test keys(vnt) == [
             @varname(a),
             @varname(b),
             @varname(c.x.y),
@@ -410,7 +422,23 @@ end
             @varname(j[4]),
             @varname(j[6]),
             @varname(n[2].a),
-        )
+        ]
+
+        vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(o[2:4, 5:5, 11:14]))
+        @test keys(vnt) == [
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+            @varname(n[2].a),
+            @varname(o[2:4, 5:5, 11:14]),
+        ]
     end
 
     @testset "printing" begin
@@ -457,6 +485,107 @@ end
             Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
             VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
             (2,) => 17.0),),)),))"""
+    end
+
+    @testset "block variables" begin
+        # Tests for setting and getting block variables, i.e. variables that have a non-zero
+        # size in a PartialArray, but are not Arrays themselves.
+        expected_err = ArgumentError("""
+            A non-Array value set with a range of indices must be retrieved with the same
+            range of indices.
+            """)
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, SizedThing((3,)), @varname(x[2:4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(x[2:4]))
+        @test @inferred(getindex(vnt, @varname(x[2:4]))) == SizedThing((3,))
+        @test !haskey(vnt, @varname(x[2:3]))
+        @test_throws expected_err getindex(vnt, @varname(x[2:3]))
+        @test !haskey(vnt, @varname(x[3]))
+        @test_throws expected_err getindex(vnt, @varname(x[3]))
+        @test !haskey(vnt, @varname(x[1]))
+        @test !haskey(vnt, @varname(x[5]))
+        vnt = setindex!!(vnt, 1.0, @varname(x[1]))
+        vnt = setindex!!(vnt, 1.0, @varname(x[5]))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(x[1]))
+        @test haskey(vnt, @varname(x[5]))
+        @test_throws expected_err getindex(vnt, @varname(x[1:4]))
+        @test_throws expected_err getindex(vnt, @varname(x[2:5]))
+
+        # Setting any of these indices should remove the block variable x[2:4].
+        @testset "index = $index" for index in (2, 3, 4, 2:3, 3:5)
+            # Test setting different types of values.
+            vals = if index isa Int
+                (2.0,)
+            else
+                (fill(2.0, length(index)), SizedThing((length(index),)))
+            end
+            @testset "val = $val" for val in vals
+                vn = @varname(x[index])
+                vnt2 = copy(vnt)
+                vnt2 = setindex!!(vnt2, val, vn)
+                test_invariants(vnt)
+                @test !haskey(vnt2, @varname(x[2:4]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[2:4]))
+                other_index = index in (2, 2:3) ? 4 : 2
+                @test !haskey(vnt2, @varname(x[other_index]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[other_index]))
+                @test haskey(vnt2, vn)
+                @test getindex(vnt2, vn) == val
+                @test haskey(vnt2, @varname(x[1]))
+                @test_throws BoundsError getindex(vnt2, @varname(x[1:4]))
+            end
+        end
+
+        # Extra checks, mostly for type stability and to confirm that multidimensional
+        # blocks work too.
+        val = SizedThing((2, 2))
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[1:2, 1:2])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[1:2, 1:2]))
+        @test @inferred(getindex(vnt, @varname(y.z[1:2, 1:2]))) == val
+        @test !haskey(vnt, @varname(y.z[1, 1]))
+        @test_throws expected_err getindex(vnt, @varname(y.z[1, 1]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2:3, 2:3])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2:3, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
+        @test !haskey(vnt, @varname(y.z[1:2, 1:2]))
+        @test_throws BoundsError getindex(vnt, @varname(y.z[1:2, 1:2]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[4:5, 2:3])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2:3, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
+        @test haskey(vnt, @varname(y.z[4:5, 2:3]))
+        @test @inferred(getindex(vnt, @varname(y.z[4:5, 2:3]))) == val
+
+        # A lot like above, but with extra indices that are not ranges.
+        val = SizedThing((2, 2))
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2, 1:2, 3, 1:2, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))) == val
+        @test !haskey(vnt, @varname(y.z[2, 1, 3, 1, 4]))
+        @test_throws expected_err getindex(vnt, @varname(y.z[2, 1, 3, 1, 4]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2, 2:3, 3, 2:3, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
+        @test !haskey(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+        @test_throws BoundsError getindex(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[3, 2:3, 3, 2:3, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
+        @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 end
 

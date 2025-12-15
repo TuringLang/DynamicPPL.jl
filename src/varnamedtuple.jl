@@ -27,9 +27,30 @@ function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
 end
 
 # Some utilities for checking what sort of indices we are dealing with.
-_has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
-function _is_multiindex(::T) where {T<:Tuple}
-    return any(x <: UnitRange || x <: Colon for x in T.parameters)
+# The non-generated function implementations of these would be
+# _has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
+# function _is_multiindex(::T) where {T<:Tuple}
+#     return any(x <: UnitRange || x <: Colon for x in T.parameters)
+# end
+# However, constant propagation sometimes fails if the index tuple is too big (e.g. length
+# 4), so we play it safe and use generated functions. Constant propagating these is
+# important, because many functions choose different paths based on their values, which
+# would lead to type instability if they were only evaluated at runtime.
+@generated function _has_colon(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: Colon
+            return :(true)
+        end
+    end
+    return :(false)
+end
+@generated function _is_multiindex(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: UnitRange || x <: Colon
+            return :(true)
+        end
+    end
+    return :(false)
 end
 
 """
@@ -54,6 +75,45 @@ const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
 
 """A convenience for defining method argument type bounds."""
 const INDEX_TYPES = Union{Integer,UnitRange,Colon}
+
+"""
+    ArrayLikeBlock{T,I}
+
+A wrapper for non-array blocks stored in `PartialArray`s.
+
+When setting a value in a `PartialArray` over a range of indices, if the value being set
+is not itself an `AbstractArray`, but has a well-defined size, we wrap it in an
+`ArrayLikeBlock`, which records both the value and the indices it was set with.
+
+When getting values from a `PartialArray`, if any of the requested indices correspond to
+an `ArrayLikeBlock`, we check that the requested indices match the ones used to set the
+value. If they do, we return the underlying block, otherwise we throw an error.
+"""
+struct ArrayLikeBlock{T,I}
+    block::T
+    inds::I
+
+    function ArrayLikeBlock(block::T, inds::I) where {T,I}
+        if !_is_multiindex(inds)
+            throw(ArgumentError("ArrayLikeBlock must be constructed with a multi-index"))
+        end
+        return new{T,I}(block, inds)
+    end
+end
+
+function Base.show(io::IO, alb::ArrayLikeBlock)
+    # Note the distinction: The raw strings that form part of the structure of the print
+    # out are `print`ed, whereas the keys and values are `show`n. The latter ensures
+    # that strings are quoted, Symbols are prefixed with :, etc.
+    print(io, "ArrayLikeBlock(")
+    show(io, alb.block)
+    print(io, ", ")
+    show(io, alb.inds)
+    print(io, ")")
+    return nothing
+end
+
+_blocktype(::Type{ArrayLikeBlock{T}}) where {T} = T
 
 """
     PartialArray{ElType,numdims}
@@ -89,6 +149,14 @@ Like `Base.Array`s, `PartialArray`s have a well-defined, compile-time-known elem
 `ElType` and number of dimensions `numdims`. Indices into a `PartialArray` must have exactly
 `numdims` elements.
 
+One can set values in a `PartialArray` either element-by-element, or with ranges like
+`arr[1:3,2] = [5,10,15]`. When setting values over a range of indices, the value being set
+must either be an `AbstractArray` or otherwise something for which `size(value)` is defined,
+and the size mathces the range. If the value is an `AbstractArray`, the elements are copied
+individually, but if it is not, the value is stored as a block, that takes up the whole
+range, e.g. `[1:3,2]`, but is only a single object. Getting such a block-value must be done
+with the exact same range of indices, otherwise an error is thrown.
+
 If the element type of a `PartialArray` is not concrete, any call to `setindex!!` will check
 if, after the new value has been set, the element type can be made more concrete. If so,
 a new `PartialArray` with a more concrete element type is returned. Thus the element type
@@ -105,6 +173,9 @@ means that the largest index set so far determines the memory usage of the `Part
 a few scattered values are set, a structure like `SparseArray` may be more appropriate.
 """
 struct PartialArray{ElType,num_dims}
+    # TODO(mhauru) Consider trying FixedSizeArrays instead, see how it would change
+    # performance. We reallocate new Arrays every time when resizing anyway, except for
+    # Vectors, which can be extended in place.
     data::Array{ElType,num_dims}
     mask::Array{Bool,num_dims}
 
@@ -281,7 +352,13 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    new_et = promote_type((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    # We could use promote_type here, instead of typejoin. However, that would e.g.
+    # cause Ints to be converted to Float64s, since
+    # promote_type(Int, Float64) == Float64, which can cause problems. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
+    # and Missing, rather than falling back on Any. However, it's not exported.
+    new_et = typejoin((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === eltype(pa)
@@ -377,15 +454,129 @@ end
 
 function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     _check_index_validity(pa, inds)
-    if !_haskey(pa, inds)
+    if !(checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...))))
         throw(BoundsError(pa, inds))
     end
-    return getindex(pa.data, inds...)
+    val = getindex(pa.data, inds...)
+
+    # If not for ArrayLikeBlocks, at this point we could just return val directly. However,
+    # we need to check if val contains any ArrayLikeBlocks, and if so, make sure that that
+    # we are retrieving exactly that block and nothing else.
+
+    # The error we'll throw if the retrieval is invalid.
+    err = ArgumentError("""
+        A non-Array value set with a range of indices must be retrieved with the same
+        range of indices.
+        """)
+    if val isa ArrayLikeBlock
+        # Tried to get a single value, but it's an ArrayLikeBlock.
+        throw(err)
+    elseif val isa Array && (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
+        # Tried to get a range of values, and at least some of them may be ArrayLikeBlocks.
+        # The below isempty check is deliberately kept separate from the outer elseif,
+        # because the outer one can be resolved at compile time.
+        if isempty(val)
+            # We need to return an empty array, but for type stability, we want to unwrap
+            # any ArrayLikeBlock types in the element type.
+            return if eltype(val) <: ArrayLikeBlock
+                Array{_blocktype(eltype(val)),ndims(val)}()
+            else
+                val
+            end
+        end
+        first_elem = first(val)
+        if !(first_elem isa ArrayLikeBlock)
+            throw(err)
+        end
+        if inds != first_elem.inds
+            # The requested indices do not match the ones used to set the value.
+            throw(err)
+        end
+        # If _setindex!! works correctly, we should only be able to reach this point if all
+        # the elements in `val` are identical to first_elem. Thus we just return that one.
+        return first(val).block
+    else
+        return val
+    end
 end
 
 function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
     _check_index_validity(pa, inds)
-    return checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
+    hasall =
+        checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
+
+    # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
+    # check that if any ArrayLikeBlocks are included, they are fully included.
+    et = eltype(pa)
+    if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
+        # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
+        return hasall
+    end
+
+    if !hasall
+        return false
+    end
+    # From this point on we can assume that all the requested elements are set, and the only
+    # thing to check is that we are not partially indexing into any ArrayLikeBlocks.
+    # We've already checked checkbounds at the top of the function, and returned if it
+    # wasn't true, so @inbounds is safe.
+    subdata = @inbounds getindex(pa.data, inds...)
+    if !_is_multiindex(inds)
+        return !(subdata isa ArrayLikeBlock)
+    end
+    return !any(elem -> elem isa ArrayLikeBlock && elem.inds != inds, subdata)
+end
+
+function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    _check_index_validity(pa, inds)
+    if _is_multiindex(inds)
+        pa.mask[inds...] .= false
+    else
+        pa.mask[inds...] = false
+    end
+    return pa
+end
+
+_ensure_range(r::UnitRange) = r
+_ensure_range(i::Integer) = i:i
+
+"""
+    _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+
+Remove any ArrayLikeBlocks that overlap with the given indices from the PartialArray.
+
+Note that this removes the whole block, even the parts that are within `inds`, to avoid
+partially indexing into ArrayLikeBlocks.
+"""
+function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    et = eltype(pa)
+    if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
+        # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
+        return pa
+    end
+
+    for i in CartesianIndices(map(_ensure_range, inds))
+        if pa.mask[i]
+            val = @inbounds pa.data[i]
+            if val isa ArrayLikeBlock
+                pa = delete!!(pa, val.inds...)
+            end
+        end
+    end
+    return pa
+end
+
+"""
+    _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
+
+Check if the given value needs to be wrapped in an `ArrayLikeBlock` when being set at inds.
+
+The value only depends on the types of the arguments, and should be constant propagated.
+"""
+function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
+    return _is_multiindex(inds) &&
+           !isa(value, AbstractArray) &&
+           hasmethod(size, Tuple{typeof(value)})
 end
 
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
@@ -395,7 +586,29 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     else
         _resize_partialarray!!(pa, inds)
     end
-    new_data = setindex!!(pa.data, value, inds...)
+    pa = _remove_partial_blocks!!(pa, inds...)
+
+    new_data = pa.data
+    if _needs_arraylikeblock(value, inds...)
+        inds_size = reduce((x, y) -> tuple(x..., y...), map(size, inds))
+        if size(value) != inds_size
+            throw(
+                DimensionMismatch(
+                    "Assigned value has size $(size(value)), which does not match the " *
+                    "size implied by the indices $(map(x -> _length_needed(x), inds)).",
+                ),
+            )
+        end
+        # At this point we know we have a value that is not an AbstractArray, but it has
+        # some notion of size, and that size matches the indices that are being set. In this
+        # case we wrap the value in an ArrayLikeBlock, and set all the individual indices
+        # to point to that.
+        alb = ArrayLikeBlock(value, inds)
+        new_data = setindex!!(new_data, fill(alb, inds_size...), inds...)
+    else
+        new_data = setindex!!(new_data, value, inds...)
+    end
+
     if _is_multiindex(inds)
         pa.mask[inds...] .= true
     else
@@ -452,7 +665,14 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
             result
         else
             # Neither is strictly bigger than the other.
-            et = promote_type(eltype(pa1), eltype(pa2))
+            # We could use promote_type here, instead of typejoin. However, that would e.g.
+            # cause Ints to be converted to Float64s, since
+            # promote_type(Int, Float64) == Float64, which can cause problems. See
+            # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+            # Base.promote_typejoin would be like typejoin, but creates Unions out of
+            # Nothing and Missing, rather than falling back on Any. However, it's not
+            # exported.
+            et = typejoin(eltype(pa1), eltype(pa2))
             new_data = Array{et,num_dims}(undef, merge_size)
             new_mask = fill(false, merge_size)
             result = PartialArray(new_data, new_mask)
@@ -478,6 +698,7 @@ function Base.keys(pa::PartialArray)
     inds = findall(pa.mask)
     lenses = map(x -> IndexLens(Tuple(x)), inds)
     ks = Any[]
+    alb_inds_seen = Set{Tuple}()
     for lens in lenses
         val = getindex(pa.data, lens.indices...)
         if val isa VarNamedTuple
@@ -485,6 +706,11 @@ function Base.keys(pa::PartialArray)
             for vn in subkeys
                 sublens = _varname_to_lens(vn)
                 push!(ks, _compose_no_identity(sublens, lens))
+            end
+        elseif val isa ArrayLikeBlock
+            if !(val.inds in alb_inds_seen)
+                push!(ks, IndexLens(Tuple(val.inds)))
+                push!(alb_inds_seen, val.inds)
             end
         else
             push!(ks, lens)
@@ -639,25 +865,18 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     return _setindex!!(vnt, new_subdata, name)
 end
 
-# TODO(mhauru) Should this return tuples, like it does now? That makes sense for
-# VarNamedTuple itself, but if there is a nested PartialArray the tuple might get very big.
-# Also, this is not very type stable, it fails even in basic cases. A generated function
-# would help, but I failed to make one. Might be something to do with a recursive
-# generated function.
 function Base.keys(vnt::VarNamedTuple)
-    result = ()
+    result = VarName[]
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
         if subdata isa VarNamedTuple
             subkeys = keys(subdata)
-            result = (
-                result..., (AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys)...
-            )
+            append!(result, [AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys])
         elseif subdata isa PartialArray
             subkeys = keys(subdata)
-            result = (result..., (VarName{sym}(lens) for lens in subkeys)...)
+            append!(result, [VarName{sym}(lens) for lens in subkeys])
         else
-            result = (result..., VarName{sym}())
+            push!(result, VarName{sym}())
         end
     end
     return result
@@ -716,9 +935,15 @@ end
 function make_leaf(value, optic::IndexLens)
     inds = optic.indices
     num_inds = length(inds)
-    # Check if any of the indices are ranges or colons. If yes, value needs to be an
-    # AbstractArray. Otherwise it needs to be an individual value.
-    et = _is_multiindex(inds) ? eltype(value) : typeof(value)
+    # The element type of the PartialArray depends on whether we are setting a single value
+    # or a range of values.
+    et = if !_is_multiindex(inds)
+        typeof(value)
+    elseif _needs_arraylikeblock(value, inds...)
+        ArrayLikeBlock{typeof(value),typeof(inds)}
+    else
+        eltype(value)
+    end
     pa = PartialArray{et,num_inds}()
     return _setindex!!(pa, value, optic)
 end

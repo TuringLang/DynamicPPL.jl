@@ -330,7 +330,10 @@ function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
     for (vn, idx) in md.idcs
         is_linked = md.is_transformed[idx]
         range = md.ranges[idx] .+ (start_offset - 1)
-        all_ranges = BangBang.setindex!!(all_ranges, RangeAndLinked(range, is_linked), vn)
+        orig_size = varnamesize(vn)
+        all_ranges = BangBang.setindex!!(
+            all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
+        )
         offset += length(range)
     end
     return all_ranges, offset
@@ -341,7 +344,10 @@ function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
     for (vn, idx) in vnv.varname_to_index
         is_linked = vnv.is_unconstrained[idx]
         range = vnv.ranges[idx] .+ (start_offset - 1)
-        all_ranges = BangBang.setindex!!(all_ranges, RangeAndLinked(range, is_linked), vn)
+        orig_size = varnamesize(vn)
+        all_ranges = BangBang.setindex!!(
+            all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
+        )
         offset += length(range)
     end
     return all_ranges, offset
