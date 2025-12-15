@@ -1,4 +1,4 @@
-using DynamicPPL.TestUtils: DEMO_MODELS
+using DynamicPPL.TestUtils: ALL_MODELS
 using DynamicPPL.TestUtils.AD: run_ad
 using ADTypes: AutoEnzyme
 using Test: @test, @testset
@@ -17,7 +17,7 @@ ADTYPES = (
 )
 
 @testset "$ad_key" for (ad_key, ad_type) in ADTYPES
-    @testset "$(model.f)" for model in DEMO_MODELS
+    @testset "$(model.f)" for model in ALL_MODELS
         @test run_ad(model, ad_type) isa Any
     end
 end

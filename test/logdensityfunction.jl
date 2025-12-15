@@ -16,7 +16,7 @@ using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
 
 @testset "LogDensityFunction: Correctness" begin
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
         @testset "$varinfo_func" for varinfo_func in [
             DynamicPPL.untyped_varinfo,
             DynamicPPL.typed_varinfo,
@@ -103,7 +103,7 @@ end
 end
 
 @testset "LogDensityFunction: Type stability" begin
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
         unlinked_vi = DynamicPPL.VarInfo(m)
         @testset "$islinked" for islinked in (false, true)
             vi = if islinked
@@ -159,7 +159,7 @@ end
     ]
 
     @testset "Correctness" begin
-        @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
             varinfo = VarInfo(m)
             linked_varinfo = DynamicPPL.link(varinfo, m)
             f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
@@ -183,7 +183,7 @@ end
     end
 
     @testset "logdensity_and_gradient with views" begin
-        # This test ensures that you can call `logdensity_and_gradient` with an array 
+        # This test ensures that you can call `logdensity_and_gradient` with an array
         # type that isn't the same as the one used in the gradient preparation.
         @model function f()
             x ~ Normal()
