@@ -213,6 +213,8 @@ struct RangeAndLinked
     is_linked::Bool
 end
 
+Base.size(ral::RangeAndLinked) = size(ral.range)
+
 """
     VectorWithRanges{Tlink}(
         varname_ranges::VarNamedTuple,
