@@ -76,6 +76,19 @@ const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
 """A convenience for defining method argument type bounds."""
 const INDEX_TYPES = Union{Integer,UnitRange,Colon}
 
+"""
+    ArrayLikeBlock{T,I}
+
+A wrapper for non-array blocks stored in `PartialArray`s.
+
+When setting a value in a `PartialArray` over a range of indices, if the value being set
+is not itself an `AbstractArray`, but has a well-defined size, we wrap it in an
+`ArrayLikeBlock`, which records both the value and the indices it was set with.
+
+When getting values from a `PartialArray`, if any of the requested indices correspond to
+an `ArrayLikeBlock`, we check that the requested indices match the ones used to set the
+value. If they do, we return the underlying block, otherwise we throw an error.
+"""
 struct ArrayLikeBlock{T,I}
     block::T
     inds::I
@@ -135,6 +148,14 @@ under `setindex!!` to accomoddate the new values.
 Like `Base.Array`s, `PartialArray`s have a well-defined, compile-time-known element type
 `ElType` and number of dimensions `numdims`. Indices into a `PartialArray` must have exactly
 `numdims` elements.
+
+One can set values in a `PartialArray` either element-by-element, or with ranges like
+`arr[1:3,2] = [5,10,15]`. When setting values over a range of indices, the value being set
+must either be an `AbstractArray` or otherwise something for which `size(value)` is defined,
+and the size mathces the range. If the value is an `AbstractArray`, the elements are copied
+individually, but if it is not, the value is stored as a block, that takes up the whole
+range, e.g. `[1:3,2]`, but is only a single object. Getting such a block-value must be done
+with the exact same range of indices, otherwise an error is thrown.
 
 If the element type of a `PartialArray` is not concrete, any call to `setindex!!` will check
 if, after the new value has been set, the element type can be made more concrete. If so,
