@@ -29,26 +29,26 @@
         end
 
         @testset "Dict" begin
-            svi = SimpleVarInfo(Dict(@varname(m) => 1.0))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => 1.0))
             @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test !haskey(svi, @varname(m[1]))
 
-            svi = SimpleVarInfo(Dict(@varname(m) => [1.0]))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => [1.0]))
             @test getlogjoint(svi) == 0.0
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m[1]))
             @test !haskey(svi, @varname(m[2]))
             @test svi[@varname(m)][1] == svi[@varname(m[1])]
 
-            svi = SimpleVarInfo(Dict(@varname(m) => (a=[1.0],)))
+            svi = SimpleVarInfo(OrderedDict(@varname(m) => (a=[1.0],)))
             @test haskey(svi, @varname(m))
             @test haskey(svi, @varname(m.a))
             @test haskey(svi, @varname(m.a[1]))
             @test !haskey(svi, @varname(m.a[2]))
             @test !haskey(svi, @varname(m.a.b))
 
-            svi = SimpleVarInfo(Dict(@varname(m.a) => [1.0]))
+            svi = SimpleVarInfo(OrderedDict(@varname(m.a) => [1.0]))
             # Now we only have a variable `m.a` which is subsumed by `m`,
             # but we can't guarantee that we have the "entire" `m`.
             @test !haskey(svi, @varname(m))
@@ -87,14 +87,23 @@
     end
 
     @testset "link!! & invlink!! on $(nameof(model))" for model in
-                                                          DynamicPPL.TestUtils.DEMO_MODELS
+                                                          DynamicPPL.TestUtils.ALL_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$name" for (name, vi) in (
-            ("SVI{Dict}", SimpleVarInfo(Dict{VarName,Any}())),
+            ("SVI{Dict}", SimpleVarInfo(OrderedDict{VarName,Any}())),
             ("SVI{NamedTuple}", SimpleVarInfo(values_constrained)),
             ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
             ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),
         )
+            if name == "SVI{NamedTuple}" &&
+                model.f === DynamicPPL.TestUtils.demo_one_variable_multiple_constraints
+                # TODO(mhauru) There's a bug in SimpleVarInfo{<:NamedTuple} for cases where
+                # a variable set with IndexLenses changes dimension under linking. This
+                # makes the link!! call crash. The below call to @test just marks the fact
+                # that there's something broken here.
+                @test false broken = true
+                continue
+            end
             for vn in DynamicPPL.TestUtils.varnames(model)
                 vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
             end
@@ -134,7 +143,7 @@
     end
 
     @testset "SimpleVarInfo on $(nameof(model))" for model in
-                                                     DynamicPPL.TestUtils.DEMO_MODELS
+                                                     DynamicPPL.TestUtils.ALL_MODELS
         # We might need to pre-allocate for the variable `m`, so we need
         # to see whether this is the case.
         svi_nt = SimpleVarInfo(DynamicPPL.TestUtils.rand_prior_true(model))
@@ -213,7 +222,15 @@
 
             # Values should not have changed.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test svi_eval[vn] == get(values_eval, vn)
+                # TODO(mhauru) Workaround for
+                # https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+                # Remove once the fix is all Julia versions we support.
+                val = get(values_eval, vn)
+                if val isa Cholesky
+                    @test svi_eval[vn].L == val.L
+                else
+                    @test svi_eval[vn] == val
+                end
             end
 
             # Compare log-probability computations.

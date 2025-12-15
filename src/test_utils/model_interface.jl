@@ -92,7 +92,9 @@ Even though it is recommended to implement this by hand for a particular `Model`
 a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
 """
 function varnames(model::Model)
-    return collect(keys(last(DynamicPPL.init!!(model, SimpleVarInfo(Dict())))))
+    result = collect(keys(last(DynamicPPL.init!!(model, SimpleVarInfo(OrderedDict())))))
+    # Concretise the element type.
+    return [x for x in result]
 end
 
 """

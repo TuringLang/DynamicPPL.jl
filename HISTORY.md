@@ -2,6 +2,19 @@
 
 ## 0.40
 
+## 0.39.4
+
+Removed the internal functions `DynamicPPL.getranges`, `DynamicPPL.vector_getrange`, and `DynamicPPL.vector_getranges` (the new LogDensityFunction construction does exactly the same thing, so this specialised function was not needed).
+
+## 0.39.3
+
+`DynamicPPL.TestUtils.AD.run_ad` now generates much prettier output.
+In particular, when a test fails, it also tells you the tolerances needed to make it pass.
+
+## 0.39.2
+
+`returned(model, parameters...)` now accepts any arguments that can be wrapped in `InitFromParams` (previously it would only accept `NamedTuple`, `AbstractDict{<:VarName}`, or a chain).
+
 ## 0.39.1
 
 `LogDensityFunction` now allows you to call `logdensity_and_gradient(ldf, x)` with `AbstractVector`s `x` that are not plain Vectors (they will be converted internally before calculating the gradient).
