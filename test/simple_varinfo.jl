@@ -90,7 +90,7 @@
                                                           DynamicPPL.TestUtils.ALL_MODELS
         values_constrained = DynamicPPL.TestUtils.rand_prior_true(model)
         @testset "$name" for (name, vi) in
-                             (("SVI{Dict}", SimpleVarInfo(Dict{VarName,Any}())),
+                             (("SVI{Dict}", SimpleVarInfo(OrderedDict{VarName,Any}())),
         # ("SVI{NamedTuple}", SimpleVarInfo(values_constrained)),
         # ("SVI{VNV}", SimpleVarInfo(DynamicPPL.VarNamedVector())),
         # ("TypedVarInfo", DynamicPPL.typed_varinfo(model)),
