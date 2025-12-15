@@ -639,6 +639,8 @@ function Base.keys(pa::PartialArray)
                 sublens = _varname_to_lens(vn)
                 push!(ks, _compose_no_identity(sublens, lens))
             end
+        elseif val isa ArrayLikeBlock
+            push!(ks, IndexLens(Tuple(val.inds)))
         else
             push!(ks, lens)
         end

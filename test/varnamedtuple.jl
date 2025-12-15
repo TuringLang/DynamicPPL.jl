@@ -2,9 +2,8 @@ module VarNamedTupleTests
 
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
-using Distributions: Dirichlet
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
-using DynamicPPL.VarNamedTuples: PartialArray
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
 using AbstractPPL: VarName, prefix
 using BangBang: setindex!!
 
@@ -20,12 +19,18 @@ function test_invariants(vnt::VarNamedTuple)
     for k in keys(vnt)
         @test haskey(vnt, k)
         v = getindex(vnt, k)
+        # ArrayLikeBlocks are an implementation detail, and should not be exposed through
+        # getindex.
+        @test !(v isa ArrayLikeBlock)
         vnt2 = setindex!!(copy(vnt), v, k)
         @test vnt == vnt2
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
     # Check that the printed representation can be parsed back to an equal VarNamedTuple.
+    # The below eval test is a bit fragile: If any elements in vnt don't respect the same
+    # reconstructability-from-repr property, this will fail. Likewise if any element uses
+    # in its repr print out types that are not in scope in this module, it will fail.
     vnt3 = eval(Meta.parse(repr(vnt)))
     @test vnt == vnt3
     @test isequal(vnt, vnt3)
@@ -461,6 +466,12 @@ end
     end
 
     @testset "block variables" begin
+        """ A type that has a size but is not an Array."""
+        struct SizedThing
+            size::Tuple
+        end
+        Base.size(st::SizedThing) = st.size
+
         # Tests for setting and getting block variables, i.e. variables that have a non-zero
         # size in a PartialArray, but are not Arrays themselves.
         expected_err = ArgumentError("""
@@ -468,10 +479,10 @@ end
             range of indices.
             """)
         vnt = VarNamedTuple()
-        vnt = @inferred(setindex!!(vnt, Dirichlet(3, 1.0), @varname(x[2:4])))
+        vnt = @inferred(setindex!!(vnt, SizedThing((3,)), @varname(x[2:4])))
         test_invariants(vnt)
         @test haskey(vnt, @varname(x[2:4]))
-        @test @inferred(getindex(vnt, @varname(x[2:4]))) == Dirichlet(3, 1.0)
+        @test @inferred(getindex(vnt, @varname(x[2:4]))) == SizedThing((3,))
         @test !haskey(vnt, @varname(x[2:3]))
         @test_throws expected_err getindex(vnt, @varname(x[2:3]))
         @test !haskey(vnt, @varname(x[3]))
@@ -492,7 +503,7 @@ end
             vals = if index isa Int
                 (2.0,)
             else
-                (fill(2.0, length(index)), Dirichlet(length(index), 2.0))
+                (fill(2.0, length(index)), SizedThing((length(index),)))
             end
             @testset "val = $val" for val in vals
                 vn = @varname(x[index])
@@ -513,9 +524,7 @@ end
 
         # Extra checks, mostly for type stability and to confirm that multidimensional
         # blocks work too.
-        struct TwoByTwoBlock end
-        Base.size(::TwoByTwoBlock) = (2, 2)
-        val = TwoByTwoBlock()
+        val = SizedThing((2, 2))
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, val, @varname(y.z[1:2, 1:2])))
         test_invariants(vnt)
