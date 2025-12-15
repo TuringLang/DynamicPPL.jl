@@ -486,10 +486,8 @@ function generate_tilde(left, right)
         $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
-            # $left may not be a simple varname, it might be x.a or x[1], hence we need to
-            # use Accessors.@set to safely set it.
-            # We need overwrite=true to make sure that the parent value `x` is overwritten
-            # after this statement.
+            # $left may not be a simple varname, it might be x.a or x[1], in which case we
+            # need to use BangBang.@set!! to safely set it.
             $(assign_or_set!!(
                 left,
                 :($(DynamicPPL.getfixed_nested)(
