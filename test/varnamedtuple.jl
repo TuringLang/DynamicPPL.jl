@@ -562,6 +562,30 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
         @test haskey(vnt, @varname(y.z[4:5, 2:3]))
         @test @inferred(getindex(vnt, @varname(y.z[4:5, 2:3]))) == val
+
+        # A lot like above, but with extra indices that are not ranges.
+        val = SizedThing((2, 2))
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2, 1:2, 3, 1:2, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))) == val
+        @test !haskey(vnt, @varname(y.z[2, 1, 3, 1, 4]))
+        @test_throws expected_err getindex(vnt, @varname(y.z[2, 1, 3, 1, 4]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2, 2:3, 3, 2:3, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
+        @test !haskey(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+        @test_throws BoundsError getindex(vnt, @varname(y.z[2, 1:2, 3, 1:2, 4]))
+
+        vnt = @inferred(setindex!!(vnt, val, @varname(y.z[3, 2:3, 3, 2:3, 4])))
+        test_invariants(vnt)
+        @test haskey(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
+        @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 end
 
