@@ -652,6 +652,7 @@ function Base.keys(pa::PartialArray)
     inds = findall(pa.mask)
     lenses = map(x -> IndexLens(Tuple(x)), inds)
     ks = Any[]
+    alb_inds_seen = Set{Tuple}()
     for lens in lenses
         val = getindex(pa.data, lens.indices...)
         if val isa VarNamedTuple
@@ -661,7 +662,10 @@ function Base.keys(pa::PartialArray)
                 push!(ks, _compose_no_identity(sublens, lens))
             end
         elseif val isa ArrayLikeBlock
-            push!(ks, IndexLens(Tuple(val.inds)))
+            if !(val.inds in alb_inds_seen)
+                push!(ks, IndexLens(Tuple(val.inds)))
+                push!(alb_inds_seen, val.inds)
+            end
         else
             push!(ks, lens)
         end

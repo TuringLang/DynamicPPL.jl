@@ -40,6 +40,12 @@ function test_invariants(vnt::VarNamedTuple)
     @test merge(VarNamedTuple(), vnt) == vnt
 end
 
+""" A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
+struct SizedThing{T<:Tuple}
+    size::T
+end
+Base.size(st::SizedThing) = st.size
+
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
@@ -417,6 +423,22 @@ end
             @varname(j[6]),
             @varname(n[2].a),
         ]
+
+        vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(o[2:4, 5:5, 11:14]))
+        @test keys(vnt) == [
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+            @varname(n[2].a),
+            @varname(o[2:4, 5:5, 11:14]),
+        ]
     end
 
     @testset "printing" begin
@@ -466,12 +488,6 @@ end
     end
 
     @testset "block variables" begin
-        """ A type that has a size but is not an Array."""
-        struct SizedThing
-            size::Tuple
-        end
-        Base.size(st::SizedThing) = st.size
-
         # Tests for setting and getting block variables, i.e. variables that have a non-zero
         # size in a PartialArray, but are not Arrays themselves.
         expected_err = ArgumentError("""
