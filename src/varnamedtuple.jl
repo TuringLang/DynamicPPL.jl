@@ -528,12 +528,20 @@ function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     else
         pa.mask[inds...] = false
     end
-    return _concretise_eltype!!(pa)
+    return pa
 end
 
 _ensure_range(r::UnitRange) = r
 _ensure_range(i::Integer) = i:i
 
+"""
+    _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+
+Remove any ArrayLikeBlocks that overlap with the given indices from the PartialArray.
+
+Note that this removes the whole block, even the parts that are within `inds`, to avoid
+partially indexing into ArrayLikeBlocks.
+"""
 function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     et = eltype(pa)
     if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
@@ -552,6 +560,13 @@ function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     return pa
 end
 
+"""
+    _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
+
+Check if the given value needs to be wrapped in an `ArrayLikeBlock` when being set at inds.
+
+The value only depends on the types of the arguments, and should be constant propagated.
+"""
 function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
     return _is_multiindex(inds) &&
            !isa(value, AbstractArray) &&
@@ -569,9 +584,6 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
 
     new_data = pa.data
     if _needs_arraylikeblock(value, inds...)
-        if !hasmethod(size, Tuple{typeof(value)})
-            throw(ArgumentError("Cannot assign a scalar value to a range."))
-        end
         inds_size = reduce((x, y) -> tuple(x..., y...), map(size, inds))
         if size(value) != inds_size
             throw(
@@ -584,7 +596,7 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
         # At this point we know we have a value that is not an AbstractArray, but it has
         # some notion of size, and that size matches the indices that are being set. In this
         # case we wrap the value in an ArrayLikeBlock, and set all the individual indices
-        # point to that.
+        # to point to that.
         alb = ArrayLikeBlock(value, inds)
         new_data = setindex!!(new_data, fill(alb, inds_size...), inds...)
     else
