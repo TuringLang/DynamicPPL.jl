@@ -120,11 +120,13 @@
             # `link!!`
             @show vi[:]
             vi_linked = link!!(deepcopy(vi), model)
+            @show vi_linked[:]
             # lp_unlinked = getlogjoint(vi_linked)
             lp_linked = getlogjoint_internal(vi_linked)
-            @show vi_linked[:]
-            @test lp_linked ≈ lp_linked_true
+            @show vi
+            @show vi_linked
             @show lp_linked lp_linked_true
+            @test lp_linked ≈ lp_linked_true
             # @test lp_unlinked ≈ lp_unlinked_true
             # @test logjoint(model, vi_linked) ≈ lp_unlinked
             #

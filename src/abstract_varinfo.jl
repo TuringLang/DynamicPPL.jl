@@ -838,10 +838,14 @@ function link!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
     b = inverse(t.bijector)
+    @show b
     x = vi[:]
+    @show x
     y, logjac = with_logabsdet_jacobian(b, x)
+    @show y, logjac
     # Set parameters and add the logjac term.
     vi = unflatten(vi, y)
+    @show vi[:]
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, logjac)
     end
