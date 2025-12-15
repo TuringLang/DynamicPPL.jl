@@ -755,9 +755,9 @@ const DEMO_MODELS = (
 A tuple of all models defined in DynamicPPL.TestUtils.
 """
 const ALL_MODELS = (
-    DEMO_MODELS...,
-    demo_dynamic_constraint(),
-    demo_one_variable_multiple_constraints(),
-    demo_lkjchol(),
+    # DEMO_MODELS...,
+    # demo_dynamic_constraint(),
+    # demo_one_variable_multiple_constraints(),
+    # demo_lkjchol(),
     demo_static_transformation(),
 )

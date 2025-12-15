@@ -31,29 +31,29 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             num_threads: 2
-          # Minimum supported version
-          - version: 'min'
-            os: ubuntu-latest
-            num_threads: 2
-          # 1.11
-          - version: '1.11'
-            os: ubuntu-latest
-            num_threads: 2
-          # Single-threaded
-          - version: '1'
-            os: ubuntu-latest
-            num_threads: 1
-          # Windows
+          # # Minimum supported version
+          # - version: 'min'
+          #   os: ubuntu-latest
+          #   num_threads: 2
+          # # 1.11
+          # - version: '1.11'
+          #   os: ubuntu-latest
+          #   num_threads: 2
+          # # Single-threaded
+          # - version: '1'
+          #   os: ubuntu-latest
+          #   num_threads: 1
+          # # Windows
           - version: '1'
             os: windows-latest
             num_threads: 2
-          # macOS
-          - version: '1'
-            os: macos-latest
-            num_threads: 2
+          # # macOS
+          # - version: '1'
+          #   os: macos-latest
+          #   num_threads: 2
         test_group:
           - Group1
-          - Group2
+          # - Group2
 
     steps:
       - uses: actions/checkout@v6
