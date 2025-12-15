@@ -469,6 +469,7 @@ end
             """)
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, Dirichlet(3, 1.0), @varname(x[2:4])))
+        test_invariants(vnt)
         @test haskey(vnt, @varname(x[2:4]))
         @test @inferred(getindex(vnt, @varname(x[2:4]))) == Dirichlet(3, 1.0)
         @test !haskey(vnt, @varname(x[2:3]))
@@ -479,6 +480,7 @@ end
         @test !haskey(vnt, @varname(x[5]))
         vnt = setindex!!(vnt, 1.0, @varname(x[1]))
         vnt = setindex!!(vnt, 1.0, @varname(x[5]))
+        test_invariants(vnt)
         @test haskey(vnt, @varname(x[1]))
         @test haskey(vnt, @varname(x[5]))
         @test_throws expected_err getindex(vnt, @varname(x[1:4]))
@@ -496,6 +498,7 @@ end
                 vn = @varname(x[index])
                 vnt2 = copy(vnt)
                 vnt2 = setindex!!(vnt2, val, vn)
+                test_invariants(vnt)
                 @test !haskey(vnt2, @varname(x[2:4]))
                 @test_throws BoundsError getindex(vnt2, @varname(x[2:4]))
                 other_index = index in (2, 2:3) ? 4 : 2
@@ -515,18 +518,21 @@ end
         val = TwoByTwoBlock()
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, val, @varname(y.z[1:2, 1:2])))
+        test_invariants(vnt)
         @test haskey(vnt, @varname(y.z[1:2, 1:2]))
         @test @inferred(getindex(vnt, @varname(y.z[1:2, 1:2]))) == val
         @test !haskey(vnt, @varname(y.z[1, 1]))
         @test_throws expected_err getindex(vnt, @varname(y.z[1, 1]))
 
         vnt = @inferred(setindex!!(vnt, val, @varname(y.z[2:3, 2:3])))
+        test_invariants(vnt)
         @test haskey(vnt, @varname(y.z[2:3, 2:3]))
         @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
         @test !haskey(vnt, @varname(y.z[1:2, 1:2]))
         @test_throws BoundsError getindex(vnt, @varname(y.z[1:2, 1:2]))
 
         vnt = @inferred(setindex!!(vnt, val, @varname(y.z[4:5, 2:3])))
+        test_invariants(vnt)
         @test haskey(vnt, @varname(y.z[2:3, 2:3]))
         @test @inferred(getindex(vnt, @varname(y.z[2:3, 2:3]))) == val
         @test haskey(vnt, @varname(y.z[4:5, 2:3]))
