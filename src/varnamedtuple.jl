@@ -27,9 +27,30 @@ function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
 end
 
 # Some utilities for checking what sort of indices we are dealing with.
-_has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
-function _is_multiindex(::T) where {T<:Tuple}
-    return any(x <: UnitRange || x <: Colon for x in T.parameters)
+# The non-generated function implementations of these would be
+# _has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
+# function _is_multiindex(::T) where {T<:Tuple}
+#     return any(x <: UnitRange || x <: Colon for x in T.parameters)
+# end
+# However, constant propagation sometimes fails if the index tuple is too big (e.g. length
+# 4), so we play it safe and use generated functions. Constant propagating these is
+# important, because many functions choose different paths based on their values, which
+# would lead to type instability if they were only evaluated at runtime.
+@generated function _has_colon(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: Colon
+            return :(true)
+        end
+    end
+    return :(false)
+end
+@generated function _is_multiindex(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: UnitRange || x <: Colon
+            return :(true)
+        end
+    end
+    return :(false)
 end
 
 """
